@@ -10,6 +10,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Dimensions;
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cmp::Reverse;
@@ -63,6 +64,9 @@ impl<SC: StarkGenericConfig, A> StarkMachine<SC, A> {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound(serialize = "PcsProverData<SC>: Serialize"))]
+#[serde(bound(deserialize = "PcsProverData<SC>: DeserializeOwned"))]
 pub struct StarkProvingKey<SC: StarkGenericConfig> {
     pub commit: Com<SC>,
     pub pc_start: Val<SC>,
@@ -79,11 +83,11 @@ impl<SC: StarkGenericConfig> StarkProvingKey<SC> {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "SC: StarkGenericConfig")]
+#[serde(bound(serialize = "Dom<SC>: Serialize"))]
+#[serde(bound(deserialize = "Dom<SC>: DeserializeOwned"))]
 pub struct StarkVerifyingKey<SC: StarkGenericConfig> {
     pub commit: Com<SC>,
     pub pc_start: Val<SC>,
-    #[serde(skip)]
     pub chip_information: Vec<(String, Dom<SC>, Dimensions)>,
     pub chip_ordering: HashMap<String, usize>,
 }
@@ -254,9 +258,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
 
         // Display some statistics about the workload.
         let stats = record.stats();
-        for (k, v) in stats {
-            log::info!("{} = {}", k, v);
-        }
+        log::info!("Shard: {:?}", stats);
 
         // For each chip, shard the events into segments.
         record.shard(config)
@@ -519,8 +521,11 @@ pub mod tests {
     use crate::runtime::Instruction;
     use crate::runtime::Opcode;
     use crate::runtime::Program;
+    use crate::stark::RiscvAir;
+    use crate::stark::StarkProvingKey;
+    use crate::stark::StarkVerifyingKey;
     use crate::utils;
-    use crate::utils::run_and_prove;
+    use crate::utils::prove;
     use crate::utils::run_test;
     use crate::utils::setup_logger;
     use crate::utils::BabyBearPoseidon2;
@@ -671,7 +676,7 @@ pub mod tests {
         setup_logger();
         let program = fibonacci_program();
         let stdin = SP1Stdin::new();
-        run_and_prove(program, &stdin, BabyBearPoseidon2::new());
+        prove(program, &stdin, BabyBearPoseidon2::new()).unwrap();
     }
 
     #[test]
@@ -685,5 +690,44 @@ pub mod tests {
     fn test_ssz_withdrawal() {
         let program = ssz_withdrawals_program();
         run_test(program).unwrap();
+    }
+
+    #[test]
+    fn test_key_serde() {
+        let program = ssz_withdrawals_program();
+        let config = BabyBearPoseidon2::new();
+        let machine = RiscvAir::machine(config);
+        let (pk, vk) = machine.setup(&program);
+
+        let serialized_pk = bincode::serialize(&pk).unwrap();
+        let deserialized_pk: StarkProvingKey<BabyBearPoseidon2> =
+            bincode::deserialize(&serialized_pk).unwrap();
+        assert_eq!(pk.commit, deserialized_pk.commit);
+        assert_eq!(pk.pc_start, deserialized_pk.pc_start);
+        assert_eq!(pk.traces, deserialized_pk.traces);
+        assert_eq!(pk.data.root(), deserialized_pk.data.root());
+        assert_eq!(pk.chip_ordering, deserialized_pk.chip_ordering);
+
+        let serialized_vk = bincode::serialize(&vk).unwrap();
+        let deserialized_vk: StarkVerifyingKey<BabyBearPoseidon2> =
+            bincode::deserialize(&serialized_vk).unwrap();
+        assert_eq!(vk.commit, deserialized_vk.commit);
+        assert_eq!(vk.pc_start, deserialized_vk.pc_start);
+        assert_eq!(
+            vk.chip_information.len(),
+            deserialized_vk.chip_information.len()
+        );
+        for (a, b) in vk
+            .chip_information
+            .iter()
+            .zip(deserialized_vk.chip_information.iter())
+        {
+            assert_eq!(a.0, b.0);
+            assert_eq!(a.1.log_n, b.1.log_n);
+            assert_eq!(a.1.shift, b.1.shift);
+            assert_eq!(a.2.height, b.2.height);
+            assert_eq!(a.2.width, b.2.width);
+        }
+        assert_eq!(vk.chip_ordering, deserialized_vk.chip_ordering);
     }
 }
