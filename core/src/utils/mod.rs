@@ -1,8 +1,9 @@
 mod buffer;
 mod config;
 pub mod ec;
-pub mod env;
 mod logger;
+mod options;
+#[cfg(any(test, feature = "programs"))]
 mod programs;
 mod prove;
 mod tracer;
@@ -10,10 +11,11 @@ mod tracer;
 pub use buffer::*;
 pub use config::*;
 pub use logger::*;
+pub use options::*;
 pub use prove::*;
 pub use tracer::*;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "programs"))]
 pub use programs::*;
 
 use crate::{memory::MemoryCols, operations::field::params::Limbs};
@@ -64,7 +66,7 @@ pub fn limbs_from_access<T: Copy, N: ArrayLength, M: MemoryCols<T>>(cols: &[M]) 
     Limbs(sized)
 }
 
-pub fn pad_rows<T: Clone, const N: usize>(rows: &mut Vec<[T; N]>, row_fn: impl Fn() -> [T; N]) {
+pub fn pad_rows<T: Clone>(rows: &mut Vec<T>, row_fn: impl Fn() -> T) {
     let nb_rows = rows.len();
     let mut padded_nb_rows = nb_rows.next_power_of_two();
     if padded_nb_rows < 16 {

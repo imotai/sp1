@@ -1,4 +1,4 @@
-use crate::runtime::{DIGEST_SIZE, PERMUTATION_WIDTH};
+use crate::runtime::{DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
 
 use core::fmt::Debug;
 use p3_challenger::DuplexChallenger;
@@ -49,7 +49,7 @@ pub struct ChallengerPublicValues<T> {
 impl<T: Clone + Debug> ChallengerPublicValues<T> {
     pub fn set_challenger<P: CryptographicPermutation<[T; PERMUTATION_WIDTH]>>(
         &self,
-        challenger: &mut DuplexChallenger<T, P, PERMUTATION_WIDTH>,
+        challenger: &mut DuplexChallenger<T, P, PERMUTATION_WIDTH, HASH_RATE>,
     ) where
         T: PrimeField32,
     {
@@ -77,13 +77,10 @@ pub struct RecursionPublicValues<T> {
     /// The expected start pc for the next shard.
     pub next_pc: T,
 
-    /// The exit code of the program.
-    pub exit_code: T,
-
     /// First shard being proven.
     pub start_shard: T,
 
-    /// Next shard that should be proven, or 0 if the program halted.
+    /// Next shard that should be proven, if there are more.
     pub next_shard: T,
 
     /// Start state of reconstruct_challenger.
@@ -113,6 +110,13 @@ pub struct RecursionPublicValues<T> {
     /// Whether the proof completely proves the program execution.
     pub is_complete: T,
 
-    /// The digest of all the public values elements.
+    /// Total number of core shards in the program execution.
+    pub total_core_shards: T,
+
+    /// The digest of all the previous public values elements.
     pub digest: [T; DIGEST_SIZE],
+
+    /// The exit code of the program.  Note that this is not part of the public values digest, since
+    /// it's value will be individually constrained.
+    pub exit_code: T,
 }

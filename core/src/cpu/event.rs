@@ -9,6 +9,9 @@ pub struct CpuEvent {
     /// The current shard.
     pub shard: u32,
 
+    /// The current channel.
+    pub channel: u32,
+
     /// The current clock.
     pub clk: u32,
 
@@ -48,4 +51,15 @@ pub struct CpuEvent {
 
     /// Exit code called with halt.
     pub exit_code: u32,
+
+    pub alu_lookup_id: usize,
+    pub syscall_lookup_id: usize,
+    pub memory_add_lookup_id: usize,
+    pub memory_sub_lookup_id: usize,
+    pub branch_gt_lookup_id: usize,
+    pub branch_lt_lookup_id: usize,
+    pub branch_add_lookup_id: usize,
+    pub jump_jal_lookup_id: usize,
+    pub jump_jalr_lookup_id: usize,
+    pub auipc_lookup_id: usize,
 }

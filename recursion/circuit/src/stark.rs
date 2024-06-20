@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::marker::PhantomData;
 
 use crate::fri::verify_two_adic_pcs;
+use crate::poseidon2::Poseidon2CircuitBuilder;
 use crate::types::OuterDigestVariable;
 use crate::utils::{babybear_bytes_to_bn254, babybears_to_bn254, words_to_bytes};
 use crate::witness::Witnessable;
@@ -17,12 +18,12 @@ use sp1_core::{
 };
 use sp1_recursion_compiler::config::OuterConfig;
 use sp1_recursion_compiler::constraints::{Constraint, ConstraintCompiler};
-use sp1_recursion_compiler::ir::{Builder, Config, Felt, Var};
+use sp1_recursion_compiler::ir::{Builder, Config, Ext, Felt, Var};
 use sp1_recursion_compiler::ir::{Usize, Witness};
 use sp1_recursion_compiler::prelude::SymbolicVar;
-use sp1_recursion_core::air::RecursionPublicValues;
+use sp1_recursion_core::air::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH};
 use sp1_recursion_core::stark::config::{outer_fri_config, BabyBearPoseidon2Outer};
-use sp1_recursion_core::stark::RecursionAirSkinnyDeg7;
+use sp1_recursion_core::stark::RecursionAirSkinnyDeg9;
 use sp1_recursion_program::commit::PolynomialSpaceVariable;
 use sp1_recursion_program::stark::RecursiveVerifierConstraintFolder;
 use sp1_recursion_program::types::QuotientDataValues;
@@ -243,7 +244,7 @@ pub fn build_wrap_circuit(
     template_proof: ShardProof<OuterSC>,
 ) -> Vec<Constraint> {
     let outer_config = OuterSC::new();
-    let outer_machine = RecursionAirSkinnyDeg7::<OuterF>::wrap_machine(outer_config);
+    let outer_machine = RecursionAirSkinnyDeg9::<OuterF>::wrap_machine(outer_config);
 
     let mut builder = Builder::<OuterConfig>::default();
     let mut challenger = MultiField32ChallengerVariable::new(&mut builder);
@@ -270,7 +271,9 @@ pub fn build_wrap_circuit(
         let element = builder.get(&proof.public_values, i);
         pv_elements.push(element);
     }
+
     let pv: &RecursionPublicValues<_> = pv_elements.as_slice().borrow();
+
     let one_felt: Felt<_> = builder.constant(BabyBear::one());
     // Proof must be complete. In the reduce program, this will ensure that the SP1 proof has been
     // fully accumulated.
@@ -340,13 +343,19 @@ pub fn build_wrap_circuit(
         sorted_indices,
     );
 
-    // TODO: Ensure lookup bus is zero.
-    // let zero_ext: Ext<_, _> = builder.constant(EF::zero());
-    // let cumulative_sum: Ext<_, _> = builder.eval(zero_ext);
-    // for chip in proof.opened_values.chips {
-    //     builder.assign(cumulative_sum, cumulative_sum + chip.cumulative_sum);
-    // }
-    // builder.assert_ext_eq(cumulative_sum, zero_ext);
+    let zero_ext: Ext<_, _> = builder.constant(<OuterConfig as Config>::EF::zero());
+    let cumulative_sum: Ext<_, _> = builder.eval(zero_ext);
+    for chip in proof.opened_values.chips {
+        builder.assign(cumulative_sum, cumulative_sum + chip.cumulative_sum);
+    }
+    builder.assert_ext_eq(cumulative_sum, zero_ext);
+
+    // Verify the public values digest.
+    let calculated_digest = builder.p2_babybear_hash(&pv_elements[0..NUM_PV_ELMS_TO_HASH]);
+    let expected_digest = pv.digest;
+    for (calculated_elm, expected_elm) in calculated_digest.iter().zip(expected_digest.iter()) {
+        builder.assert_felt_eq(*expected_elm, *calculated_elm);
+    }
 
     let mut backend = ConstraintCompiler::<OuterConfig>::default();
     backend.emit(builder.operations)
@@ -376,7 +385,7 @@ pub(crate) mod tests {
             "".to_string(),
         )];
         instructions.resize(
-            32,
+            31,
             Instruction::new(
                 Opcode::ADD,
                 F::from_canonical_u32(3),
@@ -389,6 +398,17 @@ pub(crate) mod tests {
                 "".to_string(),
             ),
         );
+        instructions.push(Instruction::new(
+            Opcode::HALT,
+            F::zero(),
+            zero,
+            zero,
+            F::zero(),
+            F::zero(),
+            true,
+            true,
+            "".to_string(),
+        ));
         RecursionProgram::<F> {
             instructions,
             traces: vec![None],

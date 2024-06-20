@@ -1,7 +1,7 @@
 use p3_air::AirBuilder;
 use p3_field::AbstractField;
 
-use crate::air::{BaseAirBuilder, WordAirBuilder};
+use crate::air::{BaseAirBuilder, PublicValues, WordAirBuilder};
 use crate::cpu::air::{Word, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use crate::cpu::columns::{CpuCols, OpcodeSelectorCols};
 use crate::memory::MemoryCols;
@@ -35,13 +35,19 @@ impl CpuChip {
         let syscall_id = syscall_code[0];
         let send_to_table = syscall_code[1];
 
-        // When is_ecall_instruction == true AND sent_to_table == true, ecall_mul_send_to_table should be true.
-        builder
-            .when(is_ecall_instruction.clone())
-            .assert_eq(send_to_table, local.ecall_mul_send_to_table);
+        // Handle cases:
+        // - is_ecall_instruction = 1 => ecall_mul_send_to_table == send_to_table
+        // - is_ecall_instruction = 0 => ecall_mul_send_to_table == 0
+        builder.assert_eq(
+            local.ecall_mul_send_to_table,
+            send_to_table * is_ecall_instruction.clone(),
+        );
+
         builder.send_syscall(
             local.shard,
+            local.channel,
             local.clk,
+            ecall_cols.syscall_nonce,
             syscall_id,
             local.op_b_val().reduce::<AB>(),
             local.op_c_val().reduce::<AB>(),
@@ -171,6 +177,7 @@ impl CpuChip {
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
         next: &CpuCols<AB::Var>,
+        public_values: &PublicValues<Word<AB::Expr>, AB::Expr>,
     ) {
         let is_halt = self.get_is_halt_syscall(builder, local);
 
@@ -181,6 +188,11 @@ impl CpuChip {
             .assert_zero(next.is_real);
 
         builder.when(is_halt.clone()).assert_zero(local.next_pc);
+
+        builder.when(is_halt.clone()).assert_eq(
+            local.op_b_access.value().reduce::<AB>(),
+            public_values.exit_code.clone(),
+        );
     }
 
     /// Returns a boolean expression indicating whether the instruction is a HALT instruction.

@@ -64,6 +64,12 @@ pub struct ShiftLeftCols<T> {
     /// The shard number, used for byte lookup table.
     pub shard: T,
 
+    /// The channel number, used for byte lookup table.
+    pub channel: T,
+
+    /// The nonce of the operation.
+    pub nonce: T,
+
     /// The output operand.
     pub a: Word<T>,
 
@@ -118,6 +124,7 @@ impl<F: PrimeField> MachineAir<F> for ShiftLeft {
             let b = event.b.to_le_bytes();
             let c = event.c.to_le_bytes();
             cols.shard = F::from_canonical_u32(event.shard);
+            cols.channel = F::from_canonical_u32(event.channel);
             cols.a = Word(a.map(F::from_canonical_u8));
             cols.b = Word(b.map(F::from_canonical_u8));
             cols.c = Word(c.map(F::from_canonical_u8));
@@ -156,8 +163,8 @@ impl<F: PrimeField> MachineAir<F> for ShiftLeft {
 
             // Range checks.
             {
-                output.add_u8_range_checks(event.shard, &bit_shift_result);
-                output.add_u8_range_checks(event.shard, &bit_shift_result_carry);
+                output.add_u8_range_checks(event.shard, event.channel, &bit_shift_result);
+                output.add_u8_range_checks(event.shard, event.channel, &bit_shift_result_carry);
             }
 
             // Sanity check.
@@ -195,6 +202,12 @@ impl<F: PrimeField> MachineAir<F> for ShiftLeft {
             trace.values[i] = padded_row_template[i % NUM_SHIFT_LEFT_COLS];
         }
 
+        for i in 0..trace.height() {
+            let cols: &mut ShiftLeftCols<F> =
+                trace.values[i * NUM_SHIFT_LEFT_COLS..(i + 1) * NUM_SHIFT_LEFT_COLS].borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+
         trace
     }
 
@@ -217,10 +230,18 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &ShiftLeftCols<AB::Var> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &ShiftLeftCols<AB::Var> = (*next).borrow();
 
         let zero: AB::Expr = AB::F::zero().into();
         let one: AB::Expr = AB::F::one().into();
         let base: AB::Expr = AB::F::from_canonical_u32(1 << BYTE_SIZE).into();
+
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
 
         // We first "bit shift" and next we "byte shift". Then we compare the results with a.
         // Finally, we perform some misc checks.
@@ -314,8 +335,18 @@ where
 
         // Range check.
         {
-            builder.slice_range_check_u8(&local.bit_shift_result, local.shard, local.is_real);
-            builder.slice_range_check_u8(&local.bit_shift_result_carry, local.shard, local.is_real);
+            builder.slice_range_check_u8(
+                &local.bit_shift_result,
+                local.shard,
+                local.channel,
+                local.is_real,
+            );
+            builder.slice_range_check_u8(
+                &local.bit_shift_result_carry,
+                local.shard,
+                local.channel,
+                local.is_real,
+            );
         }
 
         for shift in local.shift_by_n_bytes.iter() {
@@ -339,6 +370,8 @@ where
             local.b,
             local.c,
             local.shard,
+            local.channel,
+            local.nonce,
             local.is_real,
         );
     }
@@ -366,7 +399,7 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.shift_left_events = vec![AluEvent::new(0, 0, Opcode::SLL, 16, 8, 1)];
+        shard.shift_left_events = vec![AluEvent::new(0, 0, 0, Opcode::SLL, 16, 8, 1)];
         let chip = ShiftLeft::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -401,7 +434,7 @@ mod tests {
             (Opcode::SLL, 0x00000000, 0x21212120, 0xffffffff),
         ];
         for t in shift_instructions.iter() {
-            shift_events.push(AluEvent::new(0, 0, t.0, t.1, t.2, t.3));
+            shift_events.push(AluEvent::new(0, 0, 0, t.0, t.1, t.2, t.3));
         }
 
         // Append more events until we have 1000 tests.

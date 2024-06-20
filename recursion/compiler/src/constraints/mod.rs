@@ -1,4 +1,3 @@
-// pub mod groth16_ffi;
 pub mod opcodes;
 
 use core::fmt::Debug;
@@ -248,6 +247,10 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
                 }),
                 DslIr::CircuitPoseidon2Permute(state) => constraints.push(Constraint {
                     opcode: ConstraintOpcode::Permute,
+                    args: state.iter().map(|x| vec![x.id()]).collect(),
+                }),
+                DslIr::CircuitPoseidon2PermuteBabyBear(state) => constraints.push(Constraint {
+                    opcode: ConstraintOpcode::PermuteBabyBear,
                     args: state.iter().map(|x| vec![x.id()]).collect(),
                 }),
                 DslIr::CircuitSelectV(cond, a, b, out) => {

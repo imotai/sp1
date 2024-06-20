@@ -82,6 +82,12 @@ pub struct ShiftRightCols<T> {
     /// The shard number, used for byte lookup table.
     pub shard: T,
 
+    /// The channel number, used for byte lookup table.
+    pub channel: T,
+
+    /// The nonce of the operation.
+    pub nonce: T,
+
     /// The output operand.
     pub a: Word<T>,
 
@@ -149,6 +155,7 @@ impl<F: PrimeField> MachineAir<F> for ShiftRightChip {
             // Initialize cols with basic operands and flags derived from the current event.
             {
                 cols.shard = F::from_canonical_u32(event.shard);
+                cols.channel = F::from_canonical_u32(event.channel);
                 cols.a = Word::from(event.a);
                 cols.b = Word::from(event.b);
                 cols.c = Word::from(event.c);
@@ -168,6 +175,7 @@ impl<F: PrimeField> MachineAir<F> for ShiftRightChip {
                 let most_significant_byte = event.b.to_le_bytes()[WORD_SIZE - 1];
                 output.add_byte_lookup_events(vec![ByteLookupEvent {
                     shard: event.shard,
+                    channel: event.channel,
                     opcode: ByteOpcode::MSB,
                     a1: ((most_significant_byte >> 7) & 1) as u32,
                     a2: 0,
@@ -217,6 +225,7 @@ impl<F: PrimeField> MachineAir<F> for ShiftRightChip {
 
                     let byte_event = ByteLookupEvent {
                         shard: event.shard,
+                        channel: event.channel,
                         opcode: ByteOpcode::ShrCarry,
                         a1: shift as u32,
                         a2: carry as u32,
@@ -239,10 +248,14 @@ impl<F: PrimeField> MachineAir<F> for ShiftRightChip {
                     debug_assert_eq!(cols.a[i], cols.bit_shift_result[i].clone());
                 }
                 // Range checks.
-                output.add_u8_range_checks(event.shard, &byte_shift_result);
-                output.add_u8_range_checks(event.shard, &bit_shift_result);
-                output.add_u8_range_checks(event.shard, &shr_carry_output_carry);
-                output.add_u8_range_checks(event.shard, &shr_carry_output_shifted_byte);
+                output.add_u8_range_checks(event.shard, event.channel, &byte_shift_result);
+                output.add_u8_range_checks(event.shard, event.channel, &bit_shift_result);
+                output.add_u8_range_checks(event.shard, event.channel, &shr_carry_output_carry);
+                output.add_u8_range_checks(
+                    event.shard,
+                    event.channel,
+                    &shr_carry_output_shifted_byte,
+                );
             }
 
             rows.push(row);
@@ -273,6 +286,13 @@ impl<F: PrimeField> MachineAir<F> for ShiftRightChip {
             trace.values[i] = padded_row_template[i % NUM_SHIFT_RIGHT_COLS];
         }
 
+        // Write the nonces to the trace.
+        for i in 0..trace.height() {
+            let cols: &mut ShiftRightCols<F> =
+                trace.values[i * NUM_SHIFT_RIGHT_COLS..(i + 1) * NUM_SHIFT_RIGHT_COLS].borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+
         trace
     }
 
@@ -295,15 +315,31 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &ShiftRightCols<AB::Var> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &ShiftRightCols<AB::Var> = (*next).borrow();
         let zero: AB::Expr = AB::F::zero().into();
         let one: AB::Expr = AB::F::one().into();
+
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
 
         // Check that the MSB of most_significant_byte matches local.b_msb using lookup.
         {
             let byte = local.b[WORD_SIZE - 1];
             let opcode = AB::F::from_canonical_u32(ByteOpcode::MSB as u32);
             let msb = local.b_msb;
-            builder.send_byte(opcode, msb, byte, zero.clone(), local.shard, local.is_real);
+            builder.send_byte(
+                opcode,
+                msb,
+                byte,
+                zero.clone(),
+                local.shard,
+                local.channel,
+                local.is_real,
+            );
         }
 
         // Calculate the number of bits and bytes to shift by from c.
@@ -411,6 +447,7 @@ where
                     local.byte_shift_result[i],
                     num_bits_to_shift.clone(),
                     local.shard,
+                    local.channel,
                     local.is_real,
                 );
             }
@@ -445,6 +482,9 @@ where
             for shift_by_n_bit in local.shift_by_n_bits.iter() {
                 builder.assert_bool(*shift_by_n_bit);
             }
+            for bit in local.c_least_sig_byte.iter() {
+                builder.assert_bool(*bit);
+            }
         }
 
         // Range check bytes.
@@ -457,18 +497,17 @@ where
             ];
 
             for long_word in long_words.iter() {
-                builder.slice_range_check_u8(long_word, local.shard, local.is_real);
+                builder.slice_range_check_u8(long_word, local.shard, local.channel, local.is_real);
             }
         }
-
-        builder.assert_zero(
-            local.a[0] * local.b[0] * local.c[0] - local.a[0] * local.b[0] * local.c[0],
-        );
 
         // Check that the operation flags are boolean.
         builder.assert_bool(local.is_srl);
         builder.assert_bool(local.is_sra);
         builder.assert_bool(local.is_real);
+
+        // Check that is_real is the sum of the two operation flags.
+        builder.assert_eq(local.is_srl + local.is_sra, local.is_real);
 
         // Receive the arguments.
         builder.receive_alu(
@@ -478,6 +517,8 @@ where
             local.b,
             local.c,
             local.shard,
+            local.channel,
+            local.nonce,
             local.is_real,
         );
     }
@@ -504,7 +545,7 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.shift_right_events = vec![AluEvent::new(0, 0, Opcode::SRL, 6, 12, 1)];
+        shard.shift_right_events = vec![AluEvent::new(0, 0, 0, Opcode::SRL, 6, 12, 1)];
         let chip = ShiftRightChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -555,7 +596,7 @@ mod tests {
         ];
         let mut shift_events: Vec<AluEvent> = Vec::new();
         for t in shifts.iter() {
-            shift_events.push(AluEvent::new(0, 0, t.0, t.1, t.2, t.3));
+            shift_events.push(AluEvent::new(0, 0, 0, t.0, t.1, t.2, t.3));
         }
         let mut shard = ExecutionRecord::default();
         shard.shift_right_events = shift_events;

@@ -56,7 +56,7 @@ impl InteractionKind {
 
 impl<F: Field> Interaction<F> {
     /// Create a new interaction.
-    pub fn new(
+    pub const fn new(
         values: Vec<VirtualPairCol<F>>,
         multiplicity: VirtualPairCol<F>,
         kind: InteractionKind,
@@ -69,12 +69,11 @@ impl<F: Field> Interaction<F> {
     }
 
     /// The index of the argument in the lookup table.
-    pub fn argument_index(&self) -> usize {
+    pub const fn argument_index(&self) -> usize {
         self.kind as usize
     }
 }
 
-// TODO: add debug for VirtualPairCol so that we can derive Debug for Interaction.
 impl<F: Field> Debug for Interaction<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Interaction")

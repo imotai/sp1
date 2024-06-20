@@ -1,7 +1,8 @@
 use core::borrow::{Borrow, BorrowMut};
 use core::mem::size_of;
 
-use p3_air::{Air, BaseAir};
+use p3_air::{Air, AirBuilder, BaseAir};
+use p3_field::AbstractField;
 use p3_field::PrimeField;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
@@ -34,6 +35,12 @@ pub struct AddSubChip;
 pub struct AddSubCols<T> {
     /// The shard number, used for byte lookup table.
     pub shard: T,
+
+    /// The channel number, used for byte lookup table.
+    pub channel: T,
+
+    /// The nonce of the operation.
+    pub nonce: T,
 
     /// Instance of `AddOperation` to handle addition logic in `AddSubChip`'s ALU operations.
     /// It's result will be `a` for the add operation and `b` for the sub operation.
@@ -88,14 +95,20 @@ impl<F: PrimeField> MachineAir<F> for AddSubChip {
                         let cols: &mut AddSubCols<F> = row.as_mut_slice().borrow_mut();
                         let is_add = event.opcode == Opcode::ADD;
                         cols.shard = F::from_canonical_u32(event.shard);
+                        cols.channel = F::from_canonical_u32(event.channel);
                         cols.is_add = F::from_bool(is_add);
                         cols.is_sub = F::from_bool(!is_add);
 
                         let operand_1 = if is_add { event.b } else { event.a };
                         let operand_2 = event.c;
 
-                        cols.add_operation
-                            .populate(&mut record, event.shard, operand_1, operand_2);
+                        cols.add_operation.populate(
+                            &mut record,
+                            event.shard,
+                            event.channel,
+                            operand_1,
+                            operand_2,
+                        );
                         cols.operand_1 = Word::from(operand_1);
                         cols.operand_2 = Word::from(operand_2);
                         row
@@ -120,6 +133,13 @@ impl<F: PrimeField> MachineAir<F> for AddSubChip {
         // Pad the trace to a power of two.
         pad_to_power_of_two::<NUM_ADD_SUB_COLS, F>(&mut trace.values);
 
+        // Write the nonces to the trace.
+        for i in 0..trace.height() {
+            let cols: &mut AddSubCols<F> =
+                trace.values[i * NUM_ADD_SUB_COLS..(i + 1) * NUM_ADD_SUB_COLS].borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+
         trace
     }
 
@@ -142,6 +162,14 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &AddSubCols<AB::Var> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &AddSubCols<AB::Var> = (*next).borrow();
+
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
 
         // Evaluate the addition operation.
         AddOperation::<AB::F>::eval(
@@ -150,6 +178,7 @@ where
             local.operand_2,
             local.add_operation,
             local.shard,
+            local.channel,
             local.is_add + local.is_sub,
         );
 
@@ -161,6 +190,8 @@ where
             local.operand_1,
             local.operand_2,
             local.shard,
+            local.channel,
+            local.nonce,
             local.is_add,
         );
 
@@ -171,6 +202,8 @@ where
             local.add_operation.value,
             local.operand_2,
             local.shard,
+            local.channel,
+            local.nonce,
             local.is_sub,
         );
 
@@ -203,7 +236,7 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.add_events = vec![AluEvent::new(0, 0, Opcode::ADD, 14, 8, 6)];
+        shard.add_events = vec![AluEvent::new(0, 0, 0, Opcode::ADD, 14, 8, 6)];
         let chip = AddSubChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -216,12 +249,13 @@ mod tests {
         let mut challenger = config.challenger();
 
         let mut shard = ExecutionRecord::default();
-        for _ in 0..1000 {
+        for i in 0..1000 {
             let operand_1 = thread_rng().gen_range(0..u32::MAX);
             let operand_2 = thread_rng().gen_range(0..u32::MAX);
             let result = operand_1.wrapping_add(operand_2);
             shard.add_events.push(AluEvent::new(
                 0,
+                i % 2,
                 0,
                 Opcode::ADD,
                 result,
@@ -229,12 +263,13 @@ mod tests {
                 operand_2,
             ));
         }
-        for _ in 0..1000 {
+        for i in 0..1000 {
             let operand_1 = thread_rng().gen_range(0..u32::MAX);
             let operand_2 = thread_rng().gen_range(0..u32::MAX);
             let result = operand_1.wrapping_sub(operand_2);
             shard.add_events.push(AluEvent::new(
                 0,
+                i % 2,
                 0,
                 Opcode::SUB,
                 result,

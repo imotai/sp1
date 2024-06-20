@@ -11,12 +11,14 @@ import (
 	"github.com/succinctlabs/sp1-recursion-gnark/sp1/poseidon2"
 )
 
-var CONSTRAINTS_JSON_FILE string = "constraints_groth16.json"
-var WITNESS_JSON_FILE string = "witness_groth16.json"
-var VERIFIER_CONTRACT_PATH string = "SP1Verifier.sol"
-var CIRCUIT_PATH string = "circuit_groth16.bin"
-var VK_PATH string = "vk_groth16.bin"
-var PK_PATH string = "pk_groth16.bin"
+var SRS_FILE string = "srs.bin"
+var SRS_LAGRANGE_FILE string = "srs_lagrange.bin"
+var CONSTRAINTS_JSON_FILE string = "constraints.json"
+var WITNESS_JSON_FILE string = "witness.json"
+var VERIFIER_CONTRACT_PATH string = "PlonkVerifier.sol"
+var CIRCUIT_PATH string = "circuit.bin"
+var VK_PATH string = "vk.bin"
+var PK_PATH string = "pk.bin"
 
 type Circuit struct {
 	VkeyHash             frontend.Variable `gnark:",public"`
@@ -39,7 +41,7 @@ type WitnessInput struct {
 	CommitedValuesDigest string     `json:"commited_values_digest"`
 }
 
-type Groth16Proof struct {
+type Proof struct {
 	PublicInputs [2]string `json:"public_inputs"`
 	EncodedProof string    `json:"encoded_proof"`
 	RawProof     string    `json:"raw_proof"`
@@ -66,6 +68,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	}
 
 	hashAPI := poseidon2.NewChip(api)
+	hashBabyBearAPI := poseidon2.NewBabyBearChip(api)
 	fieldAPI := babybear.NewChip(api)
 	vars := make(map[string]frontend.Variable)
 	felts := make(map[string]babybear.Variable)
@@ -130,6 +133,15 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			vars[cs.Args[0][0]] = state[0]
 			vars[cs.Args[1][0]] = state[1]
 			vars[cs.Args[2][0]] = state[2]
+		case "PermuteBabyBear":
+			var state [16]babybear.Variable
+			for i := 0; i < 16; i++ {
+				state[i] = felts[cs.Args[i][0]]
+			}
+			hashBabyBearAPI.PermuteMut(&state)
+			for i := 0; i < 16; i++ {
+				felts[cs.Args[i][0]] = state[i]
+			}
 		case "SelectV":
 			vars[cs.Args[0][0]] = api.Select(vars[cs.Args[1][0]], vars[cs.Args[2][0]], vars[cs.Args[3][0]])
 		case "SelectF":

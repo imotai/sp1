@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Get the version from the command line.
+VERSION=$1
+
 # Specify the file to upload and the S3 bucket name
 FILE_TO_UPLOAD="./build"
 S3_BUCKET="sp1-circuits"
@@ -18,10 +21,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Put the version in the build directory
+echo "$COMMIT_HASH $VERSION" > ./build/SP1_COMMIT
+
 # Create archive named after the commit hash
-ARCHIVE_NAME="${COMMIT_HASH}.tar.gz"
+ARCHIVE_NAME="${VERSION}.tar.gz"
 cd $FILE_TO_UPLOAD
-tar -czvf "../$ARCHIVE_NAME" .
+tar --exclude='srs.bin' --exclude='srs_lagrange.bin' -czvf "../$ARCHIVE_NAME" .
 cd -
 if [ $? -ne 0 ]; then
     echo "Failed to create archive."

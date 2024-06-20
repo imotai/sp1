@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io;
 use std::io::{Seek, Write};
+use std::sync::Arc;
 use web_time::Instant;
 
 pub use baby_bear_blake3::BabyBearBlake3;
@@ -14,8 +15,10 @@ use thiserror::Error;
 use crate::air::MachineAir;
 use crate::io::{SP1PublicValues, SP1Stdin};
 use crate::lookup::InteractionBuilder;
-use crate::runtime::ExecutionError;
-use crate::runtime::{ExecutionRecord, ShardingConfig};
+use crate::runtime::{
+    DefaultSubproofVerifier, ExecutionError, NoOpSubproofVerifier, SubproofVerifier,
+};
+use crate::runtime::{ExecutionRecord, ExecutionReport, ShardingConfig};
 use crate::stark::DebugConstraintBuilder;
 use crate::stark::MachineProof;
 use crate::stark::ProverConstraintFolder;
@@ -24,7 +27,7 @@ use crate::stark::Val;
 use crate::stark::VerifierConstraintFolder;
 use crate::stark::{Com, PcsProverData, RiscvAir, ShardProof, StarkProvingKey, UniConfig};
 use crate::stark::{MachineRecord, StarkMachine};
-use crate::utils::env;
+use crate::utils::SP1CoreOpts;
 use crate::{
     runtime::{Program, Runtime},
     stark::StarkGenericConfig,
@@ -62,7 +65,12 @@ where
     // Prove the program.
     let mut challenger = machine.config().challenger();
     let proving_start = Instant::now();
-    let proof = machine.prove::<LocalProver<_, _>>(&pk, runtime.record, &mut challenger);
+    let proof = machine.prove::<LocalProver<_, _>>(
+        &pk,
+        runtime.record,
+        &mut challenger,
+        SP1CoreOpts::default(),
+    );
     let proving_duration = proving_start.elapsed().as_millis();
     let nb_bytes = bincode::serialize(&proof).unwrap().len();
 
@@ -82,6 +90,25 @@ pub fn prove<SC: StarkGenericConfig + Send + Sync>(
     program: Program,
     stdin: &SP1Stdin,
     config: SC,
+    opts: SP1CoreOpts,
+) -> Result<(MachineProof<SC>, Vec<u8>), SP1CoreProverError>
+where
+    SC::Challenger: Clone,
+    OpeningProof<SC>: Send + Sync,
+    Com<SC>: Send + Sync,
+    PcsProverData<SC>: Send + Sync,
+    ShardMainData<SC>: Serialize + DeserializeOwned,
+    <SC as StarkGenericConfig>::Val: PrimeField32,
+{
+    prove_with_subproof_verifier::<SC, DefaultSubproofVerifier>(program, stdin, config, opts, None)
+}
+
+pub fn prove_with_subproof_verifier<SC: StarkGenericConfig + Send + Sync, V: SubproofVerifier>(
+    program: Program,
+    stdin: &SP1Stdin,
+    config: SC,
+    opts: SP1CoreOpts,
+    subproof_verifier: Option<Arc<V>>,
 ) -> Result<(MachineProof<SC>, Vec<u8>), SP1CoreProverError>
 where
     SC::Challenger: Clone,
@@ -94,10 +121,13 @@ where
     let proving_start = Instant::now();
 
     // Execute the program.
-    let mut runtime = Runtime::new(program.clone());
+    let mut runtime = Runtime::new(program.clone(), opts);
     runtime.write_vecs(&stdin.buffer);
     for proof in stdin.proofs.iter() {
         runtime.write_proof(proof.0.clone(), proof.1.clone());
+    }
+    if let Some(deferred_fn) = subproof_verifier.clone() {
+        runtime.subproof_verifier = deferred_fn;
     }
 
     // Setup the machine.
@@ -105,7 +135,7 @@ where
     let (pk, vk) = machine.setup(runtime.program.as_ref());
 
     // If we don't need to batch, we can just run the program normally and prove it.
-    if env::shard_batch_size() == 0 {
+    if opts.shard_batch_size == 0 {
         // Execute the runtime and collect all the events..
         runtime.run().map_err(SP1CoreProverError::ExecutionError)?;
 
@@ -126,8 +156,8 @@ where
     let mut checkpoints = Vec::new();
     let (public_values_stream, public_values) = loop {
         // Execute the runtime until we reach a checkpoint.
-        let (checkpoint, done) = runtime
-            .execute_state()
+        let (checkpoint, done) = tracing::info_span!("collect_checkpoints")
+            .in_scope(|| runtime.execute_state())
             .map_err(SP1CoreProverError::ExecutionError)?;
 
         // Save the checkpoint to a temp file.
@@ -156,8 +186,9 @@ where
     let mut shard_main_datas = Vec::new();
     let mut challenger = machine.config().challenger();
     vk.observe_into(&mut challenger);
-    for checkpoint_file in checkpoints.iter_mut() {
-        let mut record = trace_checkpoint(program.clone(), checkpoint_file);
+    for (num, checkpoint_file) in checkpoints.iter_mut().enumerate() {
+        let (mut record, _) = tracing::info_span!("commit_checkpoint", num)
+            .in_scope(|| trace_checkpoint(program.clone(), checkpoint_file, opts));
         record.public_values = public_values;
         reset_seek(&mut *checkpoint_file);
 
@@ -167,7 +198,7 @@ where
 
         // Commit to each shard.
         let (commitments, commit_data) = tracing::info_span!("commit")
-            .in_scope(|| LocalProver::commit_shards(&machine, &checkpoint_shards));
+            .in_scope(|| LocalProver::commit_shards(&machine, &checkpoint_shards, opts));
         shard_main_datas.push(commit_data);
 
         // Observe the commitments.
@@ -179,9 +210,12 @@ where
 
     // For each checkpoint, generate events and shard again, then prove the shards.
     let mut shard_proofs = Vec::<ShardProof<SC>>::new();
-    for mut checkpoint_file in checkpoints.into_iter() {
+    let mut report_aggregate = ExecutionReport::default();
+    for (num, mut checkpoint_file) in checkpoints.into_iter().enumerate() {
         let checkpoint_shards = {
-            let mut events = trace_checkpoint(program.clone(), &checkpoint_file);
+            let (mut events, report) = tracing::info_span!("prove_checkpoint", num)
+                .in_scope(|| trace_checkpoint(program.clone(), &checkpoint_file, opts));
+            report_aggregate += report;
             events.public_values = public_values;
             reset_seek(&mut checkpoint_file);
             tracing::debug_span!("shard").in_scope(|| machine.shard(events, &sharding_config))
@@ -209,6 +243,23 @@ where
             .collect::<Vec<_>>();
         shard_proofs.append(&mut checkpoint_proofs);
     }
+    // Log some of the `ExecutionReport` information.
+    tracing::info!(
+        "execution report (totals): total_cycles={}, total_syscall_cycles={}",
+        report_aggregate.total_instruction_count(),
+        report_aggregate.total_syscall_count()
+    );
+    // Print the opcode and syscall count tables like `du`:
+    // sorted by count (descending) and with the count in the first column.
+    tracing::info!("execution report (opcode counts):");
+    for line in ExecutionReport::sorted_table_lines(&report_aggregate.opcode_counts) {
+        tracing::info!("  {line}");
+    }
+    tracing::info!("execution report (syscall counts):");
+    for line in ExecutionReport::sorted_table_lines(&report_aggregate.syscall_counts) {
+        tracing::info!("  {line}");
+    }
+
     let proof = MachineProof::<SC> { shard_proofs };
 
     // Print the summary.
@@ -230,7 +281,7 @@ pub fn run_test_io(
     inputs: SP1Stdin,
 ) -> Result<SP1PublicValues, crate::stark::MachineVerificationError<BabyBearPoseidon2>> {
     let runtime = tracing::info_span!("runtime.run(...)").in_scope(|| {
-        let mut runtime = Runtime::new(program);
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
         runtime.write_vecs(&inputs.buffer);
         runtime.run().unwrap();
         runtime
@@ -247,7 +298,7 @@ pub fn run_test(
     crate::stark::MachineVerificationError<BabyBearPoseidon2>,
 > {
     let runtime = tracing::info_span!("runtime.run(...)").in_scope(|| {
-        let mut runtime = Runtime::new(program);
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         runtime
     });
@@ -301,7 +352,8 @@ where
 
     let start = Instant::now();
     let mut challenger = machine.config().challenger();
-    let proof = machine.prove::<LocalProver<SC, A>>(&pk, record, &mut challenger);
+    let proof =
+        machine.prove::<LocalProver<SC, A>>(&pk, record, &mut challenger, SP1CoreOpts::default());
     let time = start.elapsed().as_millis();
     let nb_bytes = bincode::serialize(&proof).unwrap().len();
 
@@ -319,13 +371,20 @@ where
     Ok(proof)
 }
 
-fn trace_checkpoint(program: Program, file: &File) -> ExecutionRecord {
+fn trace_checkpoint(
+    program: Program,
+    file: &File,
+    opts: SP1CoreOpts,
+) -> (ExecutionRecord, ExecutionReport) {
     let mut reader = std::io::BufReader::new(file);
     let state = bincode::deserialize_from(&mut reader).expect("failed to deserialize state");
-    let mut runtime = Runtime::recover(program.clone(), state);
+    let mut runtime = Runtime::recover(program.clone(), state, opts);
+    // We already passed the deferred proof verifier when creating checkpoints, so the proofs were
+    // already verified. So here we use a noop verifier to not print any warnings.
+    runtime.subproof_verifier = Arc::new(NoOpSubproofVerifier);
     let (events, _) =
         tracing::debug_span!("runtime.trace").in_scope(|| runtime.execute_record().unwrap());
-    events
+    (events, runtime.report)
 }
 
 fn reset_seek(file: &mut File) {
@@ -435,7 +494,7 @@ pub mod baby_bear_poseidon2 {
     >;
     pub type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
     pub type Dft = Radix2DitParallel;
-    pub type Challenger = DuplexChallenger<Val, Perm, 16>;
+    pub type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
     type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
 
     pub fn my_perm() -> Perm {

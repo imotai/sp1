@@ -17,6 +17,7 @@ use crate::utils::{
 use generic_array::GenericArray;
 use num::Zero;
 use num::{BigUint, One};
+use p3_air::AirBuilder;
 use p3_air::{Air, BaseAir};
 use p3_field::AbstractField;
 use p3_field::PrimeField32;
@@ -33,7 +34,9 @@ const NUM_COLS: usize = size_of::<Uint256MulCols<u8>>();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Uint256MulEvent {
+    pub lookup_id: usize,
     pub shard: u32,
+    pub channel: u32,
     pub clk: u32,
     pub x_ptr: u32,
     pub x: Vec<u32>,
@@ -49,7 +52,7 @@ pub struct Uint256MulEvent {
 pub struct Uint256MulChip;
 
 impl Uint256MulChip {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -64,8 +67,14 @@ pub struct Uint256MulCols<T> {
     /// The shard number of the syscall.
     pub shard: T,
 
+    /// The byte lookup channel.
+    pub channel: T,
+
     /// The clock cycle of the syscall.
     pub clk: T,
+
+    /// The none of the operation.
+    pub nonce: T,
 
     /// The pointer to the first input.
     pub x_ptr: T,
@@ -124,17 +133,25 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                         // Assign basic values to the columns.
                         cols.is_real = F::one();
                         cols.shard = F::from_canonical_u32(event.shard);
+                        cols.channel = F::from_canonical_u32(event.channel);
                         cols.clk = F::from_canonical_u32(event.clk);
                         cols.x_ptr = F::from_canonical_u32(event.x_ptr);
                         cols.y_ptr = F::from_canonical_u32(event.y_ptr);
 
                         // Populate memory columns.
                         for i in 0..WORDS_FIELD_ELEMENT {
-                            cols.x_memory[i]
-                                .populate(event.x_memory_records[i], &mut new_byte_lookup_events);
-                            cols.y_memory[i]
-                                .populate(event.y_memory_records[i], &mut new_byte_lookup_events);
+                            cols.x_memory[i].populate(
+                                event.channel,
+                                event.x_memory_records[i],
+                                &mut new_byte_lookup_events,
+                            );
+                            cols.y_memory[i].populate(
+                                event.channel,
+                                event.y_memory_records[i],
+                                &mut new_byte_lookup_events,
+                            );
                             cols.modulus_memory[i].populate(
+                                event.channel,
                                 event.modulus_memory_records[i],
                                 &mut new_byte_lookup_events,
                             );
@@ -153,6 +170,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                         cols.output.populate_with_modulus(
                             &mut new_byte_lookup_events,
                             event.shard,
+                            event.channel,
                             &x,
                             &y,
                             &effective_modulus,
@@ -182,13 +200,23 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
             let x = BigUint::zero();
             let y = BigUint::zero();
             cols.output
-                .populate(&mut vec![], 0, &x, &y, FieldOperation::Mul);
+                .populate(&mut vec![], 0, 0, &x, &y, FieldOperation::Mul);
 
             row
         });
 
         // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS)
+        let mut trace =
+            RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS);
+
+        // Write the nonces to the trace.
+        for i in 0..trace.height() {
+            let cols: &mut Uint256MulCols<F> =
+                trace.values[i * NUM_COLS..(i + 1) * NUM_COLS].borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+
+        trace
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -244,10 +272,14 @@ impl Syscall for Uint256MulChip {
         // Write the result to x and keep track of the memory records.
         let x_memory_records = rt.mw_slice(x_ptr, &result);
 
+        let lookup_id = rt.syscall_lookup_id;
         let shard = rt.current_shard();
+        let channel = rt.current_channel();
         let clk = rt.clk;
         rt.record_mut().uint256_mul_events.push(Uint256MulEvent {
+            lookup_id,
             shard,
+            channel,
             clk,
             x_ptr,
             x,
@@ -278,6 +310,14 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &Uint256MulCols<AB::Var> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &Uint256MulCols<AB::Var> = (*next).borrow();
+
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
 
         // We are computing (x * y) % modulus. The value of x is stored in the "prev_value" of
         // the x_memory, since we write to it later.
@@ -316,9 +356,9 @@ where
             &x_limbs,
             &y_limbs,
             &p_modulus,
-            // &modulus_limbs,
             FieldOperation::Mul,
             local.shard,
+            local.channel,
             local.is_real,
         );
 
@@ -330,6 +370,7 @@ where
         // Read and write x.
         builder.eval_memory_access_slice(
             local.shard,
+            local.channel,
             local.clk.into(),
             local.x_ptr,
             &local.x_memory,
@@ -340,6 +381,7 @@ where
         // we read it contiguously from the y_ptr memory location.
         builder.eval_memory_access_slice(
             local.shard,
+            local.channel,
             local.clk.into(),
             local.y_ptr,
             &[local.y_memory, local.modulus_memory].concat(),
@@ -349,7 +391,9 @@ where
         // Receive the arguments.
         builder.receive_syscall(
             local.shard,
+            local.channel,
             local.clk,
+            local.nonce,
             AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
             local.x_ptr,
             local.y_ptr,

@@ -28,7 +28,7 @@ impl<F: Field> MachineAir<F> for ByteChip<F> {
     }
 
     fn generate_preprocessed_trace(&self, _program: &Self::Program) -> Option<RowMajorMatrix<F>> {
-        // TODO: We should be able to make this a constant. Also, trace / map should be separate.
+        // OPT: We should be able to make this a constant. Also, trace / map should be separate.
         // Since we only need the trace and not the map, we can just pass 0 as the shard.
         let (trace, _) = Self::trace_and_map(0);
 
@@ -54,10 +54,11 @@ impl<F: Field> MachineAir<F> for ByteChip<F> {
 
         for (lookup, mult) in input.byte_lookups[&shard].iter() {
             let (row, index) = event_map[lookup];
+            let channel = lookup.channel as usize;
             let cols: &mut ByteMultCols<F> = trace.row_mut(row).borrow_mut();
 
             // Update the trace multiplicity
-            cols.multiplicities[index] += F::from_canonical_usize(*mult);
+            cols.mult_channels[channel].multiplicities[index] += F::from_canonical_usize(*mult);
 
             // Set the shard column as the current shard.
             cols.shard = F::from_canonical_u32(shard);

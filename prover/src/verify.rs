@@ -4,6 +4,8 @@ use anyhow::Result;
 use num_bigint::BigUint;
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, PrimeField};
+use sp1_core::air::MachineAir;
+use sp1_core::runtime::SubproofVerifier;
 use sp1_core::{
     air::PublicValues,
     io::SP1PublicValues,
@@ -11,7 +13,7 @@ use sp1_core::{
     utils::BabyBearPoseidon2,
 };
 use sp1_recursion_core::{air::RecursionPublicValues, stark::config::BabyBearPoseidon2Outer};
-use sp1_recursion_gnark_ffi::{Groth16Proof, Groth16Prover};
+use sp1_recursion_gnark_ffi::{PlonkBn254Proof, PlonkBn254Prover};
 use thiserror::Error;
 
 use crate::{
@@ -19,10 +21,14 @@ use crate::{
 };
 
 #[derive(Error, Debug)]
-pub enum Groth16VerificationError {
-    #[error("the verifying key does not match the inner groth16 proof's committed verifying key")]
+pub enum PlonkVerificationError {
+    #[error(
+        "the verifying key does not match the inner plonk bn254 proof's committed verifying key"
+    )]
     InvalidVerificationKey,
-    #[error("the public values in the sp1 proof do not match the public values in the inner groth16 proof")]
+    #[error(
+        "the public values in the sp1 proof do not match the public values in the inner plonk bn254 proof"
+    )]
     InvalidPublicValues,
 }
 
@@ -41,7 +47,9 @@ impl SP1Prover {
         self.core_machine
             .verify(&vk.vk, &machine_proof, &mut challenger)?;
 
-        // Verify shard transitions
+        let num_shards = proof.0.len();
+
+        // Verify shard transitions.
         for (i, shard_proof) in proof.0.iter().enumerate() {
             let public_values = PublicValues::from_vec(shard_proof.public_values.clone());
             // Verify shard transitions
@@ -93,6 +101,41 @@ impl SP1Prover {
                         "non-last shard is halted",
                     ));
                 }
+            }
+        }
+
+        // Verify that the number of shards is not too large.
+        if proof.0.len() > 1 << 16 {
+            return Err(MachineVerificationError::TooManyShards);
+        }
+
+        // Verify that the `MemoryInit` and `MemoryFinalize` chips are the last chips in the proof.
+        for (i, shard_proof) in proof.0.iter().enumerate() {
+            let chips = self
+                .core_machine
+                .shard_chips_ordered(&shard_proof.chip_ordering)
+                .collect::<Vec<_>>();
+            let memory_init_count = chips
+                .clone()
+                .into_iter()
+                .filter(|chip| chip.name() == "MemoryInit")
+                .count();
+            let memory_final_count = chips
+                .into_iter()
+                .filter(|chip| chip.name() == "MemoryFinalize")
+                .count();
+
+            // Assert that the `MemoryInit` and `MemoryFinalize` chips only exist in the last shard.
+            if i != num_shards - 1 && (memory_final_count > 0 || memory_init_count > 0) {
+                return Err(MachineVerificationError::InvalidChipOccurence(
+                    "memory init and finalize should not exist anywhere but the last chip"
+                        .to_string(),
+                ));
+            }
+            if i == num_shards - 1 && (memory_init_count != 1 || memory_final_count != 1) {
+                return Err(MachineVerificationError::InvalidChipOccurence(
+                    "memory init and finalize should exist in the last chip".to_string(),
+                ));
             }
         }
 
@@ -212,15 +255,15 @@ impl SP1Prover {
         Ok(())
     }
 
-    /// Verifies a Groth16 proof using the circuit artifacts in the build directory.
-    pub fn verify_groth16(
+    /// Verifies a PLONK proof using the circuit artifacts in the build directory.
+    pub fn verify_plonk_bn254(
         &self,
-        proof: &Groth16Proof,
+        proof: &PlonkBn254Proof,
         vk: &SP1VerifyingKey,
         public_values: &SP1PublicValues,
         build_dir: &Path,
     ) -> Result<()> {
-        let prover = Groth16Prover::new();
+        let prover = PlonkBn254Prover::new();
 
         let vkey_hash = BigUint::from_str(&proof.public_inputs[0])?;
         let committed_values_digest = BigUint::from_str(&proof.public_inputs[1])?;
@@ -228,30 +271,64 @@ impl SP1Prover {
         // Verify the proof with the corresponding public inputs.
         prover.verify(proof, &vkey_hash, &committed_values_digest, build_dir);
 
-        verify_groth16_public_inputs(vk, public_values, &proof.public_inputs)?;
+        verify_plonk_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
 
         Ok(())
     }
 }
 
-/// Verify the vk_hash and public_values_hash in the public inputs of the Groth16Proof match the expected values.
-pub fn verify_groth16_public_inputs(
+/// Verify the vk_hash and public_values_hash in the public inputs of the PlonkBn254Proof match the expected values.
+pub fn verify_plonk_bn254_public_inputs(
     vk: &SP1VerifyingKey,
     public_values: &SP1PublicValues,
-    groth16_public_inputs: &[String],
+    plonk_bn254_public_inputs: &[String],
 ) -> Result<()> {
-    let expected_vk_hash = BigUint::from_str(&groth16_public_inputs[0])?;
-    let expected_public_values_hash = BigUint::from_str(&groth16_public_inputs[1])?;
+    let expected_vk_hash = BigUint::from_str(&plonk_bn254_public_inputs[0])?;
+    let expected_public_values_hash = BigUint::from_str(&plonk_bn254_public_inputs[1])?;
 
     let vk_hash = vk.hash_bn254().as_canonical_biguint();
     if vk_hash != expected_vk_hash {
-        return Err(Groth16VerificationError::InvalidVerificationKey.into());
+        return Err(PlonkVerificationError::InvalidVerificationKey.into());
     }
 
     let public_values_hash = public_values.hash();
     if public_values_hash != expected_public_values_hash {
-        return Err(Groth16VerificationError::InvalidPublicValues.into());
+        return Err(PlonkVerificationError::InvalidPublicValues.into());
     }
 
     Ok(())
+}
+
+impl SubproofVerifier for &SP1Prover {
+    fn verify_deferred_proof(
+        &self,
+        proof: &sp1_core::stark::ShardProof<BabyBearPoseidon2>,
+        vk: &sp1_core::stark::StarkVerifyingKey<BabyBearPoseidon2>,
+        vk_hash: [u32; 8],
+        committed_value_digest: [u32; 8],
+    ) -> Result<(), MachineVerificationError<BabyBearPoseidon2>> {
+        // Check that the vk hash matches the vk hash from the input.
+        if vk.hash_u32() != vk_hash {
+            return Err(MachineVerificationError::InvalidPublicValues(
+                "vk hash from syscall does not match vkey from input",
+            ));
+        }
+        // Check that proof is valid.
+        self.verify_compressed(
+            &SP1ReduceProof {
+                proof: proof.clone(),
+            },
+            &SP1VerifyingKey { vk: vk.clone() },
+        )?;
+        // Check that the committed value digest matches the one from syscall
+        let public_values: &RecursionPublicValues<_> = proof.public_values.as_slice().borrow();
+        for (i, word) in public_values.committed_value_digest.iter().enumerate() {
+            if *word != committed_value_digest[i].into() {
+                return Err(MachineVerificationError::InvalidPublicValues(
+                    "committed_value_digest does not match",
+                ));
+            }
+        }
+        Ok(())
+    }
 }

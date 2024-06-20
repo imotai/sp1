@@ -32,7 +32,6 @@ use crate::runtime::Syscall;
 use crate::runtime::SyscallCode;
 use crate::syscall::precompiles::create_ec_decompress_event;
 use crate::syscall::precompiles::SyscallContext;
-use crate::utils::bytes_to_words_le_vec;
 use crate::utils::ec::weierstrass::bls12_381::bls12381_sqrt;
 use crate::utils::ec::weierstrass::secp256k1::secp256k1_sqrt;
 use crate::utils::ec::weierstrass::WeierstrassParameters;
@@ -40,7 +39,7 @@ use crate::utils::ec::CurveType;
 use crate::utils::ec::EllipticCurve;
 use crate::utils::limbs_from_access;
 use crate::utils::limbs_from_prev_access;
-use crate::utils::pad_rows;
+use crate::utils::{bytes_to_words_le_vec, pad_rows};
 
 pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDecompressCols<u8, P>>()
@@ -53,7 +52,9 @@ pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() ->
 pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
     pub shard: T,
+    pub channel: T,
     pub clk: T,
+    pub nonce: T,
     pub ptr: T,
     pub is_odd: T,
     pub x_access: GenericArray<MemoryReadCols<T>, P::WordsFieldElement>,
@@ -88,7 +89,7 @@ impl<E: EllipticCurve> Syscall for WeierstrassDecompressChip<E> {
 }
 
 impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDecompressChip<E> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             _marker: PhantomData::<E>,
         }
@@ -97,39 +98,45 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDecompressChip<E> {
     fn populate_field_ops<F: PrimeField32>(
         record: &mut impl ByteRecord,
         shard: u32,
+        channel: u32,
         cols: &mut WeierstrassDecompressCols<F, E::BaseField>,
         x: BigUint,
     ) {
         // Y = sqrt(x^3 + b)
-        cols.range_x.populate(record, shard, &x);
-        let x_2 = cols
-            .x_2
-            .populate(record, shard, &x.clone(), &x.clone(), FieldOperation::Mul);
+        cols.range_x.populate(record, shard, channel, &x);
+        let x_2 = cols.x_2.populate(
+            record,
+            shard,
+            channel,
+            &x.clone(),
+            &x.clone(),
+            FieldOperation::Mul,
+        );
         let x_3 = cols
             .x_3
-            .populate(record, shard, &x_2, &x, FieldOperation::Mul);
+            .populate(record, shard, channel, &x_2, &x, FieldOperation::Mul);
         let b = E::b_int();
-        let x_3_plus_b = cols
-            .x_3_plus_b
-            .populate(record, shard, &x_3, &b, FieldOperation::Add);
+        let x_3_plus_b =
+            cols.x_3_plus_b
+                .populate(record, shard, channel, &x_3, &b, FieldOperation::Add);
 
         let sqrt_fn = match E::CURVE_TYPE {
             CurveType::Secp256k1 => secp256k1_sqrt,
             CurveType::Bls12381 => bls12381_sqrt,
             _ => panic!("Unsupported curve"),
         };
-        let y = cols.y.populate(record, shard, &x_3_plus_b, sqrt_fn);
+        let y = cols
+            .y
+            .populate(record, shard, channel, &x_3_plus_b, sqrt_fn);
 
         let zero = BigUint::zero();
         cols.neg_y
-            .populate(record, shard, &zero, &y, FieldOperation::Sub);
+            .populate(record, shard, channel, &zero, &y, FieldOperation::Sub);
     }
 }
 
 impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
     for WeierstrassDecompressChip<E>
-where
-    [(); num_weierstrass_decompress_cols::<E::BaseField>()]:,
 {
     type Record = ExecutionRecord;
     type Program = Program;
@@ -159,25 +166,40 @@ where
 
         for i in 0..events.len() {
             let event = events[i].clone();
-            let mut row = [F::zero(); num_weierstrass_decompress_cols::<E::BaseField>()];
+            let mut row = vec![F::zero(); num_weierstrass_decompress_cols::<E::BaseField>()];
             let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
                 row.as_mut_slice().borrow_mut();
 
             cols.is_real = F::from_bool(true);
             cols.shard = F::from_canonical_u32(event.shard);
+            cols.channel = F::from_canonical_u32(event.channel);
+            cols.channel = F::from_canonical_u32(event.channel);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.ptr = F::from_canonical_u32(event.ptr);
             cols.is_odd = F::from_canonical_u32(event.is_odd as u32);
 
             let x = BigUint::from_bytes_le(&event.x_bytes);
-            Self::populate_field_ops(&mut new_byte_lookup_events, event.shard, cols, x);
+            Self::populate_field_ops(
+                &mut new_byte_lookup_events,
+                event.shard,
+                event.channel,
+                cols,
+                x,
+            );
 
             for i in 0..cols.x_access.len() {
-                cols.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
+                cols.x_access[i].populate(
+                    event.channel,
+                    event.x_memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
             for i in 0..cols.y_access.len() {
-                cols.y_access[i]
-                    .populate_write(event.y_memory_records[i], &mut new_byte_lookup_events);
+                cols.y_access[i].populate_write(
+                    event.channel,
+                    event.y_memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
 
             rows.push(row);
@@ -185,7 +207,7 @@ where
         output.add_byte_lookup_events(new_byte_lookup_events);
 
         pad_rows(&mut rows, || {
-            let mut row = [F::zero(); num_weierstrass_decompress_cols::<E::BaseField>()];
+            let mut row = vec![F::zero(); num_weierstrass_decompress_cols::<E::BaseField>()];
             let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
                 row.as_mut_slice().borrow_mut();
 
@@ -197,14 +219,25 @@ where
                 cols.x_access[i].access.value = words[i].into();
             }
 
-            Self::populate_field_ops(&mut vec![], 0, cols, dummy_value);
+            Self::populate_field_ops(&mut vec![], 0, 0, cols, dummy_value);
             row
         });
 
-        RowMajorMatrix::new(
+        let mut trace = RowMajorMatrix::new(
             rows.into_iter().flatten().collect::<Vec<_>>(),
             num_weierstrass_decompress_cols::<E::BaseField>(),
-        )
+        );
+
+        // Write the nonces to the trace.
+        for i in 0..trace.height() {
+            let cols: &mut WeierstrassDecompressCols<F, E::BaseField> = trace.values[i
+                * num_weierstrass_decompress_cols::<E::BaseField>()
+                ..(i + 1) * num_weierstrass_decompress_cols::<E::BaseField>()]
+                .borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+
+        trace
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -229,85 +262,108 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let row = main.row_slice(0);
-        let row: &WeierstrassDecompressCols<AB::Var, E::BaseField> = (*row).borrow();
+        let local = main.row_slice(0);
+        let local: &WeierstrassDecompressCols<AB::Var, E::BaseField> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &WeierstrassDecompressCols<AB::Var, E::BaseField> = (*next).borrow();
+
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
 
         let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
         let num_words_field_element = num_limbs / 4;
 
-        builder.assert_bool(row.is_odd);
+        builder.assert_bool(local.is_odd);
 
         let x: Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&row.x_access);
-        row.range_x.eval(builder, &x, row.shard, row.is_real);
-        row.x_2
-            .eval(builder, &x, &x, FieldOperation::Mul, row.shard, row.is_real);
-        row.x_3.eval(
+            limbs_from_prev_access(&local.x_access);
+        local
+            .range_x
+            .eval(builder, &x, local.shard, local.channel, local.is_real);
+        local.x_2.eval(
             builder,
-            &row.x_2.result,
+            &x,
             &x,
             FieldOperation::Mul,
-            row.shard,
-            row.is_real,
+            local.shard,
+            local.channel,
+            local.is_real,
+        );
+        local.x_3.eval(
+            builder,
+            &local.x_2.result,
+            &x,
+            FieldOperation::Mul,
+            local.shard,
+            local.channel,
+            local.is_real,
         );
         let b = E::b_int();
         let b_const = E::BaseField::to_limbs_field::<AB::F, _>(&b);
-        row.x_3_plus_b.eval(
+        local.x_3_plus_b.eval(
             builder,
-            &row.x_3.result,
+            &local.x_3.result,
             &b_const,
             FieldOperation::Add,
-            row.shard,
-            row.is_real,
+            local.shard,
+            local.channel,
+            local.is_real,
         );
 
-        row.neg_y.eval(
+        local.neg_y.eval(
             builder,
             &[AB::Expr::zero()].iter(),
-            &row.y.multiplication.result,
+            &local.y.multiplication.result,
             FieldOperation::Sub,
-            row.shard,
-            row.is_real,
+            local.shard,
+            local.channel,
+            local.is_real,
         );
 
         // Interpret the lowest bit of Y as whether it is odd or not.
-        let y_is_odd = row.y.lsb;
+        let y_is_odd = local.y.lsb;
 
-        row.y.eval(
+        local.y.eval(
             builder,
-            &row.x_3_plus_b.result,
-            row.y.lsb,
-            row.shard,
-            row.is_real,
+            &local.x_3_plus_b.result,
+            local.y.lsb,
+            local.shard,
+            local.channel,
+            local.is_real,
         );
 
         let y_limbs: Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs> =
-            limbs_from_access(&row.y_access);
+            limbs_from_access(&local.y_access);
         builder
-            .when(row.is_real)
-            .when_ne(y_is_odd, AB::Expr::one() - row.is_odd)
-            .assert_all_eq(row.y.multiplication.result, y_limbs);
+            .when(local.is_real)
+            .when_ne(y_is_odd, AB::Expr::one() - local.is_odd)
+            .assert_all_eq(local.y.multiplication.result, y_limbs);
         builder
-            .when(row.is_real)
-            .when_ne(y_is_odd, row.is_odd)
-            .assert_all_eq(row.neg_y.result, y_limbs);
+            .when(local.is_real)
+            .when_ne(y_is_odd, local.is_odd)
+            .assert_all_eq(local.neg_y.result, y_limbs);
 
         for i in 0..num_words_field_element {
             builder.eval_memory_access(
-                row.shard,
-                row.clk,
-                row.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
-                &row.x_access[i],
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.clk,
+                local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
+                &local.x_access[i],
+                local.is_real,
             );
         }
         for i in 0..num_words_field_element {
             builder.eval_memory_access(
-                row.shard,
-                row.clk,
-                row.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4),
-                &row.y_access[i],
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.clk,
+                local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4),
+                &local.y_access[i],
+                local.is_real,
             );
         }
 
@@ -322,12 +378,14 @@ where
         };
 
         builder.receive_syscall(
-            row.shard,
-            row.clk,
+            local.shard,
+            local.channel,
+            local.clk,
+            local.nonce,
             syscall_id,
-            row.ptr,
-            row.is_odd,
-            row.is_real,
+            local.ptr,
+            local.is_odd,
+            local.is_real,
         );
     }
 }

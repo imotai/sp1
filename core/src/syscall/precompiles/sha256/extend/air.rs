@@ -27,6 +27,13 @@ where
         let (local, next) = (main.row_slice(0), main.row_slice(1));
         let local: &ShaExtendCols<AB::Var> = (*local).borrow();
         let next: &ShaExtendCols<AB::Var> = (*next).borrow();
+
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
+
         let i_start = AB::F::from_canonical_u32(16);
         let nb_bytes_in_word = AB::F::from_canonical_u32(4);
 
@@ -45,11 +52,16 @@ where
         builder
             .when_transition()
             .when_not(local.cycle_16_end.result * local.cycle_48[2])
+            .assert_eq(local.channel, next.channel);
+        builder
+            .when_transition()
+            .when_not(local.cycle_16_end.result * local.cycle_48[2])
             .assert_eq(local.w_ptr, next.w_ptr);
 
         // Read w[i-15].
         builder.eval_memory_access(
             local.shard,
+            local.channel,
             local.clk + (local.i - i_start),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(15)) * nb_bytes_in_word,
             &local.w_i_minus_15,
@@ -59,6 +71,7 @@ where
         // Read w[i-2].
         builder.eval_memory_access(
             local.shard,
+            local.channel,
             local.clk + (local.i - i_start),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(2)) * nb_bytes_in_word,
             &local.w_i_minus_2,
@@ -68,6 +81,7 @@ where
         // Read w[i-16].
         builder.eval_memory_access(
             local.shard,
+            local.channel,
             local.clk + (local.i - i_start),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(16)) * nb_bytes_in_word,
             &local.w_i_minus_16,
@@ -77,6 +91,7 @@ where
         // Read w[i-7].
         builder.eval_memory_access(
             local.shard,
+            local.channel,
             local.clk + (local.i - i_start),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(7)) * nb_bytes_in_word,
             &local.w_i_minus_7,
@@ -91,6 +106,7 @@ where
             7,
             local.w_i_minus_15_rr_7,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // w[i-15] rightrotate 18.
@@ -100,6 +116,7 @@ where
             18,
             local.w_i_minus_15_rr_18,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // w[i-15] rightshift 3.
@@ -109,6 +126,7 @@ where
             3,
             local.w_i_minus_15_rs_3,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18)
@@ -118,6 +136,7 @@ where
             local.w_i_minus_15_rr_18.value,
             local.s0_intermediate,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift 3)
@@ -127,6 +146,7 @@ where
             local.w_i_minus_15_rs_3.value,
             local.s0,
             local.shard,
+            local.channel,
             local.is_real,
         );
 
@@ -138,6 +158,7 @@ where
             17,
             local.w_i_minus_2_rr_17,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // w[i-2] rightrotate 19.
@@ -147,6 +168,7 @@ where
             19,
             local.w_i_minus_2_rr_19,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // w[i-2] rightshift 10.
@@ -156,6 +178,7 @@ where
             10,
             local.w_i_minus_2_rs_10,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19)
@@ -165,6 +188,7 @@ where
             local.w_i_minus_2_rr_19.value,
             local.s1_intermediate,
             local.shard,
+            local.channel,
             local.is_real,
         );
         // s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift 10)
@@ -174,6 +198,7 @@ where
             local.w_i_minus_2_rs_10.value,
             local.s1,
             local.shard,
+            local.channel,
             local.is_real,
         );
 
@@ -185,6 +210,7 @@ where
             *local.w_i_minus_7.value(),
             local.s1.value,
             local.shard,
+            local.channel,
             local.is_real,
             local.s2,
         );
@@ -192,27 +218,35 @@ where
         // Write `s2` to `w[i]`.
         builder.eval_memory_access(
             local.shard,
+            local.channel,
             local.clk + (local.i - i_start),
             local.w_ptr + local.i * nb_bytes_in_word,
             &local.w_i,
             local.is_real,
         );
 
+        builder.assert_word_eq(*local.w_i.value(), local.s2.value);
+
         // Receive syscall event in first row of 48-cycle.
         builder.receive_syscall(
             local.shard,
+            local.channel,
             local.clk,
+            local.nonce,
             AB::F::from_canonical_u32(SyscallCode::SHA_EXTEND.syscall_id()),
             local.w_ptr,
             AB::Expr::zero(),
             local.cycle_48_start,
         );
 
-        // If this row is real and not the last cycle, then next row should also be real.
+        // Assert that is_real is a bool.
+        builder.assert_bool(local.is_real);
+
+        // Ensure that all rows in a 48 row cycle has the same `is_real` values.
         builder
             .when_transition()
-            .when(local.is_real - local.cycle_48_end)
-            .assert_one(next.is_real);
+            .when_not(local.cycle_48_end)
+            .assert_eq(local.is_real, next.is_real);
 
         // Assert that the table ends in nonreal columns. Since each extend ecall is 48 cycles and
         // the table is padded to a power of 2, the last row of the table should always be padding.

@@ -8,14 +8,14 @@ use serde::Serialize;
 
 use super::Runtime;
 
-impl Read for Runtime {
+impl<'a> Read for Runtime<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.read_public_values_slice(buf);
         Ok(buf.len())
     }
 }
 
-impl Runtime {
+impl<'a> Runtime<'a> {
     pub fn write_stdin<T: Serialize>(&mut self, input: &T) {
         let mut buf = Vec::new();
         bincode::serialize_into(&mut buf, input).expect("serialization failed");
@@ -60,7 +60,7 @@ pub mod tests {
     use super::*;
     use crate::runtime::Program;
     use crate::utils::tests::IO_ELF;
-    use crate::utils::{self, prove_simple, BabyBearBlake3};
+    use crate::utils::{self, prove_simple, BabyBearBlake3, SP1CoreOpts};
     use serde::Deserialize;
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -89,7 +89,7 @@ pub mod tests {
     fn test_io_run() {
         utils::setup_logger();
         let program = Program::from(IO_ELF);
-        let mut runtime = Runtime::new(program);
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
         let points = points();
         runtime.write_stdin(&points.0);
         runtime.write_stdin(&points.1);
@@ -109,7 +109,7 @@ pub mod tests {
     fn test_io_prove() {
         utils::setup_logger();
         let program = Program::from(IO_ELF);
-        let mut runtime = Runtime::new(program);
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
         let points = points();
         runtime.write_stdin(&points.0);
         runtime.write_stdin(&points.1);

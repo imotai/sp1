@@ -20,7 +20,9 @@ pub const SHA_COMPRESS_K: [u32; 64] = [
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShaCompressEvent {
+    pub lookup_id: usize,
     pub shard: u32,
+    pub channel: u32,
     pub clk: u32,
     pub w_ptr: u32,
     pub h_ptr: u32,
@@ -42,7 +44,7 @@ pub struct ShaCompressEvent {
 pub struct ShaCompressChip;
 
 impl ShaCompressChip {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }

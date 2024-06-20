@@ -10,7 +10,7 @@ use sp1_core::{
 };
 use sp1_recursion_compiler::ir::{Array, Builder, Config, Felt, Var};
 use sp1_recursion_core::{
-    air::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS},
+    air::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS},
     runtime::DIGEST_SIZE,
 };
 
@@ -18,10 +18,12 @@ use crate::{
     challenger::DuplexChallengerVariable,
     fri::TwoAdicMultiplicativeCosetVariable,
     types::VerifyingKeyVariable,
-    utils::{assert_challenger_eq_pv, get_preprocessed_data},
+    utils::{assert_challenger_eq_pv, felt2var, get_preprocessed_data},
 };
 
 /// Assertions on the public values describing a complete recursive proof state.
+///
+/// See [SP1Prover::verify] for the verification algorithm of a complete SP1 proof.
 pub(crate) fn assert_complete<C: Config>(
     builder: &mut Builder<C>,
     public_values: &RecursionPublicValues<Felt<C::F>>,
@@ -31,10 +33,12 @@ pub(crate) fn assert_complete<C: Config>(
         deferred_proofs_digest,
         next_pc,
         start_shard,
+        next_shard,
         cumulative_sum,
         start_reconstruct_deferred_digest,
         end_reconstruct_deferred_digest,
         leaf_challenger,
+        total_core_shards,
         ..
     } = public_values;
 
@@ -43,6 +47,9 @@ pub(crate) fn assert_complete<C: Config>(
 
     // Assert that the start shard is equal to 1.
     builder.assert_felt_eq(*start_shard, C::F::one());
+
+    // Assert that total_core_shards is correct by ensuring it equals next_shard - 1.
+    builder.assert_felt_eq(*total_core_shards, *next_shard - C::F::one());
 
     // The challenger has been fully verified.
 
@@ -127,9 +134,8 @@ pub(crate) fn calculate_public_values_digest<C: Config>(
     public_values: &RecursionPublicValues<Felt<C::F>>,
 ) -> Array<C, Felt<C::F>> {
     let pv_elements: [Felt<_>; RECURSIVE_PROOF_NUM_PV_ELTS] = unsafe { transmute(*public_values) };
-    const NUM_ELMS_TO_HASH: usize = RECURSIVE_PROOF_NUM_PV_ELTS - DIGEST_SIZE;
-    let mut poseidon_inputs = builder.array(NUM_ELMS_TO_HASH);
-    for (i, elm) in pv_elements[0..NUM_ELMS_TO_HASH].iter().enumerate() {
+    let mut poseidon_inputs = builder.array(NUM_PV_ELMS_TO_HASH);
+    for (i, elm) in pv_elements[0..NUM_PV_ELMS_TO_HASH].iter().enumerate() {
         builder.set(&mut poseidon_inputs, i, *elm);
     }
     builder.poseidon2_hash(&poseidon_inputs)
@@ -140,14 +146,17 @@ pub(crate) fn verify_public_values_hash<C: Config>(
     builder: &mut Builder<C>,
     public_values: &RecursionPublicValues<Felt<C::F>>,
 ) {
-    // Check that the public values digest is correct.
-    let calculated_digest = calculate_public_values_digest(builder, public_values);
+    let var_exit_code = felt2var(builder, public_values.exit_code);
+    // Check that the public values digest is correct if the exit_code is 0.
+    builder.if_eq(var_exit_code, C::N::zero()).then(|builder| {
+        let calculated_digest = calculate_public_values_digest(builder, public_values);
 
-    let expected_digest = public_values.digest;
-    for (i, expected_elm) in expected_digest.iter().enumerate() {
-        let calculated_elm = builder.get(&calculated_digest, i);
-        builder.assert_felt_eq(*expected_elm, calculated_elm);
-    }
+        let expected_digest = public_values.digest;
+        for (i, expected_elm) in expected_digest.iter().enumerate() {
+            let calculated_elm = builder.get(&calculated_digest, i);
+            builder.assert_felt_eq(*expected_elm, calculated_elm);
+        }
+    });
 }
 
 /// Register and commits the recursion public values.
@@ -156,8 +165,7 @@ pub fn commit_public_values<C: Config>(
     public_values: &RecursionPublicValues<Felt<C::F>>,
 ) {
     let pv_elements: [Felt<_>; RECURSIVE_PROOF_NUM_PV_ELTS] = unsafe { transmute(*public_values) };
-    const NUM_ELMS_TO_HASH: usize = RECURSIVE_PROOF_NUM_PV_ELTS - DIGEST_SIZE;
-    let pv_elms_no_digest = &pv_elements[0..NUM_ELMS_TO_HASH];
+    let pv_elms_no_digest = &pv_elements[0..NUM_PV_ELMS_TO_HASH];
 
     for value in pv_elms_no_digest.iter() {
         builder.register_public_value(*value);

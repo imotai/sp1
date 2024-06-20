@@ -1,3 +1,4 @@
+use std::array;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -8,6 +9,7 @@ use std::collections::HashMap;
 use super::RecursionProgram;
 use crate::air::Block;
 use crate::cpu::CpuEvent;
+use crate::exp_reverse_bits::ExpReverseBitsLenEvent;
 use crate::fri_fold::FriFoldEvent;
 use crate::poseidon2::Poseidon2Event;
 use crate::range_check::RangeCheckEvent;
@@ -19,7 +21,7 @@ pub struct ExecutionRecord<F: Default> {
     pub poseidon2_events: Vec<Poseidon2Event<F>>,
     pub fri_fold_events: Vec<FriFoldEvent<F>>,
     pub range_check_events: BTreeMap<RangeCheckEvent, usize>,
-
+    pub exp_reverse_bits_len_events: Vec<ExpReverseBitsLenEvent<F>>,
     // (address, value)
     pub first_memory_record: Vec<(F, Block<F>)>,
 
@@ -56,6 +58,10 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
             "range_check_events".to_string(),
             self.range_check_events.len(),
         );
+        stats.insert(
+            "exp_reverse_bits_len_events".to_string(),
+            self.exp_reverse_bits_len_events.len(),
+        );
         stats
     }
 
@@ -82,15 +88,14 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
     }
 
     fn public_values<T: AbstractField>(&self) -> Vec<T> {
-        let mut ret = self
-            .public_values
-            .iter()
-            .map(|x| T::from_canonical_u32(x.as_canonical_u32()))
-            .collect::<Vec<_>>();
+        let ret: [T; PROOF_MAX_NUM_PVS] = array::from_fn(|i| {
+            if i < self.public_values.len() {
+                T::from_canonical_u32(self.public_values[i].as_canonical_u32())
+            } else {
+                T::zero()
+            }
+        });
 
-        // Pad the public values to the correct number of public values, in case not all are used.
-        ret.resize(PROOF_MAX_NUM_PVS, T::zero());
-
-        ret
+        ret.to_vec()
     }
 }

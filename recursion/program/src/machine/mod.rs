@@ -17,7 +17,7 @@ mod tests {
     use p3_challenger::CanObserve;
     use p3_maybe_rayon::prelude::*;
     use sp1_core::stark::{MachineVerificationError, RiscvAir, StarkGenericConfig};
-    use sp1_core::utils::BabyBearPoseidon2;
+    use sp1_core::utils::{BabyBearPoseidon2, SP1CoreOpts};
     use sp1_core::{
         io::SP1Stdin,
         runtime::Program,
@@ -83,8 +83,15 @@ mod tests {
 
         let mut challenger = machine.config().challenger();
         let time = std::time::Instant::now();
-        let (proof, _) = sp1_core::utils::prove(program, &SP1Stdin::new(), SC::default()).unwrap();
+        let (proof, _) = sp1_core::utils::prove(
+            program,
+            &SP1Stdin::new(),
+            SC::default(),
+            SP1CoreOpts::default(),
+        )
+        .unwrap();
         machine.verify(&vk, &proof, &mut challenger).unwrap();
+        let total_core_shards = proof.shard_proofs.len();
         tracing::info!("Proof generated successfully");
         let elapsed = time.elapsed();
         tracing::info!("Execution proof time: {:?}", elapsed);
@@ -115,6 +122,7 @@ mod tests {
                 leaf_challenger: &leaf_challenger,
                 initial_reconstruct_challenger: reconstruct_challenger.clone(),
                 is_complete,
+                total_core_shards,
             });
 
             for proof in batch.iter() {
@@ -166,6 +174,7 @@ mod tests {
                     &rec_pk,
                     record,
                     &mut recursive_challenger,
+                    SP1CoreOpts::recursion(),
                 )
             })
             .collect::<Vec<_>>();
@@ -219,6 +228,7 @@ mod tests {
                         shard_proofs: batch.to_vec(),
                         kinds,
                         is_complete,
+                        total_core_shards,
                     };
 
                     let mut runtime = Runtime::<F, EF, _>::new(
@@ -238,6 +248,7 @@ mod tests {
                         &reduce_pk,
                         runtime.record,
                         &mut recursive_challenger,
+                        SP1CoreOpts::recursion(),
                     );
                     let mut recursive_challenger = recursive_machine.config().challenger();
                     let result =
@@ -297,6 +308,7 @@ mod tests {
             &compress_pk,
             runtime.record,
             &mut compress_challenger,
+            SP1CoreOpts::default(),
         );
         let elapsed = time.elapsed();
         tracing::info!("Compress proving time: {:?}", elapsed);
@@ -341,8 +353,12 @@ mod tests {
         // Prove the wrap program.
         let mut wrap_challenger = wrap_machine.config().challenger();
         let time = std::time::Instant::now();
-        let wrap_proof =
-            wrap_machine.prove::<LocalProver<_, _>>(&wrap_pk, runtime.record, &mut wrap_challenger);
+        let wrap_proof = wrap_machine.prove::<LocalProver<_, _>>(
+            &wrap_pk,
+            runtime.record,
+            &mut wrap_challenger,
+            SP1CoreOpts::recursion(),
+        );
         let elapsed = time.elapsed();
         tracing::info!("Wrap proving time: {:?}", elapsed);
         let mut wrap_challenger = wrap_machine.config().challenger();

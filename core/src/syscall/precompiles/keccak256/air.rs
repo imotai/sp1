@@ -32,6 +32,12 @@ where
         let local: &KeccakMemCols<AB::Var> = (*local).borrow();
         let next: &KeccakMemCols<AB::Var> = (*next).borrow();
 
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
+
         let first_step = local.keccak.step_flags[0];
         let final_step = local.keccak.step_flags[NUM_ROUNDS - 1];
         let not_final_step = AB::Expr::one() - final_step;
@@ -54,6 +60,7 @@ where
 
             builder.eval_memory_access(
                 local.shard,
+                local.channel,
                 local.clk + final_step, // The clk increments by 1 after a final step
                 local.state_addr + AB::Expr::from_canonical_u32(i * 4),
                 &local.state_mem[i as usize],
@@ -65,7 +72,9 @@ where
         builder.assert_eq(local.receive_ecall, first_step * local.is_real);
         builder.receive_syscall(
             local.shard,
+            local.channel,
             local.clk,
+            local.nonce,
             AB::F::from_canonical_u32(SyscallCode::KECCAK_PERMUTE.syscall_id()),
             local.state_addr,
             AB::Expr::zero(),
@@ -77,6 +86,7 @@ where
         let mut transition_not_final_builder = transition_builder.when(not_final_step);
         transition_not_final_builder.assert_eq(local.shard, next.shard);
         transition_not_final_builder.assert_eq(local.clk, next.clk);
+        transition_not_final_builder.assert_eq(local.channel, next.channel);
         transition_not_final_builder.assert_eq(local.state_addr, next.state_addr);
         transition_not_final_builder.assert_eq(local.is_real, next.is_real);
 
@@ -121,6 +131,16 @@ where
             }
         }
 
+        // Range check all the values in `state_mem` to be bytes.
+        for i in 0..STATE_NUM_WORDS {
+            builder.slice_range_check_u8(
+                &local.state_mem[i].value().0,
+                local.shard,
+                local.channel,
+                local.do_memory_check,
+            );
+        }
+
         let mut sub_builder =
             SubAirBuilder::<AB, KeccakAir, AB::Var>::new(builder, 0..NUM_KECCAK_COLS);
 
@@ -134,6 +154,7 @@ mod test {
     use crate::io::{SP1PublicValues, SP1Stdin};
     use crate::runtime::Program;
     use crate::stark::{RiscvAir, StarkGenericConfig};
+    use crate::utils::SP1CoreOpts;
     use crate::utils::{prove, setup_logger, tests::KECCAK256_ELF, BabyBearPoseidon2};
 
     use rand::Rng;
@@ -169,7 +190,8 @@ mod test {
         let config = BabyBearPoseidon2::new();
 
         let program = Program::from(KECCAK256_ELF);
-        let (proof, public_values) = prove(program, &stdin, config).unwrap();
+        let (proof, public_values) =
+            prove(program, &stdin, config, SP1CoreOpts::default()).unwrap();
         let mut public_values = SP1PublicValues::from(&public_values);
 
         let config = BabyBearPoseidon2::new();

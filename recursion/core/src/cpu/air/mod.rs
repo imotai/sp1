@@ -1,5 +1,6 @@
 mod alu;
 mod branch;
+mod heap;
 mod jump;
 mod memory;
 mod operands;
@@ -19,7 +20,7 @@ use crate::{
     memory::MemoryCols,
 };
 
-impl<AB> Air<AB> for CpuChip<AB::F>
+impl<AB, const L: usize> Air<AB> for CpuChip<AB::F, L>
 where
     AB: SP1RecursionAirBuilder,
 {
@@ -71,7 +72,10 @@ where
         }
 
         // Constrain the syscalls.
-        let send_syscall = local.selectors.is_poseidon + local.selectors.is_fri_fold;
+        let send_syscall = local.selectors.is_poseidon
+            + local.selectors.is_fri_fold
+            + local.selectors.is_exp_reverse_bits_len;
+
         let operands = [
             local.clk.into(),
             local.a.value()[0].into(),
@@ -87,14 +91,24 @@ where
         self.eval_clk(builder, local, next);
 
         // Constrain the system instructions (TRAP, HALT).
-        self.eval_system_instructions(builder, local, next);
+        self.eval_system_instructions(builder, local, next, public_values);
+
+        // Verify the heap size.
+        self.eval_heap_ptr(builder, local);
 
         // Constrain the is_real_flag.
         self.eval_is_real(builder, local, next);
+
+        // Create a dummy constraint of the given degree to compress the permutation columns.
+        let mut expr = local.is_real * local.is_real;
+        for _ in 0..(L - 2) {
+            expr *= local.is_real.into();
+        }
+        builder.assert_eq(expr.clone(), expr.clone());
     }
 }
 
-impl<F: Field> CpuChip<F> {
+impl<F: Field, const L: usize> CpuChip<F, L> {
     /// Eval the clk.
     ///
     /// For all instructions except for FRI fold, the next clk is the current clk + 4.
@@ -107,7 +121,7 @@ impl<F: Field> CpuChip<F> {
         builder
             .when_transition()
             .when(next.is_real)
-            .when_not(local.selectors.is_fri_fold)
+            .when_not(local.selectors.is_fri_fold + local.selectors.is_exp_reverse_bits_len)
             .assert_eq(local.clk.into() + AB::F::from_canonical_u32(4), next.clk);
 
         builder
@@ -115,6 +129,12 @@ impl<F: Field> CpuChip<F> {
             .when(next.is_real)
             .when(local.selectors.is_fri_fold)
             .assert_eq(local.clk.into() + local.a.value()[0], next.clk);
+
+        builder
+            .when_transition()
+            .when(next.is_real)
+            .when(local.selectors.is_exp_reverse_bits_len)
+            .assert_eq(local.clk.into() + local.c.value()[0], next.clk);
     }
 
     /// Eval the is_real flag.
@@ -183,6 +203,8 @@ impl<F: Field> CpuChip<F> {
             + local.selectors.is_fri_fold
             + local.selectors.is_poseidon
             + local.selectors.is_store
+            + local.selectors.is_noop
+            + local.selectors.is_ext_to_felt
     }
 
     /// Expr to check for instructions that are commit instructions.
@@ -191,5 +213,13 @@ impl<F: Field> CpuChip<F> {
         AB: SP1RecursionAirBuilder<F = F>,
     {
         local.selectors.is_commit.into()
+    }
+
+    /// Expr to check for system instructions.
+    pub fn is_system_instruction<AB>(&self, local: &CpuCols<AB::Var>) -> AB::Expr
+    where
+        AB: SP1RecursionAirBuilder<F = F>,
+    {
+        local.selectors.is_trap + local.selectors.is_halt
     }
 }

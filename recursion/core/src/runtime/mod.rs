@@ -2,6 +2,7 @@ mod instruction;
 mod opcode;
 mod program;
 mod record;
+mod utils;
 
 use std::collections::VecDeque;
 use std::process::exit;
@@ -17,9 +18,11 @@ use p3_symmetric::CryptographicPermutation;
 use p3_symmetric::Permutation;
 pub use program::*;
 pub use record::*;
+pub use utils::*;
 
-use crate::air::Block;
+use crate::air::{Block, RECURSION_PUBLIC_VALUES_COL_MAP, RECURSIVE_PROOF_NUM_PV_ELTS};
 use crate::cpu::CpuEvent;
+use crate::exp_reverse_bits::ExpReverseBitsLenEvent;
 use crate::fri_fold::FriFoldEvent;
 use crate::memory::MemoryRecord;
 use crate::poseidon2::Poseidon2Event;
@@ -27,6 +30,10 @@ use crate::range_check::{RangeCheckEvent, RangeCheckOpcode};
 
 use p3_field::{ExtensionField, PrimeField32};
 use sp1_core::runtime::MemoryAccessPosition;
+
+/// The heap pointer address.
+pub const HEAP_PTR: i32 = -4;
+pub const HEAP_START_ADDRESS: usize = STACK_SIZE + 4;
 
 pub const STACK_SIZE: usize = 1 << 24;
 pub const MEMORY_SIZE: usize = 1 << 28;
@@ -101,7 +108,7 @@ pub struct Runtime<F: PrimeField32, EF: ExtensionField<F>, Diffusion> {
 
     /// Uninitialized memory addresses that have a specific value they should be initialized with.
     /// The Opcodes that start with Hint* utilize this to set memory values.
-    pub uninitialized_memory: HashMap<usize, Block<F>>, // TODO: add "HashNoHasher" back to this
+    pub uninitialized_memory: HashMap<usize, Block<F>>,
 
     /// The execution record.
     pub record: ExecutionRecord<F>,
@@ -440,6 +447,16 @@ where
                     let mut a_val = Block::default();
                     a_val[0] = b_val[0] + c_val[0];
                     self.mw_cpu(a_ptr, a_val, MemoryAccessPosition::A);
+
+                    // If the instruction is a heap expansion, we need to add a range check event to
+                    // ensure that the heap size never goes above 2^28.
+                    if instruction_is_heap_expand(&instruction) {
+                        let (u16_range_check, u12_range_check) =
+                            get_heap_size_range_check_events(a_val[0]);
+                        self.record
+                            .add_range_check_events(&[u16_range_check, u12_range_check]);
+                    }
+
                     (a, b, c) = (a_val, b_val, c_val);
                 }
                 Opcode::LessThanF => {
@@ -567,11 +584,16 @@ where
                     (a, b, c) = (a_val, b_val, c_val);
                 }
                 Opcode::TRAP => {
+                    self.record
+                        .public_values
+                        .resize(RECURSIVE_PROOF_NUM_PV_ELTS, F::zero());
+                    self.record.public_values[RECURSION_PUBLIC_VALUES_COL_MAP.exit_code] = F::one();
+
                     let trap_pc = self.pc.as_canonical_u32() as usize;
                     let trace = self.program.traces[trap_pc].clone();
                     if let Some(mut trace) = trace {
                         trace.resolve();
-                        eprintln!("TRAP encountered. Backtrace:\n{:?}", trace);
+                        panic!("TRAP encountered. Backtrace:\n{:?}", trace);
                     } else {
                         for nearby_pc in (0..trap_pc).rev() {
                             let trace = self.program.traces[nearby_pc].clone();
@@ -584,18 +606,22 @@ where
                                 exit(1);
                             }
                         }
-                        eprintln!("TRAP encountered. No backtrace available");
+                        panic!("TRAP encountered. No backtrace available");
                     }
-                    exit(1);
                 }
                 Opcode::HALT => {
+                    self.record
+                        .public_values
+                        .resize(RECURSIVE_PROOF_NUM_PV_ELTS, F::zero());
+                    self.record.public_values[RECURSION_PUBLIC_VALUES_COL_MAP.exit_code] =
+                        F::zero();
+
                     let (a_val, b_val, c_val) = self.all_rr(&instruction);
                     (a, b, c) = (a_val, b_val, c_val);
                 }
-                Opcode::Ext2Felt => {
+                Opcode::HintExt2Felt => {
                     let (a_val, b_val, c_val) = self.all_rr(&instruction);
                     let dst = a_val[0].as_canonical_u32() as usize;
-                    // TODO: this should be a hint and perhaps the compiler needs to change to make it a hint?
                     self.mw_uninitialized(dst, Block::from(b_val[0]));
                     self.mw_uninitialized(dst + 1, Block::from(b_val[1]));
                     self.mw_uninitialized(dst + 2, Block::from(b_val[2]));
@@ -670,7 +696,7 @@ where
                     // Get the src value.
                     let num = b_val[0].as_canonical_u32();
 
-                    // Decompose the num into bits.
+                    // Decompose the num into LE bits.
                     let bits = (0..NUM_BITS).map(|i| (num >> i) & 1).collect::<Vec<_>>();
                     // Write the bits to the array at dst.
                     for (i, bit) in bits.iter().enumerate() {
@@ -795,6 +821,74 @@ where
                     next_clk = timestamp;
                     (a, b, c) = (a_val, b_val, c_val);
                 }
+                Opcode::ExpReverseBitsLen => {
+                    // Read the operands.
+                    let (a_val, b_val, c_val) = self.all_rr(&instruction);
+
+                    // A pointer to the base of the exponentiation.
+                    let base = a_val[0];
+
+                    // A pointer to the first bit (LSB) of the exponent.
+                    let input_ptr = b_val[0];
+
+                    // The length parameter in bit-reverse-len.
+                    let len = c_val[0];
+
+                    let mut timestamp = self.clk;
+
+                    let mut accum = F::one();
+
+                    // Read the value at the pointer `base`.
+                    let mut x_record = self.mr(base, timestamp).0;
+
+                    // Iterate over the `len` least-significant bits of the exponent.
+                    for m in 0..len.as_canonical_u32() {
+                        let m = F::from_canonical_u32(m);
+
+                        // Pointer to the current bit.
+                        let ptr = input_ptr + m;
+
+                        // Read the current bit.
+                        let (current_bit_record, current_bit) = self.mr(ptr, timestamp);
+                        let current_bit = current_bit.ext::<EF>().as_base_slice()[0];
+
+                        // Extract the val in `x_record`
+                        let current_x_val = x_record.value[0];
+
+                        let prev_accum = accum;
+                        accum = prev_accum
+                            * prev_accum
+                            * if current_bit == F::one() {
+                                current_x_val
+                            } else {
+                                F::one()
+                            };
+
+                        // On the last iteration, write accum to the address pointed to in `base`.
+                        if m == len - F::one() {
+                            x_record = self.mw(base, Block::from(accum), timestamp);
+                        };
+
+                        // Add the event for this iteration to the `ExecutionRecord`.
+                        self.record
+                            .exp_reverse_bits_len_events
+                            .push(ExpReverseBitsLenEvent {
+                                clk: timestamp,
+                                x: x_record,
+                                current_bit: current_bit_record,
+                                len: len - m,
+                                prev_accum,
+                                accum,
+                                ptr,
+                                base_ptr: base,
+                                iteration_num: m,
+                            });
+                        timestamp += F::one();
+                    }
+
+                    next_clk = timestamp;
+                    (a, b, c) = (a_val, b_val, c_val);
+                }
                 // For both the Commit and RegisterPublicValue opcodes, we record the public value
                 Opcode::Commit | Opcode::RegisterPublicValue => {
                     let (a_val, b_val, c_val) = self.all_rr(&instruction);
@@ -823,7 +917,10 @@ where
             self.timestamp += 1;
             self.access = CpuRecord::default();
 
-            if self.timestamp >= early_exit_ts || instruction.opcode == Opcode::HALT {
+            if self.timestamp >= early_exit_ts
+                || instruction.opcode == Opcode::HALT
+                || instruction.opcode == Opcode::TRAP
+            {
                 break;
             }
         }

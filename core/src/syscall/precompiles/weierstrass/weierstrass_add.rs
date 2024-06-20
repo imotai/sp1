@@ -36,8 +36,7 @@ use crate::utils::ec::weierstrass::WeierstrassParameters;
 use crate::utils::ec::AffinePoint;
 use crate::utils::ec::CurveType;
 use crate::utils::ec::EllipticCurve;
-use crate::utils::limbs_from_prev_access;
-use crate::utils::pad_rows;
+use crate::utils::{limbs_from_prev_access, pad_rows};
 
 pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassAddAssignCols<u8, P>>()
@@ -52,6 +51,8 @@ pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize 
 pub struct WeierstrassAddAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
     pub shard: T,
+    pub channel: T,
+    pub nonce: T,
     pub clk: T,
     pub p_ptr: T,
     pub q_ptr: T,
@@ -91,15 +92,17 @@ impl<E: EllipticCurve> Syscall for WeierstrassAddAssignChip<E> {
 }
 
 impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             _marker: PhantomData,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn populate_field_ops<F: PrimeField32>(
         blu_events: &mut Vec<ByteLookupEvent>,
         shard: u32,
+        channel: u32,
         cols: &mut WeierstrassAddAssignCols<F, E::BaseField>,
         p_x: BigUint,
         p_y: BigUint,
@@ -111,17 +114,28 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
 
         // slope = (q.y - p.y) / (q.x - p.x).
         let slope = {
-            let slope_numerator =
-                cols.slope_numerator
-                    .populate(blu_events, shard, &q_y, &p_y, FieldOperation::Sub);
+            let slope_numerator = cols.slope_numerator.populate(
+                blu_events,
+                shard,
+                channel,
+                &q_y,
+                &p_y,
+                FieldOperation::Sub,
+            );
 
-            let slope_denominator =
-                cols.slope_denominator
-                    .populate(blu_events, shard, &q_x, &p_x, FieldOperation::Sub);
+            let slope_denominator = cols.slope_denominator.populate(
+                blu_events,
+                shard,
+                channel,
+                &q_x,
+                &p_x,
+                FieldOperation::Sub,
+            );
 
             cols.slope.populate(
                 blu_events,
                 shard,
+                channel,
                 &slope_numerator,
                 &slope_denominator,
                 FieldOperation::Div,
@@ -130,15 +144,26 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
 
         // x = slope * slope - (p.x + q.x).
         let x = {
-            let slope_squared =
-                cols.slope_squared
-                    .populate(blu_events, shard, &slope, &slope, FieldOperation::Mul);
-            let p_x_plus_q_x =
-                cols.p_x_plus_q_x
-                    .populate(blu_events, shard, &p_x, &q_x, FieldOperation::Add);
+            let slope_squared = cols.slope_squared.populate(
+                blu_events,
+                shard,
+                channel,
+                &slope,
+                &slope,
+                FieldOperation::Mul,
+            );
+            let p_x_plus_q_x = cols.p_x_plus_q_x.populate(
+                blu_events,
+                shard,
+                channel,
+                &p_x,
+                &q_x,
+                FieldOperation::Add,
+            );
             cols.x3_ins.populate(
                 blu_events,
                 shard,
+                channel,
                 &slope_squared,
                 &p_x_plus_q_x,
                 FieldOperation::Sub,
@@ -147,12 +172,18 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
 
         // y = slope * (p.x - x_3n) - p.y.
         {
-            let p_x_minus_x =
-                cols.p_x_minus_x
-                    .populate(blu_events, shard, &p_x, &x, FieldOperation::Sub);
+            let p_x_minus_x = cols.p_x_minus_x.populate(
+                blu_events,
+                shard,
+                channel,
+                &p_x,
+                &x,
+                FieldOperation::Sub,
+            );
             let slope_times_p_x_minus_x = cols.slope_times_p_x_minus_x.populate(
                 blu_events,
                 shard,
+                channel,
                 &slope,
                 &p_x_minus_x,
                 FieldOperation::Mul,
@@ -160,6 +191,7 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
             cols.y3_ins.populate(
                 blu_events,
                 shard,
+                channel,
                 &slope_times_p_x_minus_x,
                 &p_y,
                 FieldOperation::Sub,
@@ -170,8 +202,6 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
 
 impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
     for WeierstrassAddAssignChip<E>
-where
-    [(); num_weierstrass_add_cols::<E::BaseField>()]:,
 {
     type Record = ExecutionRecord;
     type Program = Program;
@@ -203,7 +233,7 @@ where
 
         for i in 0..events.len() {
             let event = &events[i];
-            let mut row = [F::zero(); num_weierstrass_add_cols::<E::BaseField>()];
+            let mut row = vec![F::zero(); num_weierstrass_add_cols::<E::BaseField>()];
             let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> =
                 row.as_mut_slice().borrow_mut();
 
@@ -218,6 +248,7 @@ where
             // Populate basic columns.
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
+            cols.channel = F::from_canonical_u32(event.channel);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.p_ptr = F::from_canonical_u32(event.p_ptr);
             cols.q_ptr = F::from_canonical_u32(event.q_ptr);
@@ -225,6 +256,7 @@ where
             Self::populate_field_ops(
                 &mut new_byte_lookup_events,
                 event.shard,
+                event.channel,
                 cols,
                 p_x,
                 p_y,
@@ -234,10 +266,18 @@ where
 
             // Populate the memory access columns.
             for i in 0..cols.q_access.len() {
-                cols.q_access[i].populate(event.q_memory_records[i], &mut new_byte_lookup_events);
+                cols.q_access[i].populate(
+                    event.channel,
+                    event.q_memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
             for i in 0..cols.p_access.len() {
-                cols.p_access[i].populate(event.p_memory_records[i], &mut new_byte_lookup_events);
+                cols.p_access[i].populate(
+                    event.channel,
+                    event.p_memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
 
             rows.push(row);
@@ -245,12 +285,13 @@ where
         output.add_byte_lookup_events(new_byte_lookup_events);
 
         pad_rows(&mut rows, || {
-            let mut row = [F::zero(); num_weierstrass_add_cols::<E::BaseField>()];
+            let mut row = vec![F::zero(); num_weierstrass_add_cols::<E::BaseField>()];
             let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> =
                 row.as_mut_slice().borrow_mut();
             let zero = BigUint::zero();
             Self::populate_field_ops(
                 &mut vec![],
+                0,
                 0,
                 cols,
                 zero.clone(),
@@ -262,10 +303,21 @@ where
         });
 
         // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(
+        let mut trace = RowMajorMatrix::new(
             rows.into_iter().flatten().collect::<Vec<_>>(),
             num_weierstrass_add_cols::<E::BaseField>(),
-        )
+        );
+
+        // Write the nonces to the trace.
+        for i in 0..trace.height() {
+            let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> = trace.values[i
+                * num_weierstrass_add_cols::<E::BaseField>()
+                ..(i + 1) * num_weierstrass_add_cols::<E::BaseField>()]
+                .borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+
+        trace
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -291,108 +343,125 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let row = main.row_slice(0);
-        let row: &WeierstrassAddAssignCols<AB::Var, E::BaseField> = (*row).borrow();
+        let local = main.row_slice(0);
+        let local: &WeierstrassAddAssignCols<AB::Var, E::BaseField> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &WeierstrassAddAssignCols<AB::Var, E::BaseField> = (*next).borrow();
+
+        // Constrain the incrementing nonce.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder
+            .when_transition()
+            .assert_eq(local.nonce + AB::Expr::one(), next.nonce);
 
         let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 4;
 
-        let p_x = limbs_from_prev_access(&row.p_access[0..num_words_field_element]);
-        let p_y = limbs_from_prev_access(&row.p_access[num_words_field_element..]);
+        let p_x = limbs_from_prev_access(&local.p_access[0..num_words_field_element]);
+        let p_y = limbs_from_prev_access(&local.p_access[num_words_field_element..]);
 
-        let q_x = limbs_from_prev_access(&row.q_access[0..num_words_field_element]);
-        let q_y = limbs_from_prev_access(&row.q_access[num_words_field_element..]);
+        let q_x = limbs_from_prev_access(&local.q_access[0..num_words_field_element]);
+        let q_y = limbs_from_prev_access(&local.q_access[num_words_field_element..]);
 
         // slope = (q.y - p.y) / (q.x - p.x).
         let slope = {
-            row.slope_numerator.eval(
+            local.slope_numerator.eval(
                 builder,
                 &q_y,
                 &p_y,
                 FieldOperation::Sub,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            row.slope_denominator.eval(
+            local.slope_denominator.eval(
                 builder,
                 &q_x,
                 &p_x,
                 FieldOperation::Sub,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            row.slope.eval(
+            local.slope.eval(
                 builder,
-                &row.slope_numerator.result,
-                &row.slope_denominator.result,
+                &local.slope_numerator.result,
+                &local.slope_denominator.result,
                 FieldOperation::Div,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            &row.slope.result
+            &local.slope.result
         };
 
         // x = slope * slope - self.x - other.x.
         let x = {
-            row.slope_squared.eval(
+            local.slope_squared.eval(
                 builder,
                 slope,
                 slope,
                 FieldOperation::Mul,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            row.p_x_plus_q_x.eval(
+            local.p_x_plus_q_x.eval(
                 builder,
                 &p_x,
                 &q_x,
                 FieldOperation::Add,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            row.x3_ins.eval(
+            local.x3_ins.eval(
                 builder,
-                &row.slope_squared.result,
-                &row.p_x_plus_q_x.result,
+                &local.slope_squared.result,
+                &local.p_x_plus_q_x.result,
                 FieldOperation::Sub,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            &row.x3_ins.result
+            &local.x3_ins.result
         };
 
         // y = slope * (p.x - x_3n) - q.y.
         {
-            row.p_x_minus_x.eval(
+            local.p_x_minus_x.eval(
                 builder,
                 &p_x,
                 x,
                 FieldOperation::Sub,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            row.slope_times_p_x_minus_x.eval(
+            local.slope_times_p_x_minus_x.eval(
                 builder,
                 slope,
-                &row.p_x_minus_x.result,
+                &local.p_x_minus_x.result,
                 FieldOperation::Mul,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
 
-            row.y3_ins.eval(
+            local.y3_ins.eval(
                 builder,
-                &row.slope_times_p_x_minus_x.result,
+                &local.slope_times_p_x_minus_x.result,
                 &p_y,
                 FieldOperation::Sub,
-                row.shard,
-                row.is_real,
+                local.shard,
+                local.channel,
+                local.is_real,
             );
         }
 
@@ -400,27 +469,29 @@ where
         // ensure that p_access is updated with the new value.
         for i in 0..E::BaseField::NB_LIMBS {
             builder
-                .when(row.is_real)
-                .assert_eq(row.x3_ins.result[i], row.p_access[i / 4].value()[i % 4]);
-            builder.when(row.is_real).assert_eq(
-                row.y3_ins.result[i],
-                row.p_access[num_words_field_element + i / 4].value()[i % 4],
+                .when(local.is_real)
+                .assert_eq(local.x3_ins.result[i], local.p_access[i / 4].value()[i % 4]);
+            builder.when(local.is_real).assert_eq(
+                local.y3_ins.result[i],
+                local.p_access[num_words_field_element + i / 4].value()[i % 4],
             );
         }
 
         builder.eval_memory_access_slice(
-            row.shard,
-            row.clk.into(),
-            row.q_ptr,
-            &row.q_access,
-            row.is_real,
+            local.shard,
+            local.channel,
+            local.clk.into(),
+            local.q_ptr,
+            &local.q_access,
+            local.is_real,
         );
         builder.eval_memory_access_slice(
-            row.shard,
-            row.clk + AB::F::from_canonical_u32(1), // We read p at +1 since p, q could be the same.
-            row.p_ptr,
-            &row.p_access,
-            row.is_real,
+            local.shard,
+            local.channel,
+            local.clk + AB::F::from_canonical_u32(1), // We read p at +1 since p, q could be the same.
+            local.p_ptr,
+            &local.p_access,
+            local.is_real,
         );
 
         // Fetch the syscall id for the curve type.
@@ -436,12 +507,14 @@ where
         };
 
         builder.receive_syscall(
-            row.shard,
-            row.clk,
+            local.shard,
+            local.channel,
+            local.clk,
+            local.nonce,
             syscall_id_felt,
-            row.p_ptr,
-            row.q_ptr,
-            row.is_real,
+            local.p_ptr,
+            local.q_ptr,
+            local.is_real,
         );
     }
 }
