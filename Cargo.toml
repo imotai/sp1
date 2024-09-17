@@ -7,7 +7,7 @@ keywords = ["spl", "succinct", "zero-knowledge"]
 categories = ["cryptography"]
 
 [workspace]
-members = ["crates/basefold", "crates/algebra", "crates/sumcheck"]
+members = ["crates/basefold", "crates/algebra", "crates/sumcheck", "crates/multi-pcs"]
 resolver = "2"
 
 [profile.release]

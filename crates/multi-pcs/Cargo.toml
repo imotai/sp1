@@ -1,5 +1,5 @@
 [package]
-name = "spl-sumcheck"
+name = "spl-multi-pcs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,8 +8,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-p3-util = {workspace = true}
-spl-algebra = {path = "../algebra"}
-spl-basefold = {path = "../basefold"}
-
+spl-algebra = { path = "../algebra" }
+p3-util = { workspace = true }
 itertools = "0.12.0"
