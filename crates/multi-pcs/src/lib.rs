@@ -2,7 +2,7 @@ use std::ops::Mul;
 
 use itertools::Itertools;
 use p3_util::log2_strict_usize;
-use spl_algebra::Field;
+use spl_algebra::{ExtensionField, Field};
 
 /// A wrapper struct for a multivariate point.
 #[derive(Debug, Clone)]
@@ -38,19 +38,31 @@ pub struct Mle<K> {
     guts: Vec<K>,
 }
 
+impl<K> From<Vec<K>> for Mle<K> {
+    fn from(value: Vec<K>) -> Self {
+        Self { guts: value }
+    }
+}
+
 impl<K: Field> Mle<K> {
     pub fn new(guts: Vec<K>) -> Self {
         Self { guts }
     }
 
-    pub fn eval_at_point(&self, point: &Point<K>) -> K {
-        self.guts.iter().zip(partial_lagrange_eval(point).iter()).map(|(x, y)| *x * *y).sum()
+    pub fn eval_at_point<EK>(&self, point: &Point<EK>) -> EK
+    where
+        EK: ExtensionField<K>,
+    {
+        self.guts.iter().zip(partial_lagrange_eval(point).iter()).map(|(x, y)| *y * *x).sum()
     }
 
-    pub fn eval_batch_at_point(mles: &[Mle<K>], point: &Point<K>) -> Vec<K> {
+    pub fn eval_batch_at_point<EK>(mles: &[Mle<K>], point: &Point<EK>) -> Vec<EK>
+    where
+        EK: ExtensionField<K>,
+    {
         let partial_lagrange = partial_lagrange_eval(point);
         mles.iter()
-            .map(|mle| mle.guts.iter().zip(partial_lagrange.iter()).map(|(x, y)| *x * *y).sum())
+            .map(|mle| mle.guts.iter().zip(partial_lagrange.iter()).map(|(x, y)| *y * *x).sum())
             .collect()
     }
 
@@ -84,9 +96,9 @@ impl<K: Field> Mle<K> {
     }
 }
 
-impl<K: Field> From<Vec<K>> for Mle<K> {
-    fn from(value: Vec<K>) -> Self {
-        Self { guts: value }
+impl<K: Field> From<Mle<K>> for Vec<K> {
+    fn from(value: Mle<K>) -> Self {
+        value.guts
     }
 }
 
@@ -168,6 +180,7 @@ pub trait MultilinearPcs<K: Copy, Challenger> {
     fn verify(
         &self,
         point: Point<K>,
+        evaluation_claim: K,
         commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,

@@ -23,9 +23,6 @@ pub struct BaseFoldProof<K: Field, M: Mmcs<K>, Witness> {
     /// The univariate polynomials that are used in the sumcheck part of the BaseFold protocol.
     pub univariate_messages: Vec<[K; 2]>,
 
-    /// The claimed evaluation.
-    pub eval: K,
-
     /// The FRI parts of the proof.
     /// The commitments to the folded polynomials produced in the commit phase.
     pub commitments: Vec<M::Commitment>,

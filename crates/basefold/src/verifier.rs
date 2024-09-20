@@ -97,6 +97,7 @@ where
     fn verify(
         &self,
         mut point: Point<K>,
+        eval_claim: K,
         commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,
@@ -132,7 +133,7 @@ where
         // first_poly is supposed to be `vals(X_0, X_1, ..., X_{d-1}, 0), vals(X_0, X_1, ..., X_{d-1}, 1)`.
         // Given this, the claimed evaluation should be `(1 - X_d) * first_poly[0] + X_d * first_poly[1]`.
         let first_poly = proof.univariate_messages[0];
-        if proof.eval != (K::one() - point.0[0]) * first_poly[0] + point.0[0] * first_poly[1] {
+        if eval_claim != (K::one() - point.0[0]) * first_poly[0] + point.0[0] * first_poly[1] {
             return Err(BaseFoldError::Sumcheck);
         };
 
@@ -162,7 +163,8 @@ where
 
         let log_len = proof.commitments.len();
 
-        // Sample query indices for the FRI query IOPP part of BaseFold.
+        // Sample query indices for the FRI query IOPP part of BaseFold. This part is very similar to
+        // the corresponding part in the Plonky3 verifier.
         let query_indices = (0..self.config.fri_config.num_queries)
             .map(|_| challenger.sample_bits(log_len + self.config.fri_config.log_blowup))
             .collect_vec();
@@ -255,6 +257,8 @@ mod tests {
 
             let new_eval_point = Point::new((0..num_variables).map(|_| rng.gen::<F>()).collect());
 
+            let expected_eval = Mle::new(vals.clone()).eval_at_point(&new_eval_point);
+
             let prover = BaseFoldProver::new(pcs);
 
             let (commit, data) = prover.commit(vals.clone());
@@ -262,14 +266,19 @@ mod tests {
             let proof = prover.prove_evaluation(
                 data,
                 new_eval_point.clone(),
+                expected_eval,
                 &mut Challenger::new(perm.clone()),
             );
 
-            assert_eq!(proof.eval, Mle::eval_at_point(&vals.into(), &new_eval_point));
-
             prover
                 .pcs
-                .verify(new_eval_point, commit, &proof, &mut Challenger::new(perm.clone()))
+                .verify(
+                    new_eval_point,
+                    expected_eval,
+                    commit,
+                    &proof,
+                    &mut Challenger::new(perm.clone()),
+                )
                 .unwrap();
         });
     }

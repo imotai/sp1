@@ -11,14 +11,14 @@ use p3_matrix::{
     Matrix,
 };
 use spl_algebra::{ExtensionField, Field, TwoAdicField};
-use spl_multi_pcs::Mle;
 
 use crate::{
     BaseFoldPcs, BaseFoldProof, BaseFoldProver, BaseFoldProverData, Point, RsBaseFoldConfig,
 };
 
 /// A single round of the FRI commit phase. This function commits to the prover message, samples the
-///  round challenge, and folds the polynomial.
+/// round challenge, and folds the polynomial. This function is repeated in the Plonky3 FRI prover
+/// during the commit phase.
 pub fn commit_phase_single_round<
     F: Field,
     EF: TwoAdicField + ExtensionField<F>,
@@ -140,13 +140,13 @@ where
         data: BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>,
         // TODO: support batches.
         mut eval_point: Point<K>,
+        _expected_eval: K,
         challenger: &mut Challenger,
     ) -> BaseFoldProof<K, M, Challenger::Witness>
     where
         Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
         M::Commitment: Debug,
     {
-        // TODO: Can we avoid this clone?
         let matrices = self.pcs.config.fri_config.mmcs.get_matrices(&data.data);
 
         debug_assert_eq!(matrices.len(), 1);
@@ -154,8 +154,6 @@ where
         let mut current = matrices[0].values.clone();
 
         let mut current_mle = data.vals;
-
-        let expected_eval: K = Mle::eval_at_point(&current_mle, &eval_point);
 
         let log_len = current_mle.num_variables();
 
@@ -209,7 +207,6 @@ where
 
         BaseFoldProof {
             univariate_messages: univariate_polys,
-            eval: expected_eval,
             commitments: commits,
             query_phase_proofs: query_proofs,
             pow_witness,
