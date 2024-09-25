@@ -180,7 +180,7 @@ pub trait MultilinearPcs<K: Copy, Challenger> {
     fn verify(
         &self,
         point: Point<K>,
-        evaluation_claim: K,
+        evaluation_claims: Vec<K>,
         commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,

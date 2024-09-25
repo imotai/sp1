@@ -14,7 +14,9 @@ type Challenge<SC> = <SC as StarkGenericConfig>::Challenge;
 pub trait MultivariateEvaluationAirBuilder: ExtensionBuilder {
     type MP: Matrix<Self::VarEF>;
 
-    type Sum: Into<Self::ExprEF>;
+    type Sum: Into<Self::ExprEF> + Copy;
+
+    type RandomVar: Into<Self::ExprEF> + Copy;
 
     /// The multivariate adapter columns (eq polynomial and cumulative sum).
     fn adapter(&self) -> Self::MP;
@@ -24,7 +26,10 @@ pub trait MultivariateEvaluationAirBuilder: ExtensionBuilder {
     fn _evaluation_point(&self) -> Vec<Self::Sum>;
 
     /// The expected evaluation of the multilinear. (Checked to be the last entry of the cumulative sum).
-    fn expected_eval(&self) -> Self::Sum;
+    fn expected_evals(&self) -> &[Self::Sum];
+
+    /// The random challenge used to batch the evaluations.
+    fn batch_randomness(&self) -> Self::RandomVar;
 }
 
 /// A folder for prover constraints.
@@ -40,7 +45,7 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     >,
 
     /// The expected evaluation of the multilinear.
-    pub expected_eval: SC::Challenge,
+    pub expected_evals: Vec<PackedChallenge<SC>>,
 
     /// The selector for the first row.
     pub is_first_row: PackedVal<SC>,
@@ -54,11 +59,14 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     /// The constraint folding challenge.
     pub alpha: SC::Challenge,
 
+    /// The batching challenge.
+    pub batch_challenge: PackedChallenge<SC>,
+
     /// The accumulator for the constraint folding.
     pub accumulator: PackedChallenge<SC>,
 
     /// The public values.
-    pub evaluation_point: Vec<SC::Challenge>,
+    pub evaluation_point: &'a [SC::Challenge],
 }
 
 impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
@@ -124,16 +132,22 @@ impl<'a, SC: StarkGenericConfig> MultivariateEvaluationAirBuilder
 
     type Sum = PackedChallenge<SC>;
 
+    type RandomVar = PackedChallenge<SC>;
+
     fn adapter(&self) -> Self::MP {
         self.adapter
     }
 
-    fn expected_eval(&self) -> Self::Sum {
-        PackedChallenge::<SC>::from_f(self.expected_eval)
+    fn expected_evals(&self) -> &[Self::Sum] {
+        &self.expected_evals
     }
 
     fn _evaluation_point(&self) -> Vec<Self::Sum> {
         self.evaluation_point.iter().copied().map(PackedChallenge::<SC>::from_f).collect()
+    }
+
+    fn batch_randomness(&self) -> Self::RandomVar {
+        self.batch_challenge
     }
 }
 
@@ -158,7 +172,10 @@ pub struct GenericVerifierConstraintFolder<'a, F, EF, Var, Expr> {
     pub alpha: Var,
 
     /// The expected evaluation of the multilinear.
-    pub expected_eval: Var,
+    pub expected_evals: Vec<Var>,
+
+    /// The random challenge used to batch the evaluations.
+    pub batch_challenge: Var,
 
     /// The accumulator for the constraint folding.
     pub accumulator: Expr,
@@ -301,15 +318,21 @@ where
 
     type Sum = Var;
 
+    type RandomVar = Var;
+
     fn adapter(&self) -> Self::MP {
         self.adapter
     }
 
-    fn expected_eval(&self) -> Self::Sum {
-        self.expected_eval
+    fn expected_evals(&self) -> &[Self::Sum] {
+        &self.expected_evals
     }
 
     fn _evaluation_point(&self) -> Vec<Self::Sum> {
         self.evaluation_point.clone()
+    }
+
+    fn batch_randomness(&self) -> Self::RandomVar {
+        self.batch_challenge
     }
 }

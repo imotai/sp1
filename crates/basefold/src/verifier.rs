@@ -97,7 +97,7 @@ where
     fn verify(
         &self,
         mut point: Point<K>,
-        eval_claim: K,
+        eval_claims: Vec<K>,
         commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,
@@ -105,6 +105,10 @@ where
         if commitment != proof.commitments[0] {
             return Err(BaseFoldError::IncorrectShape);
         }
+
+        // We don't support batching for BaseFold yet.
+        assert!(eval_claims.len() == 1);
+        let eval_claim = eval_claims[0];
 
         // Assert correctness of shape.
         if proof.commitments.len() != proof.univariate_messages.len()
@@ -274,7 +278,7 @@ mod tests {
                 .pcs
                 .verify(
                     new_eval_point,
-                    expected_eval,
+                    vec![expected_eval],
                     commit,
                     &proof,
                     &mut Challenger::new(perm.clone()),

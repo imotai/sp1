@@ -14,7 +14,7 @@ use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 use p3_util::log2_strict_usize;
 
 use spl_algebra::{AbstractExtensionField, AbstractField, PackedValue};
-use spl_multi_pcs::{Mle, Point};
+use spl_multi_pcs::Point;
 
 use crate::{
     air_types::{AirOpenedValues, ChipOpenedValues},
@@ -40,14 +40,14 @@ type ProverData<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenger,
 >>::ProverData;
 
-type PointAndEval<SC> =
-    (Point<<SC as StarkGenericConfig>::Challenge>, <SC as StarkGenericConfig>::Challenge);
+type PointAndEvals<SC> =
+    (Point<<SC as StarkGenericConfig>::Challenge>, Vec<<SC as StarkGenericConfig>::Challenge>);
 
 pub struct AdapterProver<SC: StarkGenericConfig> {
     pub(crate) pcs: MultivariateAdapterPCS<SC>,
 }
 
-pub const LOG_QUOTIENT_DEGREE: usize = 2;
+pub const LOG_QUOTIENT_DEGREE: usize = 1;
 
 #[allow(clippy::type_complexity)]
 impl<SC: StarkGenericConfig> AdapterProver<SC> {
@@ -57,22 +57,15 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
 
     pub fn prove_evaluation(
         &self,
-        data: Mle<Val<SC>>,
-        // TODO: support batches.
+        data: RowMajorMatrix<Val<SC>>,
         eval_point: Point<SC::Challenge>,
-        expected_eval: SC::Challenge,
+        expected_evals: Vec<SC::Challenge>,
         prover_data: ProverData<SC>,
         main_commit: Com<SC>,
         challenger: &mut SC::Challenger,
     ) -> MultivariateAdapterProof<SC> {
-        let log_degree = data.num_variables();
+        let log_degree = log2_strict_usize(data.height());
         let degree = 1 << log_degree;
-        let data_vec: Vec<_> = data.into();
-
-        // In the future, the trace generation will be done as part of the SP1 prover's `open` method,
-        // but we compute the trace here to have a uniform API between the two different multilinear
-        // opening protocols we have in this library.
-        let adapter_trace = generate_adapter_trace::<SC>(&data_vec, &eval_point);
 
         // Observe the main commitment.
         challenger.observe(main_commit.clone());
@@ -80,6 +73,10 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         let trace_domain = self.pcs.config.pcs().natural_domain_for_degree(degree);
 
         let log_quotient_degree = LOG_QUOTIENT_DEGREE;
+
+        let batch_randomness: SC::Challenge = challenger.sample_ext_element();
+
+        let adapter_trace = generate_adapter_trace::<SC>(&data, &eval_point, batch_randomness);
 
         let (adapter_trace_commit, adapter_trace_data) =
             self.pcs.config.pcs().commit(vec![(trace_domain, adapter_trace.flatten_to_base())]);
@@ -109,13 +106,13 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
 
         // Compute the quotient values.
         let quotient_values = Self::quotient_values(
-            MultivariateAdapterAir {},
+            MultivariateAdapterAir { batch_size: data.width() },
             trace_domain,
             quotient_domain,
-            &(eval_point.clone(), expected_eval),
+            &(eval_point.clone(), expected_evals),
             data_on_quotient_domain,
             adapter_trace_on_quotient_domain,
-            alpha,
+            [alpha, batch_randomness],
         );
 
         // Split the quotient values and commit to them.
@@ -197,21 +194,22 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         air: A,
         trace_domain: Dom<SC>,
         quotient_domain: Dom<SC>,
-        point_and_eval: &PointAndEval<SC>,
+        point_and_evals: &PointAndEvals<SC>,
         trace_on_quotient_domain: Mat,
         adapter_trace_on_quotient_domain: Mat,
-        alpha: SC::Challenge,
+        random_challenges: [SC::Challenge; 2],
     ) -> Vec<SC::Challenge>
     where
         A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
         Mat: Matrix<Val<SC>> + Sync,
     {
+        let (alpha, batch_challenge) = (random_challenges[0], random_challenges[1]);
         let quotient_size = quotient_domain.size();
         let main_width = trace_on_quotient_domain.width();
         let adapter_width = adapter_trace_on_quotient_domain.width();
         let sels = trace_domain.selectors_on_coset(quotient_domain);
 
-        let (eval_point, expected_eval) = point_and_eval;
+        let (eval_point, expected_evals) = point_and_evals;
 
         let qdb =
             log2_strict_usize(quotient_domain.size()) - log2_strict_usize(trace_domain.size());
@@ -295,8 +293,13 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
                     is_transition,
                     alpha,
                     accumulator,
-                    expected_eval: *expected_eval,
-                    evaluation_point: eval_point.0.clone(),
+                    expected_evals: expected_evals
+                        .iter()
+                        .copied()
+                        .map(PackedChallenge::<SC>::from_f)
+                        .collect(),
+                    evaluation_point: &eval_point.0,
+                    batch_challenge: PackedChallenge::<SC>::from_f(batch_challenge),
                 };
                 air.eval(&mut folder);
 
@@ -316,20 +319,22 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
             .collect()
     }
 
-    pub fn commit(&self, data: Mle<Val<SC>>) -> (Com<SC>, ProverData<SC>) {
-        let domain = self.pcs.config.pcs().natural_domain_for_degree(1 << data.num_variables());
-        self.pcs.config.pcs().commit(vec![(domain, RowMajorMatrix::new(data.into(), 1))])
+    pub fn commit(&self, data: RowMajorMatrix<Val<SC>>) -> (Com<SC>, ProverData<SC>) {
+        let domain = self.pcs.config.pcs().natural_domain_for_degree(data.height());
+        self.pcs.config.pcs().commit(vec![(domain, data)])
     }
 }
 
 #[cfg(test)]
 pub mod tests {
 
+    use itertools::Itertools;
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use p3_challenger::DuplexChallenger;
     use p3_commit::ExtensionMmcs;
     use p3_dft::Radix2DitParallel;
     use p3_fri::{FriConfig, TwoAdicFriPcs};
+    use p3_matrix::{dense::RowMajorMatrix, Matrix};
     use p3_merkle_tree::FieldMerkleTreeMmcs;
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
@@ -367,14 +372,14 @@ pub mod tests {
         let data = vec![Val::one(), Val::one()];
         let eval_point = Point::new(vec![Val::two()]);
         let trace = crate::types::generate_adapter_trace::<MyConfig>(
-            &data,
+            &RowMajorMatrix::new(data, 1),
             &Point(eval_point.0.iter().map(|x| Challenge::from_base(*x)).collect()),
+            Challenge::zero(),
         );
         println!("{:?}", trace);
     }
 
-    #[test]
-    fn test_adapter_stark() {
+    fn test_adapter_stark_batch_size<const BATCH_SIZE: usize, const NUM_VARIABLES: usize>() {
         let perm = Perm::new_from_rng_128(
             Poseidon2ExternalMatrixGeneral,
             DiffusionMatrixBabyBear,
@@ -385,10 +390,12 @@ pub mod tests {
         let val_mmcs = ValMmcs::new(hash, compress);
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
         let dft = Dft {};
-        const NUM_VARIABLES: usize = 8;
-        const HEIGHT: usize = 1 << NUM_VARIABLES;
 
-        let vals = std::array::from_fn::<_, HEIGHT, _>(|_| thread_rng().gen()).to_vec();
+        let mut batch_vals = vec![];
+        for _ in 0..BATCH_SIZE {
+            let vals = (0..(1 << NUM_VARIABLES)).map(|_| thread_rng().gen()).collect_vec();
+            batch_vals.push(vals);
+        }
         let eval_point: Point<Challenge> =
             Point::new(std::array::from_fn::<_, NUM_VARIABLES, _>(|_| thread_rng().gen()).to_vec());
         let fri_config = FriConfig {
@@ -401,19 +408,30 @@ pub mod tests {
         let config = MyConfig::new(pcs);
         let mut challenger = Challenger::new(perm.clone());
 
-        let pcs = MultivariateAdapterPCS { config };
+        let pcs = MultivariateAdapterPCS { config, batch_size: BATCH_SIZE };
 
         let prover = AdapterProver::new(pcs);
 
-        let (commitment, data) = prover.commit(Mle::new(vals.clone()));
+        let flattened = RowMajorMatrix::new(
+            batch_vals.clone().into_iter().flatten().collect(),
+            1 << NUM_VARIABLES,
+        )
+        .transpose();
 
-        let mle = Mle::new(vals);
-        let expected_eval = mle.eval_at_point(&eval_point);
+        println!("Flattened width: {}", flattened.width());
+
+        let (commitment, data) = prover.commit(flattened.clone());
+
+        let expected_evals = batch_vals
+            .iter()
+            .map(|mle| Mle::new(mle.clone()).eval_at_point(&eval_point))
+            .map(Challenge::from_base)
+            .collect::<Vec<_>>();
 
         let proof = prover.prove_evaluation(
-            mle,
+            flattened,
             Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-            Challenge::from_base(expected_eval),
+            expected_evals.clone(),
             data,
             commitment,
             &mut challenger,
@@ -423,12 +441,20 @@ pub mod tests {
             .pcs
             .verify(
                 Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-                Challenge::from_base(expected_eval),
+                expected_evals,
                 commitment,
                 &proof,
                 &mut Challenger::new(perm.clone()),
             )
             .unwrap();
+    }
+
+    #[test]
+    fn test_adapter_stark() {
+        test_adapter_stark_batch_size::<1, 8>();
+        test_adapter_stark_batch_size::<2, 8>();
+        test_adapter_stark_batch_size::<4, 7>();
+        test_adapter_stark_batch_size::<200, 22>();
     }
 
     #[test]
@@ -446,10 +472,11 @@ pub mod tests {
         let dft = Dft {};
 
         let vals = std::array::from_fn::<BabyBear, 8, _>(|_| thread_rng().gen()).to_vec();
+
         let eval_point: Point<Challenge> =
             Point::new(std::array::from_fn::<_, 3, _>(|_| thread_rng().gen()).to_vec());
         let fri_config = FriConfig {
-            log_blowup: 2,
+            log_blowup: 1,
             num_queries: 28,
             proof_of_work_bits: 8,
             mmcs: challenge_mmcs,
@@ -458,18 +485,18 @@ pub mod tests {
         let config = MyConfig::new(pcs);
         let mut challenger = Challenger::new(perm.clone());
 
-        let pcs = MultivariateAdapterPCS { config };
+        let pcs = MultivariateAdapterPCS { config, batch_size: 2 };
 
         let prover = AdapterProver::new(pcs);
 
-        let (commit, data) = prover.commit(Mle::new(vals.clone()));
+        let (commit, data) = prover.commit(RowMajorMatrix::new(vals.clone(), 2));
         let mle = Mle::new(vals);
         let expected_eval = mle.eval_at_point(&eval_point);
 
         let proof = prover.prove_evaluation(
-            mle,
+            RowMajorMatrix::new(mle.into(), 1),
             Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-            Challenge::from_base(expected_eval),
+            vec![Challenge::from_base(expected_eval)],
             data,
             commit,
             &mut challenger,
@@ -480,7 +507,7 @@ pub mod tests {
             .verify(
                 Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
                 // Put a wrong value here to make sure the verification fails.
-                Challenge::from_base(Val::from_canonical_u16(0xDEAD)),
+                vec![Challenge::from_base(Val::from_canonical_u16(0xDEAD))],
                 commit,
                 &proof,
                 &mut Challenger::new(perm.clone()),

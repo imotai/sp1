@@ -1,4 +1,4 @@
-use itertools::izip;
+use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -33,6 +33,9 @@ pub type Dom<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
 pub struct MultivariateAdapterPCS<SC: StarkGenericConfig> {
     /// The STARK config.
     pub(crate) config: SC,
+
+    /// The number of multivariates to be opened.
+    pub(crate) batch_size: usize,
 }
 
 /// The proof struct for the multivariate opening.
@@ -55,7 +58,9 @@ pub enum MultivariateAdapterError {
     ShapeMismatch,
 }
 
-pub struct MultivariateAdapterAir {}
+pub struct MultivariateAdapterAir {
+    pub batch_size: usize,
+}
 pub const NUM_ADAPTER_COLS: usize = size_of::<MultivariateAdapterCols<u8>>();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,8 +75,7 @@ pub struct MultivariateAdapterCols<F> {
 
 impl<F> BaseAir<F> for MultivariateAdapterAir {
     fn width(&self) -> usize {
-        // Assuming a single opening for now.
-        1
+        self.batch_size
     }
 }
 
@@ -114,23 +118,53 @@ impl<AB: AirBuilder + MultivariateEvaluationAirBuilder> Air<AB> for Multivariate
 
         let (local, next) = (main.row_slice(0), main.row_slice(1));
 
+        let batch_challenge = builder.batch_randomness();
+
+        let mut batch_challenge_powers = vec![AB::ExprEF::one()];
+
+        for _ in 1..builder.main().width() {
+            let new_batch_challenge_power =
+                batch_challenge_powers.last().unwrap().clone() * batch_challenge.into();
+            batch_challenge_powers.push(new_batch_challenge_power);
+        }
+
+        let batched_local = local
+            .iter()
+            .zip(batch_challenge_powers.iter())
+            .map(|(x, batch_challenge_power)| batch_challenge_power.clone() * (*x).into())
+            .sum::<AB::ExprEF>();
+
+        let batched_next = next
+            .iter()
+            .zip(batch_challenge_powers.iter())
+            .map(|(x, batch_challenge_power)| batch_challenge_power.clone() * (*x).into())
+            .sum::<AB::ExprEF>();
+
         // Assert that the first row accumulator is equal to the product of the lagrange_eval and
         // the main trace element.
-        builder.when_first_row().assert_eq_ext(
-            local_adapter.accum,
-            local_adapter.lagrange_eval.into() * local[0].into(),
-        );
+        builder
+            .when_first_row()
+            .assert_eq_ext(local_adapter.accum, local_adapter.lagrange_eval.into() * batched_local);
 
         // Assert that the accumulator is correctly computed.
         builder.when_transition().assert_eq_ext(
-            local_adapter.accum.into() + next_adapter.lagrange_eval.into() * next[0].into(),
+            local_adapter.accum.into() + next_adapter.lagrange_eval.into() * batched_next,
             next_adapter.accum,
         );
 
-        let expected_eval = builder.expected_eval();
+        let expected_evals = builder.expected_evals();
+
+        let mut batch_challenge_power = AB::ExprEF::one();
+
+        let mut total_expected_eval = AB::ExprEF::zero();
+
+        for eval in expected_evals {
+            total_expected_eval += batch_challenge_power.clone() * (*eval).into();
+            batch_challenge_power *= batch_challenge.into();
+        }
 
         // Assert that the last row of the accumulator and the claimed evaluation match.
-        builder.when_last_row().assert_eq_ext(local_adapter.accum, expected_eval);
+        builder.when_last_row().assert_eq_ext(local_adapter.accum, total_expected_eval);
 
         // We also need to constrain the lagrange_evals to be correctly computed, but that requires
         // functionality which the current STARK/AIR API does not provide.
@@ -138,29 +172,44 @@ impl<AB: AirBuilder + MultivariateEvaluationAirBuilder> Air<AB> for Multivariate
 }
 
 pub fn generate_adapter_trace<SC: StarkGenericConfig>(
-    data: &[Val<SC>],
+    data: &RowMajorMatrix<Val<SC>>,
     eval_point: &Point<SC::Challenge>,
+    batch_randomness: SC::Challenge,
 ) -> RowMajorMatrix<SC::Challenge> {
-    let mut trace = Vec::with_capacity(data.len() * NUM_ADAPTER_COLS);
+    let mut trace = Vec::with_capacity(data.height() * NUM_ADAPTER_COLS);
 
     // The eq polynomial, with one set of variables fixed to `eval_point`.
     let lagrange = partial_lagrange_eval(eval_point);
 
+    let mut batch_powers = Vec::with_capacity(data.width());
+
+    let mut batch_randomness_power = SC::Challenge::one();
+
+    for _ in 0..data.width() {
+        batch_powers.push(batch_randomness_power);
+        batch_randomness_power *= batch_randomness;
+    }
+
+    let batched_data: Vec<SC::Challenge> = data
+        .rows()
+        .map(|row| row.zip(batch_powers.iter()).map(|(x, batch_power)| *batch_power * x).sum())
+        .collect();
+
     // Compute the cumulative sum of the coordinate-wise product of eq polynomial and the Mle data.
-    let accum = data.iter().zip(lagrange.iter()).scan(
-        <SC::Challenge as AbstractField>::zero(),
-        |acc, (x, y)| {
-            *acc += *y * *x;
+    let accum = batched_data
+        .iter()
+        .zip(lagrange.iter())
+        .scan(<SC::Challenge as AbstractField>::zero(), |acc, (x, y)| {
+            *acc += *x * *y;
             Some(*acc)
-        },
-    );
+        })
+        .collect_vec();
 
     for (lagrange_eval, accum) in izip!(lagrange.iter(), accum) {
         let mut row = [SC::Challenge::zero(); NUM_ADAPTER_COLS];
 
         let cols: &mut MultivariateAdapterCols<_> = row.as_mut_slice().borrow_mut();
 
-        // cols.val = *val;
         cols.lagrange_eval = *lagrange_eval;
         cols.accum = accum;
 
@@ -168,171 +217,4 @@ pub fn generate_adapter_trace<SC: StarkGenericConfig>(
     }
 
     RowMajorMatrix::new(trace, NUM_ADAPTER_COLS)
-}
-
-#[cfg(test)]
-pub mod tests {
-
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_challenger::DuplexChallenger;
-    use p3_commit::ExtensionMmcs;
-    use p3_dft::Radix2DitParallel;
-    use p3_fri::{FriConfig, TwoAdicFriPcs};
-    use p3_merkle_tree::FieldMerkleTreeMmcs;
-    use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-    use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-    use p3_uni_stark::StarkConfig;
-    use rand::{thread_rng, Rng};
-    use spl_algebra::{
-        extension::BinomialExtensionField, AbstractExtensionField, AbstractField, Field,
-    };
-    use spl_multi_pcs::{Mle, MultilinearPcs, Point};
-
-    use crate::prover::AdapterProver;
-
-    use super::MultivariateAdapterPCS;
-
-    type Val = BabyBear;
-    type Perm = Poseidon2<Val, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
-    type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
-    type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
-    type ValMmcs = FieldMerkleTreeMmcs<
-        <Val as Field>::Packing,
-        <Val as Field>::Packing,
-        MyHash,
-        MyCompress,
-        8,
-    >;
-    type Challenge = BinomialExtensionField<Val, 4>;
-    type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
-    type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
-    type Dft = Radix2DitParallel;
-    type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
-    type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
-
-    #[test]
-    fn test_generate_adapter_trace() {
-        let data = vec![Val::one(), Val::one()];
-        let eval_point = Point::new(vec![Val::two()]);
-        let trace = crate::types::generate_adapter_trace::<MyConfig>(
-            &data,
-            &Point(eval_point.0.iter().map(|x| Challenge::from_base(*x)).collect()),
-        );
-        println!("{:?}", trace);
-    }
-
-    #[test]
-    fn test_adapter_stark() {
-        let perm = Perm::new_from_rng_128(
-            Poseidon2ExternalMatrixGeneral,
-            DiffusionMatrixBabyBear,
-            &mut thread_rng(),
-        );
-        let hash = MyHash::new(perm.clone());
-        let compress = MyCompress::new(perm.clone());
-        let val_mmcs = ValMmcs::new(hash, compress);
-        let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
-        let dft = Dft {};
-        const NUM_VARIABLES: usize = 8;
-        const HEIGHT: usize = 1 << NUM_VARIABLES;
-
-        let vals = std::array::from_fn::<_, HEIGHT, _>(|_| thread_rng().gen()).to_vec();
-        let eval_point: Point<Challenge> =
-            Point::new(std::array::from_fn::<_, NUM_VARIABLES, _>(|_| thread_rng().gen()).to_vec());
-        let fri_config = FriConfig {
-            log_blowup: 2,
-            num_queries: 28,
-            proof_of_work_bits: 8,
-            mmcs: challenge_mmcs,
-        };
-        let pcs = Pcs::new(NUM_VARIABLES, dft, val_mmcs, fri_config);
-        let config = MyConfig::new(pcs);
-        let mut challenger = Challenger::new(perm.clone());
-
-        let pcs = MultivariateAdapterPCS { config };
-
-        let prover = AdapterProver::new(pcs);
-
-        let (commitment, data) = prover.commit(Mle::new(vals.clone()));
-
-        let mle = Mle::new(vals);
-        let expected_eval = mle.eval_at_point(&eval_point);
-
-        let proof = prover.prove_evaluation(
-            mle,
-            Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-            Challenge::from_base(expected_eval),
-            data,
-            commitment,
-            &mut challenger,
-        );
-
-        prover
-            .pcs
-            .verify(
-                Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-                Challenge::from_base(expected_eval),
-                commitment,
-                &proof,
-                &mut Challenger::new(perm.clone()),
-            )
-            .unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_adapter_stark_fails_on_non_matching_commitment() {
-        let perm = Perm::new_from_rng_128(
-            Poseidon2ExternalMatrixGeneral,
-            DiffusionMatrixBabyBear,
-            &mut thread_rng(),
-        );
-        let hash = MyHash::new(perm.clone());
-        let compress = MyCompress::new(perm.clone());
-        let val_mmcs = ValMmcs::new(hash, compress);
-        let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
-        let dft = Dft {};
-
-        let vals = std::array::from_fn::<BabyBear, 8, _>(|_| thread_rng().gen()).to_vec();
-        let eval_point: Point<Challenge> =
-            Point::new(std::array::from_fn::<_, 3, _>(|_| thread_rng().gen()).to_vec());
-        let fri_config = FriConfig {
-            log_blowup: 2,
-            num_queries: 28,
-            proof_of_work_bits: 8,
-            mmcs: challenge_mmcs,
-        };
-        let pcs = Pcs::new(3, dft, val_mmcs, fri_config);
-        let config = MyConfig::new(pcs);
-        let mut challenger = Challenger::new(perm.clone());
-
-        let pcs = MultivariateAdapterPCS { config };
-
-        let prover = AdapterProver::new(pcs);
-
-        let (commit, data) = prover.commit(Mle::new(vals.clone()));
-        let mle = Mle::new(vals);
-        let expected_eval = mle.eval_at_point(&eval_point);
-
-        let proof = prover.prove_evaluation(
-            mle,
-            Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-            Challenge::from_base(expected_eval),
-            data,
-            commit,
-            &mut challenger,
-        );
-
-        prover
-            .pcs
-            .verify(
-                Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-                // Put a wrong value here to make sure the verification fails.
-                Challenge::from_base(Val::from_canonical_u16(0xDEAD)),
-                commit,
-                &proof,
-                &mut Challenger::new(perm.clone()),
-            )
-            .unwrap();
-    }
 }

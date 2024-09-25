@@ -36,7 +36,7 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
     fn verify(
         &self,
         point: spl_multi_pcs::Point<SC::Challenge>,
-        eval_claim: SC::Challenge,
+        eval_claims: Vec<SC::Challenge>,
         main_commit: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut SC::Challenger,
@@ -62,6 +62,9 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
             .iter()
             .map(|log_degree| pcs.natural_domain_for_degree(1 << log_degree))
             .collect::<Vec<_>>();
+
+        // Sample the batch challenge.
+        let batch_challenge = challenger.sample_ext_element::<SC::Challenge>();
 
         challenger.observe(adapter_commit.clone());
 
@@ -146,18 +149,22 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
             izip!(trace_domains, quotient_chunk_domains, opened_values.iter())
         {
             // Verify the shape of the opening arguments matches the expected values.
-            self.verify_opening_shape(MultivariateAdapterAir {}, values)
-                .map_err(|_| MultivariateAdapterError::ShapeMismatch)?;
+            self.verify_opening_shape(
+                MultivariateAdapterAir { batch_size: self.batch_size },
+                values,
+            )
+            .map_err(|_| MultivariateAdapterError::ShapeMismatch)?;
             // Verify the constraint evaluation.
             Self::verify_constraints::<MultivariateAdapterAir>(
-                &MultivariateAdapterAir {},
+                &MultivariateAdapterAir { batch_size: self.batch_size },
                 values,
                 trace_domain,
                 qc_domains,
                 zeta,
                 alpha,
-                eval_claim,
+                eval_claims.clone(),
                 point.clone(),
+                batch_challenge,
             )
             .map_err(|_| MultivariateAdapterError::Verification)?;
         }
@@ -208,8 +215,9 @@ impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
         qc_domains: Vec<Dom<SC>>,
         zeta: SC::Challenge,
         alpha: SC::Challenge,
-        expected_eval: SC::Challenge,
+        expected_evals: Vec<SC::Challenge>,
         eval_point: Point<SC::Challenge>,
+        batch_challenge: SC::Challenge,
     ) -> Result<(), MultivariateAdapterError>
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
@@ -219,8 +227,15 @@ impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
         // Recompute the quotient at zeta from the chunks.
         let quotient = Self::recompute_quotient(opening, &qc_domains, zeta);
         // Calculate the evaluations of the constraints at zeta.
-        let folded_constraints =
-            Self::eval_constraints::<A>(air, eval_point, opening, &sels, alpha, expected_eval);
+        let folded_constraints = Self::eval_constraints::<A>(
+            air,
+            eval_point,
+            opening,
+            &sels,
+            alpha,
+            expected_evals,
+            batch_challenge,
+        );
 
         // Check that the constraints match the quotient, i.e.
         // folded_constraints(zeta) / Z_H(zeta) = quotient(zeta)
@@ -238,7 +253,8 @@ impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
         opening: &ChipOpenedValues<SC::Challenge>,
         selectors: &LagrangeSelectors<SC::Challenge>,
         alpha: SC::Challenge,
-        expected_eval: SC::Challenge,
+        expected_evals: Vec<SC::Challenge>,
+        batch_challenge: SC::Challenge,
     ) -> SC::Challenge
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
@@ -264,10 +280,11 @@ impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
             is_last_row: selectors.is_last_row,
             is_transition: selectors.is_transition,
             alpha,
-            expected_eval,
+            expected_evals,
             accumulator: SC::Challenge::zero(),
-            _marker: PhantomData,
             evaluation_point: eval_point.0,
+            batch_challenge,
+            _marker: PhantomData,
         };
 
         air.eval(&mut folder);
