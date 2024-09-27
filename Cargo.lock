@@ -646,7 +646,9 @@ dependencies = [
  "serde",
  "spl-algebra",
  "spl-multi-pcs",
+ "spl-utils",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -657,6 +659,15 @@ dependencies = [
  "p3-util",
  "spl-algebra",
  "spl-basefold",
+]
+
+[[package]]
+name = "spl-utils"
+version = "1.2.0"
+dependencies = [
+ "tracing",
+ "tracing-forest",
+ "tracing-subscriber",
 ]
 
 [[package]]

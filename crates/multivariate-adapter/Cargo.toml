@@ -11,6 +11,8 @@ categories.workspace = true
 [dependencies]
 spl-algebra = { path = "../algebra" }
 spl-multi-pcs = { path = "../multi-pcs" }
+spl-utils = { path = "../utils" }
+
 p3-challenger = {workspace = true}
 p3-dft = {workspace = true}
 p3-fri = {workspace = true}
@@ -29,6 +31,7 @@ thiserror = "1.0"
 rand = "0.8.5"
 rayon = "1.5.1"
 serde = "1.0"
+tracing = "0.1.40"
 
 
 [dev-dependencies]

@@ -5,6 +5,7 @@ use std::{
     mem::size_of,
 };
 use thiserror::Error;
+use tracing::instrument;
 
 use p3_air::{Air, AirBuilder, BaseAir, ExtensionBuilder};
 use p3_commit::Pcs;
@@ -29,7 +30,7 @@ pub type Dom<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
 >>::Domain;
 
 /// A univariate-to-multivariate adapter generic in a STARK configuration type.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MultivariateAdapterPCS<SC: StarkGenericConfig> {
     /// The STARK config.
     pub(crate) config: SC,
@@ -171,6 +172,7 @@ impl<AB: AirBuilder + MultivariateEvaluationAirBuilder> Air<AB> for Multivariate
     }
 }
 
+#[instrument(name = "generate multivariate adapter trace", level = "debug", skip_all)]
 pub fn generate_adapter_trace<SC: StarkGenericConfig>(
     data: &RowMajorMatrix<Val<SC>>,
     eval_point: &Point<SC::Challenge>,

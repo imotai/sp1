@@ -77,95 +77,119 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
         // Sample the opening point for the quotient polynomial check.
         let zeta = challenger.sample_ext_element::<SC::Challenge>();
 
-        let main_domains_points_and_opens = trace_domains
-            .iter()
-            .zip_eq(opened_values.iter())
-            .map(|(domain, values)| {
-                (
-                    *domain,
-                    vec![
-                        (zeta, values.main.local.clone()),
-                        (domain.next_point(zeta).unwrap(), values.main.next.clone()),
-                    ],
-                )
-            })
-            .collect::<Vec<_>>();
+        let parent_span = tracing::debug_span!("gather domains, points, and openings");
+        let (
+            main_domains_points_and_opens,
+            adapter_domains_points_and_opens,
+            quotient_chunk_domains,
+            quotient_domains_points_and_opens,
+        ) = parent_span.in_scope(|| {
+            let main_domains_points_and_opens = trace_domains
+                .iter()
+                .zip_eq(opened_values.iter())
+                .map(|(domain, values)| {
+                    (
+                        *domain,
+                        vec![
+                            (zeta, values.main.local.clone()),
+                            (domain.next_point(zeta).unwrap(), values.main.next.clone()),
+                        ],
+                    )
+                })
+                .collect::<Vec<_>>();
 
-        let adapter_domains_points_and_opens = trace_domains
-            .iter()
-            .zip_eq(opened_values.iter())
-            .map(|(domain, values)| {
-                (
-                    *domain,
-                    vec![
-                        (zeta, values.adapter.local.clone()),
-                        (domain.next_point(zeta).unwrap(), values.adapter.next.clone()),
-                    ],
-                )
-            })
-            .collect::<Vec<_>>();
+            let adapter_domains_points_and_opens = trace_domains
+                .iter()
+                .zip_eq(opened_values.iter())
+                .map(|(domain, values)| {
+                    (
+                        *domain,
+                        vec![
+                            (zeta, values.adapter.local.clone()),
+                            (domain.next_point(zeta).unwrap(), values.adapter.next.clone()),
+                        ],
+                    )
+                })
+                .collect::<Vec<_>>();
 
-        let quotient_chunk_domains = trace_domains
-            .iter()
-            .zip_eq(log_degrees)
-            .zip_eq(log_quotient_degrees)
-            .map(|((domain, log_degree), log_quotient_degree)| {
-                let quotient_degree = 1 << log_quotient_degree;
-                let quotient_domain =
-                    domain.create_disjoint_domain(1 << (log_degree + log_quotient_degree));
-                quotient_domain.split_domains(quotient_degree)
-            })
-            .collect::<Vec<_>>();
+            let quotient_chunk_domains = trace_domains
+                .iter()
+                .zip_eq(log_degrees)
+                .zip_eq(log_quotient_degrees)
+                .map(|((domain, log_degree), log_quotient_degree)| {
+                    let quotient_degree = 1 << log_quotient_degree;
+                    let quotient_domain =
+                        domain.create_disjoint_domain(1 << (log_degree + log_quotient_degree));
+                    quotient_domain.split_domains(quotient_degree)
+                })
+                .collect::<Vec<_>>();
 
-        let quotient_domains_points_and_opens = proof
-            .opened_values
-            .iter()
-            .zip_eq(quotient_chunk_domains.iter())
-            .flat_map(|(values, qc_domains)| {
-                values
-                    .quotient
+            let quotient_domains_points_and_opens =
+                proof
+                    .opened_values
                     .iter()
-                    .zip_eq(qc_domains)
-                    .map(move |(values, q_domain)| (*q_domain, vec![(zeta, values.clone())]))
-            })
-            .collect::<Vec<_>>();
+                    .zip_eq(quotient_chunk_domains.iter())
+                    .flat_map(|(values, qc_domains)| {
+                        values.quotient.iter().zip_eq(qc_domains).map(move |(values, q_domain)| {
+                            (*q_domain, vec![(zeta, values.clone())])
+                        })
+                    })
+                    .collect::<Vec<_>>();
+            (
+                main_domains_points_and_opens,
+                adapter_domains_points_and_opens,
+                quotient_chunk_domains,
+                quotient_domains_points_and_opens,
+            )
+        });
 
         // Verify the opening proofs.
-        self.config
-            .pcs()
-            .verify(
-                vec![
-                    (main_commit.clone(), main_domains_points_and_opens),
-                    (adapter_commit.clone(), adapter_domains_points_and_opens),
-                    (quotient_commit.clone(), quotient_domains_points_and_opens),
-                ],
-                opening_proof,
-                challenger,
-            )
-            .map_err(|_| MultivariateAdapterError::PcsError)?;
+        let parent_span = tracing::debug_span!("verify univariate openings");
+        parent_span.in_scope(move || {
+            self.config
+                .pcs()
+                .verify(
+                    vec![
+                        (main_commit.clone(), main_domains_points_and_opens),
+                        (adapter_commit.clone(), adapter_domains_points_and_opens),
+                        (quotient_commit.clone(), quotient_domains_points_and_opens),
+                    ],
+                    opening_proof,
+                    challenger,
+                )
+                .map_err(|_| MultivariateAdapterError::PcsError)
+        })?;
 
         // Verify the constraint evaluations.
         for (trace_domain, qc_domains, values) in
             izip!(trace_domains, quotient_chunk_domains, opened_values.iter())
         {
             // Verify the shape of the opening arguments matches the expected values.
-            self.verify_opening_shape(
-                MultivariateAdapterAir { batch_size: self.batch_size },
-                values,
-            )
+            let span = tracing::debug_span!("verify opening shape");
+            span.in_scope(|| {
+                self.verify_opening_shape(
+                    MultivariateAdapterAir { batch_size: self.batch_size },
+                    values,
+                )
+            })
             .map_err(|_| MultivariateAdapterError::ShapeMismatch)?;
+
             // Verify the constraint evaluation.
-            Self::verify_constraints::<MultivariateAdapterAir>(
-                &MultivariateAdapterAir { batch_size: self.batch_size },
-                values,
-                trace_domain,
-                qc_domains,
-                zeta,
-                alpha,
-                eval_claims.clone(),
-                point.clone(),
-                batch_challenge,
-            )
+
+            let span = tracing::debug_span!("verify constraints");
+            span.in_scope(|| {
+                Self::verify_constraints::<MultivariateAdapterAir>(
+                    &MultivariateAdapterAir { batch_size: self.batch_size },
+                    values,
+                    trace_domain,
+                    qc_domains,
+                    zeta,
+                    alpha,
+                    eval_claims.clone(),
+                    point.clone(),
+                    batch_challenge,
+                )
+            })
             .map_err(|_| MultivariateAdapterError::Verification)?;
         }
 

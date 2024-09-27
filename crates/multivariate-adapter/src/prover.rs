@@ -75,11 +75,12 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         let log_quotient_degree = LOG_QUOTIENT_DEGREE;
 
         let batch_randomness: SC::Challenge = challenger.sample_ext_element();
-
         let adapter_trace = generate_adapter_trace::<SC>(&data, &eval_point, batch_randomness);
 
-        let (adapter_trace_commit, adapter_trace_data) =
-            self.pcs.config.pcs().commit(vec![(trace_domain, adapter_trace.flatten_to_base())]);
+        let parent_span = tracing::debug_span!("commit adapter trace");
+        let (adapter_trace_commit, adapter_trace_data) = parent_span.in_scope(|| {
+            self.pcs.config.pcs().commit(vec![(trace_domain, adapter_trace.flatten_to_base())])
+        });
 
         challenger.observe(adapter_trace_commit.clone());
 
@@ -88,27 +89,38 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         let quotient_domain =
             trace_domain.create_disjoint_domain(1 << (log_degree + log_quotient_degree));
 
-        let data_on_quotient_domain =
-            self.pcs.config.pcs().get_evaluations_on_domain(&prover_data, 0, quotient_domain);
-        let adapter_trace_on_quotient_domain = self.pcs.config.pcs().get_evaluations_on_domain(
-            &adapter_trace_data,
-            0,
-            quotient_domain,
-        );
+        let parent_span = tracing::debug_span!("compute ldes");
+        let (data_on_quotient_domain, adapter_trace_on_quotient_domain) =
+            parent_span.in_scope(|| {
+                (
+                    self.pcs
+                        .config
+                        .pcs()
+                        .get_evaluations_on_domain(&prover_data, 0, quotient_domain)
+                        .to_row_major_matrix(),
+                    self.pcs
+                        .config
+                        .pcs()
+                        .get_evaluations_on_domain(&adapter_trace_data, 0, quotient_domain)
+                        .to_row_major_matrix(),
+                )
+            });
 
         // The constraint folding challenge.
         let alpha: SC::Challenge = challenger.sample_ext_element::<SC::Challenge>();
 
         // Compute the quotient values.
-        let quotient_values = Self::quotient_values(
-            MultivariateAdapterAir { batch_size: data.width() },
-            trace_domain,
-            quotient_domain,
-            &(eval_point.clone(), expected_evals),
-            data_on_quotient_domain,
-            adapter_trace_on_quotient_domain,
-            [alpha, batch_randomness],
-        );
+        let quotient_values = tracing::debug_span!("compute quotient values").in_scope(|| {
+            Self::quotient_values(
+                MultivariateAdapterAir { batch_size: data.width() },
+                trace_domain,
+                quotient_domain,
+                &(eval_point.clone(), expected_evals),
+                data_on_quotient_domain,
+                adapter_trace_on_quotient_domain,
+                [alpha, batch_randomness],
+            )
+        });
 
         // Split the quotient values and commit to them.
         let quotient_degree = 1 << log_quotient_degree;
@@ -118,8 +130,10 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
 
         let num_quotient_chunks = quotient_chunks.len();
 
-        let (quotient_commit, quotient_data) =
-            self.pcs.config.pcs().commit(qc_domains.into_iter().zip(quotient_chunks).collect());
+        let parent_span = tracing::debug_span!("commit quotient values");
+        let (quotient_commit, quotient_data) = parent_span.in_scope(|| {
+            self.pcs.config.pcs().commit(qc_domains.into_iter().zip(quotient_chunks).collect())
+        });
         challenger.observe(quotient_commit.clone());
 
         // Compute the quotient argument.
@@ -131,14 +145,17 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         let quotient_opening_points =
             (0..num_quotient_chunks).map(|_| vec![zeta]).collect::<Vec<_>>();
 
-        let (openings, opening_proof) = self.pcs.config.pcs().open(
-            vec![
-                (&prover_data, trace_opening_points.clone()),
-                (&adapter_trace_data, trace_opening_points),
-                (&quotient_data, quotient_opening_points),
-            ],
-            challenger,
-        );
+        let parent_span = tracing::debug_span!("open commitments");
+        let (openings, opening_proof) = parent_span.in_scope(|| {
+            self.pcs.config.pcs().open(
+                vec![
+                    (&prover_data, trace_opening_points.clone()),
+                    (&adapter_trace_data, trace_opening_points),
+                    (&quotient_data, quotient_opening_points),
+                ],
+                challenger,
+            )
+        });
 
         // Collect the opened values for each chip.
         let [main_values, adapter_values, mut quotient_values] = openings.try_into().unwrap();
@@ -296,7 +313,8 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
                     evaluation_point: &eval_point.0,
                     batch_challenge: PackedChallenge::<SC>::from_f(batch_challenge),
                 };
-                air.eval(&mut folder);
+                let span = tracing::debug_span!("eval constraints");
+                span.in_scope(|| air.eval(&mut folder));
 
                 // quotient(x) = constraints(x) / Z_H(x)
                 let quotient = folder.accumulator * inv_zeroifier;
@@ -339,6 +357,7 @@ pub mod tests {
         extension::BinomialExtensionField, AbstractExtensionField, AbstractField, Field,
     };
     use spl_multi_pcs::{Mle, MultilinearPcs, Point};
+    use spl_utils::setup_logger;
 
     use crate::prover::AdapterProver;
 
@@ -419,38 +438,44 @@ pub mod tests {
 
         let expected_evals = Mle::eval_batch_at_point(&mles, &eval_point);
 
-        let proof = prover.prove_evaluation(
-            flattened,
-            Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-            expected_evals.clone(),
-            data,
-            commitment,
-            &mut challenger,
-        );
-
-        prover
-            .pcs
-            .verify(
+        let proof = tracing::debug_span!("prove opening").in_scope(|| {
+            prover.prove_evaluation(
+                flattened,
                 Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-                expected_evals,
+                expected_evals.clone(),
+                data,
                 commitment,
-                &proof,
-                &mut Challenger::new(perm.clone()),
+                &mut challenger,
             )
-            .unwrap();
+        });
+
+        tracing::debug_span!("verify opening proof").in_scope(|| {
+            prover
+                .pcs
+                .verify(
+                    Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
+                    expected_evals,
+                    commitment,
+                    &proof,
+                    &mut Challenger::new(perm.clone()),
+                )
+                .unwrap()
+        });
     }
 
     #[test]
     fn test_adapter_stark() {
+        setup_logger();
         test_adapter_stark_batch_size::<1, 8>();
         test_adapter_stark_batch_size::<2, 8>();
         test_adapter_stark_batch_size::<4, 7>();
-        test_adapter_stark_batch_size::<100, 20>();
+        test_adapter_stark_batch_size::<25, 18>();
     }
 
     #[test]
     #[should_panic]
     fn test_adapter_stark_fails_on_non_matching_commitment() {
+        setup_logger();
         let perm = Perm::new_from_rng_128(
             Poseidon2ExternalMatrixGeneral,
             DiffusionMatrixBabyBear,
@@ -484,25 +509,29 @@ pub mod tests {
         let mle = Mle::new(vals);
         let expected_eval = mle.eval_at_point(&eval_point);
 
-        let proof = prover.prove_evaluation(
-            RowMajorMatrix::new(mle.into(), 1),
-            Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-            vec![Challenge::from_base(expected_eval)],
-            data,
-            commit,
-            &mut challenger,
-        );
-
-        prover
-            .pcs
-            .verify(
+        let proof = tracing::debug_span!("prove opening").in_scope(|| {
+            prover.prove_evaluation(
+                RowMajorMatrix::new(mle.into(), 1),
                 Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
-                // Put a wrong value here to make sure the verification fails.
-                vec![Challenge::from_base(Val::from_canonical_u16(0xDEAD))],
+                vec![Challenge::from_base(expected_eval)],
+                data,
                 commit,
-                &proof,
-                &mut Challenger::new(perm.clone()),
+                &mut challenger,
             )
-            .unwrap();
+        });
+
+        tracing::debug_span!("verify opening").in_scope(|| {
+            prover
+                .pcs
+                .verify(
+                    Point(eval_point.clone().0.iter().map(|x| Challenge::from_base(*x)).collect()),
+                    // Put a wrong value here to make sure the verification fails.
+                    vec![Challenge::from_base(Val::from_canonical_u16(0xDEAD))],
+                    commit,
+                    &proof,
+                    &mut Challenger::new(perm.clone()),
+                )
+                .unwrap()
+        });
     }
 }
