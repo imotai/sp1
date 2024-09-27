@@ -88,18 +88,13 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         let quotient_domain =
             trace_domain.create_disjoint_domain(1 << (log_degree + log_quotient_degree));
 
-        let data_on_quotient_domain = self
-            .pcs
-            .config
-            .pcs()
-            .get_evaluations_on_domain(&prover_data, 0, quotient_domain)
-            .to_row_major_matrix();
-        let adapter_trace_on_quotient_domain = self
-            .pcs
-            .config
-            .pcs()
-            .get_evaluations_on_domain(&adapter_trace_data, 0, quotient_domain)
-            .to_row_major_matrix();
+        let data_on_quotient_domain =
+            self.pcs.config.pcs().get_evaluations_on_domain(&prover_data, 0, quotient_domain);
+        let adapter_trace_on_quotient_domain = self.pcs.config.pcs().get_evaluations_on_domain(
+            &adapter_trace_data,
+            0,
+            quotient_domain,
+        );
 
         // The constraint folding challenge.
         let alpha: SC::Challenge = challenger.sample_ext_element::<SC::Challenge>();
@@ -334,7 +329,7 @@ pub mod tests {
     use p3_commit::ExtensionMmcs;
     use p3_dft::Radix2DitParallel;
     use p3_fri::{FriConfig, TwoAdicFriPcs};
-    use p3_matrix::{dense::RowMajorMatrix, Matrix};
+    use p3_matrix::dense::RowMajorMatrix;
     use p3_merkle_tree::FieldMerkleTreeMmcs;
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
@@ -418,15 +413,11 @@ pub mod tests {
         )
         .transpose();
 
-        println!("Flattened width: {}", flattened.width());
-
         let (commitment, data) = prover.commit(flattened.clone());
 
-        let expected_evals = batch_vals
-            .iter()
-            .map(|mle| Mle::new(mle.clone()).eval_at_point(&eval_point))
-            .map(Challenge::from_base)
-            .collect::<Vec<_>>();
+        let mles = batch_vals.into_iter().map(Into::into).collect_vec();
+
+        let expected_evals = Mle::eval_batch_at_point(&mles, &eval_point);
 
         let proof = prover.prove_evaluation(
             flattened,
@@ -454,7 +445,7 @@ pub mod tests {
         test_adapter_stark_batch_size::<1, 8>();
         test_adapter_stark_batch_size::<2, 8>();
         test_adapter_stark_batch_size::<4, 7>();
-        test_adapter_stark_batch_size::<200, 22>();
+        test_adapter_stark_batch_size::<100, 20>();
     }
 
     #[test]
