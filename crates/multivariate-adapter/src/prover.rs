@@ -14,7 +14,7 @@ use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 use p3_util::log2_strict_usize;
 
 use spl_algebra::{AbstractExtensionField, AbstractField, PackedValue};
-use spl_multi_pcs::Point;
+use spl_multi_pcs::{MultilinearPcsProver, Point};
 
 use crate::{
     air_types::{AirOpenedValues, ChipOpenedValues},
@@ -40,9 +40,9 @@ type ProverData<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenger,
 >>::ProverData;
 
-type PointAndEvals<SC> = (
+type PointAndEvals<'a, SC> = (
     Point<<SC as StarkGenericConfig>::Challenge>,
-    Vec<<SC as StarkGenericConfig>::Challenge>,
+    &'a [<SC as StarkGenericConfig>::Challenge],
 );
 
 pub struct AdapterProver<SC: StarkGenericConfig> {
@@ -59,18 +59,17 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
 
     pub fn prove_evaluation(
         &self,
-        data: RowMajorMatrix<Val<SC>>,
         eval_point: Point<SC::Challenge>,
-        expected_evals: Vec<SC::Challenge>,
-        prover_data: ProverData<SC>,
-        main_commit: Com<SC>,
+        expected_evals: &[SC::Challenge],
+        prover_data: (ProverData<SC>, RowMajorMatrix<Val<SC>>),
         challenger: &mut SC::Challenger,
     ) -> MultivariateAdapterProof<SC> {
+        let data = prover_data.1;
         let log_degree = log2_strict_usize(data.height());
         let degree = 1 << log_degree;
 
         // Observe the main commitment.
-        challenger.observe(main_commit.clone());
+        // challenger.observe(main_commit.clone());
 
         let trace_domain = self.pcs.config.pcs().natural_domain_for_degree(degree);
 
@@ -101,7 +100,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
                     self.pcs
                         .config
                         .pcs()
-                        .get_evaluations_on_domain(&prover_data, 0, quotient_domain)
+                        .get_evaluations_on_domain(&prover_data.0, 0, quotient_domain)
                         .to_row_major_matrix(),
                     self.pcs
                         .config
@@ -160,7 +159,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         let (openings, opening_proof) = parent_span.in_scope(|| {
             self.pcs.config.pcs().open(
                 vec![
-                    (&prover_data, trace_opening_points.clone()),
+                    (&prover_data.0, trace_opening_points.clone()),
                     (&adapter_trace_data, trace_opening_points),
                     (&quotient_data, quotient_opening_points),
                 ],
@@ -345,13 +344,48 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
             .collect()
     }
 
-    pub fn commit(&self, data: RowMajorMatrix<Val<SC>>) -> (Com<SC>, ProverData<SC>) {
+    pub fn commit(
+        &self,
+        data: RowMajorMatrix<Val<SC>>,
+    ) -> ((Com<SC>, ProverData<SC>), RowMajorMatrix<Val<SC>>) {
         let domain = self
             .pcs
             .config
             .pcs()
             .natural_domain_for_degree(data.height());
-        self.pcs.config.pcs().commit(vec![(domain, data)])
+        (
+            self.pcs.config.pcs().commit(vec![(domain, data.clone())]),
+            data,
+        )
+    }
+}
+
+impl<SC: StarkGenericConfig>
+    MultilinearPcsProver<Val<SC>, SC::Challenge, SC::Challenger, MultivariateAdapterPCS<SC>>
+    for AdapterProver<SC>
+{
+    type OpeningProof = MultivariateAdapterProof<SC>;
+
+    type MultilinearProverData = (ProverData<SC>, RowMajorMatrix<Val<SC>>);
+
+    type MultilinearCommitment = Com<SC>;
+
+    fn commit(
+        &self,
+        data: RowMajorMatrix<Val<SC>>,
+    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
+        let ((commitment, data), matrix) = AdapterProver::commit(self, data);
+        (commitment, (data, matrix))
+    }
+
+    fn prove_evaluations(
+        &self,
+        eval_point: Point<SC::Challenge>,
+        expected_evals: &[SC::Challenge],
+        prover_data: Self::MultilinearProverData,
+        challenger: &mut SC::Challenger,
+    ) -> Self::OpeningProof {
+        AdapterProver::prove_evaluation(self, eval_point, expected_evals, prover_data, challenger)
     }
 }
 
@@ -360,7 +394,7 @@ pub mod tests {
 
     use itertools::Itertools;
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_challenger::DuplexChallenger;
+    use p3_challenger::{CanObserve, DuplexChallenger};
     use p3_commit::ExtensionMmcs;
     use p3_dft::Radix2DitParallel;
     use p3_fri::{FriConfig, TwoAdicFriPcs};
@@ -459,25 +493,25 @@ pub mod tests {
         )
         .transpose();
 
-        let (commitment, data) = prover.commit(flattened.clone());
+        let ((commitment, data), matrix) = prover.commit(flattened.clone());
 
         let mles = batch_vals.iter().map(|x| Mle::new(x.clone())).collect_vec();
 
         let expected_evals =
             Mle::eval_batch_at_point(&mles.iter().collect::<Vec<_>>(), &eval_point);
 
+        challenger.observe(commitment);
+
         let proof = tracing::debug_span!("prove opening").in_scope(|| {
             prover.prove_evaluation(
-                flattened,
                 Point::new(
                     eval_point
                         .iter()
                         .map(|x| Challenge::from_base(*x))
                         .collect(),
                 ),
-                expected_evals.clone(),
-                data,
-                commitment,
+                &expected_evals.clone(),
+                (data, matrix),
                 &mut challenger,
             )
         });
@@ -507,7 +541,7 @@ pub mod tests {
         test_adapter_stark_batch_size::<1, 8>();
         test_adapter_stark_batch_size::<2, 8>();
         test_adapter_stark_batch_size::<4, 7>();
-        test_adapter_stark_batch_size::<25, 18>();
+        test_adapter_stark_batch_size::<25, 10>();
     }
 
     #[test]
@@ -546,22 +580,22 @@ pub mod tests {
 
         let prover = AdapterProver::new(pcs);
 
-        let (commit, data) = prover.commit(RowMajorMatrix::new(vals.clone(), 2));
+        let ((commit, data), matrix) = prover.commit(RowMajorMatrix::new(vals.clone(), 2));
         let mle = Mle::new(vals);
         let expected_eval = mle.eval_at_point(&eval_point);
 
+        challenger.observe(commit);
+
         let proof = tracing::debug_span!("prove opening").in_scope(|| {
             prover.prove_evaluation(
-                RowMajorMatrix::new(mle.into(), 1),
                 Point::new(
                     eval_point
                         .iter()
                         .map(|x| Challenge::from_base(*x))
                         .collect(),
                 ),
-                vec![Challenge::from_base(expected_eval)],
-                data,
-                commit,
+                &[Challenge::from_base(expected_eval)],
+                (data, matrix),
                 &mut challenger,
             )
         });

@@ -293,3 +293,22 @@ pub trait MultilinearPcs<K: Copy, Challenger> {
         challenger: &mut Challenger,
     ) -> Result<(), Self::Error>;
 }
+
+pub trait MultilinearPcsProver<K: Copy, EK: Copy, Challenger, PCS: MultilinearPcs<EK, Challenger>> {
+    type OpeningProof;
+    type MultilinearProverData;
+    type MultilinearCommitment;
+
+    fn commit(
+        &self,
+        data: RowMajorMatrix<K>,
+    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData);
+
+    fn prove_evaluations(
+        &self,
+        eval_point: Point<EK>,
+        expected_evals: &[EK],
+        prover_data: Self::MultilinearProverData,
+        challenger: &mut Challenger,
+    ) -> Self::OpeningProof;
+}

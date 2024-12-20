@@ -11,6 +11,7 @@ use p3_matrix::{
     Matrix,
 };
 use spl_algebra::{ExtensionField, Field, TwoAdicField};
+use spl_multi_pcs::MultilinearPcsProver;
 
 use crate::{
     BaseFoldPcs, BaseFoldProof, BaseFoldProver, BaseFoldProverData, Point, RsBaseFoldConfig,
@@ -233,5 +234,44 @@ where
             pow_witness,
             final_poly: current[0],
         }
+    }
+}
+
+impl<
+        K: TwoAdicField,
+        M: Mmcs<K>,
+        Challenger: GrindingChallenger + CanObserve<M::Commitment> + FieldChallenger<K>,
+    > MultilinearPcsProver<K, K, Challenger, BaseFoldPcs<K, M, Challenger>>
+    for BaseFoldProver<K, M, Challenger>
+where
+    M::Commitment: Eq + Debug,
+{
+    type OpeningProof = BaseFoldProof<K, M, Challenger::Witness>;
+
+    type MultilinearProverData = BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>;
+
+    type MultilinearCommitment = M::Commitment;
+
+    fn commit(
+        &self,
+        data: RowMajorMatrix<K>,
+    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
+        self.commit(data.values)
+    }
+
+    fn prove_evaluations(
+        &self,
+        eval_point: Point<K>,
+        expected_evals: &[K],
+        prover_data: Self::MultilinearProverData,
+        challenger: &mut Challenger,
+    ) -> Self::OpeningProof {
+        BaseFoldProver::prove_evaluation(
+            self,
+            prover_data,
+            eval_point,
+            expected_evals[0],
+            challenger,
+        )
     }
 }
