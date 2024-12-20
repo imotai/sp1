@@ -39,10 +39,11 @@ pub fn commit_phase_single_round<
     (fold_even_odd(current, beta), commit, prover_data, beta)
 }
 
-/// Answer a single FRI query (open the vector commitment and the commit phase messages at a given index).
+/// Answer a single FRI query (open the vector commitment and the commit phase messages at a given
+/// index).
 ///
-/// Returns: the opening of the vector commitment at the given index, and a FRI query proof. Modified
-/// from Plonky3 to be compatible with opening only a single vector.
+/// Returns: the opening of the vector commitment at the given index, and a FRI query proof.
+/// Modified from Plonky3 to be compatible with opening only a single vector.
 pub fn answer_query<F, M>(
     config: &FriConfig<M>,
     commit_phase_commits: &[M::ProverData<RowMajorMatrix<F>>],
@@ -70,11 +71,19 @@ where
                 opening = opened_row[index_i % 2];
             }
 
-            CommitPhaseProofStep { sibling_value, opening_proof }
+            CommitPhaseProofStep {
+                sibling_value,
+                opening_proof,
+            }
         })
         .collect();
 
-    (opening, QueryProof { commit_phase_openings })
+    (
+        opening,
+        QueryProof {
+            commit_phase_openings,
+        },
+    )
 }
 
 #[allow(clippy::type_complexity)]
@@ -90,7 +99,10 @@ where
     pub fn commit(
         &self,
         vals: Vec<K>,
-    ) -> (M::Commitment, BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>) {
+    ) -> (
+        M::Commitment,
+        BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>,
+    ) {
         // The parameter `vals` is the vector of coefficients of a univariate polynomial of degree
         // < d, and we compute the evluations of this polynomial on a domain of size
         // `config.blowup()*d`
@@ -117,23 +129,31 @@ where
 
         let (commit, data) = self.pcs.config.fri_config.mmcs.commit_matrix(mat);
 
-        (commit, BaseFoldProverData { vals: vals.into(), data })
+        (
+            commit,
+            BaseFoldProverData {
+                vals: vals.into(),
+                data,
+            },
+        )
     }
 
-    /// Given a vector of evaluations of a polynomial `vals` at a point `eval_point`, the prover generates
-    /// a proof about the evaluation of the multilinear extension of `vals` at `eval_point`.
+    /// Given a vector of evaluations of a polynomial `vals` at a point `eval_point`, the prover
+    /// generates a proof about the evaluation of the multilinear extension of `vals` at
+    /// `eval_point`.
     ///
-    /// Thinking of `vals` as a univariate polynomial in the coefficient basis, the prover commits to the
-    /// Reed-Solomon encoding of `vals` (as a vector). Letting g be the multilinear extension and
-    /// `X_0, ... , X_{d-1}` be the coordinates of `eval_point`, the prover:
+    /// Thinking of `vals` as a univariate polynomial in the coefficient basis, the prover commits
+    /// to the Reed-Solomon encoding of `vals` (as a vector). Letting g be the multilinear
+    /// extension and `X_0, ... , X_{d-1}` be the coordinates of `eval_point`, the prover:
     /// 1. Computes `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`, and sends its
-    ///     claims about these openings as messages to the verifier.
+    ///    claims about these openings as messages to the verifier.
     /// 2. Takes a random linear combination of the above two messages to produce an equivalent
-    ///    evaluation claim about a multilinear polynomial in one fewer variable. On the univariate side,
-    ///    this corresponds to folding in FRI, and the prover sends a commitment to the folded univariate
+    ///    evaluation claim about a multilinear polynomial in one fewer variable. On the univariate
+    ///    side, this corresponds to folding in FRI, and the prover sends a commitment to the folded
+    ///    univariate polynomial.
+    /// 3. Repeats the two above steps until reduced to a claim about a 0-variate multilinear and a
+    ///    degree 0-univariate polynomial, which should agree. It sends the value of this constant
     ///    polynomial.
-    /// 3. Repeats the two above steps until reduced to a claim about a 0-variate multilinear and a degree
-    ///    0-univariate polynomial, which should agree. It sends the value of this constant polynomial.
     /// 4. Answers queries to its vector commitments as in FRI.
     pub fn prove_evaluation(
         &self,
@@ -165,14 +185,14 @@ where
         for _ in 0..eval_point.dimension() {
             // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
             // TODO: I think there's a lot repeated work between these rounds that can be cut out.
-            eval_point.0.pop();
+            eval_point.remove_last_coordinate();
             let uni_poly = current_mle.fixed_evaluations(&eval_point);
             univariate_polys.push(uni_poly);
 
             challenger.observe_slice(&uni_poly);
 
-            // Perform a single round of the FRI commit phase, returning the commitment, folded codeword,
-            // and folding parameter.
+            // Perform a single round of the FRI commit phase, returning the commitment, folded
+            // codeword, and folding parameter.
             let commit;
             let prover_data;
             let beta;
@@ -181,13 +201,14 @@ where
             commits.push(commit);
             data.push(prover_data);
 
-            // Combine the two halves (last variable evaluated to 0 and 1) into a single multivariate
-            // to pass into the next round. Equivalent to the FRI-fold stemp on the univariate side.
+            // Combine the two halves (last variable evaluated to 0 and 1) into a single
+            // multivariate to pass into the next round. Equivalent to the FRI-fold
+            // stemp on the univariate side.
             current_mle = current_mle.random_linear_combination(beta);
         }
 
-        // As in FRI, the last codeword should be an encoding of a constant polynomial, with `1<<log_blowup`
-        // entries.
+        // As in FRI, the last codeword should be an encoding of a constant polynomial, with
+        // `1<<log_blowup` entries.
         debug_assert_eq!(current.len(), 1 << self.pcs.config.fri_config.log_blowup);
         for elem in current[1..].iter() {
             debug_assert_eq!(*elem, current[0])

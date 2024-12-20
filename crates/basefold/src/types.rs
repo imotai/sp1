@@ -30,8 +30,8 @@ pub struct BaseFoldProof<K: Field, M: Mmcs<K>, Witness> {
     /// The query openings and the FRI query proofs for the FRI query phase.
     pub query_phase_proofs: Vec<(K, QueryProof<K, M>)>,
 
-    /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant value of
-    /// this polynomial.
+    /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant
+    /// value of this polynomial.
     pub final_poly: K,
 
     /// Proof-of-work witness.
@@ -52,7 +52,10 @@ where
     Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
 {
     pub fn new(config: RsBaseFoldConfig<M>) -> Self {
-        Self { config, _phantom: std::marker::PhantomData }
+        Self {
+            config,
+            _phantom: std::marker::PhantomData,
+        }
     }
 }
 

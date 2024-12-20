@@ -8,6 +8,7 @@ use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair, Matrix};
 use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 
 use spl_algebra::{AbstractField, ExtensionField, Field};
+use spl_multi_pcs::Point;
 
 type Challenge<SC> = <SC as StarkGenericConfig>::Challenge;
 
@@ -25,7 +26,8 @@ pub trait MultivariateEvaluationAirBuilder: ExtensionBuilder {
     /// constrain the eq evaluation.
     fn _evaluation_point(&self) -> Vec<Self::Sum>;
 
-    /// The expected evaluation of the multilinear. (Checked to be the last entry of the cumulative sum).
+    /// The expected evaluation of the multilinear. (Checked to be the last entry of the cumulative
+    /// sum).
     fn expected_evals(&self) -> &[Self::Sum];
 
     /// The random challenge used to batch the evaluations.
@@ -65,8 +67,8 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     /// The accumulator for the constraint folding.
     pub accumulator: PackedChallenge<SC>,
 
-    /// The public values.
-    pub evaluation_point: &'a [SC::Challenge],
+    /// The evaluation point.
+    pub evaluation_point: Point<SC::Challenge>,
 }
 
 impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
@@ -143,7 +145,11 @@ impl<'a, SC: StarkGenericConfig> MultivariateEvaluationAirBuilder
     }
 
     fn _evaluation_point(&self) -> Vec<Self::Sum> {
-        self.evaluation_point.iter().copied().map(PackedChallenge::<SC>::from_f).collect()
+        self.evaluation_point
+            .iter()
+            .copied()
+            .map(PackedChallenge::<SC>::from_f)
+            .collect()
     }
 
     fn batch_randomness(&self) -> Self::RandomVar {
@@ -172,7 +178,7 @@ pub struct GenericVerifierConstraintFolder<'a, F, EF, Var, Expr> {
     pub alpha: Var,
 
     /// The expected evaluation of the multilinear.
-    pub expected_evals: Vec<Var>,
+    pub expected_evals: &'a [Var],
 
     /// The random challenge used to batch the evaluations.
     pub batch_challenge: Var,
@@ -180,7 +186,7 @@ pub struct GenericVerifierConstraintFolder<'a, F, EF, Var, Expr> {
     /// The accumulator for the constraint folding.
     pub accumulator: Expr,
     /// The public values.
-    pub evaluation_point: Vec<Var>,
+    pub evaluation_point: Point<Var>,
     /// The marker type.
     pub _marker: PhantomData<(F, EF)>,
 }
@@ -325,11 +331,11 @@ where
     }
 
     fn expected_evals(&self) -> &[Self::Sum] {
-        &self.expected_evals
+        self.expected_evals
     }
 
     fn _evaluation_point(&self) -> Vec<Self::Sum> {
-        self.evaluation_point.clone()
+        self.evaluation_point.to_vec()
     }
 
     fn batch_randomness(&self) -> Self::RandomVar {

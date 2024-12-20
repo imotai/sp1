@@ -9,7 +9,20 @@ categories.workspace = true
 
 [dependencies]
 p3-util = {workspace = true}
+p3-uni-stark = {workspace = true}
+p3-challenger = {workspace = true}
+p3-baby-bear = {workspace = true}
+
 spl-algebra = {path = "../algebra"}
 spl-basefold = {path = "../basefold"}
+spl-multi-pcs = {path = "../multi-pcs"}
 
 itertools = "0.12.0"
+rayon = "1.5.1"
+serde = { version = "1.0.207", features = ["derive"] }
+tracing = "0.1.40"
+
+[dev-dependencies]
+p3-poseidon2 = {workspace = true}
+
+rand = "0.8.4"

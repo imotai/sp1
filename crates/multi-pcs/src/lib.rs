@@ -1,12 +1,14 @@
 use std::ops::Mul;
 
 use itertools::Itertools;
+use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
-use spl_algebra::{ExtensionField, Field};
+use serde::{Deserialize, Serialize};
+use spl_algebra::Field;
 
 /// A wrapper struct for a multivariate point.
-#[derive(Debug, Clone)]
-pub struct Point<K>(pub Vec<K>);
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
+pub struct Point<K>(Vec<K>);
 
 impl<K: Copy> Point<K> {
     pub fn new(point: Vec<K>) -> Self {
@@ -25,17 +27,50 @@ impl<K: Copy> Point<K> {
         Point(self.0[..k].to_vec())
     }
 
+    pub fn split_at(&self, k: usize) -> (Self, Self) {
+        (Point(self.0[..k].to_vec()), Point(self.0[k..].to_vec()))
+    }
+
+    pub fn split_at_first(&self) -> (K, Self) {
+        (self.0[0], Point(self.0[1..].to_vec()))
+    }
+
     pub fn reversed_point(&self) -> Self {
         Point(self.0.iter().rev().copied().collect())
+    }
+
+    pub fn add_dimension(&mut self, dim_val: K) {
+        self.0.push(dim_val);
+    }
+
+    pub fn remove_last_coordinate(&mut self) {
+        self.0.pop();
+    }
+
+    pub fn reverse(&mut self) {
+        self.0.reverse();
+    }
+
+    pub fn ith_coordinate(&self, i: usize) -> K {
+        self.0[i]
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, K> {
+        self.0.iter()
+    }
+
+    pub fn to_vec(&self) -> Vec<K> {
+        self.0.clone()
     }
 }
 
 /// A struct wrapping Vec<K>.
 ///
-/// The field `guts` is the vector of evaluations of a multilinear polynomial on the Boolean hypercube.
-#[derive(Clone, Debug)]
+/// The field `guts` is the vector of evaluations of a multilinear polynomial on the Boolean
+/// hypercube.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Mle<K> {
-    guts: Vec<K>,
+    pub guts: Vec<K>,
 }
 
 impl<K> From<Vec<K>> for Mle<K> {
@@ -49,50 +84,104 @@ impl<K: Field> Mle<K> {
         Self { guts }
     }
 
-    pub fn eval_at_point<EK>(&self, point: &Point<EK>) -> EK
-    where
-        EK: ExtensionField<K>,
-    {
-        self.guts.iter().zip(partial_lagrange_eval(point).iter()).map(|(x, y)| *y * *x).sum()
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            guts: Vec::with_capacity(capacity),
+        }
     }
 
-    pub fn eval_batch_at_point<EK>(mles: &[Mle<K>], point: &Point<EK>) -> Vec<EK>
-    where
-        EK: ExtensionField<K>,
-    {
+    /// The [`Mle`] obtained by fixing the last variable to 0. Since an [`Mle`] is encoded as a
+    /// vector of evaluations, this is done by taking every even-indexed element of the vector.
+    pub fn fix_last_to_zero(&self) -> Self {
+        if self.num_variables() == 0 {
+            self.clone()
+        } else {
+            Mle::new(self.guts.iter().step_by(2).copied().collect())
+        }
+    }
+
+    /// The Mle obtained by fixing the last variable to 1. Since an [`Mle`] is encoded as a vector
+    /// of evaluations, this is done by taking every odd-indexed element of the vector.
+    pub fn fix_last_to_one(&self) -> Self {
+        if self.num_variables() == 0 {
+            self.clone()
+        } else {
+            Mle::new(self.guts.iter().skip(1).step_by(2).copied().collect())
+        }
+    }
+
+    pub fn num_variables(&self) -> usize {
+        log2_strict_usize(self.guts.len())
+    }
+
+    /// Splits a multilinear polynomial in n variables into 2^(n-idx) polynomials in idx variables.
+    pub fn split_at(&self, idx: usize) -> Vec<Self> {
+        // TODO: Remove clone.
+        RowMajorMatrix::new(self.guts.clone(), 1 << (self.num_variables() - idx))
+            .transpose()
+            .values
+            .chunks_exact(1 << idx)
+            .map(|x| x.to_vec().into())
+            .collect()
+    }
+}
+
+impl<K: Field> Mle<K> {
+    pub fn eval_at_point<EF: Field + Mul<K, Output = EF>>(&self, point: &Point<EF>) -> EF {
+        self.guts
+            .iter()
+            .zip(partial_lagrange_eval(point).iter())
+            .map(|(x, y)| *y * *x)
+            .sum()
+    }
+
+    pub fn eval_batch_at_point<EF: Field + Mul<K, Output = EF>>(
+        mles: &[&Mle<K>],
+        point: &Point<EF>,
+    ) -> Vec<EF> {
         let partial_lagrange = partial_lagrange_eval(point);
         mles.iter()
-            .map(|mle| mle.guts.iter().zip(partial_lagrange.iter()).map(|(x, y)| *y * *x).sum())
+            .map(|mle| {
+                mle.guts
+                    .iter()
+                    .zip(partial_lagrange.iter())
+                    .map(|(x, y)| *y * *x)
+                    .sum()
+            })
             .collect()
     }
 
     pub fn random_linear_combination(&self, beta: K) -> Mle<K> {
         // Compute the random linear combination of the even and odd coefficients of `vals`. This is
         // used to reduce the two evaluation claims for new_point into a single evaluation claim.
-        self.guts
-            .iter()
-            .step_by(2)
-            .copied()
-            .zip(self.guts.iter().skip(1).step_by(2).copied())
-            .map(|(a, b)| a + beta * b)
-            .collect_vec()
-            .into()
+        Mle::new(
+            self.guts
+                .iter()
+                .step_by(2)
+                .copied()
+                .zip(self.guts.iter().skip(1).step_by(2).copied())
+                .map(|(a, b)| a + beta * b)
+                .collect_vec(),
+        )
     }
 
     /// Compute the evaluation claims with the last variable fixed to 0, and the last variable
     /// fixed to 1 while fixing the remaining coordinates to their corresponding values in `point`.
     /// These are used to generate the messages sent to the verifier in a BaseFold proof.
     pub fn fixed_evaluations(&self, new_point: &Point<K>) -> [K; 2] {
-        let batch = vec![
-            self.guts.iter().step_by(2).copied().collect_vec().into(),
-            self.guts.iter().skip(1).step_by(2).copied().collect_vec().into(),
-        ];
+        let evens = self.guts.iter().step_by(2).copied().collect_vec().into();
+        let odds = self
+            .guts
+            .iter()
+            .skip(1)
+            .step_by(2)
+            .copied()
+            .collect_vec()
+            .into();
+        let batch = vec![&evens, &odds];
+
         let batch_evals = Mle::eval_batch_at_point(&batch, new_point);
         [batch_evals[0], batch_evals[1]]
-    }
-
-    pub fn num_variables(&self) -> usize {
-        log2_strict_usize(self.guts.len())
     }
 }
 
@@ -102,11 +191,24 @@ impl<K: Field> From<Mle<K>> for Vec<K> {
     }
 }
 
+impl<K> From<&[K]> for Mle<K>
+where
+    K: Copy,
+{
+    fn from(value: &[K]) -> Self {
+        Mle {
+            guts: value.to_vec(),
+        }
+    }
+}
+
 impl<K: Field> Mul<K> for Mle<K> {
     type Output = Self;
 
     fn mul(self, rhs: K) -> Self::Output {
-        Self { guts: self.guts.into_iter().map(|x| x * rhs).collect() }
+        Self {
+            guts: self.guts.into_iter().map(|x| x * rhs).collect(),
+        }
     }
 }
 
@@ -117,8 +219,8 @@ impl<K: Field> Mul<K> for Mle<K> {
 /// The explicit formula for partial_lagrange_eval(n_variables, point) is as follows: let
 /// `point.point = vec![x_1, x_2, ..., x_n]`. For y in {0,1}^n, let `y_i` be the ith bit of y. Then
 /// partial_lagrange_eval(n, point) = Prod_i (x_i * y_i + (1-x_i) * (1-y_i)).
-/// `partial_lagrange_eval(n,point)` has the nice property that to evaluate an n-variate `Mle` g at a
-/// `point`, we simply take the dot product of partial_lagrange_eval(n, point) with g.
+/// `partial_lagrange_eval(n,point)` has the nice property that to evaluate an n-variate `Mle` g at
+/// a `point`, we simply take the dot product of partial_lagrange_eval(n, point) with g.
 ///  
 /// Yet another perspective on `partial_lagrange_eval`. If we take the 2^{n_variables} `Mle`s
 /// returned by letting `point` range over the Boolean hypercube, these `Mle`s form a basis for the
@@ -140,7 +242,10 @@ pub fn partial_lagrange_eval<K: Field>(point: &Point<K>) -> Vec<K> {
             .iter()
             // For each value in the previous round, multiply by (1-coordinate) and coordinate,
             // and collect all these values into a new vec.
-            .flat_map(|val| [*val * (one - *coordinate), *val * *coordinate])
+            .flat_map(|val| {
+                let prod = *val * *coordinate;
+                [*val - prod, prod]
+            })
             .collect();
     });
     evals
@@ -152,7 +257,8 @@ pub fn partial_lagrange_eval<K: Field>(point: &Point<K>) -> Vec<K> {
 ///
 /// This evaluation takes time linear in n to compute, so the verifier can easily compute it. Hence,
 /// even though
-/// ```full_lagrange_eval(point_1, point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
+/// ```full_lagrange_eval(point_1,
+/// point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
 /// the RHS of the above equation runs in O(2^n) time, while the LHS runs in O(n).
 /// The polynomial f(X,Y) is an important building block in zerocheck and other protocols which use
 /// sumcheck.
@@ -166,7 +272,8 @@ pub fn full_lagrange_eval<F: Field>(point_1: &Point<F>, point_2: &Point<F>) -> F
         .zip(point_2.0.iter())
         .map(|(x, y)| {
             // Multiply by (x_i * y_i + (1-x_i) * (1-y_i)).
-            *x * *y + (F::one() - *x) * (F::one() - *y)
+            let prod = *x * *y;
+            prod + prod + F::one() - *x - *y
         })
         .product()
 }
@@ -180,7 +287,7 @@ pub trait MultilinearPcs<K: Copy, Challenger> {
     fn verify(
         &self,
         point: Point<K>,
-        evaluation_claims: Vec<K>,
+        evaluation_claims: &[K],
         commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,

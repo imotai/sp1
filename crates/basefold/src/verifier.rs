@@ -46,10 +46,19 @@ where
         let mut evals = vec![folded_eval; 2];
         evals[index_sibling % 2] = step.sibling_value;
 
-        let dims = &[Dimensions { width: 2, height: 1 << log_folded_height }];
+        let dims = &[Dimensions {
+            width: 2,
+            height: 1 << log_folded_height,
+        }];
         config
             .mmcs
-            .verify_batch(commit, dims, index_pair, &[evals.clone()], &step.opening_proof)
+            .verify_batch(
+                commit,
+                dims,
+                index_pair,
+                &[evals.clone()],
+                &step.opening_proof,
+            )
             .map_err(FriError::CommitPhaseMmcsError)?;
 
         let mut xs = [x; 2];
@@ -81,14 +90,14 @@ where
     type Commitment = M::Commitment;
     type Error = BaseFoldError<M::Error>;
 
-    /// Verify a BaseFold proof of a claim: commitment D represents a multilinear polynomial `g` whose
-    /// evaluation at `point` is `proof.eval`.
+    /// Verify a BaseFold proof of a claim: commitment D represents a multilinear polynomial `g`
+    /// whose evaluation at `point` is `proof.eval`.
     ///
-    /// The verifier proceeds in rounds. First, it checks that the claimed evaluation of `g` at `point`
-    /// is consistent with the proof's claims about `g(X_0, ..., X_{d-2}, 0)` and `g(X_0, ..., X_{d-2}, 1)`.
-    /// Then, it takes a random linear combination of those evaluations to produce a claim about a
-    /// multilinear in one fewer variable. It iterates these two checks d times in total to produce
-    /// a claim about a 0-variate polynomial.
+    /// The verifier proceeds in rounds. First, it checks that the claimed evaluation of `g` at
+    /// `point` is consistent with the proof's claims about `g(X_0, ..., X_{d-2}, 0)` and
+    /// `g(X_0, ..., X_{d-2}, 1)`. Then, it takes a random linear combination of those
+    /// evaluations to produce a claim about a multilinear in one fewer variable. It iterates
+    /// these two checks d times in total to produce a claim about a 0-variate polynomial.
     ///
     /// Then, the verifier verifies the FRI queries sent by the prover.
     ///
@@ -97,7 +106,7 @@ where
     fn verify(
         &self,
         mut point: Point<K>,
-        eval_claims: Vec<K>,
+        eval_claims: &[K],
         commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,
@@ -119,7 +128,7 @@ where
 
         // The prover messages correspond to fixing the last coordinate first, so we reverse the
         // underlying point for the verification.
-        point.0.reverse();
+        point.reverse();
 
         // Sample the challenges used for FRI folding and BaseFold random linear combinations.
         let betas = proof
@@ -134,24 +143,33 @@ where
             .collect_vec();
 
         // Check the consistency of the first univariate message with the claimed evaluation. The
-        // first_poly is supposed to be `vals(X_0, X_1, ..., X_{d-1}, 0), vals(X_0, X_1, ..., X_{d-1}, 1)`.
-        // Given this, the claimed evaluation should be `(1 - X_d) * first_poly[0] + X_d * first_poly[1]`.
+        // first_poly is supposed to be `vals(X_0, X_1, ..., X_{d-1}, 0), vals(X_0, X_1, ...,
+        // X_{d-1}, 1)`. Given this, the claimed evaluation should be `(1 - X_d) *
+        // first_poly[0] + X_d * first_poly[1]`.
         let first_poly = proof.univariate_messages[0];
-        if eval_claim != (K::one() - point.0[0]) * first_poly[0] + point.0[0] * first_poly[1] {
+        if eval_claim
+            != (K::one() - point.ith_coordinate(0)) * first_poly[0]
+                + point.ith_coordinate(0) * first_poly[1]
+        {
             return Err(BaseFoldError::Sumcheck);
         };
 
-        // Fold the two messages into a single evaluation claim for the next round, using the sampled
-        // randomness.
+        // Fold the two messages into a single evaluation claim for the next round, using the
+        // sampled randomness.
         let mut expected_eval = first_poly[0] + betas[0] * first_poly[1];
 
         // Check round-by-round consistency between the successive sumcheck univariate messages.
-        for (i, (poly, beta)) in
-            proof.univariate_messages[1..].iter().zip(betas[1..].iter()).enumerate()
+        for (i, (poly, beta)) in proof.univariate_messages[1..]
+            .iter()
+            .zip(betas[1..].iter())
+            .enumerate()
         {
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
-            if expected_eval != (K::one() - point.0[i]) * poly[0] + point.0[i] * poly[1] {
+            if expected_eval
+                != (K::one() - point.ith_coordinate(i)) * poly[0]
+                    + point.ith_coordinate(i) * poly[1]
+            {
                 return Err(BaseFoldError::Sumcheck);
             }
 
@@ -167,13 +185,16 @@ where
 
         let log_len = proof.commitments.len();
 
-        // Sample query indices for the FRI query IOPP part of BaseFold. This part is very similar to
-        // the corresponding part in the Plonky3 verifier.
+        // Sample query indices for the FRI query IOPP part of BaseFold. This part is very similar
+        // to the corresponding part in the Plonky3 verifier.
         let query_indices = (0..self.config.fri_config.num_queries)
             .map(|_| challenger.sample_bits(log_len + self.config.fri_config.log_blowup))
             .collect_vec();
 
-        let challenges = FriChallenges { query_indices, betas };
+        let challenges = FriChallenges {
+            query_indices,
+            betas,
+        };
 
         // Verify the FRI queries.
         challenges
@@ -187,7 +208,11 @@ where
                     *idx,
                     query_proof,
                     &challenges.betas,
-                    (proof.final_poly, *opening, log_len + self.config.fri_config.log_blowup),
+                    (
+                        proof.final_poly,
+                        *opening,
+                        log_len + self.config.fri_config.log_blowup,
+                    ),
                 )
             })
             .collect::<Result<Vec<_>, _>>()
@@ -239,7 +264,9 @@ mod tests {
             println!("Testing an instance with {} variables.", i);
             let num_variables = i;
 
-            let vals = (0..(1 << num_variables)).map(|_| rng.gen::<F>()).collect_vec();
+            let vals = (0..(1 << num_variables))
+                .map(|_| rng.gen::<F>())
+                .collect_vec();
             let perm = Perm::new_from_rng_128(
                 Poseidon2ExternalMatrixGeneral,
                 DiffusionMatrixBabyBear,
@@ -278,7 +305,7 @@ mod tests {
                 .pcs
                 .verify(
                     new_eval_point,
-                    vec![expected_eval],
+                    &[expected_eval],
                     commit,
                     &proof,
                     &mut Challenger::new(perm.clone()),
