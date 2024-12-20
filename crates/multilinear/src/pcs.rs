@@ -4,7 +4,7 @@ use spl_algebra::{ExtensionField, Field};
 use crate::Point;
 
 /// A trait representing a multilinear polynomial commitment scheme.
-pub trait MultilinearPcs<Challenger> {
+pub trait MultilinearPcsVerifier<Challenger> {
     type F: Field;
     type EF: ExtensionField<Self::F>;
     type Proof;
@@ -22,20 +22,20 @@ pub trait MultilinearPcs<Challenger> {
 }
 
 pub trait MultilinearPcsProver<Challenger> {
-    type PCS: MultilinearPcs<Challenger>;
+    type PCS: MultilinearPcsVerifier<Challenger>;
     type OpeningProof;
     type MultilinearProverData;
     type MultilinearCommitment;
 
     fn commit_multilinears(
         &self,
-        data: Vec<RowMajorMatrix<<Self::PCS as MultilinearPcs<Challenger>>::F>>,
+        data: Vec<RowMajorMatrix<<Self::PCS as MultilinearPcsVerifier<Challenger>>::F>>,
     ) -> (Self::MultilinearCommitment, Self::MultilinearProverData);
 
     fn prove_evaluations(
         &self,
-        eval_point: Point<<Self::PCS as MultilinearPcs<Challenger>>::EF>,
-        expected_evals: &[<Self::PCS as MultilinearPcs<Challenger>>::EF],
+        eval_point: Point<<Self::PCS as MultilinearPcsVerifier<Challenger>>::EF>,
+        expected_evals: &[<Self::PCS as MultilinearPcsVerifier<Challenger>>::EF],
         prover_data: Self::MultilinearProverData,
         challenger: &mut Challenger,
     ) -> Self::OpeningProof;

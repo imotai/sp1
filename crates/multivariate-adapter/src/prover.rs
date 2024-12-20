@@ -387,7 +387,7 @@ pub mod tests {
     use spl_algebra::{
         extension::BinomialExtensionField, AbstractExtensionField, AbstractField, Field,
     };
-    use spl_multilinear::{Mle, MultilinearPcs, Point};
+    use spl_multilinear::{Mle, MultilinearPcsVerifier, Point};
     use spl_utils::setup_logger;
 
     use crate::prover::AdapterProver;

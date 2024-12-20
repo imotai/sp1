@@ -8,7 +8,7 @@ use p3_fri::{
 use p3_matrix::Dimensions;
 use p3_util::reverse_bits_len;
 use spl_algebra::TwoAdicField;
-use spl_multilinear::{MultilinearPcs, Point};
+use spl_multilinear::{MultilinearPcsVerifier, Point};
 
 use crate::{BaseFoldError, BaseFoldPcs, BaseFoldProof};
 
@@ -71,7 +71,7 @@ where
     Ok(())
 }
 
-impl<K: TwoAdicField, M: Mmcs<K>, Challenger> MultilinearPcs<Challenger>
+impl<K: TwoAdicField, M: Mmcs<K>, Challenger> MultilinearPcsVerifier<Challenger>
     for BaseFoldPcs<K, M, Challenger>
 where
     Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
@@ -226,7 +226,7 @@ mod tests {
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
     use rand::Rng;
     use spl_algebra::Field;
-    use spl_multilinear::{Mle, MultilinearPcs};
+    use spl_multilinear::{Mle, MultilinearPcsVerifier};
 
     use crate::{BaseFoldPcs, BaseFoldProver, Point};
 
