@@ -85,9 +85,7 @@ impl<K: Field> Mle<K> {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            guts: Vec::with_capacity(capacity),
-        }
+        Self { guts: Vec::with_capacity(capacity) }
     }
 
     /// The [`Mle`] obtained by fixing the last variable to 0. Since an [`Mle`] is encoded as a
@@ -128,11 +126,7 @@ impl<K: Field> Mle<K> {
 
 impl<K: Field> Mle<K> {
     pub fn eval_at_point<EF: Field + Mul<K, Output = EF>>(&self, point: &Point<EF>) -> EF {
-        self.guts
-            .iter()
-            .zip(partial_lagrange_eval(point).iter())
-            .map(|(x, y)| *y * *x)
-            .sum()
+        self.guts.iter().zip(partial_lagrange_eval(point).iter()).map(|(x, y)| *y * *x).sum()
     }
 
     pub fn eval_batch_at_point<EF: Field + Mul<K, Output = EF>>(
@@ -141,13 +135,7 @@ impl<K: Field> Mle<K> {
     ) -> Vec<EF> {
         let partial_lagrange = partial_lagrange_eval(point);
         mles.iter()
-            .map(|mle| {
-                mle.guts
-                    .iter()
-                    .zip(partial_lagrange.iter())
-                    .map(|(x, y)| *y * *x)
-                    .sum()
-            })
+            .map(|mle| mle.guts.iter().zip(partial_lagrange.iter()).map(|(x, y)| *y * *x).sum())
             .collect()
     }
 
@@ -170,14 +158,7 @@ impl<K: Field> Mle<K> {
     /// These are used to generate the messages sent to the verifier in a BaseFold proof.
     pub fn fixed_evaluations(&self, new_point: &Point<K>) -> [K; 2] {
         let evens = self.guts.iter().step_by(2).copied().collect_vec().into();
-        let odds = self
-            .guts
-            .iter()
-            .skip(1)
-            .step_by(2)
-            .copied()
-            .collect_vec()
-            .into();
+        let odds = self.guts.iter().skip(1).step_by(2).copied().collect_vec().into();
         let batch = vec![&evens, &odds];
 
         let batch_evals = Mle::eval_batch_at_point(&batch, new_point);
@@ -196,9 +177,7 @@ where
     K: Copy,
 {
     fn from(value: &[K]) -> Self {
-        Mle {
-            guts: value.to_vec(),
-        }
+        Mle { guts: value.to_vec() }
     }
 }
 
@@ -206,9 +185,7 @@ impl<K: Field> Mul<K> for Mle<K> {
     type Output = Self;
 
     fn mul(self, rhs: K) -> Self::Output {
-        Self {
-            guts: self.guts.into_iter().map(|x| x * rhs).collect(),
-        }
+        Self { guts: self.guts.into_iter().map(|x| x * rhs).collect() }
     }
 }
 

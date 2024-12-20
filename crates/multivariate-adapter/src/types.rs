@@ -143,10 +143,9 @@ impl<AB: AirBuilder + MultivariateEvaluationAirBuilder> Air<AB> for Multivariate
 
         // Assert that the first row accumulator is equal to the product of the lagrange_eval and
         // the main trace element.
-        builder.when_first_row().assert_eq_ext(
-            local_adapter.accum,
-            local_adapter.lagrange_eval.into() * batched_local,
-        );
+        builder
+            .when_first_row()
+            .assert_eq_ext(local_adapter.accum, local_adapter.lagrange_eval.into() * batched_local);
 
         // Assert that the accumulator is correctly computed.
         builder.when_transition().assert_eq_ext(
@@ -166,20 +165,14 @@ impl<AB: AirBuilder + MultivariateEvaluationAirBuilder> Air<AB> for Multivariate
         }
 
         // Assert that the last row of the accumulator and the claimed evaluation match.
-        builder
-            .when_last_row()
-            .assert_eq_ext(local_adapter.accum, total_expected_eval);
+        builder.when_last_row().assert_eq_ext(local_adapter.accum, total_expected_eval);
 
         // We also need to constrain the lagrange_evals to be correctly computed, but that requires
         // functionality which the current STARK/AIR API does not provide.
     }
 }
 
-#[instrument(
-    name = "generate multivariate adapter trace",
-    level = "debug",
-    skip_all
-)]
+#[instrument(name = "generate multivariate adapter trace", level = "debug", skip_all)]
 pub fn generate_adapter_trace<SC: StarkGenericConfig>(
     data: &RowMajorMatrix<Val<SC>>,
     eval_point: &Point<SC::Challenge>,
@@ -201,11 +194,7 @@ pub fn generate_adapter_trace<SC: StarkGenericConfig>(
 
     let batched_data: Vec<SC::Challenge> = data
         .rows()
-        .map(|row| {
-            row.zip(batch_powers.iter())
-                .map(|(x, batch_power)| *batch_power * x)
-                .sum()
-        })
+        .map(|row| row.zip(batch_powers.iter()).map(|(x, batch_power)| *batch_power * x).sum())
         .collect();
 
     // Compute the cumulative sum of the coordinate-wise product of eq polynomial and the Mle data.

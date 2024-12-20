@@ -53,15 +53,10 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
 
         challenger.observe(main_commit.clone());
 
-        let log_degrees = opened_values
-            .iter()
-            .map(|val| val.log_degree)
-            .collect::<Vec<_>>();
+        let log_degrees = opened_values.iter().map(|val| val.log_degree).collect::<Vec<_>>();
 
-        let log_quotient_degrees = opened_values
-            .iter()
-            .map(|_| LOG_QUOTIENT_DEGREE)
-            .collect::<Vec<_>>();
+        let log_quotient_degrees =
+            opened_values.iter().map(|_| LOG_QUOTIENT_DEGREE).collect::<Vec<_>>();
 
         let trace_domains = log_degrees
             .iter()
@@ -111,10 +106,7 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
                         *domain,
                         vec![
                             (zeta, values.adapter.local.clone()),
-                            (
-                                domain.next_point(zeta).unwrap(),
-                                values.adapter.next.clone(),
-                            ),
+                            (domain.next_point(zeta).unwrap(), values.adapter.next.clone()),
                         ],
                     )
                 })
@@ -132,18 +124,17 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
                 })
                 .collect::<Vec<_>>();
 
-            let quotient_domains_points_and_opens = proof
-                .opened_values
-                .iter()
-                .zip_eq(quotient_chunk_domains.iter())
-                .flat_map(|(values, qc_domains)| {
-                    values
-                        .quotient
-                        .iter()
-                        .zip_eq(qc_domains)
-                        .map(move |(values, q_domain)| (*q_domain, vec![(zeta, values.clone())]))
-                })
-                .collect::<Vec<_>>();
+            let quotient_domains_points_and_opens =
+                proof
+                    .opened_values
+                    .iter()
+                    .zip_eq(quotient_chunk_domains.iter())
+                    .flat_map(|(values, qc_domains)| {
+                        values.quotient.iter().zip_eq(qc_domains).map(move |(values, q_domain)| {
+                            (*q_domain, vec![(zeta, values.clone())])
+                        })
+                    })
+                    .collect::<Vec<_>>();
             (
                 main_domains_points_and_opens,
                 adapter_domains_points_and_opens,
@@ -177,9 +168,7 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
             let span = tracing::debug_span!("verify opening shape");
             span.in_scope(|| {
                 self.verify_opening_shape(
-                    MultivariateAdapterAir {
-                        batch_size: self.batch_size,
-                    },
+                    MultivariateAdapterAir { batch_size: self.batch_size },
                     values,
                 )
             })
@@ -190,9 +179,7 @@ impl<SC: StarkGenericConfig> MultilinearPcs<SC::Challenge, SC::Challenger>
             let span = tracing::debug_span!("verify constraints");
             span.in_scope(|| {
                 Self::verify_constraints::<MultivariateAdapterAir>(
-                    &MultivariateAdapterAir {
-                        batch_size: self.batch_size,
-                    },
+                    &MultivariateAdapterAir { batch_size: self.batch_size },
                     values,
                     trace_domain,
                     qc_domains,
@@ -300,11 +287,7 @@ impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
         let unflatten = |v: &[SC::Challenge]| {
             v.chunks_exact(SC::Challenge::D)
                 .map(|chunk| {
-                    chunk
-                        .iter()
-                        .enumerate()
-                        .map(|(e_i, &x)| SC::Challenge::monomial(e_i) * x)
-                        .sum()
+                    chunk.iter().enumerate().map(|(e_i, &x)| SC::Challenge::monomial(e_i) * x).sum()
                 })
                 .collect::<Vec<SC::Challenge>>()
         };

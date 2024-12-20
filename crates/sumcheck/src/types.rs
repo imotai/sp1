@@ -37,10 +37,7 @@ impl<
     > SumcheckPoly<S> for Mle<K>
 {
     fn fix_first_variable(&self, alpha: S) -> Box<dyn SumcheckPoly<S>> {
-        assert!(
-            self.num_variables() > 0,
-            "Cannot fix first variable of a 0-variate polynomial"
-        );
+        assert!(self.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
         let mut result: Vec<S> = Vec::with_capacity(self.guts.len() / 2);
         self.guts
             .par_iter()

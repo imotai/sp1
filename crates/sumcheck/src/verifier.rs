@@ -37,12 +37,7 @@ pub fn partially_verify_sumcheck_proof<
     }
 
     challenger.observe_slice(
-        &first_poly
-            .coefficients
-            .iter()
-            .flat_map(|x| x.as_base_slice())
-            .copied()
-            .collect_vec(),
+        &first_poly.coefficients.iter().flat_map(|x| x.as_base_slice()).copied().collect_vec(),
     );
     let mut previous_poly = first_poly;
 
@@ -54,12 +49,7 @@ pub fn partially_verify_sumcheck_proof<
             return Err(SumcheckError::SumcheckRoundInconsistency);
         }
         challenger.observe_slice(
-            &poly
-                .coefficients
-                .iter()
-                .flat_map(|x| x.as_base_slice())
-                .copied()
-                .collect_vec(),
+            &poly.coefficients.iter().flat_map(|x| x.as_base_slice()).copied().collect_vec(),
         );
         previous_poly = poly;
     }
@@ -113,10 +103,8 @@ mod tests {
             );
 
             for num_variables in 1..max_num_variables {
-                let guts: Mle<F> = (0..1 << num_variables)
-                    .map(|_| thread_rng().gen())
-                    .collect::<Vec<_>>()
-                    .into();
+                let guts: Mle<F> =
+                    (0..1 << num_variables).map(|_| thread_rng().gen()).collect::<Vec<_>>().into();
                 let claim = guts.guts.iter().map(|x| EF::from(*x)).sum();
 
                 let (proof, _) = crate::reduce_sumcheck_to_evaluation::<F, EF, _>(
@@ -144,10 +132,8 @@ mod tests {
                 &mut thread_rng(),
             );
             for num_variables in 1..max_num_variables {
-                let guts: Mle<F> = (0..1 << num_variables)
-                    .map(|_| thread_rng().gen())
-                    .collect::<Vec<_>>()
-                    .into();
+                let guts: Mle<F> =
+                    (0..1 << num_variables).map(|_| thread_rng().gen()).collect::<Vec<_>>().into();
                 let mut challenger = Challenger::new(perm.clone());
                 let claim: F = guts.guts.iter().copied().sum();
                 let (mut proof, _) =
@@ -200,9 +186,7 @@ mod tests {
         let random_coefficient: F = rng.gen();
 
         assert_eq!(
-            *partial_lagrange
-                .fix_first_variable(random_coefficient)
-                .mle()[0],
+            *partial_lagrange.fix_first_variable(random_coefficient).mle()[0],
             smaller_partial_lagrange
                 * (random_coefficient * first
                     + (F::one() - random_coefficient) * (F::one() - first))

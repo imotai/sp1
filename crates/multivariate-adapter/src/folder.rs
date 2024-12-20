@@ -145,11 +145,7 @@ impl<'a, SC: StarkGenericConfig> MultivariateEvaluationAirBuilder
     }
 
     fn _evaluation_point(&self) -> Vec<Self::Sum> {
-        self.evaluation_point
-            .iter()
-            .copied()
-            .map(PackedChallenge::<SC>::from_f)
-            .collect()
+        self.evaluation_point.iter().copied().map(PackedChallenge::<SC>::from_f).collect()
     }
 
     fn batch_randomness(&self) -> Self::RandomVar {

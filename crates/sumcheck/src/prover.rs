@@ -60,12 +60,8 @@ pub fn reduce_sumcheck_to_evaluation<
             .in_scope(|| poly_cursor.fix_first_variable(alpha));
     }
 
-    let eval = tracing::debug_span!("eval_at_point").in_scope(|| {
-        univariate_polys
-            .last()
-            .unwrap()
-            .eval_at_point(*point.last().unwrap())
-    });
+    let eval = tracing::debug_span!("eval_at_point")
+        .in_scope(|| univariate_polys.last().unwrap().eval_at_point(*point.last().unwrap()));
 
     // if output {
     //     let (

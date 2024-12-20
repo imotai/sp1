@@ -52,10 +52,7 @@ where
     Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
 {
     pub fn new(config: RsBaseFoldConfig<M>) -> Self {
-        Self {
-            config,
-            _phantom: std::marker::PhantomData,
-        }
+        Self { config, _phantom: std::marker::PhantomData }
     }
 }
 

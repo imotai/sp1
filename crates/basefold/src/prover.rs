@@ -72,19 +72,11 @@ where
                 opening = opened_row[index_i % 2];
             }
 
-            CommitPhaseProofStep {
-                sibling_value,
-                opening_proof,
-            }
+            CommitPhaseProofStep { sibling_value, opening_proof }
         })
         .collect();
 
-    (
-        opening,
-        QueryProof {
-            commit_phase_openings,
-        },
-    )
+    (opening, QueryProof { commit_phase_openings })
 }
 
 #[allow(clippy::type_complexity)]
@@ -100,10 +92,7 @@ where
     pub fn commit(
         &self,
         vals: Vec<K>,
-    ) -> (
-        M::Commitment,
-        BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>,
-    ) {
+    ) -> (M::Commitment, BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>) {
         // The parameter `vals` is the vector of coefficients of a univariate polynomial of degree
         // < d, and we compute the evluations of this polynomial on a domain of size
         // `config.blowup()*d`
@@ -130,13 +119,7 @@ where
 
         let (commit, data) = self.pcs.config.fri_config.mmcs.commit_matrix(mat);
 
-        (
-            commit,
-            BaseFoldProverData {
-                vals: vals.into(),
-                data,
-            },
-        )
+        (commit, BaseFoldProverData { vals: vals.into(), data })
     }
 
     /// Given a vector of evaluations of a polynomial `vals` at a point `eval_point`, the prover

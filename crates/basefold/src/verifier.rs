@@ -46,19 +46,10 @@ where
         let mut evals = vec![folded_eval; 2];
         evals[index_sibling % 2] = step.sibling_value;
 
-        let dims = &[Dimensions {
-            width: 2,
-            height: 1 << log_folded_height,
-        }];
+        let dims = &[Dimensions { width: 2, height: 1 << log_folded_height }];
         config
             .mmcs
-            .verify_batch(
-                commit,
-                dims,
-                index_pair,
-                &[evals.clone()],
-                &step.opening_proof,
-            )
+            .verify_batch(commit, dims, index_pair, &[evals.clone()], &step.opening_proof)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
         let mut xs = [x; 2];
@@ -159,10 +150,8 @@ where
         let mut expected_eval = first_poly[0] + betas[0] * first_poly[1];
 
         // Check round-by-round consistency between the successive sumcheck univariate messages.
-        for (i, (poly, beta)) in proof.univariate_messages[1..]
-            .iter()
-            .zip(betas[1..].iter())
-            .enumerate()
+        for (i, (poly, beta)) in
+            proof.univariate_messages[1..].iter().zip(betas[1..].iter()).enumerate()
         {
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
@@ -191,10 +180,7 @@ where
             .map(|_| challenger.sample_bits(log_len + self.config.fri_config.log_blowup))
             .collect_vec();
 
-        let challenges = FriChallenges {
-            query_indices,
-            betas,
-        };
+        let challenges = FriChallenges { query_indices, betas };
 
         // Verify the FRI queries.
         challenges
@@ -208,11 +194,7 @@ where
                     *idx,
                     query_proof,
                     &challenges.betas,
-                    (
-                        proof.final_poly,
-                        *opening,
-                        log_len + self.config.fri_config.log_blowup,
-                    ),
+                    (proof.final_poly, *opening, log_len + self.config.fri_config.log_blowup),
                 )
             })
             .collect::<Result<Vec<_>, _>>()
@@ -264,9 +246,7 @@ mod tests {
             println!("Testing an instance with {} variables.", i);
             let num_variables = i;
 
-            let vals = (0..(1 << num_variables))
-                .map(|_| rng.gen::<F>())
-                .collect_vec();
+            let vals = (0..(1 << num_variables)).map(|_| rng.gen::<F>()).collect_vec();
             let perm = Perm::new_from_rng_128(
                 Poseidon2ExternalMatrixGeneral,
                 DiffusionMatrixBabyBear,

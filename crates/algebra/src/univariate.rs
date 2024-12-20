@@ -30,23 +30,16 @@ impl<K: Field> UnivariatePolynomial<K> {
     }
 
     pub fn zero() -> Self {
-        Self {
-            coefficients: vec![],
-        }
+        Self { coefficients: vec![] }
     }
 
     pub fn one() -> Self {
-        Self {
-            coefficients: vec![K::one()],
-        }
+        Self { coefficients: vec![K::one()] }
     }
 
     pub fn eval_at_point(&self, point: K) -> K {
         // Horner's method.
-        self.coefficients
-            .iter()
-            .rev()
-            .fold(K::zero(), |acc, x| acc * point + *x)
+        self.coefficients.iter().rev().fold(K::zero(), |acc, x| acc * point + *x)
     }
 
     pub fn eval_one_plus_eval_zero(&self) -> K {
@@ -63,9 +56,7 @@ impl<K: Field> Mul<K> for UnivariatePolynomial<K> {
     type Output = Self;
 
     fn mul(self, rhs: K) -> Self::Output {
-        Self {
-            coefficients: self.coefficients.into_iter().map(|x| x * rhs).collect(),
-        }
+        Self { coefficients: self.coefficients.into_iter().map(|x| x * rhs).collect() }
     }
 }
 
@@ -89,10 +80,7 @@ pub fn interpolate_univariate_polynomial<K: Field>(xs: &[K], ys: &[K]) -> Univar
         let (denominator, numerator) = xs.iter().enumerate().filter(|(j, _)| *j != i).fold(
             (K::one(), UnivariatePolynomial::new(vec![*y])),
             |(denominator, numerator), (_, xj)| {
-                (
-                    denominator * (*x - *xj),
-                    numerator.mul_by_x() + numerator * (-*xj),
-                )
+                (denominator * (*x - *xj), numerator.mul_by_x() + numerator * (-*xj))
             },
         );
         result = result + numerator * denominator.inverse();
