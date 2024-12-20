@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
-use p3_commit::Mmcs;
+use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
 use p3_fri::{fold_even_odd, CommitPhaseProofStep, FriConfig, QueryProof};
 use p3_matrix::{
@@ -78,19 +78,23 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-impl<K: TwoAdicField, M: Mmcs<K>, Challenger> BaseFoldProver<K, M, Challenger>
+impl<K: TwoAdicField, EK: TwoAdicField + ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
+    BaseFoldProver<K, EK, InnerMmcs, Challenger>
 where
-    Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
-    M::Commitment: Debug,
+    Challenger: GrindingChallenger
+        + FieldChallenger<K>
+        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
+    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
 {
-    pub fn new(pcs: BaseFoldPcs<K, M, Challenger>) -> Self {
+    pub fn new(pcs: BaseFoldPcs<K, EK, InnerMmcs, Challenger>) -> Self {
         Self { pcs }
     }
 
     pub fn commit(
         &self,
         vals: Vec<RowMajorMatrix<K>>,
-    ) -> (M::Commitment, BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>) {
+    ) -> (InnerMmcs::Commitment, BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>)
+    {
         // The parameter `vals` is the vector of coefficients of a univariate polynomial of degree
         // < d, and we compute the evluations of this polynomial on a domain of size
         // `config.blowup()*d`
@@ -119,7 +123,7 @@ where
 
         mat.width = 2;
 
-        let (commit, data) = self.pcs.fri_config.mmcs.commit_matrix(mat);
+        let (commit, data) = self.pcs.inner_mmcs.commit_matrix(mat);
 
         (commit, BaseFoldProverData { vals: vals.into(), data })
     }
@@ -143,28 +147,30 @@ where
     /// 4. Answers queries to its vector commitments as in FRI.
     pub fn prove_evaluation(
         &self,
-        data: BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>,
+        data: BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>,
         // TODO: support batches.
-        mut eval_point: Point<K>,
-        _expected_eval: K,
+        mut eval_point: Point<EK>,
+        _expected_eval: EK,
         challenger: &mut Challenger,
-    ) -> BaseFoldProof<K, M, Challenger::Witness>
+    ) -> BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>
     where
-        Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
-        M::Commitment: Debug,
+        Challenger: GrindingChallenger
+            + FieldChallenger<K>
+            + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
+        <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
     {
-        let matrices = self.pcs.fri_config.mmcs.get_matrices(&data.data);
+        let matrices = self.pcs.inner_mmcs.get_matrices(&data.data);
 
         debug_assert_eq!(matrices.len(), 1);
 
-        let mut current = matrices[0].values.clone();
+        let mut current = matrices[0].values.iter().copied().map(EK::from_base).collect();
 
-        let mut current_mle = data.vals;
+        let mut current_mle = data.vals.to_extension_field::<EK>();
 
         let log_len = current_mle.num_variables();
 
         // Initialize the vecs that go into a BaseFoldProof.
-        let mut univariate_polys: Vec<[K; 2]> = vec![];
+        let mut univariate_polys: Vec<[EK; 2]> = vec![];
         let mut commits = vec![];
         let mut data = vec![];
 
@@ -175,7 +181,7 @@ where
             let uni_poly = current_mle.fixed_evaluations(&eval_point);
             univariate_polys.push(uni_poly);
 
-            challenger.observe_slice(&uni_poly);
+            uni_poly.iter().for_each(|elem| challenger.observe_ext_element(*elem));
 
             // Perform a single round of the FRI commit phase, returning the commitment, folded
             // codeword, and folding parameter.
@@ -224,19 +230,22 @@ where
 
 impl<
         K: TwoAdicField,
-        M: Mmcs<K>,
-        Challenger: GrindingChallenger + CanObserve<M::Commitment> + FieldChallenger<K>,
-    > MultilinearPcsProver<Challenger> for BaseFoldProver<K, M, Challenger>
+        EK: TwoAdicField + ExtensionField<K>,
+        InnerMmcs: Mmcs<K>,
+        Challenger: GrindingChallenger
+            + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>
+            + FieldChallenger<K>,
+    > MultilinearPcsProver<Challenger> for BaseFoldProver<K, EK, InnerMmcs, Challenger>
 where
-    M::Commitment: Eq + Debug,
+    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq + Debug,
 {
-    type OpeningProof = BaseFoldProof<K, M, Challenger::Witness>;
+    type OpeningProof = BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>;
 
-    type MultilinearProverData = BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>;
+    type MultilinearProverData = BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>;
 
-    type MultilinearCommitment = M::Commitment;
+    type MultilinearCommitment = InnerMmcs::Commitment;
 
-    type PCS = BaseFoldPcs<K, M, Challenger>;
+    type PCS = BaseFoldPcs<K, EK, InnerMmcs, Challenger>;
 
     fn commit_multilinears(
         &self,
@@ -247,8 +256,8 @@ where
 
     fn prove_evaluations(
         &self,
-        eval_point: Point<K>,
-        expected_evals: &[K],
+        eval_point: Point<EK>,
+        expected_evals: &[EK],
         prover_data: Self::MultilinearProverData,
         challenger: &mut Challenger,
     ) -> Self::OpeningProof {

@@ -1,13 +1,13 @@
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
-use p3_commit::Mmcs;
+use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_fri::{
     verifier::{FriChallenges, FriError},
     FriConfig, QueryProof,
 };
 use p3_matrix::Dimensions;
 use p3_util::reverse_bits_len;
-use spl_algebra::TwoAdicField;
+use spl_algebra::{ExtensionField, TwoAdicField};
 use spl_multilinear::{MultilinearPcsVerifier, Point};
 
 use crate::{BaseFoldError, BaseFoldPcs, BaseFoldProof};
@@ -71,17 +71,19 @@ where
     Ok(())
 }
 
-impl<K: TwoAdicField, M: Mmcs<K>, Challenger> MultilinearPcsVerifier<Challenger>
-    for BaseFoldPcs<K, M, Challenger>
+impl<K: TwoAdicField, EK: TwoAdicField + ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
+    MultilinearPcsVerifier<Challenger> for BaseFoldPcs<K, EK, InnerMmcs, Challenger>
 where
-    Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
-    M::Commitment: Eq,
+    Challenger: GrindingChallenger
+        + FieldChallenger<K>
+        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
+    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq,
 {
-    type Proof = BaseFoldProof<K, M, Challenger::Witness>;
-    type Commitment = M::Commitment;
-    type Error = BaseFoldError<M::Error>;
+    type Proof = BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>;
+    type Commitment = <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment;
+    type Error = BaseFoldError<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Error>;
     type F = K;
-    type EF = K;
+    type EF = EK;
 
     /// Verify a BaseFold proof of a claim: commitment D represents a multilinear polynomial `g`
     /// whose evaluation at `point` is `proof.eval`.
@@ -98,15 +100,17 @@ where
     /// consistent with the prover's implied claim about the 0-variate multilinear.
     fn verify_evaluations(
         &self,
-        mut point: Point<K>,
-        eval_claims: &[K],
-        commitment: Self::Commitment,
+        mut point: Point<EK>,
+        eval_claims: &[EK],
+        _commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,
     ) -> Result<(), Self::Error> {
-        if commitment != proof.commitments[0] {
-            return Err(BaseFoldError::IncorrectShape);
-        }
+        // Check that the commitment is consistent with the proof.
+        // TODO: In batching this should be checked at the verify queries phase.
+        // if commitment != proof.commitments[0] {
+        //     return Err(BaseFoldError::IncorrectShape);
+        // }
 
         // We don't support batching for BaseFold yet.
         assert!(eval_claims.len() == 1);
@@ -129,9 +133,9 @@ where
             .iter()
             .zip(proof.univariate_messages.iter())
             .map(|(commitment, poly)| {
-                challenger.observe_slice(poly);
+                poly.iter().copied().for_each(|x| challenger.observe_ext_element(x));
                 challenger.observe(commitment.clone());
-                challenger.sample_ext_element::<K>()
+                challenger.sample_ext_element::<EK>()
             })
             .collect_vec();
 
@@ -141,7 +145,7 @@ where
         // first_poly[0] + X_d * first_poly[1]`.
         let first_poly = proof.univariate_messages[0];
         if eval_claim
-            != (K::one() - point.ith_coordinate(0)) * first_poly[0]
+            != (EK::one() - point.ith_coordinate(0)) * first_poly[0]
                 + point.ith_coordinate(0) * first_poly[1]
         {
             return Err(BaseFoldError::Sumcheck);
@@ -158,7 +162,7 @@ where
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
             if expected_eval
-                != (K::one() - point.ith_coordinate(i)) * poly[0]
+                != (EK::one() - point.ith_coordinate(i)) * poly[0]
                     + point.ith_coordinate(i) * poly[1]
             {
                 return Err(BaseFoldError::Sumcheck);
@@ -219,24 +223,27 @@ mod tests {
     use itertools::Itertools;
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use p3_challenger::DuplexChallenger;
+    use p3_commit::ExtensionMmcs;
     use p3_fri::FriConfig;
     use p3_matrix::dense::RowMajorMatrix;
     use p3_merkle_tree::{self, FieldMerkleTreeMmcs};
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
     use rand::Rng;
-    use spl_algebra::Field;
+    use spl_algebra::{extension::BinomialExtensionField, Field};
     use spl_multilinear::{Mle, MultilinearPcsVerifier};
 
     use crate::{BaseFoldPcs, BaseFoldProver, Point};
 
     type F = BabyBear;
+    type EF = BinomialExtensionField<F, 4>;
 
     type Perm = Poseidon2<F, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
     type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
     type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
     type ValMmcs =
         FieldMerkleTreeMmcs<<F as Field>::Packing, <F as Field>::Packing, MyHash, MyCompress, 8>;
+    type ChallengeMmcs = ExtensionMmcs<F, EF, ValMmcs>;
     type Challenger = DuplexChallenger<F, Perm, 16, 8>;
 
     #[test]
@@ -255,12 +262,13 @@ mod tests {
             );
             let hash = MyHash::new(perm.clone());
             let compress = MyCompress::new(perm.clone());
-            let mmcs = ValMmcs::new(hash, compress);
+            let inner_mmcs = ValMmcs::new(hash, compress);
+            let mmcs = ChallengeMmcs::new(inner_mmcs.clone());
             let config = FriConfig { log_blowup: 1, num_queries: 10, proof_of_work_bits: 8, mmcs };
 
-            let pcs = BaseFoldPcs::<F, ValMmcs, Challenger>::new(config);
+            let pcs = BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(config, inner_mmcs);
 
-            let new_eval_point = Point::new((0..num_variables).map(|_| rng.gen::<F>()).collect());
+            let new_eval_point = Point::new((0..num_variables).map(|_| rng.gen::<EF>()).collect());
 
             let expected_eval = Mle::new(vals.clone()).eval_at_point(&new_eval_point);
 

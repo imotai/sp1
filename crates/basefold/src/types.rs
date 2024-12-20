@@ -3,11 +3,11 @@ use std::fmt::Debug;
 use thiserror::Error;
 
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
-use p3_commit::Mmcs;
+use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_fri::{FriConfig, QueryProof};
 
 use crate::FriError;
-use spl_algebra::{Field, TwoAdicField};
+use spl_algebra::{ExtensionField, Field, TwoAdicField};
 
 /// The data necessary to construct a BaseFold opening proof.
 pub struct BaseFoldProof<K: Field, M: Mmcs<K>, Witness> {
@@ -30,20 +30,29 @@ pub struct BaseFoldProof<K: Field, M: Mmcs<K>, Witness> {
 }
 
 #[derive(Debug)]
-pub struct BaseFoldPcs<K: Field, M: Mmcs<K>, Challenger>
+pub struct BaseFoldPcs<K: Field, EK: ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
 where
-    Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
+    Challenger: GrindingChallenger
+        + FieldChallenger<K>
+        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
 {
-    pub(crate) fri_config: FriConfig<M>,
-    _phantom: std::marker::PhantomData<(K, M, Challenger)>,
+    pub(crate) fri_config: FriConfig<ExtensionMmcs<K, EK, InnerMmcs>>,
+    pub(crate) inner_mmcs: InnerMmcs,
+    _phantom: std::marker::PhantomData<(K, EK, Challenger)>,
 }
 
-impl<K: Field, M: Mmcs<K>, Challenger> BaseFoldPcs<K, M, Challenger>
+impl<K: Field, EK: ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
+    BaseFoldPcs<K, EK, InnerMmcs, Challenger>
 where
-    Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
+    Challenger: GrindingChallenger
+        + FieldChallenger<K>
+        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
 {
-    pub fn new(fri_config: FriConfig<M>) -> Self {
-        Self { fri_config, _phantom: std::marker::PhantomData }
+    pub fn new(
+        fri_config: FriConfig<ExtensionMmcs<K, EK, InnerMmcs>>,
+        inner_mmcs: InnerMmcs,
+    ) -> Self {
+        Self { inner_mmcs, fri_config, _phantom: std::marker::PhantomData }
     }
 }
 
@@ -62,12 +71,14 @@ pub enum BaseFoldError<MmcsError> {
     IncorrectShape,
 }
 
-pub struct BaseFoldProver<K: TwoAdicField, M: Mmcs<K>, Challenger>
+pub struct BaseFoldProver<K: TwoAdicField, EK: ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
 where
-    Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
-    M::Commitment: Debug,
+    Challenger: GrindingChallenger
+        + FieldChallenger<K>
+        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
+    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
 {
-    pub(crate) pcs: BaseFoldPcs<K, M, Challenger>,
+    pub(crate) pcs: BaseFoldPcs<K, EK, InnerMmcs, Challenger>,
 }
 
 pub struct BaseFoldProverData<K, D> {

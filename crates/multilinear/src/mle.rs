@@ -3,7 +3,7 @@ use std::ops::Mul;
 use itertools::Itertools;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
-use spl_algebra::Field;
+use spl_algebra::{ExtensionField, Field};
 
 use crate::Point;
 
@@ -64,6 +64,10 @@ impl<K: Field> Mle<K> {
             .chunks_exact(1 << idx)
             .map(|x| x.to_vec().into())
             .collect()
+    }
+
+    pub fn to_extension_field<EF: ExtensionField<K>>(self) -> Mle<EF> {
+        Mle::new(self.guts.into_iter().map(EF::from_base).collect())
     }
 }
 
