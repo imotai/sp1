@@ -1,4 +1,4 @@
-use spl_multi_pcs::Mle;
+use spl_multilinear::Mle;
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -8,15 +8,6 @@ use p3_fri::{FriConfig, QueryProof};
 
 use crate::FriError;
 use spl_algebra::{Field, TwoAdicField};
-
-#[derive(Debug, Clone)]
-/// A struct to configure the BaseFold protocol.
-pub struct BaseFoldConfig<Config> {
-    /// The internal FRI configuration.
-    pub fri_config: Config,
-}
-
-pub type RsBaseFoldConfig<M> = BaseFoldConfig<FriConfig<M>>;
 
 /// The data necessary to construct a BaseFold opening proof.
 pub struct BaseFoldProof<K: Field, M: Mmcs<K>, Witness> {
@@ -30,8 +21,8 @@ pub struct BaseFoldProof<K: Field, M: Mmcs<K>, Witness> {
     /// The query openings and the FRI query proofs for the FRI query phase.
     pub query_phase_proofs: Vec<(K, QueryProof<K, M>)>,
 
-    /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant
-    /// value of this polynomial.
+    /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant value of
+    /// this polynomial.
     pub final_poly: K,
 
     /// Proof-of-work witness.
@@ -43,7 +34,7 @@ pub struct BaseFoldPcs<K: Field, M: Mmcs<K>, Challenger>
 where
     Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
 {
-    pub(crate) config: RsBaseFoldConfig<M>,
+    pub(crate) fri_config: FriConfig<M>,
     _phantom: std::marker::PhantomData<(K, M, Challenger)>,
 }
 
@@ -51,8 +42,8 @@ impl<K: Field, M: Mmcs<K>, Challenger> BaseFoldPcs<K, M, Challenger>
 where
     Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
 {
-    pub fn new(config: RsBaseFoldConfig<M>) -> Self {
-        Self { config, _phantom: std::marker::PhantomData }
+    pub fn new(fri_config: FriConfig<M>) -> Self {
+        Self { fri_config, _phantom: std::marker::PhantomData }
     }
 }
 

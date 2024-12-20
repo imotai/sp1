@@ -659,12 +659,12 @@ dependencies = [
  "rand",
  "serde",
  "spl-algebra",
- "spl-multi-pcs",
+ "spl-multilinear",
  "thiserror",
 ]
 
 [[package]]
-name = "spl-multi-pcs"
+name = "spl-multilinear"
 version = "1.2.0"
 dependencies = [
  "itertools",
@@ -699,7 +699,7 @@ dependencies = [
  "rayon",
  "serde",
  "spl-algebra",
- "spl-multi-pcs",
+ "spl-multilinear",
  "spl-utils",
  "thiserror",
  "tracing",
@@ -720,7 +720,7 @@ dependencies = [
  "serde",
  "spl-algebra",
  "spl-basefold",
- "spl-multi-pcs",
+ "spl-multilinear",
  "tracing",
 ]
 

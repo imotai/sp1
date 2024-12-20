@@ -3,66 +3,9 @@ use std::ops::Mul;
 use itertools::Itertools;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
-use serde::{Deserialize, Serialize};
 use spl_algebra::Field;
 
-/// A wrapper struct for a multivariate point.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
-pub struct Point<K>(Vec<K>);
-
-impl<K: Copy> Point<K> {
-    pub fn new(point: Vec<K>) -> Self {
-        Point(point)
-    }
-
-    pub fn dimension(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.len() == 0
-    }
-
-    pub fn first_k_points(&self, k: usize) -> Self {
-        Point(self.0[..k].to_vec())
-    }
-
-    pub fn split_at(&self, k: usize) -> (Self, Self) {
-        (Point(self.0[..k].to_vec()), Point(self.0[k..].to_vec()))
-    }
-
-    pub fn split_at_first(&self) -> (K, Self) {
-        (self.0[0], Point(self.0[1..].to_vec()))
-    }
-
-    pub fn reversed_point(&self) -> Self {
-        Point(self.0.iter().rev().copied().collect())
-    }
-
-    pub fn add_dimension(&mut self, dim_val: K) {
-        self.0.push(dim_val);
-    }
-
-    pub fn remove_last_coordinate(&mut self) {
-        self.0.pop();
-    }
-
-    pub fn reverse(&mut self) {
-        self.0.reverse();
-    }
-
-    pub fn ith_coordinate(&self, i: usize) -> K {
-        self.0[i]
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, K> {
-        self.0.iter()
-    }
-
-    pub fn to_vec(&self) -> Vec<K> {
-        self.0.clone()
-    }
-}
+use crate::Point;
 
 /// A struct wrapping Vec<K>.
 ///
@@ -253,39 +196,4 @@ pub fn full_lagrange_eval<F: Field>(point_1: &Point<F>, point_2: &Point<F>) -> F
             prod + prod + F::one() - *x - *y
         })
         .product()
-}
-
-/// A trait representing a multilinear polynomial commitment scheme.
-pub trait MultilinearPcs<K: Copy, Challenger> {
-    type Proof;
-    type Commitment;
-    type Error;
-
-    fn verify(
-        &self,
-        point: Point<K>,
-        evaluation_claims: &[K],
-        commitment: Self::Commitment,
-        proof: &Self::Proof,
-        challenger: &mut Challenger,
-    ) -> Result<(), Self::Error>;
-}
-
-pub trait MultilinearPcsProver<K: Copy, EK: Copy, Challenger, PCS: MultilinearPcs<EK, Challenger>> {
-    type OpeningProof;
-    type MultilinearProverData;
-    type MultilinearCommitment;
-
-    fn commit(
-        &self,
-        data: RowMajorMatrix<K>,
-    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData);
-
-    fn prove_evaluations(
-        &self,
-        eval_point: Point<EK>,
-        expected_evals: &[EK],
-        prover_data: Self::MultilinearProverData,
-        challenger: &mut Challenger,
-    ) -> Self::OpeningProof;
 }

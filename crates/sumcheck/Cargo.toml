@@ -13,9 +13,9 @@ p3-uni-stark = {workspace = true}
 p3-challenger = {workspace = true}
 p3-baby-bear = {workspace = true}
 
-spl-algebra = {path = "../algebra"}
-spl-basefold = {path = "../basefold"}
-spl-multi-pcs = {path = "../multi-pcs"}
+spl-algebra = {workspace = true}
+spl-basefold = {workspace = true}
+spl-multilinear = {workspace = true}
 
 itertools = "0.12.0"
 rayon = "1.5.1"

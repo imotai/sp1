@@ -11,11 +11,9 @@ use p3_matrix::{
     Matrix,
 };
 use spl_algebra::{ExtensionField, Field, TwoAdicField};
-use spl_multi_pcs::MultilinearPcsProver;
+use spl_multilinear::MultilinearPcsProver;
 
-use crate::{
-    BaseFoldPcs, BaseFoldProof, BaseFoldProver, BaseFoldProverData, Point, RsBaseFoldConfig,
-};
+use crate::{BaseFoldPcs, BaseFoldProof, BaseFoldProver, BaseFoldProverData, Point};
 
 /// A single round of the FRI commit phase. This function commits to the prover message, samples the
 /// round challenge, and folds the polynomial. This function is repeated in the Plonky3 FRI prover
@@ -26,14 +24,14 @@ pub fn commit_phase_single_round<
     M: Mmcs<EF>,
     Challenger: CanObserve<M::Commitment> + FieldChallenger<F>,
 >(
-    config: &RsBaseFoldConfig<M>,
+    config: &FriConfig<M>,
     current: Vec<EF>,
     challenger: &mut Challenger,
 ) -> (Vec<EF>, M::Commitment, M::ProverData<DenseMatrix<EF>>, EF) {
     // TODO: optimize this, so that we don't need to clone `current`. For example, we could compute
     // the two halves that go into folding, make `leaves` from `current`, then fold the two halves.
     let leaves = RowMajorMatrix::new(current.clone(), 2);
-    let (commit, prover_data) = config.fri_config.mmcs.commit_matrix(leaves);
+    let (commit, prover_data) = config.mmcs.commit_matrix(leaves);
     challenger.observe(commit.clone());
 
     let beta: EF = challenger.sample_ext_element();
@@ -91,11 +89,15 @@ where
 
     pub fn commit(
         &self,
-        vals: Vec<K>,
+        vals: Vec<RowMajorMatrix<K>>,
     ) -> (M::Commitment, BaseFoldProverData<K, M::ProverData<RowMajorMatrix<K>>>) {
         // The parameter `vals` is the vector of coefficients of a univariate polynomial of degree
         // < d, and we compute the evluations of this polynomial on a domain of size
         // `config.blowup()*d`
+
+        assert!(vals.len() == 1, "BaseFoldProver only supports a single polynomial commitment");
+
+        let vals = vals[0].clone().values;
 
         let len = vals.len();
 
@@ -105,7 +107,7 @@ where
             .into_iter()
             .chain(
                 std::iter::repeat(K::zero())
-                    .take(len * (1 << (self.pcs.config.fri_config.log_blowup - 1))),
+                    .take(len * (1 << (self.pcs.fri_config.log_blowup - 1))),
             )
             .collect_vec();
 
@@ -117,7 +119,7 @@ where
 
         mat.width = 2;
 
-        let (commit, data) = self.pcs.config.fri_config.mmcs.commit_matrix(mat);
+        let (commit, data) = self.pcs.fri_config.mmcs.commit_matrix(mat);
 
         (commit, BaseFoldProverData { vals: vals.into(), data })
     }
@@ -151,7 +153,7 @@ where
         Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
         M::Commitment: Debug,
     {
-        let matrices = self.pcs.config.fri_config.mmcs.get_matrices(&data.data);
+        let matrices = self.pcs.fri_config.mmcs.get_matrices(&data.data);
 
         debug_assert_eq!(matrices.len(), 1);
 
@@ -181,7 +183,7 @@ where
             let prover_data;
             let beta;
             (current, commit, prover_data, beta) =
-                commit_phase_single_round(&self.pcs.config, current, challenger);
+                commit_phase_single_round(&self.pcs.fri_config, current, challenger);
             commits.push(commit);
             data.push(prover_data);
 
@@ -193,21 +195,21 @@ where
 
         // As in FRI, the last codeword should be an encoding of a constant polynomial, with
         // `1<<log_blowup` entries.
-        debug_assert_eq!(current.len(), 1 << self.pcs.config.fri_config.log_blowup);
+        debug_assert_eq!(current.len(), 1 << self.pcs.fri_config.log_blowup);
         for elem in current[1..].iter() {
             debug_assert_eq!(*elem, current[0])
         }
 
-        let pow_witness = challenger.grind(self.pcs.config.fri_config.proof_of_work_bits);
+        let pow_witness = challenger.grind(self.pcs.fri_config.proof_of_work_bits);
 
         // FRI Query Phase.
-        let query_indices: Vec<usize> = (0..self.pcs.config.fri_config.num_queries)
-            .map(|_| challenger.sample_bits(log_len + self.pcs.config.fri_config.log_blowup))
+        let query_indices: Vec<usize> = (0..self.pcs.fri_config.num_queries)
+            .map(|_| challenger.sample_bits(log_len + self.pcs.fri_config.log_blowup))
             .collect();
 
         let query_proofs = query_indices
             .iter()
-            .map(|&index| answer_query(&self.pcs.config.fri_config, &data, index))
+            .map(|&index| answer_query(&self.pcs.fri_config, &data, index))
             .collect_vec();
 
         BaseFoldProof {
@@ -224,8 +226,7 @@ impl<
         K: TwoAdicField,
         M: Mmcs<K>,
         Challenger: GrindingChallenger + CanObserve<M::Commitment> + FieldChallenger<K>,
-    > MultilinearPcsProver<K, K, Challenger, BaseFoldPcs<K, M, Challenger>>
-    for BaseFoldProver<K, M, Challenger>
+    > MultilinearPcsProver<Challenger> for BaseFoldProver<K, M, Challenger>
 where
     M::Commitment: Eq + Debug,
 {
@@ -235,11 +236,13 @@ where
 
     type MultilinearCommitment = M::Commitment;
 
-    fn commit(
+    type PCS = BaseFoldPcs<K, M, Challenger>;
+
+    fn commit_multilinears(
         &self,
-        data: RowMajorMatrix<K>,
+        data: Vec<RowMajorMatrix<K>>,
     ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
-        self.commit(data.values)
+        self.commit(data)
     }
 
     fn prove_evaluations(

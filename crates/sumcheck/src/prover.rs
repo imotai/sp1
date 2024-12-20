@@ -5,7 +5,7 @@ use p3_challenger::{CanObserve, CanSample};
 //     get_bb_ops_invocation_count, get_ext_ops_invocation_count, get_permute_invocation_count,
 // };
 use spl_algebra::{ExtensionField, Field, UnivariatePolynomial};
-use spl_multi_pcs::Point;
+use spl_multilinear::Point;
 
 use crate::{PartialSumcheckProof, SumcheckPoly};
 
@@ -103,7 +103,7 @@ mod tests {
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use rand::thread_rng;
     use spl_algebra::{extension::BinomialExtensionField, AbstractField};
-    use spl_multi_pcs::Mle;
+    use spl_multilinear::Mle;
 
     use crate::partially_verify_sumcheck_proof;
 

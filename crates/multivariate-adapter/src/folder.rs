@@ -8,7 +8,7 @@ use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair, Matrix};
 use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 
 use spl_algebra::{AbstractField, ExtensionField, Field};
-use spl_multi_pcs::Point;
+use spl_multilinear::Point;
 
 type Challenge<SC> = <SC as StarkGenericConfig>::Challenge;
 

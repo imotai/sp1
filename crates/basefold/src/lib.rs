@@ -3,7 +3,7 @@ mod types;
 mod verifier;
 
 pub use prover::*;
-use spl_multi_pcs::Point;
+use spl_multilinear::Point;
 pub use types::*;
 
 use p3_fri::verifier::FriError;
@@ -13,7 +13,7 @@ mod tests {
     use p3_baby_bear::BabyBear;
     use rand::Rng;
     use spl_algebra::AbstractField;
-    use spl_multi_pcs::{full_lagrange_eval, partial_lagrange_eval, Mle};
+    use spl_multilinear::{full_lagrange_eval, partial_lagrange_eval, Mle};
 
     use crate::Point;
 

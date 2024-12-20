@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use p3_challenger::{CanObserve, CanSample};
 use spl_algebra::{ExtensionField, Field};
-use spl_multi_pcs::Point;
+use spl_multilinear::Point;
 
 use crate::PartialSumcheckProof;
 
@@ -83,7 +83,7 @@ mod tests {
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use rand::{thread_rng, Rng};
     use spl_algebra::{extension::BinomialExtensionField, AbstractField};
-    use spl_multi_pcs::{partial_lagrange_eval, Mle, Point};
+    use spl_multilinear::{partial_lagrange_eval, Mle, Point};
 
     use crate::{partially_verify_sumcheck_proof, SumcheckPoly};
 

@@ -13,7 +13,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_uni_stark::{StarkGenericConfig, Val};
 
 use spl_algebra::AbstractField;
-use spl_multi_pcs::{partial_lagrange_eval, Point};
+use spl_multilinear::{partial_lagrange_eval, Point};
 
 use crate::{
     air_types::ChipOpenedValues, folder::MultivariateEvaluationAirBuilder, verifier::AdapterAir,

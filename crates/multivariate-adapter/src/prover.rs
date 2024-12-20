@@ -14,7 +14,7 @@ use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 use p3_util::log2_strict_usize;
 
 use spl_algebra::{AbstractExtensionField, AbstractField, PackedValue};
-use spl_multi_pcs::{MultilinearPcsProver, Point};
+use spl_multilinear::{MultilinearPcsProver, Point};
 
 use crate::{
     air_types::{AirOpenedValues, ChipOpenedValues},
@@ -340,21 +340,21 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
     }
 }
 
-impl<SC: StarkGenericConfig>
-    MultilinearPcsProver<Val<SC>, SC::Challenge, SC::Challenger, MultivariateAdapterPCS<SC>>
-    for AdapterProver<SC>
-{
+impl<SC: StarkGenericConfig> MultilinearPcsProver<SC::Challenger> for AdapterProver<SC> {
     type OpeningProof = MultivariateAdapterProof<SC>;
 
     type MultilinearProverData = (ProverData<SC>, RowMajorMatrix<Val<SC>>);
 
     type MultilinearCommitment = Com<SC>;
 
-    fn commit(
+    type PCS = MultivariateAdapterPCS<SC>;
+
+    fn commit_multilinears(
         &self,
-        data: RowMajorMatrix<Val<SC>>,
+        data: Vec<RowMajorMatrix<Val<SC>>>,
     ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
-        let ((commitment, data), matrix) = AdapterProver::commit(self, data);
+        assert!(data.len() == 1);
+        let ((commitment, data), matrix) = AdapterProver::commit(self, data[0].clone());
         (commitment, (data, matrix))
     }
 
@@ -387,7 +387,7 @@ pub mod tests {
     use spl_algebra::{
         extension::BinomialExtensionField, AbstractExtensionField, AbstractField, Field,
     };
-    use spl_multi_pcs::{Mle, MultilinearPcs, Point};
+    use spl_multilinear::{Mle, MultilinearPcs, Point};
     use spl_utils::setup_logger;
 
     use crate::prover::AdapterProver;
@@ -484,7 +484,7 @@ pub mod tests {
         tracing::debug_span!("verify opening proof").in_scope(|| {
             prover
                 .pcs
-                .verify(
+                .verify_evaluations(
                     Point::new(eval_point.iter().map(|x| Challenge::from_base(*x)).collect()),
                     &expected_evals,
                     commitment,
@@ -555,7 +555,7 @@ pub mod tests {
         tracing::debug_span!("verify opening").in_scope(|| {
             prover
                 .pcs
-                .verify(
+                .verify_evaluations(
                     Point::new(eval_point.iter().map(|x| Challenge::from_base(*x)).collect()),
                     // Put a wrong value here to make sure the verification fails.
                     &[Challenge::from_base(Val::from_canonical_u16(0xDEAD))],

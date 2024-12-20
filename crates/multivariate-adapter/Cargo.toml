@@ -9,9 +9,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-spl-algebra = { path = "../algebra" }
-spl-multi-pcs = { path = "../multi-pcs" }
-spl-utils = { path = "../utils" }
+spl-algebra = { workspace = true}
+spl-multilinear = { workspace = true }
+spl-utils = { workspace = true }
 
 p3-challenger = {workspace = true}
 p3-dft = {workspace = true}

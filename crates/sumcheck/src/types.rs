@@ -6,7 +6,7 @@ use std::{
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use spl_algebra::{Field, UnivariatePolynomial};
-use spl_multi_pcs::{Mle, Point};
+use spl_multilinear::{Mle, Point};
 use std::fmt::Debug;
 
 /// The basic functionality required of a struct for which a sumcheck proof can be generated.
@@ -92,7 +92,7 @@ pub struct PartialSumcheckProof<K> {
 mod test {
     use p3_baby_bear::BabyBear;
     use spl_algebra::{extension::BinomialExtensionField, AbstractField, UnivariatePolynomial};
-    use spl_multi_pcs::Mle;
+    use spl_multilinear::Mle;
 
     use crate::SumcheckPoly;
 

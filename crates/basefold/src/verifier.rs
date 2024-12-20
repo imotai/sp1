@@ -8,7 +8,7 @@ use p3_fri::{
 use p3_matrix::Dimensions;
 use p3_util::reverse_bits_len;
 use spl_algebra::TwoAdicField;
-use spl_multi_pcs::{MultilinearPcs, Point};
+use spl_multilinear::{MultilinearPcs, Point};
 
 use crate::{BaseFoldError, BaseFoldPcs, BaseFoldProof};
 
@@ -71,7 +71,7 @@ where
     Ok(())
 }
 
-impl<K: TwoAdicField, M: Mmcs<K>, Challenger> MultilinearPcs<K, Challenger>
+impl<K: TwoAdicField, M: Mmcs<K>, Challenger> MultilinearPcs<Challenger>
     for BaseFoldPcs<K, M, Challenger>
 where
     Challenger: GrindingChallenger + FieldChallenger<K> + CanObserve<M::Commitment>,
@@ -80,6 +80,8 @@ where
     type Proof = BaseFoldProof<K, M, Challenger::Witness>;
     type Commitment = M::Commitment;
     type Error = BaseFoldError<M::Error>;
+    type F = K;
+    type EF = K;
 
     /// Verify a BaseFold proof of a claim: commitment D represents a multilinear polynomial `g`
     /// whose evaluation at `point` is `proof.eval`.
@@ -94,7 +96,7 @@ where
     ///
     /// Finally, the verifier checks that the prover's claim about the final polynomial in FRI is
     /// consistent with the prover's implied claim about the 0-variate multilinear.
-    fn verify(
+    fn verify_evaluations(
         &self,
         mut point: Point<K>,
         eval_claims: &[K],
@@ -112,7 +114,7 @@ where
 
         // Assert correctness of shape.
         if proof.commitments.len() != proof.univariate_messages.len()
-            || proof.query_phase_proofs.len() != self.config.fri_config.num_queries
+            || proof.query_phase_proofs.len() != self.fri_config.num_queries
         {
             return Err(BaseFoldError::IncorrectShape);
         }
@@ -168,7 +170,7 @@ where
 
         // Check proof of work (grinding to find a number that hashes to have
         // `self.config.proof_of_work_bits` zeroes at the beginning).
-        if !challenger.check_witness(self.config.fri_config.proof_of_work_bits, proof.pow_witness) {
+        if !challenger.check_witness(self.fri_config.proof_of_work_bits, proof.pow_witness) {
             return Err(BaseFoldError::Pow);
         }
 
@@ -176,8 +178,8 @@ where
 
         // Sample query indices for the FRI query IOPP part of BaseFold. This part is very similar
         // to the corresponding part in the Plonky3 verifier.
-        let query_indices = (0..self.config.fri_config.num_queries)
-            .map(|_| challenger.sample_bits(log_len + self.config.fri_config.log_blowup))
+        let query_indices = (0..self.fri_config.num_queries)
+            .map(|_| challenger.sample_bits(log_len + self.fri_config.log_blowup))
             .collect_vec();
 
         let challenges = FriChallenges { query_indices, betas };
@@ -189,12 +191,12 @@ where
             .zip(proof.query_phase_proofs.iter())
             .map(|(idx, (opening, query_proof))| {
                 verify_query(
-                    &self.config.fri_config,
+                    &self.fri_config,
                     &proof.commitments,
                     *idx,
                     query_proof,
                     &challenges.betas,
-                    (proof.final_poly, *opening, log_len + self.config.fri_config.log_blowup),
+                    (proof.final_poly, *opening, log_len + self.fri_config.log_blowup),
                 )
             })
             .collect::<Result<Vec<_>, _>>()
@@ -218,16 +220,15 @@ mod tests {
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use p3_challenger::DuplexChallenger;
     use p3_fri::FriConfig;
+    use p3_matrix::dense::RowMajorMatrix;
     use p3_merkle_tree::{self, FieldMerkleTreeMmcs};
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
     use rand::Rng;
     use spl_algebra::Field;
-    use spl_multi_pcs::{Mle, MultilinearPcs};
+    use spl_multilinear::{Mle, MultilinearPcs};
 
     use crate::{BaseFoldPcs, BaseFoldProver, Point};
-
-    use crate::BaseFoldConfig;
 
     type F = BabyBear;
 
@@ -255,14 +256,7 @@ mod tests {
             let hash = MyHash::new(perm.clone());
             let compress = MyCompress::new(perm.clone());
             let mmcs = ValMmcs::new(hash, compress);
-            let config = BaseFoldConfig {
-                fri_config: FriConfig {
-                    log_blowup: 1,
-                    num_queries: 10,
-                    proof_of_work_bits: 8,
-                    mmcs,
-                },
-            };
+            let config = FriConfig { log_blowup: 1, num_queries: 10, proof_of_work_bits: 8, mmcs };
 
             let pcs = BaseFoldPcs::<F, ValMmcs, Challenger>::new(config);
 
@@ -272,7 +266,7 @@ mod tests {
 
             let prover = BaseFoldProver::new(pcs);
 
-            let (commit, data) = prover.commit(vals.clone());
+            let (commit, data) = prover.commit(vec![RowMajorMatrix::new(vals.clone(), 1)]);
 
             let proof = prover.prove_evaluation(
                 data,
@@ -283,7 +277,7 @@ mod tests {
 
             prover
                 .pcs
-                .verify(
+                .verify_evaluations(
                     new_eval_point,
                     &[expected_eval],
                     commit,
