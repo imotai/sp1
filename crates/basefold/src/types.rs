@@ -1,4 +1,3 @@
-use spl_multilinear::Mle;
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -7,7 +6,7 @@ use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_fri::{FriConfig, QueryProof};
 
 use crate::FriError;
-use spl_algebra::{ExtensionField, Field, TwoAdicField};
+use slop_algebra::{ExtensionField, Field};
 
 /// The data necessary to construct a BaseFold opening proof.
 pub struct BaseFoldProof<K: Field, M: Mmcs<K>, Witness> {
@@ -54,6 +53,14 @@ where
     ) -> Self {
         Self { inner_mmcs, fri_config, _phantom: std::marker::PhantomData }
     }
+
+    pub fn fri_config(&self) -> &FriConfig<ExtensionMmcs<K, EK, InnerMmcs>> {
+        &self.fri_config
+    }
+
+    pub fn inner_mmcs(&self) -> &InnerMmcs {
+        &self.inner_mmcs
+    }
 }
 
 #[derive(Debug, Error)]
@@ -69,19 +76,4 @@ pub enum BaseFoldError<MmcsError> {
 
     #[error("Incorrect shape")]
     IncorrectShape,
-}
-
-pub struct BaseFoldProver<K: TwoAdicField, EK: ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
-where
-    Challenger: GrindingChallenger
-        + FieldChallenger<K>
-        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
-    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
-{
-    pub(crate) pcs: BaseFoldPcs<K, EK, InnerMmcs, Challenger>,
-}
-
-pub struct BaseFoldProverData<K, D> {
-    pub(crate) vals: Mle<K>,
-    pub(crate) data: D,
 }

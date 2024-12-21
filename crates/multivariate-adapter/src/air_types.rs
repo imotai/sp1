@@ -1,6 +1,7 @@
+use p3_air::ExtensionBuilder;
 use serde::{Deserialize, Serialize};
 
-use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair, Matrix};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "T: Serialize"))]
@@ -27,4 +28,26 @@ pub struct ChipOpenedValues<T> {
     pub adapter: AirOpenedValues<T>,
     pub quotient: Vec<Vec<T>>,
     pub log_degree: usize,
+}
+
+pub trait MultivariateEvaluationAirBuilder: ExtensionBuilder {
+    type MP: Matrix<Self::VarEF>;
+
+    type Sum: Into<Self::ExprEF> + Copy;
+
+    type RandomVar: Into<Self::ExprEF> + Copy;
+
+    /// The multivariate adapter columns (eq polynomial and cumulative sum).
+    fn adapter(&self) -> Self::MP;
+
+    /// The evaluation point of the multilinear polynomial. Unused for now but will get used when we
+    /// constrain the eq evaluation.
+    fn _evaluation_point(&self) -> Vec<Self::Sum>;
+
+    /// The expected evaluation of the multilinear. (Checked to be the last entry of the cumulative
+    /// sum).
+    fn expected_evals(&self) -> &[Self::Sum];
+
+    /// The random challenge used to batch the evaluations.
+    fn batch_randomness(&self) -> Self::RandomVar;
 }

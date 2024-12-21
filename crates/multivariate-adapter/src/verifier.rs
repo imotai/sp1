@@ -6,13 +6,13 @@ use p3_challenger::{CanObserve, FieldChallenger};
 use p3_commit::{LagrangeSelectors, Pcs, PolynomialSpace};
 use p3_uni_stark::{StarkGenericConfig, Val};
 
-use spl_algebra::{AbstractExtensionField, AbstractField};
-use spl_multilinear::{MultilinearPcsVerifier, Point};
+use slop_algebra::{AbstractExtensionField, AbstractField};
+use slop_multilinear::{MultilinearPcsVerifier, Point};
 
+pub const LOG_QUOTIENT_DEGREE: usize = 1;
 use crate::{
     air_types::{AirOpenedValues, ChipOpenedValues},
     folder::VerifierConstraintFolder,
-    prover::LOG_QUOTIENT_DEGREE,
     types::{
         Dom, MultivariateAdapterAir, MultivariateAdapterError, MultivariateAdapterPCS,
         MultivariateAdapterProof,
@@ -37,7 +37,7 @@ impl<SC: StarkGenericConfig> MultilinearPcsVerifier<SC::Challenger> for Multivar
 
     fn verify_evaluations(
         &self,
-        point: spl_multilinear::Point<SC::Challenge>,
+        point: slop_multilinear::Point<SC::Challenge>,
         eval_claims: &[SC::Challenge],
         main_commit: Self::Commitment,
         proof: &Self::Proof,
@@ -324,7 +324,7 @@ impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
         qc_domains: &[Dom<SC>],
         zeta: SC::Challenge,
     ) -> SC::Challenge {
-        use spl_algebra::Field;
+        use slop_algebra::Field;
 
         let zps = qc_domains
             .iter()

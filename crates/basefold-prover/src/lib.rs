@@ -10,10 +10,218 @@ use p3_matrix::{
     dense::{DenseMatrix, RowMajorMatrix},
     Matrix,
 };
-use spl_algebra::{ExtensionField, Field, TwoAdicField};
-use spl_multilinear::MultilinearPcsProver;
+use slop_algebra::{ExtensionField, Field, TwoAdicField};
+use slop_basefold::{BaseFoldPcs, BaseFoldProof};
+use slop_multilinear::{Mle, MultilinearPcsProver, Point};
 
-use crate::{BaseFoldPcs, BaseFoldProof, BaseFoldProver, BaseFoldProverData, Point};
+pub struct BaseFoldProver<K: TwoAdicField, EK: ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
+where
+    Challenger: GrindingChallenger
+        + FieldChallenger<K>
+        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
+    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
+{
+    pub(crate) pcs: BaseFoldPcs<K, EK, InnerMmcs, Challenger>,
+}
+
+pub struct BaseFoldProverData<K, ProverData> {
+    vals: Mle<K>,
+    data: ProverData,
+}
+
+#[allow(clippy::type_complexity)]
+impl<K: TwoAdicField, EK: TwoAdicField + ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
+    BaseFoldProver<K, EK, InnerMmcs, Challenger>
+where
+    Challenger: GrindingChallenger
+        + FieldChallenger<K>
+        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
+    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
+{
+    pub fn new(pcs: BaseFoldPcs<K, EK, InnerMmcs, Challenger>) -> Self {
+        Self { pcs }
+    }
+
+    pub fn commit(
+        &self,
+        vals: Vec<RowMajorMatrix<K>>,
+    ) -> (InnerMmcs::Commitment, BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>)
+    {
+        // The parameter `vals` is the vector of coefficients of a univariate polynomial of degree
+        // < d, and we compute the evluations of this polynomial on a domain of size
+        // `config.blowup()*d`
+
+        assert!(vals.len() == 1, "BaseFoldProver only supports a single polynomial commitment");
+
+        let vals = vals[0].clone().values;
+
+        let len = vals.len();
+
+        // Extend `vals` by zero to have the correct length.
+        let to_commit = vals
+            .clone()
+            .into_iter()
+            .chain(
+                std::iter::repeat(K::zero())
+                    .take(len * (1 << (self.pcs.fri_config().log_blowup - 1))),
+            )
+            .collect_vec();
+
+        // Compute the evaluations of `vals` on the appropriate domain.
+        let mut mat = Radix2Dit::default()
+            .coset_dft_batch(RowMajorMatrix::new(to_commit, 1), K::one())
+            .bit_reverse_rows()
+            .to_row_major_matrix();
+
+        mat.width = 2;
+
+        let (commit, data) = self.pcs.inner_mmcs().commit_matrix(mat);
+
+        (commit, BaseFoldProverData { vals: vals.into(), data })
+    }
+
+    /// Given a vector of evaluations of a polynomial `vals` at a point `eval_point`, the prover
+    /// generates a proof about the evaluation of the multilinear extension of `vals` at
+    /// `eval_point`.
+    ///
+    /// Thinking of `vals` as a univariate polynomial in the coefficient basis, the prover commits
+    /// to the Reed-Solomon encoding of `vals` (as a vector). Letting g be the multilinear
+    /// extension and `X_0, ... , X_{d-1}` be the coordinates of `eval_point`, the prover:
+    /// 1. Computes `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`, and sends its
+    ///    claims about these openings as messages to the verifier.
+    /// 2. Takes a random linear combination of the above two messages to produce an equivalent
+    ///    evaluation claim about a multilinear polynomial in one fewer variable. On the univariate
+    ///    side, this corresponds to folding in FRI, and the prover sends a commitment to the folded
+    ///    univariate polynomial.
+    /// 3. Repeats the two above steps until reduced to a claim about a 0-variate multilinear and a
+    ///    degree 0-univariate polynomial, which should agree. It sends the value of this constant
+    ///    polynomial.
+    /// 4. Answers queries to its vector commitments as in FRI.
+    pub fn prove_evaluation(
+        &self,
+        data: BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>,
+        // TODO: support batches.
+        mut eval_point: Point<EK>,
+        _expected_eval: EK,
+        challenger: &mut Challenger,
+    ) -> BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>
+    where
+        Challenger: GrindingChallenger
+            + FieldChallenger<K>
+            + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
+        <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
+    {
+        let matrices = self.pcs.inner_mmcs().get_matrices(&data.data);
+
+        debug_assert_eq!(matrices.len(), 1);
+
+        let mut current = matrices[0].values.iter().copied().map(EK::from_base).collect();
+
+        let mut current_mle = data.vals.to_extension_field::<EK>();
+
+        let log_len = current_mle.num_variables();
+
+        // Initialize the vecs that go into a BaseFoldProof.
+        let mut univariate_polys: Vec<[EK; 2]> = vec![];
+        let mut commits = vec![];
+        let mut data = vec![];
+
+        for _ in 0..eval_point.dimension() {
+            // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
+            // TODO: I think there's a lot repeated work between these rounds that can be cut out.
+            eval_point.remove_last_coordinate();
+            let uni_poly = current_mle.fixed_evaluations(&eval_point);
+            univariate_polys.push(uni_poly);
+
+            uni_poly.iter().for_each(|elem| challenger.observe_ext_element(*elem));
+
+            // Perform a single round of the FRI commit phase, returning the commitment, folded
+            // codeword, and folding parameter.
+            let commit;
+            let prover_data;
+            let beta;
+            (current, commit, prover_data, beta) =
+                commit_phase_single_round(self.pcs.fri_config(), current, challenger);
+            commits.push(commit);
+            data.push(prover_data);
+
+            // Combine the two halves (last variable evaluated to 0 and 1) into a single
+            // multivariate to pass into the next round. Equivalent to the FRI-fold
+            // stemp on the univariate side.
+            current_mle = current_mle.random_linear_combination(beta);
+        }
+
+        // As in FRI, the last codeword should be an encoding of a constant polynomial, with
+        // `1<<log_blowup` entries.
+        debug_assert_eq!(current.len(), 1 << self.pcs.fri_config().log_blowup);
+        for elem in current[1..].iter() {
+            debug_assert_eq!(*elem, current[0])
+        }
+
+        let pow_witness = challenger.grind(self.pcs.fri_config().proof_of_work_bits);
+
+        // FRI Query Phase.
+        let query_indices: Vec<usize> = (0..self.pcs.fri_config().num_queries)
+            .map(|_| challenger.sample_bits(log_len + self.pcs.fri_config().log_blowup))
+            .collect();
+
+        let query_proofs = query_indices
+            .iter()
+            .map(|&index| answer_query(self.pcs.fri_config(), &data, index))
+            .collect_vec();
+
+        BaseFoldProof {
+            univariate_messages: univariate_polys,
+            commitments: commits,
+            query_phase_proofs: query_proofs,
+            pow_witness,
+            final_poly: current[0],
+        }
+    }
+}
+
+impl<
+        K: TwoAdicField,
+        EK: TwoAdicField + ExtensionField<K>,
+        InnerMmcs: Mmcs<K>,
+        Challenger: GrindingChallenger
+            + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>
+            + FieldChallenger<K>,
+    > MultilinearPcsProver<Challenger> for BaseFoldProver<K, EK, InnerMmcs, Challenger>
+where
+    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq + Debug,
+{
+    type OpeningProof = BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>;
+
+    type MultilinearProverData = BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>;
+
+    type MultilinearCommitment = InnerMmcs::Commitment;
+
+    type PCS = BaseFoldPcs<K, EK, InnerMmcs, Challenger>;
+
+    fn commit_multilinears(
+        &self,
+        data: Vec<RowMajorMatrix<K>>,
+    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
+        self.commit(data)
+    }
+
+    fn prove_evaluations(
+        &self,
+        eval_point: Point<EK>,
+        expected_evals: &[EK],
+        prover_data: Self::MultilinearProverData,
+        challenger: &mut Challenger,
+    ) -> Self::OpeningProof {
+        BaseFoldProver::prove_evaluation(
+            self,
+            prover_data,
+            eval_point,
+            expected_evals[0],
+            challenger,
+        )
+    }
+}
 
 /// A single round of the FRI commit phase. This function commits to the prover message, samples the
 /// round challenge, and folds the polynomial. This function is repeated in the Plonky3 FRI prover
@@ -77,196 +285,85 @@ where
     (opening, QueryProof { commit_phase_openings })
 }
 
-#[allow(clippy::type_complexity)]
-impl<K: TwoAdicField, EK: TwoAdicField + ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
-    BaseFoldProver<K, EK, InnerMmcs, Challenger>
-where
-    Challenger: GrindingChallenger
-        + FieldChallenger<K>
-        + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
-    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
-{
-    pub fn new(pcs: BaseFoldPcs<K, EK, InnerMmcs, Challenger>) -> Self {
-        Self { pcs }
-    }
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use p3_challenger::DuplexChallenger;
+    use p3_commit::ExtensionMmcs;
+    use p3_fri::FriConfig;
+    use p3_matrix::dense::RowMajorMatrix;
+    use p3_merkle_tree::FieldMerkleTreeMmcs;
+    use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+    use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
+    use rand::Rng;
+    use slop_algebra::{extension::BinomialExtensionField, Field};
+    use slop_multilinear::{Mle, Point};
 
-    pub fn commit(
-        &self,
-        vals: Vec<RowMajorMatrix<K>>,
-    ) -> (InnerMmcs::Commitment, BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>)
-    {
-        // The parameter `vals` is the vector of coefficients of a univariate polynomial of degree
-        // < d, and we compute the evluations of this polynomial on a domain of size
-        // `config.blowup()*d`
+    use crate::BaseFoldProver;
 
-        assert!(vals.len() == 1, "BaseFoldProver only supports a single polynomial commitment");
+    use slop_basefold::BaseFoldPcs;
 
-        let vals = vals[0].clone().values;
+    use slop_multilinear::MultilinearPcsVerifier;
 
-        let len = vals.len();
+    type F = BabyBear;
+    type EF = BinomialExtensionField<F, 4>;
 
-        // Extend `vals` by zero to have the correct length.
-        let to_commit = vals
-            .clone()
-            .into_iter()
-            .chain(
-                std::iter::repeat(K::zero())
-                    .take(len * (1 << (self.pcs.fri_config.log_blowup - 1))),
-            )
-            .collect_vec();
+    type Perm = Poseidon2<F, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
+    type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
+    type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
+    type ValMmcs =
+        FieldMerkleTreeMmcs<<F as Field>::Packing, <F as Field>::Packing, MyHash, MyCompress, 8>;
+    type ChallengeMmcs = ExtensionMmcs<F, EF, ValMmcs>;
+    type Challenger = DuplexChallenger<F, Perm, 16, 8>;
 
-        // Compute the evaluations of `vals` on the appropriate domain.
-        let mut mat = Radix2Dit::default()
-            .coset_dft_batch(RowMajorMatrix::new(to_commit, 1), K::one())
-            .bit_reverse_rows()
-            .to_row_major_matrix();
+    #[test]
+    fn test_prover() {
+        let mut rng = rand::thread_rng();
 
-        mat.width = 2;
+        (1..13).for_each(|i| {
+            println!("Testing an instance with {} variables.", i);
+            let num_variables = i;
 
-        let (commit, data) = self.pcs.inner_mmcs.commit_matrix(mat);
+            let vals = (0..(1 << num_variables)).map(|_| rng.gen::<F>()).collect_vec();
+            let perm = Perm::new_from_rng_128(
+                Poseidon2ExternalMatrixGeneral,
+                DiffusionMatrixBabyBear,
+                &mut rng,
+            );
+            let hash = MyHash::new(perm.clone());
+            let compress = MyCompress::new(perm.clone());
+            let inner_mmcs = ValMmcs::new(hash, compress);
+            let mmcs = ChallengeMmcs::new(inner_mmcs.clone());
+            let config = FriConfig { log_blowup: 1, num_queries: 10, proof_of_work_bits: 8, mmcs };
 
-        (commit, BaseFoldProverData { vals: vals.into(), data })
-    }
+            let pcs = BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(config, inner_mmcs);
 
-    /// Given a vector of evaluations of a polynomial `vals` at a point `eval_point`, the prover
-    /// generates a proof about the evaluation of the multilinear extension of `vals` at
-    /// `eval_point`.
-    ///
-    /// Thinking of `vals` as a univariate polynomial in the coefficient basis, the prover commits
-    /// to the Reed-Solomon encoding of `vals` (as a vector). Letting g be the multilinear
-    /// extension and `X_0, ... , X_{d-1}` be the coordinates of `eval_point`, the prover:
-    /// 1. Computes `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`, and sends its
-    ///    claims about these openings as messages to the verifier.
-    /// 2. Takes a random linear combination of the above two messages to produce an equivalent
-    ///    evaluation claim about a multilinear polynomial in one fewer variable. On the univariate
-    ///    side, this corresponds to folding in FRI, and the prover sends a commitment to the folded
-    ///    univariate polynomial.
-    /// 3. Repeats the two above steps until reduced to a claim about a 0-variate multilinear and a
-    ///    degree 0-univariate polynomial, which should agree. It sends the value of this constant
-    ///    polynomial.
-    /// 4. Answers queries to its vector commitments as in FRI.
-    pub fn prove_evaluation(
-        &self,
-        data: BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>,
-        // TODO: support batches.
-        mut eval_point: Point<EK>,
-        _expected_eval: EK,
-        challenger: &mut Challenger,
-    ) -> BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>
-    where
-        Challenger: GrindingChallenger
-            + FieldChallenger<K>
-            + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
-        <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Debug,
-    {
-        let matrices = self.pcs.inner_mmcs.get_matrices(&data.data);
+            let new_eval_point = Point::new((0..num_variables).map(|_| rng.gen::<EF>()).collect());
 
-        debug_assert_eq!(matrices.len(), 1);
+            let expected_eval = Mle::new(vals.clone()).eval_at_point(&new_eval_point);
 
-        let mut current = matrices[0].values.iter().copied().map(EK::from_base).collect();
+            let prover = BaseFoldProver::new(pcs);
 
-        let mut current_mle = data.vals.to_extension_field::<EK>();
+            let (commit, data) = prover.commit(vec![RowMajorMatrix::new(vals.clone(), 1)]);
 
-        let log_len = current_mle.num_variables();
+            let proof = prover.prove_evaluation(
+                data,
+                new_eval_point.clone(),
+                expected_eval,
+                &mut Challenger::new(perm.clone()),
+            );
 
-        // Initialize the vecs that go into a BaseFoldProof.
-        let mut univariate_polys: Vec<[EK; 2]> = vec![];
-        let mut commits = vec![];
-        let mut data = vec![];
-
-        for _ in 0..eval_point.dimension() {
-            // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
-            // TODO: I think there's a lot repeated work between these rounds that can be cut out.
-            eval_point.remove_last_coordinate();
-            let uni_poly = current_mle.fixed_evaluations(&eval_point);
-            univariate_polys.push(uni_poly);
-
-            uni_poly.iter().for_each(|elem| challenger.observe_ext_element(*elem));
-
-            // Perform a single round of the FRI commit phase, returning the commitment, folded
-            // codeword, and folding parameter.
-            let commit;
-            let prover_data;
-            let beta;
-            (current, commit, prover_data, beta) =
-                commit_phase_single_round(&self.pcs.fri_config, current, challenger);
-            commits.push(commit);
-            data.push(prover_data);
-
-            // Combine the two halves (last variable evaluated to 0 and 1) into a single
-            // multivariate to pass into the next round. Equivalent to the FRI-fold
-            // stemp on the univariate side.
-            current_mle = current_mle.random_linear_combination(beta);
-        }
-
-        // As in FRI, the last codeword should be an encoding of a constant polynomial, with
-        // `1<<log_blowup` entries.
-        debug_assert_eq!(current.len(), 1 << self.pcs.fri_config.log_blowup);
-        for elem in current[1..].iter() {
-            debug_assert_eq!(*elem, current[0])
-        }
-
-        let pow_witness = challenger.grind(self.pcs.fri_config.proof_of_work_bits);
-
-        // FRI Query Phase.
-        let query_indices: Vec<usize> = (0..self.pcs.fri_config.num_queries)
-            .map(|_| challenger.sample_bits(log_len + self.pcs.fri_config.log_blowup))
-            .collect();
-
-        let query_proofs = query_indices
-            .iter()
-            .map(|&index| answer_query(&self.pcs.fri_config, &data, index))
-            .collect_vec();
-
-        BaseFoldProof {
-            univariate_messages: univariate_polys,
-            commitments: commits,
-            query_phase_proofs: query_proofs,
-            pow_witness,
-            final_poly: current[0],
-        }
-    }
-}
-
-impl<
-        K: TwoAdicField,
-        EK: TwoAdicField + ExtensionField<K>,
-        InnerMmcs: Mmcs<K>,
-        Challenger: GrindingChallenger
-            + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>
-            + FieldChallenger<K>,
-    > MultilinearPcsProver<Challenger> for BaseFoldProver<K, EK, InnerMmcs, Challenger>
-where
-    <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq + Debug,
-{
-    type OpeningProof = BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>;
-
-    type MultilinearProverData = BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>;
-
-    type MultilinearCommitment = InnerMmcs::Commitment;
-
-    type PCS = BaseFoldPcs<K, EK, InnerMmcs, Challenger>;
-
-    fn commit_multilinears(
-        &self,
-        data: Vec<RowMajorMatrix<K>>,
-    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
-        self.commit(data)
-    }
-
-    fn prove_evaluations(
-        &self,
-        eval_point: Point<EK>,
-        expected_evals: &[EK],
-        prover_data: Self::MultilinearProverData,
-        challenger: &mut Challenger,
-    ) -> Self::OpeningProof {
-        BaseFoldProver::prove_evaluation(
-            self,
-            prover_data,
-            eval_point,
-            expected_evals[0],
-            challenger,
-        )
+            prover
+                .pcs
+                .verify_evaluations(
+                    new_eval_point,
+                    &[expected_eval],
+                    commit,
+                    &proof,
+                    &mut Challenger::new(perm.clone()),
+                )
+                .unwrap();
+        });
     }
 }

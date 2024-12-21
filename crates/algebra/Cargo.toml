@@ -1,5 +1,5 @@
 [package]
-name = "spl-algebra"
+name = "slop-algebra"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

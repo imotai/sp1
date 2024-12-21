@@ -1,5 +1,5 @@
 use p3_matrix::dense::RowMajorMatrix;
-use spl_algebra::{ExtensionField, Field};
+use slop_algebra::{ExtensionField, Field};
 
 use crate::Point;
 

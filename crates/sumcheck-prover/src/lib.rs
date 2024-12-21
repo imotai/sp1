@@ -4,10 +4,10 @@ use p3_challenger::{CanObserve, CanSample};
 //     enable_bb_ops_counting, enable_ext_ops_counting, enable_permute_counting,
 //     get_bb_ops_invocation_count, get_ext_ops_invocation_count, get_permute_invocation_count,
 // };
-use spl_algebra::{ExtensionField, Field, UnivariatePolynomial};
-use spl_multilinear::Point;
+use slop_algebra::{ExtensionField, Field, UnivariatePolynomial};
+use slop_multilinear::Point;
 
-use crate::{PartialSumcheckProof, SumcheckPoly};
+use slop_sumcheck::{PartialSumcheckProof, SumcheckPoly};
 
 /// Proves a sumcheck for any sumcheckable polynomial, by reducing it to a claim about the
 /// evaluation of the polynomial at a point.
@@ -101,11 +101,10 @@ mod tests {
 
     use p3_challenger::DuplexChallenger;
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-    use rand::thread_rng;
-    use spl_algebra::{extension::BinomialExtensionField, AbstractField};
-    use spl_multilinear::Mle;
-
-    use crate::partially_verify_sumcheck_proof;
+    use rand::{thread_rng, Rng};
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_multilinear::{partial_lagrange_eval, Mle, Point};
+    use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError, SumcheckPoly};
 
     type F = BabyBear;
     type EF = BinomialExtensionField<F, 4>;
@@ -144,5 +143,106 @@ mod tests {
 
         assert_eq!(proof.univariate_polys.len(), 3);
         assert_eq!(proof.claimed_sum, EF::from_canonical_u32(20));
+    }
+
+    #[test]
+    fn valid_sumcheck_tests() {
+        let max_num_variables = 23;
+        for _ in 0..100 {
+            let perm = Perm::new_from_rng_128(
+                Poseidon2ExternalMatrixGeneral,
+                DiffusionMatrixBabyBear,
+                &mut thread_rng(),
+            );
+
+            for num_variables in 1..max_num_variables {
+                let guts: Mle<F> =
+                    (0..1 << num_variables).map(|_| thread_rng().gen()).collect::<Vec<_>>().into();
+                let claim = guts.guts.iter().map(|x| EF::from(*x)).sum();
+
+                let (proof, _) = crate::reduce_sumcheck_to_evaluation::<F, EF, _>(
+                    Box::new(guts),
+                    &mut Challenger::new(perm.clone()),
+                    claim,
+                );
+
+                let mut challenger = Challenger::new(perm.clone());
+                assert!(
+                    partially_verify_sumcheck_proof::<F, EF, _>(&proof, &mut challenger).is_ok()
+                );
+                assert_eq!(proof.univariate_polys.len(), num_variables);
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_sumcheck_tests() {
+        let max_num_variables = 21;
+        for _ in 0..100 {
+            let perm = Perm::new_from_rng_128(
+                Poseidon2ExternalMatrixGeneral,
+                DiffusionMatrixBabyBear,
+                &mut thread_rng(),
+            );
+            for num_variables in 1..max_num_variables {
+                let guts: Mle<F> =
+                    (0..1 << num_variables).map(|_| thread_rng().gen()).collect::<Vec<_>>().into();
+                let mut challenger = Challenger::new(perm.clone());
+                let claim: F = guts.guts.iter().copied().sum();
+                let (mut proof, _) =
+                    crate::reduce_sumcheck_to_evaluation(Box::new(guts), &mut challenger, claim);
+                assert_eq!(proof.univariate_polys.len(), num_variables);
+
+                assert!(partially_verify_sumcheck_proof(&proof, &mut challenger).is_err());
+
+                proof.claimed_sum += F::one();
+
+                assert_eq!(
+                    partially_verify_sumcheck_proof(&proof, &mut Challenger::new(perm.clone())),
+                    Err(SumcheckError::InconsistencyWithClaimedSum)
+                );
+
+                proof.claimed_sum -= F::one();
+                proof.point_and_eval.1 += F::one();
+
+                assert_eq!(
+                    partially_verify_sumcheck_proof(&proof, &mut Challenger::new(perm.clone())),
+                    Err(SumcheckError::InconsistencyWithEval)
+                );
+
+                proof.point_and_eval.1 -= F::one();
+
+                if num_variables > 1 {
+                    proof.univariate_polys[1].coefficients[0] += F::one();
+                    assert_eq!(
+                        partially_verify_sumcheck_proof(&proof, &mut Challenger::new(perm.clone())),
+                        Err(SumcheckError::SumcheckRoundInconsistency)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_partial_lagrange_fix_first_variable() {
+        let num_variables = 3;
+        let mut rng = thread_rng();
+
+        let point: Point<F> = Point::new((0..num_variables).map(|_| rng.gen()).collect());
+
+        let partial_lagrange: Mle<_> = partial_lagrange_eval(&point).into();
+
+        let (first, rest) = point.split_at_first();
+
+        let smaller_partial_lagrange: Mle<_> = partial_lagrange_eval(&rest).into();
+
+        let random_coefficient: F = rng.gen();
+
+        assert_eq!(
+            *partial_lagrange.fix_first_variable(random_coefficient).mle()[0],
+            smaller_partial_lagrange
+                * (random_coefficient * first
+                    + (F::one() - random_coefficient) * (F::one() - first))
+        );
     }
 }

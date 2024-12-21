@@ -1,8 +1,13 @@
 use itertools::Itertools;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use slop_multivariate_adapter::{
+    generate_adapter_trace, AirOpenedValues, ChipOpenedValues, MultivariateAdapterAir,
+    MultivariateAdapterPCS, MultivariateAdapterProof, MultivariateEvaluationAirBuilder,
+    LOG_QUOTIENT_DEGREE,
+};
 use std::iter::once;
 
-use p3_air::Air;
+use p3_air::{Air, AirBuilder, ExtensionBuilder};
 use p3_challenger::{CanObserve, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
 use p3_matrix::{
@@ -13,17 +18,8 @@ use p3_matrix::{
 use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 use p3_util::log2_strict_usize;
 
-use spl_algebra::{AbstractExtensionField, AbstractField, PackedValue};
-use spl_multilinear::{MultilinearPcsProver, Point};
-
-use crate::{
-    air_types::{AirOpenedValues, ChipOpenedValues},
-    folder::ProverConstraintFolder,
-    types::{
-        generate_adapter_trace, MultivariateAdapterAir, MultivariateAdapterPCS,
-        MultivariateAdapterProof,
-    },
-};
+use slop_algebra::{AbstractExtensionField, AbstractField, PackedValue};
+use slop_multilinear::{MultilinearPcsProver, Point};
 
 type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
@@ -40,14 +36,131 @@ type ProverData<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenger,
 >>::ProverData;
 
+/// A folder for prover constraints.
+pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
+    /// The main trace (local row and next row).
+    pub main:
+        VerticalPair<RowMajorMatrixView<'a, PackedVal<SC>>, RowMajorMatrixView<'a, PackedVal<SC>>>,
+
+    /// The adapter trace (local row and next row).
+    pub adapter: VerticalPair<
+        RowMajorMatrixView<'a, PackedChallenge<SC>>,
+        RowMajorMatrixView<'a, PackedChallenge<SC>>,
+    >,
+
+    /// The expected evaluation of the multilinear.
+    pub expected_evals: Vec<PackedChallenge<SC>>,
+
+    /// The selector for the first row.
+    pub is_first_row: PackedVal<SC>,
+
+    /// The selector for the last row.
+    pub is_last_row: PackedVal<SC>,
+
+    /// The selector for the transition.
+    pub is_transition: PackedVal<SC>,
+
+    /// The constraint folding challenge.
+    pub alpha: SC::Challenge,
+
+    /// The batching challenge.
+    pub batch_challenge: PackedChallenge<SC>,
+
+    /// The accumulator for the constraint folding.
+    pub accumulator: PackedChallenge<SC>,
+
+    /// The evaluation point.
+    pub evaluation_point: Point<SC::Challenge>,
+}
+
+impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
+    type F = Val<SC>;
+    type Expr = PackedVal<SC>;
+    type Var = PackedVal<SC>;
+    type M =
+        VerticalPair<RowMajorMatrixView<'a, PackedVal<SC>>, RowMajorMatrixView<'a, PackedVal<SC>>>;
+
+    fn main(&self) -> Self::M {
+        self.main
+    }
+
+    fn is_first_row(&self) -> Self::Expr {
+        self.is_first_row
+    }
+
+    fn is_last_row(&self) -> Self::Expr {
+        self.is_last_row
+    }
+
+    fn is_transition_window(&self, size: usize) -> Self::Expr {
+        if size == 2 {
+            self.is_transition
+        } else {
+            panic!("uni-stark only supports a window size of 2")
+        }
+    }
+
+    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+        let x: PackedVal<SC> = x.into();
+        self.accumulator *= PackedChallenge::<SC>::from_f(self.alpha);
+        self.accumulator += x;
+    }
+}
+
+impl<'a, SC: StarkGenericConfig> ExtensionBuilder for ProverConstraintFolder<'a, SC> {
+    type EF = SC::Challenge;
+
+    type ExprEF = PackedChallenge<SC>;
+
+    type VarEF = PackedChallenge<SC>;
+
+    fn assert_zero_ext<I>(&mut self, x: I)
+    where
+        I: Into<Self::ExprEF>,
+    {
+        let x: PackedChallenge<SC> = x.into();
+
+        // Horner's rule for polynomial evaluation.
+        self.accumulator *= PackedChallenge::<SC>::from_f(self.alpha);
+        self.accumulator += x;
+    }
+}
+
+impl<'a, SC: StarkGenericConfig> MultivariateEvaluationAirBuilder
+    for ProverConstraintFolder<'a, SC>
+{
+    type MP = VerticalPair<
+        RowMajorMatrixView<'a, PackedChallenge<SC>>,
+        RowMajorMatrixView<'a, PackedChallenge<SC>>,
+    >;
+
+    type Sum = PackedChallenge<SC>;
+
+    type RandomVar = PackedChallenge<SC>;
+
+    fn adapter(&self) -> Self::MP {
+        self.adapter
+    }
+
+    fn expected_evals(&self) -> &[Self::Sum] {
+        &self.expected_evals
+    }
+
+    fn _evaluation_point(&self) -> Vec<Self::Sum> {
+        self.evaluation_point.iter().copied().map(PackedChallenge::<SC>::from_f).collect()
+    }
+
+    fn batch_randomness(&self) -> Self::RandomVar {
+        self.batch_challenge
+    }
+}
+
 type PointAndEvals<'a, SC> =
     (Point<<SC as StarkGenericConfig>::Challenge>, &'a [<SC as StarkGenericConfig>::Challenge]);
 
 pub struct AdapterProver<SC: StarkGenericConfig> {
     pub(crate) pcs: MultivariateAdapterPCS<SC>,
 }
-
-pub const LOG_QUOTIENT_DEGREE: usize = 1;
 
 #[allow(clippy::type_complexity)]
 impl<SC: StarkGenericConfig> AdapterProver<SC> {
@@ -69,7 +182,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         // Observe the main commitment.
         // challenger.observe(main_commit.clone());
 
-        let trace_domain = self.pcs.config.pcs().natural_domain_for_degree(degree);
+        let trace_domain = self.pcs.config().pcs().natural_domain_for_degree(degree);
 
         let log_quotient_degree = LOG_QUOTIENT_DEGREE;
 
@@ -78,7 +191,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
 
         let parent_span = tracing::debug_span!("commit adapter trace");
         let (adapter_trace_commit, adapter_trace_data) = parent_span.in_scope(|| {
-            self.pcs.config.pcs().commit(vec![(trace_domain, adapter_trace.flatten_to_base())])
+            self.pcs.config().pcs().commit(vec![(trace_domain, adapter_trace.flatten_to_base())])
         });
 
         challenger.observe(adapter_trace_commit.clone());
@@ -93,12 +206,12 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
             parent_span.in_scope(|| {
                 (
                     self.pcs
-                        .config
+                        .config()
                         .pcs()
                         .get_evaluations_on_domain(&prover_data.0, 0, quotient_domain)
                         .to_row_major_matrix(),
                     self.pcs
-                        .config
+                        .config()
                         .pcs()
                         .get_evaluations_on_domain(&adapter_trace_data, 0, quotient_domain)
                         .to_row_major_matrix(),
@@ -131,7 +244,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
 
         let parent_span = tracing::debug_span!("commit quotient values");
         let (quotient_commit, quotient_data) = parent_span.in_scope(|| {
-            self.pcs.config.pcs().commit(qc_domains.into_iter().zip(quotient_chunks).collect())
+            self.pcs.config().pcs().commit(qc_domains.into_iter().zip(quotient_chunks).collect())
         });
         challenger.observe(quotient_commit.clone());
 
@@ -146,7 +259,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
 
         let parent_span = tracing::debug_span!("open commitments");
         let (openings, opening_proof) = parent_span.in_scope(|| {
-            self.pcs.config.pcs().open(
+            self.pcs.config().pcs().open(
                 vec![
                     (&prover_data.0, trace_opening_points.clone()),
                     (&adapter_trace_data, trace_opening_points),
@@ -335,8 +448,8 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
         &self,
         data: RowMajorMatrix<Val<SC>>,
     ) -> ((Com<SC>, ProverData<SC>), RowMajorMatrix<Val<SC>>) {
-        let domain = self.pcs.config.pcs().natural_domain_for_degree(data.height());
-        (self.pcs.config.pcs().commit(vec![(domain, data.clone())]), data)
+        let domain = self.pcs.config().pcs().natural_domain_for_degree(data.height());
+        (self.pcs.config().pcs().commit(vec![(domain, data.clone())]), data)
     }
 }
 
@@ -384,13 +497,13 @@ pub mod tests {
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
     use p3_uni_stark::StarkConfig;
     use rand::{thread_rng, Rng};
-    use spl_algebra::{
+    use slop_algebra::{
         extension::BinomialExtensionField, AbstractExtensionField, AbstractField, Field,
     };
-    use spl_multilinear::{Mle, MultilinearPcsVerifier, Point};
-    use spl_utils::setup_logger;
+    use slop_multilinear::{Mle, MultilinearPcsVerifier, Point};
+    use slop_utils::setup_logger;
 
-    use crate::prover::AdapterProver;
+    use super::AdapterProver;
 
     use super::MultivariateAdapterPCS;
 
@@ -416,7 +529,7 @@ pub mod tests {
     fn test_generate_adapter_trace() {
         let data = vec![Val::one(), Val::one()];
         let eval_point = Point::new(vec![Val::two()]);
-        let trace = crate::types::generate_adapter_trace::<MyConfig>(
+        let trace = slop_multivariate_adapter::generate_adapter_trace::<MyConfig>(
             &RowMajorMatrix::new(data, 1),
             &Point::new(eval_point.iter().map(|x| Challenge::from_base(*x)).collect()),
             Challenge::zero(),
@@ -453,7 +566,7 @@ pub mod tests {
         let config = MyConfig::new(pcs);
         let mut challenger = Challenger::new(perm.clone());
 
-        let pcs = MultivariateAdapterPCS { config, batch_size: BATCH_SIZE };
+        let pcs = MultivariateAdapterPCS::new(config, BATCH_SIZE);
 
         let prover = AdapterProver::new(pcs);
 
@@ -533,7 +646,7 @@ pub mod tests {
         let config = MyConfig::new(pcs);
         let mut challenger = Challenger::new(perm.clone());
 
-        let pcs = MultivariateAdapterPCS { config, batch_size: 2 };
+        let pcs = MultivariateAdapterPCS::new(config, 2);
 
         let prover = AdapterProver::new(pcs);
 

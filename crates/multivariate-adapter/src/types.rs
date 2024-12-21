@@ -12,12 +12,10 @@ use p3_commit::Pcs;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_uni_stark::{StarkGenericConfig, Val};
 
-use spl_algebra::AbstractField;
-use spl_multilinear::{partial_lagrange_eval, Point};
+use slop_algebra::AbstractField;
+use slop_multilinear::{partial_lagrange_eval, Point};
 
-use crate::{
-    air_types::ChipOpenedValues, folder::MultivariateEvaluationAirBuilder, verifier::AdapterAir,
-};
+use crate::{air_types::ChipOpenedValues, verifier::AdapterAir, MultivariateEvaluationAirBuilder};
 
 type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
@@ -37,6 +35,18 @@ pub struct MultivariateAdapterPCS<SC: StarkGenericConfig> {
 
     /// The number of multivariates to be opened.
     pub(crate) batch_size: usize,
+}
+
+impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
+    /// Access the STARK config.
+    pub fn config(&self) -> &SC {
+        &self.config
+    }
+
+    /// Construct a new adapter PCS.
+    pub fn new(config: SC, batch_size: usize) -> Self {
+        Self { config, batch_size }
+    }
 }
 
 /// The proof struct for the multivariate opening.

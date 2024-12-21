@@ -3,7 +3,7 @@ use std::ops::Mul;
 use itertools::Itertools;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
-use spl_algebra::{ExtensionField, Field};
+use slop_algebra::{ExtensionField, Field};
 
 use crate::Point;
 

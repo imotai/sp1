@@ -7,8 +7,8 @@ use p3_fri::{
 };
 use p3_matrix::Dimensions;
 use p3_util::reverse_bits_len;
-use spl_algebra::{ExtensionField, TwoAdicField};
-use spl_multilinear::{MultilinearPcsVerifier, Point};
+use slop_algebra::{ExtensionField, TwoAdicField};
+use slop_multilinear::{MultilinearPcsVerifier, Point};
 
 use crate::{BaseFoldError, BaseFoldPcs, BaseFoldProof};
 
@@ -215,84 +215,5 @@ where
         } else {
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use itertools::Itertools;
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_challenger::DuplexChallenger;
-    use p3_commit::ExtensionMmcs;
-    use p3_fri::FriConfig;
-    use p3_matrix::dense::RowMajorMatrix;
-    use p3_merkle_tree::{self, FieldMerkleTreeMmcs};
-    use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-    use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-    use rand::Rng;
-    use spl_algebra::{extension::BinomialExtensionField, Field};
-    use spl_multilinear::{Mle, MultilinearPcsVerifier};
-
-    use crate::{BaseFoldPcs, BaseFoldProver, Point};
-
-    type F = BabyBear;
-    type EF = BinomialExtensionField<F, 4>;
-
-    type Perm = Poseidon2<F, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
-    type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
-    type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
-    type ValMmcs =
-        FieldMerkleTreeMmcs<<F as Field>::Packing, <F as Field>::Packing, MyHash, MyCompress, 8>;
-    type ChallengeMmcs = ExtensionMmcs<F, EF, ValMmcs>;
-    type Challenger = DuplexChallenger<F, Perm, 16, 8>;
-
-    #[test]
-    fn test_prover() {
-        let mut rng = rand::thread_rng();
-
-        (1..13).for_each(|i| {
-            println!("Testing an instance with {} variables.", i);
-            let num_variables = i;
-
-            let vals = (0..(1 << num_variables)).map(|_| rng.gen::<F>()).collect_vec();
-            let perm = Perm::new_from_rng_128(
-                Poseidon2ExternalMatrixGeneral,
-                DiffusionMatrixBabyBear,
-                &mut rng,
-            );
-            let hash = MyHash::new(perm.clone());
-            let compress = MyCompress::new(perm.clone());
-            let inner_mmcs = ValMmcs::new(hash, compress);
-            let mmcs = ChallengeMmcs::new(inner_mmcs.clone());
-            let config = FriConfig { log_blowup: 1, num_queries: 10, proof_of_work_bits: 8, mmcs };
-
-            let pcs = BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(config, inner_mmcs);
-
-            let new_eval_point = Point::new((0..num_variables).map(|_| rng.gen::<EF>()).collect());
-
-            let expected_eval = Mle::new(vals.clone()).eval_at_point(&new_eval_point);
-
-            let prover = BaseFoldProver::new(pcs);
-
-            let (commit, data) = prover.commit(vec![RowMajorMatrix::new(vals.clone(), 1)]);
-
-            let proof = prover.prove_evaluation(
-                data,
-                new_eval_point.clone(),
-                expected_eval,
-                &mut Challenger::new(perm.clone()),
-            );
-
-            prover
-                .pcs
-                .verify_evaluations(
-                    new_eval_point,
-                    &[expected_eval],
-                    commit,
-                    &proof,
-                    &mut Challenger::new(perm.clone()),
-                )
-                .unwrap();
-        });
     }
 }
