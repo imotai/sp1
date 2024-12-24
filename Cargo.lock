@@ -617,11 +617,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "slop-baby-bear"
+version = "1.2.0"
+dependencies = [
+ "p3-baby-bear",
+]
+
+[[package]]
 name = "slop-basefold"
 version = "1.2.0"
 dependencies = [
  "itertools",
- "p3-baby-bear",
  "p3-challenger",
  "p3-commit",
  "p3-fri",
@@ -629,6 +635,7 @@ dependencies = [
  "p3-util",
  "rand",
  "slop-algebra",
+ "slop-baby-bear",
  "slop-multilinear",
  "thiserror",
 ]

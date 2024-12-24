@@ -7,9 +7,9 @@ use p3_fri::verifier::FriError;
 
 #[cfg(test)]
 mod tests {
-    use p3_baby_bear::BabyBear;
     use rand::Rng;
     use slop_algebra::AbstractField;
+    use slop_baby_bear::BabyBear;
     use slop_multilinear::{full_lagrange_eval, partial_lagrange_eval, Mle};
 
     use slop_multilinear::Point;
