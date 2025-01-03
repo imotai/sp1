@@ -70,7 +70,7 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     pub accumulator: PackedChallenge<SC>,
 
     /// The evaluation point.
-    pub evaluation_: Point<SC::Challenge>,
+    pub evaluation_point: Point<SC::Challenge>,
 }
 
 impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
