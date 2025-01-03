@@ -7,10 +7,9 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, UnivariatePolynomial};
 use slop_multilinear::{Mle, Point};
-use std::fmt::Debug;
 
 /// The basic functionality required of a struct for which a sumcheck proof can be generated.
-pub trait SumcheckPoly<K>: Debug {
+pub trait SumcheckPoly<K> {
     fn fix_first_variable(&self, alpha: K) -> Box<dyn SumcheckPoly<K>>;
 
     fn sum_as_poly_in_first_variable(&self, claim: Option<K>) -> UnivariatePolynomial<K>;
