@@ -109,8 +109,7 @@ where
     }
 }
 
-impl<'a, F, EF, Var, Expr> ExtensionBuilder
-    for GenericVerifierConstraintFolder<'a, F, EF, Var, Expr>
+impl<F, EF, Var, Expr> ExtensionBuilder for GenericVerifierConstraintFolder<'_, F, EF, Var, Expr>
 where
     F: Field,
     EF: ExtensionField<F>,

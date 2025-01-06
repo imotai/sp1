@@ -37,8 +37,8 @@ impl<K: Copy> Point<K> {
         self.0.push(dim_val);
     }
 
-    pub fn remove_last_coordinate(&mut self) {
-        self.0.pop();
+    pub fn remove_last_coordinate(&mut self) -> K {
+        self.0.pop().unwrap()
     }
 
     pub fn reverse(&mut self) {

@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use p3_challenger::{CanObserve, CanSample};
 // use p3_util::{
 //     enable_bb_ops_counting, enable_ext_ops_counting, enable_permute_counting,
@@ -51,7 +50,7 @@ pub fn reduce_sumcheck_to_evaluation<
                 .iter()
                 .flat_map(|x| x.as_base_slice())
                 .copied()
-                .collect_vec(),
+                .collect::<Vec<_>>(),
         );
 
         let alpha: EF = challenger.sample();

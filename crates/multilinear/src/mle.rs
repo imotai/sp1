@@ -1,7 +1,7 @@
 use std::ops::Mul;
 
 use itertools::Itertools;
-use p3_matrix::dense::RowMajorMatrix;
+use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_util::log2_strict_usize;
 use slop_algebra::{ExtensionField, Field};
 
@@ -86,6 +86,20 @@ impl<K: Field> Mle<K> {
             .collect()
     }
 
+    pub fn eval_matrix_at_point<EK: Field + Mul<K, Output = EK>>(
+        matrix: &RowMajorMatrix<K>,
+        point: &Point<EK>,
+    ) -> Vec<EK> {
+        let partial_lagrange = partial_lagrange_eval(point);
+        let mut evals = vec![EK::zero(); matrix.width()];
+        matrix.rows().zip_eq(partial_lagrange.iter()).for_each(|(row, lagrange)| {
+            row.zip_eq(evals.iter_mut()).for_each(|(x, y)| {
+                *y += *lagrange * x;
+            });
+        });
+        evals
+    }
+
     pub fn random_linear_combination(&self, beta: K) -> Mle<K> {
         // Compute the random linear combination of the even and odd coefficients of `vals`. This is
         // used to reduce the two evaluation claims for new_point into a single evaluation claim.
@@ -96,7 +110,7 @@ impl<K: Field> Mle<K> {
                 .copied()
                 .zip(self.guts.iter().skip(1).step_by(2).copied())
                 .map(|(a, b)| a + beta * b)
-                .collect_vec(),
+                .collect::<Vec<_>>(),
         )
     }
 
@@ -104,12 +118,18 @@ impl<K: Field> Mle<K> {
     /// fixed to 1 while fixing the remaining coordinates to their corresponding values in `point`.
     /// These are used to generate the messages sent to the verifier in a BaseFold proof.
     pub fn fixed_evaluations(&self, new_point: &Point<K>) -> [K; 2] {
-        let evens = self.guts.iter().step_by(2).copied().collect_vec().into();
-        let odds = self.guts.iter().skip(1).step_by(2).copied().collect_vec().into();
+        let evens = self.guts.iter().step_by(2).copied().collect::<Vec<_>>().into();
+        let odds = self.guts.iter().skip(1).step_by(2).copied().collect::<Vec<_>>().into();
         let batch = vec![&evens, &odds];
 
         let batch_evals = Mle::eval_batch_at_point(&batch, new_point);
         [batch_evals[0], batch_evals[1]]
+    }
+
+    pub fn fixed_at_zero<EK: Field + Mul<K, Output = EK>>(&self, new_point: &Point<EK>) -> EK {
+        // TODO: A smarter way to do this is pre-cache the partial_lagrange_evals that are implicit
+        // in `eval_at_point` so we don't recompute it at every step of BaseFold.
+        Mle::new(self.guts.iter().step_by(2).copied().collect()).eval_at_point(new_point)
     }
 }
 

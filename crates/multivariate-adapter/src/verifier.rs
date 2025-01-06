@@ -24,7 +24,7 @@ pub trait AdapterAir<F>: BaseAir<F> {
     fn adapter_width(&self) -> usize;
 }
 
-impl<SC: StarkGenericConfig> MultilinearPcsVerifier<SC::Challenger> for MultivariateAdapterPCS<SC> {
+impl<SC: StarkGenericConfig> MultilinearPcsVerifier for MultivariateAdapterPCS<SC> {
     type Proof = MultivariateAdapterProof<SC>;
 
     type Commitment = <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment;
@@ -34,15 +34,18 @@ impl<SC: StarkGenericConfig> MultilinearPcsVerifier<SC::Challenger> for Multivar
     type F = Val<SC>;
 
     type EF = SC::Challenge;
+    type Challenger = SC::Challenger;
 
-    fn verify_evaluations(
+    fn verify_trusted_evaluations(
         &self,
         point: slop_multilinear::Point<SC::Challenge>,
-        eval_claims: &[SC::Challenge],
+        eval_claims: &[&[SC::Challenge]],
         main_commit: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut SC::Challenger,
     ) -> Result<(), Self::Error> {
+        // Currently, we only support evaluation claims for a single matrix.
+        assert!(eval_claims.len() == 1);
         let MultivariateAdapterProof {
             adapter_commit,
             quotient_commit,
@@ -187,7 +190,7 @@ impl<SC: StarkGenericConfig> MultilinearPcsVerifier<SC::Challenger> for Multivar
                     qc_domains,
                     zeta,
                     alpha,
-                    eval_claims,
+                    eval_claims[0],
                     point.clone(),
                     batch_challenge,
                 )
@@ -340,7 +343,7 @@ impl<SC: StarkGenericConfig> MultivariateAdapterPCS<SC> {
                     })
                     .product::<SC::Challenge>()
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         opening
             .quotient

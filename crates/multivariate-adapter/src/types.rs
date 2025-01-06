@@ -1,4 +1,4 @@
-use itertools::{izip, Itertools};
+use itertools::izip;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -215,7 +215,7 @@ pub fn generate_adapter_trace<SC: StarkGenericConfig>(
             *acc += *x * *y;
             Some(*acc)
         })
-        .collect_vec();
+        .collect::<Vec<_>>();
 
     for (lagrange_eval, accum) in izip!(lagrange.iter(), accum) {
         let mut row = [SC::Challenge::zero(); NUM_ADAPTER_COLS];

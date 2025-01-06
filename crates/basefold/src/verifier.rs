@@ -1,4 +1,6 @@
-use itertools::{izip, Itertools};
+use std::iter::repeat;
+
+use itertools::izip;
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_fri::{
@@ -72,21 +74,27 @@ where
 }
 
 impl<K: TwoAdicField, EK: TwoAdicField + ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
-    MultilinearPcsVerifier<Challenger> for BaseFoldPcs<K, EK, InnerMmcs, Challenger>
+    MultilinearPcsVerifier for BaseFoldPcs<K, EK, InnerMmcs, Challenger>
 where
     Challenger: GrindingChallenger
         + FieldChallenger<K>
         + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
     <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq,
 {
-    type Proof = BaseFoldProof<EK, ExtensionMmcs<K, EK, InnerMmcs>, Challenger::Witness>;
+    type Proof = BaseFoldProof<K, EK, InnerMmcs, Challenger::Witness>;
     type Commitment = <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment;
     type Error = BaseFoldError<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Error>;
     type F = K;
     type EF = EK;
+    type Challenger = Challenger;
 
-    /// Verify a BaseFold proof of a claim: commitment D represents a multilinear polynomial `g`
-    /// whose evaluation at `point` is `proof.eval`.
+    /// Verify a BaseFold proof of a claim: commitment D represents a batch of matrices whose
+    /// columns encode multilinear polynomials `g_i` whose joint evaluations at `point` are
+    /// `expected_evals`.
+    ///
+    /// As in Plonky3, the BaseFold protocol is run on a random linear combination of the committed
+    /// multilinear polynomials. The verifier check consistency of the FRI query proofs with the
+    /// committed-to values of the matrices.
     ///
     /// The verifier proceeds in rounds. First, it checks that the claimed evaluation of `g` at
     /// `point` is consistent with the proof's claims about `g(X_0, ..., X_{d-2}, 0)` and
@@ -98,23 +106,22 @@ where
     ///
     /// Finally, the verifier checks that the prover's claim about the final polynomial in FRI is
     /// consistent with the prover's implied claim about the 0-variate multilinear.
-    fn verify_evaluations(
+    fn verify_trusted_evaluations(
         &self,
         mut point: Point<EK>,
-        eval_claims: &[EK],
+        eval_claims: &[&[EK]],
         _commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,
     ) -> Result<(), Self::Error> {
-        // Check that the commitment is consistent with the proof.
-        // TODO: In batching this should be checked at the verify queries phase.
-        // if commitment != proof.commitments[0] {
-        //     return Err(BaseFoldError::IncorrectShape);
-        // }
+        let batching_challenge = challenger.sample_ext_element::<EK>();
 
-        // We don't support batching for BaseFold yet.
-        assert!(eval_claims.len() == 1);
-        let eval_claim = eval_claims[0];
+        let eval_claim: EK = eval_claims
+            .iter()
+            .flat_map(|eval_set| eval_set.iter())
+            .zip(batching_challenge.powers())
+            .map(|(eval, batch_power)| *eval * batch_power)
+            .sum();
 
         // Assert correctness of shape.
         if proof.commitments.len() != proof.univariate_messages.len()
@@ -137,7 +144,7 @@ where
                 challenger.observe(commitment.clone());
                 challenger.sample_ext_element::<EK>()
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         // Check the consistency of the first univariate message with the claimed evaluation. The
         // first_poly is supposed to be `vals(X_0, X_1, ..., X_{d-1}, 0), vals(X_0, X_1, ...,
@@ -172,6 +179,8 @@ where
             expected_eval = poly[0] + *beta * poly[1];
         }
 
+        challenger.observe_ext_element(proof.final_poly);
+
         // Check proof of work (grinding to find a number that hashes to have
         // `self.config.proof_of_work_bits` zeroes at the beginning).
         if !challenger.check_witness(self.fri_config.proof_of_work_bits, proof.pow_witness) {
@@ -184,9 +193,48 @@ where
         // to the corresponding part in the Plonky3 verifier.
         let query_indices = (0..self.fri_config.num_queries)
             .map(|_| challenger.sample_bits(log_len + self.fri_config.log_blowup))
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         let challenges = FriChallenges { query_indices, betas };
+
+        izip!(
+            proof.query_openings.iter(),
+            challenges.query_indices.clone(),
+            proof.query_phase_proofs.iter(),
+        )
+        .map(
+            |((openings, query_row_proof), index, query_proof)| -> Result<(), BaseFoldError<InnerMmcs::Error>> {
+                // Verify the openings of the individual columns.
+                self.inner_mmcs
+                    .verify_batch(
+                        &_commitment,
+                        &repeat(Dimensions {
+                            width: 0,
+                            height: 1
+                                << (self.fri_config.log_blowup + proof.univariate_messages.len()),
+                        }).take(openings.len()).collect::<Vec<_>>(),
+                        index,
+                        &openings.clone(),
+                        query_row_proof,
+                    )
+                    .map_err(BaseFoldError::Mmcs)?;
+
+                // Check the consistency of the FRI query proofs with the committed-to values of the
+                // matrices.
+                let batch_eval: EK = openings
+                    .iter()
+                    .flat_map(|set| set.iter())
+                    .zip(batching_challenge.powers())
+                    .map(|(opening, batch_power)| batch_power * *opening)
+                    .sum();
+
+                if batch_eval == query_proof.0{
+                    Ok(())
+                } else {
+                    Err(BaseFoldError::Batching)
+                }
+            },
+        ).collect::<Result<Vec<_>, _>>()?;
 
         // Verify the FRI queries.
         challenges

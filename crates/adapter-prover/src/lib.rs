@@ -107,7 +107,7 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
     }
 }
 
-impl<'a, SC: StarkGenericConfig> ExtensionBuilder for ProverConstraintFolder<'a, SC> {
+impl<SC: StarkGenericConfig> ExtensionBuilder for ProverConstraintFolder<'_, SC> {
     type EF = SC::Challenge;
 
     type ExprEF = PackedChallenge<SC>;
@@ -453,7 +453,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
     }
 }
 
-impl<SC: StarkGenericConfig> MultilinearPcsProver<SC::Challenger> for AdapterProver<SC> {
+impl<SC: StarkGenericConfig> MultilinearPcsProver for AdapterProver<SC> {
     type OpeningProof = MultivariateAdapterProof<SC>;
 
     type MultilinearProverData = (ProverData<SC>, RowMajorMatrix<Val<SC>>);
@@ -471,21 +471,27 @@ impl<SC: StarkGenericConfig> MultilinearPcsProver<SC::Challenger> for AdapterPro
         (commitment, (data, matrix))
     }
 
-    fn prove_evaluations(
+    fn prove_trusted_evaluations(
         &self,
         eval_point: Point<SC::Challenge>,
-        expected_evals: &[SC::Challenge],
+        expected_evals: &[&[SC::Challenge]],
         prover_data: Self::MultilinearProverData,
         challenger: &mut SC::Challenger,
     ) -> Self::OpeningProof {
-        AdapterProver::prove_evaluation(self, eval_point, expected_evals, prover_data, challenger)
+        assert!(expected_evals.len() == 1);
+        AdapterProver::prove_evaluation(
+            self,
+            eval_point,
+            expected_evals[0],
+            prover_data,
+            challenger,
+        )
     }
 }
 
 #[cfg(test)]
 pub mod tests {
 
-    use itertools::Itertools;
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use p3_challenger::{CanObserve, DuplexChallenger};
     use p3_commit::ExtensionMmcs;
@@ -551,7 +557,7 @@ pub mod tests {
 
         let mut batch_vals = vec![];
         for _ in 0..BATCH_SIZE {
-            let vals = (0..(1 << NUM_VARIABLES)).map(|_| thread_rng().gen()).collect_vec();
+            let vals = (0..(1 << NUM_VARIABLES)).map(|_| thread_rng().gen()).collect::<Vec<_>>();
             batch_vals.push(vals);
         }
         let eval_point: Point<Challenge> =
@@ -578,7 +584,7 @@ pub mod tests {
 
         let ((commitment, data), matrix) = prover.commit(flattened.clone());
 
-        let mles = batch_vals.iter().map(|x| Mle::new(x.clone())).collect_vec();
+        let mles = batch_vals.iter().map(|x| Mle::new(x.clone())).collect::<Vec<_>>();
 
         let expected_evals =
             Mle::eval_batch_at_point(&mles.iter().collect::<Vec<_>>(), &eval_point);
@@ -597,9 +603,9 @@ pub mod tests {
         tracing::debug_span!("verify opening proof").in_scope(|| {
             prover
                 .pcs
-                .verify_evaluations(
+                .verify_trusted_evaluations(
                     Point::new(eval_point.iter().map(|x| Challenge::from_base(*x)).collect()),
-                    &expected_evals,
+                    &[&expected_evals],
                     commitment,
                     &proof,
                     &mut Challenger::new(perm.clone()),
@@ -668,10 +674,10 @@ pub mod tests {
         tracing::debug_span!("verify opening").in_scope(|| {
             prover
                 .pcs
-                .verify_evaluations(
+                .verify_trusted_evaluations(
                     Point::new(eval_point.iter().map(|x| Challenge::from_base(*x)).collect()),
                     // Put a wrong value here to make sure the verification fails.
-                    &[Challenge::from_base(Val::from_canonical_u16(0xDEAD))],
+                    &[&[Challenge::from_base(Val::from_canonical_u16(0xDEAD))]],
                     commit,
                     &proof,
                     &mut Challenger::new(perm.clone()),
