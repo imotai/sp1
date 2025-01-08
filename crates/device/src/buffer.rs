@@ -1,8 +1,14 @@
-use std::{alloc::Layout, mem::MaybeUninit};
-
-use csl_alloc::{Allocator, RawBuffer, TryReserveError};
-
 use crate::mem::{CopyDirection, CopyError, DeviceData, DeviceMemory};
+use crate::slice::Slice;
+use csl_alloc::{Allocator, RawBuffer, TryReserveError};
+use std::{
+    alloc::Layout,
+    mem::MaybeUninit,
+    ops::{
+        Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
+        RangeToInclusive,
+    },
+};
 
 /// Fixed-size device-side buffer.
 #[derive(Debug)]
@@ -265,5 +271,58 @@ where
         self.len += len / std::mem::size_of::<T>();
 
         Ok(())
+    }
+}
+
+macro_rules! impl_index {
+    ($($t:ty)*) => {
+        $(
+            impl<T : DeviceData, A: Allocator> Index<$t> for Buffer<T, A>
+            {
+                type Output = Slice<T, A>;
+
+                fn index(&self, index: $t) -> &Slice<T, A> {
+                    unsafe {
+                        Slice::from_slice(
+                         std::slice::from_raw_parts(self.as_ptr(), self.len).index(index)
+                    )
+                  }
+                }
+            }
+
+            impl<T : DeviceData, A: Allocator> IndexMut<$t> for Buffer<T, A>
+            {
+                fn index_mut(&mut self, index: $t) -> &mut Slice<T, A> {
+                    unsafe {
+                        Slice::from_slice_mut(
+                            std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len).index_mut(index)
+                        )
+                    }
+                }
+            }
+        )*
+    }
+}
+
+impl_index! {
+    Range<usize>
+    RangeFull
+    RangeFrom<usize>
+    RangeInclusive<usize>
+    RangeTo<usize>
+    RangeToInclusive<usize>
+}
+
+impl<T: DeviceData, A: Allocator> Deref for Buffer<T, A> {
+    type Target = Slice<T, A>;
+
+    fn deref(&self) -> &Self::Target {
+        &self[..]
+    }
+}
+
+impl<T: DeviceData, A: Allocator> DerefMut for Buffer<T, A> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self[..]
     }
 }
