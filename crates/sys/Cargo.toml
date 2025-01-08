@@ -1,5 +1,5 @@
 [package]
-name = "cuslop-sys"
+name = "csl-sys"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

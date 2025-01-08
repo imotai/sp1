@@ -11,3 +11,6 @@ rustCudaError_t{message : cudaGetErrorString(cudaSuccess)};
 
 extern "C" const rustCudaError_t CUDA_OUT_OF_MEMORY =
 rustCudaError_t{message : cudaGetErrorString(cudaErrorMemoryAllocation)};
+
+extern "C" const rustCudaError_t CUDA_ERROR_NOT_READY_SLOP =
+rustCudaError_t{message : cudaGetErrorString(cudaErrorNotReady)};

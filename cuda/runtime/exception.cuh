@@ -9,6 +9,8 @@ extern "C" const rustCudaError_t CUDA_SUCCESS_MOON;
 
 extern "C" const rustCudaError_t CUDA_OUT_OF_MEMORY;
 
+extern "C" const rustCudaError_t CUDA_ERROR_NOT_READY_SLOP;
+
 #define CUDA_UNWRAP(expr)                             \
     do                                                \
     {                                                 \

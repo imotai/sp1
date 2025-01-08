@@ -1,2 +1,5 @@
+mod buffer;
+pub mod cuda;
 pub mod mem;
-pub mod stream;
+
+pub use buffer::Buffer;

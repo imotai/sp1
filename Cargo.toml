@@ -11,11 +11,20 @@ categories = ["cryptography"]
 missing_docs = "warn"
 
 [workspace]
-members = ["crates/basefold", "crates/device", "crates/sys"]
+members = [
+    "crates/alloc",
+    "crates/baby-bear",
+    "crates/basefold",
+    "crates/derive",
+    "crates/device",
+    "crates/ntt",
+    "crates/sys",
+]
 resolver = "2"
 
 [profile.release]
 opt-level = 3
+lto = true
 
 [profile.bench]
 opt-level = 3
@@ -26,4 +35,16 @@ debug = true
 debug-assertions = true
 
 [workspace.dependencies]
+
+# cuslop
+csl-alloc = { path = "crates/alloc" }
+csl-sys = { path = "crates/sys" }
+csl-derive = { path = "crates/derive" }
+# slop
+slop-baby-bear = { path = "../slop/crates/baby-bear" }
+
+# async
+tokio = { version = "1.42.0" }
+
+# misc
 thiserror = "1.0"

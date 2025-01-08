@@ -177,11 +177,32 @@ extern "C" rustCudaError_t cuda_mem_copy_host_to_host_async(
     return CUDA_SUCCESS_MOON;
 }
 
-// extern "C" rustCudaError_t cuda_setup_mem_pool()
-// {
-//     cudaMemPool_t mempool;
-//     CUDA_OK(cudaDeviceGetDefaultMemPool(&mempool, 0));
-//     uint64_t threshold = UINT64_MAX;
-//     CUDA_OK(cudaMemPoolSetAttribute(mempool, cudaMemPoolAttrReleaseThreshold, &threshold));
-//     return CUDA_SUCCESS_MOON;
-// }
+extern "C" rustCudaError_t cuda_stream_query(cudaStream_t stream)
+{
+    CUDA_OK(cudaStreamQuery(stream));
+    return CUDA_SUCCESS_MOON;
+}
+
+extern "C" rustCudaError_t cuda_event_query(cudaEvent_t event)
+{
+    CUDA_OK(cudaEventQuery(event));
+    return CUDA_SUCCESS_MOON;
+}
+
+extern "C" rustCudaError_t cuda_launch_host_function(cudaStream_t stream, void (*fn)(void *), void *data)
+{
+    CUDA_OK(cudaLaunchHostFunc(stream, fn, data));
+    return CUDA_SUCCESS_MOON;
+}
+
+extern "C" rustCudaError_t cuda_launch_kernel(
+    void *kernel,
+    dim3 grid,
+    dim3 block,
+    void **args,
+    size_t shared_mem,
+    cudaStream_t stream)
+{
+    CUDA_OK(cudaLaunchKernel(kernel, grid, block, args, shared_mem, stream));
+    return CUDA_SUCCESS_MOON;
+}

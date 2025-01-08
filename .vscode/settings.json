@@ -19,4 +19,7 @@
         "-A",
         "incomplete-features"
     ],
+    "files.associations": {
+        "cassert": "cpp"
+    },
 }

@@ -1,5 +1,5 @@
 [package]
-name = "csl-basefold"
+name = "baby-bear"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,3 +8,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+
+[lints]
+workspace = true
