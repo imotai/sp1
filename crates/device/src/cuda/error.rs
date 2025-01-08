@@ -2,7 +2,7 @@ use core::fmt;
 use std::ffi::CStr;
 
 use csl_sys::runtime::{
-    CudaRustError, CUDA_ERROR_NOT_READY_SLOP, CUDA_OUT_OF_MEMORY, CUDA_SUCCESS_MOON,
+    CudaRustError, CUDA_ERROR_NOT_READY_SLOP, CUDA_OUT_OF_MEMORY, CUDA_SUCCESS_CSL,
 };
 use thiserror::Error;
 
@@ -34,7 +34,7 @@ impl CudaError {
         // These constants are well defined in the sys crate.
         unsafe {
             match maybe_error {
-                e if e == CUDA_SUCCESS_MOON => Ok(()),
+                e if e == CUDA_SUCCESS_CSL => Ok(()),
                 e if e == CUDA_OUT_OF_MEMORY => Err(Self::OutOfMemory),
                 e if e == CUDA_ERROR_NOT_READY_SLOP => Err(Self::NotReady),
                 _ => Err(Self::Other(OtherError(maybe_error))),

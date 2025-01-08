@@ -7,7 +7,7 @@ pub struct CudaRustError {
 }
 
 extern "C" {
-    pub static CUDA_SUCCESS_MOON: CudaRustError;
+    pub static CUDA_SUCCESS_CSL: CudaRustError;
 
     pub static CUDA_OUT_OF_MEMORY: CudaRustError;
 
@@ -62,6 +62,12 @@ pub struct Dim3 {
 
 #[repr(transparent)]
 pub struct KernelPtr(pub *const c_void);
+
+#[repr(transparent)]
+pub struct CudaMemPool(pub *mut c_void);
+
+#[repr(transparent)]
+pub struct CudaDevice(pub i32);
 
 extern "C" {
 
@@ -129,8 +135,6 @@ extern "C" {
         stream: CudaStreamHandle,
     ) -> CudaRustError;
 
-    pub fn cuda_setup_mem_pool() -> CudaRustError;
-
     pub fn cuda_stream_query(stream: CudaStreamHandle) -> CudaRustError;
 
     pub fn cuda_event_query(event: CudaEventHandle) -> CudaRustError;
@@ -148,6 +152,18 @@ extern "C" {
         args: *mut *mut c_void,
         shared_mem: usize,
         stream: CudaStreamHandle,
+    ) -> CudaRustError;
+
+    pub fn cuda_device_get_default_mem_pool(
+        memPool: *mut CudaMemPool,
+        device: CudaDevice,
+    ) -> CudaRustError;
+
+    pub fn cuda_device_get_mem_pool(memPool: *mut CudaMemPool, device: CudaDevice)
+        -> CudaRustError;
+    pub fn cuda_mem_pool_set_release_threshold(
+        memPool: CudaMemPool,
+        threshold: u64,
     ) -> CudaRustError;
 }
 

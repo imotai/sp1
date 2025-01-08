@@ -5,7 +5,7 @@ struct RustCudaError
 
 typedef struct RustCudaError rustCudaError_t;
 
-extern "C" const rustCudaError_t CUDA_SUCCESS_MOON;
+extern "C" const rustCudaError_t CUDA_SUCCESS_CSL;
 
 extern "C" const rustCudaError_t CUDA_OUT_OF_MEMORY;
 

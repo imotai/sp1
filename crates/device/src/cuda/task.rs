@@ -5,7 +5,7 @@ use std::{
     mem::{ManuallyDrop, MaybeUninit},
     ops::Deref,
     pin::Pin,
-    ptr::NonNull,
+    ptr::{self, NonNull},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, OnceLock,
@@ -16,7 +16,10 @@ use std::{
 
 use crossbeam::queue::ArrayQueue;
 use csl_alloc::{AllocError, Allocator};
-use csl_sys::runtime::{Dim3, KernelPtr};
+use csl_sys::runtime::{
+    cuda_device_get_mem_pool, cuda_mem_pool_set_release_threshold, CudaDevice, CudaMemPool, Dim3,
+    KernelPtr,
+};
 use pin_project::pin_project;
 use thiserror::Error;
 use tokio::sync::{
@@ -39,6 +42,8 @@ static GLOBAL_TASK_POOL: OnceLock<Arc<TaskPool>> = OnceLock::new();
 static POOL_ID: AtomicUsize = AtomicUsize::new(0);
 
 pub struct TaskPoolBuilder {
+    device: CudaDevice,
+    mem_release_threshold: u64,
     capacity: Option<usize>,
 }
 
@@ -110,11 +115,27 @@ pub enum GlobalTaskPoolBuildError {
 
 impl TaskPoolBuilder {
     pub fn new() -> Self {
-        Self { capacity: None }
+        Self { capacity: None, device: CudaDevice(0), mem_release_threshold: u64::MAX }
     }
 
     pub fn num_tasks(mut self, num_tasks: usize) -> Self {
         self.capacity = Some(num_tasks);
+        self
+    }
+
+    pub fn device(mut self, device: CudaDevice) -> Self {
+        assert!(device.0 == 0, "only device 0 is supported at the moment");
+        self.device = device;
+        self
+    }
+
+    /// Sets the memory release threshold for the associated device.
+    ///
+    /// # Warning
+    /// This setting will affect the memory release threshold for the entire device, not just the
+    /// current task pool being built.
+    pub fn mem_release_threshold(mut self, threshold: u64) -> Self {
+        self.mem_release_threshold = threshold;
         self
     }
 
@@ -129,6 +150,18 @@ impl TaskPoolBuilder {
     pub fn build(self) -> Result<TaskPool, TaskPoolBuildError> {
         let id = self.allocate_new_id();
         let tasks = ArrayQueue::new(self.capacity.unwrap_or(DEFAULT_NUM_TASKS));
+
+        // Set the memory release threshold
+        unsafe {
+            let mut mem_pool = CudaMemPool(ptr::null_mut());
+            CudaError::result_from_ffi(cuda_device_get_mem_pool(&mut mem_pool, self.device))
+                .unwrap();
+            CudaError::result_from_ffi(cuda_mem_pool_set_release_threshold(
+                mem_pool,
+                self.mem_release_threshold,
+            ))
+            .unwrap();
+        };
 
         for (i, _) in (0..tasks.capacity()).enumerate() {
             let stream = CudaStream::create().map_err(TaskPoolBuildError::StreamCreationFailed)?;

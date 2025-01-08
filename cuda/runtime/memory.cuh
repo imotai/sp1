@@ -21,5 +21,3 @@ extern "C" rustCudaError_t cuda_mem_copy_host_to_device(void *dst, const void *s
 extern "C" rustCudaError_t cuda_mem_copy_device_to_host(void *dst, const void *src, size_t count);
 
 extern "C" rustCudaError_t cuda_mem_copy_device_to_device(void *dst, const void *src, size_t count);
-
-extern "C" rustCudaError_t cuda_setup_mem_pool();

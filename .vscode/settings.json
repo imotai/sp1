@@ -20,6 +20,10 @@
         "incomplete-features"
     ],
     "files.associations": {
-        "cassert": "cpp"
+        "cassert": "cpp",
+        "array": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp",
+        "utility": "cpp"
     },
 }
