@@ -90,7 +90,8 @@ impl<K: Field> Mle<K> {
         matrix: &RowMajorMatrix<K>,
         point: &Point<EK>,
     ) -> Vec<EK> {
-        let partial_lagrange = partial_lagrange_eval(point);
+        let partial_lagrange =
+            partial_lagrange_eval(&point.first_k_points(log2_strict_usize(matrix.height())));
         let mut evals = vec![EK::zero(); matrix.width()];
         matrix.rows().zip_eq(partial_lagrange.iter()).for_each(|(row, lagrange)| {
             row.zip_eq(evals.iter_mut()).for_each(|(x, y)| {

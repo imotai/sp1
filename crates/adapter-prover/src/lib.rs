@@ -19,7 +19,7 @@ use p3_uni_stark::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 use p3_util::log2_strict_usize;
 
 use slop_algebra::{AbstractExtensionField, AbstractField, PackedValue};
-use slop_multilinear::{MultilinearPcsProver, Point};
+use slop_multilinear::{MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, Point};
 
 type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
@@ -453,9 +453,7 @@ impl<SC: StarkGenericConfig> AdapterProver<SC> {
     }
 }
 
-impl<SC: StarkGenericConfig> MultilinearPcsProver for AdapterProver<SC> {
-    type OpeningProof = MultivariateAdapterProof<SC>;
-
+impl<SC: StarkGenericConfig> MultilinearPcsBatchProver for AdapterProver<SC> {
     type MultilinearProverData = (ProverData<SC>, RowMajorMatrix<Val<SC>>);
 
     type MultilinearCommitment = Com<SC>;
@@ -477,7 +475,7 @@ impl<SC: StarkGenericConfig> MultilinearPcsProver for AdapterProver<SC> {
         expected_evals: &[&[SC::Challenge]],
         prover_data: Self::MultilinearProverData,
         challenger: &mut SC::Challenger,
-    ) -> Self::OpeningProof {
+    ) -> <Self::PCS as MultilinearPcsBatchVerifier>::Proof {
         assert!(expected_evals.len() == 1);
         AdapterProver::prove_evaluation(
             self,
@@ -506,7 +504,7 @@ pub mod tests {
     use slop_algebra::{
         extension::BinomialExtensionField, AbstractExtensionField, AbstractField, Field,
     };
-    use slop_multilinear::{Mle, MultilinearPcsVerifier, Point};
+    use slop_multilinear::{Mle, MultilinearPcsBatchVerifier, Point};
     use slop_utils::setup_logger;
 
     use super::AdapterProver;

@@ -13,7 +13,9 @@ use p3_matrix::{
 use rayon::prelude::*;
 use slop_algebra::{ExtensionField, Field, TwoAdicField};
 use slop_basefold::{BaseFoldPcs, BaseFoldProof};
-use slop_multilinear::{Mle, MultilinearPcsProver, Point};
+use slop_multilinear::{
+    MainTraceProverData, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, Point,
+};
 
 pub type MatrixOpening<F> = Vec<F>;
 
@@ -30,6 +32,18 @@ where
 pub struct BaseFoldProverData<K, ProverData> {
     vals: Vec<RowMajorMatrix<K>>,
     data: ProverData,
+}
+
+impl<K: Clone, ProverData> MainTraceProverData<RowMajorMatrix<K>>
+    for BaseFoldProverData<K, ProverData>
+{
+    type BaseProverData = ProverData;
+    fn split_off_main_traces(self) -> (ProverData, Vec<RowMajorMatrix<K>>) {
+        (self.data, self.vals)
+    }
+    fn reconstitute(base_data: Self::BaseProverData, main_traces: Vec<RowMajorMatrix<K>>) -> Self {
+        Self { vals: main_traces, data: base_data }
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -206,7 +220,6 @@ where
 
         for i in 0..eval_point.dimension() {
             // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
-            // TODO: I think there's a lot repeated work between these rounds that can be cut out.
             let last_coord = eval_point.remove_last_coordinate();
             let zero_val = tracing::info_span!("sum", round = i)
                 .in_scope(|| current_mle.fixed_at_zero(&eval_point));
@@ -283,12 +296,10 @@ impl<
         Challenger: GrindingChallenger
             + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>
             + FieldChallenger<K>,
-    > MultilinearPcsProver for BaseFoldProver<K, EK, InnerMmcs, Challenger>
+    > MultilinearPcsBatchProver for BaseFoldProver<K, EK, InnerMmcs, Challenger>
 where
     <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq + Debug,
 {
-    type OpeningProof = BaseFoldProof<K, EK, InnerMmcs, Challenger::Witness>;
-
     type MultilinearProverData = BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>;
 
     type MultilinearCommitment = InnerMmcs::Commitment;
@@ -308,7 +319,7 @@ where
         expected_evals: &[&[EK]],
         prover_data: Self::MultilinearProverData,
         challenger: &mut Challenger,
-    ) -> Self::OpeningProof {
+    ) -> <Self::PCS as MultilinearPcsBatchVerifier>::Proof {
         BaseFoldProver::prove_evaluations(self, prover_data, eval_point, expected_evals, challenger)
     }
 }
@@ -377,27 +388,28 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
 
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use p3_challenger::DuplexChallenger;
-    use p3_commit::ExtensionMmcs;
-    use p3_commit::Pcs;
+    use p3_commit::{ExtensionMmcs, Pcs};
     use p3_dft::Radix2DitParallel;
     use p3_fri::{FriConfig, TwoAdicFriPcs};
     use p3_matrix::dense::RowMajorMatrix;
     use p3_merkle_tree::FieldMerkleTreeMmcs;
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-    use rand::Rng;
+    use p3_util::log2_strict_usize;
+
     use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
-    use slop_multilinear::{Mle, Point};
+    use slop_basefold::BaseFoldPcs;
+    use slop_multilinear::{
+        Mle, MultilinearPcsBatchVerifier, MultilinearPcsProver, MultilinearPcsVerifier, Point,
+        StackedPcsProver, StackedPcsVerifier,
+    };
     use slop_utils::setup_logger;
 
     use crate::BaseFoldProver;
-
-    use slop_basefold::BaseFoldPcs;
-
-    use slop_multilinear::MultilinearPcsVerifier;
 
     type F = BabyBear;
     type EF = BinomialExtensionField<F, 4>;
@@ -517,6 +529,97 @@ mod tests {
                     .verify_trusted_evaluations(
                         new_eval_point,
                         &expected_evals.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+                        commit,
+                        &proof,
+                        &mut Challenger::new(perm.clone()),
+                    )
+                    .unwrap();
+            });
+        });
+    }
+
+    #[test]
+    fn test_rizz_prover() {
+        setup_logger();
+        let mut rng = rand::thread_rng();
+        let num_columns = (1 << 6) + 1;
+        let num_matrices = 3;
+        let log_stacking_height = 21;
+
+        // Test: 1 as a potential degenerate edge case, 12 and 13 because they are on opposite sides
+        // of the tables being larger than 1<<log_stacking_height, and 20-22 because they are
+        // representative of the real-world use case.
+        [1, 12, 13, 14, 18, 20, 21].iter().for_each(|num_variables| {
+            println!("Testing an instance with {} variables.", num_variables);
+
+            let vals = tracing::info_span!("construct big vecs").in_scope(|| {
+                (0..num_matrices)
+                    .map(|_| {
+                        let mut vec = vec![F::zero(); num_columns * (1 << num_variables)];
+                        vec.iter_mut().for_each(|v| *v = rng.gen::<F>());
+                        vec
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let perm = Perm::new_from_rng_128(
+                Poseidon2ExternalMatrixGeneral,
+                DiffusionMatrixBabyBear,
+                &mut rng,
+            );
+            let hash = MyHash::new(perm.clone());
+            let compress = MyCompress::new(perm.clone());
+            let inner_mmcs = ValMmcs::new(hash, compress);
+            let mmcs = ChallengeMmcs::new(inner_mmcs.clone());
+            let config = FriConfig {
+                log_blowup: 1,
+                num_queries: 100,
+                proof_of_work_bits: 8,
+                mmcs: mmcs.clone(),
+            };
+            let cloned_config =
+                FriConfig { log_blowup: 1, num_queries: 100, proof_of_work_bits: 8, mmcs };
+
+            let pcs = BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(config, inner_mmcs.clone());
+
+            let pcs_clone =
+                BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(cloned_config, inner_mmcs);
+
+            let rizz_verifier = StackedPcsVerifier { pcs: pcs_clone, log_stacking_height };
+
+            let total_area = ((num_matrices * (1 << num_variables) * num_columns) as u64)
+                .next_multiple_of(1 << log_stacking_height)
+                .next_power_of_two() as usize;
+
+            let new_eval_point =
+                Point::new((0..log2_strict_usize(total_area)).map(|_| rng.gen::<EF>()).collect());
+
+            let prover = BaseFoldProver::new(pcs);
+
+            let rizz_prover = StackedPcsProver { pcs: prover, log_stacking_height };
+
+            let (commit, data) =
+                tracing::info_span!("commit").in_scope(|| rizz_prover.commit_multilinear(vals));
+
+            let proof = tracing::info_span!("prove evaluations").in_scope(|| {
+                rizz_prover.prove_trusted_evaluation(
+                    new_eval_point.clone(),
+                    rng.gen::<EF>(),
+                    data,
+                    &mut Challenger::new(perm.clone()),
+                )
+            });
+
+            let (_, back_half) = new_eval_point.split_at(log_stacking_height);
+            let eval_claim = Mle::eval_at_point(
+                &proof.1.iter().flatten().cloned().collect::<Vec<_>>().into(),
+                &back_half,
+            );
+
+            tracing::info_span!("verify evaluations").in_scope(|| {
+                rizz_verifier
+                    .verify_trusted_evaluation(
+                        new_eval_point,
+                        eval_claim,
                         commit,
                         &proof,
                         &mut Challenger::new(perm.clone()),

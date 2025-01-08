@@ -7,7 +7,7 @@ use p3_commit::{LagrangeSelectors, Pcs, PolynomialSpace};
 use p3_uni_stark::{StarkGenericConfig, Val};
 
 use slop_algebra::{AbstractExtensionField, AbstractField};
-use slop_multilinear::{MultilinearPcsVerifier, Point};
+use slop_multilinear::{MultilinearPcsBatchVerifier, Point};
 
 pub const LOG_QUOTIENT_DEGREE: usize = 1;
 use crate::{
@@ -24,7 +24,7 @@ pub trait AdapterAir<F>: BaseAir<F> {
     fn adapter_width(&self) -> usize;
 }
 
-impl<SC: StarkGenericConfig> MultilinearPcsVerifier for MultivariateAdapterPCS<SC> {
+impl<SC: StarkGenericConfig> MultilinearPcsBatchVerifier for MultivariateAdapterPCS<SC> {
     type Proof = MultivariateAdapterProof<SC>;
 
     type Commitment = <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment;

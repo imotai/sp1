@@ -10,7 +10,7 @@ use p3_fri::{
 use p3_matrix::Dimensions;
 use p3_util::reverse_bits_len;
 use slop_algebra::{ExtensionField, TwoAdicField};
-use slop_multilinear::{MultilinearPcsVerifier, Point};
+use slop_multilinear::{MultilinearPcsBatchVerifier, Point};
 
 use crate::{BaseFoldError, BaseFoldPcs, BaseFoldProof};
 
@@ -74,7 +74,7 @@ where
 }
 
 impl<K: TwoAdicField, EK: TwoAdicField + ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
-    MultilinearPcsVerifier for BaseFoldPcs<K, EK, InnerMmcs, Challenger>
+    MultilinearPcsBatchVerifier for BaseFoldPcs<K, EK, InnerMmcs, Challenger>
 where
     Challenger: GrindingChallenger
         + FieldChallenger<K>
