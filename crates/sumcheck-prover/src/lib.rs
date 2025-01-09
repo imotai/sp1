@@ -16,16 +16,14 @@ use slop_sumcheck::{PartialSumcheckProof, SumcheckPoly, SumcheckPolyBase, Sumche
 ///  # Panics
 ///  Will panic if the polynomial has zero variables.
 pub fn reduce_sumcheck_to_evaluation<
-    'a,
     F: Field,
     EF: ExtensionField<F>,
     Challenger: CanSample<EF> + CanObserve<F>,
-    P: SumcheckPolyFirstRound<EF> + 'a,
 >(
-    poly: P,
+    poly: impl SumcheckPolyFirstRound<EF>,
     challenger: &mut Challenger,
     claim: EF,
-) -> (PartialSumcheckProof<EF>, impl SumcheckPoly<EF> + 'a) {
+) -> PartialSumcheckProof<EF> {
     let n_vars = poly.n_variables();
     assert!(n_vars > 0);
 
@@ -98,14 +96,11 @@ pub fn reduce_sumcheck_to_evaluation<
     //     );
     // }
 
-    (
-        PartialSumcheckProof {
-            univariate_polys,
-            claimed_sum: claim,
-            point_and_eval: (Point::new(point), eval),
-        },
-        poly_cursor,
-    )
+    PartialSumcheckProof {
+        univariate_polys,
+        claimed_sum: claim,
+        point_and_eval: (Point::new(point), eval),
+    }
 }
 
 #[cfg(test)]
@@ -145,8 +140,7 @@ mod tests {
         let mut challenger = Challenger::new(perm.clone());
 
         let claim: EF = guts.guts.iter().map(|x| EF::from(*x)).sum();
-        let (proof, _) =
-            super::reduce_sumcheck_to_evaluation::<F, EF, _, _>(guts, &mut challenger, claim);
+        let proof = super::reduce_sumcheck_to_evaluation::<F, EF, _>(guts, &mut challenger, claim);
 
         let mut challenger = Challenger::new(perm.clone());
         assert!(partially_verify_sumcheck_proof::<F, EF, _>(&proof, &mut challenger).is_ok());
@@ -170,7 +164,7 @@ mod tests {
                     (0..1 << num_variables).map(|_| thread_rng().gen()).collect::<Vec<_>>().into();
                 let claim = guts.guts.iter().map(|x| EF::from(*x)).sum();
 
-                let (proof, _) = crate::reduce_sumcheck_to_evaluation::<F, EF, _, _>(
+                let proof = crate::reduce_sumcheck_to_evaluation::<F, EF, _>(
                     guts,
                     &mut Challenger::new(perm.clone()),
                     claim,
@@ -199,8 +193,7 @@ mod tests {
                     (0..1 << num_variables).map(|_| thread_rng().gen()).collect::<Vec<_>>().into();
                 let mut challenger = Challenger::new(perm.clone());
                 let claim: F = guts.guts.iter().copied().sum();
-                let (mut proof, _) =
-                    crate::reduce_sumcheck_to_evaluation(guts, &mut challenger, claim);
+                let mut proof = crate::reduce_sumcheck_to_evaluation(guts, &mut challenger, claim);
                 assert_eq!(proof.univariate_polys.len(), num_variables);
 
                 assert!(partially_verify_sumcheck_proof(&proof, &mut challenger).is_err());
