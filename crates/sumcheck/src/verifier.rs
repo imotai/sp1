@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use p3_challenger::{CanObserve, CanSample};
 use slop_algebra::{ExtensionField, Field};
 use slop_multilinear::Point;
@@ -37,7 +36,12 @@ pub fn partially_verify_sumcheck_proof<
     }
 
     challenger.observe_slice(
-        &first_poly.coefficients.iter().flat_map(|x| x.as_base_slice()).copied().collect_vec(),
+        &first_poly
+            .coefficients
+            .iter()
+            .flat_map(|x| x.as_base_slice())
+            .copied()
+            .collect::<Vec<_>>(),
     );
     let mut previous_poly = first_poly;
 
@@ -49,7 +53,7 @@ pub fn partially_verify_sumcheck_proof<
             return Err(SumcheckError::SumcheckRoundInconsistency);
         }
         challenger.observe_slice(
-            &poly.coefficients.iter().flat_map(|x| x.as_base_slice()).copied().collect_vec(),
+            &poly.coefficients.iter().flat_map(|x| x.as_base_slice()).copied().collect::<Vec<_>>(),
         );
         previous_poly = poly;
     }
