@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use p3_challenger::{CanObserve, CanSample};
 // use p3_util::{
 //     enable_bb_ops_counting, enable_ext_ops_counting, enable_permute_counting,
