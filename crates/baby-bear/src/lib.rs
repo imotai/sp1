@@ -1,2 +1,4 @@
+mod dft;
 mod hash;
-mod ntt;
+
+pub use dft::SpparkDft;

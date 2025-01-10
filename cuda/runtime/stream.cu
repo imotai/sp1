@@ -46,7 +46,7 @@ extern "C" rustCudaError_t cuda_device_synchronize()
 
 extern "C" rustCudaError_t cuda_event_create(cudaEvent_t *event)
 {
-    CUDA_OK(cudaEventCreate(event));
+    CUDA_OK(cudaEventCreateWithFlags(event, cudaEventDisableTiming));
     return CUDA_SUCCESS_CSL;
 }
 

@@ -5,7 +5,7 @@ use std::ops::{
 
 use csl_alloc::Allocator;
 
-use crate::mem::DeviceData;
+use crate::mem::{DeviceData, Init};
 
 /// A slice of data associated with a specific allocator type.
 ///
@@ -95,4 +95,15 @@ impl_index! {
     RangeInclusive<usize>
     RangeTo<usize>
     RangeToInclusive<usize>
+}
+
+impl<T: DeviceData, A: Allocator> Index<usize> for Slice<T, A> {
+    type Output = Init<T, A>;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        let element = &self[index..(index + 1)];
+        let raw = element.as_ptr() as *mut T as *mut Init<T, A>;
+        unsafe { &*raw }
+    }
 }

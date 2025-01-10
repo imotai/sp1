@@ -1,6 +1,6 @@
 use crate::{
     mem::{CopyError, DeviceData},
-    Buffer,
+    Buffer, HostBuffer,
 };
 
 use super::{sync::CudaSend, TaskScope};
@@ -39,6 +39,18 @@ impl<T: DeviceData> Buffer<T, TaskScope> {
             vec.set_len(self.len());
         }
         Ok(vec)
+    }
+
+    pub async fn into_host(self) -> Result<HostBuffer<T>, CopyError>
+    where
+        T: Send,
+    {
+        tokio::task::spawn_blocking(move || self.into_to_host_blocking()).await.unwrap()
+    }
+
+    pub fn into_to_host_blocking(self) -> Result<HostBuffer<T>, CopyError> {
+        let vec = self.to_vec_blocking()?;
+        Ok(HostBuffer::from_vec(vec))
     }
 
     #[inline]

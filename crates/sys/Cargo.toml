@@ -8,7 +8,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-
+slop-baby-bear = { workspace = true }
 
 [build-dependencies]
 cc = "1.0"

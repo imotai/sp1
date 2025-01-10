@@ -56,10 +56,11 @@ fn builder() -> cc::Build {
         .cuda(true)
         .flag("-std=c++20")
         .flag("-default-stream=per-thread")
+        .flag("-Xcompiler")
+        .flag("-fopenmp")
         .flag("-lnvToolsExt")
         .flag("-arch=sm_89")
         .flag("-ldl")
-        .flag("-Xcompiler")
         .flag("-lnvToolsExt")
         .flag("--expt-relaxed-constexpr");
 
@@ -68,6 +69,7 @@ fn builder() -> cc::Build {
 
 fn main() {
     println!("cargo:rerun-if-changed=../../cuda/");
+    println!("cargo:rerun-if-changed=../../sppark/");
 
     let nvcc = which::which("nvcc").expect("nvcc not found");
 
@@ -90,10 +92,37 @@ fn main() {
     let src_dir = crate_dir.join("../../cuda/");
     // Get a new builder with the correct flags.
     let mut build = builder();
+
+    env::set_var("DEP_SPPARK_ROOT", "../../sppark/");
+    if let Some(include) = env::var_os("DEP_SPPARK_ROOT") {
+        let include = crate_dir.join(include);
+        build.include(include);
+        build.define("SPPARK", None);
+        build.define("FEATURE_BABY_BEAR", None);
+        build.file("../../sppark/rust/src/lib.cpp").file("../../sppark/util/all_gpus.cpp");
+    }
+
+    // let sppark_dir = crate_dir.join("../../sppark/");
+    // // Add all the source files.
+    // add_src_files(&mut build, &sppark_dir).expect("Failed to find c, cpp, or cu files");
+    // // Add all header files.
+    // add_include_directories(&mut build, &sppark_dir).expect("Failed to find h, hpp, or cuh files");
+    // build.define("SPPARK", None);
+    // build.define("FEATURE_BABY_BEAR", None);
+
     // Add all the source files.
     add_src_files(&mut build, &src_dir).expect("Failed to find c, cpp, or cu files");
     // Add all header files.
     add_include_directories(&mut build, &src_dir).expect("Failed to find h, hpp, or cuh files");
+
+    // let sppark_dir = crate_dir.join("../../sppark/");
+    // // Add all the source files.
+    // add_src_files(&mut build, &sppark_dir).expect("Failed to find c, cpp, or cu files");
+    // // Add all header files.
+    // add_include_directories(&mut build, &sppark_dir).expect("Failed to find h, hpp, or cuh files");
+    // build.define("SPPARK", None);
+    // build.define("FEATURE_BABY_BEAR", None);
+
     // Compile the library.
     build.compile("sys-cuda");
 }

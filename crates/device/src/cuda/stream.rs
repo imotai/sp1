@@ -438,7 +438,7 @@ mod tests {
 
         let cap = 10000;
 
-        let mut buffer = Buffer::<u32, _>::with_capcity_in(cap, &stream);
+        let mut buffer = Buffer::<u32, _>::with_capacity_in(cap, &stream);
 
         let mut rng = thread_rng();
         let host_values: Vec<u32> = (0..cap).map(|_| rng.gen()).collect();

@@ -1,5 +1,5 @@
 [package]
-name = "baby-bear"
+name = "csl-baby-bear"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,17 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+csl-device = { workspace = true }
+csl-sys = { workspace = true }
+csl-dft = { workspace = true }
 
+slop-baby-bear = { workspace = true }
+
+[dev-dependencies]
+rand = "0.8"
+slop-dft = { workspace = true }
+slop-matrix = { workspace = true }
+slop-algebra = { workspace = true }
+tokio = { workspace = true }
 [lints]
 workspace = true

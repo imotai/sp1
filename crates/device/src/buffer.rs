@@ -1,4 +1,4 @@
-use crate::mem::{CopyDirection, CopyError, DeviceData, DeviceMemory};
+use crate::mem::{CopyDirection, CopyError, DeviceData, DeviceMemory, Init};
 use crate::slice::Slice;
 use csl_alloc::{Allocator, RawBuffer, TryReserveError};
 use std::{
@@ -28,7 +28,7 @@ where
 {
     #[inline]
     #[must_use]
-    pub fn with_capcity_in(capacity: usize, allocator: A) -> Self {
+    pub fn with_capacity_in(capacity: usize, allocator: A) -> Self {
         let buf = RawBuffer::with_capacity_in(capacity, allocator);
         Self { buf, len: 0 }
     }
@@ -311,6 +311,15 @@ impl_index! {
     RangeInclusive<usize>
     RangeTo<usize>
     RangeToInclusive<usize>
+}
+
+impl<T: DeviceData, A: Allocator> Index<usize> for Buffer<T, A> {
+    type Output = Init<T, A>;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        &self[..][index]
+    }
 }
 
 impl<T: DeviceData, A: Allocator> Deref for Buffer<T, A> {

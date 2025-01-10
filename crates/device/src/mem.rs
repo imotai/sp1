@@ -1,5 +1,6 @@
-use std::{rc::Rc, sync::Arc};
+use std::{marker::PhantomData, rc::Rc, sync::Arc};
 
+use csl_alloc::Allocator;
 use thiserror::Error;
 
 /// The [AllocError] error indicates an allocation failure that may be due to resource exhaustion
@@ -93,5 +94,21 @@ impl<T: DeviceMemory> DeviceMemory for Arc<T> {
     #[inline]
     unsafe fn write_bytes(&self, dst: *mut u8, value: u8, size: usize) -> Result<(), CopyError> {
         (**self).write_bytes(dst, value, size)
+    }
+}
+
+#[repr(transparent)]
+pub struct Init<T, A> {
+    _marker: PhantomData<A>,
+    ptr: *mut T,
+}
+
+impl<T: DeviceData, A: Allocator> Init<T, A> {
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.ptr
     }
 }

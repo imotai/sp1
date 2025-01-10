@@ -17,8 +17,8 @@ use std::{
 use crossbeam::queue::ArrayQueue;
 use csl_alloc::{AllocError, Allocator};
 use csl_sys::runtime::{
-    cuda_device_get_mem_pool, cuda_mem_pool_set_release_threshold, CudaDevice, CudaMemPool, Dim3,
-    KernelPtr,
+    cuda_device_get_mem_pool, cuda_mem_pool_set_release_threshold, CudaDevice, CudaMemPool,
+    CudaStreamHandle, Dim3, KernelPtr,
 };
 use pin_project::pin_project;
 use thiserror::Error;
@@ -28,11 +28,13 @@ use tokio::sync::{
 
 use crate::{
     mem::{CopyDirection, CopyError, DeviceData, DeviceMemory},
-    Buffer,
+    tensor::Dimensions,
+    Buffer, Tensor,
 };
 
 use super::{
-    stream::StreamRef, sync::CudaSend, CudaError, CudaEvent, CudaStream, StreamCallbackFuture,
+    stream::StreamRef, sync::CudaSend, CudaError, CudaEvent, CudaStream, DeviceTensor,
+    StreamCallbackFuture,
 };
 
 const DEFAULT_NUM_TASKS: usize = 64;
@@ -315,7 +317,7 @@ impl TaskScope {
     /// semaphore.
     #[inline]
     pub fn alloc<T: DeviceData>(&self, capacity: usize) -> Buffer<T, Self> {
-        Buffer::with_capcity_in(capacity, self.clone())
+        Buffer::with_capacity_in(capacity, self.clone())
     }
 
     /// Tries to allocate a buffer in this scope on the device.
@@ -325,6 +327,23 @@ impl TaskScope {
         capacity: usize,
     ) -> Result<Buffer<T, Self>, csl_alloc::TryReserveError> {
         Buffer::try_with_capacity_in(capacity, self.clone())
+    }
+
+    /// Allocates a tensor in this scope on the device with the given dimensions.
+    ///
+    /// This function will panic in case of an allocation failure.
+    #[inline]
+    pub fn tensor<T: DeviceData>(&self, dimensions: impl Into<Dimensions>) -> DeviceTensor<T> {
+        Tensor::with_dimensions_in(dimensions, self.clone())
+    }
+
+    /// Tries to allocate a tensor in this scope on the device with the given dimensions.
+    #[inline]
+    pub fn try_tensor<T: DeviceData>(
+        &self,
+        dimensions: impl Into<Dimensions>,
+    ) -> Result<DeviceTensor<T>, csl_alloc::TryReserveError> {
+        Tensor::try_with_dimensions_in(dimensions, self.clone())
     }
 
     /// Launches a host function in this task.
@@ -394,6 +413,11 @@ impl TaskScope {
     pub fn synchronize_blocking(&self) -> Result<(), CudaError> {
         // The access to the stream is safe and therefore synchronize is safe.
         unsafe { self.stream_synchronize() }
+    }
+
+    /// # Safety
+    pub unsafe fn handle(&self) -> CudaStreamHandle {
+        self.0.stream.0
     }
 }
 

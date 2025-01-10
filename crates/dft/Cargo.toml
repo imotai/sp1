@@ -1,5 +1,5 @@
 [package]
-name = "csl-ntt"
+name = "csl-dft"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+csl-sys = { workspace = true }
+csl-device = { workspace = true }
+
+slop-algebra = { workspace = true }
 
 [lints]
 workspace = true
