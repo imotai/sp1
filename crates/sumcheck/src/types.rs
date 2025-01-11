@@ -10,6 +10,8 @@ pub trait SumcheckPolyBase<K> {
     fn sum_as_poly_in_first_variable(&self, claim: Option<K>) -> UnivariatePolynomial<K>;
 
     fn n_variables(&self) -> usize;
+
+    fn get_component_poly_evals(&self) -> Vec<K>;
 }
 
 /// The fix_first_variable function applied to a sumcheck's first round's polynomial .
@@ -97,7 +99,7 @@ impl<
         let chunks = self.guts.chunks_exact(self.guts.len() / 2);
 
         let [first_half_sum, second_half_sum]: [S; 2] = chunks
-            .map(|chunk| chunk.par_iter().map(|x| (*x).into()).sum())
+            .map(|chunk| (chunk.par_iter().map(|x| *x).sum::<K>()).into())
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
@@ -108,6 +110,12 @@ impl<
 
     fn n_variables(&self) -> usize {
         self.num_variables()
+    }
+
+    fn get_component_poly_evals(&self) -> Vec<S> {
+        assert!(self.num_variables() == 0);
+
+        vec![self.guts[0].into()]
     }
 }
 
@@ -134,7 +142,7 @@ mod test {
         let mle = Mle::new(vec![F::two()]);
         assert_eq!(
             mle.sum_as_poly_in_first_variable(None),
-            UnivariatePolynomial::new(vec![EF::two()])
+            UnivariatePolynomial::new(vec![F::two()])
         );
         assert_eq!(mle.num_variables(), 0);
     }
