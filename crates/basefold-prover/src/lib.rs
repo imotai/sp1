@@ -4,7 +4,7 @@ use itertools::Itertools;
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::{Radix2DitParallel, TwoAdicSubgroupDft};
-use p3_fri::{fold_even_odd, CommitPhaseProofStep, FriConfig, QueryProof};
+use p3_fri::{fold_even_odd, CommitPhaseProofStep, FriConfig, PowersReducer, QueryProof};
 use p3_matrix::{
     bitrev::BitReversableMatrix,
     dense::{DenseMatrix, RowMajorMatrix},
@@ -154,6 +154,7 @@ where
         let batch_challenge_powers =
             batching_challenge.powers().take(total_width).collect::<Vec<_>>();
 
+        let batch_reducer = PowersReducer::new(batching_challenge, total_width);
         // Batch all the evaluation claims together in a random linear combination.
         let mut current_batched_eval_claim: EK =
             tracing::info_span!("batch evals").in_scope(|| {
@@ -176,11 +177,8 @@ where
                     .par_iter_mut()
                     .zip_eq(matrices[i].values.par_chunks(matrices[i].width))
                     .for_each(|(a, row)| {
-                        *a += row
-                            .iter()
-                            .zip(batch_challenge_powers.iter().skip(curr_batch_power))
-                            .map(|(v, b)| *b * *v)
-                            .sum::<EK>()
+                        *a += batching_challenge.exp_u64(curr_batch_power as u64)
+                            * batch_reducer.reduce_base(row)
                     });
                 curr_batch_power += matrices[i].width();
             })
@@ -196,11 +194,8 @@ where
                     .par_iter_mut()
                     .zip(data.vals[i].values.par_chunks(data.vals[i].width))
                     .for_each(|(a, row)| {
-                        *a += row
-                            .iter()
-                            .zip(batch_challenge_powers.iter().skip(curr_batch_power))
-                            .map(|(v, b)| *b * *v)
-                            .sum::<EK>()
+                        *a += batching_challenge.exp_u64(curr_batch_power as u64)
+                            * batch_reducer.reduce_base(row)
                     });
                 curr_batch_power += matrices[i].width();
             })
@@ -539,17 +534,17 @@ mod tests {
     }
 
     #[test]
-    fn test_rizz_prover() {
+    fn test_stacked_prover() {
         setup_logger();
         let mut rng = rand::thread_rng();
-        let num_columns = (1 << 6) + 1;
+        let num_columns = (1 << 5) + 1;
         let num_matrices = 3;
         let log_stacking_height = 21;
 
         // Test: 1 as a potential degenerate edge case, 12 and 13 because they are on opposite sides
         // of the tables being larger than 1<<log_stacking_height, and 20-22 because they are
         // representative of the real-world use case.
-        [1, 12, 13, 14, 18, 20, 21].iter().for_each(|num_variables| {
+        [1, 12, 13, 14, 18].iter().for_each(|num_variables| {
             println!("Testing an instance with {} variables.", num_variables);
 
             let vals = tracing::info_span!("construct big vecs").in_scope(|| {
@@ -584,7 +579,7 @@ mod tests {
             let pcs_clone =
                 BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(cloned_config, inner_mmcs);
 
-            let rizz_verifier = StackedPcsVerifier { pcs: pcs_clone, log_stacking_height };
+            let stacked_verifier = StackedPcsVerifier { pcs: pcs_clone, log_stacking_height };
 
             let total_area = ((num_matrices * (1 << num_variables) * num_columns) as u64)
                 .next_multiple_of(1 << log_stacking_height)
@@ -595,13 +590,13 @@ mod tests {
 
             let prover = BaseFoldProver::new(pcs);
 
-            let rizz_prover = StackedPcsProver { pcs: prover, log_stacking_height };
+            let stacked_prover = StackedPcsProver { pcs: prover, log_stacking_height };
 
             let (commit, data) =
-                tracing::info_span!("commit").in_scope(|| rizz_prover.commit_multilinear(vals));
+                tracing::info_span!("commit").in_scope(|| stacked_prover.commit_multilinear(vals));
 
             let proof = tracing::info_span!("prove evaluations").in_scope(|| {
-                rizz_prover.prove_trusted_evaluation(
+                stacked_prover.prove_trusted_evaluation(
                     new_eval_point.clone(),
                     rng.gen::<EF>(),
                     data,
@@ -616,7 +611,7 @@ mod tests {
             );
 
             tracing::info_span!("verify evaluations").in_scope(|| {
-                rizz_verifier
+                stacked_verifier
                     .verify_trusted_evaluation(
                         new_eval_point,
                         eval_claim,

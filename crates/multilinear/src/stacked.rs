@@ -146,10 +146,14 @@ where
         let (prover_data, matrices) = prover_data.split_off_main_traces();
         let front_portion = eval_point.first_k_points(self.log_stacking_height);
 
-        let evaluations = matrices
-            .iter()
-            .map(|mat| Mle::eval_matrix_at_point(mat, &front_portion))
-            .collect::<Vec<_>>();
+        // TODO: This may be computed at an earlier part of the stack, and we can refactor the API
+        // to avoid recomputing it.
+        let evaluations = tracing::info_span!("eval matrices at point").in_scope(|| {
+            matrices
+                .iter()
+                .map(|mat| Mle::eval_matrix_at_point(mat, &front_portion))
+                .collect::<Vec<_>>()
+        });
 
         (
             self.pcs.prove_untrusted_evaluations(

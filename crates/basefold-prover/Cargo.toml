@@ -18,15 +18,19 @@ p3-commit = {workspace = true}
 p3-fri = {workspace = true}
 p3-matrix = {workspace = true}
 p3-util = {workspace = true}
-p3-maybe-rayon = {workspace = true}
-itertools = "0.12.0"
-rand = "0.8.5"
-tracing = "0.1"
-tracing-subscriber = "0.3"
-rayon = "1.10.0"
-
-[dev-dependencies]
+p3-maybe-rayon = {workspace = true, features = ["parallel"]}
 p3-baby-bear = {workspace = true}
 p3-poseidon2 = {workspace = true}
 p3-symmetric = {workspace = true}
 p3-merkle-tree = {workspace = true}
+clap = { version = "4.5.9", features = ["derive", "env"] }
+itertools = "0.12.0"
+rand = "0.8.5"
+lazy_static = "1.5.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+rayon = "1.10.0"
+
+[[bin]]
+name = "benchmark_stacked_basefold"
+path = "scripts/benchmark_stacked_basefold.rs"
