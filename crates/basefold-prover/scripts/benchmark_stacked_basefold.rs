@@ -1,15 +1,15 @@
 use clap::Parser;
-use p3_dft::Radix2DitParallel;
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rand::Rng;
+use slop_dft::Radix2DitParallel;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use p3_challenger::DuplexChallenger;
-use p3_commit::{ExtensionMmcs, Pcs};
-use p3_fri::{FriConfig, TwoAdicFriPcs};
-use p3_merkle_tree::FieldMerkleTreeMmcs;
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
+use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+use slop_challenger::DuplexChallenger;
+use slop_commit::{ExtensionMmcs, Pcs};
+use slop_fri::{FriConfig, TwoAdicFriPcs};
+use slop_merkle_tree::FieldMerkleTreeMmcs;
+use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
 use slop_basefold::BaseFoldPcs;

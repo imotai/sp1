@@ -128,8 +128,8 @@ pub struct PartialSumcheckProof<K> {
 
 #[cfg(test)]
 mod test {
-    use p3_baby_bear::BabyBear;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField, UnivariatePolynomial};
+    use slop_baby_bear::BabyBear;
     use slop_multilinear::Mle;
 
     use crate::{SumcheckPoly, SumcheckPolyBase};

@@ -16,8 +16,8 @@
 //! the interleaving algorithm of `Ligero`(https://eprint.iacr.org/2022/1608).
 use std::iter::once;
 
-use p3_matrix::dense::RowMajorMatrix;
 use slop_algebra::{AbstractField, Field};
+use slop_matrix::dense::RowMajorMatrix;
 
 use crate::{
     MainTraceProverData, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier,

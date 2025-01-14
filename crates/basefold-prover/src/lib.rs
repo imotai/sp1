@@ -1,18 +1,18 @@
 use std::fmt::Debug;
 
 use itertools::Itertools;
-use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
-use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_dft::{Radix2DitParallel, TwoAdicSubgroupDft};
-use p3_fri::{fold_even_odd, CommitPhaseProofStep, FriConfig, PowersReducer, QueryProof};
-use p3_matrix::{
+use rayon::prelude::*;
+use slop_algebra::{ExtensionField, Field, TwoAdicField};
+use slop_basefold::{BaseFoldPcs, BaseFoldProof};
+use slop_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
+use slop_commit::{ExtensionMmcs, Mmcs};
+use slop_dft::{Radix2DitParallel, TwoAdicSubgroupDft};
+use slop_fri::{fold_even_odd, CommitPhaseProofStep, FriConfig, PowersReducer, QueryProof};
+use slop_matrix::{
     bitrev::BitReversableMatrix,
     dense::{DenseMatrix, RowMajorMatrix},
     Matrix,
 };
-use rayon::prelude::*;
-use slop_algebra::{ExtensionField, Field, TwoAdicField};
-use slop_basefold::{BaseFoldPcs, BaseFoldProof};
 use slop_multilinear::{
     MainTraceProverData, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, Point,
 };
@@ -385,16 +385,16 @@ where
 mod tests {
     use rand::Rng;
 
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_challenger::DuplexChallenger;
-    use p3_commit::{ExtensionMmcs, Pcs};
-    use p3_dft::Radix2DitParallel;
-    use p3_fri::{FriConfig, TwoAdicFriPcs};
-    use p3_matrix::dense::RowMajorMatrix;
-    use p3_merkle_tree::FieldMerkleTreeMmcs;
-    use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-    use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-    use p3_util::log2_strict_usize;
+    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use slop_challenger::DuplexChallenger;
+    use slop_commit::{ExtensionMmcs, Pcs};
+    use slop_dft::Radix2DitParallel;
+    use slop_fri::{FriConfig, TwoAdicFriPcs};
+    use slop_matrix::dense::RowMajorMatrix;
+    use slop_merkle_tree::FieldMerkleTreeMmcs;
+    use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+    use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
+    use slop_utils::log2_strict_usize;
 
     use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
     use slop_basefold::BaseFoldPcs;

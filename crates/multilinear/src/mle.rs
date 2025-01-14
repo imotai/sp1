@@ -1,9 +1,9 @@
 use std::ops::Mul;
 
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_util::log2_strict_usize;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use slop_algebra::{ExtensionField, Field};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_utils::log2_strict_usize;
 
 use crate::Point;
 

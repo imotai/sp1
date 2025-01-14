@@ -8,17 +8,18 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-p3-challenger = {workspace = true}
-p3-baby-bear = {workspace = true}
+slop-challenger = {workspace = true}
+slop-baby-bear = {workspace = true}
 
 slop-algebra = {workspace = true}
 slop-multilinear = {workspace = true}
+slop-maybe-rayon = {workspace = true}
 slop-sumcheck = {workspace = true}
 
 itertools = "0.12.0"
 tracing = "0.1.40"
 
 [dev-dependencies]
-p3-poseidon2 = {workspace = true}
+slop-poseidon2 = {workspace = true}
 
 rand = "0.8.4"

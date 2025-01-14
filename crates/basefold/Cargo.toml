@@ -10,11 +10,12 @@ categories.workspace = true
 [dependencies]
 slop-algebra = { workspace = true }
 slop-multilinear = { workspace = true }
-p3-challenger = { workspace = true }
-p3-commit = { workspace = true }
-p3-fri = { workspace = true }
-p3-util = { workspace = true }
-p3-matrix = { workspace = true }
+slop-maybe-rayon = { workspace = true }
+slop-challenger = { workspace = true }
+slop-utils = { workspace = true }
+slop-commit = { workspace = true }
+slop-fri = { workspace = true }
+slop-matrix = { workspace = true }
 
 thiserror = "1.0"
 itertools = "0.12.0"

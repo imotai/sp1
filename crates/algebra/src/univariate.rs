@@ -91,8 +91,8 @@ pub fn interpolate_univariate_polynomial<K: Field>(xs: &[K], ys: &[K]) -> Univar
 #[cfg(test)]
 mod tests {
     use crate::{interpolate_univariate_polynomial, UnivariatePolynomial};
-    use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
+    use slop_baby_bear::BabyBear;
 
     type F = BabyBear;
 

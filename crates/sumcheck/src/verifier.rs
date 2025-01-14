@@ -1,5 +1,5 @@
-use p3_challenger::{CanObserve, CanSample};
 use slop_algebra::{ExtensionField, Field};
+use slop_challenger::{CanObserve, CanSample};
 use slop_multilinear::Point;
 
 use crate::PartialSumcheckProof;

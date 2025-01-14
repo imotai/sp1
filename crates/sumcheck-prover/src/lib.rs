@@ -1,6 +1,7 @@
 use itertools::Itertools;
 
-use p3_challenger::{CanObserve, CanSample};
+use slop_challenger::{CanObserve, CanSample};
+// TODO: Remove or replace with a more principled approach before going to production.
 // use p3_util::{
 //     enable_bb_ops_counting, enable_ext_ops_counting, enable_permute_counting,
 //     get_bb_ops_invocation_count, get_ext_ops_invocation_count, get_permute_invocation_count,
@@ -112,13 +113,13 @@ pub fn reduce_sumcheck_to_evaluation<
 
 #[cfg(test)]
 mod tests {
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 
-    use p3_challenger::DuplexChallenger;
-    use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_challenger::DuplexChallenger;
     use slop_multilinear::{partial_lagrange_eval, Mle, Point};
+    use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError, SumcheckPoly};
 
     type F = BabyBear;

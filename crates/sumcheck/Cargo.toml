@@ -8,13 +8,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-p3-challenger = {workspace = true}
-p3-baby-bear = {workspace = true}
+slop-challenger = {workspace = true}
+slop-baby-bear = {workspace = true}
+slop-maybe-rayon = {workspace = true}
 
 slop-algebra = {workspace = true}
 slop-multilinear = {workspace = true}
-
-itertools = "0.12.0"
 rayon = "1.5.1"
 serde = { version = "1.0.207", features = ["derive"] }
 

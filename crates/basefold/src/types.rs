@@ -1,9 +1,9 @@
 use std::fmt::Debug;
 use thiserror::Error;
 
-use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
-use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_fri::{FriConfig, QueryProof};
+use slop_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
+use slop_commit::{ExtensionMmcs, Mmcs};
+use slop_fri::{FriConfig, QueryProof};
 
 use crate::FriError;
 use slop_algebra::{ExtensionField, Field};

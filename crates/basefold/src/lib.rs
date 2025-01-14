@@ -3,7 +3,7 @@ mod verifier;
 
 pub use types::*;
 
-use p3_fri::verifier::FriError;
+use slop_fri::verifier::FriError;
 
 #[cfg(test)]
 mod tests {

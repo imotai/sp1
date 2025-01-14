@@ -9,10 +9,10 @@ categories.workspace = true
 
 [dependencies]
 slop-algebra = { workspace = true}
-p3-util = { workspace = true }
-p3-matrix = {workspace = true}
-p3-challenger = {workspace = true}
-itertools = "0.12.0"
+slop-matrix = {workspace = true}
+slop-challenger = {workspace = true}
+slop-utils = {workspace = true}
+slop-maybe-rayon = {workspace = true}
 serde = { version = "1.0.207", features = ["derive"] }
 rayon = "1.10.0"
 tracing = "0.1.0"

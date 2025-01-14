@@ -1,6 +1,6 @@
-use p3_challenger::FieldChallenger;
-use p3_matrix::dense::RowMajorMatrix;
 use slop_algebra::{ExtensionField, Field};
+use slop_challenger::FieldChallenger;
+use slop_matrix::dense::RowMajorMatrix;
 
 use crate::Point;
 

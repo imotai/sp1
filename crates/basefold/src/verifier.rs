@@ -1,16 +1,16 @@
 use std::iter::repeat;
 
 use itertools::izip;
-use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
-use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_fri::{
+use slop_algebra::{ExtensionField, TwoAdicField};
+use slop_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
+use slop_commit::{ExtensionMmcs, Mmcs};
+use slop_fri::{
     verifier::{FriChallenges, FriError},
     FriConfig, QueryProof,
 };
-use p3_matrix::Dimensions;
-use p3_util::reverse_bits_len;
-use slop_algebra::{ExtensionField, TwoAdicField};
+use slop_matrix::Dimensions;
 use slop_multilinear::{MultilinearPcsBatchVerifier, Point};
+use slop_utils::reverse_bits_len;
 
 use crate::{BaseFoldError, BaseFoldPcs, BaseFoldProof};
 
