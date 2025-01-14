@@ -18,6 +18,13 @@ members = [
     "crates/multivariate-adapter",
     "crates/utils",
     "crates/baby-bear",
+    "crates/dft",
+    "crates/matrix",
+    "crates/symmetric",
+    "crates/merkle-tree",
+    "crates/poseidon2",
+    "crates/commit",
+    "crates/challenger",
 ]
 resolver = "2"
 
@@ -56,7 +63,13 @@ slop-multilinear = { path = "crates/multilinear" }
 slop-multivariate-adapter = { path = "crates/multivariate-adapter" }
 slop-utils = { path = "crates/utils" }
 slop-baby-bear = { path = "crates/baby-bear" }
-
+slop-dft = { path = "crates/dft" }
+slop-matrix = { path = "crates/matrix" }
+slop-symmetric = { path = "crates/symmetric" }
+slop-merkle-tree = { path = "crates/merkle-tree" }
+slop-poseidon2 = { path = "crates/poseidon2" }
+slop-commit = { path = "crates/commit" }
+slop-challenger = { path = "crates/challenger" }
 # For local development. 
 
 # p3-air = { path = "../Plonky3/air" }

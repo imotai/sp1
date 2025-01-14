@@ -748,6 +748,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "slop-challenger"
+version = "1.2.0"
+dependencies = [
+ "p3-challenger",
+]
+
+[[package]]
+name = "slop-commit"
+version = "1.2.0"
+dependencies = [
+ "p3-commit",
+]
+
+[[package]]
+name = "slop-dft"
+version = "1.2.0"
+dependencies = [
+ "p3-dft",
+]
+
+[[package]]
+name = "slop-matrix"
+version = "1.2.0"
+dependencies = [
+ "p3-matrix",
+]
+
+[[package]]
+name = "slop-merkle-tree"
+version = "1.2.0"
+dependencies = [
+ "p3-merkle-tree",
+]
+
+[[package]]
 name = "slop-multilinear"
 version = "1.2.0"
 dependencies = [
@@ -779,6 +814,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "slop-poseidon2"
+version = "1.2.0"
+dependencies = [
+ "p3-poseidon2",
+]
+
+[[package]]
 name = "slop-sumcheck"
 version = "1.2.0"
 dependencies = [
@@ -804,6 +846,13 @@ dependencies = [
  "slop-multilinear",
  "slop-sumcheck",
  "tracing",
+]
+
+[[package]]
+name = "slop-symmetric"
+version = "1.2.0"
+dependencies = [
+ "p3-symmetric",
 ]
 
 [[package]]
