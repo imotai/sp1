@@ -1,80 +1,41 @@
+mod buffer;
 mod tensor;
 
-pub use tensor::{HostTensor, PinnedTensor};
+pub use tensor::{
+    HostTensor, HostTensorView, HostTensorViewMut, PinnedTensor, PinnedTensorView,
+    PinnedTensorViewMut,
+};
+
+pub use buffer::{HostBuffer, PinnedBuffer};
 
 use std::{
     alloc::Layout,
     ffi::c_void,
-    mem::{ManuallyDrop, MaybeUninit},
+    ops::{Deref, DerefMut},
     ptr::{self, NonNull},
 };
 
-use csl_alloc::{AllocError, Allocator, TryReserveError};
+use csl_alloc::{AllocError, Allocator};
 use csl_sys::runtime::{cuda_free_host, cuda_malloc_host};
 
 use crate::{
     cuda::CudaError,
     mem::{CopyDirection, CopyError, DeviceData, DeviceMemory},
-    Buffer,
+    DeviceScope, Init, Slice,
 };
 
 const GLOBAL_ALLOCATOR: GlobalAllocator = GlobalAllocator;
 
 const PINNED_ALLOCATOR: PinnedAllocator = PinnedAllocator;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GlobalAllocator;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PinnedAllocator;
 
-pub type HostBuffer<T> = Buffer<T, GlobalAllocator>;
-pub type PinnedBuffer<T> = Buffer<T, PinnedAllocator>;
-
-impl<T: DeviceData> HostBuffer<T> {
-    #[inline]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::with_capacity_in(capacity, GLOBAL_ALLOCATOR)
-    }
-
-    #[inline]
-    pub fn into_vec(self) -> Vec<T> {
-        let mut self_undropped = ManuallyDrop::new(self);
-        unsafe {
-            Vec::from_raw_parts(
-                self_undropped.as_mut_ptr(),
-                self_undropped.len(),
-                self_undropped.capacity(),
-            )
-        }
-    }
-
-    #[inline]
-    pub fn from_vec(vec: Vec<T>) -> Self {
-        unsafe {
-            let mut vec = ManuallyDrop::new(vec);
-            Buffer::from_raw_parts(vec.as_mut_ptr(), vec.len(), vec.capacity(), GlobalAllocator)
-        }
-    }
-
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        let mut vec = ManuallyDrop::new(unsafe {
-            Vec::from_raw_parts(self.as_mut_ptr(), self.len(), self.capacity())
-        });
-        let slice = vec.spare_capacity_mut();
-        let len = slice.len();
-        let ptr = slice.as_mut_ptr();
-        unsafe { std::slice::from_raw_parts_mut(ptr, len) }
-    }
-}
-
-impl<T: DeviceData> PinnedBuffer<T> {
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::with_capacity_in(capacity, PINNED_ALLOCATOR)
-    }
-
-    pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
-        Self::try_with_capacity_in(capacity, PINNED_ALLOCATOR)
-    }
-}
+unsafe impl DeviceScope for GlobalAllocator {}
+unsafe impl DeviceScope for PinnedAllocator {}
 
 unsafe impl Allocator for GlobalAllocator {
     #[inline]
@@ -147,5 +108,53 @@ impl DeviceMemory for PinnedAllocator {
     unsafe fn write_bytes(&self, dst: *mut u8, value: u8, size: usize) -> Result<(), CopyError> {
         dst.write_bytes(value, size);
         Ok(())
+    }
+}
+
+pub type HostSlice<T> = Slice<T, GlobalAllocator>;
+
+impl<T: DeviceData> Deref for HostSlice<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { std::slice::from_raw_parts(self.as_ptr(), self.len()) }
+    }
+}
+
+impl<T: DeviceData> DerefMut for HostSlice<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+    }
+}
+
+pub type PinnedSlice<T> = Slice<T, PinnedAllocator>;
+
+impl<T: DeviceData> Deref for PinnedSlice<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { std::slice::from_raw_parts(self.as_ptr(), self.len()) }
+    }
+}
+
+impl<T: DeviceData> DerefMut for PinnedSlice<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+    }
+}
+
+impl<T: DeviceData> Deref for Init<T, GlobalAllocator> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<T: DeviceData> DerefMut for Init<T, GlobalAllocator> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
     }
 }

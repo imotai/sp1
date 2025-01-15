@@ -97,18 +97,31 @@ impl<T: DeviceMemory> DeviceMemory for Arc<T> {
     }
 }
 
+#[derive(Debug)]
 #[repr(transparent)]
 pub struct Init<T, A> {
+    inner: T,
     _marker: PhantomData<A>,
-    ptr: *mut T,
 }
 
 impl<T: DeviceData, A: Allocator> Init<T, A> {
-    pub fn as_ptr(&self) -> *const T {
-        self.ptr
+    #[inline]
+    pub const fn as_ptr(&self) -> *const T {
+        &self.inner
     }
 
+    #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        self.ptr
+        &mut self.inner
+    }
+
+    #[inline]
+    pub(crate) fn as_ref(&self) -> &T {
+        &self.inner
+    }
+
+    #[inline]
+    pub(crate) fn as_mut(&mut self) -> &mut T {
+        &mut self.inner
     }
 }

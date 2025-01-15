@@ -11,8 +11,17 @@ categories.workspace = true
 csl-device = { workspace = true }
 csl-sys = { workspace = true }
 csl-dft = { workspace = true }
+csl-merkle-tree = { workspace = true }
 
 slop-baby-bear = { workspace = true }
+slop-algebra = { workspace = true }
+slop-poseidon2 = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-commit = { workspace = true }
+slop-challenger = { workspace = true }
+
+lazy_static = "1.5.0"
 
 [dev-dependencies]
 rand = "0.8"

@@ -28,8 +28,7 @@ use tokio::sync::{
 
 use crate::{
     mem::{CopyDirection, CopyError, DeviceData, DeviceMemory},
-    tensor::Dimensions,
-    Buffer, Tensor,
+    Buffer, DeviceScope, Tensor,
 };
 
 use super::{
@@ -295,6 +294,8 @@ impl Deref for TaskScope {
     }
 }
 
+unsafe impl DeviceScope for TaskScope {}
+
 unsafe extern "C" fn sleep(ptr: *mut c_void) {
     let time = unsafe { Box::from_raw(ptr as *mut Duration) };
     std::thread::sleep(*time);
@@ -333,17 +334,17 @@ impl TaskScope {
     ///
     /// This function will panic in case of an allocation failure.
     #[inline]
-    pub fn tensor<T: DeviceData>(&self, dimensions: impl Into<Dimensions>) -> DeviceTensor<T> {
-        Tensor::with_dimensions_in(dimensions, self.clone())
+    pub fn tensor<T: DeviceData>(&self, sizes: impl AsRef<[usize]>) -> DeviceTensor<T> {
+        Tensor::with_sizes_in(sizes, self.clone())
     }
 
     /// Tries to allocate a tensor in this scope on the device with the given dimensions.
     #[inline]
     pub fn try_tensor<T: DeviceData>(
         &self,
-        dimensions: impl Into<Dimensions>,
+        sizes: impl AsRef<[usize]>,
     ) -> Result<DeviceTensor<T>, csl_alloc::TryReserveError> {
-        Tensor::try_with_dimensions_in(dimensions, self.clone())
+        Tensor::try_with_sizes_in(sizes, self.clone())
     }
 
     /// Launches a host function in this task.

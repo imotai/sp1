@@ -8,6 +8,15 @@ use super::{sync::CudaSend, TaskScope};
 pub type DeviceBuffer<T> = Buffer<T, TaskScope>;
 
 impl<T: DeviceData> Buffer<T, TaskScope> {
+    pub async fn from_host(buf: HostBuffer<T>, scope: TaskScope) -> Result<Self, CopyError>
+    where
+        T: Send,
+    {
+        tokio::task::spawn_blocking(move || Self::from_host_slice_blocking(&buf[..], scope))
+            .await
+            .unwrap()
+    }
+
     pub async fn from_host_vec(buf: Vec<T>, scope: TaskScope) -> Result<Self, CopyError>
     where
         T: Send,

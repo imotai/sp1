@@ -1,6 +1,7 @@
-use crate::mem::{CopyDirection, CopyError, DeviceData, DeviceMemory, Init};
+use crate::mem::{CopyDirection, CopyError, DeviceData};
 use crate::slice::Slice;
-use csl_alloc::{Allocator, RawBuffer, TryReserveError};
+use crate::{DeviceScope, Init};
+use csl_alloc::{RawBuffer, TryReserveError};
 use std::{
     alloc::Layout,
     mem::MaybeUninit,
@@ -13,18 +14,18 @@ use std::{
 /// Fixed-size device-side buffer.
 #[derive(Debug)]
 #[repr(C)]
-pub struct Buffer<T: DeviceData, A: Allocator> {
+pub struct Buffer<T: DeviceData, A: DeviceScope> {
     buf: RawBuffer<T, A>,
     len: usize,
 }
 
-unsafe impl<T: DeviceData, A: Allocator> Send for Buffer<T, A> {}
-unsafe impl<T: DeviceData, A: Allocator> Sync for Buffer<T, A> {}
+unsafe impl<T: DeviceData, A: DeviceScope> Send for Buffer<T, A> {}
+unsafe impl<T: DeviceData, A: DeviceScope> Sync for Buffer<T, A> {}
 
 impl<T, A> Buffer<T, A>
 where
     T: DeviceData,
-    A: Allocator,
+    A: DeviceScope,
 {
     #[inline]
     #[must_use]
@@ -95,10 +96,7 @@ where
     /// # Safety
     /// This operation is potentially asynchronous. The caller must insure the memory of the source
     /// is valid for the duration of the operation.
-    pub unsafe fn copy_from_host_slice(&mut self, src: &[T]) -> Result<(), CopyError>
-    where
-        A: DeviceMemory,
-    {
+    pub unsafe fn copy_from_host_slice(&mut self, src: &[T]) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
         #[inline(never)]
@@ -148,10 +146,7 @@ where
     ///  # Safety
     /// This operation is potentially asynchronous. The caller must insure the memory of the source
     /// is valid for the duration of the operation.
-    pub unsafe fn extend_from_host_slice(&mut self, src: &[T]) -> Result<(), CopyError>
-    where
-        A: DeviceMemory,
-    {
+    pub unsafe fn extend_from_host_slice(&mut self, src: &[T]) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
         #[inline(never)]
@@ -195,10 +190,7 @@ where
     ///
     /// This operation is potentially asynchronous. The caller must insure the memory of the
     /// destination is valid for the duration of the operation.
-    pub unsafe fn copy_into_host(&mut self, dst: &mut [MaybeUninit<T>]) -> Result<(), CopyError>
-    where
-        A: DeviceMemory,
-    {
+    pub unsafe fn copy_into_host(&mut self, dst: &mut [MaybeUninit<T>]) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
         #[inline(never)]
@@ -228,10 +220,7 @@ where
     /// # Safety
     ///
     /// This operation is potentially asynchronous.
-    pub unsafe fn write_bytes_uncheked(&mut self, value: u8, len: usize) -> Result<(), CopyError>
-    where
-        A: DeviceMemory,
-    {
+    pub unsafe fn write_bytes_uncheked(&mut self, value: u8, len: usize) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
         #[inline(never)]
@@ -277,7 +266,7 @@ where
 macro_rules! impl_index {
     ($($t:ty)*) => {
         $(
-            impl<T : DeviceData, A: Allocator> Index<$t> for Buffer<T, A>
+            impl<T : DeviceData, A: DeviceScope> Index<$t> for Buffer<T, A>
             {
                 type Output = Slice<T, A>;
 
@@ -290,7 +279,7 @@ macro_rules! impl_index {
                 }
             }
 
-            impl<T : DeviceData, A: Allocator> IndexMut<$t> for Buffer<T, A>
+            impl<T : DeviceData, A: DeviceScope> IndexMut<$t> for Buffer<T, A>
             {
                 fn index_mut(&mut self, index: $t) -> &mut Slice<T, A> {
                     unsafe {
@@ -313,7 +302,21 @@ impl_index! {
     RangeToInclusive<usize>
 }
 
-impl<T: DeviceData, A: Allocator> Index<usize> for Buffer<T, A> {
+impl<T: DeviceData, A: DeviceScope> Deref for Buffer<T, A> {
+    type Target = Slice<T, A>;
+
+    fn deref(&self) -> &Self::Target {
+        &self[..]
+    }
+}
+
+impl<T: DeviceData, A: DeviceScope> DerefMut for Buffer<T, A> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self[..]
+    }
+}
+
+impl<T: DeviceData, A: DeviceScope> Index<usize> for Buffer<T, A> {
     type Output = Init<T, A>;
 
     #[inline]
@@ -322,16 +325,30 @@ impl<T: DeviceData, A: Allocator> Index<usize> for Buffer<T, A> {
     }
 }
 
-impl<T: DeviceData, A: Allocator> Deref for Buffer<T, A> {
-    type Target = Slice<T, A>;
-
-    fn deref(&self) -> &Self::Target {
-        &self[..]
+impl<T: DeviceData, A: DeviceScope> IndexMut<usize> for Buffer<T, A> {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self[..][index]
     }
 }
 
-impl<T: DeviceData, A: Allocator> DerefMut for Buffer<T, A> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self[..]
+impl<T: DeviceData, A: DeviceScope> Clone for Buffer<T, A> {
+    #[inline]
+    fn clone(&self) -> Self {
+        let mut cloned = Self::with_capacity_in(self.len(), self.allocator().clone());
+        let layout = Layout::array::<T>(self.len()).unwrap();
+        unsafe {
+            self.buf
+                .allocator()
+                .copy_nonoverlapping(
+                    self.as_ptr() as *const u8,
+                    cloned.as_mut_ptr() as *mut u8,
+                    layout.size(),
+                    CopyDirection::DeviceToDevice,
+                )
+                .unwrap();
+            cloned.set_len(self.len());
+        }
+        cloned
     }
 }

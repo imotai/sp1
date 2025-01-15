@@ -1,5 +1,10 @@
 pub mod mpsc;
 
+use arrayvec::ArrayVec;
+use slop_baby_bear::BabyBear;
+
+use crate::{mem::DeviceData, HostBuffer};
+
 use super::TaskScope;
 
 /// # Safety
@@ -34,7 +39,19 @@ unsafe impl<T: CudaSend> CudaSend for Vec<T> {
     }
 }
 
+unsafe impl<T: DeviceData> CudaSend for HostBuffer<T> {
+    fn change_scope(&mut self, _scope: &TaskScope) {}
+}
+
 unsafe impl<T: CudaSend, const N: usize> CudaSend for [T; N] {
+    fn change_scope(&mut self, scope: &TaskScope) {
+        for item in self.iter_mut() {
+            item.change_scope(scope);
+        }
+    }
+}
+
+unsafe impl<T: CudaSend, const CAP: usize> CudaSend for ArrayVec<T, CAP> {
     fn change_scope(&mut self, scope: &TaskScope) {
         for item in self.iter_mut() {
             item.change_scope(scope);
@@ -53,6 +70,8 @@ macro_rules! scopeless_send_impl {
 }
 
 scopeless_send_impl!(u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64);
+
+scopeless_send_impl!(BabyBear);
 
 macro_rules! tuple_cuda_send_impl {
     ($(($($T:ident),+)),*) => {

@@ -43,6 +43,12 @@ impl<T: DeviceData, A: Allocator> Slice<T, A> {
         &*(src as *const [T] as *const Self)
     }
 
+    /// # Safety
+    #[inline]
+    pub unsafe fn from_raw_parts<'a>(data: *const T, len: usize) -> &'a Self {
+        Self::from_slice(std::slice::from_raw_parts(data, len))
+    }
+
     #[inline(always)]
     pub(crate) unsafe fn from_slice_mut(src: &mut [T]) -> &mut Self {
         &mut *(src as *mut [T] as *mut Self)
@@ -102,8 +108,15 @@ impl<T: DeviceData, A: Allocator> Index<usize> for Slice<T, A> {
 
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
-        let element = &self[index..(index + 1)];
-        let raw = element.as_ptr() as *mut T as *mut Init<T, A>;
-        unsafe { &*raw }
+        let ptr = self.slice.index(index) as *const T as *const Init<T, A>;
+        unsafe { ptr.as_ref().unwrap() }
+    }
+}
+
+impl<T: DeviceData, A: Allocator> IndexMut<usize> for Slice<T, A> {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let ptr = self.slice.index_mut(index) as *mut T as *mut Init<T, A>;
+        unsafe { ptr.as_mut().unwrap() }
     }
 }

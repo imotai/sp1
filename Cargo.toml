@@ -6,7 +6,6 @@ repository = "https://github.com/succinctlabs/spl.git"
 keywords = ["spl", "succinct", "zero-knowledge"]
 categories = ["cryptography"]
 
-
 [workspace.lints.clippy]
 missing_docs = "warn"
 
@@ -18,6 +17,7 @@ members = [
     "crates/derive",
     "crates/device",
     "crates/dft",
+    "crates/merkle-tree",
     "crates/sys",
 ]
 resolver = "2"
@@ -35,7 +35,6 @@ debug = true
 debug-assertions = true
 
 [workspace.dependencies]
-
 # cuslop
 csl-alloc = { path = "crates/alloc" }
 csl-sys = { path = "crates/sys" }
@@ -43,16 +42,35 @@ csl-derive = { path = "crates/derive" }
 csl-dft = { path = "crates/dft" }
 csl-device = { path = "crates/device" }
 csl-baby-bear = { path = "crates/baby-bear" }
-# slop
-slop-baby-bear = { path = "../slop/crates/baby-bear" }
-slop-basefold = { path = "../slop/crates/basefold" }
-slop-dft = { path = "../slop/crates/dft" }
-slop-matrix = { path = "../slop/crates/matrix" }
-slop-algebra = { path = "../slop/crates/algebra" }
+csl-merkle-tree = { path = "crates/merkle-tree" }
+
+
+# slop 
+slop-baby-bear = { git = "https://github.com/succinctlabs/slop.git" }
+slop-basefold = { git = "https://github.com/succinctlabs/slop.git" }
+slop-dft = { git = "https://github.com/succinctlabs/slop.git" }
+slop-matrix = { git = "https://github.com/succinctlabs/slop.git" }
+slop-algebra = { git = "https://github.com/succinctlabs/slop.git" }
+slop-symmetric = { git = "https://github.com/succinctlabs/slop.git" }
+slop-merkle-tree = { git = "https://github.com/succinctlabs/slop.git" }
+slop-poseidon2 = { git = "https://github.com/succinctlabs/slop.git" }
+slop-commit = { git = "https://github.com/succinctlabs/slop.git" }
+slop-challenger = { git = "https://github.com/succinctlabs/slop.git" }
+
+# slop local copy
+# slop-baby-bear = { path = "../slop/crates/baby-bear" }
+# slop-basefold = { path = "../slop/crates/basefold" }
+# slop-dft = { path = "../slop/crates/dft" }
+# slop-matrix = { path = "../slop/crates/matrix" }
+# slop-algebra = { path = "../slop/crates/algebra" }
+# slop-symmetric = { path = "../slop/crates/symmetric" }
+# slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
+# slop-poseidon2 = { path = "../slop/crates/poseidon2" }
+# slop-commit = { path = "../slop/crates/commit" }
+# slop-challenger = { path = "../slop/crates/challenger" }
 
 # async
 tokio = { version = "1.42.0" }
-
 
 # misc
 thiserror = "1.0"

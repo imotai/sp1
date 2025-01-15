@@ -1,21 +1,21 @@
-use std::marker::PhantomData;
-
 use csl_device::cuda::CudaError;
-use csl_dft::DeviceDft;
+use csl_dft::{SpparkCudaDftSys, SpparkDft};
 use csl_sys::dft::{batch_coset_dft, sppark_init_default_stream};
 use slop_baby_bear::BabyBear;
 
-#[derive(Copy, Clone, Debug, Default)]
-pub struct SpparkDft<T>(PhantomData<T>);
+#[derive(Copy, Clone, Debug)]
+pub struct SpparkB31Kernels;
 
-impl SpparkDft<BabyBear> {
-    pub fn new() -> Self {
+pub type SpparkDftBabyBear = SpparkDft<SpparkB31Kernels>;
+
+impl Default for SpparkB31Kernels {
+    fn default() -> Self {
         unsafe { sppark_init_default_stream() };
-        Self(PhantomData)
+        Self
     }
 }
 
-impl DeviceDft<BabyBear> for SpparkDft<BabyBear> {
+impl SpparkCudaDftSys<BabyBear> for SpparkB31Kernels {
     unsafe fn dft_unchecked(
         &self,
         d_out: *mut BabyBear,
@@ -43,7 +43,7 @@ impl DeviceDft<BabyBear> for SpparkDft<BabyBear> {
 #[cfg(test)]
 mod tests {
     use csl_device::{DeviceBuffer, DeviceTensor};
-    use csl_dft::DftOrdering;
+    use csl_dft::{Dft, DftOrdering};
     use rand::thread_rng;
     use slop_algebra::AbstractField;
     use slop_dft::{Radix2DitParallel, TwoAdicSubgroupDft};
@@ -55,11 +55,11 @@ mod tests {
     async fn test_batch_coset_dft() {
         let mut rng = thread_rng();
 
-        let log_degrees = 4..5;
+        let log_degrees = 10..21;
         let log_blowup = 1;
-        let batch_size = 4;
+        let batch_size = 16;
 
-        let dft = SpparkDft::new();
+        let dft = SpparkDftBabyBear::default();
         let p3_dft = Radix2DitParallel;
 
         for log_d in log_degrees.clone() {
@@ -89,9 +89,9 @@ mod tests {
 
                     let src =
                         DeviceBuffer::from_host_vec(src_values_host, t.clone()).await.unwrap();
-                    let src = DeviceTensor::from(src).reshape((batch_size, d)).unwrap();
-                    let mut dst = t.tensor::<BabyBear>((batch_size, lde_d));
-                    let mut dst_bit_rev = t.tensor::<BabyBear>((batch_size, lde_d));
+                    let src = DeviceTensor::from(src).reshape([batch_size, d]).unwrap();
+                    let mut dst = t.tensor::<BabyBear>([batch_size, lde_d]);
+                    let mut dst_bit_rev = t.tensor::<BabyBear>([batch_size, lde_d]);
                     unsafe {
                         dst.assume_init();
                         dst_bit_rev.assume_init();
@@ -112,20 +112,12 @@ mod tests {
                         dst_bit_rev.into_host().await.unwrap().into_buffer().into_vec();
 
                     for (d_v, d_exp) in dst.into_iter().zip(expected_value_transposed.values) {
-                        if d_v != d_exp {
-                            println!("d_v: {:?}", d_v);
-                            println!("d_exp: {:?}", d_exp);
-                        }
                         assert_eq!(d_v, d_exp);
                     }
 
                     for (d_v, d_exp) in
                         dst_bit_rev.into_iter().zip(expected_values_bit_rev_transposed.values)
                     {
-                        if d_v != d_exp {
-                            println!("d_v: {:?}", d_v);
-                            println!("d_exp: {:?}", d_exp);
-                        }
                         assert_eq!(d_v, d_exp);
                     }
                 })
