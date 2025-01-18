@@ -1,3 +1,11 @@
+mod dot;
+mod sum;
+mod transpose;
+
+pub use dot::*;
+pub use sum::*;
+pub use transpose::*;
+
 use std::{
     marker::PhantomData,
     ops::{Index, IndexMut, Range, RangeFrom, RangeFull, RangeTo},
@@ -41,6 +49,18 @@ impl<T: DeviceData, A: DeviceScope> Tensor<T, A> {
     #[inline]
     pub fn with_sizes_in(sizes: impl AsRef<[usize]>, allocator: A) -> Self {
         Self::try_with_sizes_in(sizes, allocator).unwrap()
+    }
+
+    #[inline]
+    pub fn zeros_in(sizes: impl AsRef<[usize]>, allocator: A) -> Self {
+        let mut tensor = Self::with_sizes_in(sizes, allocator);
+        unsafe {
+            tensor
+                .storage
+                .write_bytes_uncheked(0, tensor.total_len() * std::mem::size_of::<T>())
+                .unwrap()
+        };
+        tensor
     }
 
     #[inline]
@@ -91,7 +111,7 @@ impl<T: DeviceData, A: DeviceScope> Tensor<T, A> {
     }
 
     #[inline]
-    pub fn allocator(&self) -> &A {
+    pub fn scope(&self) -> &A {
         self.storage.allocator()
     }
 
@@ -109,6 +129,11 @@ impl<T: DeviceData, A: DeviceScope> Tensor<T, A> {
     #[inline]
     pub fn as_ptr(&self) -> *const T {
         self.storage.as_ptr()
+    }
+
+    #[inline]
+    pub fn total_len(&self) -> usize {
+        self.dimensions.total_len()
     }
 
     pub fn as_mut_ptr(&mut self) -> *mut T {
@@ -171,7 +196,7 @@ impl Dimensions {
     }
 
     #[inline]
-    fn total_len(&self) -> usize {
+    pub fn total_len(&self) -> usize {
         self.sizes.iter().product()
     }
 
@@ -184,12 +209,12 @@ impl Dimensions {
     }
 
     #[inline]
-    fn sizes(&self) -> &[usize] {
+    pub fn sizes(&self) -> &[usize] {
         &self.sizes
     }
 
     #[inline]
-    fn strides(&self) -> &[usize] {
+    pub fn strides(&self) -> &[usize] {
         &self.strides
     }
 
@@ -259,6 +284,22 @@ impl<'a, T: DeviceData, A: DeviceScope> TensorView<'a, T, A> {
     }
 
     #[inline]
+    pub fn total_len(&self) -> usize {
+        self.dimensions.total_len()
+    }
+
+    #[inline]
+    pub fn shape(&self) -> &Dimensions {
+        &self.dimensions
+    }
+
+    #[inline]
+    pub fn flatten(self) -> TensorView<'a, T, A> {
+        let total_len = self.total_len();
+        self.reshape([total_len]).unwrap()
+    }
+
+    #[inline]
     pub fn reshape(
         self,
         sizes: impl AsRef<[usize]>,
@@ -306,9 +347,21 @@ impl<'a, T: DeviceData, A: DeviceScope> TensorViewMut<'a, T, A> {
     }
 
     #[inline]
+    pub fn shape(&self) -> &Dimensions {
+        &self.dimensions
+    }
+
+    #[inline]
     pub fn strides(&self) -> &[usize] {
         self.dimensions.strides()
     }
+
+    #[inline]
+    pub fn flatten(self) -> TensorViewMut<'a, T, A> {
+        let total_len = self.total_len();
+        self.reshape([total_len]).unwrap()
+    }
+
     #[inline]
     pub fn reshape(
         self,
@@ -337,6 +390,11 @@ impl<'a, T: DeviceData, A: DeviceScope> TensorViewMut<'a, T, A> {
     #[inline]
     pub fn as_slice(self) -> &'a Slice<T, A> {
         unsafe { Slice::from_raw_parts(self.ptr, self.dimensions.total_len()) }
+    }
+
+    #[inline]
+    pub fn total_len(&self) -> usize {
+        self.dimensions.total_len()
     }
 
     #[inline]

@@ -20,3 +20,13 @@ benchmark.csv
 
 # Environment
 .env
+
+# nvidia profiling files
+*.nsys-rep
+*.ncu-rep
+*.sqlite
+
+# proof file from test
+prover/proof-with-pis.bin
+perf/proof-with-pis.bin
+core_proof.bin

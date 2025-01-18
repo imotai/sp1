@@ -1,7 +1,9 @@
 mod buffer;
+mod dot;
 mod error;
 mod event;
 mod global;
+mod reduce;
 mod stream;
 pub mod sync;
 pub mod task;
@@ -14,8 +16,9 @@ pub use error::CudaError;
 pub use event::CudaEvent;
 pub use stream::{CudaStream, StreamCallbackFuture, UnsafeCudaStream};
 
+pub use reduce::partial_sum_reduction;
 pub use task::*;
-pub use tensor::DeviceTensor;
+pub use tensor::{DeviceTensor, DeviceTensorView, DeviceTensorViewMut};
 pub use transpose::*;
 
 pub use buffer::DeviceBuffer;
@@ -40,4 +43,15 @@ impl<T: DeviceData> Init<T, TaskScope> {
             Ok(host_val.assume_init())
         }
     }
+}
+
+#[macro_export]
+macro_rules! args {
+    ($($arg:expr),*) => {
+        [
+            $(
+                &$arg as *const _ as *mut std::ffi::c_void
+            ),*
+        ]
+    };
 }

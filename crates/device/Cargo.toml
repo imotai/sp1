@@ -15,13 +15,14 @@ csl-sys = { workspace = true }
 csl-derive = { workspace = true }
 
 slop-baby-bear = { workspace = true }
+slop-algebra = { workspace = true }
 
 tokio = { workspace = true, features = ["full"] }
 crossbeam = "0.8.4"
 pin-project = "1"
 futures = "0.3"
 arrayvec = "0.7.6"
-itertools = "0.14.0"
+itertools = { workspace = true }
 
 [dev-dependencies]
 rand = "0.8"

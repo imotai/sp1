@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, os::raw::c_void};
 
 use csl_device::{
-    cuda::{CudaError, DeviceTransposeKernel, TaskScope},
+    cuda::{CudaError, TaskScope},
     mem::DeviceData,
     tensor::TensorView,
     DeviceBuffer, DeviceTensor, GlobalAllocator, KernelPtr,
@@ -16,7 +16,7 @@ use crate::{MerkleTree, MerkleTreeTcs, MerkleTreeTcsProof, TensorCSPDeviceProver
 /// by [`MerkleTreeSingleLayerProver`].
 pub unsafe trait MerkeTreeSingleLayerKernels {
     type Data: DeviceData;
-    type Digest: DeviceData + Eq + DeviceTransposeKernel;
+    type Digest: DeviceData + Eq;
     type Hasher: CryptographicHasher<Self::Data, Self::Digest>;
     type Compressor: PseudoCompressionFunction<Self::Digest, 2>;
 

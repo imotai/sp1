@@ -1,5 +1,3 @@
-use std::ffi::c_void;
-
 use csl_sys::{
     runtime::{Dim3, KernelPtr},
     transpose::{
@@ -9,26 +7,31 @@ use csl_sys::{
 };
 use slop_baby_bear::BabyBear;
 
-use crate::mem::DeviceData;
-
-use super::{
-    tensor::{DeviceTensorView, DeviceTensorViewMut},
-    DeviceTensor, TaskScope,
+use crate::{
+    args,
+    mem::DeviceData,
+    tensor::{TensorViewMut, TransposeBackend},
+    Tensor,
 };
 
+use super::TaskScope;
+
 /// # Safety
-pub unsafe trait DeviceTransposeKernel: DeviceData {
+pub unsafe trait DeviceTransposeKernel<T> {
     fn transpose_kernel() -> KernelPtr;
 }
 
-impl<'a, T: DeviceTransposeKernel> DeviceTensorView<'a, T> {
+impl<T: DeviceData> TransposeBackend<T> for TaskScope
+where
+    TaskScope: DeviceTransposeKernel<T>,
+{
     /// Transposes the tensor into the given destination tensor.
-    pub fn transpose_into(self, mut dst: DeviceTensorViewMut<T>, scope: &TaskScope) {
-        let num_dims = self.sizes().len();
+    fn transpose_tensor_into(src: &Tensor<T, Self>, mut dst: TensorViewMut<T, Self>) {
+        let num_dims = src.sizes().len();
 
-        let dim_x = self.sizes()[num_dims - 1];
-        let dim_y = self.sizes()[num_dims - 2];
-        let dim_z: usize = self.sizes().iter().take(num_dims - 2).product();
+        let dim_x = src.sizes()[num_dims - 1];
+        let dim_y = src.sizes()[num_dims - 2];
+        let dim_z: usize = src.sizes().iter().take(num_dims - 2).product();
         assert_eq!(dim_x, dst.sizes()[num_dims - 2]);
         assert_eq!(dim_y, dst.sizes()[num_dims - 1]);
 
@@ -39,61 +42,41 @@ impl<'a, T: DeviceTransposeKernel> DeviceTensorView<'a, T> {
             dim_z.div_ceil(block_dim.z as usize),
         )
             .into();
-        let args = [
-            &self.as_ptr() as *const _ as *mut c_void,
-            &dst.as_mut_ptr() as *const _ as *mut c_void,
-            &dim_x as *const usize as _,
-            &dim_y as *const usize as _,
-            &dim_z as *const usize as _,
-        ];
+        let args = args!(src.as_ptr(), dst.as_mut_ptr(), dim_x, dim_y, dim_z);
+        // let args = [
+        //     &src.as_ptr() as *const _ as *mut c_void,
+        //     &dst.as_mut_ptr() as *const _ as *mut c_void,
+        //     &dim_x as *const usize as _,
+        //     &dim_y as *const usize as _,
+        //     &dim_z as *const usize as _,
+        // ];
         unsafe {
-            scope.launch_kernel(T::transpose_kernel(), block_dim, grid_dim, &args, 0).unwrap();
+            src.scope()
+                .launch_kernel(Self::transpose_kernel(), block_dim, grid_dim, &args, 0)
+                .unwrap();
         }
     }
 }
 
-impl<T: DeviceTransposeKernel> DeviceTensor<T> {
-    #[inline]
-    pub fn transpose_into(&self, dst: DeviceTensorViewMut<T>) {
-        self.as_view().transpose_into(dst, self.allocator());
-    }
-
-    /// Returns a new tensor with the last two dimensions transposed.
-    #[inline]
-    pub fn transpose(&self) -> Self {
-        let mut sizes = self.sizes().to_vec();
-        let len = sizes.len();
-        sizes.swap(len - 1, len - 2);
-        let mut dst = DeviceTensor::with_sizes_in(sizes, self.allocator().clone());
-
-        unsafe {
-            dst.assume_init();
-        }
-        self.transpose_into(dst.as_view_mut());
-
-        dst
-    }
-}
-
-unsafe impl DeviceTransposeKernel for u32 {
+unsafe impl DeviceTransposeKernel<u32> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
         unsafe { transpose_kernel_u32() }
     }
 }
 
-unsafe impl DeviceTransposeKernel for [u32; 8] {
+unsafe impl DeviceTransposeKernel<[u32; 8]> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
         unsafe { transpose_kernel_u32_digest() }
     }
 }
 
-unsafe impl DeviceTransposeKernel for BabyBear {
+unsafe impl DeviceTransposeKernel<BabyBear> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
         unsafe { transpose_kernel_baby_bear() }
     }
 }
 
-unsafe impl DeviceTransposeKernel for [BabyBear; 8] {
+unsafe impl DeviceTransposeKernel<[BabyBear; 8]> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
         unsafe { transpose_kernel_baby_bear_digest() }
     }

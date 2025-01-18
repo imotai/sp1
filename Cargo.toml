@@ -18,6 +18,7 @@ members = [
     "crates/device",
     "crates/dft",
     "crates/merkle-tree",
+    "crates/mle",
     "crates/sys",
 ]
 resolver = "2"
@@ -56,6 +57,7 @@ slop-merkle-tree = { git = "https://github.com/succinctlabs/slop.git" }
 slop-poseidon2 = { git = "https://github.com/succinctlabs/slop.git" }
 slop-commit = { git = "https://github.com/succinctlabs/slop.git" }
 slop-challenger = { git = "https://github.com/succinctlabs/slop.git" }
+slop-multilinear = { git = "https://github.com/succinctlabs/slop.git" }
 
 # slop local copy
 # slop-baby-bear = { path = "../slop/crates/baby-bear" }
@@ -68,9 +70,12 @@ slop-challenger = { git = "https://github.com/succinctlabs/slop.git" }
 # slop-poseidon2 = { path = "../slop/crates/poseidon2" }
 # slop-commit = { path = "../slop/crates/commit" }
 # slop-challenger = { path = "../slop/crates/challenger" }
+# slop-multilinear = { path = "../slop/crates/multilinear" }
+
 
 # async
 tokio = { version = "1.42.0" }
 
 # misc
 thiserror = "1.0"
+itertools = "0.14.0"

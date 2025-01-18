@@ -1,1 +1,3 @@
-# Succinct Processor Library
+# cuSlop
+
+A cuda version of slop.
