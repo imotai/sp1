@@ -32,8 +32,9 @@ use crate::{
 };
 
 use super::{
-    stream::StreamRef, sync::CudaSend, CudaError, CudaEvent, CudaStream, DeviceTensor,
-    StreamCallbackFuture,
+    stream::{StreamRef, INTERVAL_MS},
+    sync::CudaSend,
+    CudaError, CudaEvent, CudaStream, DeviceTensor, StreamCallbackFuture,
 };
 
 const DEFAULT_NUM_TASKS: usize = 64;
@@ -397,13 +398,36 @@ impl TaskScope {
     /// This function can be useful in case there is work to be enqueued but for some reason this
     /// work cannot be done using [Self::launch_host_fn].
     pub async fn synchronize(&self) -> Result<(), CudaError> {
-        let (tx, rx) = oneshot::channel::<bool>();
+        let (tx, mut rx) = oneshot::channel::<bool>();
+        let mut interval = tokio::time::interval(Duration::from_millis(INTERVAL_MS));
+
+        // Launch the host function to signal the main thread that the task is done
         let tx = Box::new(tx);
         let tx_ptr = Box::into_raw(tx);
         unsafe {
             self.launch_host_fn(sync_host, tx_ptr as *mut c_void)?;
         }
-        rx.await.unwrap();
+
+        // Wait for the host function to signal the main thread that the task is done while
+        // simultaneously polling the stream in the interval to catch any errors.
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                     match unsafe { self.stream().query() } {
+                        Ok(()) => {break;}
+                        Err(CudaError::NotReady) => {}
+                        Err(e) => {
+                            return Err(e);
+                        }
+
+                    }
+                }
+                _ =&mut rx => {
+                    break;
+                }
+            }
+        }
+
         Ok(())
     }
 

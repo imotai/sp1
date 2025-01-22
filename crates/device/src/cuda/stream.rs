@@ -7,6 +7,7 @@ use std::{
     ptr::{self, NonNull},
     sync::{Arc, Mutex},
     task::{Context, Poll, Waker},
+    time::Duration,
 };
 
 use csl_alloc::{AllocError, Allocator};
@@ -17,10 +18,13 @@ use csl_sys::runtime::{
     cuda_stream_destroy, cuda_stream_query, cuda_stream_synchronize, cuda_stream_wait_event,
     CudaStreamHandle, Dim3, KernelPtr, DEFAULT_STREAM,
 };
+use tokio::time::Interval;
 
 use crate::mem::{CopyDirection, CopyError, DeviceMemory};
 
 use super::{CudaError, CudaEvent};
+
+pub(crate) const INTERVAL_MS: u64 = 2000;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -123,7 +127,7 @@ impl Default for CudaStream {
 /// State shared between the future and the CUDA callback
 struct CallbackState<S> {
     // Holding the stream to prevent it from being dropped
-    _task: Option<S>,
+    task: Option<S>,
     done: bool,
     result: Result<(), CudaError>,
     waker: Option<Waker>,
@@ -136,6 +140,7 @@ struct CallbackState<S> {
 /// busy-waiting.
 pub struct StreamCallbackFuture<S> {
     shared: Arc<Mutex<CallbackState<S>>>,
+    interval: Pin<Box<Interval>>,
 }
 
 /// A future that completes once the GPU has completed all work queued in `stream` so far.
@@ -203,7 +208,7 @@ impl<S> StreamCallbackFuture<S> {
     {
         // 1) Create an Arc<Mutex<...>> for the shared state
         let shared = Arc::new(Mutex::new(CallbackState {
-            _task: None,
+            task: None,
             done: false,
             result: Ok(()),
             waker: None,
@@ -217,7 +222,7 @@ impl<S> StreamCallbackFuture<S> {
         //    call `my_host_callback(ptr)`"
         let launch_result = unsafe { task.stream().launch_host_fn(Some(waker_callback::<S>), ptr) };
 
-        shared.lock().unwrap()._task = Some(task);
+        shared.lock().unwrap().task = Some(task);
 
         if let Err(e) = launch_result {
             let mut state = shared.lock().unwrap();
@@ -225,7 +230,9 @@ impl<S> StreamCallbackFuture<S> {
             state.done = true;
         }
 
-        Self { shared }
+        let interval = Box::pin(tokio::time::interval(Duration::from_millis(INTERVAL_MS)));
+
+        Self { shared, interval }
     }
 }
 
@@ -246,19 +253,54 @@ where
     }
 }
 
-impl<S> Future for StreamCallbackFuture<S> {
+impl<S> Future for StreamCallbackFuture<S>
+where
+    S: StreamRef,
+{
     type Output = Result<(), CudaError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.shared.lock().unwrap();
 
+        // If the stream is done, return the result
         if state.done {
             // GPU has reached the callback
-            Poll::Ready(state.result)
-        } else {
-            // Not done yet, store the waker so we can wake it later
-            state.waker = Some(cx.waker().clone());
-            Poll::Pending
+            return Poll::Ready(state.result);
+        }
+
+        //  If not done, check the stream's status
+        match unsafe { state.task.as_ref().unwrap().stream().query() } {
+            Ok(()) => {
+                state.done = true;
+                state.result = Ok(());
+                return Poll::Ready(Ok(()));
+            }
+            Err(CudaError::NotReady) => {
+                // Stream is not done yet, so we need to wait for it.
+            }
+            Err(e) => {
+                // Got an error from the stream, so we need to return it.
+                state.done = true;
+                state.result = Err(e);
+                return Poll::Ready(Err(e));
+            }
+        }
+
+        // Not done yet, store the waker so we can wake it later
+        state.waker = Some(cx.waker().clone());
+        drop(state);
+
+        // Poll the interval to check if we need to wake up again
+        match self.interval.as_mut().poll_tick(cx) {
+            Poll::Ready(_) => {
+                // The time has passed, so we need to schedule another poll
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Poll::Pending => {
+                // The time has not passed yet, so we need to wait for it or for the callback.
+                Poll::Pending
+            }
         }
     }
 }
