@@ -83,7 +83,10 @@ __global__ void partialBlockDotKernel(
     for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < height;
          i += blockDim.x * gridDim.x)
     {
-        op.evalAssign(thread_val, B[i] * A[batchIdx * height + i]);
+        F a = F::load(A, batchIdx * height + i);
+        EF b = EF::load(B, i);
+        EF c = b * a;
+        op.evalAssign(thread_val, c);
     }
 
     // Allocate shared memory
@@ -96,7 +99,7 @@ __global__ void partialBlockDotKernel(
     // Write the result to the partial_sums array
     if (block.thread_rank() == 0)
     {
-        partial[batchIdx * gridDim.x + blockIdx.x] = shared[0];
+        EF::store(partial, batchIdx * gridDim.x + blockIdx.x, shared[0]);
     }
 }
 

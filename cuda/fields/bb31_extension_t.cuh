@@ -29,6 +29,26 @@ public:
         }
     }
 
+    // Load from a pointer using a vectorized load.
+    static __device__ __forceinline__ bb31_extension_t load(bb31_extension_t *ptr, size_t i)
+    {
+        int4 b_int4 = *reinterpret_cast<int4 *>(&ptr[i]);
+        return *reinterpret_cast<bb31_extension_t *>(&b_int4);
+    }
+
+    // Load from a pointer using a vectorized load.
+    static __device__ __forceinline__ const bb31_extension_t load(const bb31_extension_t *ptr, size_t i)
+    {
+        int4 b_int4 = *reinterpret_cast<const int4 *>(&ptr[i]);
+        return *reinterpret_cast<const bb31_extension_t *>(&b_int4);
+    }
+
+    // Store a bb31_extension_t into a pointer using a vectorized store.
+    static __device__ __forceinline__ void store(bb31_extension_t *ptr, size_t i, bb31_extension_t value)
+    {
+        *reinterpret_cast<int4 *>(&ptr[i]) = *reinterpret_cast<int4 *>(&value);
+    }
+
     static __device__ __forceinline__ bb31_extension_t from_bool(bool x)
     {
         return bb31_extension_t(bb31_t::from_bool(x));

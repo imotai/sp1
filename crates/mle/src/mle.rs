@@ -45,7 +45,7 @@ impl<F: Field, B: DeviceScope> Mle<F, B> {
         Self::new(scope.uninit_mle(num_polynomials, num_variables))
     }
 
-    pub fn guts(&self) -> &Tensor<F, B> {
+    pub const fn guts(&self) -> &Tensor<F, B> {
         &self.guts
     }
 

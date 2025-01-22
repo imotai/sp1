@@ -17,6 +17,7 @@ members = [
     "crates/derive",
     "crates/device",
     "crates/dft",
+    "crates/jagged",
     "crates/merkle-tree",
     "crates/mle",
     "crates/sys",
@@ -44,7 +45,8 @@ csl-dft = { path = "crates/dft" }
 csl-device = { path = "crates/device" }
 csl-baby-bear = { path = "crates/baby-bear" }
 csl-merkle-tree = { path = "crates/merkle-tree" }
-
+csl-mle = { path = "crates/mle" }
+csl-jagged = { path = "crates/jagged" }
 
 # slop 
 slop-baby-bear = { git = "https://github.com/succinctlabs/slop.git" }

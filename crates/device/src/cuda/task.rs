@@ -396,14 +396,15 @@ impl TaskScope {
     ///
     /// This function can be useful in case there is work to be enqueued but for some reason this
     /// work cannot be done using [Self::launch_host_fn].
-    pub async fn synchronize(&self) {
+    pub async fn synchronize(&self) -> Result<(), CudaError> {
         let (tx, rx) = oneshot::channel::<bool>();
         let tx = Box::new(tx);
         let tx_ptr = Box::into_raw(tx);
         unsafe {
-            self.launch_host_fn(sync_host, tx_ptr as *mut c_void).unwrap();
+            self.launch_host_fn(sync_host, tx_ptr as *mut c_void)?;
         }
         rx.await.unwrap();
+        Ok(())
     }
 
     /// Waits for all work enqueued so far in this task to finish.

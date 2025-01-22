@@ -74,7 +74,7 @@ mod tests {
                 .unwrap()
                 .run(|t| async move {
                     let tensor = DeviceTensor::from_host(tensor, t.clone()).await.unwrap();
-                    t.synchronize().await;
+                    t.synchronize().await.unwrap();
                     let time = std::time::Instant::now();
                     let (root, tree) = prover.commit_tensor(tensor.as_view(), &t).unwrap();
                     println!("Commit time: {:?}", time.elapsed());

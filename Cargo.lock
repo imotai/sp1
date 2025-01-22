@@ -222,6 +222,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "csl-jagged"
+version = "1.2.0"
+dependencies = [
+ "csl-baby-bear",
+ "csl-device",
+ "csl-mle",
+ "rand",
+ "slop-algebra",
+ "slop-baby-bear",
+ "tokio",
+]
+
+[[package]]
 name = "csl-merkle-tree"
 version = "1.2.0"
 dependencies = [

@@ -44,8 +44,8 @@ where
 
         let null_ptr = std::ptr::null::<std::ffi::c_void>();
         let partial_args = args!(null_ptr, src.as_ptr(), scalars.as_ptr(), width, height);
-        const BLOCK_SIZE: usize = 512;
-        const INTIAL_STRIDE: usize = 8;
+        const BLOCK_SIZE: usize = 256;
+        const INTIAL_STRIDE: usize = 4;
         unsafe {
             partial_sum_reduction_into::<U, BLOCK_SIZE, INTIAL_STRIDE, 5>(
                 dst,
@@ -185,7 +185,7 @@ mod tests {
         type F = BabyBear;
         type EF = BinomialExtensionField<BabyBear, 4>;
 
-        for size in [10, 100, 200, 1 << 10, 1 << 16] {
+        for size in [10, 100, 1 << 10, 1 << 12, 1 << 16] {
             for num_summands in [64, 128] {
                 let values_1: Vec<F> = (0..(num_summands * size)).map(|_| rng.gen()).collect();
                 let values_2: Vec<EF> = (0..(size)).map(|_| rng.gen()).collect();

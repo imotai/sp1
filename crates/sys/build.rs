@@ -64,6 +64,14 @@ fn builder() -> cc::Build {
         .flag("-lnvToolsExt")
         .flag("--expt-relaxed-constexpr");
 
+    // Set the "-G" flag if the PROFILE_DEBUG_DATA environment variable is set to "true". This can
+    // be set during kernel profilining.
+    if let Some(profile_debug_data) = env::var_os("PROFILE_DEBUG_DATA") {
+        if profile_debug_data == "true" {
+            build.flag("-G");
+        }
+    }
+
     build
 }
 

@@ -32,6 +32,11 @@
         "tuple": "cpp",
         "type_traits": "cpp",
         "random": "cpp",
-        "cstdint": "cpp"
+        "cstdint": "cpp",
+        "__config": "cpp",
+        "atomic": "cpp",
+        "memory_resource": "cpp",
+        "stop_token": "cpp",
+        "semaphore": "cpp"
     },
 }

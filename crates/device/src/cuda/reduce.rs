@@ -113,10 +113,12 @@ pub unsafe fn partial_sum_reduction_into<
     let mut partial_sums = partial_sums;
     while sizes[dim] > MAX_NUM_FINAL_BLOCKS * BLOCK_SIZE {
         let height = sizes[dim];
-        let mut current = Tensor::<T, _>::with_sizes_in(sizes.clone(), scope.clone());
         let block_dim: Dim3 = BLOCK_SIZE.into();
         let num_reduce_blocks = height.div_ceil(block_dim.x as usize).div_ceil(INTIAL_STRIDE);
         let grid_dim: Dim3 = (num_reduce_blocks, width, 1).into();
+
+        sizes[dim] = grid_dim.x as usize;
+        let mut current = Tensor::<T, _>::with_sizes_in(sizes.clone(), scope.clone());
         let args = args!(current.as_mut_ptr(), partial_sums.as_ptr(), width, height);
         let num_tiles = block_dim.x.checked_div(32).unwrap_or(1);
         let shared_mem = num_tiles * block_dim.y * (std::mem::size_of::<T>() as u32);
@@ -124,7 +126,7 @@ pub unsafe fn partial_sum_reduction_into<
             current.assume_init();
             scope
                 .launch_kernel(
-                    TaskScope::block_sum_kernel(),
+                    TaskScope::partial_sum_kernel(),
                     grid_dim,
                     block_dim,
                     &args,
@@ -132,7 +134,7 @@ pub unsafe fn partial_sum_reduction_into<
                 )
                 .unwrap();
         }
-        sizes[dim] = num_reduce_blocks;
+        // sizes[dim] = num_reduce_blocks;
         partial_sums = current;
     }
 

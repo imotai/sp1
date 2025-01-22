@@ -53,6 +53,7 @@ pub struct CudaStreamHandle(pub *mut c_void);
 #[repr(transparent)]
 pub struct CudaEventHandle(pub *mut c_void);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct Dim3 {
     pub x: u32,

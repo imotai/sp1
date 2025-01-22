@@ -94,6 +94,21 @@ public:
         return from_canonical_u32((uint32_t)x);
     }
 
+    static inline bb31_t load(bb31_t *ptr, size_t i)
+    {
+        return ptr[i];
+    }
+
+    static inline const bb31_t load(const bb31_t *ptr, size_t i)
+    {
+        return ptr[i];
+    }
+
+    static inline void store(bb31_t *ptr, size_t i, bb31_t value)
+    {
+        ptr[i] = value;
+    }
+
     static inline bb31_t from_bool(bool x) { return bb31_t(x * one().val); }
 
     inline uint32_t as_canonical_u32() const
@@ -657,6 +672,21 @@ public:
             p1110000111100001111000011110000 * p111000011110000111100001111;
 
         return p1110111111111111111111111111111;
+    }
+
+    static inline bb31_t load(bb31_t *ptr, size_t i)
+    {
+        return ptr[i];
+    }
+
+    static inline const bb31_t load(const bb31_t *ptr, size_t i)
+    {
+        return ptr[i];
+    }
+
+    static inline void store(bb31_t *ptr, size_t i, bb31_t value)
+    {
+        ptr[i] = value;
     }
 
     inline bool operator==(const bb31_t rhs) const { return val == rhs.val; }
