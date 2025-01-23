@@ -110,7 +110,7 @@ where
         &self,
         mut point: Point<EK>,
         eval_claims: &[&[EK]],
-        _commitment: Self::Commitment,
+        commitment: Self::Commitment,
         proof: &Self::Proof,
         challenger: &mut Challenger,
     ) -> Result<(), Self::Error> {
@@ -207,7 +207,7 @@ where
                 // Verify the openings of the individual columns.
                 self.inner_mmcs
                     .verify_batch(
-                        &_commitment,
+                        &commitment,
                         &repeat(Dimensions {
                             width: 0,
                             height: 1
