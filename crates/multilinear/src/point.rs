@@ -29,12 +29,16 @@ impl<K: Copy> Point<K> {
         (self.0[0], Point(self.0[1..].to_vec()))
     }
 
+    pub fn split_at_last(&self) -> (Self, K) {
+        (Point(self.0[..self.0.len() - 1].to_vec()), self.0[self.0.len() - 1])
+    }
+
     pub fn reversed_point(&self) -> Self {
         Point(self.0.iter().rev().copied().collect())
     }
 
     pub fn add_dimension(&mut self, dim_val: K) {
-        self.0.push(dim_val);
+        self.0.insert(0, dim_val);
     }
 
     pub fn remove_last_coordinate(&mut self) -> K {

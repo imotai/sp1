@@ -1,7 +1,7 @@
-use std::ops::Mul;
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use slop_algebra::{ExtensionField, Field};
+use slop_algebra::{ExtensionField, Field, UnivariatePolynomial};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_utils::log2_strict_usize;
 
@@ -151,6 +151,76 @@ impl<K: Field> Mle<K> {
         // in `eval_at_point` so we don't recompute it at every step of BaseFold.
         Mle::new(self.guts.par_iter().step_by(2).copied().collect()).eval_at_point(new_point)
     }
+
+    pub fn sc_fix_last_variable<
+        S: Field
+            + From<K>
+            + Add<K, Output = S>
+            + AddAssign<K>
+            + Sub<K, Output = S>
+            + SubAssign<K>
+            + Mul<K, Output = S>
+            + MulAssign<K>
+            + Copy
+            + Send
+            + Sync
+            + Default,
+    >(
+        &self,
+        alpha: S,
+    ) -> Mle<S> {
+        assert!(self.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
+        let mut result: Vec<S> = Vec::with_capacity(self.guts.len() / 2);
+
+        self.guts
+            .par_iter()
+            .chunks(2)
+            .map(|chunk| {
+                let [x, y] = chunk.try_into().unwrap();
+                alpha * (*y - *x) + (*x)
+            })
+            .collect_into_vec(&mut result);
+
+        Mle::new(result)
+    }
+
+    pub fn sc_sum_as_poly_in_last_variable<
+        S: Field
+            + From<K>
+            + Add<K, Output = S>
+            + AddAssign<K>
+            + Sub<K, Output = S>
+            + SubAssign<K>
+            + Mul<K, Output = S>
+            + MulAssign<K>
+            + Copy
+            + Send
+            + Sync
+            + Default,
+    >(
+        &self,
+    ) -> UnivariatePolynomial<S> {
+        // If the polynomial is 0-variate, the length of its guts is not divisible by 2, so we need
+        // to handle this case separately.
+        if self.num_variables() == 0 {
+            return UnivariatePolynomial::new(vec![self.guts[0].into(), S::zero()]);
+        }
+
+        let mut first_half_sum = K::zero();
+        let mut second_half_sum = K::zero();
+
+        self.guts.chunks(2).for_each(|chunk| {
+            let [x, y] = chunk.try_into().unwrap();
+            first_half_sum += x;
+            second_half_sum += y;
+        });
+
+        // In the formula for `fix_first_variable`,
+        UnivariatePolynomial::new(vec![
+            first_half_sum.into(),
+            (second_half_sum - first_half_sum).into(),
+        ])
+    }
 }
 
 impl<K: Field> From<Mle<K>> for Vec<K> {
@@ -229,7 +299,7 @@ pub fn partial_lagrange_eval<K: Field>(point: &Point<K>) -> Vec<K> {
 pub fn full_lagrange_eval<F: Field>(point_1: &Point<F>, point_2: &Point<F>) -> F {
     assert_eq!(point_1.dimension(), point_2.dimension());
 
-    //Iterate over all values in the n-variates X and Y.
+    // Iterate over all values in the n-variates X and Y.
     point_1
         .0
         .iter()

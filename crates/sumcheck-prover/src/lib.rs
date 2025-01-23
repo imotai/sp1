@@ -24,6 +24,7 @@ pub fn reduce_sumcheck_to_evaluation<
     poly: impl SumcheckPolyFirstRound<EF>,
     challenger: &mut Challenger,
     claim: EF,
+    t: usize,
 ) -> (PartialSumcheckProof<EF>, Vec<EF>) {
     let n_vars = poly.n_variables();
     assert!(n_vars > 0);
@@ -34,7 +35,7 @@ pub fn reduce_sumcheck_to_evaluation<
     let mut univariate_polys: Vec<UnivariatePolynomial<EF>> = vec![];
 
     let uni_poly_message = tracing::debug_span!("sum_as_poly_in_first_variable first round")
-        .in_scope(|| poly.sum_as_poly_in_first_variable(Some(claim)));
+        .in_scope(|| poly.sum_as_poly_in_last_t_variables(Some(claim), t));
     univariate_polys.push(uni_poly_message.clone());
 
     challenger.observe_slice(
@@ -47,16 +48,16 @@ pub fn reduce_sumcheck_to_evaluation<
     );
 
     let alpha: EF = challenger.sample();
-    point.push(alpha);
+    point.insert(0, alpha);
     let mut poly_cursor = tracing::debug_span!("fix_first_variable first round")
-        .in_scope(|| poly.fix_first_variable(alpha));
+        .in_scope(|| poly.fix_t_variables(alpha, t));
 
     // The multi-variate polynomial used at the start of each sumcheck round.
-    for i in 1..n_vars {
-        let round_claim = univariate_polys[i - 1].eval_at_point(*point.last().unwrap());
+    for _ in 1..n_vars {
+        let round_claim = univariate_polys.last().unwrap().eval_at_point(*point.first().unwrap());
 
         let uni_poly_message = tracing::debug_span!("sum_as_poly_in_first_variable")
-            .in_scope(|| poly_cursor.sum_as_poly_in_first_variable(Some(round_claim)));
+            .in_scope(|| poly_cursor.sum_as_poly_in_last_variable(Some(round_claim)));
         univariate_polys.push(uni_poly_message.clone());
 
         challenger.observe_slice(
@@ -69,35 +70,13 @@ pub fn reduce_sumcheck_to_evaluation<
         );
 
         let alpha: EF = challenger.sample();
-        point.push(alpha);
+        point.insert(0, alpha);
         poly_cursor = tracing::debug_span!("fix_first_variable")
-            .in_scope(|| poly_cursor.fix_first_variable(alpha));
+            .in_scope(|| poly_cursor.fix_last_variable(alpha));
     }
 
     let eval = tracing::debug_span!("eval_at_point")
-        .in_scope(|| univariate_polys.last().unwrap().eval_at_point(*point.last().unwrap()));
-
-    // if output {
-    //     let (
-    //         ext_add,
-    //         ext_add_field,
-    //         ext_sub,
-    //         ext_sub_field,
-    //         ext_mul,
-    //         ext_mul_field,
-    //         ext_div,
-    //         ext_div_field,
-    //     ) = get_ext_ops_invocation_count();
-    //     let (bb_add, bb_sub, bb_mul, bb_div) = get_bb_ops_invocation_count();
-    //     let permute_count = get_permute_invocation_count();
-
-    //     println!(
-    //         "ext add ops = {ext_add}, ext add field = {ext_add_field}, ext sub ops = {ext_sub},
-    // ext sub field = {ext_sub_field}, ext mul ops = {ext_mul}, ext mul field = {ext_mul_field},
-    // ext div ops = {ext_div}, ext div field = {ext_div_field}, bb add ops = {bb_add}, bb sub ops =
-    // {bb_sub}, bb mul ops = {bb_mul}, bb div ops = {bb_div}, permute count = {permute_count}"
-    //     );
-    // }
+        .in_scope(|| univariate_polys.last().unwrap().eval_at_point(*point.first().unwrap()));
 
     let component_poly_evals = poly_cursor.get_component_poly_evals();
 
@@ -149,7 +128,7 @@ mod tests {
 
         let claim: EF = guts.guts.iter().map(|x| EF::from(*x)).sum();
         let (proof, _) =
-            super::reduce_sumcheck_to_evaluation::<F, EF, _>(guts, &mut challenger, claim);
+            super::reduce_sumcheck_to_evaluation::<F, EF, _>(guts, &mut challenger, claim, 1);
 
         let mut challenger = Challenger::new(perm.clone());
         assert!(partially_verify_sumcheck_proof::<F, EF, _>(&proof, &mut challenger).is_ok());
@@ -177,6 +156,7 @@ mod tests {
                     guts,
                     &mut Challenger::new(perm.clone()),
                     claim,
+                    1,
                 );
 
                 let mut challenger = Challenger::new(perm.clone());
@@ -203,7 +183,7 @@ mod tests {
                 let mut challenger = Challenger::new(perm.clone());
                 let claim: F = guts.guts.iter().copied().sum();
                 let (mut proof, _) =
-                    crate::reduce_sumcheck_to_evaluation(guts, &mut challenger, claim);
+                    crate::reduce_sumcheck_to_evaluation(guts, &mut challenger, claim, 1);
                 assert_eq!(proof.univariate_polys.len(), num_variables);
 
                 assert!(partially_verify_sumcheck_proof(&proof, &mut challenger).is_err());
@@ -245,17 +225,16 @@ mod tests {
 
         let partial_lagrange: Mle<_> = partial_lagrange_eval(&point).into();
 
-        let (first, rest) = point.split_at_first();
+        let (rest, last) = point.split_at_last();
 
         let smaller_partial_lagrange: Mle<_> = partial_lagrange_eval(&rest).into();
 
         let random_coefficient: F = rng.gen();
 
         assert_eq!(
-            partial_lagrange.fix_first_variable(random_coefficient),
+            partial_lagrange.fix_last_variable(random_coefficient),
             smaller_partial_lagrange
-                * (random_coefficient * first
-                    + (F::one() - random_coefficient) * (F::one() - first))
+                * (random_coefficient * last + (F::one() - random_coefficient) * (F::one() - last))
         );
     }
 }
