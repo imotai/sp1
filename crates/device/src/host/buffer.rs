@@ -1,8 +1,15 @@
-use std::mem::{ManuallyDrop, MaybeUninit};
+use std::{
+    future::Future,
+    mem::{ManuallyDrop, MaybeUninit},
+};
 
 use csl_alloc::TryReserveError;
 
-use crate::{mem::DeviceData, Buffer};
+use crate::{
+    cuda::{IntoDevice, TaskScope},
+    mem::{CopyError, DeviceData},
+    Buffer, DeviceBuffer,
+};
 
 use super::{GlobalAllocator, PinnedAllocator, GLOBAL_ALLOCATOR, PINNED_ALLOCATOR};
 
@@ -119,6 +126,24 @@ impl<T: DeviceData> From<HostBuffer<T>> for Vec<T> {
     #[inline]
     fn from(buffer: HostBuffer<T>) -> Self {
         buffer.into_vec()
+    }
+}
+
+impl<T: DeviceData + Send> IntoDevice for Buffer<T, GlobalAllocator> {
+    type DeviceData = Buffer<T, TaskScope>;
+
+    fn into_device_in(
+        self,
+        scope: &TaskScope,
+    ) -> impl Future<Output = Result<Self::DeviceData, CopyError>> + Send {
+        let scope = scope.clone();
+        async move {
+            tokio::task::spawn_blocking(move || {
+                DeviceBuffer::from_host_slice_blocking(&self[..], scope)
+            })
+            .await
+            .unwrap()
+        }
     }
 }
 

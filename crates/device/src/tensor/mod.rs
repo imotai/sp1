@@ -111,6 +111,11 @@ impl<T: DeviceData, A: DeviceScope> Tensor<T, A> {
     }
 
     #[inline]
+    pub fn as_mut_buffer(&mut self) -> &mut Buffer<T, A> {
+        &mut self.storage
+    }
+
+    #[inline]
     pub fn scope(&self) -> &A {
         self.storage.allocator()
     }

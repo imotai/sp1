@@ -1,3 +1,5 @@
+mod point;
+
 use csl_device::{
     args,
     cuda::TaskScope,

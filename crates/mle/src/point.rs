@@ -1,9 +1,11 @@
-use csl_device::{cuda::TaskScope, mem::DeviceData, CudaSend, DeviceScope, Tensor};
+use csl_device::{
+    cuda::TaskScope, mem::DeviceData, CudaSend, DeviceScope, GlobalAllocator, Tensor,
+};
 
 use crate::backend::PointBackend;
 
 #[derive(Debug, Clone, CudaSend)]
-pub struct Point<T: DeviceData, B: DeviceScope> {
+pub struct Point<T: DeviceData, B: DeviceScope = GlobalAllocator> {
     values: Tensor<T, B>,
 }
 

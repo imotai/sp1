@@ -1,5 +1,8 @@
+use std::future::Future;
+
 use crate::{
-    mem::DeviceData,
+    cuda::{IntoDevice, TaskScope},
+    mem::{CopyError, DeviceData},
     tensor::{TensorView, TensorViewMut},
     Tensor,
 };
@@ -27,9 +30,25 @@ impl<T: DeviceData> HostTensor<T> {
     }
 }
 
+impl<T: DeviceData + Send> IntoDevice for Tensor<T, GlobalAllocator> {
+    type DeviceData = Tensor<T, TaskScope>;
+
+    #[inline]
+    fn into_device_in(
+        self,
+        scope: &TaskScope,
+    ) -> impl Future<Output = Result<Self::DeviceData, CopyError>> + Send {
+        let Tensor { storage, dimensions } = self;
+        async move {
+            let storage = scope.into_device(storage).await?;
+            Ok(Tensor { storage, dimensions })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::host_buffer;
+    use crate::{cuda, host_buffer};
 
     use super::*;
 
@@ -102,5 +121,27 @@ mod tests {
         let first_row = tensor.index(0);
         let first_two_rows = first_row.index(..2);
         assert_eq!(first_two_rows.sizes(), [2, 4]);
+    }
+
+    #[tokio::test]
+    async fn test_tensor_from_host() {
+        let tensor = HostTensor::<u32>::from(host_buffer![1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+            .reshape([2, 5])
+            .unwrap();
+        let tensor_clone = tensor.clone();
+        let tensor_back = cuda::task()
+            .await
+            .unwrap()
+            .run(|t| async move {
+                let device_tensor = t.into_device(tensor).await.unwrap();
+                device_tensor.into_host().await.unwrap()
+            })
+            .await
+            .await
+            .unwrap();
+
+        for (val, expected) in tensor_back.as_buffer().iter().zip(tensor_clone.as_buffer().iter()) {
+            assert_eq!(val, expected);
+        }
     }
 }

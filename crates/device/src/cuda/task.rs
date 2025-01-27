@@ -34,7 +34,7 @@ use crate::{
 use super::{
     stream::{StreamRef, INTERVAL_MS},
     sync::CudaSend,
-    CudaError, CudaEvent, CudaStream, DeviceTensor, StreamCallbackFuture,
+    CudaError, CudaEvent, CudaStream, DeviceTensor, IntoDevice, StreamCallbackFuture,
 };
 
 const DEFAULT_NUM_TASKS: usize = 64;
@@ -429,6 +429,12 @@ impl TaskScope {
         }
 
         Ok(())
+    }
+
+    /// Copies data from the host to the device.
+    #[inline]
+    pub async fn into_device<T: IntoDevice>(&self, data: T) -> Result<T::DeviceData, CopyError> {
+        T::into_device_in(data, self).await
     }
 
     /// Waits for all work enqueued so far in this task to finish.

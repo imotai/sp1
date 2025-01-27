@@ -10,7 +10,7 @@ pub mod task;
 mod tensor;
 mod transpose;
 
-use std::{alloc::Layout, mem::MaybeUninit};
+use std::{alloc::Layout, future::Future, mem::MaybeUninit};
 
 pub use error::CudaError;
 pub use event::CudaEvent;
@@ -27,6 +27,15 @@ use crate::{
     mem::{CopyDirection, CopyError, DeviceData},
     DeviceMemory, Init,
 };
+
+pub trait IntoDevice {
+    type DeviceData;
+
+    fn into_device_in(
+        self,
+        scope: &TaskScope,
+    ) -> impl Future<Output = Result<Self::DeviceData, CopyError>> + Send;
+}
 
 impl<T: DeviceData> Init<T, TaskScope> {
     pub fn to_host_blocking(&self, scope: &TaskScope) -> Result<T, CopyError> {
