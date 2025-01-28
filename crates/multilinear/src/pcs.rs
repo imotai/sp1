@@ -1,3 +1,6 @@
+use std::fmt::Debug;
+
+use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_challenger::FieldChallenger;
 use slop_matrix::dense::RowMajorMatrix;
@@ -8,9 +11,9 @@ use crate::Point;
 pub trait MultilinearPcsBatchVerifier {
     type F: Field;
     type EF: ExtensionField<Self::F>;
-    type Proof;
-    type Commitment;
-    type Error;
+    type Proof: Serialize + DeserializeOwned + Clone;
+    type Commitment: Clone + Serialize + DeserializeOwned;
+    type Error: Debug;
     type Challenger: FieldChallenger<Self::F>;
 
     fn verify_trusted_evaluations(
@@ -42,8 +45,8 @@ pub trait MultilinearPcsVerifier {
     type F: Field;
     type EF: ExtensionField<Self::F>;
     type Proof;
-    type Commitment;
-    type Error;
+    type Commitment: Clone + Serialize + DeserializeOwned;
+    type Error: Debug;
     type Challenger: FieldChallenger<Self::F>;
 
     fn verify_trusted_evaluation(
@@ -70,13 +73,12 @@ pub trait MultilinearPcsVerifier {
 
 pub trait MultilinearPcsBatchProver {
     type PCS: MultilinearPcsBatchVerifier;
-    type MultilinearProverData;
-    type MultilinearCommitment;
+    type MultilinearProverData: Clone + Serialize + DeserializeOwned;
 
     fn commit_multilinears(
         &self,
         data: Vec<RowMajorMatrix<<Self::PCS as MultilinearPcsBatchVerifier>::F>>,
-    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData);
+    ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::Commitment, Self::MultilinearProverData);
 
     fn prove_trusted_evaluations(
         &self,
@@ -102,13 +104,12 @@ pub trait MultilinearPcsBatchProver {
 
 pub trait MultilinearPcsProver {
     type PCS: MultilinearPcsVerifier;
-    type MultilinearProverData;
-    type MultilinearCommitment;
+    type MultilinearProverData: Clone + Serialize + DeserializeOwned;
 
     fn commit_multilinear(
         &self,
         data: Vec<Vec<<Self::PCS as MultilinearPcsVerifier>::F>>,
-    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData);
+    ) -> (<Self::PCS as MultilinearPcsVerifier>::Commitment, Self::MultilinearProverData);
 
     fn prove_trusted_evaluation(
         &self,

@@ -1,3 +1,4 @@
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -11,16 +12,26 @@ use slop_algebra::{ExtensionField, Field};
 pub type QueryResultWithProof<K, EK, M> = (EK, QueryProof<EK, ExtensionMmcs<K, EK, M>>);
 
 /// The data necessary to construct a BaseFold opening proof.
-pub struct BaseFoldProof<K: Field, EK: ExtensionField<K>, M: Mmcs<K>, Witness> {
+#[derive(Clone, Serialize, Deserialize)]
+// #[serde(bound(deserialize = "Vec<[EK; 2]>: DeserializeOwned"))]
+#[serde(bound = "")]
+// #[serde(bound(serialize = "Commitment: DeserializeOwned"))]
+pub struct BaseFoldProof<
+    K: Field,
+    EK: ExtensionField<K>,
+    Commitment: Serialize + DeserializeOwned,
+    Witness: Serialize + DeserializeOwned,
+    Proof: Serialize + DeserializeOwned,
+    M: Mmcs<K>,
+> {
     /// The univariate polynomials that are used in the sumcheck part of the BaseFold protocol.
     pub univariate_messages: Vec<[EK; 2]>,
 
     /// The FRI parts of the proof.
     /// The commitments to the folded polynomials produced in the commit phase.
-    pub commitments: Vec<<ExtensionMmcs<K, EK, M> as Mmcs<EK>>::Commitment>,
+    pub commitments: Vec<Commitment>,
 
     /// The query openings and the FRI query proofs for the FRI query phase.
-    /// TODO: The EK component is probably redundant; remove it.
     pub query_phase_proofs: Vec<QueryResultWithProof<K, EK, M>>,
 
     /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant value of
@@ -31,10 +42,10 @@ pub struct BaseFoldProof<K: Field, EK: ExtensionField<K>, M: Mmcs<K>, Witness> {
     pub pow_witness: Witness,
 
     /// The query openings of the individual polynmomials.
-    pub query_openings: Vec<(Vec<Vec<K>>, M::Proof)>,
+    pub query_openings: Vec<(Vec<Vec<K>>, Proof)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BaseFoldPcs<K: Field, EK: ExtensionField<K>, InnerMmcs: Mmcs<K>, Challenger>
 where
     Challenger: GrindingChallenger

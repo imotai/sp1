@@ -81,7 +81,14 @@ where
         + CanObserve<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment>,
     <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq,
 {
-    type Proof = BaseFoldProof<K, EK, InnerMmcs, Challenger::Witness>;
+    type Proof = BaseFoldProof<
+        K,
+        EK,
+        InnerMmcs::Commitment,
+        Challenger::Witness,
+        InnerMmcs::Proof,
+        InnerMmcs,
+    >;
     type Commitment = <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment;
     type Error = BaseFoldError<<ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Error>;
     type F = K;

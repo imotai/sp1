@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 use rayon::prelude::*;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field, TwoAdicField};
 use slop_basefold::{BaseFoldPcs, BaseFoldProof};
 use slop_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
@@ -29,9 +30,10 @@ where
     pub(crate) pcs: BaseFoldPcs<K, EK, InnerMmcs, Challenger>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct BaseFoldProverData<K, ProverData> {
     vals: Vec<RowMajorMatrix<K>>,
-    data: ProverData,
+    pub data: ProverData,
 }
 
 impl<K: Clone, ProverData> MainTraceProverData<RowMajorMatrix<K>>
@@ -127,7 +129,7 @@ where
         mut eval_point: Point<EK>,
         expected_evals: &[&[EK]],
         challenger: &mut Challenger,
-    ) -> BaseFoldProof<K, EK, InnerMmcs, Challenger::Witness>
+    ) -> BaseFoldProof<K, EK, InnerMmcs::Commitment, Challenger::Witness, InnerMmcs::Proof, InnerMmcs>
     where
         Challenger: GrindingChallenger
             + FieldChallenger<K>
@@ -200,6 +202,7 @@ where
                 curr_batch_power += matrices[i].width();
             })
         });
+
         let mut current_mle: Mle<EK> = current_mle_vec.into();
 
         let log_len = current_mle.num_variables();
@@ -294,17 +297,16 @@ impl<
     > MultilinearPcsBatchProver for BaseFoldProver<K, EK, InnerMmcs, Challenger>
 where
     <ExtensionMmcs<K, EK, InnerMmcs> as Mmcs<EK>>::Commitment: Eq + Debug,
+    <InnerMmcs as Mmcs<K>>::ProverData<RowMajorMatrix<K>>: Clone + Serialize + DeserializeOwned,
 {
     type MultilinearProverData = BaseFoldProverData<K, InnerMmcs::ProverData<RowMajorMatrix<K>>>;
-
-    type MultilinearCommitment = InnerMmcs::Commitment;
 
     type PCS = BaseFoldPcs<K, EK, InnerMmcs, Challenger>;
 
     fn commit_multilinears(
         &self,
         data: Vec<RowMajorMatrix<K>>,
-    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
+    ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::Commitment, Self::MultilinearProverData) {
         self.commit(data)
     }
 
@@ -390,11 +392,12 @@ mod tests {
     use slop_commit::{ExtensionMmcs, Pcs};
     use slop_dft::Radix2DitParallel;
     use slop_fri::{FriConfig, TwoAdicFriPcs};
-    use slop_matrix::dense::RowMajorMatrix;
+    use slop_jagged::JaggedPcs;
+    use slop_matrix::{dense::RowMajorMatrix, Matrix};
     use slop_merkle_tree::FieldMerkleTreeMmcs;
     use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-    use slop_utils::log2_strict_usize;
+    use slop_utils::{log2_ceil_usize, log2_strict_usize};
 
     use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
     use slop_basefold::BaseFoldPcs;
@@ -604,10 +607,11 @@ mod tests {
                 )
             });
 
-            let (_, back_half) = new_eval_point.split_at(log_stacking_height);
+            let (front_half, _) =
+                new_eval_point.split_at(new_eval_point.dimension() - log_stacking_height);
             let eval_claim = Mle::eval_at_point(
-                &proof.1.iter().flatten().cloned().collect::<Vec<_>>().into(),
-                &back_half,
+                &proof.evaluations.iter().flatten().cloned().collect::<Vec<_>>().into(),
+                &front_half,
             );
 
             tracing::info_span!("verify evaluations").in_scope(|| {
@@ -622,5 +626,97 @@ mod tests {
                     .unwrap();
             });
         });
+    }
+
+    use slop_multilinear::MultilinearPcsBatchProver;
+
+    #[test]
+    fn test_jagged_prover() {
+        let column_counts = [1 << 1, 1 << 2, 1 << 7, 1 << 1]; //, 4, 2, 2];
+        let row_counts = [1 << 13, 0, 1 << 7, (1 << 19) + 7]; //, 4, 4, 4];
+                                                              // let log_max_column_count = 3;
+                                                              // let log_max_row_count = 2;
+
+        let log_stacking_height = 3;
+
+        let log_max_row_count = log2_ceil_usize(*row_counts.iter().max().unwrap());
+
+        let mut rng = rand::thread_rng();
+
+        let matrices = column_counts
+            .iter()
+            .zip(row_counts.iter())
+            .map(|(column_count, row_count)| {
+                RowMajorMatrix::new(
+                    (0..(*row_count * *column_count)).map(|_| rng.gen::<F>()).collect(),
+                    *column_count,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        println!(
+            "Matrix widths and heights: {:?}",
+            matrices.iter().map(|m| (m.width(), m.height())).collect::<Vec<_>>()
+        );
+
+        let perm = Perm::new_from_rng_128(
+            Poseidon2ExternalMatrixGeneral,
+            DiffusionMatrixBabyBear,
+            &mut rng,
+        );
+        let hash = MyHash::new(perm.clone());
+        let compress = MyCompress::new(perm.clone());
+        let inner_mmcs = ValMmcs::new(hash, compress);
+        let mmcs = ChallengeMmcs::new(inner_mmcs.clone());
+        let config = FriConfig {
+            log_blowup: 1,
+            num_queries: 100,
+            proof_of_work_bits: 8,
+            mmcs: mmcs.clone(),
+        };
+        let cloned_config =
+            FriConfig { log_blowup: 1, num_queries: 100, proof_of_work_bits: 8, mmcs };
+
+        let pcs = BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(config, inner_mmcs.clone());
+
+        let pcs_clone = BaseFoldPcs::<F, EF, ValMmcs, Challenger>::new(cloned_config, inner_mmcs);
+
+        let stacked_verifier = StackedPcsVerifier { pcs: pcs_clone, log_stacking_height };
+        let prover = BaseFoldProver::new(pcs);
+
+        let stacked_prover = StackedPcsProver { pcs: prover, log_stacking_height };
+
+        let jagged_prover = JaggedPcs { pcs: stacked_prover, max_log_row_count: log_max_row_count };
+
+        let jagged_verifier =
+            JaggedPcs { pcs: stacked_verifier, max_log_row_count: log_max_row_count };
+
+        let (commit, data) = jagged_prover.commit_multilinears(matrices.clone());
+
+        let eval_point = Point::new((0..log_max_row_count).map(|_| rng.gen::<EF>()).collect());
+
+        let eval_claims = matrices
+            .iter()
+            .map(|mat| Mle::eval_matrix_at_point(mat, &eval_point))
+            .collect::<Vec<_>>();
+
+        let proof = jagged_prover.prove_trusted_evaluations(
+            eval_point.clone(),
+            &eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+            data,
+            &mut Challenger::new(perm.clone()),
+        );
+
+        let result = jagged_verifier.verify_trusted_evaluations(
+            eval_point,
+            &eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+            commit,
+            &proof,
+            &mut Challenger::new(perm.clone()),
+        );
+
+        println!("Result: {:?}", result);
+
+        assert!(result.is_ok());
     }
 }

@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use slop_algebra::{ExtensionField, Field, UnivariatePolynomial};
+use slop_algebra::{AbstractField, ExtensionField, Field, UnivariatePolynomial};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_utils::log2_strict_usize;
 
@@ -22,7 +22,7 @@ impl<K> From<Vec<K>> for Mle<K> {
     }
 }
 
-impl<K: Field> Mle<K> {
+impl<K: AbstractField + Send + Sync> Mle<K> {
     pub fn new(guts: Vec<K>) -> Self {
         Self { guts }
     }
@@ -37,7 +37,7 @@ impl<K: Field> Mle<K> {
         if self.num_variables() == 0 {
             self.clone()
         } else {
-            Mle::new(self.guts.par_iter().step_by(2).copied().collect())
+            Mle::new(self.guts.par_iter().step_by(2).cloned().collect())
         }
     }
 
@@ -47,7 +47,7 @@ impl<K: Field> Mle<K> {
         if self.num_variables() == 0 {
             self.clone()
         } else {
-            Mle::new(self.guts.par_iter().skip(1).step_by(2).copied().collect())
+            Mle::new(self.guts.par_iter().skip(1).step_by(2).cloned().collect())
         }
     }
 
@@ -65,13 +65,30 @@ impl<K: Field> Mle<K> {
             .map(|x| x.to_vec().into())
             .collect()
     }
-
-    pub fn to_extension_field<EF: ExtensionField<K>>(self) -> Mle<EF> {
-        Mle::new(self.guts.into_iter().map(EF::from_base).collect())
-    }
 }
 
 impl<K: Field> Mle<K> {
+    pub fn to_extension_field<EF: ExtensionField<K>>(self) -> Mle<EF> {
+        Mle::new(self.guts.into_iter().map(EF::from_base).collect())
+    }
+
+    pub fn fix_first_variable<EK: Field + Mul<K, Output = EK> + Add<K, Output = EK>>(
+        self,
+        alpha: EK,
+    ) -> Mle<EK> {
+        assert!(self.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
+        let mut result: Vec<EK> = Vec::with_capacity(self.guts.len() / 2);
+        self.guts
+            .par_iter()
+            // All the evaluations with the first variable set to 0.
+            .take(self.guts.len() / 2)
+            // All the evaluations with the first variable set to 1.
+            .zip(self.guts.par_iter().skip(self.guts.len() / 2))
+            // Interpolate between the two evaluations, and evaluate at alpha.
+            .map(|(x, y)| alpha * (*y - *x) + *x)
+            .collect_into_vec(&mut result);
+        Mle::new(result)
+    }
     pub fn eval_at_point<EF: Field + Mul<K, Output = EF>>(&self, point: &Point<EF>) -> EF {
         self.guts
             .par_iter()
@@ -96,12 +113,12 @@ impl<K: Field> Mle<K> {
         matrix: &RowMajorMatrix<K>,
         point: &Point<EK>,
     ) -> Vec<EK> {
-        let partial_lagrange =
-            partial_lagrange_eval(&point.first_k_points(log2_strict_usize(matrix.height())));
+        let partial_lagrange = partial_lagrange_eval(point);
         // let mut evals = vec![EK::zero(); matrix.width()];
+
         matrix
             .par_rows()
-            .zip_eq(partial_lagrange.par_iter())
+            .zip(partial_lagrange.par_iter())
             .fold(
                 || vec![EK::zero(); matrix.width()],
                 |mut acc, (row, lagrange)| {
@@ -166,7 +183,7 @@ impl<K: Field> Mle<K> {
             + Sync
             + Default,
     >(
-        &self,
+        self,
         alpha: S,
     ) -> Mle<S> {
         assert!(self.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
@@ -264,7 +281,7 @@ impl<K: Field> Mul<K> for Mle<K> {
 ///
 /// The implementation below has runtime O(2^n), which is faster than iterating over the Boolean
 /// hypercube and evaluating the polynomial at each point (runtime: O(n2^n)).
-pub fn partial_lagrange_eval<K: Field>(point: &Point<K>) -> Vec<K> {
+pub fn partial_lagrange_eval<K: AbstractField>(point: &Point<K>) -> Vec<K> {
     let one = K::one();
     let mut evals = Vec::with_capacity(1 << point.dimension());
     evals.push(one);
@@ -277,8 +294,8 @@ pub fn partial_lagrange_eval<K: Field>(point: &Point<K>) -> Vec<K> {
             // For each value in the previous round, multiply by (1-coordinate) and coordinate,
             // and collect all these values into a new vec.
             .flat_map(|val| {
-                let prod = *val * *coordinate;
-                [*val - prod, prod]
+                let prod = val.clone() * coordinate.clone();
+                [val.clone() - prod.clone(), prod]
             })
             .collect();
     });
@@ -310,4 +327,32 @@ pub fn full_lagrange_eval<F: Field>(point_1: &Point<F>, point_2: &Point<F>) -> F
             prod + prod + F::one() - *x - *y
         })
         .product()
+}
+
+#[cfg(test)]
+pub mod tests {
+    type F = slop_baby_bear::BabyBear;
+    use rand::Rng;
+    use slop_matrix::dense::RowMajorMatrix;
+
+    #[test]
+    pub fn test_eval_matrix_at_point() {
+        let log_total_size = 8;
+        let log_matrix_width = 3;
+        let mut rng = rand::thread_rng();
+        let matrix = RowMajorMatrix::new(
+            (0..(1 << log_total_size)).map(|_| rng.gen::<F>()).collect::<Vec<_>>(),
+            1 << log_matrix_width,
+        );
+        let point =
+            super::Point::new((0..log_total_size).map(|_| rng.gen::<F>()).collect::<Vec<_>>());
+
+        let (front, back) = point.split_at(log_total_size - log_matrix_width);
+
+        let evals = super::Mle::eval_matrix_at_point(&matrix, &front);
+
+        let eval = super::Mle::eval_at_point(&matrix.clone().values.into(), &point);
+
+        assert_eq!(eval, super::Mle::eval_at_point(&evals.into(), &back));
+    }
 }

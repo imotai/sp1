@@ -20,6 +20,7 @@ slop-matrix = { workspace = true }
 thiserror = "1.0"
 itertools = "0.12.0"
 rand = "0.8.5"
+serde = { version = "1.0.207", features = ["derive"] }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

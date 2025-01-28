@@ -1,12 +1,7 @@
 use itertools::Itertools;
 
-use slop_challenger::{CanObserve, CanSample};
-// TODO: Remove or replace with a more principled approach before going to production.
-// use p3_util::{
-//     enable_bb_ops_counting, enable_ext_ops_counting, enable_permute_counting,
-//     get_bb_ops_invocation_count, get_ext_ops_invocation_count, get_permute_invocation_count,
-// };
 use slop_algebra::{ExtensionField, Field, UnivariatePolynomial};
+use slop_challenger::{CanObserve, CanSample};
 use slop_multilinear::Point;
 
 use slop_sumcheck::{PartialSumcheckProof, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound};
@@ -53,7 +48,7 @@ pub fn reduce_sumcheck_to_evaluation<
         .in_scope(|| poly.fix_t_variables(alpha, t));
 
     // The multi-variate polynomial used at the start of each sumcheck round.
-    for _ in 1..n_vars {
+    for _ in t..n_vars {
         let round_claim = univariate_polys.last().unwrap().eval_at_point(*point.first().unwrap());
 
         let uni_poly_message = tracing::debug_span!("sum_as_poly_in_first_variable")
@@ -99,7 +94,7 @@ mod tests {
     use slop_challenger::DuplexChallenger;
     use slop_multilinear::{partial_lagrange_eval, Mle, Point};
     use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-    use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError, SumcheckPoly};
+    use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 
     type F = BabyBear;
     type EF = BinomialExtensionField<F, 4>;
@@ -232,7 +227,7 @@ mod tests {
         let random_coefficient: F = rng.gen();
 
         assert_eq!(
-            partial_lagrange.fix_last_variable(random_coefficient),
+            partial_lagrange.sc_fix_last_variable(random_coefficient),
             smaller_partial_lagrange
                 * (random_coefficient * last + (F::one() - random_coefficient) * (F::one() - last))
         );

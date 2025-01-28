@@ -16,6 +16,7 @@
 //! the interleaving algorithm of `Ligero`(https://eprint.iacr.org/2022/1608).
 use std::iter::once;
 
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field};
 use slop_matrix::dense::RowMajorMatrix;
 
@@ -24,6 +25,7 @@ use crate::{
     MultilinearPcsProver, MultilinearPcsVerifier,
 };
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackedPcsVerifier<Pcs>
 where
     Pcs: MultilinearPcsBatchVerifier,
@@ -48,10 +50,17 @@ where
     pub log_stacking_height: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StackedPcsProof<PcsProof, EF> {
+    pub pcs_proof: PcsProof,
+    pub evaluations: Vec<Vec<EF>>,
+}
+
 impl<Pcs> MultilinearPcsVerifier for StackedPcsVerifier<Pcs>
 where
     Pcs: MultilinearPcsBatchVerifier,
     Pcs::EF: Field,
+    Pcs::Proof: Clone + Serialize + DeserializeOwned,
 {
     type F = Pcs::F;
 
@@ -59,7 +68,7 @@ where
 
     // "Hints" for the intermediate evaluations used in Blaze/Ligero-style proving, plus the proofs
     // that the intermediate evaluations are correct.
-    type Proof = (Pcs::Proof, Vec<Vec<Pcs::EF>>);
+    type Proof = StackedPcsProof<Pcs::Proof, Pcs::EF>;
 
     type Commitment = Pcs::Commitment;
 
@@ -75,26 +84,23 @@ where
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) -> Result<(), Self::Error> {
-        // For the stacked scheme, one only ever evaluates one polynomial at a time.
-
-        // NOTE FOR JAGGED PCS: This corresponds to the identification of [0,2^{n-1}] with n-bit
-        // strings where the most-significant bits are listed last.
-        let (front_half, back_half) = point.split_at(self.log_stacking_height);
+        let (front_half, back_half) = point.split_at(point.dimension() - self.log_stacking_height);
 
         if evaluation_claim
             != Mle::<Pcs::EF>::eval_at_point::<Pcs::EF>(
-                &proof.1.iter().flatten().cloned().collect::<Vec<_>>().into(),
-                &back_half,
+                &proof.evaluations.iter().flatten().cloned().collect::<Vec<_>>().into(),
+                &front_half,
             )
         {
             return Err(StackedPcsError::StackingError);
         }
+
         self.pcs
             .verify_untrusted_evaluations(
-                front_half,
-                &proof.1.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+                back_half,
+                &proof.evaluations.iter().map(Vec::as_slice).collect::<Vec<_>>(),
                 commitment,
-                &proof.0,
+                &proof.pcs_proof,
                 challenger,
             )
             .map_err(StackedPcsError::PcsError)
@@ -105,18 +111,18 @@ impl<Pcs: MultilinearPcsBatchProver> MultilinearPcsProver for StackedPcsProver<P
 where
     Pcs::MultilinearProverData:
         MainTraceProverData<RowMajorMatrix<<Pcs::PCS as MultilinearPcsBatchVerifier>::F>>,
+    <Pcs::PCS as MultilinearPcsBatchVerifier>::Proof: Clone + Serialize + DeserializeOwned,
 {
     type PCS = StackedPcsVerifier<Pcs::PCS>;
 
     type MultilinearProverData = Pcs::MultilinearProverData;
 
-    type MultilinearCommitment = Pcs::MultilinearCommitment;
-
     fn commit_multilinear(
         &self,
         data: Vec<Vec<<Self::PCS as MultilinearPcsVerifier>::F>>,
-    ) -> (Self::MultilinearCommitment, Self::MultilinearProverData) {
-        let new_data = restack_matrices(data, self.log_stacking_height);
+    ) -> (<Self::PCS as MultilinearPcsVerifier>::Commitment, Self::MultilinearProverData) {
+        let new_data = tracing::info_span!("restack matrices")
+            .in_scope(|| restack_matrices(data, self.log_stacking_height));
         let total_width = new_data.clone().map(|mat| mat.width).sum::<usize>();
         let new_data_vec: Vec<_> = if !total_width.is_power_of_two() {
             let extra_zeroes = (total_width * (1 << self.log_stacking_height)).next_power_of_two()
@@ -130,8 +136,9 @@ where
         } else {
             new_data.collect()
         };
-        // assert!(new_data_vec.iter().map(|mat| mat.width).sum::<usize>().is_power_of_two());
-        let (commit, data) = self.pcs.commit_multilinears(new_data_vec);
+        assert!(new_data_vec.iter().map(|mat| mat.width).sum::<usize>().is_power_of_two());
+
+        let (commit, data) = self.pcs.commit_multilinears(new_data_vec.clone());
 
         (commit, data)
     }
@@ -144,26 +151,28 @@ where
         challenger: &mut <Self::PCS as MultilinearPcsVerifier>::Challenger,
     ) -> <Self::PCS as MultilinearPcsVerifier>::Proof {
         let (prover_data, matrices) = prover_data.split_off_main_traces();
-        let front_portion = eval_point.first_k_points(self.log_stacking_height);
+
+        let (_, back_portion) =
+            eval_point.split_at(eval_point.dimension() - self.log_stacking_height);
 
         // TODO: This may be computed at an earlier part of the stack, and we can refactor the API
         // to avoid recomputing it.
         let evaluations = tracing::info_span!("eval matrices at point").in_scope(|| {
             matrices
                 .iter()
-                .map(|mat| Mle::eval_matrix_at_point(mat, &front_portion))
+                .map(|mat| Mle::eval_matrix_at_point(mat, &back_portion))
                 .collect::<Vec<_>>()
         });
 
-        (
-            self.pcs.prove_untrusted_evaluations(
-                front_portion,
+        StackedPcsProof {
+            pcs_proof: self.pcs.prove_untrusted_evaluations(
+                back_portion,
                 &evaluations.iter().map(Vec::as_slice).collect::<Vec<_>>(),
                 Self::MultilinearProverData::reconstitute(prover_data, matrices),
                 challenger,
             ),
             evaluations,
-        )
+        }
     }
 }
 
@@ -234,8 +243,9 @@ fn flush_buffer<F: Clone + Default + Send + Sync>(
     // If the buffer contains enough elements to create a `RowMajorMatrix` of height
     // `1 << log_stacking_height`, then do so, add it to out, and clear the buffer.
     if total_buffer_length % (1 << log_stacking_height) == 0 && total_buffer_length > 0 {
-        let new_mat =
-            RowMajorMatrix::new(buffer.concat(), total_buffer_length / (1 << log_stacking_height));
+        let new_mat = RowMajorMatrix::new(buffer.concat(), 1 << log_stacking_height);
+        let new_mat = new_mat.transpose();
+
         out.push(new_mat);
         buffer.clear();
     }

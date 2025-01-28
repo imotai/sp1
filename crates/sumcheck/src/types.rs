@@ -119,7 +119,7 @@ mod test {
     fn test_mle_edge_case() {
         let mle = Mle::new(vec![F::two()]);
         assert_eq!(
-            mle.sum_as_poly_in_last_variable(None),
+            <Mle::<F> as SumcheckPoly<F>>::sum_as_poly_in_last_variable(&mle, None),
             UnivariatePolynomial::new(vec![F::two()])
         );
         assert_eq!(mle.num_variables(), 0);
