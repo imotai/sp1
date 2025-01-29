@@ -21,6 +21,10 @@ impl<K: Clone + Default> Point<K> {
         Point(self.0[..k].to_vec())
     }
 
+    pub fn last_k_points(&self, k: usize) -> Self {
+        Point(self.0[self.0.len() - k..].to_vec())
+    }
+
     pub fn last_k(&self, k: usize) -> Self {
         Point(self.0[self.0.len() - k..].to_vec())
     }

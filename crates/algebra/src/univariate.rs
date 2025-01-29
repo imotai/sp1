@@ -88,6 +88,17 @@ pub fn interpolate_univariate_polynomial<K: Field>(xs: &[K], ys: &[K]) -> Univar
     result
 }
 
+pub fn rlc_univariate_polynomials<K: Field>(
+    polys: &[UnivariatePolynomial<K>],
+    lambda: K,
+) -> UnivariatePolynomial<K> {
+    let mut result = UnivariatePolynomial::new(vec![K::zero()]);
+    for poly in polys {
+        result = result * lambda + poly.clone();
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{interpolate_univariate_polynomial, UnivariatePolynomial};

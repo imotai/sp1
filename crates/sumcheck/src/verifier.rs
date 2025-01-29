@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use slop_algebra::{ExtensionField, Field};
 use slop_challenger::{CanObserve, CanSample};
 use slop_multilinear::Point;
@@ -10,6 +12,12 @@ pub enum SumcheckError {
     SumcheckRoundInconsistency,
     InconsistencyWithClaimedSum,
     InconsistencyWithEval,
+}
+
+impl Display for SumcheckError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 /// Verifies that a PartialSumcheckProof is correct up until the evaluation claim.
 pub fn partially_verify_sumcheck_proof<

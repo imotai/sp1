@@ -244,9 +244,17 @@ where
         // table claims.
         let sumcheck_claim = Mle::eval_at_point(&table_claims.into(), &z_tab);
 
+        let lambda = challenger.sample();
+
         let (sumcheck_proof, component_poly_evals) = tracing::info_span!("generate sumcheck proof")
             .in_scope(|| {
-                reduce_sumcheck_to_evaluation(sumcheck_poly, challenger, sumcheck_claim, 1)
+                reduce_sumcheck_to_evaluation(
+                    vec![sumcheck_poly],
+                    challenger,
+                    vec![sumcheck_claim],
+                    1,
+                    lambda,
+                )
             });
 
         let orig_prover_data = Pcs::MultilinearProverData::reconstitute(base_data, table_data);
@@ -254,7 +262,7 @@ where
         let pcs_proof = tracing::info_span!("generate stacked pcs proof").in_scope(|| {
             self.pcs.prove_trusted_evaluation(
                 sumcheck_proof.point_and_eval.0.clone(),
-                component_poly_evals[0],
+                component_poly_evals[0][0],
                 orig_prover_data,
                 challenger,
             )
