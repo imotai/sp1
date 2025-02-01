@@ -3,7 +3,7 @@ use p3_baby_bear::BabyBear;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_uni_stark::SymbolicAirBuilder;
 use serde::{de::DeserializeOwned, Serialize};
-use sp1_core_executor::{ExecutionRecord, Executor, Program, SP1Context};
+use sp1_core_executor::{ExecutionRecord, Executor, Program, SP1Context, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
     air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, Com, CpuProver,
@@ -38,7 +38,7 @@ pub fn run_test<P: MachineProver<BabyBearPoseidon2, RiscvAir<BabyBear>>>(
                 .collect(),
         );
         runtime.write_vecs(&inputs.buffer);
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         runtime
     });
     let public_values = SP1PublicValues::from(&runtime.state.public_values_stream);
@@ -64,7 +64,7 @@ pub fn run_malicious_test<P: MachineProver<BabyBearPoseidon2, RiscvAir<BabyBear>
                 .collect(),
         );
         runtime.write_vecs(&inputs.buffer);
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         runtime
     });
     let public_values = SP1PublicValues::from(&runtime.state.public_values_stream);

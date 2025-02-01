@@ -8,13 +8,7 @@ use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkVerifyingKey};
 
-use crate::{
-    events::MemoryRecord,
-    memory::Memory,
-    record::{ExecutionRecord, MemoryAccessRecord},
-    syscalls::SyscallCode,
-    ExecutorMode, SP1ReduceProof,
-};
+use crate::{events::MemoryRecord, memory::Memory, syscalls::SyscallCode, SP1ReduceProof};
 
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -96,13 +90,7 @@ pub struct ForkState {
     /// The original `pc` value at the fork point.
     pub pc: u32,
     /// All memory changes since the fork point.
-    pub memory_diff: HashMap<u32, Option<MemoryRecord>>,
-    /// The original memory access record at the fork point.
-    pub op_record: MemoryAccessRecord,
-    /// The original execution record at the fork point.
-    pub record: ExecutionRecord,
-    /// Whether `emit_events` was enabled at the fork point.
-    pub executor_mode: ExecutorMode,
+    pub memory_diff: Memory<Option<MemoryRecord>>,
 }
 
 impl ExecutionState {

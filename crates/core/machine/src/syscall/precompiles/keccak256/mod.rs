@@ -21,7 +21,7 @@ impl KeccakPermuteChip {
 
 #[cfg(test)]
 pub mod permute_tests {
-    use sp1_core_executor::{syscalls::SyscallCode, Executor, Instruction, Opcode, Program};
+    use sp1_core_executor::{syscalls::SyscallCode, Executor, Instruction, Opcode, Program, Trace};
     use sp1_stark::{CpuProver, SP1CoreOpts};
     use test_artifacts::KECCAK_PERMUTE_ELF;
 
@@ -53,7 +53,7 @@ pub mod permute_tests {
         utils::setup_logger();
         let program = keccak_permute_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
     }
 
     #[test]

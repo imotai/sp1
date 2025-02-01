@@ -33,7 +33,7 @@ use crate::{
     report::ExecutionReport,
     state::{ExecutionState, ForkState},
     subproof::SubproofVerifier,
-    syscalls::{default_syscall_map, Syscall, SyscallCode, SyscallContext},
+    syscalls::{get_syscall, SyscallCode, SyscallContext},
     CoreAirId, Instruction, MaximalShapes, Opcode, Program, Register, RiscvAirId,
 };
 
@@ -85,21 +85,14 @@ pub struct Executor<'a> {
     /// checkpoints. The value stored is whether or not it had a value at the beginning of the batch.
     pub uninitialized_memory_checkpoint: Memory<bool>,
 
+    /// Statistics for event counts.
+    pub local_counts: LocalCounts,
+
     /// Report of the program execution.
     pub report: ExecutionReport,
 
-    /// The mode the executor is running in.
-    pub executor_mode: ExecutorMode,
-
     /// The memory accesses for the current cycle.
     pub memory_accesses: MemoryAccessRecord,
-
-    /// Whether the runtime is in constrained mode or not.
-    ///
-    /// In unconstrained mode, any events, clock, register, or memory changes are reset after
-    /// leaving the unconstrained block. The only thing preserved is writes to the input
-    /// stream.
-    pub unconstrained: bool,
 
     /// Whether we should write to the report.
     pub print_report: bool,
@@ -116,9 +109,6 @@ pub struct Executor<'a> {
 
     /// The maximum number of cycles for a syscall.
     pub max_syscall_cycles: u32,
-
-    /// The mapping between syscall codes and their implementations.
-    pub syscall_map: HashMap<SyscallCode, Arc<dyn Syscall>>,
 
     /// The options for the runtime.
     pub opts: SP1CoreOpts,
@@ -150,9 +140,6 @@ pub struct Executor<'a> {
     /// The state of the runtime when in unconstrained mode.
     pub unconstrained_state: Box<ForkState>,
 
-    /// Statistics for event counts.
-    pub local_counts: LocalCounts,
-
     /// Verifier used to sanity check `verify_sp1_proof` during runtime.
     pub subproof_verifier: Option<&'a dyn SubproofVerifier>,
 
@@ -180,6 +167,42 @@ pub struct Executor<'a> {
 
     /// event counts for the current shard.
     pub event_counts: EnumMap<RiscvAirId, u64>,
+}
+
+/// The configuration of the executor.
+pub trait ExecutorConfig {
+    /// The mode of the executor.
+    const MODE: ExecutorMode;
+    /// Whether the executor is in unconstrained mode.
+    const UNCONSTRAINED: bool;
+}
+
+/// The simple mode of the executor.
+pub struct Simple;
+impl ExecutorConfig for Simple {
+    const MODE: ExecutorMode = ExecutorMode::Simple;
+    const UNCONSTRAINED: bool = false;
+}
+
+/// The checkpoint mode of the executor.
+pub struct Checkpoint;
+impl ExecutorConfig for Checkpoint {
+    const MODE: ExecutorMode = ExecutorMode::Checkpoint;
+    const UNCONSTRAINED: bool = false;
+}
+
+/// The trace mode of the executor.
+pub struct Trace;
+impl ExecutorConfig for Trace {
+    const MODE: ExecutorMode = ExecutorMode::Trace;
+    const UNCONSTRAINED: bool = false;
+}
+
+/// The unconstrained mode of the executor.
+pub struct Unconstrained;
+impl ExecutorConfig for Unconstrained {
+    const MODE: ExecutorMode = ExecutorMode::Simple;
+    const UNCONSTRAINED: bool = true;
 }
 
 /// The different modes the executor can run in.
@@ -305,9 +328,10 @@ impl<'a> Executor<'a> {
         let record = ExecutionRecord::new(program.clone());
 
         // Determine the maximum number of cycles for any syscall.
-        let syscall_map = default_syscall_map();
-        let max_syscall_cycles =
-            syscall_map.values().map(|syscall| syscall.num_extra_cycles()).max().unwrap_or(0);
+        let max_syscall_cycles = SyscallCode::iter()
+            .map(|code| get_syscall::<Simple>(code).unwrap().num_extra_cycles)
+            .max()
+            .expect("No syscalls found");
 
         let hook_registry = context.hook_registry.unwrap_or_default();
 
@@ -328,10 +352,7 @@ impl<'a> Executor<'a> {
             io_buf: HashMap::new(),
             #[cfg(feature = "profiling")]
             profiler: None,
-            unconstrained: false,
             unconstrained_state: Box::new(ForkState::default()),
-            syscall_map,
-            executor_mode: ExecutorMode::Trace,
             emit_global_memory_events: true,
             max_syscall_cycles,
             report: ExecutionReport::default(),
@@ -388,7 +409,7 @@ impl<'a> Executor<'a> {
     /// Get the current values of the registers.
     #[allow(clippy::single_match_else)]
     #[must_use]
-    pub fn registers(&mut self) -> [u32; 32] {
+    pub fn registers<E: ExecutorConfig>(&mut self) -> [u32; 32] {
         let mut registers = [0; 32];
         for i in 0..32 {
             let record = self.state.memory.registers.get(i);
@@ -396,7 +417,7 @@ impl<'a> Executor<'a> {
             // Only add the previous memory state to checkpoint map if we're in checkpoint mode,
             // or if we're in unconstrained mode. In unconstrained mode, the mode is always
             // Simple.
-            if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+            if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
                 match record {
                     Some(record) => {
                         self.memory_checkpoint.registers.entry(i).or_insert_with(|| Some(*record));
@@ -417,11 +438,11 @@ impl<'a> Executor<'a> {
 
     /// Get the current value of a register.
     #[must_use]
-    pub fn register(&mut self, register: Register) -> u32 {
+    pub fn register<E: ExecutorConfig>(&mut self, register: Register) -> u32 {
         let addr = register as u32;
         let record = self.state.memory.registers.get(addr);
 
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+        if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match record {
                 Some(record) => {
                     self.memory_checkpoint.registers.entry(addr).or_insert_with(|| Some(*record));
@@ -441,11 +462,11 @@ impl<'a> Executor<'a> {
     ///
     /// Assumes `addr` is a valid memory address, not a register.
     #[must_use]
-    pub fn word(&mut self, addr: u32) -> u32 {
+    pub fn word<E: ExecutorConfig>(&mut self, addr: u32) -> u32 {
         #[allow(clippy::single_match_else)]
         let record = self.state.memory.page_table.get(addr);
 
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+        if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match record {
                 Some(record) => {
                     self.memory_checkpoint.page_table.entry(addr).or_insert_with(|| Some(*record));
@@ -466,8 +487,8 @@ impl<'a> Executor<'a> {
     ///
     /// Assumes `addr` is a valid memory address, not a register.
     #[must_use]
-    pub fn byte(&mut self, addr: u32) -> u8 {
-        let word = self.word(addr - addr % 4);
+    pub fn byte<E: ExecutorConfig>(&mut self, addr: u32) -> u8 {
+        let word = self.word::<E>(addr - addr % 4);
         (word >> ((addr % 4) * 8)) as u8
     }
 
@@ -485,7 +506,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Read a word from memory and create an access record.
-    pub fn mr(
+    pub fn mr<E: ExecutorConfig>(
         &mut self,
         addr: u32,
         shard: u32,
@@ -500,7 +521,7 @@ impl<'a> Executor<'a> {
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+        if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match entry {
                 Entry::Occupied(ref entry) => {
                     let record = entry.get();
@@ -514,7 +535,7 @@ impl<'a> Executor<'a> {
 
         // If we're in unconstrained mode, we don't want to modify state, so we'll save the
         // original state if it's the first time modifying it.
-        if self.unconstrained {
+        if E::UNCONSTRAINED {
             let record = match entry {
                 Entry::Occupied(ref entry) => Some(entry.get()),
                 Entry::Vacant(_) => None,
@@ -542,7 +563,7 @@ impl<'a> Executor<'a> {
         //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
         //     local_memory_access to detect this. *WARNING*: This means that we are counting
         //     on the .is_some() condition to be true only in the SyscallContext.
-        if !self.unconstrained && (record.shard != shard || local_memory_access.is_some()) {
+        if !E::UNCONSTRAINED && (record.shard != shard || local_memory_access.is_some()) {
             self.local_counts.local_mem += 1;
         }
 
@@ -550,7 +571,7 @@ impl<'a> Executor<'a> {
         record.shard = shard;
         record.timestamp = timestamp;
 
-        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
+        if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
                 local_memory_access
             } else {
@@ -582,11 +603,11 @@ impl<'a> Executor<'a> {
     /// Read a register and return its value.
     ///
     /// Assumes that the executor mode IS NOT [`ExecutorMode::Trace`]
-    pub fn rr(&mut self, register: Register, shard: u32, timestamp: u32) -> u32 {
+    pub fn rr<E: ExecutorConfig>(&mut self, register: Register, shard: u32, timestamp: u32) -> u32 {
         // Get the memory record entry.
         let addr = register as u32;
         let entry = self.state.memory.registers.entry(addr);
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+        if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match entry {
                 Entry::Occupied(ref entry) => {
                     let record = entry.get();
@@ -600,7 +621,7 @@ impl<'a> Executor<'a> {
 
         // If we're in unconstrained mode, we don't want to modify state, so we'll save the
         // original state if it's the first time modifying it.
-        if self.unconstrained {
+        if E::UNCONSTRAINED {
             let record = match entry {
                 Entry::Occupied(ref entry) => Some(entry.get()),
                 Entry::Vacant(_) => None,
@@ -630,7 +651,7 @@ impl<'a> Executor<'a> {
     /// Read a register and create an access record.
     ///
     /// Assumes that self.mode IS [`ExecutorMode::Trace`].
-    pub fn rr_traced(
+    pub fn rr_traced<E: ExecutorConfig>(
         &mut self,
         register: Register,
         shard: u32,
@@ -640,7 +661,7 @@ impl<'a> Executor<'a> {
         // Get the memory record entry.
         let addr = register as u32;
         let entry = self.state.memory.registers.entry(addr);
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+        if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match entry {
                 Entry::Occupied(ref entry) => {
                     let record = entry.get();
@@ -653,7 +674,7 @@ impl<'a> Executor<'a> {
         }
         // If we're in unconstrained mode, we don't want to modify state, so we'll save the
         // original state if it's the first time modifying it.
-        if self.unconstrained {
+        if E::UNCONSTRAINED {
             let record = match entry {
                 Entry::Occupied(ref entry) => Some(entry.get()),
                 Entry::Vacant(_) => None,
@@ -676,7 +697,7 @@ impl<'a> Executor<'a> {
         let prev_record = *record;
         record.shard = shard;
         record.timestamp = timestamp;
-        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
+        if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
                 local_memory_access
             } else {
@@ -703,7 +724,7 @@ impl<'a> Executor<'a> {
         )
     }
     /// Write a word to memory and create an access record.
-    pub fn mw(
+    pub fn mw<E: ExecutorConfig>(
         &mut self,
         addr: u32,
         value: u32,
@@ -719,7 +740,7 @@ impl<'a> Executor<'a> {
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+        if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match entry {
                 Entry::Occupied(ref entry) => {
                     let record = entry.get();
@@ -732,7 +753,7 @@ impl<'a> Executor<'a> {
         }
         // If we're in unconstrained mode, we don't want to modify state, so we'll save the
         // original state if it's the first time modifying it.
-        if self.unconstrained {
+        if E::UNCONSTRAINED {
             let record = match entry {
                 Entry::Occupied(ref entry) => Some(entry.get()),
                 Entry::Vacant(_) => None,
@@ -760,7 +781,7 @@ impl<'a> Executor<'a> {
         //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
         //     local_memory_access to detect this. *WARNING*: This means that we are counting
         //     on the .is_some() condition to be true only in the SyscallContext.
-        if !self.unconstrained && (record.shard != shard || local_memory_access.is_some()) {
+        if !E::UNCONSTRAINED && (record.shard != shard || local_memory_access.is_some()) {
             self.local_counts.local_mem += 1;
         }
 
@@ -768,7 +789,7 @@ impl<'a> Executor<'a> {
         record.value = value;
         record.shard = shard;
         record.timestamp = timestamp;
-        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
+        if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
                 local_memory_access
             } else {
@@ -800,8 +821,8 @@ impl<'a> Executor<'a> {
 
     /// Write a word to a register and create an access record.
     ///
-    /// Assumes that self.mode IS [`ExecutorMode::Trace`].
-    pub fn rw_traced(
+    /// Assumes that `E::MODE` IS [`ExecutorMode::Trace`].
+    pub fn rw_traced<E: ExecutorConfig>(
         &mut self,
         register: Register,
         value: u32,
@@ -813,7 +834,7 @@ impl<'a> Executor<'a> {
 
         // Get the memory record entry.
         let entry = self.state.memory.registers.entry(addr);
-        if self.unconstrained {
+        if E::UNCONSTRAINED {
             match entry {
                 Entry::Occupied(ref entry) => {
                     let record = entry.get();
@@ -827,7 +848,7 @@ impl<'a> Executor<'a> {
 
         // If we're in unconstrained mode, we don't want to modify state, so we'll save the
         // original state if it's the first time modifying it.
-        if self.unconstrained {
+        if E::UNCONSTRAINED {
             let record = match entry {
                 Entry::Occupied(ref entry) => Some(entry.get()),
                 Entry::Vacant(_) => None,
@@ -855,7 +876,7 @@ impl<'a> Executor<'a> {
         record.shard = shard;
         record.timestamp = timestamp;
 
-        if !self.unconstrained {
+        if !E::UNCONSTRAINED {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
                 local_memory_access
             } else {
@@ -889,11 +910,17 @@ impl<'a> Executor<'a> {
     ///
     /// Assumes that the executor mode IS NOT [`ExecutorMode::Trace`].
     #[inline]
-    pub fn rw(&mut self, register: Register, value: u32, shard: u32, timestamp: u32) {
+    pub fn rw<E: ExecutorConfig>(
+        &mut self,
+        register: Register,
+        value: u32,
+        shard: u32,
+        timestamp: u32,
+    ) {
         let addr = register as u32;
         // Get the memory record entry.
         let entry = self.state.memory.registers.entry(addr);
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
+        if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match entry {
                 Entry::Occupied(ref entry) => {
                     let record = entry.get();
@@ -907,7 +934,7 @@ impl<'a> Executor<'a> {
 
         // If we're in unconstrained mode, we don't want to modify state, so we'll save the
         // original state if it's the first time modifying it.
-        if self.unconstrained {
+        if E::UNCONSTRAINED {
             let record = match entry {
                 Entry::Occupied(ref entry) => Some(entry.get()),
                 Entry::Vacant(_) => None,
@@ -937,12 +964,12 @@ impl<'a> Executor<'a> {
 
     /// Read from memory, assuming that all addresses are aligned.
     #[inline]
-    pub fn mr_cpu(&mut self, addr: u32) -> u32 {
+    pub fn mr_cpu<E: ExecutorConfig>(&mut self, addr: u32) -> u32 {
         // Read the address from memory and create a memory read record.
         let record =
-            self.mr(addr, self.shard(), self.timestamp(&MemoryAccessPosition::Memory), None);
+            self.mr::<E>(addr, self.shard(), self.timestamp(&MemoryAccessPosition::Memory), None);
         // If we're not in unconstrained mode, record the access for the current cycle.
-        if self.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace {
             self.memory_accesses.memory = Some(record.into());
         }
         record.value
@@ -950,11 +977,16 @@ impl<'a> Executor<'a> {
 
     /// Read a register.
     #[inline]
-    pub fn rr_cpu(&mut self, register: Register, position: MemoryAccessPosition) -> u32 {
+    pub fn rr_cpu<E: ExecutorConfig>(
+        &mut self,
+        register: Register,
+        position: MemoryAccessPosition,
+    ) -> u32 {
         // Read the address from memory and create a memory read record if in trace mode.
-        if self.executor_mode == ExecutorMode::Trace {
-            let record = self.rr_traced(register, self.shard(), self.timestamp(&position), None);
-            if !self.unconstrained {
+        if E::MODE == ExecutorMode::Trace {
+            let record =
+                self.rr_traced::<E>(register, self.shard(), self.timestamp(&position), None);
+            if !E::UNCONSTRAINED {
                 match position {
                     MemoryAccessPosition::A => self.memory_accesses.a = Some(record.into()),
                     MemoryAccessPosition::B => self.memory_accesses.b = Some(record.into()),
@@ -966,7 +998,7 @@ impl<'a> Executor<'a> {
             }
             record.value
         } else {
-            self.rr(register, self.shard(), self.timestamp(&position))
+            self.rr::<E>(register, self.shard(), self.timestamp(&position))
         }
     }
 
@@ -976,19 +1008,24 @@ impl<'a> Executor<'a> {
     ///
     /// This function will panic if the address is not aligned or if the memory accesses are already
     /// initialized.
-    pub fn mw_cpu(&mut self, addr: u32, value: u32) {
+    pub fn mw_cpu<E: ExecutorConfig>(&mut self, addr: u32, value: u32) {
         // Read the address from memory and create a memory read record.
-        let record =
-            self.mw(addr, value, self.shard(), self.timestamp(&MemoryAccessPosition::Memory), None);
+        let record = self.mw::<E>(
+            addr,
+            value,
+            self.shard(),
+            self.timestamp(&MemoryAccessPosition::Memory),
+            None,
+        );
         // If we're not in unconstrained mode, record the access for the current cycle.
-        if self.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace {
             debug_assert!(self.memory_accesses.memory.is_none());
             self.memory_accesses.memory = Some(record.into());
         }
     }
 
     /// Write to a register.
-    pub fn rw_cpu(&mut self, register: Register, value: u32) {
+    pub fn rw_cpu<E: ExecutorConfig>(&mut self, register: Register, value: u32) {
         // The only time we are writing to a register is when it is in operand A.
         let position = MemoryAccessPosition::A;
 
@@ -997,16 +1034,16 @@ impl<'a> Executor<'a> {
         let value = if register == Register::X0 { 0 } else { value };
 
         // Read the address from memory and create a memory read record.
-        if self.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace {
             let record =
-                self.rw_traced(register, value, self.shard(), self.timestamp(&position), None);
-            if !self.unconstrained {
+                self.rw_traced::<E>(register, value, self.shard(), self.timestamp(&position), None);
+            if !E::UNCONSTRAINED {
                 // The only time we are writing to a register is when it is in operand A.
                 debug_assert!(self.memory_accesses.a.is_none());
                 self.memory_accesses.a = Some(record.into());
             }
         } else {
-            self.rw(register, value, self.shard(), self.timestamp(&position));
+            self.rw::<E>(register, value, self.shard(), self.timestamp(&position));
         }
     }
 
@@ -1227,15 +1264,15 @@ impl<'a> Executor<'a> {
     }
 
     /// Fetch the destination register and input operand values for an ALU instruction.
-    fn alu_rr(&mut self, instruction: &Instruction) -> (Register, u32, u32) {
+    fn alu_rr<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (Register, u32, u32) {
         if !instruction.imm_c {
             let (rd, rs1, rs2) = instruction.r_type();
-            let c = self.rr_cpu(rs2, MemoryAccessPosition::C);
-            let b = self.rr_cpu(rs1, MemoryAccessPosition::B);
+            let c = self.rr_cpu::<E>(rs2, MemoryAccessPosition::C);
+            let b = self.rr_cpu::<E>(rs1, MemoryAccessPosition::B);
             (rd, b, c)
         } else if !instruction.imm_b && instruction.imm_c {
             let (rd, rs1, imm) = instruction.i_type();
-            let (rd, b, c) = (rd, self.rr_cpu(rs1, MemoryAccessPosition::B), imm);
+            let (rd, b, c) = (rd, self.rr_cpu::<E>(rs1, MemoryAccessPosition::B), imm);
             (rd, b, c)
         } else {
             debug_assert!(instruction.imm_b && instruction.imm_c);
@@ -1247,36 +1284,42 @@ impl<'a> Executor<'a> {
 
     /// Set the destination register with the result.
     #[inline]
-    fn alu_rw(&mut self, rd: Register, a: u32) {
-        self.rw_cpu(rd, a);
+    fn alu_rw<E: ExecutorConfig>(&mut self, rd: Register, a: u32) {
+        self.rw_cpu::<E>(rd, a);
     }
 
     /// Fetch the input operand values for a load instruction.
-    fn load_rr(&mut self, instruction: &Instruction) -> (Register, u32, u32, u32, u32) {
+    fn load_rr<E: ExecutorConfig>(
+        &mut self,
+        instruction: &Instruction,
+    ) -> (Register, u32, u32, u32, u32) {
         let (rd, rs1, imm) = instruction.i_type();
-        let (b, c) = (self.rr_cpu(rs1, MemoryAccessPosition::B), imm);
+        let (b, c) = (self.rr_cpu::<E>(rs1, MemoryAccessPosition::B), imm);
         let addr = b.wrapping_add(c);
-        let memory_value = self.mr_cpu(align(addr));
+        let memory_value = self.mr_cpu::<E>(align(addr));
         (rd, b, c, addr, memory_value)
     }
 
     /// Fetch the input operand values for a store instruction.
-    fn store_rr(&mut self, instruction: &Instruction) -> (u32, u32, u32, u32, u32) {
+    fn store_rr<E: ExecutorConfig>(
+        &mut self,
+        instruction: &Instruction,
+    ) -> (u32, u32, u32, u32, u32) {
         let (rs1, rs2, imm) = instruction.s_type();
         let c = imm;
-        let b = self.rr_cpu(rs2, MemoryAccessPosition::B);
-        let a = self.rr_cpu(rs1, MemoryAccessPosition::A);
+        let b = self.rr_cpu::<E>(rs2, MemoryAccessPosition::B);
+        let a = self.rr_cpu::<E>(rs1, MemoryAccessPosition::A);
         let addr = b.wrapping_add(c);
-        let memory_value = self.word(align(addr));
+        let memory_value = self.word::<E>(align(addr));
         (a, b, c, addr, memory_value)
     }
 
     /// Fetch the input operand values for a branch instruction.
-    fn branch_rr(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
+    fn branch_rr<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
         let (rs1, rs2, imm) = instruction.b_type();
         let c = imm;
-        let b = self.rr_cpu(rs2, MemoryAccessPosition::B);
-        let a = self.rr_cpu(rs1, MemoryAccessPosition::A);
+        let b = self.rr_cpu::<E>(rs2, MemoryAccessPosition::B);
+        let a = self.rr_cpu::<E>(rs1, MemoryAccessPosition::A);
         (a, b, c)
     }
 
@@ -1288,7 +1331,10 @@ impl<'a> Executor<'a> {
 
     /// Execute the given instruction over the current state of the runtime.
     #[allow(clippy::too_many_lines)]
-    fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
+    fn execute_instruction<E: ExecutorConfig>(
+        &mut self,
+        instruction: &Instruction,
+    ) -> Result<(), ExecutionError> {
         // The `clk` variable contains the cycle before the current instruction is executed.  The
         // `state.clk` can be updated before the end of this function by precompiles' execution.
         let mut clk = self.state.clk;
@@ -1298,14 +1344,14 @@ impl<'a> Executor<'a> {
 
         let (mut a, b, c): (u32, u32, u32);
 
-        if self.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace {
             self.memory_accesses = MemoryAccessRecord::default();
         }
 
         // The syscall id for precompiles.  This is only used/set when opcode == ECALL.
         let mut syscall = SyscallCode::default();
 
-        if !self.unconstrained {
+        if !E::UNCONSTRAINED {
             self.report.opcode_counts[instruction.opcode] += 1;
             self.local_counts.event_counts[instruction.opcode] += 1;
             if instruction.is_memory_load_instruction() {
@@ -1323,22 +1369,22 @@ impl<'a> Executor<'a> {
         }
 
         if instruction.is_alu_instruction() {
-            (a, b, c) = self.execute_alu(instruction);
+            (a, b, c) = self.execute_alu::<E>(instruction);
         } else if instruction.is_memory_load_instruction() {
-            (a, b, c) = self.execute_load(instruction)?;
+            (a, b, c) = self.execute_load::<E>(instruction)?;
         } else if instruction.is_memory_store_instruction() {
-            (a, b, c) = self.execute_store(instruction)?;
+            (a, b, c) = self.execute_store::<E>(instruction)?;
         } else if instruction.is_branch_instruction() {
-            (a, b, c, next_pc) = self.execute_branch(instruction, next_pc);
+            (a, b, c, next_pc) = self.execute_branch::<E>(instruction, next_pc);
         } else if instruction.is_jump_instruction() {
-            (a, b, c, next_pc) = self.execute_jump(instruction);
+            (a, b, c, next_pc) = self.execute_jump::<E>(instruction);
         } else if instruction.is_auipc_instruction() {
             let (rd, imm) = instruction.u_type();
             (b, c) = (imm, imm);
             a = self.state.pc.wrapping_add(b);
-            self.rw_cpu(rd, a);
+            self.rw_cpu::<E>(rd, a);
         } else if instruction.is_ecall_instruction() {
-            (a, b, c, clk, next_pc, syscall, exit_code) = self.execute_ecall()?;
+            (a, b, c, clk, next_pc, syscall, exit_code) = self.execute_ecall::<E>()?;
         } else if instruction.is_ebreak_instruction() {
             return Err(ExecutionError::Breakpoint());
         } else if instruction.is_unimp_instruction() {
@@ -1356,7 +1402,7 @@ impl<'a> Executor<'a> {
         }
 
         // Emit the events for this cycle.
-        if self.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace {
             self.emit_events(
                 clk,
                 next_pc,
@@ -1381,8 +1427,8 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute an ALU instruction.
-    fn execute_alu(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
-        let (rd, b, c) = self.alu_rr(instruction);
+    fn execute_alu<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
+        let (rd, b, c) = self.alu_rr::<E>(instruction);
         let a = match instruction.opcode {
             Opcode::ADD => b.wrapping_add(c),
             Opcode::SUB => b.wrapping_sub(c),
@@ -1440,16 +1486,16 @@ impl<'a> Executor<'a> {
             }
             _ => unreachable!(),
         };
-        self.alu_rw(rd, a);
+        self.alu_rw::<E>(rd, a);
         (a, b, c)
     }
 
     /// Execute a load instruction.
-    fn execute_load(
+    fn execute_load<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
     ) -> Result<(u32, u32, u32), ExecutionError> {
-        let (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
+        let (rd, b, c, addr, memory_read_value) = self.load_rr::<E>(instruction);
 
         let a = match instruction.opcode {
             Opcode::LB => ((memory_read_value >> ((addr % 4) * 8)) & 0xFF) as i8 as i32 as u32,
@@ -1474,16 +1520,16 @@ impl<'a> Executor<'a> {
             }
             _ => unreachable!(),
         };
-        self.rw_cpu(rd, a);
+        self.rw_cpu::<E>(rd, a);
         Ok((a, b, c))
     }
 
     /// Execute a store instruction.
-    fn execute_store(
+    fn execute_store<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
     ) -> Result<(u32, u32, u32), ExecutionError> {
-        let (a, b, c, addr, memory_read_value) = self.store_rr(instruction);
+        let (a, b, c, addr, memory_read_value) = self.store_rr::<E>(instruction);
 
         let memory_store_value = match instruction.opcode {
             Opcode::SB => {
@@ -1505,17 +1551,17 @@ impl<'a> Executor<'a> {
             }
             _ => unreachable!(),
         };
-        self.mw_cpu(align(addr), memory_store_value);
+        self.mw_cpu::<E>(align(addr), memory_store_value);
         Ok((a, b, c))
     }
 
     /// Execute a branch instruction.
-    fn execute_branch(
+    fn execute_branch<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
         mut next_pc: u32,
     ) -> (u32, u32, u32, u32) {
-        let (a, b, c) = self.branch_rr(instruction);
+        let (a, b, c) = self.branch_rr::<E>(instruction);
         let branch = match instruction.opcode {
             Opcode::BEQ => a == b,
             Opcode::BNE => a != b,
@@ -1535,18 +1581,18 @@ impl<'a> Executor<'a> {
 
     /// Execute an ecall instruction.
     #[allow(clippy::type_complexity)]
-    fn execute_ecall(
+    fn execute_ecall<E: ExecutorConfig>(
         &mut self,
     ) -> Result<(u32, u32, u32, u32, u32, SyscallCode, u32), ExecutionError> {
         // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
         // register is that we write to it later.
         let t0 = Register::X5;
-        let syscall_id = self.register(t0);
-        let c = self.rr_cpu(Register::X11, MemoryAccessPosition::C);
-        let b = self.rr_cpu(Register::X10, MemoryAccessPosition::B);
+        let syscall_id = self.register::<E>(t0);
+        let c = self.rr_cpu::<E>(Register::X11, MemoryAccessPosition::C);
+        let b = self.rr_cpu::<E>(Register::X10, MemoryAccessPosition::B);
         let syscall = SyscallCode::from_u32(syscall_id);
 
-        if self.print_report && !self.unconstrained {
+        if self.print_report && !E::UNCONSTRAINED {
             self.report.syscall_counts[syscall] += 1;
         }
 
@@ -1556,7 +1602,7 @@ impl<'a> Executor<'a> {
         // which is not permitted in unconstrained mode. This will result in
         // non-zero memory interactions when generating a proof.
 
-        if self.unconstrained
+        if E::UNCONSTRAINED
             && (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
         {
             return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
@@ -1567,37 +1613,34 @@ impl<'a> Executor<'a> {
         let syscall_count = self.state.syscall_counts.entry(syscall_for_count).or_insert(0);
         *syscall_count += 1;
 
-        let syscall_impl = self.get_syscall(syscall).cloned();
-        let mut precompile_rt = SyscallContext::new(self);
-        let (a, precompile_next_pc, precompile_cycles, returned_exit_code) =
-            if let Some(syscall_impl) = syscall_impl {
-                // Executing a syscall optionally returns a value to write to the t0
-                // register. If it returns None, we just keep the
-                // syscall_id in t0.
-                let res = syscall_impl.execute(&mut precompile_rt, syscall, b, c);
-                let a = if let Some(val) = res { val } else { syscall_id };
+        let syscall_impl = get_syscall(syscall)?;
+        let mut precompile_rt: SyscallContext<'_, '_, E> = SyscallContext::new(self);
+        let (a, precompile_next_pc, precompile_cycles, returned_exit_code) = {
+            // Executing a syscall optionally returns a value to write to the t0
+            // register. If it returns None, we just keep the
+            // syscall_id in t0.
+            let res = (syscall_impl.handler)(&mut precompile_rt, syscall, b, c);
+            let a = if let Some(val) = res { val } else { syscall_id };
 
-                // If the syscall is `HALT` and the exit code is non-zero, return an error.
-                if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
-                    return Err(ExecutionError::HaltWithNonZeroExitCode(precompile_rt.exit_code));
-                }
+            // If the syscall is `HALT` and the exit code is non-zero, return an error.
+            if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
+                return Err(ExecutionError::HaltWithNonZeroExitCode(precompile_rt.exit_code));
+            }
 
-                (a, precompile_rt.next_pc, syscall_impl.num_extra_cycles(), precompile_rt.exit_code)
-            } else {
-                return Err(ExecutionError::UnsupportedSyscall(syscall_id));
-            };
+            (a, precompile_rt.next_pc, syscall_impl.num_extra_cycles, precompile_rt.exit_code)
+        };
 
         // If the syscall is `EXIT_UNCONSTRAINED`, the memory was restored to pre-unconstrained code
         // in the execute function, so we need to re-read from x10 and x11.  Just do a peek on the
         // registers.
         let (b, c) = if syscall == SyscallCode::EXIT_UNCONSTRAINED {
-            (self.register(Register::X10), self.register(Register::X11))
+            (self.register::<E>(Register::X10), self.register::<E>(Register::X11))
         } else {
             (b, c)
         };
 
         // Allow the syscall impl to modify state.clk/pc (exit unconstrained does this)
-        self.rw_cpu(t0, a);
+        self.rw_cpu::<E>(t0, a);
         let clk = self.state.clk;
         self.state.clk += precompile_cycles;
 
@@ -1605,21 +1648,24 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute a jump instruction.
-    fn execute_jump(&mut self, instruction: &Instruction) -> (u32, u32, u32, u32) {
+    fn execute_jump<E: ExecutorConfig>(
+        &mut self,
+        instruction: &Instruction,
+    ) -> (u32, u32, u32, u32) {
         let (a, b, c, next_pc) = match instruction.opcode {
             Opcode::JAL => {
                 let (rd, imm) = instruction.j_type();
                 let (b, c) = (imm, 0);
                 let a = self.state.pc + 4;
-                self.rw_cpu(rd, a);
+                self.rw_cpu::<E>(rd, a);
                 let next_pc = self.state.pc.wrapping_add(imm);
                 (a, b, c, next_pc)
             }
             Opcode::JALR => {
                 let (rd, rs1, imm) = instruction.i_type();
-                let (b, c) = (self.rr_cpu(rs1, MemoryAccessPosition::B), imm);
+                let (b, c) = (self.rr_cpu::<E>(rs1, MemoryAccessPosition::B), imm);
                 let a = self.state.pc + 4;
-                self.rw_cpu(rd, a);
+                self.rw_cpu::<E>(rd, a);
                 let next_pc = b.wrapping_add(c);
                 (a, b, c, next_pc)
             }
@@ -1631,20 +1677,20 @@ impl<'a> Executor<'a> {
     /// Executes one cycle of the program, returning whether the program has finished.
     #[inline]
     #[allow(clippy::too_many_lines)]
-    fn execute_cycle(&mut self) -> Result<bool, ExecutionError> {
+    fn execute_cycle<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
         // Fetch the instruction at the current program counter.
         let instruction = self.fetch();
 
         // Log the current state of the runtime.
-        self.log(&instruction);
+        self.log::<E>(&instruction);
 
         // Execute the instruction.
-        self.execute_instruction(&instruction)?;
+        self.execute_instruction::<E>(&instruction)?;
 
         // Increment the clock.
         self.state.global_clk += 1;
 
-        if !self.unconstrained {
+        if !E::UNCONSTRAINED {
             // If there's not enough cycles left for another instruction, move to the next shard.
             let cpu_exit = self.max_syscall_cycles + self.state.clk >= self.shard_size;
 
@@ -1733,7 +1779,7 @@ impl<'a> Executor<'a> {
             if cpu_exit || !shape_match_found {
                 self.state.current_shard += 1;
                 self.state.clk = 0;
-                self.bump_record();
+                self.bump_record::<E>();
             }
         }
 
@@ -1747,18 +1793,15 @@ impl<'a> Executor<'a> {
         let done = self.state.pc == 0
             || self.state.pc.wrapping_sub(self.program.pc_base)
                 >= (self.program.instructions.len() * 4) as u32;
-        if done && self.unconstrained {
-            log::error!("program ended in unconstrained mode at clk {}", self.state.global_clk);
-            return Err(ExecutionError::EndInUnconstrained());
-        }
+
         Ok(done)
     }
 
     /// Bump the record.
-    pub fn bump_record(&mut self) {
+    pub fn bump_record<E: ExecutorConfig>(&mut self) {
         self.local_counts = LocalCounts::default();
         // Copy all of the existing local memory accesses to the record's local_memory_access vec.
-        if self.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace {
             for (_, event) in self.local_memory_access.drain() {
                 self.record.cpu_local_memory_access.push(event);
             }
@@ -1783,10 +1826,9 @@ impl<'a> Executor<'a> {
         &mut self,
         emit_global_memory_events: bool,
     ) -> Result<(Vec<Box<ExecutionRecord>>, bool), ExecutionError> {
-        self.executor_mode = ExecutorMode::Trace;
         self.emit_global_memory_events = emit_global_memory_events;
         self.print_report = true;
-        let done = self.execute()?;
+        let done = self.execute::<Trace>()?;
         Ok((std::mem::take(&mut self.records), done))
     }
 
@@ -1801,7 +1843,6 @@ impl<'a> Executor<'a> {
         emit_global_memory_events: bool,
     ) -> Result<(ExecutionState, PublicValues<u32, u32>, bool), ExecutionError> {
         self.memory_checkpoint.clear();
-        self.executor_mode = ExecutorMode::Checkpoint;
         self.emit_global_memory_events = emit_global_memory_events;
 
         // Clone self.state without memory, uninitialized_memory, proof_stream in it so it's faster.
@@ -1813,7 +1854,7 @@ impl<'a> Executor<'a> {
         self.state.uninitialized_memory = uninitialized_memory;
         self.state.proof_stream = proof_stream;
 
-        let done = tracing::debug_span!("execute").in_scope(|| self.execute())?;
+        let done = tracing::debug_span!("execute").in_scope(|| self.execute::<Checkpoint>())?;
         // Create a checkpoint using `memory_checkpoint`. Just include all memory if `done` since we
         // need it all for MemoryFinalize.
         let next_pc = self.state.pc;
@@ -1881,9 +1922,8 @@ impl<'a> Executor<'a> {
     ///
     /// This function will return an error if the program execution fails.
     pub fn run_fast(&mut self) -> Result<(), ExecutionError> {
-        self.executor_mode = ExecutorMode::Simple;
         self.print_report = true;
-        while !self.execute()? {}
+        while !self.execute::<Simple>()? {}
 
         #[cfg(feature = "profiling")]
         if let Some((profiler, writer)) = self.profiler.take() {
@@ -1902,9 +1942,26 @@ impl<'a> Executor<'a> {
         &mut self,
         emit_global_memory_events: bool,
     ) -> Result<(), ExecutionError> {
-        self.executor_mode = ExecutorMode::Simple;
         self.print_report = true;
         while !self.execute_state(emit_global_memory_events)?.2 {}
+        Ok(())
+    }
+
+    /// Lightweight execution in unconstrained mode.
+    pub fn run_unconstrained(&mut self) -> Result<(), ExecutionError> {
+        let mut done = false;
+        while !done {
+            // Fetch the instruction at the current program counter.
+            let instruction = self.fetch();
+
+            // Execute the instruction.
+            self.execute_instruction::<Unconstrained>(&instruction)?;
+
+            done = self.state.pc == 0
+                || self.state.pc.wrapping_sub(self.program.pc_base)
+                    >= (self.program.instructions.len() * 4) as u32;
+        }
+
         Ok(())
     }
 
@@ -1913,10 +1970,9 @@ impl<'a> Executor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the program execution fails.
-    pub fn run(&mut self) -> Result<(), ExecutionError> {
-        self.executor_mode = ExecutorMode::Trace;
+    pub fn run<E: ExecutorConfig>(&mut self) -> Result<(), ExecutionError> {
         self.print_report = true;
-        while !self.execute()? {}
+        while !self.execute::<E>()? {}
 
         #[cfg(feature = "profiling")]
         if let Some((profiler, writer)) = self.profiler.take() {
@@ -1928,7 +1984,7 @@ impl<'a> Executor<'a> {
 
     /// Executes up to `self.shard_batch_size` cycles of the program, returning whether the program
     /// has finished.
-    pub fn execute(&mut self) -> Result<bool, ExecutionError> {
+    pub fn execute<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
         // Get the program.
         let program = self.program.clone();
 
@@ -1946,7 +2002,7 @@ impl<'a> Executor<'a> {
         let mut current_shard = self.state.current_shard;
         let mut num_shards_executed = 0;
         loop {
-            if self.execute_cycle()? {
+            if self.execute_cycle::<E>()? {
                 done = true;
                 break;
             }
@@ -1964,15 +2020,15 @@ impl<'a> Executor<'a> {
         let public_values = self.record.public_values;
 
         if done {
-            self.postprocess();
+            self.postprocess::<E>();
 
             // Push the remaining execution record with memory initialize & finalize events.
-            self.bump_record();
+            self.bump_record::<E>();
         }
 
         // Push the remaining execution record, if there are any CPU events.
         if !self.record.cpu_events.is_empty() {
-            self.bump_record();
+            self.bump_record::<E>();
         }
 
         // Set the global public values for all shards.
@@ -2000,7 +2056,7 @@ impl<'a> Executor<'a> {
         Ok(done)
     }
 
-    fn postprocess(&mut self) {
+    fn postprocess<E: ExecutorConfig>(&mut self) {
         // Flush remaining stdout/stderr
         for (fd, buf) in &self.io_buf {
             if !buf.is_empty() {
@@ -2029,8 +2085,7 @@ impl<'a> Executor<'a> {
         }
 
         if self.emit_global_memory_events
-            && (self.executor_mode == ExecutorMode::Trace
-                || self.executor_mode == ExecutorMode::Checkpoint)
+            && (E::MODE == ExecutorMode::Trace || E::MODE == ExecutorMode::Checkpoint)
         {
             // SECTION: Set up all MemoryInitializeFinalizeEvents needed for memory argument.
             let memory_finalize_events = &mut self.record.global_memory_finalize_events;
@@ -2098,10 +2153,6 @@ impl<'a> Executor<'a> {
                     .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record));
             }
         }
-    }
-
-    fn get_syscall(&mut self, code: SyscallCode) -> Option<&Arc<dyn Syscall>> {
-        self.syscall_map.get(&code)
     }
 
     /// Maps the opcode counts to the number of events in each air.
@@ -2196,15 +2247,15 @@ impl<'a> Executor<'a> {
     }
 
     #[inline]
-    fn log(&mut self, _: &Instruction) {
+    fn log<E: ExecutorConfig>(&mut self, _: &Instruction) {
         #[cfg(feature = "profiling")]
         if let Some((ref mut profiler, _)) = self.profiler {
-            if !self.unconstrained {
+            if !E::UNCONSTRAINED {
                 profiler.record(self.state.global_clk, self.state.pc as u64);
             }
         }
 
-        if !self.unconstrained && self.state.global_clk % 10_000_000 == 0 {
+        if !E::UNCONSTRAINED && self.state.global_clk % 10_000_000 == 0 {
             log::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
         }
     }
@@ -2233,7 +2284,7 @@ mod tests {
         simple_memory_program, simple_program, ssz_withdrawals_program, u256xu2048_mul_program,
     };
 
-    use crate::Register;
+    use crate::{Register, Simple};
 
     use super::{Executor, Instruction, Opcode, Program};
 
@@ -2248,43 +2299,43 @@ mod tests {
     fn test_simple_program_run() {
         let program = simple_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 42);
+        runtime.run::<Simple>().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 42);
     }
 
     #[test]
     fn test_fibonacci_program_run() {
         let program = fibonacci_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_secp256r1_add_program_run() {
         let program = secp256r1_add_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_secp256r1_double_program_run() {
         let program = secp256r1_double_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_u256xu2048_mul() {
         let program = u256xu2048_mul_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_ssz_withdrawals_program_run() {
         let program = ssz_withdrawals_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
@@ -2292,7 +2343,7 @@ mod tests {
     fn test_panic() {
         let program = panic_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
@@ -2308,8 +2359,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 42);
+        runtime.run::<Simple>().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 42);
     }
 
     #[test]
@@ -2325,8 +2376,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 32);
+        runtime.run::<Simple>().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 32);
     }
 
     #[test]
@@ -2342,8 +2393,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 32);
+        runtime.run::<Simple>().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 32);
     }
 
     #[test]
@@ -2360,8 +2411,8 @@ mod tests {
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 37);
+        runtime.run::<Simple>().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 37);
     }
 
     #[test]
@@ -2377,8 +2428,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 5);
+        runtime.run::<Simple>().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 5);
     }
 
     #[test]
@@ -2394,8 +2445,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 1184);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 1184);
     }
 
     #[test]
@@ -2411,8 +2462,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 1);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 1);
     }
 
     #[test]
@@ -2428,8 +2479,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 1);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 1);
     }
 
     #[test]
@@ -2445,8 +2496,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 0);
     }
 
     #[test]
@@ -2462,8 +2513,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 0);
     }
 
     #[test]
@@ -2479,8 +2530,8 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 84);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 84);
     }
 
     #[test]
@@ -2495,8 +2546,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 5 - 1 + 4);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 5 - 1 + 4);
     }
 
     #[test]
@@ -2511,8 +2562,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 10);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 10);
     }
 
     #[test]
@@ -2527,8 +2578,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 47);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 47);
     }
 
     #[test]
@@ -2543,8 +2594,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 0);
     }
 
     #[test]
@@ -2557,8 +2608,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 80);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 80);
     }
 
     #[test]
@@ -2571,8 +2622,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 2);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 2);
     }
 
     #[test]
@@ -2585,8 +2636,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 2);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 2);
     }
 
     #[test]
@@ -2599,8 +2650,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 0);
     }
 
     #[test]
@@ -2613,8 +2664,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.register::<Simple>(Register::X31), 0);
     }
 
     #[test]
@@ -2632,9 +2683,9 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.registers()[Register::X5 as usize], 8);
-        assert_eq!(runtime.registers()[Register::X11 as usize], 100);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.registers::<Simple>()[Register::X5 as usize], 8);
+        assert_eq!(runtime.registers::<Simple>()[Register::X11 as usize], 100);
         assert_eq!(runtime.state.pc, 108);
     }
 
@@ -2646,8 +2697,8 @@ mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.registers()[Register::X12 as usize], expected);
+        runtime.run_fast().unwrap();
+        assert_eq!(runtime.registers::<Simple>()[Register::X12 as usize], expected);
     }
 
     #[test]
@@ -2824,38 +2875,38 @@ mod tests {
     fn test_simple_memory_program_run() {
         let program = simple_memory_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run_fast().unwrap();
 
         // Assert SW & LW case
-        assert_eq!(runtime.register(Register::X28), 0x12348765);
+        assert_eq!(runtime.register::<Simple>(Register::X28), 0x12348765);
 
         // Assert LBU cases
-        assert_eq!(runtime.register(Register::X27), 0x65);
-        assert_eq!(runtime.register(Register::X26), 0x87);
-        assert_eq!(runtime.register(Register::X25), 0x34);
-        assert_eq!(runtime.register(Register::X24), 0x12);
+        assert_eq!(runtime.register::<Simple>(Register::X27), 0x65);
+        assert_eq!(runtime.register::<Simple>(Register::X26), 0x87);
+        assert_eq!(runtime.register::<Simple>(Register::X25), 0x34);
+        assert_eq!(runtime.register::<Simple>(Register::X24), 0x12);
 
         // Assert LB cases
-        assert_eq!(runtime.register(Register::X23), 0x65);
-        assert_eq!(runtime.register(Register::X22), 0xffffff87);
+        assert_eq!(runtime.register::<Simple>(Register::X23), 0x65);
+        assert_eq!(runtime.register::<Simple>(Register::X22), 0xffffff87);
 
         // Assert LHU cases
-        assert_eq!(runtime.register(Register::X21), 0x8765);
-        assert_eq!(runtime.register(Register::X20), 0x1234);
+        assert_eq!(runtime.register::<Simple>(Register::X21), 0x8765);
+        assert_eq!(runtime.register::<Simple>(Register::X20), 0x1234);
 
         // Assert LH cases
-        assert_eq!(runtime.register(Register::X19), 0xffff8765);
-        assert_eq!(runtime.register(Register::X18), 0x1234);
+        assert_eq!(runtime.register::<Simple>(Register::X19), 0xffff8765);
+        assert_eq!(runtime.register::<Simple>(Register::X18), 0x1234);
 
         // Assert SB cases
-        assert_eq!(runtime.register(Register::X16), 0x12348725);
-        assert_eq!(runtime.register(Register::X15), 0x12342525);
-        assert_eq!(runtime.register(Register::X14), 0x12252525);
-        assert_eq!(runtime.register(Register::X13), 0x25252525);
+        assert_eq!(runtime.register::<Simple>(Register::X16), 0x12348725);
+        assert_eq!(runtime.register::<Simple>(Register::X15), 0x12342525);
+        assert_eq!(runtime.register::<Simple>(Register::X14), 0x12252525);
+        assert_eq!(runtime.register::<Simple>(Register::X13), 0x25252525);
 
         // Assert SH cases
-        assert_eq!(runtime.register(Register::X12), 0x12346525);
-        assert_eq!(runtime.register(Register::X11), 0x65256525);
+        assert_eq!(runtime.register::<Simple>(Register::X12), 0x12346525);
+        assert_eq!(runtime.register::<Simple>(Register::X11), 0x65256525);
     }
 
     #[test]
@@ -2868,7 +2919,7 @@ mod tests {
 
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
@@ -2881,7 +2932,7 @@ mod tests {
 
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 
     #[test]
@@ -2896,6 +2947,6 @@ mod tests {
 
         let program = Program::new(instructions, 0, 0);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Simple>().unwrap();
     }
 }

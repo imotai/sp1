@@ -1,21 +1,14 @@
-use super::{Syscall, SyscallCode, SyscallContext};
+use crate::ExecutorConfig;
 
-pub(crate) struct CommitSyscall;
+use super::{SyscallCode, SyscallContext};
 
-impl Syscall for CommitSyscall {
-    #[allow(clippy::mut_mut)]
-    fn execute(
-        &self,
-        ctx: &mut SyscallContext,
-        _: SyscallCode,
-        word_idx: u32,
-        public_values_digest_word: u32,
-    ) -> Option<u32> {
-        let rt = &mut ctx.rt;
-
-        rt.record.public_values.committed_value_digest[word_idx as usize] =
-            public_values_digest_word;
-
-        None
-    }
+pub fn commit_syscall<E: ExecutorConfig>(
+    ctx: &mut SyscallContext<E>,
+    _: SyscallCode,
+    word_idx: u32,
+    public_values_digest_word: u32,
+) -> Option<u32> {
+    ctx.rt.record.public_values.committed_value_digest[word_idx as usize] =
+        public_values_digest_word;
+    None
 }

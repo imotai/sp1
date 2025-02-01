@@ -268,14 +268,14 @@ mod tests {
     use crate::programs::tests::*;
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{ExecutionRecord, Executor};
+    use sp1_core_executor::{ExecutionRecord, Executor, Trace};
     use sp1_stark::{air::MachineAir, SP1CoreOpts};
 
     #[test]
     fn test_global_generate_trace() {
         let program = simple_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         let shard = runtime.records[0].clone();
 
         let chip: GlobalChip = GlobalChip;

@@ -1,11 +1,12 @@
+use std::marker::PhantomData;
+
 use hashbrown::HashMap;
 
 use crate::{
     events::{
         MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent,
     },
-    record::ExecutionRecord,
-    Executor, ExecutorMode, Register,
+    ExecutionRecord, Executor, ExecutorConfig, ExecutorMode, Register,
 };
 
 use super::SyscallCode;
@@ -13,7 +14,7 @@ use super::SyscallCode;
 /// A runtime for syscalls that is protected so that developers cannot arbitrarily modify the
 /// runtime.
 #[allow(dead_code)]
-pub struct SyscallContext<'a, 'b: 'a> {
+pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The current shard.
     pub current_shard: u32,
     /// The clock cycle.
@@ -26,9 +27,11 @@ pub struct SyscallContext<'a, 'b: 'a> {
     pub rt: &'a mut Executor<'b>,
     /// The local memory access events for the syscall.
     pub local_memory_access: HashMap<u32, MemoryLocalEvent>,
+    /// Phantom data.
+    pub _phantom: PhantomData<E>,
 }
 
-impl<'a, 'b> SyscallContext<'a, 'b> {
+impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Create a new [`SyscallContext`].
     pub fn new(runtime: &'a mut Executor<'b>) -> Self {
         let current_shard = runtime.shard();
@@ -40,6 +43,7 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
             exit_code: 0,
             rt: runtime,
             local_memory_access: HashMap::new(),
+            _phantom: PhantomData,
         }
     }
 
@@ -56,7 +60,7 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
         syscall_event: SyscallEvent,
         event: PrecompileEvent,
     ) {
-        if self.rt.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace {
             self.record_mut().precompile_events.add_event(syscall_code, syscall_event, event);
         }
     }
@@ -71,8 +75,12 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
     ///
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mr(&mut self, addr: u32) -> (MemoryReadRecord, u32) {
-        let record =
-            self.rt.mr(addr, self.current_shard, self.clk, Some(&mut self.local_memory_access));
+        let record = self.rt.mr::<E>(
+            addr,
+            self.current_shard,
+            self.clk,
+            Some(&mut self.local_memory_access),
+        );
         (record, record.value)
     }
 
@@ -94,7 +102,13 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
     ///
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mw(&mut self, addr: u32, value: u32) -> MemoryWriteRecord {
-        self.rt.mw(addr, value, self.current_shard, self.clk, Some(&mut self.local_memory_access))
+        self.rt.mw::<E>(
+            addr,
+            value,
+            self.current_shard,
+            self.clk,
+            Some(&mut self.local_memory_access),
+        )
     }
 
     /// Write a slice of words to memory.
@@ -109,7 +123,7 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
 
     /// Read a register and record the memory access.
     pub fn rr_traced(&mut self, register: Register) -> (MemoryReadRecord, u32) {
-        let record = self.rt.rr_traced(
+        let record = self.rt.rr_traced::<E>(
             register,
             self.current_shard,
             self.clk,
@@ -120,7 +134,7 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
 
     /// Write a register and record the memory access.
     pub fn rw_traced(&mut self, register: Register, value: u32) -> (MemoryWriteRecord, u32) {
-        let record = self.rt.rw_traced(
+        let record = self.rt.rw_traced::<E>(
             register,
             value,
             self.current_shard,
@@ -134,7 +148,7 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
     pub fn postprocess(&mut self) -> Vec<MemoryLocalEvent> {
         let mut syscall_local_mem_events = Vec::new();
 
-        if !self.rt.unconstrained && self.rt.executor_mode == ExecutorMode::Trace {
+        if E::MODE == ExecutorMode::Trace && !E::UNCONSTRAINED {
             // Will need to transfer the existing memory local events in the executor to it's
             // record, and return all the syscall memory local events.  This is similar
             // to what `bump_record` does.
@@ -156,19 +170,19 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
     /// This is generally unconstrained, so you must be careful using it.
     #[must_use]
     pub fn register_unsafe(&mut self, register: Register) -> u32 {
-        self.rt.register(register)
+        self.rt.register::<E>(register)
     }
 
     /// Get the current value of a byte, but doesn't use a memory record.
     #[must_use]
     pub fn byte_unsafe(&mut self, addr: u32) -> u8 {
-        self.rt.byte(addr)
+        self.rt.byte::<E>(addr)
     }
 
     /// Get the current value of a word, but doesn't use a memory record.
     #[must_use]
     pub fn word_unsafe(&mut self, addr: u32) -> u32 {
-        self.rt.word(addr)
+        self.rt.word::<E>(addr)
     }
 
     /// Get a slice of words, but doesn't use a memory record.
@@ -176,7 +190,7 @@ impl<'a, 'b> SyscallContext<'a, 'b> {
     pub fn slice_unsafe(&mut self, addr: u32, len: usize) -> Vec<u32> {
         let mut values = Vec::new();
         for i in 0..len {
-            values.push(self.rt.word(addr + i as u32 * 4));
+            values.push(self.rt.word::<E>(addr + i as u32 * 4));
         }
         values
     }

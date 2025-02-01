@@ -442,7 +442,7 @@ mod tests {
         utils::setup_logger,
     };
     use p3_baby_bear::BabyBear;
-    use sp1_core_executor::Executor;
+    use sp1_core_executor::{Executor, Trace};
     use sp1_stark::InteractionKind;
     use sp1_stark::{
         baby_bear_poseidon2::BabyBearPoseidon2, debug_interactions_with_all_chips, SP1CoreOpts,
@@ -453,7 +453,7 @@ mod tests {
     fn test_memory_generate_trace() {
         let program = simple_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         let shard = runtime.record.clone();
 
         let chip: MemoryGlobalChip = MemoryGlobalChip::new(MemoryChipType::Initialize);
@@ -478,7 +478,7 @@ mod tests {
         let program = sha_extend_program();
         let program_clone = program.clone();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         let machine: StarkMachine<BabyBearPoseidon2, RiscvAir<BabyBear>> =
             RiscvAir::machine(BabyBearPoseidon2::new());
         let (pkey, _) = machine.setup(&program_clone);
@@ -514,7 +514,7 @@ mod tests {
         let program = sha_extend_program();
         let program_clone = program.clone();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         let machine = RiscvAir::machine(BabyBearPoseidon2::new());
         let (pkey, _) = machine.setup(&program_clone);
         let opts = SP1CoreOpts::default();

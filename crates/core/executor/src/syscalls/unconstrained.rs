@@ -1,57 +1,72 @@
-use hashbrown::HashMap;
+use crate::{memory::Memory, state::ForkState, ExecutorConfig, Unconstrained};
 
-use crate::{state::ForkState, ExecutorMode};
+use super::{SyscallCode, SyscallContext};
 
-use super::{Syscall, SyscallCode, SyscallContext};
+/// Enter an unconstrained block.
+///
+/// In unconstrained mode, the executor will call `run_unconstrained`, which is a lightweight
+/// version of `run` that hints bytes using the `write` syscall. Eventually, `run_unconstrained`
+/// will exit, and the state of the runtime will be restored to the saved state. The hinted bytes
+/// can then be read during normal execution.
+#[allow(clippy::unnecessary_wraps)]
+pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
+    ctx: &mut SyscallContext<E>,
+    _: SyscallCode,
+    _: u32,
+    _: u32,
+) -> Option<u32> {
+    assert!(!E::UNCONSTRAINED, "Unconstrained block is already active.");
 
-pub(crate) struct EnterUnconstrainedSyscall;
+    // Save the state of the runtime before unconstrained execution.
+    ctx.rt.unconstrained_state = Box::new(ForkState {
+        global_clk: ctx.rt.state.global_clk,
+        clk: ctx.rt.state.clk,
+        pc: ctx.rt.state.pc,
+        memory_diff: Memory::default(),
+    });
 
-impl Syscall for EnterUnconstrainedSyscall {
-    fn execute(&self, ctx: &mut SyscallContext, _: SyscallCode, _: u32, _: u32) -> Option<u32> {
-        if ctx.rt.unconstrained {
-            panic!("Unconstrained block is already active.");
+    // Write `1` to `x5` to indicate that unconstrained execution is active, and advance the PC.
+    ctx.rt.rw_cpu::<Unconstrained>(crate::Register::X5, 1);
+    ctx.rt.state.pc = ctx.rt.state.pc.wrapping_add(4);
+
+    // Run unconstrained execution until a call to `exit_unconstrained`.
+    ctx.rt.run_unconstrained().expect("Unconstrained execution failed");
+
+    // Update the state of the runtime to match the saved state.
+    ctx.rt.state.global_clk = ctx.rt.unconstrained_state.global_clk;
+    ctx.rt.state.clk = ctx.rt.unconstrained_state.clk;
+    ctx.rt.state.pc = ctx.rt.unconstrained_state.pc;
+    ctx.next_pc = ctx.rt.state.pc.wrapping_add(4);
+
+    let memory_diff = std::mem::take(&mut ctx.rt.unconstrained_state.memory_diff);
+    for (addr, value) in memory_diff {
+        match value {
+            Some(value) => {
+                ctx.rt.state.memory.insert(addr, value);
+            }
+            None => {
+                ctx.rt.state.memory.remove(addr);
+            }
         }
-        ctx.rt.unconstrained = true;
-        ctx.rt.unconstrained_state = Box::new(ForkState {
-            global_clk: ctx.rt.state.global_clk,
-            clk: ctx.rt.state.clk,
-            pc: ctx.rt.state.pc,
-            memory_diff: HashMap::default(),
-            record: std::mem::take(&mut ctx.rt.record),
-            op_record: std::mem::take(&mut ctx.rt.memory_accesses),
-            executor_mode: ctx.rt.executor_mode,
-        });
-        ctx.rt.executor_mode = ExecutorMode::Simple;
-        Some(1)
     }
+
+    ctx.rt.unconstrained_state = Box::new(ForkState::default());
+    Some(0)
 }
 
-pub(crate) struct ExitUnconstrainedSyscall;
-
-impl Syscall for ExitUnconstrainedSyscall {
-    fn execute(&self, ctx: &mut SyscallContext, _: SyscallCode, _: u32, _: u32) -> Option<u32> {
-        // Reset the state of the runtime.
-        if ctx.rt.unconstrained {
-            ctx.rt.state.global_clk = ctx.rt.unconstrained_state.global_clk;
-            ctx.rt.state.clk = ctx.rt.unconstrained_state.clk;
-            ctx.rt.state.pc = ctx.rt.unconstrained_state.pc;
-            ctx.next_pc = ctx.rt.state.pc.wrapping_add(4);
-            for (addr, value) in ctx.rt.unconstrained_state.memory_diff.drain() {
-                match value {
-                    Some(value) => {
-                        ctx.rt.state.memory.insert(addr, value);
-                    }
-                    None => {
-                        ctx.rt.state.memory.remove(addr);
-                    }
-                }
-            }
-            *ctx.rt.record = std::mem::take(&mut ctx.rt.unconstrained_state.record);
-            ctx.rt.memory_accesses = std::mem::take(&mut ctx.rt.unconstrained_state.op_record);
-            ctx.rt.executor_mode = ctx.rt.unconstrained_state.executor_mode;
-            ctx.rt.unconstrained = false;
-        }
-        ctx.rt.unconstrained_state = Box::new(ForkState::default());
-        Some(0)
-    }
+/// Exit an unconstrained block.
+///
+/// This exits the entire program, just like halt(0). Constrained execution will resume from
+/// the corresponding `enter_unconstrained` call.
+#[allow(clippy::unnecessary_wraps)]
+pub fn exit_unconstrained_syscall<E: ExecutorConfig>(
+    ctx: &mut SyscallContext<E>,
+    _: SyscallCode,
+    _: u32,
+    _: u32,
+) -> Option<u32> {
+    assert!(E::UNCONSTRAINED, "Unconstrained block is not active.");
+    ctx.set_next_pc(0);
+    ctx.set_exit_code(0);
+    Some(0)
 }

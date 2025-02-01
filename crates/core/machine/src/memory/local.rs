@@ -280,7 +280,7 @@ mod tests {
     };
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{ExecutionRecord, Executor};
+    use sp1_core_executor::{ExecutionRecord, Executor, Trace};
     use sp1_stark::{
         air::{InteractionScope, MachineAir},
         baby_bear_poseidon2::BabyBearPoseidon2,
@@ -291,7 +291,7 @@ mod tests {
     fn test_local_memory_generate_trace() {
         let program = simple_program();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         let shard = runtime.records[0].clone();
 
         let chip: MemoryLocalChip = MemoryLocalChip::new();
@@ -311,7 +311,7 @@ mod tests {
         let program = sha_extend_program();
         let program_clone = program.clone();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         let machine: StarkMachine<BabyBearPoseidon2, RiscvAir<BabyBear>> =
             RiscvAir::machine(BabyBearPoseidon2::new());
         let (pkey, _) = machine.setup(&program_clone);
@@ -347,7 +347,7 @@ mod tests {
         let program = sha_extend_program();
         let program_clone = program.clone();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
+        runtime.run::<Trace>().unwrap();
         let machine = RiscvAir::machine(BabyBearPoseidon2::new());
         let (pkey, _) = machine.setup(&program_clone);
         let opts = SP1CoreOpts::default();

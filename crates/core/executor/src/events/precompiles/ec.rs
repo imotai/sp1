@@ -17,6 +17,7 @@ use crate::{
         MemoryLocalEvent,
     },
     syscalls::SyscallContext,
+    ExecutorConfig,
 };
 
 /// Elliptic Curve Add Event.
@@ -93,8 +94,8 @@ pub struct EllipticCurveDecompressEvent {
 /// The generic parameter `N` is the number of u32 words in the point representation. For example,
 /// for the secp256k1 curve, `N` would be 16 (64 bytes) because the x and y coordinates are 32 bytes
 /// each.
-pub fn create_ec_add_event<E: EllipticCurve>(
-    rt: &mut SyscallContext,
+pub fn create_ec_add_event<E: EllipticCurve, Ex: ExecutorConfig>(
+    rt: &mut SyscallContext<'_, '_, Ex>,
     arg1: u32,
     arg2: u32,
 ) -> EllipticCurveAddEvent {
@@ -142,8 +143,8 @@ pub fn create_ec_add_event<E: EllipticCurve>(
 ///
 /// It takes a pointer to a memory location, reads the point from memory, doubles it, and writes the
 /// result back to the memory location.
-pub fn create_ec_double_event<E: EllipticCurve>(
-    rt: &mut SyscallContext,
+pub fn create_ec_double_event<E: EllipticCurve, Ex: ExecutorConfig>(
+    rt: &mut SyscallContext<'_, '_, Ex>,
     arg1: u32,
     _: u32,
 ) -> EllipticCurveDoubleEvent {
@@ -179,8 +180,8 @@ pub fn create_ec_double_event<E: EllipticCurve>(
 ///
 /// It takes a pointer to a memory location, reads the point from memory, decompresses it, and
 /// writes the result back to the memory location.
-pub fn create_ec_decompress_event<E: EllipticCurve>(
-    rt: &mut SyscallContext,
+pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
+    rt: &mut SyscallContext<'_, '_, Ex>,
     slice_ptr: u32,
     sign_bit: u32,
 ) -> EllipticCurveDecompressEvent {

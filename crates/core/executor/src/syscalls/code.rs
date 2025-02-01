@@ -2,6 +2,8 @@ use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
+use crate::events::FieldOperation;
+
 /// System Calls.
 ///
 /// A system call is invoked by the the `ecall` instruction with a specific value in register t0.
@@ -234,6 +236,26 @@ impl SyscallCode {
             SyscallCode::BLS12381_FP_MUL => SyscallCode::BLS12381_FP_ADD,
             SyscallCode::BLS12381_FP2_SUB => SyscallCode::BLS12381_FP2_ADD,
             _ => *self,
+        }
+    }
+
+    /// Map a syscall to a field operation.
+    #[must_use]
+    pub fn fp_op_map(&self) -> FieldOperation {
+        match self {
+            SyscallCode::BLS12381_FP_ADD
+            | SyscallCode::BLS12381_FP2_ADD
+            | SyscallCode::BN254_FP_ADD
+            | SyscallCode::BN254_FP2_ADD => FieldOperation::Add,
+            SyscallCode::BLS12381_FP_SUB
+            | SyscallCode::BLS12381_FP2_SUB
+            | SyscallCode::BN254_FP_SUB
+            | SyscallCode::BN254_FP2_SUB => FieldOperation::Sub,
+            SyscallCode::BLS12381_FP_MUL
+            | SyscallCode::BLS12381_FP2_MUL
+            | SyscallCode::BN254_FP_MUL
+            | SyscallCode::BN254_FP2_MUL => FieldOperation::Mul,
+            _ => unreachable!(),
         }
     }
 }
