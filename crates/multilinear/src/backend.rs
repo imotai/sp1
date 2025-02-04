@@ -49,19 +49,16 @@ pub trait AddMleBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
 }
 
 impl<F: AbstractField> MleBaseBackend<F> for CpuBackend {
-    #[inline]
     fn num_polynomials(guts: &Tensor<F, Self>) -> usize {
         guts.sizes()[1]
     }
 
-    #[inline]
     fn num_variables(guts: &Tensor<F, Self>) -> u32 {
-        guts.sizes()[0].next_power_of_two().ilog2()
+        guts.sizes()[0].ilog2()
     }
 
-    #[inline]
-    fn uninit_mle(&self, num_polynomials: usize, um_non_zero_entries: usize) -> Tensor<F, Self> {
-        Tensor::with_sizes_in([um_non_zero_entries, num_polynomials], *self)
+    fn uninit_mle(&self, num_polynomials: usize, num_non_zero_entries: usize) -> Tensor<F, Self> {
+        Tensor::with_sizes_in([num_non_zero_entries, num_polynomials], *self)
     }
 }
 
@@ -132,9 +129,10 @@ where
     EF: ExtensionField<F>,
 {
     fn mle_fix_last_variable(mle: &Tensor<F, Self>, alpha: EF) -> Tensor<EF, Self> {
-        let num_variables = CpuBackend::num_variables(mle);
-        assert!(num_variables > 0, "Cannot fix last variable of a 0-variate polynomial");
-        let mut result = Vec::with_capacity(1 << (num_variables - 1));
+        let num_polynomials = CpuBackend::num_polynomials(mle);
+        assert_eq!(num_polynomials, 1, "this is only supported for a single polynomial");
+        let num_non_zero_elements_out = mle.sizes()[0].div_ceil(2);
+        let mut result = Vec::with_capacity(num_non_zero_elements_out);
         mle.as_buffer()
             .par_iter()
             .chunks(2)
@@ -145,6 +143,6 @@ where
             })
             .collect_into_vec(&mut result);
 
-        Tensor::from(result).reshape([1 << (num_variables - 1), 1])
+        Tensor::from(result).reshape([num_non_zero_elements_out, 1])
     }
 }
