@@ -49,14 +49,17 @@ pub trait AddMleBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
 }
 
 impl<F: AbstractField> MleBaseBackend<F> for CpuBackend {
+    #[inline]
     fn num_polynomials(guts: &Tensor<F, Self>) -> usize {
         guts.sizes()[1]
     }
 
+    #[inline]
     fn num_variables(guts: &Tensor<F, Self>) -> u32 {
-        guts.sizes()[0].ilog2()
+        guts.sizes()[0].next_power_of_two().ilog2()
     }
 
+    #[inline]
     fn uninit_mle(&self, num_polynomials: usize, um_non_zero_entries: usize) -> Tensor<F, Self> {
         Tensor::with_sizes_in([um_non_zero_entries, num_polynomials], *self)
     }
