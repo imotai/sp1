@@ -1,358 +1,530 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use std::{
+    mem::ManuallyDrop,
+    ops::{Add, Deref, DerefMut},
+};
 
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use slop_algebra::{AbstractField, ExtensionField, Field, UnivariatePolynomial};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use slop_utils::log2_strict_usize;
+use rayon::prelude::*;
 
-use crate::Point;
+use derive_where::derive_where;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
+use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, GLOBAL_CPU_BACKEND};
+use slop_matrix::Matrix;
+use slop_tensor::Tensor;
 
-/// A struct wrapping Vec<K>.
-///
-/// The field `guts` is the vector of evaluations of a multilinear polynomial on the Boolean
-/// hypercube.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Mle<K> {
-    pub guts: Vec<K>,
+use crate::{
+    AddMleBackend, MleBaseBackend, MleEvaluationBackend, MleFixLastVariableBackend, MleFoldBackend,
+    PartialLagrangeBackend, Point,
+};
+
+/// A bacth of multi-linear polynomials.
+#[derive(Debug, Clone)]
+#[derive_where(PartialEq, Eq; Tensor<T, A>)]
+pub struct Mle<T, A: Backend = CpuBackend> {
+    guts: Tensor<T, A>,
 }
 
-impl<K> From<Vec<K>> for Mle<K> {
-    fn from(value: Vec<K>) -> Self {
-        Self { guts: value }
+impl<F, A: Backend> HasBackend for Mle<F, A> {
+    type Backend = A;
+
+    #[inline]
+    fn backend(&self) -> &Self::Backend {
+        self.guts.backend()
     }
 }
 
-impl<K: AbstractField + Send + Sync> Mle<K> {
-    pub fn new(guts: Vec<K>) -> Self {
+impl<F, A: Backend> Mle<F, A> {
+    /// Creates a new MLE from a tensor in the correct shape.
+    ///
+    /// The tensor must be in the correct shape for the given backend.
+    #[inline]
+    pub const fn new(guts: Tensor<F, A>) -> Self {
         Self { guts }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self { guts: Vec::with_capacity(capacity) }
+    #[inline]
+    pub fn backend(&self) -> &A {
+        self.guts.backend()
     }
 
-    /// The [`Mle`] obtained by fixing the last variable to 0. Since an [`Mle`] is encoded as a
-    /// vector of evaluations, this is done by taking every even-indexed element of the vector.
-    pub fn fix_last_to_zero(&self) -> Self {
-        if self.num_variables() == 0 {
-            self.clone()
-        } else {
-            Mle::new(self.guts.par_iter().step_by(2).cloned().collect())
-        }
+    #[inline]
+    pub fn into_guts(self) -> Tensor<F, A> {
+        self.guts
     }
 
-    /// The Mle obtained by fixing the last variable to 1. Since an [`Mle`] is encoded as a vector
-    /// of evaluations, this is done by taking every odd-indexed element of the vector.
-    pub fn fix_last_to_one(&self) -> Self {
-        if self.num_variables() == 0 {
-            self.clone()
-        } else {
-            Mle::new(self.guts.par_iter().skip(1).step_by(2).cloned().collect())
-        }
+    /// Creates a new uninitialized MLE batch of the given size and number of variables.
+    #[inline]
+    pub fn uninit(num_polynomials: usize, num_non_zero_entries: usize, scope: &A) -> Self
+    where
+        F: AbstractField,
+        A: MleBaseBackend<F>,
+    {
+        // The tensor is initialized in the correct shape by the backend.
+        Self::new(scope.uninit_mle(num_polynomials, num_non_zero_entries))
     }
 
-    pub fn num_variables(&self) -> usize {
-        log2_strict_usize(self.guts.len())
+    #[inline]
+    pub const fn guts(&self) -> &Tensor<F, A> {
+        &self.guts
     }
 
-    /// Splits a multilinear polynomial in n variables into 2^(n-idx) polynomials in idx variables.
-    pub fn split_at(&self, idx: usize) -> Vec<Self> {
-        // TODO: Remove clone.
-        RowMajorMatrix::new(self.guts.clone(), 1 << (self.num_variables() - idx))
-            .transpose()
-            .values
-            .chunks_exact(1 << idx)
-            .map(|x| x.to_vec().into())
-            .collect()
+    /// # Safety
+    ///
+    /// Changing the guts must preserve the layout that the MLE backend expects to have for a valid
+    /// tensor to qualify as the guts of an MLE. For example, dimension matching the implementation
+    /// of [Self::uninit].
+    pub unsafe fn guts_mut(&mut self) -> &mut Tensor<F, A> {
+        &mut self.guts
+    }
+
+    /// # Safety
+    #[inline]
+    pub unsafe fn assume_init(&mut self) {
+        self.guts.assume_init();
+    }
+
+    /// Returns the number of polynomials in the batch.
+    #[inline]
+    pub fn num_polynomials(&self) -> usize
+    where
+        F: AbstractField,
+        A: MleBaseBackend<F>,
+    {
+        A::num_polynomials(&self.guts)
+    }
+
+    /// Returns the number of variables in the polynomials.
+    #[inline]
+    pub fn num_variables(&self) -> u32
+    where
+        F: AbstractField,
+        A: MleBaseBackend<F>,
+    {
+        A::num_variables(&self.guts)
+    }
+
+    /// Computes the partial lagrange polynomial eq(z, -) for a fixed z.
+    #[inline]
+    pub fn partial_lagrange(point: &Point<F, A>) -> Mle<F, A>
+    where
+        F: AbstractField,
+        A: PartialLagrangeBackend<F>,
+    {
+        Mle::new(A::partial_lagrange(point))
+    }
+
+    /// Evaluates the MLE at a given point.
+    #[inline]
+    pub fn eval_at<EF: AbstractExtensionField<F>>(&self, point: &Point<EF, A>) -> MleEval<EF, A>
+    where
+        F: AbstractField,
+        A: MleEvaluationBackend<F, EF>,
+    {
+        MleEval::new(A::eval_mle_at_point(&self.guts, point))
+    }
+
+    /// Compute the random linear combination of the even and odd coefficients of `vals`.
+    ///
+    /// This is used in the `Basefold` PCS.
+    #[inline]
+    pub fn fold(&self, beta: F) -> Mle<F, A>
+    where
+        F: AbstractField,
+        A: MleFoldBackend<F>,
+    {
+        Mle::new(A::fold_mle(&self.guts, beta))
+    }
+
+    #[inline]
+    pub fn fix_last_variable<EF>(&self, alpha: EF) -> Mle<EF, A>
+    where
+        F: AbstractField,
+        EF: AbstractExtensionField<F>,
+        A: MleFixLastVariableBackend<F, EF>,
+    {
+        Mle::new(A::mle_fix_last_variable(&self.guts, alpha))
     }
 }
 
-impl<K: Field> Mle<K> {
-    pub fn to_extension_field<EF: ExtensionField<K>>(self) -> Mle<EF> {
-        Mle::new(self.guts.into_iter().map(EF::from_base).collect())
+impl<T> Mle<T, CpuBackend> {
+    pub fn rand<R: Rng>(rng: &mut R, num_polynomials: usize, num_variables: u32) -> Self
+    where
+        Standard: Distribution<T>,
+    {
+        Self::new(Tensor::rand(rng, [1 << num_variables, num_polynomials]))
     }
 
-    pub fn fix_first_variable<EK: Field + Mul<K, Output = EK> + Add<K, Output = EK>>(
-        self,
-        alpha: EK,
-    ) -> Mle<EK> {
-        assert!(self.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
-        let mut result: Vec<EK> = Vec::with_capacity(self.guts.len() / 2);
-        self.guts
-            .par_iter()
-            // All the evaluations with the first variable set to 0.
-            .take(self.guts.len() / 2)
-            // All the evaluations with the first variable set to 1.
-            .zip(self.guts.par_iter().skip(self.guts.len() / 2))
-            // Interpolate between the two evaluations, and evaluate at alpha.
-            .map(|(x, y)| alpha * (*y - *x) + *x)
-            .collect_into_vec(&mut result);
-        Mle::new(result)
-    }
-    pub fn eval_at_point<EF: Field + Mul<K, Output = EF>>(&self, point: &Point<EF>) -> EF {
-        self.guts
-            .par_iter()
-            .zip(partial_lagrange_eval(point).par_iter())
-            .map(|(x, y)| *y * *x)
-            .sum()
+    /// Returns an iterator over the evaluations of the MLE on the Boolean hypercube.
+    ///
+    /// The iterator yields a slice for each index of the Boolean hypercube.
+    pub fn hypercube_iter(&self) -> impl Iterator<Item = &[T]>
+    where
+        T: AbstractField,
+    {
+        let width = self.num_polynomials();
+        let height = self.num_variables();
+        (0..(1 << height)).map(move |i| &self.guts.as_slice()[i * width..(i + 1) * width])
     }
 
-    pub fn eval_batch_at_point<EF: Field + Mul<K, Output = EF>>(
-        mles: &[&Mle<K>],
-        point: &Point<EF>,
-    ) -> Vec<EF> {
-        let partial_lagrange = partial_lagrange_eval(point);
-        mles.iter()
-            .map(|mle| {
-                mle.guts.par_iter().zip(partial_lagrange.par_iter()).map(|(x, y)| *y * *x).sum()
+    /// Returns an iterator over the evaluations of the MLE on the Boolean hypercube.
+    ///
+    /// The iterator yields a slice for each index of the Boolean hypercube.
+    pub fn hypercube_par_iter(&self) -> impl ParallelIterator<Item = &[T]>
+    where
+        T: AbstractField + Sync,
+    {
+        let width = self.num_polynomials();
+        let height = self.num_variables();
+        (0..(1 << height))
+            .into_par_iter()
+            .map(move |i| &self.guts.as_slice()[i * width..(i + 1) * width])
+    }
+
+    unsafe fn from_raw_parts(ptr: *mut T, num_polynomials: usize, len: usize) -> Self {
+        let total_len = num_polynomials * len;
+        let buffer = Buffer::from_raw_parts(ptr, total_len, total_len, GLOBAL_CPU_BACKEND);
+        Self::new(Tensor::from(buffer).reshape([len, num_polynomials]))
+    }
+
+    /// legacy method to be compatible with the old API.
+    pub fn eval_matrix_at_point<E>(
+        matrix: &slop_matrix::dense::RowMajorMatrix<T>,
+        point: &Point<E>,
+    ) -> Vec<E>
+    where
+        T: AbstractField + Send + Sync,
+        E: AbstractExtensionField<T> + Send + Sync,
+    {
+        let mle = unsafe {
+            ManuallyDrop::new(Self::from_raw_parts(
+                matrix.values.as_ptr() as *mut T,
+                matrix.width,
+                matrix.height(),
+            ))
+        };
+        mle.eval_at(point).to_vec()
+    }
+
+    /// Evaluates the 2n-variate multilinear polynomial f(X,Y) = Prod_i (X_i * Y_i + (1-X_i) * (1-Y_i))
+    /// at a given pair (X,Y) of n-dimenional BabyBearExtensionField points.
+    ///
+    ///
+    /// This evaluation takes time linear in n to compute, so the verifier can easily compute it. Hence,
+    /// even though
+    /// ```full_lagrange_eval(point_1,
+    /// point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
+    /// the RHS of the above equation runs in O(2^n) time, while the LHS runs in O(n).
+    /// The polynomial f(X,Y) is an important building block in zerocheck and other protocols which use
+    /// sumcheck.
+    pub fn full_lagrange_eval(point_1: &Point<T>, point_2: &Point<T>) -> T
+    where
+        T: AbstractField,
+    {
+        assert_eq!(point_1.dimension(), point_2.dimension());
+
+        // Iterate over all values in the n-variates X and Y.
+        point_1
+            .iter()
+            .zip(point_2.iter())
+            .map(|(x, y)| {
+                // Multiply by (x_i * y_i + (1-x_i) * (1-y_i)).
+                let prod = x.clone() * y.clone();
+                prod.clone() + prod + T::one() - x.clone() - y.clone()
             })
-            .collect()
+            .product()
     }
 
-    pub fn eval_matrix_at_point<EK: Field + Mul<K, Output = EK>>(
-        matrix: &RowMajorMatrix<K>,
-        point: &Point<EK>,
-    ) -> Vec<EK> {
-        let partial_lagrange = partial_lagrange_eval(point);
-        // let mut evals = vec![EK::zero(); matrix.width()];
-
-        matrix
-            .par_rows()
-            .zip(partial_lagrange.par_iter())
-            .fold(
-                || vec![EK::zero(); matrix.width()],
-                |mut acc, (row, lagrange)| {
-                    row.enumerate().for_each(|(i, x)| {
-                        acc[i] += *lagrange * x;
-                    });
-                    acc
-                },
-            )
-            .reduce(
-                || vec![EK::zero(); matrix.width()],
-                |mut a, b| {
-                    a.iter_mut().zip(b.iter()).for_each(|(a, b)| *a += *b);
-                    a
-                },
-            )
-    }
-
-    pub fn random_linear_combination(&self, beta: K) -> Mle<K> {
-        // Compute the random linear combination of the even and odd coefficients of `vals`. This is
-        // used to reduce the two evaluation claims for new_point into a single evaluation claim.
-        Mle::new(
-            self.guts
-                .par_iter()
-                .step_by(2)
-                .copied()
-                .zip(self.guts.par_iter().skip(1).step_by(2).copied())
-                .map(|(a, b)| a + beta * b)
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    /// Compute the evaluation claims with the last variable fixed to 0, and the last variable
-    /// fixed to 1 while fixing the remaining coordinates to their corresponding values in `point`.
-    /// These are used to generate the messages sent to the verifier in a BaseFold proof.
-    pub fn fixed_evaluations(&self, new_point: &Point<K>) -> [K; 2] {
-        let evens = self.guts.par_iter().step_by(2).copied().collect::<Vec<_>>().into();
-        let odds = self.guts.par_iter().skip(1).step_by(2).copied().collect::<Vec<_>>().into();
-        let batch = vec![&evens, &odds];
-
-        let batch_evals = Mle::eval_batch_at_point(&batch, new_point);
-        [batch_evals[0], batch_evals[1]]
-    }
-
-    pub fn fixed_at_zero<EK: Field + Mul<K, Output = EK>>(&self, new_point: &Point<EK>) -> EK {
+    pub fn fixed_at_zero<E>(&self, new_point: &Point<E>) -> E
+    where
+        T: AbstractField + Send + Sync + Copy,
+        E: AbstractExtensionField<T> + Send + Sync + Copy,
+    {
         // TODO: A smarter way to do this is pre-cache the partial_lagrange_evals that are implicit
         // in `eval_at_point` so we don't recompute it at every step of BaseFold.
-        Mle::new(self.guts.par_iter().step_by(2).copied().collect()).eval_at_point(new_point)
-    }
-
-    pub fn sc_fix_last_variable<
-        S: Field
-            + From<K>
-            + Add<K, Output = S>
-            + AddAssign<K>
-            + Sub<K, Output = S>
-            + SubAssign<K>
-            + Mul<K, Output = S>
-            + MulAssign<K>
-            + Copy
-            + Send
-            + Sync
-            + Default,
-    >(
-        self,
-        alpha: S,
-    ) -> Mle<S> {
-        assert!(self.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
-        let mut result: Vec<S> = Vec::with_capacity(self.guts.len() / 2);
-
-        self.guts
-            .par_iter()
-            .chunks(2)
-            .map(|chunk| {
-                let [x, y] = chunk.try_into().unwrap();
-                alpha * (*y - *x) + (*x)
-            })
-            .collect_into_vec(&mut result);
-
-        Mle::new(result)
-    }
-
-    pub fn sc_sum_as_poly_in_last_variable<
-        S: Field
-            + From<K>
-            + Add<K, Output = S>
-            + AddAssign<K>
-            + Sub<K, Output = S>
-            + SubAssign<K>
-            + Mul<K, Output = S>
-            + MulAssign<K>
-            + Copy
-            + Send
-            + Sync
-            + Default,
-    >(
-        &self,
-    ) -> UnivariatePolynomial<S> {
-        // If the polynomial is 0-variate, the length of its guts is not divisible by 2, so we need
-        // to handle this case separately.
-        if self.num_variables() == 0 {
-            return UnivariatePolynomial::new(vec![self.guts[0].into(), S::zero()]);
-        }
-
-        let mut first_half_sum = K::zero();
-        let mut second_half_sum = K::zero();
-
-        self.guts.chunks(2).for_each(|chunk| {
-            let [x, y] = chunk.try_into().unwrap();
-            first_half_sum += x;
-            second_half_sum += y;
-        });
-
-        // In the formula for `fix_first_variable`,
-        UnivariatePolynomial::new(vec![
-            first_half_sum.into(),
-            (second_half_sum - first_half_sum).into(),
-        ])
+        Mle::from(self.guts().as_slice().par_iter().step_by(2).copied().collect::<Vec<_>>())
+            .eval_at(new_point)[0]
     }
 }
 
-impl<K: Field> From<Mle<K>> for Vec<K> {
-    fn from(value: Mle<K>) -> Self {
-        value.guts
+impl<T> From<Vec<T>> for Mle<T, CpuBackend> {
+    fn from(values: Vec<T>) -> Self {
+        let len = values.len();
+        let tensor = Tensor::from(values).reshape([len, 1]);
+        Self::new(tensor)
     }
 }
 
-impl<K> From<&[K]> for Mle<K>
-where
-    K: Copy,
+impl<T: Clone + Send + Sync> From<slop_matrix::dense::RowMajorMatrix<T>> for Mle<T, CpuBackend> {
+    fn from(values: slop_matrix::dense::RowMajorMatrix<T>) -> Self {
+        let num_polys = values.width;
+        let num_vars = values.height().ilog2();
+        assert_eq!(values.height(), 1 << num_vars);
+        let tensor = Tensor::from(values.values).reshape([num_polys, 1]);
+        Self::new(tensor)
+    }
+}
+
+impl<T> FromIterator<T> for Mle<T, CpuBackend> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from(iter.into_iter().collect::<Vec<_>>())
+    }
+}
+
+impl<'a, F: AbstractField, EF: AbstractExtensionField<F>, A: AddMleBackend<F, EF>>
+    Add<&'a Mle<F, A>> for &'a Mle<EF, A>
 {
-    fn from(value: &[K]) -> Self {
-        Mle { guts: value.to_vec() }
+    type Output = Mle<EF, A>;
+
+    fn add(self, rhs: &'a Mle<F, A>) -> Self::Output {
+        Mle::new(A::add_mle(&self.guts, &rhs.guts))
     }
 }
 
-impl<K: Field> Mul<K> for Mle<K> {
-    type Output = Self;
+impl<'a, F: AbstractField, EF: AbstractExtensionField<F>, A: AddMleBackend<F, EF>>
+    Add<&'a Mle<F, A>> for Mle<EF, A>
+{
+    type Output = Mle<EF, A>;
 
-    fn mul(self, rhs: K) -> Self::Output {
-        Self { guts: self.guts.into_iter().map(|x| x * rhs).collect() }
+    fn add(self, rhs: &'a Mle<F, A>) -> Self::Output {
+        (&self) + rhs
     }
 }
 
-/// Consider the 2n-variate `Mle` f whose underlying Vec consists of the rows of the 2^n x 2^n
-/// identity matrix concatenated into a Vec of length 2^(2n). Computes the n-variate `Mle` formed
-/// from f by fixing the first n variables to the values in `point`.
-///
-/// The explicit formula for partial_lagrange_eval(n_variables, point) is as follows: let
-/// `point.point = vec![x_1, x_2, ..., x_n]`. For y in {0,1}^n, let `y_i` be the ith bit of y. Then
-/// partial_lagrange_eval(n, point) = Prod_i (x_i * y_i + (1-x_i) * (1-y_i)).
-/// `partial_lagrange_eval(n,point)` has the nice property that to evaluate an n-variate `Mle` g at
-/// a `point`, we simply take the dot product of partial_lagrange_eval(n, point) with g.
-///  
-/// Yet another perspective on `partial_lagrange_eval`. If we take the 2^{n_variables} `Mle`s
-/// returned by letting `point` range over the Boolean hypercube, these `Mle`s form a basis for the
-/// space of multilinear polynomials in `n_variables` variables.
-///
-/// The verifier should not have access to this function.
-///
-/// The implementation below has runtime O(2^n), which is faster than iterating over the Boolean
-/// hypercube and evaluating the polynomial at each point (runtime: O(n2^n)).
-pub fn partial_lagrange_eval<K: AbstractField>(point: &Point<K>) -> Vec<K> {
-    let one = K::one();
-    let mut evals = Vec::with_capacity(1 << point.dimension());
-    evals.push(one);
+impl<F: AbstractField, EF: AbstractExtensionField<F>, A: AddMleBackend<F, EF>> Add<Mle<F, A>>
+    for Mle<EF, A>
+{
+    type Output = Mle<EF, A>;
 
-    // Build evals in n_variables rounds. In each round, we consider one more entry of `point`,
-    // hence the zip.
-    point.0.iter().for_each(|coordinate| {
-        evals = evals
-            .iter()
-            // For each value in the previous round, multiply by (1-coordinate) and coordinate,
-            // and collect all these values into a new vec.
-            .flat_map(|val| {
-                let prod = val.clone() * coordinate.clone();
-                [val.clone() - prod.clone(), prod]
-            })
-            .collect();
-    });
-    evals
+    fn add(self, rhs: Mle<F, A>) -> Self::Output {
+        (&self) + &rhs
+    }
 }
 
-/// Evaluates the 2n-variate multilinear polynomial f(X,Y) = Prod_i (X_i * Y_i + (1-X_i) * (1-Y_i))
-/// at a given pair (X,Y) of n-dimenional BabyBearExtensionField points.
-///
-///
-/// This evaluation takes time linear in n to compute, so the verifier can easily compute it. Hence,
-/// even though
-/// ```full_lagrange_eval(point_1,
-/// point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
-/// the RHS of the above equation runs in O(2^n) time, while the LHS runs in O(n).
-/// The polynomial f(X,Y) is an important building block in zerocheck and other protocols which use
-/// sumcheck.
-pub fn full_lagrange_eval<F: Field>(point_1: &Point<F>, point_2: &Point<F>) -> F {
-    assert_eq!(point_1.dimension(), point_2.dimension());
+/// The multilinear polynomial whose evaluation on the Boolean hypercube performs outputs 1 if the
+/// Boolean hypercube point is the bit-string representation of a number greater than or equal to
+/// `threshold`, and 0 otherwise.
+pub fn partial_geq<F: Field>(threshold: usize, num_variables: usize) -> Vec<F> {
+    assert!(threshold <= 1 << num_variables);
 
-    // Iterate over all values in the n-variates X and Y.
-    point_1
-        .0
-        .iter()
-        .zip(point_2.0.iter())
-        .map(|(x, y)| {
-            // Multiply by (x_i * y_i + (1-x_i) * (1-y_i)).
-            let prod = *x * *y;
-            prod + prod + F::one() - *x - *y
-        })
-        .product()
+    (0..(1 << num_variables)).map(|x| if x >= threshold { F::one() } else { F::zero() }).collect()
+}
+
+/// A succinct way to compute the evaluation of `partial_eq` at `eval_point`. The threshold is passed
+/// as a `Point` on the Boolean hypercube.
+///
+/// # Panics
+/// If the dimensions of `threshold` and `eval_point` do not match.
+/// If any of the entries in `threshold` are not boolean-valued.
+pub fn full_geq<F: Field>(threshold: &Point<F>, eval_point: &Point<F>) -> F {
+    assert_eq!(threshold.dimension(), eval_point.dimension());
+    for bit in threshold.iter() {
+        assert_eq!(*bit * (F::one() - *bit), F::zero());
+    }
+    threshold.iter().rev().zip(eval_point.iter().rev()).fold(F::one(), |acc, (x, y)| {
+        ((F::one() - *x) * (F::one() - *y) + *x * *y) * acc + (F::one() - *x) * *y
+    })
+}
+
+/// A bacth of multi-linear polynomial evaluations.
+#[derive(Debug, Clone)]
+pub struct MleEval<T, A: Backend = CpuBackend> {
+    pub(crate) evaluations: Tensor<T, A>,
+}
+
+impl<T, A: Backend> MleEval<T, A> {
+    /// Creates a new MLE evaluation from a tensor in the correct shape.
+    #[inline]
+    pub const fn new(evaluations: Tensor<T, A>) -> Self {
+        Self { evaluations }
+    }
+
+    #[inline]
+    pub fn evaluations(&self) -> &Tensor<T, A> {
+        &self.evaluations
+    }
+
+    /// # Safety
+    #[inline]
+    pub unsafe fn evaluations_mut(&mut self) -> &mut Tensor<T, A> {
+        &mut self.evaluations
+    }
+
+    #[inline]
+    pub fn into_evaluations(self) -> Tensor<T, A> {
+        self.evaluations
+    }
+}
+
+impl<T: Clone> MleEval<T, CpuBackend> {
+    pub fn to_vec(&self) -> Vec<T> {
+        self.evaluations.as_buffer().to_vec()
+    }
+}
+
+impl<T> Deref for MleEval<T, CpuBackend> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.evaluations.as_slice()
+    }
+}
+
+impl<T> DerefMut for MleEval<T, CpuBackend> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.evaluations.as_mut_slice()
+    }
 }
 
 #[cfg(test)]
-pub mod tests {
-    type F = slop_baby_bear::BabyBear;
-    use rand::Rng;
-    use slop_matrix::dense::RowMajorMatrix;
+mod tests {
+
+    use slop_algebra::extension::BinomialExtensionField;
+    use slop_alloc::Buffer;
+    use slop_baby_bear::BabyBear;
+
+    use super::*;
+
+    use crate::{full_geq, partial_geq, Mle};
 
     #[test]
-    pub fn test_eval_matrix_at_point() {
-        let log_total_size = 8;
-        let log_matrix_width = 3;
+    fn test_mle_add() {
         let mut rng = rand::thread_rng();
-        let matrix = RowMajorMatrix::new(
-            (0..(1 << log_total_size)).map(|_| rng.gen::<F>()).collect::<Vec<_>>(),
-            1 << log_matrix_width,
-        );
-        let point =
-            super::Point::new((0..log_total_size).map(|_| rng.gen::<F>()).collect::<Vec<_>>());
 
-        let (front, back) = point.split_at(log_total_size - log_matrix_width);
+        type F = BabyBear;
 
-        let evals = super::Mle::eval_matrix_at_point(&matrix, &front);
+        let num_polynomials = 10;
+        let num_variables = 11;
 
-        let eval = super::Mle::eval_at_point(&matrix.clone().values.into(), &point);
+        let lhs = Mle::<F>::rand(&mut rng, num_polynomials, num_variables);
+        let rhs = Mle::<F>::rand(&mut rng, num_polynomials, num_variables);
 
-        assert_eq!(eval, super::Mle::eval_at_point(&evals.into(), &back));
+        let sum = &lhs + &rhs;
+
+        assert_eq!(sum.num_polynomials(), num_polynomials);
+        assert_eq!(sum.num_variables(), num_variables);
+
+        let sum_vec = sum.guts.as_buffer().to_vec();
+        let lhs_vec = lhs.guts.as_buffer().to_vec();
+        let rhs_vec = rhs.guts.as_buffer().to_vec();
+
+        for (sum, (lhs, rhs)) in sum_vec.iter().zip(lhs_vec.iter().zip(rhs_vec.iter())) {
+            assert_eq!(*sum, *lhs + *rhs);
+        }
+    }
+
+    #[test]
+    fn test_mle_eval() {
+        let mut rng = rand::thread_rng();
+
+        type F = BabyBear;
+        type EF = BinomialExtensionField<BabyBear, 4>;
+
+        let num_variables = 11;
+        let num_polynomials = 10;
+
+        let mle = Mle::<F>::rand(&mut rng, num_polynomials, num_variables);
+
+        // Test the correctness of values on the hypercube.
+        for i in 0usize..(1 << num_variables) {
+            // Get the big Endian bits of the index.
+            let bits = (0..num_variables)
+                .rev()
+                .map(|j| (i >> j) & 1)
+                .map(F::from_canonical_usize)
+                .collect::<Vec<_>>();
+            let point = Point::<F>::new(Buffer::from(bits));
+            let value = mle.eval_at(&point).to_vec();
+            for (j, v) in value.iter().enumerate() {
+                assert_eq!(*mle.guts[[i, j]], *v);
+            }
+        }
+
+        // Test the multi-linearity of evaluation.
+        let point = Point::<EF>::rand(&mut rng, num_variables);
+
+        let eval = mle.eval_at(&point);
+        for i in 0..num_variables {
+            let mut point_0 = point.clone();
+            let mut point_1 = point.clone();
+            let point_0_i_val: &mut EF = &mut point_0[i as usize];
+            *point_0_i_val = EF::zero();
+            let point_1_i_val: &mut EF = &mut point_1[i as usize];
+            *point_1_i_val = EF::one();
+
+            let eval_0 = mle.eval_at(&point_0);
+            let eval_1 = mle.eval_at(&point_1);
+
+            let z: EF = *point[i as usize];
+
+            for ((eval_0, eval_1), eval) in
+                eval_0.to_vec().iter().zip(eval_1.to_vec().iter()).zip(eval.to_vec().iter())
+            {
+                assert_eq!(*eval, *eval_0 * (EF::one() - z) + *eval_1 * z);
+            }
+        }
+
+        // Test the linearity of evaluation.
+        let rhs = Mle::<F>::rand(&mut rng, num_polynomials, num_variables);
+        let point = Point::<EF>::rand(&mut rng, num_variables);
+
+        let lhs_eval = mle.eval_at(&point);
+        let rhs_eval = rhs.eval_at(&point);
+        let sum_eval = (&mle + &rhs).eval_at(&point);
+
+        let lhs_eval_values = lhs_eval.to_vec();
+        let rhs_eval_values = rhs_eval.to_vec();
+        let sum_eval_values = sum_eval.to_vec();
+
+        for ((lhs, rhs), sum) in
+            lhs_eval_values.iter().zip(rhs_eval_values.iter()).zip(sum_eval_values.iter())
+        {
+            assert_eq!(*lhs + *rhs, *sum);
+        }
+    }
+
+    #[test]
+    fn test_mle_fold() {
+        let mut rng = rand::thread_rng();
+
+        type EF = BinomialExtensionField<BabyBear, 4>;
+
+        let mle = Mle::<EF>::rand(&mut rng, 1, 11);
+        let point = Point::<EF>::rand(&mut rng, 10);
+
+        let beta = rng.gen::<EF>();
+
+        let fold = mle.fold(beta);
+
+        let mut point_0 = point.to_vec();
+        point_0.push(EF::zero());
+        let point_0 = Point::<EF>::from(point_0);
+
+        let mut point_1 = point.to_vec();
+        point_1.push(EF::one());
+        let point_1 = Point::<EF>::from(point_1);
+
+        let eval_0 = *mle.eval_at(&point_0).evaluations()[[0]];
+        let eval_1 = *mle.eval_at(&point_1).evaluations()[[0]];
+        let fold_eval = *fold.eval_at(&point).evaluations()[[0]];
+
+        assert_eq!(fold_eval, eval_0 + eval_1 * beta);
+    }
+
+    #[test]
+    pub fn test_geq_polynomial() {
+        let num_variables = 12;
+        let mut rng = rand::thread_rng();
+
+        type F = BabyBear;
+
+        for threshold in 0..(1 << num_variables) {
+            let eval_point =
+                Point::<F>::from((0..num_variables).map(|_| rng.gen::<F>()).collect::<Vec<_>>());
+            let geq_mle = Mle::from(partial_geq::<F>(threshold, num_variables));
+            assert_eq!(
+                geq_mle.eval_at(&eval_point).to_vec()[0],
+                full_geq(&Point::from_usize(threshold, num_variables), &eval_point)
+            );
+        }
     }
 }

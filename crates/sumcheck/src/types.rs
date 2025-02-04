@@ -4,13 +4,6 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, UnivariatePolynomial};
 use slop_multilinear::{Mle, Point};
 
-/// The basic functionality required of a struct for which a sumcheck proof can be generated.
-pub trait SumcheckPolyBase<K> {
-    fn n_variables(&self) -> usize;
-
-    fn get_component_poly_evals(&self) -> Vec<K>;
-}
-
 /// The fix_first_variable function applied to a sumcheck's first round's polynomial .
 pub trait SumcheckPolyFirstRound<K>: SumcheckPolyBase<K> {
     fn fix_t_variables(self, alpha: K, t: usize) -> impl SumcheckPoly<K>;
@@ -86,13 +79,12 @@ impl<
             + Default,
     > SumcheckPolyBase<S> for Mle<K>
 {
-    fn n_variables(&self) -> usize {
+    fn n_variables(&self) -> u32 {
         self.num_variables()
     }
 
     fn get_component_poly_evals(&self) -> Vec<S> {
         assert!(self.num_variables() == 0);
-
         vec![self.guts[0].into()]
     }
 }
@@ -109,6 +101,7 @@ mod test {
     use slop_algebra::{extension::BinomialExtensionField, AbstractField, UnivariatePolynomial};
     use slop_baby_bear::BabyBear;
     use slop_multilinear::Mle;
+    use slop_tensor::tensor;
 
     use crate::SumcheckPoly;
 
@@ -117,7 +110,7 @@ mod test {
 
     #[test]
     fn test_mle_edge_case() {
-        let mle = Mle::new(vec![F::two()]);
+        let mle = Mle::new(tensor![[F::two()]]);
         assert_eq!(
             <Mle::<F> as SumcheckPoly<F>>::sum_as_poly_in_last_variable(&mle, None),
             UnivariatePolynomial::new(vec![F::two()])
@@ -127,7 +120,7 @@ mod test {
 
     #[test]
     fn test_simple_mle_properties() {
-        let mle = Mle::new(vec![EF::zero(), EF::one(), EF::zero(), EF::zero()]);
+        let mle = Mle::new(tensor![[EF::zero(), EF::one(), EF::zero(), EF::zero()]].into());
         assert_eq!(
             mle.sum_as_poly_in_last_variable(None),
             UnivariatePolynomial::new(vec![EF::zero(), EF::one()])
@@ -135,7 +128,7 @@ mod test {
         assert_eq!(mle.num_variables(), 2);
         assert_eq!(
             mle.fix_last_variable(EF::from_canonical_u16(0xBABE)),
-            Mle::new(vec![EF::from_canonical_u32(0xBABE), EF::zero()])
+            Mle::new(tensor![[EF::from_canonical_u32(0xBABE), EF::zero()]].into())
         );
     }
 }

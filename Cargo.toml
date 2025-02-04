@@ -6,12 +6,14 @@ repository = "https://github.com/succinctlabs/spl.git"
 keywords = ["spl", "succinct", "zero-knowledge"]
 categories = ["cryptography"]
 
+[workspace.lints.clippy]
+missing_docs = "warn"
+
 [workspace]
 members = [
     "crates/basefold",
     "crates/algebra",
     "crates/basefold-prover",
-    "crates/sumcheck-prover",
     "crates/sumcheck",
     "crates/multilinear",
     "crates/utils",
@@ -22,10 +24,14 @@ members = [
     "crates/merkle-tree",
     "crates/poseidon2",
     "crates/commit",
-    "crates/challenger", 
+    "crates/challenger",
     "crates/fri",
-    "crates/maybe-rayon"
-    , "crates/jagged"]
+    "crates/maybe-rayon",
+    "crates/tensor",
+    "crates/alloc",
+    "crates/slop",
+    "crates/jagged",
+]
 resolver = "2"
 
 [profile.release]
@@ -40,23 +46,28 @@ debug = true
 debug-assertions = true
 
 [workspace.dependencies]
-p3-field = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-commit = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-matrix = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-baby-bear = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config", features = ["nightly-features"] }
-p3-util = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-challenger = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-dft = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-maybe-rayon = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config", features = ["parallel"]}
-p3-merkle-tree = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-poseidon2 ={git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-symmetric = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-fri = {git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-field = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-commit = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-matrix = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-baby-bear = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config", features = [
+    "nightly-features",
+] }
+p3-util = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-challenger = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-dft = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-maybe-rayon = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config", features = [
+    "parallel",
+] }
+p3-merkle-tree = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-poseidon2 = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-symmetric = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-fri = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 
+
+#s slop
 slop-basefold = { path = "crates/basefold" }
 slop-algebra = { path = "crates/algebra" }
 slop-sumcheck = { path = "crates/sumcheck" }
-slop-sumcheck-prover = { path = "crates/sumcheck-prover" }
 slop-multilinear = { path = "crates/multilinear" }
 slop-utils = { path = "crates/utils" }
 slop-baby-bear = { path = "crates/baby-bear" }
@@ -69,6 +80,9 @@ slop-commit = { path = "crates/commit" }
 slop-challenger = { path = "crates/challenger" }
 slop-fri = { path = "crates/fri" }
 slop-maybe-rayon = { path = "crates/maybe-rayon" }
+slop-tensor = { path = "crates/tensor" }
+slop-alloc = { path = "crates/alloc" }
+slop = { path = "crates/slop" }
 slop-jagged = { path = "crates/jagged" }
 # For local development. 
 
@@ -96,3 +110,15 @@ slop-jagged = { path = "crates/jagged" }
 # p3-uni-stark = { path = "../Plonky3/uni-stark" }
 # p3-maybe-rayon = { path = "../Plonky3/maybe-rayon", features = ["parallel"] }
 # p3-bn254-fr = { path = "../Plonky3/bn254-fr" }
+
+
+# rayon
+rayon = "1.10.0"
+
+# misc
+thiserror = "1.0"
+itertools = "0.14.0"
+derive-where = "1.2.7"
+rand = "0.8"
+serde = { version = "1.0.217", features = ["derive"] }
+tracing = "0.1.40"

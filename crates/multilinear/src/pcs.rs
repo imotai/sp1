@@ -15,28 +15,37 @@ pub trait MultilinearPcsBatchVerifier {
     type Commitment: Clone + Serialize + DeserializeOwned;
     type Error: Debug;
     type Challenger: FieldChallenger<Self::F>;
+    type FinalizeCommit: Clone + Serialize + DeserializeOwned;
 
     fn verify_trusted_evaluations(
         &self,
         point: Point<Self::EF>,
-        evaluation_claims: &[&[Self::EF]],
-        commitment: Self::Commitment,
+        evaluation_claims: &[&[&[Self::EF]]],
+        commitments: &[Self::Commitment],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) -> Result<(), Self::Error>;
 
+    fn incorporate_finalize_data(
+        &self,
+        data: Self::FinalizeCommit,
+        challenger: &mut Self::Challenger,
+    );
+
     fn verify_untrusted_evaluations(
         &self,
         point: Point<Self::EF>,
-        evaluation_claims: &[&[Self::EF]],
-        commitment: Self::Commitment,
+        evaluation_claims: &[&[&[Self::EF]]],
+        commitments: &[Self::Commitment],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) -> Result<(), Self::Error> {
         evaluation_claims.iter().for_each(|eval_set| {
-            eval_set.iter().for_each(|eval| challenger.observe_ext_element(*eval))
+            eval_set.iter().for_each(|evals| {
+                evals.iter().for_each(|eval| challenger.observe_ext_element(*eval))
+            })
         });
-        self.verify_trusted_evaluations(point, evaluation_claims, commitment, proof, challenger)
+        self.verify_trusted_evaluations(point, evaluation_claims, commitments, proof, challenger)
     }
 }
 
@@ -53,7 +62,7 @@ pub trait MultilinearPcsVerifier {
         &self,
         point: Point<Self::EF>,
         evaluation_claim: Self::EF,
-        commitment: Self::Commitment,
+        commitments: &[Self::Commitment],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) -> Result<(), Self::Error>;
@@ -62,41 +71,49 @@ pub trait MultilinearPcsVerifier {
         &self,
         point: Point<Self::EF>,
         evaluation_claim: Self::EF,
-        commitment: Self::Commitment,
+        commitments: &[Self::Commitment],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) -> Result<(), Self::Error> {
         challenger.observe_ext_element(evaluation_claim);
-        self.verify_trusted_evaluation(point, evaluation_claim, commitment, proof, challenger)
+        self.verify_trusted_evaluation(point, evaluation_claim, commitments, proof, challenger)
     }
 }
 
 pub trait MultilinearPcsBatchProver {
     type PCS: MultilinearPcsBatchVerifier;
     type MultilinearProverData: Clone + Serialize + DeserializeOwned;
+    type FinalizeData: Clone + Serialize + DeserializeOwned;
 
     fn commit_multilinears(
         &self,
         data: Vec<RowMajorMatrix<<Self::PCS as MultilinearPcsBatchVerifier>::F>>,
     ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::Commitment, Self::MultilinearProverData);
 
+    fn finalize(
+        &self,
+        data: &[&Self::MultilinearProverData],
+    ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::FinalizeCommit, Self::FinalizeData);
+
     fn prove_trusted_evaluations(
         &self,
         eval_point: Point<<Self::PCS as MultilinearPcsBatchVerifier>::EF>,
-        expected_evals: &[&[<Self::PCS as MultilinearPcsBatchVerifier>::EF]],
-        prover_data: Self::MultilinearProverData,
+        expected_evals: &[&[&[<Self::PCS as MultilinearPcsBatchVerifier>::EF]]],
+        prover_data: Vec<&Self::MultilinearProverData>,
         challenger: &mut <Self::PCS as MultilinearPcsBatchVerifier>::Challenger,
     ) -> <Self::PCS as MultilinearPcsBatchVerifier>::Proof;
 
     fn prove_untrusted_evaluations(
         &self,
         eval_point: Point<<Self::PCS as MultilinearPcsBatchVerifier>::EF>,
-        expected_evals: &[&[<Self::PCS as MultilinearPcsBatchVerifier>::EF]],
-        prover_data: Self::MultilinearProverData,
+        expected_evals: &[&[&[<Self::PCS as MultilinearPcsBatchVerifier>::EF]]],
+        prover_data: Vec<&Self::MultilinearProverData>,
         challenger: &mut <Self::PCS as MultilinearPcsBatchVerifier>::Challenger,
     ) -> <Self::PCS as MultilinearPcsBatchVerifier>::Proof {
         expected_evals.iter().for_each(|eval_set| {
-            eval_set.iter().for_each(|eval| challenger.observe_ext_element(*eval))
+            eval_set.iter().for_each(|evals| {
+                evals.iter().for_each(|eval| challenger.observe_ext_element(*eval))
+            })
         });
         self.prove_trusted_evaluations(eval_point, expected_evals, prover_data, challenger)
     }
@@ -115,7 +132,7 @@ pub trait MultilinearPcsProver {
         &self,
         eval_point: Point<<Self::PCS as MultilinearPcsVerifier>::EF>,
         expected_eval: <Self::PCS as MultilinearPcsVerifier>::EF,
-        prover_data: Self::MultilinearProverData,
+        prover_data: Vec<&Self::MultilinearProverData>,
         challenger: &mut <Self::PCS as MultilinearPcsVerifier>::Challenger,
     ) -> <Self::PCS as MultilinearPcsVerifier>::Proof;
 
@@ -123,7 +140,7 @@ pub trait MultilinearPcsProver {
         &self,
         eval_point: Point<<Self::PCS as MultilinearPcsVerifier>::EF>,
         expected_eval: <Self::PCS as MultilinearPcsVerifier>::EF,
-        prover_data: Self::MultilinearProverData,
+        prover_data: Vec<&Self::MultilinearProverData>,
         challenger: &mut <Self::PCS as MultilinearPcsVerifier>::Challenger,
     ) -> <Self::PCS as MultilinearPcsVerifier>::Proof {
         challenger.observe_ext_element(expected_eval);
@@ -134,7 +151,5 @@ pub trait MultilinearPcsProver {
 /// A trait for prover data where the prover has keeps the matrices that were committed to.
 pub trait MainTraceProverData<T> {
     type BaseProverData;
-    fn split_off_main_traces(self) -> (Self::BaseProverData, Vec<T>);
-
-    fn reconstitute(base_data: Self::BaseProverData, main_traces: Vec<T>) -> Self;
+    fn split_off_main_traces(&self) -> (&Self::BaseProverData, &[T]);
 }

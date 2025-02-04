@@ -1,26 +1,20 @@
 use clap::Parser;
 use rand::Rng;
 use slop_dft::Radix2DitParallel;
-use slop_jagged::JaggedPcs;
 use slop_matrix::dense::RowMajorMatrix;
 
 use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
 use slop_challenger::DuplexChallenger;
 use slop_commit::ExtensionMmcs;
-use slop_fri::FriConfig;
 use slop_merkle_tree::FieldMerkleTreeMmcs;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
-use slop_basefold::BaseFoldPcs;
-use slop_multilinear::{
-    Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, Point, StackedPcsProver,
-    StackedPcsVerifier,
-};
+use slop_multilinear::{Mle, Point};
 use slop_utils::{log2_ceil_usize, setup_logger};
 
-use slop_basefold_prover::BaseFoldProver;
+use slop_basefold_prover::testing_jagged_basefold_config;
 
 // type F = BabyBear;
 // type EF = BinomialExtensionField<F, 4>;
@@ -72,37 +66,17 @@ fn main() {
             })
             .collect::<Vec<_>>()
     });
-    let perm = my_perm();
-    let hash = MyHash::new(perm.clone());
-    let compress = MyCompress::new(perm.clone());
-    let inner_mmcs = ValMmcs::new(hash, compress);
-    let mmcs = ChallengeMmcs::new(inner_mmcs.clone());
-    let config =
-        FriConfig { log_blowup: 1, num_queries: 100, proof_of_work_bits: 16, mmcs: mmcs.clone() };
 
-    let config_clone =
-        FriConfig { log_blowup: 1, num_queries: 100, proof_of_work_bits: 16, mmcs: mmcs.clone() };
+    let batch_split_point = 1;
 
-    let pcs = BaseFoldPcs::<Val, Challenge, ValMmcs, Challenger>::new(config, inner_mmcs.clone());
-
-    let pcs_clone =
-        BaseFoldPcs::<Val, Challenge, ValMmcs, Challenger>::new(config_clone, inner_mmcs.clone());
+    let (jagged_prover, jagged_verifier) = testing_jagged_basefold_config(
+        args.log_stacking_height,
+        args.max_log_row_count,
+        vec![batch_split_point, column_counts.len() - batch_split_point],
+    );
 
     let new_eval_point =
-        Point::new((0..args.max_log_row_count).map(|_| rng.gen::<Challenge>()).collect());
-
-    let prover = BaseFoldProver::new(pcs);
-
-    let stacked_prover =
-        StackedPcsProver { pcs: prover, log_stacking_height: args.log_stacking_height };
-    let stacked_verifier =
-        StackedPcsVerifier { pcs: pcs_clone, log_stacking_height: args.log_stacking_height };
-
-    let jagged_prover =
-        JaggedPcs { pcs: stacked_prover, max_log_row_count: args.max_log_row_count };
-
-    let jagged_verifier =
-        JaggedPcs { pcs: stacked_verifier, max_log_row_count: args.max_log_row_count };
+        (0..args.max_log_row_count).map(|_| rng.gen::<Challenge>()).collect::<Point<_>>();
 
     let mats = tracing::info_span!("construct matrices").in_scope(|| {
         vals.into_iter()
@@ -111,48 +85,61 @@ fn main() {
             .collect::<Vec<_>>()
     });
 
-    // let eval_point = Point::new((0..log_max_row_count).map(|_| rng.gen::<EF>()).collect());
-
     let eval_claims =
         mats.iter().map(|mat| Mle::eval_matrix_at_point(mat, &new_eval_point)).collect::<Vec<_>>();
 
     let now = std::time::Instant::now();
-    let (commit, data) =
-        tracing::info_span!("commit").in_scope(|| jagged_prover.commit_multilinears(mats));
+    let (commit_1, data_1) = tracing::info_span!("commit")
+        .in_scope(|| jagged_prover.commit_multilinears(mats[0..batch_split_point].to_vec()));
+
+    let (commit_2, data_2) = tracing::info_span!("commit")
+        .in_scope(|| jagged_prover.commit_multilinears(mats[batch_split_point..].to_vec()));
     let commit_time = now.elapsed();
+
+    let mut data = vec![data_1, data_2];
+
+    let mut commits = vec![commit_1, commit_2];
+
+    tracing::info_span!("finalize").in_scope(|| jagged_prover.finalize(&mut data, &mut commits));
 
     let now = std::time::Instant::now();
     let proof = tracing::info_span!("prove evaluations").in_scope(|| {
         jagged_prover.prove_trusted_evaluations(
             new_eval_point.clone(),
-            &eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-            data,
-            &mut Challenger::new(perm.clone()),
+            &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
+            &data,
+            &mut Challenger::new(my_perm()),
         )
     });
 
     let prove_time = now.elapsed();
 
+    let now = std::time::Instant::now();
     let result = jagged_verifier.verify_trusted_evaluations(
         new_eval_point,
-        &eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-        commit,
+        &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
+        &commits,
         &proof,
-        &mut Challenger::new(perm.clone()),
+        &mut Challenger::new(my_perm()),
     );
+
+    let verify_time = now.elapsed();
+
+    println!("Result: {:?}", result);
 
     assert!(result.is_ok());
 
     println!("+-------------------------+------------------+");
-    println!("| Variables              | {:>16} |", args.max_log_row_count);
-    println!("| Log Stacking Height    | {:>16} |", args.log_stacking_height);
+    println!("| Variables               | {:>16} |", args.max_log_row_count);
+    println!("| Log Stacking Height     | {:>16} |", args.log_stacking_height);
     println!(
-        "| Log Total Area         | {:>16} |",
+        "| Log Total Area          | {:>16} |",
         log2_ceil_usize(
             column_counts.iter().zip(row_counts.iter()).map(|(c, r)| c * r).sum::<usize>()
         )
     );
-    println!("| Commit Time            | {:>16?} |", commit_time);
-    println!("| Prove Time             | {:>16?} |", prove_time);
+    println!("| Commit Time             | {:>16?} |", commit_time);
+    println!("| Prove Time              | {:>16?} |", prove_time);
+    println!("| Verify Time             | {:>16?} |", verify_time);
     println!("+-------------------------+------------------+");
 }

@@ -3,22 +3,28 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{
     interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, ExtensionField, Field,
 };
-use slop_challenger::{CanObserve, CanSample, FieldChallenger};
+use slop_challenger::{CanObserve, FieldChallenger};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_multilinear::{
     MainTraceProverData, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier,
-    MultilinearPcsProver, MultilinearPcsVerifier, Point, StackedPcsProver, StackedPcsVerifier,
+    MultilinearPcsProver, MultilinearPcsVerifier, Point, StackedPcsProof, StackedPcsProver,
 };
 use slop_sumcheck::{
-    partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError, SumcheckPoly,
-    SumcheckPolyBase, SumcheckPolyFirstRound,
+    partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation, ComponentPoly,
+    PartialSumcheckProof, SumcheckError, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound,
 };
-use slop_sumcheck_prover::reduce_sumcheck_to_evaluation;
 use slop_utils::{log2_ceil_usize, log2_strict_usize};
 
 use std::iter::repeat;
 
 use crate::{JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams};
+
+type StackedProof<Pcs> = StackedPcsProof<
+    <Pcs as MultilinearPcsBatchVerifier>::Proof,
+    <Pcs as MultilinearPcsBatchVerifier>::EF,
+>;
+
+type Com<Pcs> = <Pcs as MultilinearPcsBatchVerifier>::Commitment;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum JaggedPcsError<PcsError, SumcheckError> {
@@ -39,65 +45,68 @@ pub struct JaggedPcs<Pcs> {
     pub max_log_row_count: usize,
 }
 
-impl<Pcs: MultilinearPcsVerifier> MultilinearPcsBatchVerifier for JaggedPcs<Pcs>
+impl<Pcs> JaggedPcs<Pcs> {
+    pub fn new(pcs: Pcs, max_log_row_count: usize) -> Self {
+        Self { pcs, max_log_row_count }
+    }
+}
+
+impl<Pcs: MultilinearPcsVerifier> JaggedPcs<Pcs>
 where
-    Pcs::Challenger: CanObserve<Pcs::F> + CanSample<Pcs::EF>,
+    Pcs::Challenger: FieldChallenger<Pcs::F> + CanObserve<Pcs::Commitment>,
     Pcs::EF: Field,
     Pcs::Proof: Serialize + DeserializeOwned + Clone,
 {
-    type F = Pcs::F;
-
-    type EF = Pcs::EF;
-
-    type Proof = JaggedPcsProof<Pcs::Proof, Pcs::EF>;
-
-    type Commitment = Pcs::Commitment;
-
-    type Error = JaggedPcsError<Pcs::Error, SumcheckError>;
-
-    type Challenger = Pcs::Challenger;
-
-    fn verify_trusted_evaluations(
+    pub fn verify_trusted_evaluations(
         &self,
-        point: Point<Self::EF>,
-        evaluation_claims: &[&[Self::EF]],
-        commitment: Self::Commitment,
-        proof: &Self::Proof,
-        challenger: &mut Self::Challenger,
-    ) -> Result<(), Self::Error> {
+        point: Point<Pcs::EF>,
+        evaluation_claims: &[&[&[Pcs::EF]]],
+        commitment: &[Pcs::Commitment],
+        proof: &JaggedPcsProof<Pcs::Proof, Pcs::EF>,
+        // `insertion_points` is the running sum of the number of matrices in each commit. Its length
+        // should be one less than the number of commitments (the finalization commitment is not included).
+        insertion_points: &[usize],
+        challenger: &mut Pcs::Challenger,
+    ) -> Result<(), JaggedPcsError<Pcs::Error, SumcheckError>> {
         let JaggedPcsProof { pcs_proof, sumcheck_proof, params } = proof;
-        let z_col = Point::new(
-            (0..params.max_log_column_count)
-                .map(|_| challenger.sample_ext_element::<Self::EF>())
-                .collect(),
-        );
+        let z_col = (0..params.max_log_column_count)
+            .map(|_| challenger.sample_ext_element::<Pcs::EF>())
+            .collect::<Point<_>>();
 
         let z_row = point;
 
-        let z_tab = Point::new(
-            (0..log2_ceil_usize(params.column_counts.len()))
-                .map(|_| challenger.sample_ext_element::<Self::EF>())
-                .collect(),
-        );
+        let z_tab = (0..log2_ceil_usize(params.column_counts.len()))
+            .map(|_| challenger.sample_ext_element::<Pcs::EF>())
+            .collect();
 
-        let table_claims = evaluation_claims
+        let mut table_claims = evaluation_claims
             .iter()
-            .map(|x| {
-                Mle::eval_at_point(
-                    &x.iter()
+            .flat_map(|x| {
+                x.iter().map(|y| {
+                    y.iter()
                         .copied()
-                        .chain(repeat(Self::EF::zero()))
+                        .chain(repeat(Pcs::EF::zero()))
                         .take(1 << z_col.dimension())
-                        .collect::<Vec<_>>()
-                        .into(),
-                    &z_col,
-                )
+                        .collect::<Mle<_>>()
+                        .eval_at(&z_col)[0]
+                })
             })
             .collect::<Vec<_>>();
 
-        let sumcheck_claim = Mle::eval_at_point(&table_claims.into(), &z_tab);
+        // For each commit, Rizz needed a commitment to a vector of length a multiple of
+        // 1 << self.pcs.log_stacking_height, and this is achieved by adding a single column of zeroes
+        // as the last matrix of the commitment. We insert these "artificial" zeroes into the evaluation
+        // claims.
+        for insertion_point in insertion_points.iter().rev() {
+            table_claims.insert(*insertion_point, Pcs::EF::zero());
+        }
+        let table_claims = Mle::from(table_claims);
+
+        let sumcheck_claim = table_claims.eval_at(&z_tab)[0];
 
         assert!(sumcheck_claim == sumcheck_proof.claimed_sum);
+
+        let _lambda = challenger.sample_ext_element::<Pcs::EF>();
 
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsError::SumcheckError)?;
@@ -119,6 +128,43 @@ where
             challenger,
         )
         .map_err(JaggedPcsError::PcsError)
+    }
+}
+
+pub struct MachineJaggedPcs<Pcs: MultilinearPcsVerifier> {
+    pub pcs: JaggedPcs<Pcs>,
+    pub table_counts_by_round: Vec<usize>,
+}
+
+impl<Pcs: MultilinearPcsVerifier> MachineJaggedPcs<Pcs>
+where
+    Pcs::Challenger: FieldChallenger<Pcs::F> + CanObserve<Pcs::Commitment>,
+    Pcs::EF: Field,
+    Pcs::Proof: Serialize + DeserializeOwned + Clone,
+{
+    pub fn verify_trusted_evaluations(
+        &self,
+        point: Point<Pcs::EF>,
+        evaluation_claims: &[&[&[Pcs::EF]]],
+        commitments: &[Pcs::Commitment],
+        proof: &JaggedPcsProof<Pcs::Proof, Pcs::EF>,
+        challenger: &mut Pcs::Challenger,
+    ) -> Result<(), JaggedPcsError<Pcs::Error, SumcheckError>> {
+        self.pcs.verify_trusted_evaluations(
+            point,
+            evaluation_claims,
+            commitments,
+            proof,
+            &self
+                .table_counts_by_round
+                .iter()
+                .scan(0, |state, y| {
+                    *state += y;
+                    Some(*state)
+                })
+                .collect::<Vec<_>>(),
+            challenger,
+        )
     }
 }
 
@@ -144,95 +190,126 @@ impl<K: Field, EK: ExtensionField<K>> JaggedSumcheckPoly<K, EK> {
     }
 }
 
-impl<Pcs: MultilinearPcsBatchProver> MultilinearPcsBatchProver for JaggedPcs<StackedPcsProver<Pcs>>
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JaggedProverData<ProverData> {
+    base_data: ProverData,
+    row_counts: Vec<usize>,
+    column_counts: Vec<usize>,
+}
+
+impl<Pcs: MultilinearPcsBatchProver> JaggedPcs<StackedPcsProver<Pcs>>
 where
     Pcs::MultilinearProverData:
         MainTraceProverData<RowMajorMatrix<<Pcs::PCS as MultilinearPcsBatchVerifier>::F>>,
-    <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger: CanObserve<<Pcs::PCS as MultilinearPcsBatchVerifier>::F>
-        + CanSample<<Pcs::PCS as MultilinearPcsBatchVerifier>::EF>,
+    <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger: FieldChallenger<<Pcs::PCS as MultilinearPcsBatchVerifier>::F>
+        + CanObserve<<Pcs::PCS as MultilinearPcsBatchVerifier>::Commitment>,
     <Pcs::PCS as MultilinearPcsBatchVerifier>::Proof: Clone + Serialize + DeserializeOwned,
 {
-    type PCS = JaggedPcs<StackedPcsVerifier<Pcs::PCS>>;
-
-    type MultilinearProverData = (Pcs::MultilinearProverData, Vec<usize>, Vec<usize>);
-
-    fn commit_multilinears(
+    pub fn commit_multilinears(
         &self,
-        data: Vec<RowMajorMatrix<<Self::PCS as MultilinearPcsBatchVerifier>::F>>,
-    ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::Commitment, Self::MultilinearProverData) {
-        let row_counts = data.iter().map(|x| x.height()).collect::<Vec<_>>();
+        data: Vec<RowMajorMatrix<<Pcs::PCS as MultilinearPcsBatchVerifier>::F>>,
+    ) -> (
+        <Pcs::PCS as MultilinearPcsBatchVerifier>::Commitment,
+        JaggedProverData<Pcs::MultilinearProverData>,
+    ) {
+        let mut row_counts = data.iter().map(|x| x.height()).collect::<Vec<_>>();
 
-        let column_counts = data.iter().map(|x| x.width()).collect::<Vec<_>>();
+        let mut column_counts = data.iter().map(|x| x.width()).collect::<Vec<_>>();
+
+        column_counts.push(1);
+
+        let next_multiple = data
+            .iter()
+            .map(|mat| mat.values.len())
+            .sum::<usize>()
+            .next_multiple_of(1 << self.pcs.log_stacking_height);
+
+        let next_multiple =
+            if next_multiple > 0 { next_multiple } else { 1 << self.pcs.log_stacking_height };
+
+        row_counts.push(next_multiple - data.iter().map(|mat| mat.values.len()).sum::<usize>());
+
         let (commitment, data) =
             self.pcs.commit_multilinear(data.into_iter().map(|x| x.values).collect());
-        (commitment, (data, row_counts, column_counts))
+        (commitment, JaggedProverData { base_data: data, row_counts, column_counts })
     }
 
-    fn prove_trusted_evaluations(
+    pub fn prove_trusted_evaluations(
         &self,
-        eval_point: Point<<Self::PCS as MultilinearPcsBatchVerifier>::EF>,
-        expected_evals: &[&[<Self::PCS as MultilinearPcsBatchVerifier>::EF]],
-        prover_data: Self::MultilinearProverData,
-        challenger: &mut <Self::PCS as MultilinearPcsBatchVerifier>::Challenger,
-    ) -> <Self::PCS as MultilinearPcsBatchVerifier>::Proof {
-        let z_col = Point::new(
-            (0..log2_strict_usize(*prover_data.2.iter().max().unwrap()))
-                .map(|_| {
-                    challenger
-                        .sample_ext_element::<<Self::PCS as MultilinearPcsBatchVerifier>::EF>()
-                })
-                .collect(),
-        );
+        eval_point: Point<<Pcs::PCS as MultilinearPcsBatchVerifier>::EF>,
+        expected_evals: &[&[&[<Pcs::PCS as MultilinearPcsBatchVerifier>::EF]]],
+        prover_data: &[JaggedProverData<Pcs::MultilinearProverData>],
+        challenger: &mut <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger,
+    ) -> JaggedPcsProof<StackedProof<Pcs::PCS>, <Pcs::PCS as MultilinearPcsBatchVerifier>::EF> {
+        let z_col = (0..log2_strict_usize(
+            *prover_data.iter().map(|data| data.column_counts.iter().max().unwrap()).max().unwrap(),
+        ))
+            .map(|_| {
+                challenger.sample_ext_element::<<Pcs::PCS as MultilinearPcsBatchVerifier>::EF>()
+            })
+            .collect::<Point<_>>();
 
         let z_row = eval_point;
 
-        let z_tab = Point::new(
-            (0..log2_ceil_usize(prover_data.2.len()))
+        let z_tab =
+            (0..log2_ceil_usize(prover_data.iter().map(|data| data.column_counts.len()).sum()))
                 .map(|_| {
-                    challenger
-                        .sample_ext_element::<<Self::PCS as MultilinearPcsBatchVerifier>::EF>()
+                    challenger.sample_ext_element::<<Pcs::PCS as MultilinearPcsBatchVerifier>::EF>()
                 })
-                .collect(),
-        );
+                .collect();
 
-        let table_claims = tracing::info_span!("compute expected evaluations").in_scope(|| {
+        let mut table_claims = tracing::info_span!("compute expected evaluations").in_scope(|| {
             expected_evals
                 .iter()
-                .map(|x| {
-                    Mle::eval_at_point(
-                        &x.iter()
+                .flat_map(|x| {
+                    x.iter().map(|y| {
+                        y.iter()
                             .copied()
-                            .chain(repeat(<Self::PCS as MultilinearPcsBatchVerifier>::EF::zero()))
-                            .take(*prover_data.2.iter().max().unwrap())
-                            .collect::<Vec<_>>()
-                            .into(),
-                        &z_col,
-                    )
+                            .chain(repeat(<Pcs::PCS as MultilinearPcsBatchVerifier>::EF::zero()))
+                            .take(1 << z_col.dimension())
+                            .collect::<Mle<_>>()
+                            .eval_at(&z_col)[0]
+                    })
                 })
                 .collect::<Vec<_>>()
         });
 
+        let insertion_points = prover_data
+            .iter()
+            .map(|data| data.column_counts.len() - 1)
+            .scan(0, |state, x| {
+                *state += x;
+                Some(*state)
+            })
+            .collect::<Vec<_>>();
+
+        for insertion_point in insertion_points.iter().rev().skip(1) {
+            table_claims
+                .insert(*insertion_point, <Pcs::PCS as MultilinearPcsBatchVerifier>::EF::zero());
+        }
+
         let params = JaggedLittlePolynomialProverParams::new(
-            prover_data.1,
-            prover_data.2,
+            prover_data.iter().flat_map(|data| data.row_counts.iter().copied()).collect(),
+            prover_data.iter().flat_map(|data| data.column_counts.iter().copied()).collect(),
             self.max_log_row_count,
         );
 
-        let (base_data, table_data) = prover_data.0.split_off_main_traces();
+        let (_, table_data): (Vec<_>, Vec<_>) =
+            prover_data.iter().map(|x| x.base_data.split_off_main_traces()).unzip();
+
+        // TODO: Eliminate this clone.
+        let table_data_vec = table_data
+            .iter()
+            .flat_map(|y| y.iter())
+            .flat_map(|x| x.clone().transpose().values.into_iter())
+            .collect::<Vec<_>>();
 
         let sumcheck_poly = tracing::info_span!("make sumcheck poly").in_scope(|| {
             JaggedSumcheckPoly::<
-                <Self::PCS as MultilinearPcsBatchVerifier>::F,
-                <Self::PCS as MultilinearPcsBatchVerifier>::EF,
+                <Pcs::PCS as MultilinearPcsBatchVerifier>::F,
+                <Pcs::PCS as MultilinearPcsBatchVerifier>::EF,
             >::new(
-                tracing::info_span!("assemble traces").in_scope(|| {
-                    table_data
-                        .iter()
-                        // TODO: Remove this clone.
-                        .flat_map(|x| x.clone().transpose().values.into_iter())
-                        .collect::<Vec<_>>()
-                        .into()
-                }),
+                tracing::info_span!("assemble traces").in_scope(|| table_data_vec.into()),
                 params.clone(),
                 &z_tab,
                 &z_row,
@@ -242,9 +319,10 @@ where
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
         // table claims.
-        let sumcheck_claim = Mle::eval_at_point(&table_claims.into(), &z_tab);
+        let table_claims = Mle::from(table_claims);
+        let sumcheck_claim = table_claims.eval_at(&z_tab)[0];
 
-        let lambda = challenger.sample();
+        let lambda = challenger.sample_ext_element();
 
         let (sumcheck_proof, component_poly_evals) = tracing::info_span!("generate sumcheck proof")
             .in_scope(|| {
@@ -257,18 +335,53 @@ where
                 )
             });
 
-        let orig_prover_data = Pcs::MultilinearProverData::reconstitute(base_data, table_data);
+        // let orig_prover_data: Vec<_> = base_data
+        //     .into_iter()
+        //     .zip(table_data)
+        //     .map(|(base, table)| Pcs::MultilinearProverData::reconstitute(base, table))
+        //     .collect();
 
         let pcs_proof = tracing::info_span!("generate stacked pcs proof").in_scope(|| {
             self.pcs.prove_trusted_evaluation(
                 sumcheck_proof.point_and_eval.0.clone(),
                 component_poly_evals[0][0],
-                orig_prover_data,
+                prover_data.iter().map(|x| &x.base_data).collect(),
                 challenger,
             )
         });
 
         JaggedPcsProof { pcs_proof, sumcheck_proof, params: params.into_verifier_params() }
+    }
+
+    pub fn finalize(
+        &self,
+        data: &mut Vec<JaggedProverData<Pcs::MultilinearProverData>>,
+        commits: &mut Vec<Com<Pcs::PCS>>,
+    ) {
+        let total_area = data
+            .iter()
+            .map(|x| {
+                x.column_counts
+                    .iter()
+                    .zip(x.row_counts.iter())
+                    .map(|(col_count, row_count)| (col_count * row_count))
+                    .sum::<usize>()
+            })
+            .sum::<usize>();
+        let needed_zeroes = total_area.next_power_of_two() - total_area;
+
+        let new_matrix = RowMajorMatrix::new(
+            repeat(<Pcs::PCS as MultilinearPcsBatchVerifier>::F::zero())
+                .take(needed_zeroes)
+                .collect(),
+            (needed_zeroes / (1 << self.max_log_row_count)).next_power_of_two(),
+        );
+
+        if needed_zeroes != 0 {
+            let (commit, new_data) = self.commit_multilinears(vec![new_matrix]);
+            commits.push(commit);
+            data.push(new_data);
+        }
     }
 }
 
@@ -283,32 +396,35 @@ impl<K: Field, EK: ExtensionField<K>> JaggedSumcheckPoly<K, EK> {
         // The sumcheck polynomial is a multi-quadratic polynomial, so three evaluations are needed.
         let eval_0 = self
             .jagged_evals
-            .guts
+            .guts()
+            .as_slice()
             .par_iter()
             .step_by(2)
-            .zip(self.mle.guts.par_iter().step_by(2))
+            .zip(self.mle.guts().as_slice().par_iter().step_by(2))
             .map(|(x, y)| *x * *y)
             .sum();
 
         let eval_1 = claim.map(|x| x - eval_0).unwrap_or(
             self.jagged_evals
-                .guts
+                .guts()
+                .as_slice()
                 .par_iter()
                 .skip(1)
                 .step_by(2)
-                .zip(self.mle.guts.par_iter().skip(1).step_by(2))
+                .zip(self.mle.guts().as_slice().par_iter().skip(1).step_by(2))
                 .map(|(x, y)| *x * *y)
                 .sum(),
         );
 
         let eval_half: EK = self
             .jagged_evals
-            .guts
+            .guts()
+            .as_slice()
             .par_iter()
             .step_by(2)
-            .zip(self.jagged_evals.guts.par_iter().skip(1).step_by(2))
-            .zip(self.mle.guts.par_iter().step_by(2))
-            .zip(self.mle.guts.par_iter().skip(1).step_by(2))
+            .zip(self.jagged_evals.guts().as_slice().par_iter().skip(1).step_by(2))
+            .zip(self.mle.guts().as_slice().par_iter().step_by(2))
+            .zip(self.mle.guts().as_slice().par_iter().skip(1).step_by(2))
             .map(|(((je_0, je_1), mle_0), mle_1)| (*je_0 + *je_1) * (*mle_0 + *mle_1))
             .sum();
 
@@ -322,22 +438,24 @@ impl<K: Field, EK: ExtensionField<K>> JaggedSumcheckPoly<K, EK> {
         )
     }
 
-    fn n_variables(&self) -> usize {
+    fn n_variables(&self) -> u32 {
         assert!(self.mle.num_variables() == self.jagged_evals.num_variables());
         self.mle.num_variables()
     }
 
     fn get_component_poly_evals(&self) -> Vec<EK> {
         assert!(self.mle.num_variables() == 0);
-        vec![EK::from_base(self.mle.guts[0]), self.jagged_evals.guts[0]]
+        vec![EK::from_base(*self.mle.guts()[[0, 0]]), *self.jagged_evals.guts()[[0, 0]]]
     }
 }
 
-impl<K: Field, EK: ExtensionField<K>> SumcheckPolyBase<EK> for JaggedSumcheckPoly<K, EK> {
-    fn n_variables(&self) -> usize {
+impl<K: Field, EK: ExtensionField<K>> SumcheckPolyBase for JaggedSumcheckPoly<K, EK> {
+    fn n_variables(&self) -> u32 {
         self.n_variables()
     }
+}
 
+impl<K: Field, EK: ExtensionField<K>> ComponentPoly<EK> for JaggedSumcheckPoly<K, EK> {
     fn get_component_poly_evals(&self) -> Vec<EK> {
         self.get_component_poly_evals()
     }
@@ -362,7 +480,7 @@ impl<EK: Field> SumcheckPoly<EK> for JaggedSumcheckPoly<EK, EK> {
 impl<K: Field, EK: ExtensionField<K>> SumcheckPolyFirstRound<EK> for JaggedSumcheckPoly<K, EK> {
     fn fix_t_variables(self, alpha: EK, t: usize) -> impl SumcheckPoly<EK> {
         assert!(t == 1);
-        let new_mle: Mle<EK> = self.mle.sc_fix_last_variable(alpha);
+        let new_mle: Mle<EK> = self.mle.fix_last_variable(alpha);
         let new_jagged_evals = self.jagged_evals.fix_last_variable(alpha);
 
         JaggedSumcheckPoly::<EK, EK> { mle: new_mle, jagged_evals: new_jagged_evals }
@@ -370,10 +488,10 @@ impl<K: Field, EK: ExtensionField<K>> SumcheckPolyFirstRound<EK> for JaggedSumch
 
     fn sum_as_poly_in_last_t_variables(
         &self,
-        _claim: Option<EK>,
+        claim: Option<EK>,
         t: usize,
     ) -> slop_algebra::UnivariatePolynomial<EK> {
         assert!(t == 1);
-        self.sum_as_poly_in_last_variable(None)
+        self.sum_as_poly_in_last_variable(claim)
     }
 }

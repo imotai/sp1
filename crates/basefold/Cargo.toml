@@ -16,6 +16,11 @@ slop-utils = { workspace = true }
 slop-commit = { workspace = true }
 slop-fri = { workspace = true }
 slop-matrix = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-poseidon2 = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-dft = { workspace = true }
 
 thiserror = "1.0"
 itertools = "0.12.0"

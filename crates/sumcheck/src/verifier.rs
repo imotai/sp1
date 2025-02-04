@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use slop_algebra::{ExtensionField, Field};
-use slop_challenger::{CanObserve, CanSample};
+use slop_challenger::FieldChallenger;
 use slop_multilinear::Point;
 
 use crate::PartialSumcheckProof;
@@ -23,7 +23,7 @@ impl Display for SumcheckError {
 pub fn partially_verify_sumcheck_proof<
     F: Field,
     EF: ExtensionField<F>,
-    Challenger: CanObserve<F> + CanSample<EF>,
+    Challenger: FieldChallenger<F>,
 >(
     proof: &PartialSumcheckProof<EF>,
     challenger: &mut Challenger,
@@ -54,7 +54,7 @@ pub fn partially_verify_sumcheck_proof<
     let mut previous_poly = first_poly;
 
     for poly in proof.univariate_polys.iter().skip(1) {
-        let alpha = challenger.sample();
+        let alpha = challenger.sample_ext_element();
         alpha_point.add_dimension(alpha);
         let expected_eval = previous_poly.eval_at_point(alpha);
         if expected_eval != poly.eval_one_plus_eval_zero() {
@@ -66,7 +66,7 @@ pub fn partially_verify_sumcheck_proof<
         previous_poly = poly;
     }
 
-    let alpha = challenger.sample();
+    let alpha = challenger.sample_ext_element();
     alpha_point.add_dimension(alpha);
 
     // Check that the randomness generated for the prover is the same as the one obtained by the

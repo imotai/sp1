@@ -22,13 +22,15 @@
 //! grade-school algorithm.
 use std::collections::BTreeMap;
 
+use rayon::prelude::*;
+
 use itertools::all;
-use rayon::iter::{repeat, IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{repeat, IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field};
 use slop_utils::{log2_ceil_usize, log2_strict_usize};
 
-use slop_multilinear::{partial_lagrange_eval, Mle, Point};
+use slop_multilinear::{Mle, Point};
 
 /// The state space of the carry in the branching program.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -244,7 +246,7 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
                 // For `z_tab` on the Boolean hypercube, this is the delta function to pick out
                 // table number `table_num`.
                 let z_tab_correction = if z_tab.dimension() != 0 {
-                    partial_lagrange_eval(z_tab)[table_num].clone()
+                    Mle::partial_lagrange(z_tab).guts().as_slice()[table_num].clone()
                 } else {
                     K::one()
                 };
@@ -253,7 +255,9 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
                     // For `z_col` on the Boolean hypercube, this is the delta function to pick out
                     // the right column count for the current table.
                     let c_tab_correction = if column_count.dimension() != 0 {
-                        partial_lagrange_eval(&column_count)[1 << log_column_count].clone()
+                        Mle::partial_lagrange(&column_count).guts().as_slice()
+                            [1 << log_column_count]
+                            .clone()
                     } else {
                         K::one()
                     };
@@ -261,7 +265,7 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
                     // For `z_row` on the Boolean hypercube, this is the delta function to pick out
                     // the correct row count for the current table.
                     let z_row_correction: K = z_row
-                        .reversed_point()
+                        .reversed()
                         .iter()
                         .skip(log_m + 1 - log_column_count)
                         .map(|z| K::one() - z.clone())
@@ -296,22 +300,21 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
                             // We assume that bits are aligned in big-endian order. The algorithm,
                             // in the ith layer, looks at the ith least significant bit, which is
                             // the m - 1 - i th bit if the bits are in a bit array in big-endian.
-                            let point = Point::<K>::new(vec![
-                                z_row
-                                    .reversed_point()
-                                    .ith_coordinate_or_default(layer.checked_sub(log_column_count)),
-                                z_col.reversed_point().ith_coordinate_or_default(Some(layer)),
-                                z_index.reversed_point().ith_coordinate_or_default(Some(layer)),
-                                prefix_sum.reversed_point().ith_coordinate_or_default(Some(layer)),
-                                next_prefix_sum
-                                    .reversed_point()
-                                    .ith_coordinate_or_default(Some(layer)),
+                            let point = Point::<K>::from(vec![
+                                layer
+                                    .checked_sub(log_column_count)
+                                    .and_then(|i| z_row.reversed().get(i).cloned())
+                                    .unwrap_or_default(),
+                                z_col.reversed().get(layer).cloned().unwrap_or_default(),
+                                z_index.reversed().get(layer).cloned().unwrap_or_default(),
+                                prefix_sum.reversed().get(layer).cloned().unwrap_or_default(),
+                                next_prefix_sum.reversed().get(layer).cloned().unwrap_or_default(),
                             ]);
-                            let five_var_eq = partial_lagrange_eval(&point);
+                            let five_var_eq = Mle::partial_lagrange(&point);
 
                             // For each possible bit state, compute the result of the branching
                             // program transition function and modify the accumulator accordingly.
-                            for (i, elem) in five_var_eq.iter().enumerate() {
+                            for (i, elem) in five_var_eq.guts().as_slice().iter().enumerate() {
                                 let bit_state = &bit_states[i];
 
                                 let state_or_fail = transition_function(
@@ -378,6 +381,8 @@ impl JaggedLittlePolynomialProverParams {
 
         assert!(all(column_counts_usize.iter(), |&x| x.is_power_of_two()));
 
+        assert!(prefix_sums_usize.last().unwrap().is_power_of_two());
+
         let max_log_column_count = log2_strict_usize(*column_counts_usize.iter().max().unwrap());
         JaggedLittlePolynomialProverParams {
             max_log_column_count,
@@ -398,9 +403,9 @@ impl JaggedLittlePolynomialProverParams {
         let log_total_area = log2_ceil_usize(*self.prefix_sums_usize.last().unwrap());
 
         let log_table_count = log2_ceil_usize(self.table_count);
-        let tab_eq = partial_lagrange_eval(&z_tab.last_k(log_table_count));
-        let col_eq = partial_lagrange_eval(&z_col.last_k(self.max_log_column_count));
-        let row_eq = partial_lagrange_eval(&z_row.last_k(self.max_log_row_count));
+        let tab_eq = Mle::partial_lagrange(&z_tab.last_k(log_table_count));
+        let col_eq = Mle::partial_lagrange(&z_col.last_k(self.max_log_column_count));
+        let row_eq = Mle::partial_lagrange(&z_row.last_k(self.max_log_row_count));
 
         let mut result = Vec::new();
         tracing::info_span!("compute jagged polynomial entries").in_scope(|| {
@@ -411,9 +416,9 @@ impl JaggedLittlePolynomialProverParams {
                     let row = (index - self.prefix_sums_usize[tab]) / self.column_counts_usize[tab];
                     let col = (index - self.prefix_sums_usize[tab]) % self.column_counts_usize[tab];
 
-                    let tab_eq_val = tab_eq[tab];
-                    let col_eq_val = col_eq[col];
-                    let row_eq_val = row_eq[row];
+                    let tab_eq_val = tab_eq.guts().as_slice()[tab];
+                    let col_eq_val = col_eq.guts().as_slice()[col];
+                    let row_eq_val = row_eq.guts().as_slice()[row];
 
                     tab_eq_val * col_eq_val * row_eq_val
                 })
@@ -432,17 +437,17 @@ impl JaggedLittlePolynomialProverParams {
     pub fn into_verifier_params<K: Field>(self) -> JaggedLittlePolynomialVerifierParams<K> {
         let log_m = log2_ceil_usize(*self.prefix_sums_usize.last().unwrap());
         let prefix_sums =
-            self.prefix_sums_usize.iter().map(|&x| point_from_usize(x, log_m + 1)).collect();
+            self.prefix_sums_usize.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
         let next_prefix_sums = self
             .prefix_sums_usize
             .iter()
             .skip(1)
-            .map(|&x| point_from_usize(x - 1, log_m + 1))
+            .map(|&x| Point::from_usize(x - 1, log_m + 1))
             .collect();
         let column_counts = self
             .column_counts_usize
             .iter()
-            .map(|&x| point_from_usize(x, self.max_log_column_count + 1))
+            .map(|&x| Point::from_usize(x, self.max_log_column_count + 1))
             .collect();
         JaggedLittlePolynomialVerifierParams {
             max_log_column_count: self.max_log_column_count,
@@ -456,18 +461,12 @@ impl JaggedLittlePolynomialProverParams {
     }
 }
 
-/// A helper function to make a `Point<K>` from a usize.
-pub fn point_from_usize<F: AbstractField>(num: usize, log_m: usize) -> Point<F> {
-    Point::new((0..log_m).rev().map(|i| F::from_canonical_usize((num >> i) & 1)).collect())
-}
-
 #[cfg(test)]
 pub mod tests {
     use rand::Rng;
     use slop_baby_bear::BabyBear;
     use slop_utils::log2_ceil_usize;
     type F = BabyBear;
-    use crate::point_from_usize;
     use slop_algebra::AbstractField;
 
     use slop_multilinear::Point;
@@ -481,11 +480,11 @@ pub mod tests {
                     let row = index >> log_num_cols;
                     let col = index & ((1 << log_num_cols) - 1);
 
-                    let mut z_row = point_from_usize::<F>(row, log_num_rows + 1);
-                    let mut z_col = point_from_usize(col, log_num_cols + 1);
-                    let z_index = point_from_usize(index, log_m + 1);
+                    let mut z_row = Point::<F>::from_usize(row, log_num_rows + 1);
+                    let mut z_col = Point::<F>::from_usize(col, log_num_cols + 1);
+                    let z_index = Point::<F>::from_usize(index, log_m + 1);
 
-                    let z_tab = point_from_usize(0, 1);
+                    let z_tab = Point::<F>::from_usize(0, 1);
 
                     let prover_params = super::JaggedLittlePolynomialProverParams::new(
                         vec![1 << log_num_rows],
@@ -510,13 +509,13 @@ pub mod tests {
                                     &z_tab,
                                     &z_row,
                                     &z_col,
-                                    &point_from_usize(other_index, log_m)
+                                    &Point::<F>::from_usize(other_index, log_m)
                                 ) == F::zero()
                             );
                         }
                     }
 
-                    z_row = point_from_usize(row ^ 1, log_num_rows + 1);
+                    z_row = Point::<F>::from_usize(row ^ 1, log_num_rows + 1);
 
                     let wrong_result = verifier_params.full_jagged_little_polynomial_evaluation(
                         &z_tab,
@@ -526,33 +525,33 @@ pub mod tests {
                     );
                     assert_eq!(wrong_result, F::zero());
 
-                    z_row = point_from_usize(row, log_num_rows + 1);
-                    z_col = point_from_usize(col ^ 1, log_num_cols + 1);
+                    z_row = Point::<F>::from_usize(row, log_num_rows + 1);
+                    z_col = Point::<F>::from_usize(col ^ 1, log_num_cols + 1);
 
                     let wrong_result = verifier_params
                         .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index);
                     assert_eq!(wrong_result, F::zero());
 
-                    z_col = point_from_usize(col, log_num_cols + 1);
+                    z_col = Point::<F>::from_usize(col, log_num_cols + 1);
                     let wrong_result = verifier_params.full_jagged_little_polynomial_evaluation(
                         &z_tab,
                         &z_row,
                         &z_col,
-                        &point_from_usize(index ^ 1, log_num_cols + 1),
+                        &Point::<F>::from_usize(index ^ 1, log_num_cols + 1),
                     );
                     assert_eq!(wrong_result, F::zero());
 
                     let mut rng = rand::thread_rng();
 
                     for _ in 0..3 {
-                        let z_index = Point::new((0..log_m).map(|_| rng.gen::<F>()).collect());
+                        let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
                         assert_eq!(
                             verifier_params.full_jagged_little_polynomial_evaluation(
                                 &z_tab, &z_row, &z_col, &z_index
                             ),
                             prover_params
                                 .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                                .eval_at_point(&z_index)
+                                .eval_at(&z_index)[0]
                         );
                     }
                 }
@@ -588,9 +587,9 @@ pub mod tests {
             let tab = prefix_sums.iter().rposition(|&x| index >= x).unwrap();
             let row = (index - prefix_sums[tab]) / column_counts[tab];
             let col = (index - prefix_sums[tab]) % column_counts[tab];
-            let z_tab = point_from_usize::<F>(tab, log2_ceil_usize(column_counts.len()));
-            let z_row = point_from_usize(row, log_max_row_count);
-            let z_col = point_from_usize(col, log_max_column_count);
+            let z_tab = Point::<F>::from_usize(tab, log2_ceil_usize(column_counts.len()));
+            let z_row = Point::<F>::from_usize(row, log_max_row_count);
+            let z_col = Point::<F>::from_usize(col, log_max_column_count);
             let params = super::JaggedLittlePolynomialProverParams::new(
                 row_counts.to_vec(),
                 column_counts.to_vec(),
@@ -602,14 +601,14 @@ pub mod tests {
                 for new_row in 0..(1 << log_max_row_count) {
                     for new_col in 0..(1 << log_max_column_count) {
                         if !(new_col == col && new_row == row && new_tab == tab) {
-                            let z_index = point_from_usize(index, log_m);
+                            let z_index = Point::<F>::from_usize(index, log_m);
 
-                            let new_z_tab = point_from_usize::<F>(
+                            let new_z_tab = Point::<F>::from_usize(
                                 new_tab,
                                 log2_ceil_usize(column_counts.len()),
                             );
-                            let new_z_row = point_from_usize(new_row, log_max_row_count);
-                            let new_z_col = point_from_usize(new_col, log_max_column_count);
+                            let new_z_row = Point::<F>::from_usize(new_row, log_max_row_count);
+                            let new_z_col = Point::<F>::from_usize(new_col, log_max_column_count);
 
                             let result = verifier_params.full_jagged_little_polynomial_evaluation(
                                 &new_z_tab, &new_z_row, &new_z_col, &z_index,
@@ -620,7 +619,7 @@ pub mod tests {
                                     .partial_jagged_little_polynomial_evaluation(
                                         &new_z_tab, &new_z_row, &new_z_col
                                     )
-                                    .eval_at_point(&z_index),
+                                    .eval_at(&z_index)[0],
                                 F::zero()
                             );
                         }
@@ -630,7 +629,7 @@ pub mod tests {
 
             let verifier_params = params.clone().into_verifier_params();
 
-            let z_index = point_from_usize(index, log_m);
+            let z_index = Point::from_usize(index, log_m);
             let result = verifier_params
                 .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index);
             assert_eq!(result, F::one());
@@ -642,26 +641,26 @@ pub mod tests {
                             &z_tab,
                             &z_row,
                             &z_col,
-                            &point_from_usize(other_index, log_m)
+                            &Point::from_usize(other_index, log_m)
                         ) == F::zero()
                     );
 
                     assert!(
                         params
                             .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                            .eval_at_point(&point_from_usize::<F>(other_index, log_m))
+                            .eval_at(&Point::<F>::from_usize(other_index, log_m))[0]
                             == F::zero()
                     );
                 }
             }
 
-            let z_index = Point::new((0..log_m).map(|_| F::zero()).collect());
+            let z_index: Point<F> = (0..log_m).map(|_| F::zero()).collect();
             assert_eq!(
                 verifier_params
                     .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index),
                 params
                     .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                    .eval_at_point(&z_index)
+                    .eval_at(&z_index)[0]
             );
         }
 
@@ -673,21 +672,21 @@ pub mod tests {
             log_max_row_count,
         );
 
-        let z_tab =
-            Point::new((0..log2_ceil_usize(column_counts.len())).map(|_| rng.gen::<F>()).collect());
-        let z_row = Point::new((0..log_max_row_count).map(|_| rng.gen::<F>()).collect());
-        let z_col = Point::new((0..log_max_column_count).map(|_| rng.gen::<F>()).collect());
+        let z_tab: Point<F> =
+            (0..log2_ceil_usize(column_counts.len())).map(|_| rng.gen::<F>()).collect();
+        let z_row: Point<F> = (0..log_max_row_count).map(|_| rng.gen::<F>()).collect();
+        let z_col = (0..log_max_column_count).map(|_| rng.gen::<F>()).collect::<Point<_>>();
 
         let verifier_params = params.clone().into_verifier_params();
 
         for _ in 0..100 {
-            let z_index = Point::new((0..log_m).map(|_| rng.gen::<F>()).collect());
+            let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
             assert_eq!(
                 verifier_params
                     .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index),
                 params
                     .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                    .eval_at_point(&z_index)
+                    .eval_at(&z_index)[0]
             );
         }
     }
@@ -699,9 +698,9 @@ pub mod tests {
             for log_num_cols in 0..5 {
                 for log_num_tables in 0..2 {
                     let log_m = log_num_cols + log_num_rows + log_num_tables;
-                    let z_row = Point::new((0..log_num_rows).map(|_| rng.gen::<F>()).collect());
-                    let z_col = Point::new((0..log_num_cols).map(|_| rng.gen::<F>()).collect());
-                    let z_tab = Point::new((0..log_num_tables).map(|_| rng.gen::<F>()).collect());
+                    let z_row: Point<F> = (0..log_num_rows).map(|_| rng.gen::<F>()).collect();
+                    let z_col: Point<F> = (0..log_num_cols).map(|_| rng.gen::<F>()).collect();
+                    let z_tab: Point<F> = (0..log_num_tables).map(|_| rng.gen::<F>()).collect();
 
                     for index in 0..(1 << (log_num_cols + log_num_rows + log_num_cols)) {
                         let params = super::JaggedLittlePolynomialProverParams::new(
@@ -712,24 +711,24 @@ pub mod tests {
 
                         let verifier_params = params.clone().into_verifier_params();
 
-                        let z_index = point_from_usize(index, log_m);
+                        let z_index = Point::from_usize(index, log_m);
                         assert_eq!(
                             verifier_params.full_jagged_little_polynomial_evaluation(
                                 &z_tab, &z_row, &z_col, &z_index
                             ),
                             params
                                 .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                                .eval_at_point(&z_index)
+                                .eval_at(&z_index)[0]
                         );
 
-                        let z_index = Point::new((0..log_m).map(|_| rng.gen::<F>()).collect());
+                        let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
                         assert_eq!(
                             verifier_params.full_jagged_little_polynomial_evaluation(
                                 &z_tab, &z_row, &z_col, &z_index
                             ),
                             params
                                 .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                                .eval_at_point(&z_index)
+                                .eval_at(&z_index)[0]
                         );
                     }
                 }

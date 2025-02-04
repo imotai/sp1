@@ -94,6 +94,7 @@ where
     type F = K;
     type EF = EK;
     type Challenger = Challenger;
+    type FinalizeCommit = ();
 
     /// Verify a BaseFold proof of a claim: commitment D represents a batch of matrices whose
     /// columns encode multilinear polynomials `g_i` whose joint evaluations at `point` are
@@ -116,8 +117,8 @@ where
     fn verify_trusted_evaluations(
         &self,
         mut point: Point<EK>,
-        eval_claims: &[&[EK]],
-        commitment: Self::Commitment,
+        eval_claims: &[&[&[EK]]],
+        commitments: &[Self::Commitment],
         proof: &Self::Proof,
         challenger: &mut Challenger,
     ) -> Result<(), Self::Error> {
@@ -125,7 +126,7 @@ where
 
         let eval_claim: EK = eval_claims
             .iter()
-            .flat_map(|eval_set| eval_set.iter())
+            .flat_map(|eval_set| eval_set.iter().flat_map(|evals| evals.iter()))
             .zip(batching_challenge.powers())
             .map(|(eval, batch_power)| *eval * batch_power)
             .sum();
@@ -158,10 +159,7 @@ where
         // X_{d-1}, 1)`. Given this, the claimed evaluation should be `(1 - X_d) *
         // first_poly[0] + X_d * first_poly[1]`.
         let first_poly = proof.univariate_messages[0];
-        if eval_claim
-            != (EK::one() - point.ith_coordinate(0)) * first_poly[0]
-                + point.ith_coordinate(0) * first_poly[1]
-        {
+        if eval_claim != (EK::one() - *point[0]) * first_poly[0] + *point[0] * first_poly[1] {
             return Err(BaseFoldError::Sumcheck);
         };
 
@@ -175,10 +173,7 @@ where
         {
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
-            if expected_eval
-                != (EK::one() - point.ith_coordinate(i)) * poly[0]
-                    + point.ith_coordinate(i) * poly[1]
-            {
+            if expected_eval != (EK::one() - *point[i]) * poly[0] + *point[i] * poly[1] {
                 return Err(BaseFoldError::Sumcheck);
             }
 
@@ -209,57 +204,61 @@ where
             challenges.query_indices.clone(),
             proof.query_phase_proofs.iter(),
         )
-        .map(
-            |((openings, query_row_proof), index, query_proof)| -> Result<(), BaseFoldError<InnerMmcs::Error>> {
-                // Verify the openings of the individual columns.
-                self.inner_mmcs
-                    .verify_batch(
-                        &commitment,
-                        &repeat(Dimensions {
-                            width: 0,
-                            height: 1
-                                << (self.fri_config.log_blowup + proof.univariate_messages.len()),
-                        }).take(openings.len()).collect::<Vec<_>>(),
-                        index,
-                        &openings.clone(),
-                        query_row_proof,
-                    )
-                    .map_err(BaseFoldError::Mmcs)?;
+        .map(|(query_opening_proof, index, query_phase_proof)| {
+            let mut batch_challenge_power = 0;
+            let mut batch_eval: EK = EK::zero();
+            let result = query_opening_proof.iter().zip(commitments.iter()).try_for_each(
+                |((openings, opening_proof), commitment)| -> Result<(), Self::Error> {
+                    // Verify the openings of the individual columns.
+                    self.inner_mmcs
+                        .verify_batch(
+                            commitment,
+                            &repeat(Dimensions {
+                                width: 0,
+                                height: 1
+                                    << (self.fri_config.log_blowup
+                                        + proof.univariate_messages.len()),
+                            })
+                            .take(openings.len())
+                            .collect::<Vec<_>>(),
+                            index,
+                            &openings.clone(),
+                            opening_proof,
+                        )
+                        .map_err(BaseFoldError::Mmcs)?;
 
-                // Check the consistency of the FRI query proofs with the committed-to values of the
-                // matrices.
-                let batch_eval: EK = openings
-                    .iter()
-                    .flat_map(|set| set.iter())
-                    .zip(batching_challenge.powers())
-                    .map(|(opening, batch_power)| batch_power * *opening)
-                    .sum();
+                    // Fold the openings into an index opening value for the single FRI polynomial.
+                    let batch_openings = openings.iter().flat_map(|set| set.iter());
+                    let num_columns = batch_openings.clone().count();
+                    batch_eval += batch_openings
+                        .zip(batching_challenge.powers().skip(batch_challenge_power))
+                        .map(|(opening, batch_power)| batch_power * *opening)
+                        .sum::<EK>();
 
-                if batch_eval == query_proof.0{
+                    batch_challenge_power += num_columns;
+
                     Ok(())
-                } else {
-                    Err(BaseFoldError::Batching)
-                }
-            },
-        ).collect::<Result<Vec<_>, _>>()?;
+                },
+            );
 
-        // Verify the FRI queries.
-        challenges
-            .query_indices
-            .iter()
-            .zip(proof.query_phase_proofs.iter())
-            .map(|(idx, (opening, query_proof))| {
-                verify_query(
-                    &self.fri_config,
-                    &proof.commitments,
-                    *idx,
-                    query_proof,
-                    &challenges.betas,
-                    (proof.final_poly, *opening, log_len + self.fri_config.log_blowup),
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()
+            verify_query(
+                &self.fri_config,
+                &proof.commitments,
+                index,
+                &query_phase_proof.1,
+                &challenges.betas,
+                (proof.final_poly, query_phase_proof.0, log_len + self.fri_config.log_blowup),
+            )
             .map_err(BaseFoldError::Fri)?;
+
+            // Check consistency of the batch computation with the FRI query proof opening.
+            if batch_eval == query_phase_proof.0 {
+                result
+            } else {
+                Err(BaseFoldError::Batching)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
         // The final consistency check between the FRI messages and the partial evaluation messages.
         if proof.final_poly
@@ -270,5 +269,13 @@ where
         } else {
             Ok(())
         }
+    }
+
+    fn incorporate_finalize_data(
+        &self,
+        _data: Self::FinalizeCommit,
+        _challenger: &mut Self::Challenger,
+    ) {
+        // No-op.
     }
 }

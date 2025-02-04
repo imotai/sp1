@@ -6,17 +6,16 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
 use slop_challenger::DuplexChallenger;
 use slop_commit::{ExtensionMmcs, Pcs};
-use slop_fri::{FriConfig, TwoAdicFriPcs};
+use slop_fri::TwoAdicFriPcs;
 use slop_merkle_tree::FieldMerkleTreeMmcs;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
-use slop_basefold::BaseFoldPcs;
-use slop_multilinear::{MultilinearPcsProver, Point, StackedPcsProver};
+use slop_multilinear::{MultilinearPcsProver, Point};
 use slop_utils::setup_logger;
 
-use slop_basefold_prover::BaseFoldProver;
+use slop_basefold_prover::testing_stacked_basefold_config;
 
 pub type Val = BabyBear;
 pub type Challenge = BinomialExtensionField<Val, 4>;
@@ -61,35 +60,12 @@ fn main() {
                     })
                     .collect::<Vec<_>>()
             });
-            let perm = my_perm();
-            let hash = MyHash::new(perm.clone());
-            let compress = MyCompress::new(perm.clone());
-            let inner_mmcs = ValMmcs::new(hash, compress);
-            let mmcs = ChallengeMmcs::new(inner_mmcs.clone());
-            let config = FriConfig {
-                log_blowup: 1,
-                num_queries: 100,
-                proof_of_work_bits: 16,
-                mmcs: mmcs.clone(),
-            };
-
-            let config_clone = FriConfig {
-                log_blowup: 1,
-                num_queries: 100,
-                proof_of_work_bits: 16,
-                mmcs: mmcs.clone(),
-            };
-
-            let pcs =
-                BaseFoldPcs::<Val, Challenge, ValMmcs, Challenger>::new(config, inner_mmcs.clone());
 
             let new_eval_point =
-                Point::new((0..*num_variables).map(|_| rng.gen::<Challenge>()).collect());
+                (0..*num_variables).map(|_| rng.gen::<Challenge>()).collect::<Point<_>>();
 
-            let prover = BaseFoldProver::new(pcs);
-
-            let stacked_prover =
-                StackedPcsProver { pcs: prover, log_stacking_height: *log_stacking_height };
+            let (stacked_prover, stacked_verifier) =
+                testing_stacked_basefold_config(*log_stacking_height);
 
             let vals_clone = vals.clone();
 
@@ -103,11 +79,10 @@ fn main() {
                 stacked_prover.prove_trusted_evaluation(
                     new_eval_point.clone(),
                     rng.gen::<Challenge>(),
-                    data,
-                    &mut Challenger::new(perm.clone()),
+                    vec![&data],
+                    &mut Challenger::new(my_perm()),
                 )
             });
-
             let prove_time = now.elapsed();
 
             let mats = tracing::info_span!("construct matrices").in_scope(|| {
@@ -121,11 +96,15 @@ fn main() {
                 Radix2DitParallel,
                 ValMmcs,
                 ExtensionMmcs<Val, Challenge, ValMmcs>,
-            >::new(27, Radix2DitParallel, inner_mmcs, config_clone);
+            >::new(
+                27,
+                Radix2DitParallel,
+                stacked_verifier.pcs.inner_mmcs().clone(),
+                stacked_verifier.pcs.fri_config().clone(),
+            );
 
             let now = std::time::Instant::now();
             let (_, fri_data) = tracing::info_span!("Plonky3 commit").in_scope(|| {
-                // let tall_domain =
                 <TwoAdicFriPcs<
                     Val,
                     Radix2DitParallel,
@@ -158,7 +137,7 @@ fn main() {
                         &fri_data,
                         (0..num_matrices).map(|_| vec![rng.gen::<Challenge>()]).collect(),
                     )],
-                    &mut Challenger::new(perm.clone()),
+                    &mut Challenger::new(my_perm()),
                 );
             });
             let plonky3_prove_time = now.elapsed();

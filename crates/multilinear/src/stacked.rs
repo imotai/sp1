@@ -14,10 +14,9 @@
 //! verifier then computes the expected multilinear evaluation of the larger vector by using a
 //! multilinear evaluation algorithm in a smaller number of variables). This is essentially the
 //! the interleaving algorithm of `Ligero`(https://eprint.iacr.org/2022/1608).
-use std::iter::once;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{AbstractField, Field};
+use slop_algebra::Field;
 use slop_matrix::dense::RowMajorMatrix;
 
 use crate::{
@@ -32,6 +31,12 @@ where
 {
     pub pcs: Pcs,
     pub log_stacking_height: usize,
+}
+
+impl<Pcs: MultilinearPcsBatchVerifier> StackedPcsVerifier<Pcs> {
+    pub fn new(pcs: Pcs, log_stacking_height: usize) -> Self {
+        Self { pcs, log_stacking_height }
+    }
 }
 
 #[derive(Debug)]
@@ -50,10 +55,21 @@ where
     pub log_stacking_height: usize,
 }
 
+impl<Pcs> StackedPcsProver<Pcs>
+where
+    Pcs: MultilinearPcsBatchProver,
+    Pcs::MultilinearProverData:
+        MainTraceProverData<RowMajorMatrix<<Pcs::PCS as MultilinearPcsBatchVerifier>::F>>,
+{
+    pub fn new(pcs: Pcs, log_stacking_height: usize) -> Self {
+        Self { pcs, log_stacking_height }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackedPcsProof<PcsProof, EF> {
     pub pcs_proof: PcsProof,
-    pub evaluations: Vec<Vec<EF>>,
+    pub evaluations: Vec<Vec<Vec<EF>>>,
 }
 
 impl<Pcs> MultilinearPcsVerifier for StackedPcsVerifier<Pcs>
@@ -80,26 +96,31 @@ where
         &self,
         point: crate::Point<Self::EF>,
         evaluation_claim: Self::EF,
-        commitment: Self::Commitment,
+        commitments: &[Self::Commitment],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) -> Result<(), Self::Error> {
         let (front_half, back_half) = point.split_at(point.dimension() - self.log_stacking_height);
 
-        if evaluation_claim
-            != Mle::<Pcs::EF>::eval_at_point::<Pcs::EF>(
-                &proof.evaluations.iter().flatten().cloned().collect::<Vec<_>>().into(),
-                &front_half,
-            )
-        {
+        let evaluations_mle =
+            proof.evaluations.iter().flatten().flatten().cloned().collect::<Mle<_>>();
+        if evaluation_claim != evaluations_mle.eval_at(&front_half)[0] {
             return Err(StackedPcsError::StackingError);
         }
+
+        let inner_refs = proof
+            .evaluations
+            .iter()
+            .map(|evals| evals.iter().map(Vec::as_slice).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        let middle_refs = inner_refs.iter().map(Vec::as_slice).collect::<Vec<_>>();
 
         self.pcs
             .verify_untrusted_evaluations(
                 back_half,
-                &proof.evaluations.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-                commitment,
+                &middle_refs,
+                commitments,
                 &proof.pcs_proof,
                 challenger,
             )
@@ -123,20 +144,7 @@ where
     ) -> (<Self::PCS as MultilinearPcsVerifier>::Commitment, Self::MultilinearProverData) {
         let new_data = tracing::info_span!("restack matrices")
             .in_scope(|| restack_matrices(data, self.log_stacking_height));
-        let total_width = new_data.clone().map(|mat| mat.width).sum::<usize>();
-        let new_data_vec: Vec<_> = if !total_width.is_power_of_two() {
-            let extra_zeroes = (total_width * (1 << self.log_stacking_height)).next_power_of_two()
-                - (total_width * (1 << self.log_stacking_height));
-            new_data
-                .chain(once(RowMajorMatrix::new(
-                    vec![<Self::PCS as MultilinearPcsVerifier>::F::zero(); extra_zeroes],
-                    (extra_zeroes) / (1 << self.log_stacking_height),
-                )))
-                .collect()
-        } else {
-            new_data.collect()
-        };
-        assert!(new_data_vec.iter().map(|mat| mat.width).sum::<usize>().is_power_of_two());
+        let new_data_vec: Vec<_> = new_data.collect();
 
         let (commit, data) = self.pcs.commit_multilinears(new_data_vec.clone());
 
@@ -147,28 +155,39 @@ where
         &self,
         eval_point: crate::Point<<Self::PCS as MultilinearPcsVerifier>::EF>,
         _expected_eval: <Self::PCS as MultilinearPcsVerifier>::EF,
-        prover_data: Self::MultilinearProverData,
+        prover_data: Vec<&Self::MultilinearProverData>,
         challenger: &mut <Self::PCS as MultilinearPcsVerifier>::Challenger,
     ) -> <Self::PCS as MultilinearPcsVerifier>::Proof {
-        let (prover_data, matrices) = prover_data.split_off_main_traces();
+        let (_, matrices) = prover_data
+            .iter()
+            .map(|data| data.split_off_main_traces())
+            .unzip::<_, _, Vec<_>, Vec<_>>();
 
-        let (_, back_portion) =
-            eval_point.split_at(eval_point.dimension() - self.log_stacking_height);
+        let (_, rest) = eval_point.split_at(eval_point.dimension() - self.log_stacking_height);
 
         // TODO: This may be computed at an earlier part of the stack, and we can refactor the API
         // to avoid recomputing it.
         let evaluations = tracing::info_span!("eval matrices at point").in_scope(|| {
             matrices
                 .iter()
-                .map(|mat| Mle::eval_matrix_at_point(mat, &back_portion))
+                .map(|mats| {
+                    mats.iter().map(|mat| Mle::eval_matrix_at_point(mat, &rest)).collect::<Vec<_>>()
+                })
                 .collect::<Vec<_>>()
         });
 
+        let refs = evaluations
+            .iter()
+            .map(|evals| evals.iter().map(Vec::as_slice).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        let middle_refs = refs.iter().map(Vec::as_slice).collect::<Vec<_>>();
+
         StackedPcsProof {
             pcs_proof: self.pcs.prove_untrusted_evaluations(
-                back_portion,
-                &evaluations.iter().map(Vec::as_slice).collect::<Vec<_>>(),
-                Self::MultilinearProverData::reconstitute(prover_data, matrices),
+                rest,
+                &middle_refs,
+                prover_data,
                 challenger,
             ),
             evaluations,

@@ -42,7 +42,7 @@ pub struct BaseFoldProof<
     pub pow_witness: Witness,
 
     /// The query openings of the individual polynmomials.
-    pub query_openings: Vec<(Vec<Vec<K>>, Proof)>,
+    pub query_openings: Vec<Vec<(Vec<Vec<K>>, Proof)>>,
 }
 
 #[derive(Debug, Clone)]
