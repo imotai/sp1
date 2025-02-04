@@ -43,13 +43,6 @@ where
         )
             .into();
         let args = args!(src.as_ptr(), dst.as_mut_ptr(), dim_x, dim_y, dim_z);
-        // let args = [
-        //     &src.as_ptr() as *const _ as *mut c_void,
-        //     &dst.as_mut_ptr() as *const _ as *mut c_void,
-        //     &dim_x as *const usize as _,
-        //     &dim_y as *const usize as _,
-        //     &dim_z as *const usize as _,
-        // ];
         unsafe {
             src.scope()
                 .launch_kernel(Self::transpose_kernel(), block_dim, grid_dim, &args, 0)

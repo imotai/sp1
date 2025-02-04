@@ -14,12 +14,13 @@ members = [
     "crates/alloc",
     "crates/baby-bear",
     "crates/basefold",
+    "crates/cuda",
+    "crates/cuslop",
     "crates/derive",
     "crates/device",
     "crates/dft",
     "crates/jagged",
     "crates/merkle-tree",
-    "crates/mle",
     "crates/sys",
 ]
 resolver = "2"
@@ -45,8 +46,9 @@ csl-dft = { path = "crates/dft" }
 csl-device = { path = "crates/device" }
 csl-baby-bear = { path = "crates/baby-bear" }
 csl-merkle-tree = { path = "crates/merkle-tree" }
-csl-mle = { path = "crates/mle" }
 csl-jagged = { path = "crates/jagged" }
+
+csl-cuda = { path = "crates/cuda" }
 
 # slop 
 slop-baby-bear = { git = "https://github.com/succinctlabs/slop.git" }
@@ -60,6 +62,9 @@ slop-poseidon2 = { git = "https://github.com/succinctlabs/slop.git" }
 slop-commit = { git = "https://github.com/succinctlabs/slop.git" }
 slop-challenger = { git = "https://github.com/succinctlabs/slop.git" }
 slop-multilinear = { git = "https://github.com/succinctlabs/slop.git" }
+slop-tensor = { git = "https://github.com/succinctlabs/slop.git" }
+slop-sumcheck = { git = "https://github.com/succinctlabs/slop.git" }
+slop-alloc = { git = "https://github.com/succinctlabs/slop.git" }
 
 # slop local copy
 # slop-baby-bear = { path = "../slop/crates/baby-bear" }
@@ -73,7 +78,9 @@ slop-multilinear = { git = "https://github.com/succinctlabs/slop.git" }
 # slop-commit = { path = "../slop/crates/commit" }
 # slop-challenger = { path = "../slop/crates/challenger" }
 # slop-multilinear = { path = "../slop/crates/multilinear" }
-
+# slop-alloc = { path = "../slop/crates/alloc" }
+# slop-tensor = { path = "../slop/crates/tensor" }
+# slop-sumcheck = { path = "../slop/crates/sumcheck" }
 
 # async
 tokio = { version = "1.42.0" }

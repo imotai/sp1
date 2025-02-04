@@ -8,9 +8,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-csl-device = { workspace = true }
-csl-mle = { workspace = true }
 csl-baby-bear = { workspace = true }
+csl-cuda = { workspace = true }
 
 slop-baby-bear = { workspace = true }
 slop-algebra = { workspace = true }

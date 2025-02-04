@@ -1,5 +1,6 @@
 #include "transpose.cuh"
 #include "../fields/bb31_t.cuh"
+#include "../fields/bb31_extension_t.cuh"
 
 namespace transpose
 {
@@ -81,6 +82,11 @@ namespace transpose
     extern "C" void *transpose_kernel_u32_digest()
     {
         return (void *)transpose_array_kernel<uint32_t, 8>;
+    }
+
+    extern "C" void *transpose_kernel_baby_bear_extension()
+    {
+        return (void *)transpose_kernel<bb31_extension_t>;
     }
 
     // #define TILE_DIM 32

@@ -1,0 +1,35 @@
+[package]
+name = "csl-cuda"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+csl-sys = { workspace = true }
+csl-derive = { workspace = true }
+
+slop-alloc = { workspace = true }
+slop-algebra = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-tensor = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-sumcheck = { workspace = true }
+slop-challenger = { workspace = true }
+slop-poseidon2 = { workspace = true }
+
+
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+crossbeam = "0.8.4"
+pin-project = "1"
+futures = "0.3"
+itertools = { workspace = true }
+
+[dev-dependencies]
+rand = "0.8"
+
+[lints]
+workspace = true
