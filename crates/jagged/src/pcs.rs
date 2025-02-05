@@ -232,7 +232,7 @@ where
         &self,
         eval_point: Point<<Pcs::PCS as MultilinearPcsBatchVerifier>::EF>,
         expected_evals: &[&[&[<Pcs::PCS as MultilinearPcsBatchVerifier>::EF]]],
-        prover_data: &[&JaggedProverData<Pcs::MultilinearProverData>],
+        prover_data: &[Arc<JaggedProverData<Pcs::MultilinearProverData>>],
         challenger: &mut <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger,
     ) -> JaggedPcsProof<StackedProof<Pcs::PCS>, <Pcs::PCS as MultilinearPcsBatchVerifier>::EF> {
         let z_col = (0..log2_ceil_usize(

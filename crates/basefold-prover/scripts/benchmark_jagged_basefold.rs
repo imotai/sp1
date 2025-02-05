@@ -122,7 +122,7 @@ fn main() {
         jagged_prover.prove_trusted_evaluations(
             new_eval_point.clone(),
             &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
-            &data.iter().map(|d| d.as_ref()).collect::<Vec<_>>(),
+            &data,
             &mut challenger.clone(),
         )
     });

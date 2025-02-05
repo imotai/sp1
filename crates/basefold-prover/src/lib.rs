@@ -725,7 +725,7 @@ mod tests {
         let proof = jagged_prover.prove_trusted_evaluations(
             eval_point.clone(),
             &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
-            &data.iter().map(|dat| dat.as_ref()).collect::<Vec<_>>(),
+            &data,
             &mut challenger.clone(),
         );
 
