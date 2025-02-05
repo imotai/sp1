@@ -407,6 +407,7 @@ mod tests {
     use slop_commit::{ExtensionMmcs, Pcs};
     use slop_dft::Radix2DitParallel;
     use slop_fri::{FriConfig, TwoAdicFriPcs};
+    use slop_jagged::MachineJaggedPcs;
     use slop_matrix::dense::RowMajorMatrix;
     use slop_merkle_tree::FieldMerkleTreeMmcs;
     use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
@@ -421,7 +422,7 @@ mod tests {
     };
     use slop_utils::setup_logger;
 
-    use crate::{testing_jagged_basefold_config, BaseFoldProver};
+    use crate::{default_jagged_basefold_config, BaseFoldProver};
 
     type F = BabyBear;
     type EF = BinomialExtensionField<F, 4>;
@@ -681,9 +682,11 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let (jagged_prover, jagged_verifier) = testing_jagged_basefold_config(
-            log_stacking_height,
-            log_max_row_count,
+        let (jagged_prover, jagged_verifier) =
+            default_jagged_basefold_config(log_stacking_height, log_max_row_count);
+
+        let jagged_verifier = MachineJaggedPcs::new(
+            jagged_verifier,
             vec![
                 column_counts[0..batch_split_point].to_vec(),
                 column_counts[batch_split_point..].to_vec(),

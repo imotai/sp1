@@ -1,6 +1,7 @@
 use clap::Parser;
 use rand::Rng;
 use slop_dft::Radix2DitParallel;
+use slop_jagged::MachineJaggedPcs;
 use slop_matrix::dense::RowMajorMatrix;
 
 use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
@@ -14,7 +15,7 @@ use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
 use slop_multilinear::{Mle, Point};
 use slop_utils::{log2_ceil_usize, setup_logger};
 
-use slop_basefold_prover::testing_jagged_basefold_config;
+use slop_basefold_prover::default_jagged_basefold_config;
 
 // type F = BabyBear;
 // type EF = BinomialExtensionField<F, 4>;
@@ -69,9 +70,10 @@ fn main() {
 
     let batch_split_point = 1;
 
-    let (jagged_prover, jagged_verifier) = testing_jagged_basefold_config(
-        args.log_stacking_height,
-        args.max_log_row_count,
+    let (jagged_prover, jagged_verifier) =
+        default_jagged_basefold_config(args.log_stacking_height, args.max_log_row_count);
+    let jagged_verifier = MachineJaggedPcs::new(
+        jagged_verifier,
         vec![
             column_counts[0..batch_split_point].to_vec(),
             column_counts[batch_split_point..].to_vec(),

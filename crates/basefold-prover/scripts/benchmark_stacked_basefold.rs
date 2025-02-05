@@ -15,7 +15,7 @@ use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
 use slop_multilinear::{MultilinearPcsProver, Point};
 use slop_utils::setup_logger;
 
-use slop_basefold_prover::testing_stacked_basefold_config;
+use slop_basefold_prover::default_stacked_basefold_config;
 
 pub type Val = BabyBear;
 pub type Challenge = BinomialExtensionField<Val, 4>;
@@ -65,7 +65,7 @@ fn main() {
                 (0..*num_variables).map(|_| rng.gen::<Challenge>()).collect::<Point<_>>();
 
             let (stacked_prover, stacked_verifier) =
-                testing_stacked_basefold_config(*log_stacking_height);
+                default_stacked_basefold_config(*log_stacking_height);
 
             let vals_clone = vals.clone();
 

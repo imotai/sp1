@@ -131,6 +131,10 @@ where
     Pcs::EF: Field,
     Pcs::Proof: Serialize + DeserializeOwned + Clone,
 {
+    pub fn new(pcs: JaggedPcs<Pcs>, column_counts_by_round: Vec<Vec<usize>>) -> Self {
+        Self { pcs, column_counts_by_round }
+    }
+
     pub fn verify_trusted_evaluations(
         &self,
         point: Point<Pcs::EF>,

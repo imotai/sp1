@@ -4,7 +4,7 @@ use slop_challenger::DuplexChallenger;
 use slop_commit::ExtensionMmcs;
 use slop_dft::Radix2DitParallel;
 use slop_fri::FriConfig;
-use slop_jagged::{JaggedPcs, MachineJaggedPcs};
+use slop_jagged::JaggedPcs;
 use slop_merkle_tree::FieldMerkleTreeMmcs;
 use slop_multilinear::{StackedPcsProver, StackedPcsVerifier};
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
@@ -26,7 +26,7 @@ pub type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
 pub type BaseFoldVerifierConfig = BaseFoldPcs<Val, Challenge, ValMmcs, Challenger>;
 pub type BaseFoldProverConfig = BaseFoldProver<Val, Challenge, ValMmcs, Challenger>;
 
-pub fn testing_basefold_config() -> (BaseFoldProverConfig, BaseFoldVerifierConfig) {
+pub fn default_basefold_config() -> (BaseFoldProverConfig, BaseFoldVerifierConfig) {
     let perm = my_perm();
     let hash = MyHash::new(perm.clone());
     let compress = MyCompress::new(perm.clone());
@@ -40,10 +40,10 @@ pub fn testing_basefold_config() -> (BaseFoldProverConfig, BaseFoldVerifierConfi
     (BaseFoldProver::new(pcs.clone()), pcs)
 }
 
-pub fn testing_stacked_basefold_config(
+pub fn default_stacked_basefold_config(
     log_stacking_height: usize,
 ) -> (StackedPcsProver<BaseFoldProverConfig>, StackedPcsVerifier<BaseFoldVerifierConfig>) {
-    let (prover, verifier) = testing_basefold_config();
+    let (prover, verifier) = default_basefold_config();
 
     (
         StackedPcsProver::new(prover, log_stacking_height),
@@ -51,21 +51,14 @@ pub fn testing_stacked_basefold_config(
     )
 }
 
-pub fn testing_jagged_basefold_config(
+pub fn default_jagged_basefold_config(
     log_stacking_height: usize,
     max_log_row_count: usize,
-    column_counts_by_round: Vec<Vec<usize>>,
 ) -> (
     JaggedPcs<StackedPcsProver<BaseFoldProverConfig>>,
-    MachineJaggedPcs<StackedPcsVerifier<BaseFoldVerifierConfig>>,
+    JaggedPcs<StackedPcsVerifier<BaseFoldVerifierConfig>>,
 ) {
-    let (prover, verifier) = testing_stacked_basefold_config(log_stacking_height);
+    let (prover, verifier) = default_stacked_basefold_config(log_stacking_height);
 
-    (
-        JaggedPcs::new(prover, max_log_row_count),
-        MachineJaggedPcs {
-            pcs: JaggedPcs::new(verifier, max_log_row_count),
-            column_counts_by_round,
-        },
-    )
+    (JaggedPcs::new(prover, max_log_row_count), JaggedPcs::new(verifier, max_log_row_count))
 }
