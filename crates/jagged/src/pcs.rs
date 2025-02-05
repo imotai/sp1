@@ -15,7 +15,7 @@ use slop_sumcheck::{
 };
 use slop_utils::log2_ceil_usize;
 
-use std::iter::repeat;
+use std::{iter::repeat, sync::Arc};
 
 use crate::{JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams};
 
@@ -232,7 +232,7 @@ where
         &self,
         eval_point: Point<<Pcs::PCS as MultilinearPcsBatchVerifier>::EF>,
         expected_evals: &[&[&[<Pcs::PCS as MultilinearPcsBatchVerifier>::EF]]],
-        prover_data: &[JaggedProverData<Pcs::MultilinearProverData>],
+        prover_data: &[&JaggedProverData<Pcs::MultilinearProverData>],
         challenger: &mut <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger,
     ) -> JaggedPcsProof<StackedProof<Pcs::PCS>, <Pcs::PCS as MultilinearPcsBatchVerifier>::EF> {
         let z_col = (0..log2_ceil_usize(
@@ -350,7 +350,7 @@ where
 
     pub fn finalize(
         &self,
-        data: &mut Vec<JaggedProverData<Pcs::MultilinearProverData>>,
+        data: &mut Vec<Arc<JaggedProverData<Pcs::MultilinearProverData>>>,
         commits: &mut Vec<Com<Pcs::PCS>>,
         challenger: &mut <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger,
     ) {
@@ -377,7 +377,7 @@ where
             let (commit, new_data) = self.commit_multilinears(vec![new_matrix]);
             challenger.observe(commit.clone());
             commits.push(commit);
-            data.push(new_data);
+            data.push(Arc::new(new_data));
         }
     }
 }

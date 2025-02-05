@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use clap::Parser;
 use rand::Rng;
 use slop_dft::Radix2DitParallel;
@@ -107,7 +109,7 @@ fn main() {
 
     let commit_time = now.elapsed();
 
-    let mut data = vec![data_1, data_2];
+    let mut data = vec![Arc::new(data_1), Arc::new(data_2)];
 
     let mut commits = vec![commit_1, commit_2];
 
@@ -120,7 +122,7 @@ fn main() {
         jagged_prover.prove_trusted_evaluations(
             new_eval_point.clone(),
             &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
-            &data,
+            &data.iter().map(|d| d.as_ref()).collect::<Vec<_>>(),
             &mut challenger.clone(),
         )
     });
