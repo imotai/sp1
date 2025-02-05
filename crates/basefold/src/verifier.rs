@@ -94,7 +94,6 @@ where
     type F = K;
     type EF = EK;
     type Challenger = Challenger;
-    type FinalizeCommit = ();
 
     /// Verify a BaseFold proof of a claim: commitment D represents a batch of matrices whose
     /// columns encode multilinear polynomials `g_i` whose joint evaluations at `point` are
@@ -269,13 +268,5 @@ where
         } else {
             Ok(())
         }
-    }
-
-    fn incorporate_finalize_data(
-        &self,
-        _data: Self::FinalizeCommit,
-        _challenger: &mut Self::Challenger,
-    ) {
-        // No-op.
     }
 }

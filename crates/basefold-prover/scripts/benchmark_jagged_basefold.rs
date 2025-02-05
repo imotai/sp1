@@ -4,7 +4,7 @@ use slop_dft::Radix2DitParallel;
 use slop_matrix::dense::RowMajorMatrix;
 
 use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
-use slop_challenger::DuplexChallenger;
+use slop_challenger::{CanObserve, DuplexChallenger};
 use slop_commit::ExtensionMmcs;
 use slop_merkle_tree::FieldMerkleTreeMmcs;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
@@ -91,19 +91,27 @@ fn main() {
     let eval_claims =
         mats.iter().map(|mat| Mle::eval_matrix_at_point(mat, &new_eval_point)).collect::<Vec<_>>();
 
+    let mut challenger = Challenger::new(my_perm());
+
     let now = std::time::Instant::now();
     let (commit_1, data_1) = tracing::info_span!("commit")
         .in_scope(|| jagged_prover.commit_multilinears(mats[0..batch_split_point].to_vec()));
 
+    challenger.observe(commit_1);
+
     let (commit_2, data_2) = tracing::info_span!("commit")
         .in_scope(|| jagged_prover.commit_multilinears(mats[batch_split_point..].to_vec()));
+    challenger.observe(commit_2);
+
     let commit_time = now.elapsed();
 
     let mut data = vec![data_1, data_2];
 
     let mut commits = vec![commit_1, commit_2];
 
-    tracing::info_span!("finalize").in_scope(|| jagged_prover.finalize(&mut data, &mut commits));
+    // Don't time finalize for now because the commits will be pre-computed.
+    tracing::info_span!("finalize")
+        .in_scope(|| jagged_prover.finalize(&mut data, &mut commits, &mut challenger));
 
     let now = std::time::Instant::now();
     let proof = tracing::info_span!("prove evaluations").in_scope(|| {
@@ -111,7 +119,7 @@ fn main() {
             new_eval_point.clone(),
             &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
             &data,
-            &mut Challenger::new(my_perm()),
+            &mut challenger.clone(),
         )
     });
 
@@ -123,7 +131,7 @@ fn main() {
         &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
         &commits,
         &proof,
-        &mut Challenger::new(my_perm()),
+        &mut challenger,
     );
 
     let verify_time = now.elapsed();

@@ -348,6 +348,7 @@ where
         &self,
         data: &mut Vec<JaggedProverData<Pcs::MultilinearProverData>>,
         commits: &mut Vec<Com<Pcs::PCS>>,
+        challenger: &mut <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger,
     ) {
         let total_area = data
             .iter()
@@ -370,6 +371,7 @@ where
 
         if needed_zeroes != 0 {
             let (commit, new_data) = self.commit_multilinears(vec![new_matrix]);
+            challenger.observe(commit.clone());
             commits.push(commit);
             data.push(new_data);
         }

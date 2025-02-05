@@ -15,7 +15,6 @@ pub trait MultilinearPcsBatchVerifier {
     type Commitment: Clone + Serialize + DeserializeOwned;
     type Error: Debug;
     type Challenger: FieldChallenger<Self::F>;
-    type FinalizeCommit: Clone + Serialize + DeserializeOwned;
 
     fn verify_trusted_evaluations(
         &self,
@@ -25,12 +24,6 @@ pub trait MultilinearPcsBatchVerifier {
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) -> Result<(), Self::Error>;
-
-    fn incorporate_finalize_data(
-        &self,
-        data: Self::FinalizeCommit,
-        challenger: &mut Self::Challenger,
-    );
 
     fn verify_untrusted_evaluations(
         &self,
@@ -83,17 +76,11 @@ pub trait MultilinearPcsVerifier {
 pub trait MultilinearPcsBatchProver {
     type PCS: MultilinearPcsBatchVerifier;
     type MultilinearProverData: Clone + Serialize + DeserializeOwned;
-    type FinalizeData: Clone + Serialize + DeserializeOwned;
 
     fn commit_multilinears(
         &self,
         data: Vec<RowMajorMatrix<<Self::PCS as MultilinearPcsBatchVerifier>::F>>,
     ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::Commitment, Self::MultilinearProverData);
-
-    fn finalize(
-        &self,
-        data: &[&Self::MultilinearProverData],
-    ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::FinalizeCommit, Self::FinalizeData);
 
     fn prove_trusted_evaluations(
         &self,

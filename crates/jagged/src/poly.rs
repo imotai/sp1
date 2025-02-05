@@ -208,23 +208,24 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
                 for layer in (0..log_m + 1).rev() {
                     let mut new_state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
                     new_state_by_state_results.insert(StateOrFail::Fail, K::zero());
+
+                    // We assume that bits are aligned in big-endian order. The algorithm,
+                    // in the ith layer, looks at the ith least significant bit, which is
+                    // the m - 1 - i th bit if the bits are in a bit array in big-endian.
+                    let point = [
+                        z_row.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                        z_index.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                        prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                        next_prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                    ]
+                    .into_iter()
+                    .collect::<Point<K>>();
+                    let four_var_eq = Mle::partial_lagrange(&point);
+
                     // For each memory state in the new layer, compute the result of the branching
                     // program that starts at that memory state and in the current layer.
                     for memory_state in &memory_states {
                         let mut accum = K::zero();
-
-                        // We assume that bits are aligned in big-endian order. The algorithm,
-                        // in the ith layer, looks at the ith least significant bit, which is
-                        // the m - 1 - i th bit if the bits are in a bit array in big-endian.
-                        let point = [
-                            z_row.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                            z_index.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                            prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                            next_prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                        ]
-                        .into_iter()
-                        .collect::<Point<K>>();
-                        let four_var_eq = Mle::partial_lagrange(&point);
 
                         // For each possible bit state, compute the result of the branching
                         // program transition function and modify the accumulator accordingly.

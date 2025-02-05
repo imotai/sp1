@@ -318,20 +318,11 @@ where
 
     type PCS = BaseFoldPcs<K, EK, InnerMmcs, Challenger>;
 
-    type FinalizeData = ();
-
     fn commit_multilinears(
         &self,
         data: Vec<RowMajorMatrix<K>>,
     ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::Commitment, Self::MultilinearProverData) {
         self.commit(data)
-    }
-
-    fn finalize(
-        &self,
-        _data: &[&Self::MultilinearProverData],
-    ) -> (<Self::PCS as MultilinearPcsBatchVerifier>::FinalizeCommit, Self::FinalizeData) {
-        ((), ())
     }
 
     fn prove_trusted_evaluations(
@@ -412,7 +403,7 @@ mod tests {
     use rand::Rng;
 
     use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
-    use slop_challenger::DuplexChallenger;
+    use slop_challenger::{CanObserve, DuplexChallenger};
     use slop_commit::{ExtensionMmcs, Pcs};
     use slop_dft::Radix2DitParallel;
     use slop_fri::{FriConfig, TwoAdicFriPcs};
@@ -671,7 +662,7 @@ mod tests {
         let column_counts = [1 << 1, 1 << 2, 1 << 7, 1 << 1];
         let row_counts = [1 << 13, 1 << 7, (1 << 19) + 7, 7];
 
-        let log_stacking_height = 12;
+        let log_stacking_height = 18;
 
         let log_max_row_count = 23;
 
@@ -698,17 +689,24 @@ mod tests {
                 column_counts[batch_split_point..].to_vec(),
             ],
         );
+
+        let mut challenger = Challenger::new(my_perm().clone());
+
         let (commit_1, data_1) =
             jagged_prover.commit_multilinears(matrices[0..batch_split_point].to_vec());
 
+        challenger.observe(commit_1);
+
         let (commit_2, data_2) =
             jagged_prover.commit_multilinears(matrices[batch_split_point..].to_vec());
+
+        challenger.observe(commit_2);
 
         let mut data = vec![data_1, data_2];
 
         let mut commits = vec![commit_1, commit_2];
 
-        jagged_prover.finalize(&mut data, &mut commits);
+        jagged_prover.finalize(&mut data, &mut commits, &mut challenger);
 
         let eval_point = (0..log_max_row_count).map(|_| rng.gen::<EF>()).collect::<Point<_>>();
 
@@ -723,7 +721,7 @@ mod tests {
             eval_point.clone(),
             &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
             &data,
-            &mut Challenger::new(my_perm().clone()),
+            &mut challenger.clone(),
         );
 
         let result = jagged_verifier.verify_trusted_evaluations(
@@ -731,7 +729,7 @@ mod tests {
             &[&eval_claims.iter().map(Vec::as_slice).collect::<Vec<_>>()],
             &commits,
             &proof,
-            &mut Challenger::new(my_perm().clone()),
+            &mut challenger,
         );
 
         println!("Result: {:?}", result);
