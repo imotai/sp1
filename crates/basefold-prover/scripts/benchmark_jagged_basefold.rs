@@ -72,7 +72,10 @@ fn main() {
     let (jagged_prover, jagged_verifier) = testing_jagged_basefold_config(
         args.log_stacking_height,
         args.max_log_row_count,
-        vec![batch_split_point, column_counts.len() - batch_split_point],
+        vec![
+            column_counts[0..batch_split_point].to_vec(),
+            column_counts[batch_split_point..].to_vec(),
+        ],
     );
 
     let new_eval_point =

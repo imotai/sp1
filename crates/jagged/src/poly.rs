@@ -24,45 +24,19 @@ use std::collections::BTreeMap;
 
 use rayon::prelude::*;
 
-use itertools::all;
-use rayon::iter::{repeat, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field};
-use slop_utils::{log2_ceil_usize, log2_strict_usize};
+use slop_utils::log2_ceil_usize;
 
 use slop_multilinear::{Mle, Point};
-
-/// The state space of the carry in the branching program.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Trit {
-    Zero = 0,
-    One = 1,
-    Two = 2,
-}
-
-impl From<usize> for Trit {
-    fn from(x: usize) -> Self {
-        match x {
-            0 => Trit::Zero,
-            1 => Trit::One,
-            2 => Trit::Two,
-            _ => panic!("Invalid trit value"),
-        }
-    }
-}
-
-impl From<Trit> for usize {
-    fn from(x: Trit) -> Self {
-        x as usize
-    }
-}
 
 /// A struct recording the state of the memory of the branching program. Because the program performs
 /// a three-way addition and one u32 comparison, the memory needed is a carry (which lies in {0,1,2})
 /// and a boolean to store the comparison of the u32s up to the current bit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MemoryState {
-    pub carry: Trit,
+    pub carry: bool,
 
     pub comparison_so_far: bool,
 }
@@ -70,7 +44,7 @@ pub struct MemoryState {
 impl MemoryState {
     /// The memory state which indicates success in the last layer of the branching program.
     fn success() -> Self {
-        MemoryState { carry: Trit::Zero, comparison_so_far: true }
+        MemoryState { carry: false, comparison_so_far: true }
     }
 }
 
@@ -87,18 +61,17 @@ pub enum StateOrFail {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BitState<T> {
     pub row_bit: T,
-    pub col_bit: T,
     pub index_bit: T,
-    pub curr_tab_bit: T,
-    pub next_tab_bit: T,
+    pub curr_col_prefix_sum_bit: T,
+    pub next_col_prefix_sum_bit: T,
 }
 
 /// Enumerate all the possible memory states.
 pub fn all_memory_states() -> Vec<MemoryState> {
-    (0..3)
+    (0..2)
         .flat_map(|carry| {
             (0..2).map(move |comparison_so_far| MemoryState {
-                carry: carry.into(),
+                carry: carry != 0,
                 comparison_so_far: comparison_so_far != 0,
             })
         })
@@ -109,16 +82,13 @@ pub fn all_memory_states() -> Vec<MemoryState> {
 pub fn all_bit_states() -> Vec<BitState<bool>> {
     (0..2)
         .flat_map(|row_bit| {
-            (0..2).flat_map(move |col_bit| {
-                (0..2).flat_map(move |index_bit| {
-                    (0..2).flat_map(move |last_tab_bit| {
-                        (0..2).map(move |curr_tab_bit| BitState {
-                            row_bit: row_bit != 0,
-                            col_bit: col_bit != 0,
-                            index_bit: index_bit != 0,
-                            curr_tab_bit: last_tab_bit != 0,
-                            next_tab_bit: curr_tab_bit != 0,
-                        })
+            (0..2).flat_map(move |index_bit| {
+                (0..2).flat_map(move |last_col_bit| {
+                    (0..2).map(move |curr_col_bit| BitState {
+                        row_bit: row_bit != 0,
+                        index_bit: index_bit != 0,
+                        curr_col_prefix_sum_bit: last_col_bit != 0,
+                        next_col_prefix_sum_bit: curr_col_bit != 0,
                     })
                 })
             })
@@ -128,63 +98,38 @@ pub fn all_bit_states() -> Vec<BitState<bool>> {
 
 /// The transition function that determines the next memory state given the current memory state and
 /// the current bits being read. The branching program reads bits from LSB to MSB.
-pub fn transition_function(
-    bit_state: BitState<bool>,
-    memory_state: MemoryState,
-    layer: usize,
-    log_column_count: usize,
-) -> StateOrFail {
+pub fn transition_function(bit_state: BitState<bool>, memory_state: MemoryState) -> StateOrFail {
     // If the current (most significant bit read so far) index_bit matches the current next_tab_bit,
     // then defer to the comparison so far. Otherwise, the comparison is correct only if
     // `next_tab_bit` is 1 and `index_bit` is 0.
-    let new_comparison_so_far = if bit_state.index_bit == bit_state.next_tab_bit {
+    let new_comparison_so_far = if bit_state.index_bit == bit_state.next_col_prefix_sum_bit {
         memory_state.comparison_so_far
     } else {
-        bit_state.next_tab_bit
+        bit_state.next_col_prefix_sum_bit
     };
-
-    // Check that the column bit is off if reading bits after log_column_count.
-    if layer >= log_column_count && bit_state.col_bit {
-        return StateOrFail::Fail;
-    }
 
     // Compute the carry according to the logic of three-way addition, or fail if the current bits
     // are not consistent with the three-way addition.
     //
     // However, we are checking that index = curr_tab + row * (1<<log_column_count) + col, so we
     // need to read the row bit only if the layer is after log_column_count.
-    let new_carry = if layer < log_column_count {
+    let new_carry = {
         if (bit_state.index_bit as usize)
-            != ((bit_state.col_bit as usize)
+            != ((bit_state.row_bit as usize)
                 + Into::<usize>::into(memory_state.carry)
-                + bit_state.curr_tab_bit as usize)
+                + bit_state.curr_col_prefix_sum_bit as usize)
                 % 2
         {
             return StateOrFail::Fail;
         }
-        (bit_state.col_bit as usize
+        (bit_state.row_bit as usize
             + Into::<usize>::into(memory_state.carry)
-            + bit_state.curr_tab_bit as usize)
-            / 2
-    } else {
-        if (bit_state.index_bit as usize)
-            != ((bit_state.col_bit as usize)
-                + Into::<usize>::into(memory_state.carry)
-                + (bit_state.row_bit as usize)
-                + (bit_state.curr_tab_bit as usize))
-                % 2
-        {
-            return StateOrFail::Fail;
-        }
-        (bit_state.col_bit as usize
-            + Into::<usize>::into(memory_state.carry)
-            + (bit_state.row_bit as usize)
-            + bit_state.curr_tab_bit as usize)
+            + bit_state.curr_col_prefix_sum_bit as usize)
             / 2
     };
     // Successful transition.
     StateOrFail::State(MemoryState {
-        carry: new_carry.into(),
+        carry: new_carry != 0,
         comparison_so_far: new_comparison_so_far,
     })
 }
@@ -193,11 +138,8 @@ pub fn transition_function(
 /// appearing in the jagged sumcheck protocol.
 #[derive(Clone, Debug)]
 pub struct JaggedLittlePolynomialProverParams {
-    pub max_log_column_count: usize,
-    pub table_count: usize,
-    pub prefix_sums_usize: Vec<usize>,
-    pub column_counts_usize: Vec<usize>,
-    pub max_log_row_count: usize,
+    pub(crate) col_prefix_sums_usize: Vec<usize>,
+    pub(crate) max_log_row_count: usize,
 }
 
 /// A struct to hold all the parameters sufficient to determine the special multilinear polynopmial
@@ -206,13 +148,9 @@ pub struct JaggedLittlePolynomialProverParams {
 /// the prover as field elements. The verifier program thus depends only on the usize parameters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JaggedLittlePolynomialVerifierParams<K: AbstractField> {
-    pub max_log_column_count: usize,
-    pub table_count: usize,
-    pub prefix_sums: Vec<Point<K>>,
-    pub next_prefix_sums: Vec<Point<K>>,
-    pub column_counts: Vec<Point<K>>,
-    pub max_log_row_count: usize,
-    pub max_log_col_count: usize,
+    pub(crate) col_prefix_sums: Vec<Point<K>>,
+    pub(crate) next_col_prefix_sums: Vec<Point<K>>,
+    pub(crate) max_log_row_count: usize,
 }
 
 impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
@@ -220,175 +158,124 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
     /// protocol.
     pub fn full_jagged_little_polynomial_evaluation(
         &self,
-        z_tab: &Point<K>,
         z_row: &Point<K>,
         z_col: &Point<K>,
         z_index: &Point<K>,
     ) -> K {
-        // assert!(self.prefix_sums.len() == self.column_counts.len() + 1);
         let memory_states = all_memory_states();
         let bit_states = all_bit_states();
-        // Iterate over all tables. For each table, we need to know the area of all the tables up tp
-        // the current one, the area of the tables after the current one - 1, and the number of columns
-        // in the current table.
-        self.prefix_sums
+        // Iterate over all column. For each column, we need to know the total length of all the columns
+        // up to the current one, this number - 1, and the
+        // number of rows in the current column.
+        self.col_prefix_sums
             .iter()
             .cloned()
-            .zip(self.next_prefix_sums.iter())
-            .zip(self.column_counts.iter().cloned())
+            .zip(self.next_col_prefix_sums.iter())
             .enumerate()
-            .map(|(table_num, ((prefix_sum, next_prefix_sum), column_count))| {
+            .map(|(col_num, (prefix_sum, next_prefix_sum))| {
                 let log_m = z_index.dimension();
 
-                // Initialize the answer.
-                let mut ans = K::zero();
+                // For `z_col` on the Boolean hypercube, this is the delta function to pick out
+                // the right column count for the current table.
+                let c_tab_correction =
+                    Mle::partial_lagrange(z_col).guts().as_slice()[col_num].clone();
 
-                // For `z_tab` on the Boolean hypercube, this is the delta function to pick out
-                // table number `table_num`.
-                let z_tab_correction = if z_tab.dimension() != 0 {
-                    Mle::partial_lagrange(z_tab).guts().as_slice()[table_num].clone()
-                } else {
-                    K::one()
-                };
+                let mut state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
 
-                for log_column_count in 0..=self.max_log_column_count {
-                    // For `z_col` on the Boolean hypercube, this is the delta function to pick out
-                    // the right column count for the current table.
-                    let c_tab_correction = if column_count.dimension() != 0 {
-                        Mle::partial_lagrange(&column_count).guts().as_slice()
-                            [1 << log_column_count]
-                            .clone()
-                    } else {
-                        K::one()
-                    };
-
-                    // For `z_row` on the Boolean hypercube, this is the delta function to pick out
-                    // the correct row count for the current table.
-                    let z_row_correction: K = z_row
-                        .reversed()
-                        .iter()
-                        .skip(log_m + 1 - log_column_count)
-                        .map(|z| K::one() - z.clone())
-                        .product();
-
-                    let mut state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
-
-                    // Initialize the state-by-state results for the last layer of the branching
-                    // program, namely the success state returns 1 and all other states return 0.
-                    for memory_state in all_memory_states().iter() {
-                        state_by_state_results.insert(
-                            StateOrFail::State(*memory_state),
-                            if memory_state == &MemoryState::success() {
-                                K::one()
-                            } else {
-                                K::zero()
-                            },
-                        );
-                    }
-
-                    // The dynamic programming algorithm to output the result of the branching
-                    // iterates over the layers of the branching program in reverse order.
-                    for layer in (0..log_m + 1).rev() {
-                        let mut new_state_by_state_results: BTreeMap<StateOrFail, K> =
-                            BTreeMap::new();
-                        new_state_by_state_results.insert(StateOrFail::Fail, K::zero());
-                        // For each memory state in the new layer, compute the result of the branching
-                        // program that starts at that memory state and in the current layer.
-                        for memory_state in &memory_states {
-                            let mut accum = K::zero();
-
-                            // We assume that bits are aligned in big-endian order. The algorithm,
-                            // in the ith layer, looks at the ith least significant bit, which is
-                            // the m - 1 - i th bit if the bits are in a bit array in big-endian.
-                            let point = Point::<K>::from(vec![
-                                layer
-                                    .checked_sub(log_column_count)
-                                    .and_then(|i| z_row.reversed().get(i).cloned())
-                                    .unwrap_or_default(),
-                                z_col.reversed().get(layer).cloned().unwrap_or_default(),
-                                z_index.reversed().get(layer).cloned().unwrap_or_default(),
-                                prefix_sum.reversed().get(layer).cloned().unwrap_or_default(),
-                                next_prefix_sum.reversed().get(layer).cloned().unwrap_or_default(),
-                            ]);
-                            let five_var_eq = Mle::partial_lagrange(&point);
-
-                            // For each possible bit state, compute the result of the branching
-                            // program transition function and modify the accumulator accordingly.
-                            for (i, elem) in five_var_eq.guts().as_slice().iter().enumerate() {
-                                let bit_state = &bit_states[i];
-
-                                let state_or_fail = transition_function(
-                                    *bit_state,
-                                    *memory_state,
-                                    layer,
-                                    log_column_count,
-                                );
-
-                                // TODO: Group these by target.
-                                accum += match state_or_fail {
-                                    StateOrFail::State(state) => {
-                                        elem.clone()
-                                            * state_by_state_results
-                                                .get(&StateOrFail::State(state))
-                                                .unwrap()
-                                                .clone()
-                                    }
-                                    StateOrFail::Fail => K::zero(),
-                                };
-                            }
-                            new_state_by_state_results
-                                .insert(StateOrFail::State(*memory_state), accum);
-                        }
-                        state_by_state_results = new_state_by_state_results;
-                    }
-
-                    // Perform the multiplication outside of the main loop to avoid redundant
-                    // multiplications.
-                    ans += z_row_correction
-                        * c_tab_correction.clone()
-                        * z_tab_correction.clone()
-                        * state_by_state_results[&StateOrFail::State(MemoryState::success())]
-                            .clone();
+                // Initialize the state-by-state results for the last layer of the branching
+                // program, namely the success state returns 1 and all other states return 0.
+                for memory_state in all_memory_states().iter() {
+                    state_by_state_results.insert(
+                        StateOrFail::State(*memory_state),
+                        if memory_state == &MemoryState::success() { K::one() } else { K::zero() },
+                    );
                 }
 
-                ans
+                // The program below reads only the first log_m +1 bits of z_row, but z_row could in theory
+                // be longer than that if the total trace area is less than the padded height. This
+                // correction ensures that the higher bits are zero.
+                let z_row_correction: K = z_row
+                    .reversed()
+                    .to_vec()
+                    .iter()
+                    .skip(log_m + 1)
+                    .cloned()
+                    .map(|x| K::one() - x)
+                    .product();
+
+                // The dynamic programming algorithm to output the result of the branching
+                // iterates over the layers of the branching program in reverse order.
+                for layer in (0..log_m + 1).rev() {
+                    let mut new_state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
+                    new_state_by_state_results.insert(StateOrFail::Fail, K::zero());
+                    // For each memory state in the new layer, compute the result of the branching
+                    // program that starts at that memory state and in the current layer.
+                    for memory_state in &memory_states {
+                        let mut accum = K::zero();
+
+                        // We assume that bits are aligned in big-endian order. The algorithm,
+                        // in the ith layer, looks at the ith least significant bit, which is
+                        // the m - 1 - i th bit if the bits are in a bit array in big-endian.
+                        let point = [
+                            z_row.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                            z_index.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                            prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                            next_prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                        ]
+                        .into_iter()
+                        .collect::<Point<K>>();
+                        let four_var_eq = Mle::partial_lagrange(&point);
+
+                        // For each possible bit state, compute the result of the branching
+                        // program transition function and modify the accumulator accordingly.
+                        for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
+                            let bit_state = &bit_states[i];
+
+                            let state_or_fail = transition_function(*bit_state, *memory_state);
+
+                            // TODO: Group these by target.
+                            accum += match state_or_fail {
+                                StateOrFail::State(state) => {
+                                    elem.clone()
+                                        * state_by_state_results
+                                            .get(&StateOrFail::State(state))
+                                            .unwrap()
+                                            .clone()
+                                }
+                                StateOrFail::Fail => K::zero(),
+                            };
+                        }
+                        new_state_by_state_results.insert(StateOrFail::State(*memory_state), accum);
+                    }
+                    state_by_state_results = new_state_by_state_results;
+                }
+
+                // Perform the multiplication outside of the main loop to avoid redundant
+                // multiplications.
+                z_row_correction
+                    * c_tab_correction.clone()
+                    * state_by_state_results[&StateOrFail::State(MemoryState::success())].clone()
             })
             .sum()
     }
 }
 
 impl JaggedLittlePolynomialProverParams {
-    pub fn new(
-        row_counts_usize: Vec<usize>,
-        column_counts_usize: Vec<usize>,
-        max_log_row_count: usize,
-    ) -> Self {
+    pub fn new(row_counts_usize: Vec<usize>, max_log_row_count: usize) -> Self {
         let mut prefix_sums_usize = row_counts_usize
             .iter()
-            .zip(column_counts_usize.iter())
-            .scan(0, |state, (row, col)| {
+            .scan(0, |state, row_count| {
                 let result = *state;
-                *state += row * col;
+                *state += row_count;
                 Some(result)
             })
             .collect::<Vec<_>>();
 
-        prefix_sums_usize.push(
-            *prefix_sums_usize.last().unwrap()
-                + row_counts_usize.last().unwrap() * column_counts_usize.last().unwrap(),
-        );
-        println!("{:?}", prefix_sums_usize);
+        prefix_sums_usize
+            .push(*prefix_sums_usize.last().unwrap() + row_counts_usize.last().unwrap());
 
-        assert!(all(column_counts_usize.iter(), |&x| x.is_power_of_two()));
-
-        assert!(prefix_sums_usize.last().unwrap().is_power_of_two());
-
-        let max_log_column_count = log2_strict_usize(*column_counts_usize.iter().max().unwrap());
         JaggedLittlePolynomialProverParams {
-            max_log_column_count,
-            table_count: prefix_sums_usize.len() - 1,
-            prefix_sums_usize,
-            column_counts_usize,
+            col_prefix_sums_usize: prefix_sums_usize,
             max_log_row_count,
         }
     }
@@ -396,37 +283,35 @@ impl JaggedLittlePolynomialProverParams {
     /// Compute the "guts" of the multilinear polynomial represented by the fixed prover parameters.
     pub fn partial_jagged_little_polynomial_evaluation<K: Field>(
         &self,
-        z_tab: &Point<K>,
         z_row: &Point<K>,
         z_col: &Point<K>,
     ) -> Mle<K> {
-        let log_total_area = log2_ceil_usize(*self.prefix_sums_usize.last().unwrap());
+        let log_total_area = log2_ceil_usize(*self.col_prefix_sums_usize.last().unwrap());
 
-        let log_table_count = log2_ceil_usize(self.table_count);
-        let tab_eq = Mle::partial_lagrange(&z_tab.last_k(log_table_count));
-        let col_eq = Mle::partial_lagrange(&z_col.last_k(self.max_log_column_count));
+        let col_eq = Mle::partial_lagrange(
+            &z_col.last_k(log2_ceil_usize(self.col_prefix_sums_usize.len() - 1)),
+        );
         let row_eq = Mle::partial_lagrange(&z_row.last_k(self.max_log_row_count));
 
-        let mut result = Vec::new();
-        tracing::info_span!("compute jagged polynomial entries").in_scope(|| {
-            (0..*self.prefix_sums_usize.last().unwrap())
-                .into_par_iter()
-                .map(|index| {
-                    let tab = self.prefix_sums_usize.iter().rposition(|&x| index >= x).unwrap();
-                    let row = (index - self.prefix_sums_usize[tab]) / self.column_counts_usize[tab];
-                    let col = (index - self.prefix_sums_usize[tab]) % self.column_counts_usize[tab];
+        let mut result = Vec::with_capacity(1 << log_total_area);
+        tracing::info_span!("compute jagged values").in_scope(|| {
+            result.par_extend(
+                self.col_prefix_sums_usize
+                    .par_iter()
+                    .zip(self.col_prefix_sums_usize[1..].par_iter())
+                    .enumerate()
+                    .flat_map(|(i, (&prefix_sum, &next_prefix_sum))| {
+                        let col_eq_val = col_eq.guts().as_slice()[i];
+                        let col_height = next_prefix_sum - prefix_sum;
+                        let row_eq_ref = &row_eq;
+                        (0..col_height)
+                            .into_par_iter()
+                            .map(move |row| row_eq_ref.guts().as_slice()[row] * col_eq_val)
+                    }),
+            );
 
-                    let tab_eq_val = tab_eq.guts().as_slice()[tab];
-                    let col_eq_val = col_eq.guts().as_slice()[col];
-                    let row_eq_val = row_eq.guts().as_slice()[row];
-
-                    tab_eq_val * col_eq_val * row_eq_val
-                })
-                .chain(
-                    repeat(K::zero())
-                        .take((1 << log_total_area) - *self.prefix_sums_usize.last().unwrap()),
-                )
-                .collect_into_vec(&mut result)
+            // Add zero padding if needed
+            result.resize(1 << log_total_area, K::zero())
         });
 
         result.into()
@@ -435,34 +320,27 @@ impl JaggedLittlePolynomialProverParams {
     /// Convert the prover parameters into verifier parameters so that the verifier can run its
     /// evaluation algorithm.
     pub fn into_verifier_params<K: Field>(self) -> JaggedLittlePolynomialVerifierParams<K> {
-        let log_m = log2_ceil_usize(*self.prefix_sums_usize.last().unwrap());
-        let prefix_sums =
-            self.prefix_sums_usize.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
-        let next_prefix_sums = self
-            .prefix_sums_usize
+        let log_m = log2_ceil_usize(*self.col_prefix_sums_usize.last().unwrap());
+        let col_prefix_sums =
+            self.col_prefix_sums_usize.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
+        let next_col_prefix_sums = self
+            .col_prefix_sums_usize
             .iter()
             .skip(1)
             .map(|&x| Point::from_usize(x - 1, log_m + 1))
             .collect();
-        let column_counts = self
-            .column_counts_usize
-            .iter()
-            .map(|&x| Point::from_usize(x, self.max_log_column_count + 1))
-            .collect();
         JaggedLittlePolynomialVerifierParams {
-            max_log_column_count: self.max_log_column_count,
-            table_count: self.table_count,
-            prefix_sums,
-            next_prefix_sums,
-            column_counts,
+            col_prefix_sums,
+            next_col_prefix_sums,
             max_log_row_count: self.max_log_row_count,
-            max_log_col_count: log2_strict_usize(*self.column_counts_usize.last().unwrap()),
         }
     }
 }
 
 #[cfg(test)]
 pub mod tests {
+    use std::iter::repeat;
+
     use rand::Rng;
     use slop_baby_bear::BabyBear;
     use slop_utils::log2_ceil_usize;
@@ -471,46 +349,67 @@ pub mod tests {
 
     use slop_multilinear::Point;
 
+    use super::{all_bit_states, all_memory_states};
+
+    #[test]
+    fn test_transition_function() {
+        for bit_state in all_bit_states() {
+            for memory_state in all_memory_states() {
+                println!("Bit state {:?}, Memory State {:?}", bit_state, memory_state);
+                let result = super::transition_function(bit_state, memory_state);
+                println!("Result: {:?}", result);
+            }
+        }
+    }
+
     #[test]
     fn test_single_table_jagged_eval() {
         for log_num_rows in 0..5 {
             for log_num_cols in 0..5 {
                 for index in 0..(1 << (log_num_cols + log_num_rows)) {
                     let log_m = log_num_cols + log_num_rows;
-                    let row = index >> log_num_cols;
-                    let col = index & ((1 << log_num_cols) - 1);
+                    let row = index % (1 << log_num_rows);
+                    let col = index / (1 << log_num_rows);
 
                     let mut z_row = Point::<F>::from_usize(row, log_num_rows + 1);
-                    let mut z_col = Point::<F>::from_usize(col, log_num_cols + 1);
-                    let z_index = Point::<F>::from_usize(index, log_m + 1);
-
-                    let z_tab = Point::<F>::from_usize(0, 1);
+                    let mut z_col = Point::from_usize(col, log_num_cols + 1);
+                    let z_index = Point::from_usize(index, log_m + 1);
 
                     let prover_params = super::JaggedLittlePolynomialProverParams::new(
-                        vec![1 << log_num_rows],
-                        vec![1 << log_num_cols],
+                        repeat(1 << log_num_rows).take(1 << log_num_cols).collect(),
                         log_num_rows,
                     );
 
                     let verifier_params = prover_params.clone().into_verifier_params();
 
                     let result = verifier_params.full_jagged_little_polynomial_evaluation(
-                        &z_tab,
                         &z_row,
                         &z_col,
                         &z_index.clone(),
                     );
                     assert_eq!(result, F::one());
 
+                    let prover_result = prover_params
+                        .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
+                        .eval_at(&z_index);
+
+                    assert_eq!(result, prover_result.to_vec()[0]);
+
                     for other_index in 0..(1 << (log_num_cols + log_num_rows)) {
                         if other_index != index {
                             assert!(
                                 verifier_params.full_jagged_little_polynomial_evaluation(
-                                    &z_tab,
                                     &z_row,
                                     &z_col,
                                     &Point::<F>::from_usize(other_index, log_m)
                                 ) == F::zero()
+                            );
+                            assert_eq!(
+                                prover_params
+                                    .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
+                                    .eval_at(&Point::<F>::from_usize(other_index, log_m))
+                                    .to_vec()[0],
+                                F::zero()
                             );
                         }
                     }
@@ -518,7 +417,6 @@ pub mod tests {
                     z_row = Point::<F>::from_usize(row ^ 1, log_num_rows + 1);
 
                     let wrong_result = verifier_params.full_jagged_little_polynomial_evaluation(
-                        &z_tab,
                         &z_row,
                         &z_col,
                         &z_index.clone(),
@@ -529,12 +427,11 @@ pub mod tests {
                     z_col = Point::<F>::from_usize(col ^ 1, log_num_cols + 1);
 
                     let wrong_result = verifier_params
-                        .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index);
+                        .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
                     assert_eq!(wrong_result, F::zero());
 
                     z_col = Point::<F>::from_usize(col, log_num_cols + 1);
                     let wrong_result = verifier_params.full_jagged_little_polynomial_evaluation(
-                        &z_tab,
                         &z_row,
                         &z_col,
                         &Point::<F>::from_usize(index ^ 1, log_num_cols + 1),
@@ -546,12 +443,12 @@ pub mod tests {
                     for _ in 0..3 {
                         let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
                         assert_eq!(
-                            verifier_params.full_jagged_little_polynomial_evaluation(
-                                &z_tab, &z_row, &z_col, &z_index
-                            ),
+                            verifier_params
+                                .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                             prover_params
-                                .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                                .eval_at(&z_index)[0]
+                                .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
+                                .eval_at(&z_index)
+                                .to_vec()[0]
                         );
                     }
                 }
@@ -561,132 +458,102 @@ pub mod tests {
 
     #[test]
     fn test_multi_table_jagged_eval() {
-        let log_m = 5;
-        let log_max_column_count = 2;
-        let log_max_row_count = 3;
+        let row_counts = [12, 1, 2, 1, 17, 0];
 
-        let column_counts = [2, 1 << 2];
-        let row_counts = [1 << 3, 1 << 2];
-
-        let mut prefix_sums = column_counts
+        let mut prefix_sums = row_counts
             .iter()
-            .zip(row_counts.iter())
-            .scan(0, |state, (col, row)| {
+            .scan(0, |state, row_count| {
                 let result = *state;
-                *state += col * row;
+                *state += row_count;
                 Some(result)
             })
             .collect::<Vec<_>>();
 
-        prefix_sums.push(
-            *prefix_sums.last().unwrap()
-                + column_counts.last().unwrap() * row_counts.last().unwrap(),
-        );
+        prefix_sums.push(*prefix_sums.last().unwrap() + row_counts.last().unwrap());
 
-        for index in 0..*prefix_sums.last().unwrap() {
-            let tab = prefix_sums.iter().rposition(|&x| index >= x).unwrap();
-            let row = (index - prefix_sums[tab]) / column_counts[tab];
-            let col = (index - prefix_sums[tab]) % column_counts[tab];
-            let z_tab = Point::<F>::from_usize(tab, log2_ceil_usize(column_counts.len()));
-            let z_row = Point::<F>::from_usize(row, log_max_row_count);
-            let z_col = Point::<F>::from_usize(col, log_max_column_count);
-            let params = super::JaggedLittlePolynomialProverParams::new(
-                row_counts.to_vec(),
-                column_counts.to_vec(),
-                log_max_row_count,
-            );
-            let verifier_params = params.clone().into_verifier_params();
+        let log_m = log2_ceil_usize(*prefix_sums.last().unwrap());
 
-            for new_tab in 0..column_counts.len() {
-                for new_row in 0..(1 << log_max_row_count) {
-                    for new_col in 0..(1 << log_max_column_count) {
-                        if !(new_col == col && new_row == row && new_tab == tab) {
-                            let z_index = Point::<F>::from_usize(index, log_m);
+        let log_max_row_count = 7;
 
-                            let new_z_tab = Point::<F>::from_usize(
-                                new_tab,
-                                log2_ceil_usize(column_counts.len()),
-                            );
-                            let new_z_row = Point::<F>::from_usize(new_row, log_max_row_count);
-                            let new_z_col = Point::<F>::from_usize(new_col, log_max_column_count);
+        let prover_params =
+            super::JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
 
-                            let result = verifier_params.full_jagged_little_polynomial_evaluation(
-                                &new_z_tab, &new_z_row, &new_z_col, &z_index,
-                            );
-                            assert_eq!(result, F::zero());
-                            assert_eq!(
-                                params
-                                    .partial_jagged_little_polynomial_evaluation(
-                                        &new_z_tab, &new_z_row, &new_z_col
-                                    )
-                                    .eval_at(&z_index)[0],
-                                F::zero()
-                            );
-                        }
+        let verifier_params = prover_params.clone().into_verifier_params();
+
+        for index in 0..row_counts.iter().sum() {
+            let col = prefix_sums.iter().rposition(|&x| index >= x).unwrap();
+            let row = index - prefix_sums[col];
+            let z_row = Point::from_usize(row, log_max_row_count);
+            let z_col = Point::from_usize(col, log2_ceil_usize(row_counts.len()));
+
+            for new_row in 0..(1 << log_max_row_count) {
+                for new_col in 0..row_counts.len() {
+                    if !(new_col == col && new_row == row) {
+                        let z_index = Point::from_usize(index, log_m);
+
+                        let new_z_row = Point::from_usize(new_row, log_max_row_count);
+                        let new_z_col =
+                            Point::from_usize(new_col, log2_ceil_usize(row_counts.len()));
+
+                        let result = verifier_params.full_jagged_little_polynomial_evaluation(
+                            &new_z_row, &new_z_col, &z_index,
+                        );
+                        assert_eq!(result, F::zero());
+                        assert_eq!(
+                            prover_params
+                                .partial_jagged_little_polynomial_evaluation(&new_z_row, &new_z_col)
+                                .eval_at(&z_index)
+                                .to_vec()[0],
+                            F::zero()
+                        );
                     }
                 }
             }
 
-            let verifier_params = params.clone().into_verifier_params();
-
-            let z_index = Point::from_usize(index, log_m);
-            let result = verifier_params
-                .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index);
+            let z_index = Point::from_usize(index, log_m + 1);
+            let result =
+                verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
             assert_eq!(result, F::one());
 
             for other_index in 0..*prefix_sums.last().unwrap() {
                 if other_index != index {
                     assert!(
                         verifier_params.full_jagged_little_polynomial_evaluation(
-                            &z_tab,
                             &z_row,
                             &z_col,
                             &Point::from_usize(other_index, log_m)
                         ) == F::zero()
                     );
 
-                    assert!(
-                        params
-                            .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                            .eval_at(&Point::<F>::from_usize(other_index, log_m))[0]
-                            == F::zero()
+                    assert_eq!(
+                        prover_params
+                            .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
+                            .eval_at(&Point::<F>::from_usize(other_index, log_m))
+                            .to_vec()[0],
+                        F::zero()
                     );
                 }
             }
-
-            let z_index: Point<F> = (0..log_m).map(|_| F::zero()).collect();
-            assert_eq!(
-                verifier_params
-                    .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index),
-                params
-                    .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                    .eval_at(&z_index)[0]
-            );
         }
 
         let mut rng = rand::thread_rng();
 
-        let params = super::JaggedLittlePolynomialProverParams::new(
-            row_counts.to_vec(),
-            column_counts.to_vec(),
-            log_max_row_count,
-        );
+        let params =
+            super::JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
 
-        let z_tab: Point<F> =
-            (0..log2_ceil_usize(column_counts.len())).map(|_| rng.gen::<F>()).collect();
-        let z_row: Point<F> = (0..log_max_row_count).map(|_| rng.gen::<F>()).collect();
-        let z_col = (0..log_max_column_count).map(|_| rng.gen::<F>()).collect::<Point<_>>();
+        let z_row = (0..log_max_row_count).map(|_| rng.gen::<F>()).collect();
+        let z_col = (0..log2_ceil_usize(row_counts.len())).map(|_| rng.gen::<F>()).collect();
 
         let verifier_params = params.clone().into_verifier_params();
 
         for _ in 0..100 {
             let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
             assert_eq!(
-                verifier_params
-                    .full_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col, &z_index),
+                verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                 params
-                    .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                    .eval_at(&z_index)[0]
+                    .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
+                    .eval_at(&z_index)
+                    .to_vec()[0]
             );
         }
     }
@@ -696,41 +563,37 @@ pub mod tests {
         let mut rng = rand::thread_rng();
         for log_num_rows in 0..5 {
             for log_num_cols in 0..5 {
-                for log_num_tables in 0..2 {
-                    let log_m = log_num_cols + log_num_rows + log_num_tables;
-                    let z_row: Point<F> = (0..log_num_rows).map(|_| rng.gen::<F>()).collect();
-                    let z_col: Point<F> = (0..log_num_cols).map(|_| rng.gen::<F>()).collect();
-                    let z_tab: Point<F> = (0..log_num_tables).map(|_| rng.gen::<F>()).collect();
+                let log_m = log_num_cols + log_num_rows;
+                let z_row = (0..log_num_rows).map(|_| rng.gen::<F>()).collect();
+                let z_col = (0..log_num_cols).map(|_| rng.gen::<F>()).collect();
 
-                    for index in 0..(1 << (log_num_cols + log_num_rows + log_num_cols)) {
-                        let params = super::JaggedLittlePolynomialProverParams::new(
-                            (0..(1 << log_num_tables)).map(|_| (1 << log_num_rows)).collect(),
-                            (0..(1 << log_num_tables)).map(|_| 1 << log_num_cols).collect(),
-                            log_num_rows,
-                        );
+                for index in 0..(1 << (log_num_cols + log_num_rows)) {
+                    let params = super::JaggedLittlePolynomialProverParams::new(
+                        (0..(1 << log_num_cols)).map(|_| (1 << log_num_rows)).collect(),
+                        log_num_rows,
+                    );
 
-                        let verifier_params = params.clone().into_verifier_params();
+                    let verifier_params = params.clone().into_verifier_params();
 
-                        let z_index = Point::from_usize(index, log_m);
-                        assert_eq!(
-                            verifier_params.full_jagged_little_polynomial_evaluation(
-                                &z_tab, &z_row, &z_col, &z_index
-                            ),
-                            params
-                                .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                                .eval_at(&z_index)[0]
-                        );
+                    let z_index = Point::from_usize(index, log_m);
+                    assert_eq!(
+                        verifier_params
+                            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
+                        params
+                            .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
+                            .eval_at(&z_index)
+                            .to_vec()[0]
+                    );
 
-                        let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
-                        assert_eq!(
-                            verifier_params.full_jagged_little_polynomial_evaluation(
-                                &z_tab, &z_row, &z_col, &z_index
-                            ),
-                            params
-                                .partial_jagged_little_polynomial_evaluation(&z_tab, &z_row, &z_col)
-                                .eval_at(&z_index)[0]
-                        );
-                    }
+                    let z_index = (0..log_m).map(|_| rng.gen::<F>()).collect();
+                    assert_eq!(
+                        verifier_params
+                            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
+                        params
+                            .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
+                            .eval_at(&z_index)
+                            .to_vec()[0]
+                    );
                 }
             }
         }

@@ -54,7 +54,7 @@ pub fn testing_stacked_basefold_config(
 pub fn testing_jagged_basefold_config(
     log_stacking_height: usize,
     max_log_row_count: usize,
-    table_counts_by_round: Vec<usize>,
+    column_counts_by_round: Vec<Vec<usize>>,
 ) -> (
     JaggedPcs<StackedPcsProver<BaseFoldProverConfig>>,
     MachineJaggedPcs<StackedPcsVerifier<BaseFoldVerifierConfig>>,
@@ -65,7 +65,7 @@ pub fn testing_jagged_basefold_config(
         JaggedPcs::new(prover, max_log_row_count),
         MachineJaggedPcs {
             pcs: JaggedPcs::new(verifier, max_log_row_count),
-            table_counts_by_round,
+            column_counts_by_round,
         },
     )
 }

@@ -668,12 +668,12 @@ mod tests {
     #[test]
     fn test_jagged_prover() {
         setup_logger();
-        let column_counts = [1 << 1, 1 << 2, 1 << 7, 1 << 1, 1 << 3]; //, 4, 2, 2];
-        let row_counts = [1 << 13, 1 << 7, (1 << 19) + 7, 7]; //, 4, 4, 4];
+        let column_counts = [1 << 1, 1 << 2, 1 << 7, 1 << 1];
+        let row_counts = [1 << 13, 1 << 7, (1 << 19) + 7, 7];
 
         let log_stacking_height = 12;
 
-        let log_max_row_count = 23; //log2_ceil_usize(*row_counts.iter().max().unwrap());
+        let log_max_row_count = 23;
 
         let batch_split_point = 1;
 
@@ -693,7 +693,10 @@ mod tests {
         let (jagged_prover, jagged_verifier) = testing_jagged_basefold_config(
             log_stacking_height,
             log_max_row_count,
-            vec![batch_split_point, matrices.len() - batch_split_point],
+            vec![
+                column_counts[0..batch_split_point].to_vec(),
+                column_counts[batch_split_point..].to_vec(),
+            ],
         );
         let (commit_1, data_1) =
             jagged_prover.commit_multilinears(matrices[0..batch_split_point].to_vec());

@@ -101,6 +101,17 @@ impl<T> Point<T, CpuBackend> {
         )
     }
 
+    pub fn bit_string_evaluation(&self) -> T
+    where
+        T: AbstractField,
+    {
+        self.values
+            .iter()
+            .enumerate()
+            .map(|(i, x)| x.clone() * T::from_canonical_usize(1 << (self.values.len() - i - 1)))
+            .sum()
+    }
+
     pub fn remove_last_coordinate(&mut self) -> T {
         self.values.pop().expect("Point is empty")
     }
