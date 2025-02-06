@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use clap::Parser;
 use rand::Rng;
 use slop_dft::Radix2DitParallel;
@@ -73,7 +75,7 @@ fn main() {
     let (jagged_prover, jagged_verifier) =
         default_jagged_basefold_config(args.log_stacking_height, args.max_log_row_count);
     let jagged_verifier = MachineJaggedPcs::new(
-        jagged_verifier,
+        &jagged_verifier,
         vec![
             column_counts[0..batch_split_point].to_vec(),
             column_counts[batch_split_point..].to_vec(),
@@ -107,7 +109,7 @@ fn main() {
 
     let commit_time = now.elapsed();
 
-    let mut data = vec![data_1, data_2];
+    let mut data = vec![Arc::new(data_1), Arc::new(data_2)];
 
     let mut commits = vec![commit_1, commit_2];
 

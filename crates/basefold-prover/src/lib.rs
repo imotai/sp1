@@ -400,6 +400,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use rand::Rng;
 
     use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
@@ -686,7 +688,7 @@ mod tests {
             default_jagged_basefold_config(log_stacking_height, log_max_row_count);
 
         let jagged_verifier = MachineJaggedPcs::new(
-            jagged_verifier,
+            &jagged_verifier,
             vec![
                 column_counts[0..batch_split_point].to_vec(),
                 column_counts[batch_split_point..].to_vec(),
@@ -705,7 +707,7 @@ mod tests {
 
         challenger.observe(commit_2);
 
-        let mut data = vec![data_1, data_2];
+        let mut data = vec![Arc::new(data_1), Arc::new(data_2)];
 
         let mut commits = vec![commit_1, commit_2];
 
