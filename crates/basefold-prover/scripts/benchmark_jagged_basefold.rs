@@ -75,7 +75,7 @@ fn main() {
     let (jagged_prover, jagged_verifier) =
         default_jagged_basefold_config(args.log_stacking_height, args.max_log_row_count);
     let jagged_verifier = MachineJaggedPcs::new(
-        jagged_verifier,
+        &jagged_verifier,
         vec![
             column_counts[0..batch_split_point].to_vec(),
             column_counts[batch_split_point..].to_vec(),
