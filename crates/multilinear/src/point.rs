@@ -167,9 +167,16 @@ impl<T> Point<T, CpuBackend> {
         Point::new(buffer)
     }
 
+    /// Adds `dim_val` to the front of the point.
     #[inline]
     pub fn add_dimension(&mut self, dim_val: T) {
         self.values.insert(0, dim_val);
+    }
+
+    /// Adds `dim_val` to the back of the point.
+    #[inline]
+    pub fn add_dimension_back(&mut self, dim_val: T) {
+        self.values.push(dim_val);
     }
 }
 

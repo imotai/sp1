@@ -306,40 +306,19 @@ impl<T> Buffer<T, CpuBackend> {
 
     #[inline]
     pub fn push(&mut self, value: T) {
-        // The panic code path is put into a cold function to not bloat the
-        // call site.
-        #[inline(never)]
-        #[cold]
-        #[track_caller]
-        fn buffer_is_full(len: usize, capacity: usize) -> ! {
-            panic!("buffer is full: len: {}, capacity: {}", len, capacity);
-        }
-
-        if self.len() == self.capacity() {
-            buffer_is_full(self.len(), self.capacity());
-        }
-
-        // This is safe because we have just checked that the buffer is not full.
-        unsafe {
-            let ptr = self.as_mut_ptr().add(self.len());
-            ptr.write(value);
-            self.set_len(self.len() + 1);
-        }
+        let take_self = std::mem::take(self);
+        let mut vec = Vec::from(take_self);
+        vec.push(value);
+        *self = Self::from(vec);
     }
 
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
-        if self.is_empty() {
-            return None;
-        }
-
-        // This is safe because we have just checked that the buffer is not empty.
-        unsafe {
-            let ptr = self.as_mut_ptr().add(self.len() - 1);
-            let value = ptr.read();
-            self.set_len(self.len() - 1);
-            Some(value)
-        }
+        let take_self = std::mem::take(self);
+        let mut vec = Vec::from(take_self);
+        let value = vec.pop();
+        *self = Self::from(vec);
+        value
     }
 
     #[inline]
