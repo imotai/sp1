@@ -120,18 +120,18 @@ where
     }
 }
 
-pub struct MachineJaggedPcs<Pcs: MultilinearPcsVerifier> {
-    pub pcs: JaggedPcs<Pcs>,
+pub struct MachineJaggedPcs<'a, Pcs: MultilinearPcsVerifier> {
+    pub pcs: &'a JaggedPcs<Pcs>,
     pub column_counts_by_round: Vec<Vec<usize>>,
 }
 
-impl<Pcs: MultilinearPcsVerifier> MachineJaggedPcs<Pcs>
+impl<'a, Pcs: MultilinearPcsVerifier> MachineJaggedPcs<'a, Pcs>
 where
     Pcs::Challenger: FieldChallenger<Pcs::F> + CanObserve<Pcs::Commitment>,
     Pcs::EF: Field,
     Pcs::Proof: Serialize + DeserializeOwned + Clone,
 {
-    pub fn new(pcs: JaggedPcs<Pcs>, column_counts_by_round: Vec<Vec<usize>>) -> Self {
+    pub fn new(pcs: &'a JaggedPcs<Pcs>, column_counts_by_round: Vec<Vec<usize>>) -> Self {
         Self { pcs, column_counts_by_round }
     }
 

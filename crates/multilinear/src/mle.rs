@@ -309,7 +309,7 @@ pub fn partial_geq<F: Field>(threshold: usize, num_variables: usize) -> Vec<F> {
     (0..(1 << num_variables)).map(|x| if x >= threshold { F::one() } else { F::zero() }).collect()
 }
 
-/// A succinct way to compute the evaluation of `partial_eq` at `eval_point`. The threshold is passed
+/// A succinct way to compute the evaluation of `partial_geq` at `eval_point`. The threshold is passed
 /// as a `Point` on the Boolean hypercube.
 ///
 /// # Panics
