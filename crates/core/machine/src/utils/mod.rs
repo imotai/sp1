@@ -3,7 +3,7 @@ mod logger;
 mod prove;
 mod span;
 mod test;
-pub mod uni_stark;
+// pub mod uni_stark;
 
 pub use logger::*;
 use p3_field::Field;
@@ -11,7 +11,7 @@ pub use prove::*;
 use sp1_curves::params::Limbs;
 pub use span::*;
 pub use test::*;
-pub use uni_stark::*;
+// pub use uni_stark::*;
 
 use crate::memory::MemoryCols;
 

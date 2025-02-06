@@ -1,5 +1,5 @@
 use sp1_derive::AlignedBorrow;
-use sp1_stark::Word;
+use sp1_stark::{const_next_power_of_two, Word};
 use std::mem::size_of;
 
 use crate::{
@@ -7,7 +7,8 @@ use crate::{
     operations::{BabyBearWordRangeChecker, IsZeroOperation},
 };
 
-pub const NUM_MEMORY_INSTRUCTIONS_COLUMNS: usize = size_of::<MemoryInstructionsColumns<u8>>();
+pub const NUM_MEMORY_INSTRUCTIONS_COLUMNS: usize =
+    const_next_power_of_two(size_of::<MemoryInstructionsColumns<u8>>());
 
 /// The column layout for memory.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]

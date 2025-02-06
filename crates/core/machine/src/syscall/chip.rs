@@ -13,13 +13,13 @@ use sp1_core_executor::{events::SyscallEvent, ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::AirInteraction;
 use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
-use sp1_stark::InteractionKind;
+use sp1_stark::{const_next_power_of_two, InteractionKind};
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
 /// The number of main trace columns for `SyscallChip`.
-pub const NUM_SYSCALL_COLS: usize = size_of::<SyscallCols<u8>>();
+pub const NUM_SYSCALL_COLS: usize = const_next_power_of_two(size_of::<SyscallCols<u8>>());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SyscallShardKind {

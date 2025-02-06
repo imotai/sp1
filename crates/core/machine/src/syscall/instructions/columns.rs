@@ -1,5 +1,5 @@
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::PV_DIGEST_NUM_WORDS, Word};
+use sp1_stark::{air::PV_DIGEST_NUM_WORDS, const_next_power_of_two, Word};
 use std::mem::size_of;
 
 use crate::{
@@ -7,7 +7,8 @@ use crate::{
     operations::{BabyBearWordRangeChecker, IsZeroOperation},
 };
 
-pub const NUM_SYSCALL_INSTR_COLS: usize = size_of::<SyscallInstrColumns<u8>>();
+pub const NUM_SYSCALL_INSTR_COLS: usize =
+    const_next_power_of_two(size_of::<SyscallInstrColumns<u8>>());
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]

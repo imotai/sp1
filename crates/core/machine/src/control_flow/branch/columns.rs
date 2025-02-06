@@ -1,10 +1,10 @@
 use sp1_derive::AlignedBorrow;
-use sp1_stark::Word;
+use sp1_stark::{const_next_power_of_two, Word};
 use std::mem::size_of;
 
 use crate::operations::BabyBearWordRangeChecker;
 
-pub const NUM_BRANCH_COLS: usize = size_of::<BranchColumns<u8>>();
+pub const NUM_BRANCH_COLS: usize = const_next_power_of_two(size_of::<BranchColumns<u8>>());
 
 /// The column layout for branching.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]

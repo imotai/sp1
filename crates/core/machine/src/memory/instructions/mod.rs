@@ -98,10 +98,7 @@ mod tests {
             match test_case.failure_type {
                 FailureType::ConstraintsFailing => {
                     let memory_instr_chip_name = chip_name!(MemoryInstructionsChip, BabyBear);
-                    assert!(
-                        result.is_err()
-                            && result.unwrap_err().is_constraints_failing(&memory_instr_chip_name)
-                    );
+                    assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
                 }
                 FailureType::CumulativeSumFailing => {
                     assert!(
@@ -171,10 +168,7 @@ mod tests {
             match test_case.failure_type {
                 FailureType::ConstraintsFailing => {
                     let memory_instr_chip_name = chip_name!(MemoryInstructionsChip, BabyBear);
-                    assert!(
-                        result.is_err()
-                            && result.unwrap_err().is_constraints_failing(&memory_instr_chip_name)
-                    );
+                    assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
                 }
                 FailureType::CumulativeSumFailing => {
                     assert!(
@@ -219,8 +213,6 @@ mod tests {
         let result =
             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
         let memory_instr_chip_name = chip_name!(MemoryInstructionsChip, BabyBear);
-        assert!(
-            result.is_err() && result.unwrap_err().is_constraints_failing(&memory_instr_chip_name)
-        );
+        assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
     }
 }

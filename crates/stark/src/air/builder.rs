@@ -1,4 +1,8 @@
-use std::{array, iter::once};
+use std::{
+    array,
+    iter::once,
+    ops::{Add, Mul, Sub},
+};
 
 use itertools::Itertools;
 use p3_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder, PermutationAirBuilder};
@@ -11,7 +15,8 @@ use strum_macros::{Display, EnumIter};
 
 use super::{interaction::AirInteraction, BinomialExtension};
 use crate::{
-    lookup::InteractionKind, septic_digest::SepticDigest, septic_extension::SepticExtension, Word,
+    lookup::InteractionKind, septic_digest::SepticDigest, septic_extension::SepticExtension,
+    ConstraintSumcheckFolder, Word,
 };
 
 /// The scope of an interaction.
@@ -418,6 +423,14 @@ impl<AB: BaseAirBuilder + AirBuilderWithPublicValues> SP1AirBuilder for AB {}
 
 impl<SC: StarkGenericConfig> EmptyMessageBuilder for ProverConstraintFolder<'_, SC> {}
 impl<SC: StarkGenericConfig> EmptyMessageBuilder for VerifierConstraintFolder<'_, SC> {}
+impl<
+        'a,
+        F: Field,
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        EF: Field + Mul<K, Output = EF>,
+    > EmptyMessageBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+{
+}
 impl<F: Field> EmptyMessageBuilder for SymbolicAirBuilder<F> {}
 
 #[cfg(debug_assertions)]

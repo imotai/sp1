@@ -41,15 +41,18 @@ impl<AB: AirBuilder> AirBuilder for MultiBuilder<'_, AB> {
     }
 
     fn is_first_row(&self) -> Self::Expr {
-        self.is_first_row.clone()
+        unimplemented!()
+        //self.is_first_row.clone()
     }
 
     fn is_last_row(&self) -> Self::Expr {
-        self.is_last_row.clone()
+        unimplemented!()
+        //self.is_last_row.clone()
     }
 
     fn is_transition_window(&self, size: usize) -> Self::Expr {
-        self.next_condition.clone() * self.inner.is_transition_window(size)
+        unimplemented!()
+        //self.next_condition.clone() * self.inner.is_transition_window(size)
     }
 
     fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {

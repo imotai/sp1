@@ -252,14 +252,15 @@ where
         // Evaluate the execution trace constraints.
         self.air.eval(builder);
         // Evaluate permutation constraints.
-        let batch_size = self.logup_batch_size();
-        eval_permutation_constraints(
-            &self.sends,
-            &self.receives,
-            batch_size,
-            self.air.commit_scope(),
-            builder,
-        );
+        // We will use logup GKR to verify the permutation constraints.
+        // let batch_size = self.logup_batch_size();
+        // eval_permutation_constraints(
+        //     &self.sends,
+        //     &self.receives,
+        //     batch_size,
+        //     self.air.commit_scope(),
+        //     builder,
+        // );
     }
 }
 

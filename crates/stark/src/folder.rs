@@ -3,7 +3,7 @@ use std::{
     ops::{Add, Mul, MulAssign, Sub},
 };
 
-use p3_field::{AbstractField, ExtensionField, Field};
+use p3_field::{AbstractExtensionField, AbstractField, ExtensionField, Field};
 use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 
 use super::{Challenge, PackedChallenge, PackedVal, StarkGenericConfig, Val};
@@ -468,6 +468,143 @@ where
     PubVar: Into<Expr> + Copy,
 {
     type PublicVar = PubVar;
+
+    fn public_values(&self) -> &[Self::PublicVar] {
+        self.public_values
+    }
+}
+
+/// A folder for the zerocheck sumcheck poly.
+pub struct ConstraintSumcheckFolder<'a, F: Field, K: Field, EF> {
+    /// The preprocessed row.
+    pub preprocessed: RowMajorMatrixView<'a, K>,
+    /// The main row.
+    pub main: RowMajorMatrixView<'a, K>,
+    /// The constraint folding challenge.
+    pub powers_of_alpha: &'a Vec<EF>,
+    /// The accumulator for the constraint folding.
+    pub accumulator: EF,
+    /// The public values.
+    pub public_values: &'a [F],
+    /// The constraint index.
+    pub constraint_index: usize,
+}
+
+impl<
+        'a,
+        F: Field,
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        EF: Field + Mul<K, Output = EF>,
+    > AirBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+{
+    type F = F;
+    type Expr = K;
+    type Var = K;
+    type M = RowMajorMatrixView<'a, K>;
+
+    fn main(&self) -> Self::M {
+        self.main
+    }
+
+    fn is_first_row(&self) -> Self::Expr {
+        unimplemented!()
+    }
+
+    fn is_last_row(&self) -> Self::Expr {
+        unimplemented!()
+    }
+
+    fn is_transition_window(&self, _: usize) -> Self::Expr {
+        unimplemented!()
+    }
+
+    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+        self.accumulator += self.powers_of_alpha[self.constraint_index] * x.into();
+        self.constraint_index += 1;
+    }
+}
+
+impl<
+        'a,
+        F: Field,
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        EF: Field + Mul<K, Output = EF> + ExtensionField<F> + AbstractExtensionField<K> + From<K>,
+    > ExtensionBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+{
+    type EF = EF;
+
+    type ExprEF = EF;
+
+    type VarEF = EF;
+
+    fn assert_zero_ext<I>(&mut self, x: I)
+    where
+        I: Into<Self::ExprEF>,
+    {
+        self.accumulator += self.powers_of_alpha[self.constraint_index] * x.into();
+        self.constraint_index += 1;
+    }
+}
+
+impl<
+        'a,
+        F: Field,
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        EF: Field + Mul<K, Output = EF> + ExtensionField<F> + AbstractExtensionField<K>,
+    > PermutationAirBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+{
+    type MP = VerticalPair<RowMajorMatrixView<'a, EF>, RowMajorMatrixView<'a, EF>>;
+
+    type RandomVar = EF;
+
+    fn permutation(&self) -> Self::MP {
+        unimplemented!()
+    }
+
+    fn permutation_randomness(&self) -> &[Self::RandomVar] {
+        unimplemented!()
+    }
+}
+
+impl<
+        'a,
+        F: Field,
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        EF: Field + Mul<K, Output = EF> + ExtensionField<F> + AbstractExtensionField<K>,
+    > MultiTableAirBuilder<'a> for ConstraintSumcheckFolder<'a, F, K, EF>
+{
+    type LocalSum = EF;
+    type GlobalSum = K;
+
+    fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
+        unimplemented!()
+    }
+
+    fn global_cumulative_sum(&self) -> &'a SepticDigest<Self::GlobalSum> {
+        unimplemented!()
+    }
+}
+
+impl<
+        'a,
+        F: Field,
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        EF: Field + Mul<K, Output = EF>,
+    > PairBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+{
+    fn preprocessed(&self) -> Self::M {
+        self.preprocessed
+    }
+}
+
+impl<
+        'a,
+        F: Field,
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        EF: Field + Mul<K, Output = EF>,
+    > AirBuilderWithPublicValues for ConstraintSumcheckFolder<'a, F, K, EF>
+{
+    type PublicVar = Self::F;
 
     fn public_values(&self) -> &[Self::PublicVar] {
         self.public_values

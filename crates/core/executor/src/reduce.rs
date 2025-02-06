@@ -1,9 +1,9 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sp1_stark::{Dom, ShardProof, StarkGenericConfig, StarkVerifyingKey};
+use serde::{Deserialize, Serialize};
+use sp1_stark::{ShardProof, StarkGenericConfig, StarkVerifyingKey};
 /// An intermediate proof which proves the execution.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound(serialize = "ShardProof<SC>: Serialize, Dom<SC>: Serialize"))]
-#[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>, Dom<SC>: DeserializeOwned"))]
+#[serde(bound(serialize = "ShardProof<SC>: Serialize"))]
+#[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>"))]
 pub struct SP1ReduceProof<SC: StarkGenericConfig> {
     /// The compress verifying key associated with the proof.
     pub vk: StarkVerifyingKey<SC>,

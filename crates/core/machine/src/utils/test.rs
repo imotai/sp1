@@ -6,10 +6,10 @@ use serde::{de::DeserializeOwned, Serialize};
 use sp1_core_executor::{ExecutionRecord, Executor, Program, SP1Context, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
-    air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, Com, CpuProver,
-    DebugConstraintBuilder, InteractionBuilder, MachineProof, MachineProver, MachineRecord,
-    MachineVerificationError, OpeningProof, PcsProverData, ProverConstraintFolder, SP1CoreOpts,
-    StarkGenericConfig, StarkMachine, StarkProvingKey, StarkVerifyingKey, Val,
+    air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, Com, ConstraintSumcheckFolder,
+    CpuProver, DebugConstraintBuilder, InteractionBuilder, MachineProof, MachineProver,
+    MachineRecord, MachineVerificationError, OpeningProof, PcsProverData, ProverConstraintFolder,
+    SP1CoreOpts, StarkGenericConfig, StarkMachine, StarkProvingKey, StarkVerifyingKey, Val,
     VerifierConstraintFolder,
 };
 
@@ -127,6 +127,8 @@ pub fn run_test_machine_with_prover<SC, A, P: MachineProver<SC, A>>(
 ) -> Result<MachineProof<SC>, MachineVerificationError<SC>>
 where
     A: MachineAir<SC::Val>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Val, SC::Challenge>>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Challenge, SC::Challenge>>
         + Air<InteractionBuilder<Val<SC>>>
         + for<'a> Air<VerifierConstraintFolder<'a, SC>>
         + for<'a> Air<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>
@@ -168,7 +170,8 @@ pub fn run_test_machine<SC, A>(
 ) -> Result<MachineProof<SC>, MachineVerificationError<SC>>
 where
     A: MachineAir<SC::Val>
-        + for<'a> Air<ProverConstraintFolder<'a, SC>>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Val, SC::Challenge>>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Challenge, SC::Challenge>>
         + Air<InteractionBuilder<Val<SC>>>
         + for<'a> Air<VerifierConstraintFolder<'a, SC>>
         + for<'a> Air<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>

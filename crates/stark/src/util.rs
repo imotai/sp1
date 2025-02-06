@@ -22,3 +22,21 @@ pub fn batch_multiplicative_inverse_inplace<F: Field>(values: &mut [F]) {
         values[index] = inverse_nonzero_values[i];
     }
 }
+
+/// Constant function to calculate the next power of 2.
+#[must_use]
+pub const fn const_next_power_of_two(mut x: usize) -> usize {
+    if x == 0 {
+        return 1; // Edge case: 0 should map to 1
+    }
+    x -= 1;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    if usize::BITS > 32 {
+        x |= x >> 32;
+    }
+    x + 1
+}

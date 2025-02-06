@@ -1,33 +1,38 @@
-use crate::septic_curve::SepticCurve;
 use crate::septic_digest::SepticDigest;
-use crate::septic_extension::SepticExtension;
-use crate::{air::InteractionScope, AirOpenedValues, ChipOpenedValues, ShardOpenedValues};
+use crate::{
+    utils::ZeroCheckPolyVals, AirOpenedValues, ChipOpenedValues, ShardOpenedValues, ZeroCheckPoly,
+};
 use core::fmt::Display;
 use itertools::Itertools;
-use p3_air::Air;
-use p3_challenger::{CanObserve, FieldChallenger};
-use p3_commit::{Pcs, PolynomialSpace};
-use p3_field::{AbstractExtensionField, AbstractField, PrimeField32};
+use p3_air::{Air, BaseAir};
+use p3_challenger::{CanObserve, CanSample, FieldChallenger};
+use p3_field::{AbstractField, PrimeField32};
+use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
 use p3_uni_stark::SymbolicAirBuilder;
 use p3_util::log2_strict_usize;
 use serde::{de::DeserializeOwned, Serialize};
+use slop_multilinear::Point;
+use slop_sumcheck::reduce_sumcheck_to_evaluation;
+use std::sync::Arc;
 use std::{cmp::Reverse, error::Error, time::Instant};
 
 use super::{
-    quotient_values, Com, OpeningProof, StarkGenericConfig, StarkMachine, StarkProvingKey, Val,
+    Com, OpeningProof, StarkGenericConfig, StarkMachine, StarkProvingKey, Val,
     VerifierConstraintFolder,
 };
 use crate::{
     air::MachineAir, lookup::InteractionBuilder, opts::SP1CoreOpts, record::MachineRecord,
-    Challenger, DebugConstraintBuilder, MachineChip, MachineProof, PackedChallenge, PcsProverData,
-    ProverConstraintFolder, ShardCommitment, ShardMainData, ShardProof, StarkVerifyingKey,
+    Challenger, ConstraintSumcheckFolder, DebugConstraintBuilder, MachineChip, MachineProof,
+    PcsProverData, ShardMainData, ShardProof, StarkVerifyingKey,
 };
 
 /// An algorithmic & hardware independent prover implementation for any [`MachineAir`].
-pub trait MachineProver<SC: StarkGenericConfig, A: MachineAir<SC::Val>>:
-    'static + Send + Sync
+pub trait MachineProver<
+    SC: StarkGenericConfig,
+    A: MachineAir<SC::Val> + Air<SymbolicAirBuilder<SC::Val>>,
+>: 'static + Send + Sync
 {
     /// The type used to store the traces.
     type DeviceMatrix: Matrix<SC::Val>;
@@ -127,7 +132,8 @@ pub trait MachineProver<SC: StarkGenericConfig, A: MachineAir<SC::Val>>:
         opts: <A::Record as MachineRecord>::Config,
     ) -> Result<MachineProof<SC>, Self::Error>
     where
-        A: for<'a> Air<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>;
+        A: for<'a> Air<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>
+            + Air<SymbolicAirBuilder<Val<SC>>>;
 
     /// The stark config for the machine.
     fn config(&self) -> &SC {
@@ -193,10 +199,11 @@ impl<SC, A> MachineProver<SC, A> for CpuProver<SC, A>
 where
     SC: 'static + StarkGenericConfig + Send + Sync,
     A: MachineAir<SC::Val>
-        + for<'a> Air<ProverConstraintFolder<'a, SC>>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Val, SC::Challenge>>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Challenge, SC::Challenge>>
         + Air<InteractionBuilder<Val<SC>>>
         + for<'a> Air<VerifierConstraintFolder<'a, SC>>
-        + for<'a> Air<SymbolicAirBuilder<Val<SC>>>,
+        + Air<SymbolicAirBuilder<Val<SC>>>,
     A::Record: MachineRecord<Config = SP1CoreOpts>,
     SC::Val: PrimeField32,
     Com<SC>: Send + Sync,
@@ -245,18 +252,11 @@ where
         // Order the chips and traces by trace size (biggest first), and get the ordering map.
         named_traces.sort_by_key(|(name, trace)| (Reverse(trace.height()), name.clone()));
 
-        let pcs = self.config().pcs();
+        let pcs = self.config().prover_pcs();
 
-        let domains_and_traces = named_traces
-            .iter()
-            .map(|(_, trace)| {
-                let domain = pcs.natural_domain_for_degree(trace.height());
-                (domain, trace.to_owned())
-            })
-            .collect::<Vec<_>>();
+        let traces = named_traces.iter().map(|(_, trace)| trace.to_owned()).collect::<Vec<_>>();
 
-        // Commit to the batch of traces.
-        let (main_commit, main_data) = pcs.commit(domains_and_traces);
+        let (main_commit, main_data) = pcs.commit_multilinears(traces);
 
         // Get the chip ordering.
         let chip_ordering =
@@ -267,7 +267,7 @@ where
         ShardMainData {
             traces,
             main_commit,
-            main_data,
+            main_data: Arc::new(main_data),
             chip_ordering,
             public_values: record.public_values(),
         }
@@ -286,64 +286,27 @@ where
         let chips = self.machine().shard_chips_ordered(&data.chip_ordering).collect::<Vec<_>>();
         let traces = data.traces;
 
-        let config = self.machine().config();
-
         let degrees = traces.iter().map(|trace| trace.height()).collect::<Vec<_>>();
 
         let log_degrees =
             degrees.iter().map(|degree| log2_strict_usize(*degree)).collect::<Vec<_>>();
 
-        let log_quotient_degrees =
-            chips.iter().map(|chip| chip.log_quotient_degree()).collect::<Vec<_>>();
-
-        let pcs = config.pcs();
-        let trace_domains =
-            degrees.iter().map(|degree| pcs.natural_domain_for_degree(*degree)).collect::<Vec<_>>();
-
-        // Observe the public values and the main commitment.
-        challenger.observe_slice(&data.public_values[0..self.num_pv_elts()]);
+        challenger.observe(pk.commit.clone());
         challenger.observe(data.main_commit.clone());
+        // Finalize commit.
+        let pcs = self.config().prover_pcs();
 
-        // Obtain the challenges used for the local permutation argument.
-        let mut local_permutation_challenges: Vec<SC::Challenge> = Vec::new();
-        for _ in 0..2 {
-            local_permutation_challenges.push(challenger.sample_ext_element());
-        }
+        let mut prover_data = vec![pk.data.clone(), data.main_data];
+        let mut commitments = vec![pk.commit.clone(), data.main_commit];
 
-        let packed_perm_challenges = local_permutation_challenges
-            .iter()
-            .map(|c| PackedChallenge::<SC>::from_f(*c))
-            .collect::<Vec<_>>();
+        pcs.finalize(&mut prover_data, &mut commitments, challenger);
+        challenger.observe_slice(&data.public_values[0..self.num_pv_elts()]);
 
-        // Generate the permutation traces.
-        let ((permutation_traces, prep_traces), (global_cumulative_sums, local_cumulative_sums)): (
-            (Vec<_>, Vec<_>),
-            (Vec<_>, Vec<_>),
-        ) = tracing::debug_span!("generate permutation traces").in_scope(|| {
+        let prep_traces = tracing::debug_span!("generate permutation traces").in_scope(|| {
             chips
                 .par_iter()
-                .zip(traces.par_iter())
-                .map(|(chip, main_trace)| {
-                    let preprocessed_trace =
-                        pk.chip_ordering.get(&chip.name()).map(|&index| &pk.traces[index]);
-                    let (perm_trace, local_sum) = chip.generate_permutation_trace(
-                        preprocessed_trace,
-                        main_trace,
-                        &local_permutation_challenges,
-                    );
-                    let global_sum = if chip.commit_scope() == InteractionScope::Local {
-                        SepticDigest::<Val<SC>>::zero()
-                    } else {
-                        let main_trace_size = main_trace.height() * main_trace.width();
-                        let last_row = &main_trace.values[main_trace_size - 14..main_trace_size];
-                        SepticDigest(SepticCurve {
-                            x: SepticExtension::<Val<SC>>::from_base_fn(|i| last_row[i]),
-                            y: SepticExtension::<Val<SC>>::from_base_fn(|i| last_row[i + 7]),
-                        })
-                    };
-                    ((perm_trace, preprocessed_trace), (global_sum, local_sum))
-                })
-                .unzip()
+                .map(|chip| pk.chip_ordering.get(&chip.name()).map(|&index| &pk.traces[index]))
+                .collect::<Vec<_>>()
         });
 
         // Compute some statistics.
@@ -351,284 +314,166 @@ where
             let trace_width = traces[i].width();
             let trace_height = traces[i].height();
             let prep_width = prep_traces[i].map_or(0, |x| x.width());
-            let permutation_width = permutation_traces[i].width();
-            let total_width = trace_width
-                + prep_width
-                + permutation_width * <SC::Challenge as AbstractExtensionField<SC::Val>>::D;
             tracing::debug!(
-                "{:<15} | Main Cols = {:<5} | Pre Cols = {:<5}  | Perm Cols = {:<5} | Rows = {:<5} | Cells = {:<10}",
+                "{:<15} | Main Cols = {:<5} | Pre Cols = {:<5}  | Rows = {:<5} | Cells = {:<10}",
                 chips[i].name(),
                 trace_width,
                 prep_width,
-                permutation_width * <SC::Challenge as AbstractExtensionField<SC::Val>>::D,
                 trace_height,
-                total_width * trace_height,
+                trace_width * trace_height,
             );
         }
 
-        let domains_and_perm_traces =
-            tracing::debug_span!("flatten permutation traces and collect domains").in_scope(|| {
-                permutation_traces
-                    .into_iter()
-                    .zip(trace_domains.iter())
-                    .map(|(perm_trace, domain)| {
-                        let trace = perm_trace.flatten_to_base();
-                        (*domain, trace.clone())
-                    })
-                    .collect::<Vec<_>>()
-            });
-
-        let pcs = config.pcs();
-
-        let (permutation_commit, permutation_data) =
-            tracing::debug_span!("commit to permutation traces")
-                .in_scope(|| pcs.commit(domains_and_perm_traces));
-
-        // Observe the permutation commitment and cumulative sums.
-        challenger.observe(permutation_commit.clone());
-        for (local_sum, global_sum) in
-            local_cumulative_sums.iter().zip(global_cumulative_sums.iter())
-        {
-            challenger.observe_slice(local_sum.as_base_slice());
-            challenger.observe_slice(&global_sum.0.x.0);
-            challenger.observe_slice(&global_sum.0.y.0);
-        }
-
-        // Compute the quotient polynomial for all chips.
-        let quotient_domains = trace_domains
-            .iter()
-            .zip_eq(log_degrees.iter())
-            .zip_eq(log_quotient_degrees.iter())
-            .map(|((domain, log_degree), log_quotient_degree)| {
-                domain.create_disjoint_domain(1 << (log_degree + log_quotient_degree))
-            })
-            .collect::<Vec<_>>();
-
-        // Compute the quotient values.
+        // Generate the zerocheck sumcheck proof for each chip.
         let alpha: SC::Challenge = challenger.sample_ext_element::<SC::Challenge>();
-        let parent_span = tracing::debug_span!("compute quotient values");
-        let quotient_values = parent_span.in_scope(|| {
-            quotient_domains
-                .into_par_iter()
-                .enumerate()
-                .map(|(i, quotient_domain)| {
-                    tracing::debug_span!(parent: &parent_span, "compute quotient values for domain")
-                        .in_scope(|| {
-                            let preprocessed_trace_on_quotient_domains =
-                                pk.chip_ordering.get(&chips[i].name()).map(|&index| {
-                                    pcs.get_evaluations_on_domain(&pk.data, index, *quotient_domain)
-                                        .to_row_major_matrix()
-                                });
-                            let main_trace_on_quotient_domains = pcs
-                                .get_evaluations_on_domain(&data.main_data, i, *quotient_domain)
-                                .to_row_major_matrix();
-                            let permutation_trace_on_quotient_domains = pcs
-                                .get_evaluations_on_domain(&permutation_data, i, *quotient_domain)
-                                .to_row_major_matrix();
 
-                            let chip_num_constraints =
-                                pk.constraints_map.get(&chips[i].name()).unwrap();
-
-                            // Calculate powers of alpha for constraint evaluation:
-                            // 1. Generate sequence [α⁰, α¹, ..., α^(n-1)] where n = chip_num_constraints.
-                            // 2. Reverse to [α^(n-1), ..., α¹, α⁰] to align with Horner's method in the verifier.
-                            let powers_of_alpha =
-                                alpha.powers().take(*chip_num_constraints).collect::<Vec<_>>();
-                            let mut powers_of_alpha_rev = powers_of_alpha.clone();
-                            powers_of_alpha_rev.reverse();
-
-                            quotient_values(
-                                chips[i],
-                                &local_cumulative_sums[i],
-                                &global_cumulative_sums[i],
-                                trace_domains[i],
-                                *quotient_domain,
-                                preprocessed_trace_on_quotient_domains,
-                                main_trace_on_quotient_domains,
-                                permutation_trace_on_quotient_domains,
-                                &packed_perm_challenges,
-                                &powers_of_alpha_rev,
-                                &data.public_values,
-                            )
-                        })
-                })
-                .collect::<Vec<_>>()
-        });
-
-        // Split the quotient values and commit to them.
-        let quotient_domains_and_chunks = quotient_domains
-            .into_iter()
-            .zip_eq(quotient_values)
-            .zip_eq(log_quotient_degrees.iter())
-            .flat_map(|((quotient_domain, quotient_values), log_quotient_degree)| {
-                let quotient_degree = 1 << *log_quotient_degree;
-                let quotient_flat = RowMajorMatrix::new_col(quotient_values).flatten_to_base();
-                let quotient_chunks = quotient_domain.split_evals(quotient_degree, quotient_flat);
-                let qc_domains = quotient_domain.split_domains(quotient_degree);
-                qc_domains.into_iter().zip_eq(quotient_chunks)
-            })
-            .collect::<Vec<_>>();
-
-        let num_quotient_chunks = quotient_domains_and_chunks.len();
-        assert_eq!(
-            num_quotient_chunks,
-            chips.iter().map(|c| 1 << c.log_quotient_degree()).sum::<usize>()
+        // Get the max num variables for all chips to determine the random point dimensions.
+        let zeta = Point::<SC::Challenge>::new(
+            (0..pcs.max_log_row_count).map(|_| challenger.sample()).collect::<Vec<_>>().into(),
         );
 
-        let (quotient_commit, quotient_data) = tracing::debug_span!("commit to quotient traces")
-            .in_scope(|| pcs.commit(quotient_domains_and_chunks));
-        challenger.observe(quotient_commit.clone());
+        let parent_span = tracing::debug_span!("compute zerocheck sumcheck proofs");
 
-        // Compute the quotient argument.
-        let zeta: SC::Challenge = challenger.sample_ext_element();
+        let max_num_constraints = pk.constraints_map.values().max().unwrap();
+        let powers_of_alpha = alpha.powers().take(*max_num_constraints).collect::<Vec<_>>();
 
-        let preprocessed_opening_points =
-            tracing::debug_span!("compute preprocessed opening points").in_scope(|| {
-                pk.traces
-                    .iter()
-                    .zip(pk.local_only.iter())
-                    .map(|(trace, local_only)| {
-                        let domain = pcs.natural_domain_for_degree(trace.height());
-                        if !local_only {
-                            vec![zeta, domain.next_point(zeta).unwrap()]
-                        } else {
-                            vec![zeta]
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            });
+        // First collect the zerocheck polynomials.
+        let (zerocheck_polys, num_preprocessed_columns): (Vec<_>, Vec<_>) = chips
+            .iter()
+            .zip(traces.iter())
+            .enumerate()
+            .map(|(i, (chip, main_trace))| {
+                let preprocessed_trace = pk
+                    .chip_ordering
+                    .get(&chip.name())
+                    .map(|&index| ZeroCheckPolyVals::Reference(&pk.traces[index]));
 
-        let main_trace_opening_points = tracing::debug_span!("compute main trace opening points")
-            .in_scope(|| {
-                trace_domains
-                    .iter()
-                    .zip(chips.iter())
-                    .map(|(domain, chip)| {
-                        if !chip.local_only() {
-                            vec![zeta, domain.next_point(zeta).unwrap()]
-                        } else {
-                            vec![zeta]
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            });
+                let log_height = log2_strict_usize(main_trace.height());
 
-        let permutation_trace_opening_points =
-            tracing::debug_span!("compute permutation trace opening points").in_scope(|| {
-                trace_domains
-                    .iter()
-                    .map(|domain| vec![zeta, domain.next_point(zeta).unwrap()])
-                    .collect::<Vec<_>>()
-            });
+                let num_preprocessed_cols =
+                    preprocessed_trace.as_ref().map_or(0, |pp_trace| pp_trace.matrix_ref().width());
 
-        // Compute quotient opening points, open every chunk at zeta.
-        let quotient_opening_points =
-            (0..num_quotient_chunks).map(|_| vec![zeta]).collect::<Vec<_>>();
+                let num_padded_vars = pcs.max_log_row_count - log_height;
 
-        let (openings, opening_proof) = tracing::debug_span!("open multi batches").in_scope(|| {
-            pcs.open(
-                vec![
-                    (&pk.data, preprocessed_opening_points),
-                    (&data.main_data, main_trace_opening_points.clone()),
-                    (&permutation_data, permutation_trace_opening_points.clone()),
-                    (&quotient_data, quotient_opening_points),
-                ],
+                let dummy_preprocessed_trace = vec![SC::Val::zero(); chip.preprocessed_width()];
+                let dummy_main_trace = vec![SC::Val::zero(); chip.width()];
+
+                let chip_num_constraints = pk.constraints_map.get(&chips[i].name()).unwrap();
+
+                // Calculate powers of alpha for constraint evaluation:
+                // 1. Generate sequence [α⁰, α¹, ..., α^(n-1)] where n = chip_num_constraints.
+                // 2. Reverse to [α^(n-1), ..., α¹, α⁰] to align with Horner's method in the verifier.
+                let mut chip_powers_of_alpha = powers_of_alpha[0..*chip_num_constraints].to_vec();
+                chip_powers_of_alpha.reverse();
+
+                let mut folder = ConstraintSumcheckFolder {
+                    preprocessed: RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
+                    main: RowMajorMatrixView::new_row(&dummy_main_trace),
+                    accumulator: SC::Challenge::zero(),
+                    public_values: &data.public_values,
+                    constraint_index: 0,
+                    powers_of_alpha: &chip_powers_of_alpha,
+                };
+                chip.air.eval(&mut folder);
+                let padded_row_adjustment = folder.accumulator;
+
+                (
+                    ZeroCheckPoly::new(
+                        &chip.air,
+                        zeta.clone(),
+                        preprocessed_trace,
+                        ZeroCheckPolyVals::Reference(main_trace),
+                        SC::Challenge::one(),
+                        SC::Challenge::zero(),
+                        &data.public_values,
+                        chip_powers_of_alpha,
+                        num_padded_vars,
+                        padded_row_adjustment,
+                    ),
+                    num_preprocessed_cols,
+                )
+            })
+            .unzip();
+
+        // Same lambda for the RLC of the zerocheck polynomials.
+        let lambda = challenger.sample_ext_element::<SC::Challenge>();
+
+        let num_zerocheck_polys = zerocheck_polys.len();
+
+        // Compute the sumcheck proof for the zerocheck polynomials.
+        let (sc_proof, component_poly_evals) = parent_span.in_scope(|| {
+            reduce_sumcheck_to_evaluation::<SC::Val, SC::Challenge, SC::Challenger>(
+                zerocheck_polys,
                 challenger,
+                vec![SC::Challenge::zero(); num_zerocheck_polys],
+                1,
+                lambda,
             )
         });
 
-        // Collect the opened values for each chip.
-        let [preprocessed_values, main_values, permutation_values, mut quotient_values] =
-            openings.try_into().unwrap();
-        assert!(main_values.len() == chips.len());
-        let preprocessed_opened_values = preprocessed_values
-            .into_iter()
-            .zip(pk.local_only.iter())
-            .map(|(op, local_only)| {
-                if !local_only {
-                    let [local, next] = op.try_into().unwrap();
-                    AirOpenedValues { local, next }
-                } else {
-                    let [local] = op.try_into().unwrap();
-                    let width = local.len();
-                    AirOpenedValues { local, next: vec![SC::Challenge::zero(); width] }
-                }
-            })
-            .collect::<Vec<_>>();
+        // Split the component polynomial evaluations into preprocessed and main openings
+        let (preprocessed_openings, main_openings): (Vec<_>, Vec<_>) = component_poly_evals
+            .iter()
+            .zip(num_preprocessed_columns.iter())
+            .map(|(evals, num_cols)| {
+                let (preprocessed_evals, main_evals) = evals.split_at(*num_cols);
 
-        let main_opened_values = main_values
+                (preprocessed_evals, main_evals)
+            })
+            .unzip();
+
+        // // Verify the main openings.
+        // main_openings.iter().zip(traces.iter()).for_each(|(main_opening, trace)| {
+        //     assert!(Mle::eval_matrix_at_point(trace, &sc_proof.point_and_eval.0) == *main_opening);
+        // });
+
+        // Filter out preprocessing openings that are empty (e.g. the table doesn't have any
+        // preprocessing columns).
+        let filtered_preprocessed_openings =
+            preprocessed_openings.clone().into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>();
+
+        // Generate the opening proof.
+        let opening_proof = pcs.prove_trusted_evaluations(
+            sc_proof.point_and_eval.0.clone(),
+            &[&filtered_preprocessed_openings, &main_openings],
+            &prover_data,
+            challenger,
+        );
+
+        // Collect the opened values for each chip.
+        let preprocessed_opened_values = preprocessed_openings
             .into_iter()
             .zip(chips.iter())
-            .map(|(op, chip)| {
-                if !chip.local_only() {
-                    let [local, next] = op.try_into().unwrap();
-                    AirOpenedValues { local, next }
-                } else {
-                    let [local] = op.try_into().unwrap();
-                    let width = local.len();
-                    AirOpenedValues { local, next: vec![SC::Challenge::zero(); width] }
-                }
-            })
+            .map(|(op, _)| AirOpenedValues { local: op.to_vec(), next: vec![] })
             .collect::<Vec<_>>();
-        let permutation_opened_values = permutation_values
+
+        let main_opened_values = main_openings
             .into_iter()
-            .map(|op| {
-                let [local, next] = op.try_into().unwrap();
-                AirOpenedValues { local, next }
-            })
+            .zip(chips.iter())
+            .map(|(op, _)| AirOpenedValues { local: op.to_vec(), next: vec![] })
             .collect::<Vec<_>>();
-        let mut quotient_opened_values = Vec::with_capacity(log_quotient_degrees.len());
-        for log_quotient_degree in log_quotient_degrees.iter() {
-            let degree = 1 << *log_quotient_degree;
-            let slice = quotient_values.drain(0..degree);
-            quotient_opened_values.push(slice.map(|mut op| op.pop().unwrap()).collect::<Vec<_>>());
-        }
+
+        assert!(preprocessed_opened_values.len() == chips.len());
+        assert!(main_opened_values.len() == chips.len());
 
         let opened_values = main_opened_values
             .into_iter()
-            .zip_eq(permutation_opened_values)
-            .zip_eq(quotient_opened_values)
-            .zip_eq(local_cumulative_sums)
-            .zip_eq(global_cumulative_sums)
+            .zip_eq(preprocessed_opened_values)
             .zip_eq(log_degrees.iter())
-            .enumerate()
-            .map(
-                |(
-                    i,
-                    (
-                        (
-                            (((main, permutation), quotient), local_cumulative_sum),
-                            global_cumulative_sum,
-                        ),
-                        log_degree,
-                    ),
-                )| {
-                    let preprocessed = pk
-                        .chip_ordering
-                        .get(&chips[i].name())
-                        .map(|&index| preprocessed_opened_values[index].clone())
-                        .unwrap_or(AirOpenedValues { local: vec![], next: vec![] });
-                    ChipOpenedValues {
-                        preprocessed,
-                        main,
-                        permutation,
-                        quotient,
-                        global_cumulative_sum,
-                        local_cumulative_sum,
-                        log_degree: *log_degree,
-                    }
-                },
-            )
+            .map(|((main, preprocessed), log_degree)| ChipOpenedValues {
+                preprocessed,
+                main,
+                global_cumulative_sum: SepticDigest::<Val<SC>>::zero(),
+                local_cumulative_sum: SC::Challenge::zero(),
+                log_degree: *log_degree,
+            })
             .collect::<Vec<_>>();
 
         Ok(ShardProof::<SC> {
-            commitment: ShardCommitment {
-                main_commit: data.main_commit.clone(),
-                permutation_commit,
-                quotient_commit,
-            },
-            opened_values: ShardOpenedValues { chips: opened_values },
+            commitments,
+            zerocheck_proof: sc_proof,
             opening_proof,
+            opened_values: ShardOpenedValues { chips: opened_values },
             chip_ordering: data.chip_ordering,
             public_values: data.public_values,
         })
@@ -689,7 +534,6 @@ where
     }
 
     fn observe_into(&self, challenger: &mut Challenger<SC>) {
-        challenger.observe(self.commit.clone());
         challenger.observe(self.pc_start);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);

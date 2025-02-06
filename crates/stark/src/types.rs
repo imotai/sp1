@@ -1,22 +1,27 @@
 #![allow(missing_docs)]
 
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use slop_jagged::{JaggedPcsProof, JaggedProverData};
+use slop_multilinear::StackedPcsProof;
+use slop_sumcheck::PartialSumcheckProof;
 
-use super::{Challenge, Com, OpeningProof, StarkGenericConfig, Val};
+use super::{Challenge, Com, StarkGenericConfig, Val};
 use crate::septic_digest::SepticDigest;
 use crate::shape::OrderedShape;
+use crate::OpeningProof;
 
 pub type QuotientOpenedValues<T> = Vec<T>;
 
 pub struct ShardMainData<SC: StarkGenericConfig, M, P> {
     pub traces: Vec<M>,
     pub main_commit: Com<SC>,
-    pub main_data: P,
+    pub main_data: Arc<JaggedProverData<P>>,
     pub chip_ordering: HashMap<String, usize>,
     pub public_values: Vec<SC::Val>,
 }
@@ -25,19 +30,12 @@ impl<SC: StarkGenericConfig, M, P> ShardMainData<SC, M, P> {
     pub const fn new(
         traces: Vec<M>,
         main_commit: Com<SC>,
-        main_data: P,
+        main_data: Arc<JaggedProverData<P>>,
         chip_ordering: HashMap<String, usize>,
         public_values: Vec<Val<SC>>,
     ) -> Self {
         Self { traces, main_commit, main_data, chip_ordering, public_values }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ShardCommitment<C> {
-    pub main_commit: C,
-    pub permutation_commit: C,
-    pub quotient_commit: C,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,8 +52,6 @@ pub struct AirOpenedValues<T> {
 pub struct ChipOpenedValues<F, EF> {
     pub preprocessed: AirOpenedValues<EF>,
     pub main: AirOpenedValues<EF>,
-    pub permutation: AirOpenedValues<EF>,
-    pub quotient: Vec<Vec<EF>>,
     pub global_cumulative_sum: SepticDigest<F>,
     pub local_cumulative_sum: EF,
     pub log_degree: usize,
@@ -72,16 +68,23 @@ pub struct ShardOpenedValues<F, EF> {
 pub const PROOF_MAX_NUM_PVS: usize = 231;
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "")]
+// #[serde(bound = "")]
+#[serde(bound(serialize = "OpeningProof<SC>: Serialize"))]
+#[serde(bound(deserialize = "OpeningProof<SC>: DeserializeOwned"))]
 pub struct ShardProof<SC: StarkGenericConfig> {
-    pub commitment: ShardCommitment<Com<SC>>,
+    pub commitments: Vec<Com<SC>>,
     pub opened_values: ShardOpenedValues<Val<SC>, Challenge<SC>>,
-    pub opening_proof: OpeningProof<SC>,
+    pub opening_proof:
+        JaggedPcsProof<StackedPcsProof<OpeningProof<SC>, SC::Challenge>, SC::Challenge>,
+    pub zerocheck_proof: PartialSumcheckProof<SC::Challenge>,
     pub chip_ordering: HashMap<String, usize>,
     pub public_values: Vec<Val<SC>>,
 }
 
-impl<SC: StarkGenericConfig> Debug for ShardProof<SC> {
+impl<SC: StarkGenericConfig> Debug for ShardProof<SC>
+where
+    OpeningProof<SC>: Clone,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ShardProof").finish()
     }
@@ -96,7 +99,10 @@ impl<T: Send + Sync + Clone> AirOpenedValues<T> {
     }
 }
 
-impl<SC: StarkGenericConfig> ShardProof<SC> {
+impl<SC: StarkGenericConfig> ShardProof<SC>
+where
+    OpeningProof<SC>: Clone,
+{
     pub fn local_cumulative_sum(&self) -> Challenge<SC> {
         self.opened_values.chips.iter().map(|c| c.local_cumulative_sum).sum()
     }
@@ -125,11 +131,17 @@ impl<SC: StarkGenericConfig> ShardProof<SC> {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
-pub struct MachineProof<SC: StarkGenericConfig> {
+pub struct MachineProof<SC: StarkGenericConfig>
+where
+    OpeningProof<SC>: Clone,
+{
     pub shard_proofs: Vec<ShardProof<SC>>,
 }
 
-impl<SC: StarkGenericConfig> Debug for MachineProof<SC> {
+impl<SC: StarkGenericConfig> Debug for MachineProof<SC>
+where
+    OpeningProof<SC>: Clone,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Proof").field("shard_proofs", &self.shard_proofs.len()).finish()
     }
@@ -161,7 +173,10 @@ impl From<[u32; 8]> for DeferredDigest {
     }
 }
 
-impl<SC: StarkGenericConfig> ShardProof<SC> {
+impl<SC: StarkGenericConfig> ShardProof<SC>
+where
+    OpeningProof<SC>: Clone,
+{
     pub fn shape(&self) -> OrderedShape {
         OrderedShape {
             inner: self

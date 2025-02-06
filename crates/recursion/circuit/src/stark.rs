@@ -61,11 +61,7 @@ pub fn dummy_vk_and_shard_proof<A: MachineAir<BabyBear>>(
     shape: &OrderedShape,
 ) -> (StarkVerifyingKey<BabyBearPoseidon2>, ShardProof<BabyBearPoseidon2>) {
     // Make a dummy commitment.
-    let commitment = ShardCommitment {
-        main_commit: dummy_hash(),
-        permutation_commit: dummy_hash(),
-        quotient_commit: dummy_hash(),
-    };
+    let commitment = ShardCommitment { main_commit: dummy_hash() };
 
     // Get dummy opened values by reading the chip ordering from the shape.
     let chip_ordering = shape
@@ -134,6 +130,8 @@ pub fn dummy_vk_and_shard_proof<A: MachineAir<BabyBear>>(
     let log_blowup = machine.config().fri_config().log_blowup;
     let opening_proof = dummy_pcs_proof(fri_queries, &batch_shapes, log_blowup);
 
+    let zerocheck_proofs = dummy_sumcheck_proof(fri_queries, &batch_shapes, log_blowup);
+
     let public_values = (0..PROOF_MAX_NUM_PVS).map(|_| BabyBear::zero()).collect::<Vec<_>>();
 
     // Get the preprocessed chip information.
@@ -165,7 +163,7 @@ pub fn dummy_vk_and_shard_proof<A: MachineAir<BabyBear>>(
     };
 
     let shard_proof =
-        ShardProof { commitment, opened_values, opening_proof, chip_ordering, public_values };
+        ShardProof { commitment, opened_values, zerocheck_proofs, chip_ordering, public_values };
 
     (vk, shard_proof)
 }
@@ -194,8 +192,6 @@ fn dummy_opened_values<F: Field, EF: ExtensionField<F>, A: MachineAir<F>>(
     ChipOpenedValues {
         preprocessed,
         main,
-        permutation,
-        quotient,
         global_cumulative_sum: SepticDigest::<F>::zero(),
         local_cumulative_sum: EF::zero(),
         log_degree,
@@ -292,7 +288,7 @@ where
             .map(|log_degree| Self::natural_domain_for_degree(machine.config(), 1 << log_degree))
             .collect::<Vec<_>>();
 
-        let ShardCommitment { main_commit, permutation_commit, quotient_commit } = *commitment;
+        let ShardCommitment { main_commit } = *commitment;
 
         challenger.observe(builder, main_commit);
 
