@@ -16,13 +16,13 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{MachineAir, SP1AirBuilder},
-    const_next_power_of_two, Word,
+    Word,
 };
 
 use crate::utils::pad_rows_fixed;
 
 /// The number of main trace columns for `BitwiseChip`.
-pub const NUM_BITWISE_COLS: usize = const_next_power_of_two(size_of::<BitwiseCols<u8>>());
+pub const NUM_BITWISE_COLS: usize = size_of::<BitwiseCols<u8>>();
 
 /// A chip that implements bitwise operations for the opcodes XOR, OR, and AND.
 #[derive(Default)]

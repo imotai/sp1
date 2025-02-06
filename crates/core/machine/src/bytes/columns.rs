@@ -1,15 +1,13 @@
 use sp1_derive::AlignedBorrow;
-use sp1_stark::const_next_power_of_two;
 use std::mem::size_of;
 
 use super::NUM_BYTE_OPS;
 
 /// The number of main trace columns for `ByteChip`.
-pub const NUM_BYTE_PREPROCESSED_COLS: usize =
-    const_next_power_of_two(size_of::<BytePreprocessedCols<u8>>());
+pub const NUM_BYTE_PREPROCESSED_COLS: usize = size_of::<BytePreprocessedCols<u8>>();
 
 /// The number of multiplicity columns for `ByteChip`.
-pub const NUM_BYTE_MULT_COLS: usize = const_next_power_of_two(size_of::<ByteMultCols<u8>>());
+pub const NUM_BYTE_MULT_COLS: usize = size_of::<ByteMultCols<u8>>();
 
 #[derive(Debug, Clone, Copy, AlignedBorrow)]
 #[repr(C)]

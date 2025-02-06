@@ -1,10 +1,10 @@
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{const_next_power_of_two, Word};
+use sp1_stark::Word;
 use std::mem::size_of;
 
 use crate::operations::BabyBearWordRangeChecker;
 
-pub const NUM_JUMP_COLS: usize = const_next_power_of_two(size_of::<JumpColumns<u8>>());
+pub const NUM_JUMP_COLS: usize = size_of::<JumpColumns<u8>>();
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]

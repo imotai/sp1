@@ -4,13 +4,12 @@ pub use instruction::*;
 
 use p3_util::indices_arr;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{const_next_power_of_two, Word};
+use sp1_stark::Word;
 use std::mem::{size_of, transmute};
 
 use crate::memory::{MemoryCols, MemoryReadCols, MemoryReadWriteCols};
 
-pub const NUM_CPU_COLS: usize = const_next_power_of_two(size_of::<CpuCols<u8>>());
-pub const NON_PADDED_NUM_CPU_COLS: usize = size_of::<CpuCols<u8>>();
+pub const NUM_CPU_COLS: usize = size_of::<CpuCols<u8>>();
 
 pub const CPU_COL_MAP: CpuCols<usize> = make_col_map();
 
@@ -86,6 +85,6 @@ impl<T: Copy> CpuCols<T> {
 
 /// Creates the column map for the CPU.
 const fn make_col_map() -> CpuCols<usize> {
-    let indices_arr = indices_arr::<NON_PADDED_NUM_CPU_COLS>();
-    unsafe { transmute::<[usize; NON_PADDED_NUM_CPU_COLS], CpuCols<usize>>(indices_arr) }
+    let indices_arr = indices_arr::<NUM_CPU_COLS>();
+    unsafe { transmute::<[usize; NUM_CPU_COLS], CpuCols<usize>>(indices_arr) }
 }

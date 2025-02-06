@@ -46,7 +46,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{BYTE_SIZE, LONG_WORD_SIZE, WORD_SIZE};
-use sp1_stark::{air::MachineAir, const_next_power_of_two, Word};
+use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
     air::SP1CoreAirBuilder,
@@ -55,7 +55,7 @@ use crate::{
 };
 
 /// The number of main trace columns for `MulChip`.
-pub const NUM_MUL_COLS: usize = const_next_power_of_two(size_of::<MulCols<u8>>());
+pub const NUM_MUL_COLS: usize = size_of::<MulCols<u8>>();
 
 /// The mask for a byte.
 const BYTE_MASK: u8 = 0xff;

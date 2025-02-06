@@ -47,12 +47,12 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::MachineAir, const_next_power_of_two, Word};
+use sp1_stark::{air::MachineAir, Word};
 
 use crate::{air::SP1CoreAirBuilder, utils::pad_rows_fixed};
 
 /// The number of main trace columns for `ShiftLeft`.
-pub const NUM_SHIFT_LEFT_COLS: usize = const_next_power_of_two(size_of::<ShiftLeftCols<u8>>());
+pub const NUM_SHIFT_LEFT_COLS: usize = size_of::<ShiftLeftCols<u8>>();
 
 /// The number of bits in a byte.
 pub const BYTE_SIZE: usize = 8;

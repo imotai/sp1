@@ -111,7 +111,6 @@ mod tests {
 
         let result =
             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-        let jump_chip_name = chip_name!(JumpChip, BabyBear);
         assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
     }
 }

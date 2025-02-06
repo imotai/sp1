@@ -59,7 +59,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::MachineAir, const_next_power_of_two, Word};
+use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
     air::SP1CoreAirBuilder,
@@ -69,7 +69,7 @@ use crate::{
 };
 
 /// The number of main trace columns for `ShiftRightChip`.
-pub const NUM_SHIFT_RIGHT_COLS: usize = const_next_power_of_two(size_of::<ShiftRightCols<u8>>());
+pub const NUM_SHIFT_RIGHT_COLS: usize = size_of::<ShiftRightCols<u8>>();
 
 /// The number of bytes necessary to represent a 64-bit integer.
 const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;

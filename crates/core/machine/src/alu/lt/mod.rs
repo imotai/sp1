@@ -16,13 +16,13 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{BaseAirBuilder, MachineAir, SP1AirBuilder},
-    const_next_power_of_two, Word,
+    Word,
 };
 
 use crate::utils::{next_power_of_two, zeroed_f_vec};
 
 /// The number of main trace columns for `LtChip`.
-pub const NUM_LT_COLS: usize = const_next_power_of_two(size_of::<LtCols<u8>>());
+pub const NUM_LT_COLS: usize = size_of::<LtCols<u8>>();
 
 /// A chip that implements bitwise operations for the opcodes SLT and SLTU.
 #[derive(Default)]

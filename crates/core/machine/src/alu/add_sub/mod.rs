@@ -16,7 +16,7 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{MachineAir, SP1AirBuilder},
-    const_next_power_of_two, Word,
+    Word,
 };
 
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// The number of main trace columns for `AddSubChip`.
-pub const NUM_ADD_SUB_COLS: usize = const_next_power_of_two(size_of::<AddSubCols<u8>>());
+pub const NUM_ADD_SUB_COLS: usize = size_of::<AddSubCols<u8>>();
 
 /// A chip that implements addition for the opcode ADD and SUB.
 ///

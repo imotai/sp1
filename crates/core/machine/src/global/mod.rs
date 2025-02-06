@@ -14,7 +14,6 @@ use sp1_core_executor::{
 };
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
-    const_next_power_of_two,
     septic_curve::{SepticCurve, SepticCurveComplete},
     septic_digest::SepticDigest,
     septic_extension::{SepticBlock, SepticExtension},
@@ -28,7 +27,7 @@ use crate::{
 };
 use sp1_derive::AlignedBorrow;
 
-const NUM_GLOBAL_COLS: usize = const_next_power_of_two(size_of::<GlobalCols<u8>>());
+const NUM_GLOBAL_COLS: usize = size_of::<GlobalCols<u8>>();
 
 /// Creates the column map for the CPU.
 const fn make_col_map() -> GlobalCols<usize> {

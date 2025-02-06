@@ -75,7 +75,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::MachineAir, const_next_power_of_two, Word};
+use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
     air::SP1CoreAirBuilder,
@@ -84,7 +84,7 @@ use crate::{
 };
 
 /// The number of main trace columns for `DivRemChip`.
-pub const NUM_DIVREM_COLS: usize = const_next_power_of_two(size_of::<DivRemCols<u8>>());
+pub const NUM_DIVREM_COLS: usize = size_of::<DivRemCols<u8>>();
 
 /// The size of a byte in bits.
 const BYTE_SIZE: usize = 8;

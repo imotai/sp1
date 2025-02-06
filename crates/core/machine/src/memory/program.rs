@@ -17,7 +17,7 @@ use sp1_stark::{
         AirInteraction, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
         SP1_PROOF_NUM_PV_ELTS,
     },
-    const_next_power_of_two, InteractionKind, Word,
+    InteractionKind, Word,
 };
 
 use crate::{
@@ -26,9 +26,8 @@ use crate::{
 };
 
 pub const NUM_MEMORY_PROGRAM_PREPROCESSED_COLS: usize =
-    const_next_power_of_two(size_of::<MemoryProgramPreprocessedCols<u8>>());
-pub const NUM_MEMORY_PROGRAM_MULT_COLS: usize =
-    const_next_power_of_two(size_of::<MemoryProgramMultCols<u8>>());
+    size_of::<MemoryProgramPreprocessedCols<u8>>();
+pub const NUM_MEMORY_PROGRAM_MULT_COLS: usize = size_of::<MemoryProgramMultCols<u8>>();
 
 /// The column layout for the chip.
 #[derive(AlignedBorrow, Clone, Copy, Default)]

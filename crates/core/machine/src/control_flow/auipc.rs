@@ -11,7 +11,7 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{MachineAir, SP1AirBuilder},
-    const_next_power_of_two, Word,
+    Word,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -26,7 +26,7 @@ use crate::{
 #[derive(Default)]
 pub struct AuipcChip;
 
-pub const NUM_AUIPC_COLS: usize = const_next_power_of_two(size_of::<AuipcColumns<u8>>());
+pub const NUM_AUIPC_COLS: usize = size_of::<AuipcColumns<u8>>();
 
 impl<F> BaseAir<F> for AuipcChip {
     fn width(&self) -> usize {
@@ -302,7 +302,6 @@ mod tests {
 
         let result =
             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-        let auipc_chip_name = chip_name!(AuipcChip, BabyBear);
         assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
     }
 

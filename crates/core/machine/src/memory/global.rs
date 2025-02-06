@@ -20,7 +20,7 @@ use sp1_stark::{
         AirInteraction, BaseAirBuilder, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
         SP1_PROOF_NUM_PV_ELTS,
     },
-    const_next_power_of_two, InteractionKind, Word,
+    InteractionKind, Word,
 };
 use std::array;
 
@@ -228,8 +228,7 @@ pub struct MemoryInitCols<T: Copy> {
     pub is_last_addr: T,
 }
 
-pub(crate) const NUM_MEMORY_INIT_COLS: usize =
-    const_next_power_of_two(size_of::<MemoryInitCols<u8>>());
+pub(crate) const NUM_MEMORY_INIT_COLS: usize = size_of::<MemoryInitCols<u8>>();
 
 impl<AB> Air<AB> for MemoryGlobalChip
 where

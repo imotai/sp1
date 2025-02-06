@@ -17,13 +17,12 @@ use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
-    const_next_power_of_two, InteractionKind, Word,
+    InteractionKind, Word,
 };
 
 pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW: usize = 4;
 // pub const NUM_LOCAL_MEMORY_INTERACTIONS_PER_ROW: usize = NUM_LOCAL_MEMORY_ENTRIES_PER_ROW * 2;
-pub(crate) const NUM_MEMORY_LOCAL_INIT_COLS: usize =
-    const_next_power_of_two(size_of::<MemoryLocalCols<u8>>());
+pub(crate) const NUM_MEMORY_LOCAL_INIT_COLS: usize = size_of::<MemoryLocalCols<u8>>();
 
 // const_assert!(NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC == NUM_LOCAL_MEMORY_ENTRIES_PER_ROW);
 

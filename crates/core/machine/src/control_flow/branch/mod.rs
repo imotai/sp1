@@ -184,7 +184,6 @@ mod tests {
                     );
                 }
                 ErrorType::ConstraintsFailing => {
-                    let branch_chip_name = chip_name!(BranchChip, BabyBear);
                     assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
                 }
             }
@@ -225,7 +224,6 @@ mod tests {
 
         let result =
             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-        let branch_chip_name = chip_name!(BranchChip, BabyBear);
         assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
     }
 }
