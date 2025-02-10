@@ -1,9 +1,9 @@
 use clap::Parser;
 use rand::Rng;
-use slop_dft::Radix2DitParallel;
+use slop_dft::p3::Radix2DitParallel;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 
-use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
+use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use slop_challenger::DuplexChallenger;
 use slop_commit::{ExtensionMmcs, Pcs};
 use slop_fri::TwoAdicFriPcs;
@@ -15,7 +15,7 @@ use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
 use slop_multilinear::{MultilinearPcsProver, Point};
 use slop_utils::setup_logger;
 
-use slop_basefold_prover::default_stacked_basefold_config;
+use slop_basefold_prover::{default_stacked_basefold_config, poseidon2::my_perm};
 
 pub type Val = BabyBear;
 pub type Challenge = BinomialExtensionField<Val, 4>;

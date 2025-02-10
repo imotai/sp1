@@ -9,3 +9,6 @@ categories.workspace = true
 
 [dependencies]
 p3-commit = { workspace = true }
+
+slop-tensor = { workspace = true }
+slop-alloc = { workspace = true }

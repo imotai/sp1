@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use clap::Parser;
 use rand::Rng;
-use slop_dft::Radix2DitParallel;
+use slop_dft::p3::Radix2DitParallel;
 use slop_jagged::MachineJaggedPcs;
 use slop_matrix::dense::RowMajorMatrix;
 
-use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
+use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use slop_challenger::{CanObserve, DuplexChallenger};
 use slop_commit::ExtensionMmcs;
 use slop_merkle_tree::FieldMerkleTreeMmcs;
@@ -17,7 +17,7 @@ use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
 use slop_multilinear::{Mle, Point};
 use slop_utils::{log2_ceil_usize, setup_logger};
 
-use slop_basefold_prover::default_jagged_basefold_config;
+use slop_basefold_prover::{default_jagged_basefold_config, poseidon2::my_perm};
 
 // type F = BabyBear;
 // type EF = BinomialExtensionField<F, 4>;

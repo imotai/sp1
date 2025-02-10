@@ -68,12 +68,12 @@ impl<F, A: Backend> Mle<F, A> {
         &self.guts
     }
 
-    /// # Safety
+    /// Mutable access to the guts of the MLE.
     ///
     /// Changing the guts must preserve the layout that the MLE backend expects to have for a valid
     /// tensor to qualify as the guts of an MLE. For example, dimension matching the implementation
     /// of [Self::uninit].
-    pub unsafe fn guts_mut(&mut self) -> &mut Tensor<F, A> {
+    pub fn guts_mut(&mut self) -> &mut Tensor<F, A> {
         &mut self.guts
     }
 
@@ -169,7 +169,7 @@ impl<T> Mle<T, CpuBackend> {
     /// Returns an iterator over the evaluations of the MLE on the Boolean hypercube.
     ///
     /// The iterator yields a slice for each index of the Boolean hypercube.
-    pub fn hypercube_par_iter(&self) -> impl ParallelIterator<Item = &[T]>
+    pub fn hypercube_par_iter(&self) -> impl IndexedParallelIterator<Item = &[T]>
     where
         T: AbstractField + Sync,
     {

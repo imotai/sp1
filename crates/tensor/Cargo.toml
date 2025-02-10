@@ -18,12 +18,14 @@ rayon = { workspace = true }
 transpose = "0.2.3"
 arrayvec = "0.7.6"
 rand = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
 itertools = { workspace = true }
 derive-where = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

@@ -314,11 +314,46 @@ impl<T> Buffer<T, CpuBackend> {
 
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
-        let take_self = std::mem::take(self);
-        let mut vec = Vec::from(take_self);
-        let value = vec.pop();
+        if self.is_empty() {
+            return None;
+        }
+
+        // This is safe because we have just checked that the buffer is not empty.
+        unsafe {
+            let len = self.len();
+            let ptr = &mut self[len - 1] as *mut _ as *mut T;
+            let value = ptr.read();
+            self.set_len(len - 1);
+            std::ptr::drop_in_place(ptr);
+            Some(value)
+        }
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        let elems: *mut [T] = self.as_mut_slice();
+
+        // SAFETY:
+        // - `elems` comes directly from `as_mut_slice` and is therefore valid.
+        // - Setting `self.len` before calling `drop_in_place` means that,
+        //   if an element's `Drop` impl panics, the vector's `Drop` impl will
+        //   do nothing (leaking the rest of the elements) instead of dropping
+        //   some twice.
+        unsafe {
+            self.len = 0;
+            std::ptr::drop_in_place(elems);
+        }
+    }
+
+    #[inline]
+    pub fn resize(&mut self, new_len: usize, value: T)
+    where
+        T: Clone,
+    {
+        let owned_self = std::mem::take(self);
+        let mut vec = Vec::from(owned_self);
+        vec.resize(new_len, value);
         *self = Self::from(vec);
-        value
     }
 
     #[inline]
@@ -334,6 +369,11 @@ impl<T> Buffer<T, CpuBackend> {
     #[inline]
     pub fn as_slice(&self) -> &[T] {
         &self[..]
+    }
+
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        &mut self[..]
     }
 
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {

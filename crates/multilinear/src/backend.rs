@@ -54,7 +54,7 @@ impl<F: AbstractField> MleBaseBackend<F> for CpuBackend {
     }
 
     fn num_variables(guts: &Tensor<F, Self>) -> u32 {
-        guts.sizes()[0].ilog2()
+        guts.sizes()[0].next_power_of_two().ilog2()
     }
 
     fn uninit_mle(&self, num_polynomials: usize, num_non_zero_entries: usize) -> Tensor<F, Self> {
@@ -89,7 +89,9 @@ impl<F: AbstractField + Sync, EF: AbstractExtensionField<F> + Send + Sync>
     MleEvaluationBackend<F, EF> for CpuBackend
 {
     fn eval_mle_at_point(mle: &Tensor<F, Self>, point: &Point<EF, Self>) -> Tensor<EF, Self> {
+        // Comopute the eq(b, point) polynomial.
         let partial_lagrange = Self::partial_lagrange(point);
+        // Evaluate the mle via a dot product with the partial lagrange polynomial.
         mle.dot(&partial_lagrange, 0)
     }
 }

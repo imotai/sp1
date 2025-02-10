@@ -174,7 +174,9 @@ where
 mod tests {
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::{BabyBear, Challenger, DiffusionMatrixBabyBear, Perm};
+    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use slop_basefold_prover::Challenger;
+    use slop_basefold_prover::Perm;
     use slop_challenger::CanSample;
     use slop_poseidon2::Poseidon2ExternalMatrixGeneral;
 

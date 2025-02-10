@@ -9,3 +9,21 @@ categories.workspace = true
 
 [dependencies]
 p3-merkle-tree = { workspace = true }
+
+slop-commit = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-poseidon2 = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-algebra = { workspace = true }
+slop-tensor = { workspace = true }
+slop-alloc = { workspace = true }
+slop-matrix = { workspace = true }
+
+thiserror = { workspace = true }
+serde = { workspace = true }
+lazy_static = "1.5.0"
+itertools = { workspace = true }
+derive-where = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

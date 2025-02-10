@@ -84,8 +84,9 @@ slop-tensor = { path = "crates/tensor" }
 slop-alloc = { path = "crates/alloc" }
 slop = { path = "crates/slop" }
 slop-jagged = { path = "crates/jagged" }
-# For local development. 
+slop-basefold-prover = { path = "crates/basefold-prover" }
 
+# For local development. 
 # p3-air = { path = "../Plonky3/air" }
 # p3-field = { path = "../Plonky3/field", features = ["profile_ops"] }
 # p3-field = { path = "../Plonky3/field" }
@@ -122,3 +123,4 @@ derive-where = "1.2.7"
 rand = "0.8"
 serde = { version = "1.0.217", features = ["derive"] }
 tracing = "0.1.40"
+serde_json = "1.0"

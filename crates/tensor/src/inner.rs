@@ -5,8 +5,9 @@ use std::{
 
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use slop_alloc::{
-    Backend, Buffer, CpuBackend, HasBackend, Init, Slice, TryReserveError, GLOBAL_CPU_BACKEND,
+    Backend, Buffer, CpuBackend, HasBackend, Init, TryReserveError, GLOBAL_CPU_BACKEND,
 };
 use slop_matrix::Matrix;
 
@@ -44,29 +45,61 @@ impl<T, A: Backend> Tensor<T, A> {
         })
     }
 
-    pub fn reshape_in_place(&mut self, sizes: impl AsRef<[usize]>) -> Result<(), DimensionsError> {
+    pub fn reshape_in_place(&mut self, sizes: impl AsRef<[usize]>) {
+        #[cold]
+        #[track_caller]
+        #[inline(never)]
+        fn dimension_fail(new_dimensions: &Dimensions, old_dimensions: &Dimensions) -> ! {
+            panic!(
+                "TensorView::reshape: dimension mismatch: {:?} vs {:?}",
+                new_dimensions, old_dimensions
+            );
+        }
+
         let dimensions: Dimensions = sizes.as_ref().try_into().unwrap();
-        self.dimensions.compatible(&dimensions)?;
+        if self.dimensions.compatible(&dimensions).is_err() {
+            dimension_fail(&dimensions, &self.dimensions);
+        }
         self.dimensions = dimensions;
-        Ok(())
     }
 
     #[inline]
     pub fn reshape(mut self, sizes: impl AsRef<[usize]>) -> Self {
-        self.reshape_in_place(sizes).unwrap();
+        #[cold]
+        #[track_caller]
+        #[inline(never)]
+        fn dimension_fail(new_dimensions: &Dimensions, old_dimensions: &Dimensions) -> ! {
+            panic!(
+                "TensorView::reshape: dimension mismatch: {:?} vs {:?}",
+                new_dimensions, old_dimensions
+            );
+        }
+
+        let dimensions: Dimensions = sizes.as_ref().try_into().unwrap();
+        if self.dimensions.compatible(&dimensions).is_err() {
+            dimension_fail(&dimensions, &self.dimensions);
+        }
+        self.dimensions = dimensions;
         self
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure that the new dimensions are compatible with the existing dimensions.
     #[inline]
-    pub fn flatten_in_place(&mut self) -> Result<(), DimensionsError> {
-        self.reshape_in_place([self.dimensions.total_len()])?;
-        Ok(())
+    pub unsafe fn reshape_unchecked(mut self, dimensions: Dimensions) {
+        self.dimensions = dimensions;
     }
 
     #[inline]
-    pub fn flatten(mut self) -> Result<Self, DimensionsError> {
-        self.flatten_in_place()?;
-        Ok(self)
+    pub fn flatten_in_place(&mut self) {
+        self.reshape_in_place([self.dimensions.total_len()]);
+    }
+
+    #[inline]
+    pub fn flatten(mut self) -> Self {
+        self.flatten_in_place();
+        self
     }
 
     #[inline]
@@ -166,9 +199,9 @@ impl<T, A: Backend, I: AsRef<[usize]>> Index<I> for Tensor<T, A> {
     type Output = Init<T, A>;
 
     fn index(&self, index: I) -> &Self::Output {
-        #[inline(never)]
         #[cold]
         #[track_caller]
+        #[inline(never)]
         fn dimension_fail(index_len: usize, sizes_len: usize) -> ! {
             panic!(
                 "Index length ({}) does not match tensor dimensions length ({})",
@@ -211,6 +244,13 @@ impl<T> From<Vec<T>> for Tensor<T, CpuBackend> {
     #[inline]
     fn from(vec: Vec<T>) -> Self {
         Self::from(Buffer::from(vec))
+    }
+}
+
+impl<T> FromIterator<T> for Tensor<T, CpuBackend> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from(iter.into_iter().collect::<Vec<_>>())
     }
 }
 
@@ -305,8 +345,20 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
 
     #[inline]
     pub fn reshape(self, sizes: impl AsRef<[usize]>) -> TensorView<'a, T, A> {
+        #[cold]
+        #[track_caller]
+        #[inline(never)]
+        fn dimension_fail(new_dimensions: &Dimensions, old_dimensions: &Dimensions) -> ! {
+            panic!(
+                "TensorView::reshape: dimension mismatch: {:?} vs {:?}",
+                new_dimensions, old_dimensions
+            );
+        }
+
         let dimensions: Dimensions = sizes.as_ref().try_into().unwrap();
-        self.dimensions.compatible(&dimensions).unwrap();
+        if self.dimensions.compatible(&dimensions).is_err() {
+            dimension_fail(&dimensions, &self.dimensions);
+        }
         TensorView { ptr: self.ptr, dimensions, _marker: PhantomData }
     }
 
@@ -325,11 +377,6 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
 
     pub fn split(self) -> impl Iterator<Item = Self> {
         (0..self.dimensions.sizes()[0]).map(move |i| self.clone().get(i).unwrap())
-    }
-
-    #[inline]
-    pub fn as_slice(self) -> &'a Slice<T, A> {
-        unsafe { Slice::from_raw_parts(self.ptr, self.dimensions.total_len()) }
     }
 }
 
@@ -355,6 +402,12 @@ impl<'a, T, A: Backend, I: AsRef<[usize]>> Index<I> for TensorView<'a, T, A> {
             let ptr = self.ptr.add(index) as *const Init<T, A>;
             ptr.as_ref().unwrap()
         }
+    }
+}
+
+impl<T> Default for Tensor<T, CpuBackend> {
+    fn default() -> Self {
+        Self::from(Buffer::default())
     }
 }
 
@@ -424,13 +477,22 @@ impl<'a, T, A: Backend> TensorViewMut<'a, T, A> {
     }
 
     #[inline]
-    pub fn as_slice(self) -> &'a Slice<T, A> {
-        unsafe { Slice::from_raw_parts(self.ptr, self.dimensions.total_len()) }
-    }
-
-    #[inline]
     pub fn total_len(&self) -> usize {
         self.dimensions.total_len()
+    }
+}
+
+impl<'a, T> TensorView<'a, T, CpuBackend> {
+    #[inline]
+    pub fn as_slice(self) -> &'a [T] {
+        unsafe { std::slice::from_raw_parts(self.ptr, self.dimensions.total_len()) }
+    }
+}
+
+impl<'a, T> TensorViewMut<'a, T, CpuBackend> {
+    #[inline]
+    pub fn as_slice(self) -> &'a [T] {
+        unsafe { std::slice::from_raw_parts(self.ptr, self.dimensions.total_len()) }
     }
 
     #[inline]
@@ -519,6 +581,88 @@ macro_rules! tensor {
         let v = vec![$($elem,)*];
         $crate::Tensor::from(v)
     }};
+}
+
+// Make a serialize and deserialize for Tensor<T> using the fact that we can serialize the buffer
+// and the dimensions.
+
+impl<T: Serialize> Serialize for Tensor<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("Tensor", 2)?;
+        state.serialize_field("storage", &self.storage)?;
+        state.serialize_field("dimensions", &self.dimensions)?;
+        state.end()
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Tensor<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            Storage,
+            Dimensions,
+        }
+
+        struct TensorVisitor<T>(PhantomData<T>);
+
+        impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for TensorVisitor<T> {
+            type Value = Tensor<T>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct Tensor")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
+            where
+                V: serde::de::SeqAccess<'de>,
+            {
+                let storage = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
+                let dimensions = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
+                Ok(Tensor { storage, dimensions })
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: serde::de::MapAccess<'de>,
+            {
+                let mut storage = None;
+                let mut dimensions = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Storage => {
+                            if storage.is_some() {
+                                return Err(serde::de::Error::duplicate_field("storage"));
+                            }
+                            storage = Some(map.next_value()?);
+                        }
+                        Field::Dimensions => {
+                            if dimensions.is_some() {
+                                return Err(serde::de::Error::duplicate_field("dimensions"));
+                            }
+                            dimensions = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let storage = storage.ok_or_else(|| serde::de::Error::missing_field("storage"))?;
+                let dimensions =
+                    dimensions.ok_or_else(|| serde::de::Error::missing_field("dimensions"))?;
+                Ok(Tensor { storage, dimensions })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "Tensor",
+            &["storage", "dimensions"],
+            TensorVisitor(PhantomData),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -619,5 +763,13 @@ mod tests {
         let tensor = tensor![[1], [2], [3], [4], [5]];
         assert_eq!(tensor.sizes(), [5, 1]);
         assert_eq!(tensor.as_slice(), [1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_tensor_serialize_deserialize() {
+        let tensor = Tensor::<u32>::from(buffer![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).reshape([2, 5]);
+        let serialized = serde_json::to_string(&tensor).unwrap();
+        let deserialized: Tensor<u32> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, tensor);
     }
 }

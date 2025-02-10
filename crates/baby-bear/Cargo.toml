@@ -9,17 +9,3 @@ categories.workspace = true
 
 [dependencies]
 p3-baby-bear = { workspace = true }
-
-slop-algebra = { workspace = true }
-slop-utils = { workspace = true }
-slop-challenger = { workspace = true }
-slop-dft = { workspace = true }
-slop-commit = { workspace = true }
-
-slop-matrix = { workspace = true }
-slop-poseidon2 = { workspace = true }
-slop-symmetric = { workspace = true }
-slop-maybe-rayon = { workspace = true }
-slop-merkle-tree = { workspace = true }
-
-lazy_static = "1.5.0"

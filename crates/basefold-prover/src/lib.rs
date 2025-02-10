@@ -1,6 +1,13 @@
 mod configs;
+mod encoder;
+mod fold;
+pub mod poseidon2;
+mod prover;
 
 pub use configs::*;
+pub use encoder::*;
+pub use fold::*;
+pub use prover::*;
 
 use std::fmt::Debug;
 
@@ -11,7 +18,7 @@ use slop_algebra::{ExtensionField, Field, TwoAdicField};
 use slop_basefold::{BaseFoldPcs, BaseFoldProof};
 use slop_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use slop_commit::{ExtensionMmcs, Mmcs};
-use slop_dft::{Radix2DitParallel, TwoAdicSubgroupDft};
+use slop_dft::p3::{Radix2DitParallel, TwoAdicSubgroupDft};
 use slop_fri::{fold_even_odd, CommitPhaseProofStep, FriConfig, PowersReducer, QueryProof};
 use slop_matrix::{
     bitrev::BitReversableMatrix,
@@ -404,10 +411,10 @@ mod tests {
 
     use rand::Rng;
 
-    use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
+    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use slop_challenger::{CanObserve, DuplexChallenger};
     use slop_commit::{ExtensionMmcs, Pcs};
-    use slop_dft::Radix2DitParallel;
+    use slop_dft::p3::Radix2DitParallel;
     use slop_fri::{FriConfig, TwoAdicFriPcs};
     use slop_jagged::MachineJaggedPcs;
     use slop_matrix::dense::RowMajorMatrix;
@@ -424,7 +431,7 @@ mod tests {
     };
     use slop_utils::setup_logger;
 
-    use crate::{default_jagged_basefold_config, BaseFoldProver};
+    use crate::{default_jagged_basefold_config, poseidon2::my_perm, BaseFoldProver};
 
     type F = BabyBear;
     type EF = BinomialExtensionField<F, 4>;

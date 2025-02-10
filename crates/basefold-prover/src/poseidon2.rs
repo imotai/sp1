@@ -1,25 +1,8 @@
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use slop_algebra::{extension::BinomialExtensionField, AbstractField, Field};
-use slop_challenger::DuplexChallenger;
-use slop_commit::ExtensionMmcs;
-use slop_dft::Radix2DitParallel;
-use slop_merkle_tree::FieldMerkleTreeMmcs;
-use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
+use slop_algebra::AbstractField;
+use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+use slop_poseidon2::Poseidon2ExternalMatrixGeneral;
 
-pub type Val = BabyBear;
-pub type Challenge = BinomialExtensionField<Val, 4>;
-
-pub type Perm = Poseidon2<Val, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
-pub type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
-// pub type DigestHash = Hash<Val, Val, DIGEST_SIZE>;
-pub type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
-pub type ValMmcs =
-    FieldMerkleTreeMmcs<<Val as Field>::Packing, <Val as Field>::Packing, MyHash, MyCompress, 8>;
-pub type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
-pub type Dft = Radix2DitParallel;
-pub type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
-// type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
+use crate::Perm;
 
 lazy_static::lazy_static! {
     // These constants are created by a RNG.
@@ -568,7 +551,6 @@ lazy_static::lazy_static! {
             BabyBear::from_wrapped_u32(3799795076),
         ]
     ];
-
 
     pub static ref RC_16_30_U32: [[u32; 16]; 30] = [
         [

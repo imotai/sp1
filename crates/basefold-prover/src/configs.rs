@@ -1,8 +1,8 @@
 use slop_algebra::{extension::BinomialExtensionField, Field};
-use slop_baby_bear::{my_perm, BabyBear, DiffusionMatrixBabyBear};
+use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use slop_challenger::DuplexChallenger;
 use slop_commit::ExtensionMmcs;
-use slop_dft::Radix2DitParallel;
+use slop_dft::p3::Radix2DitParallel;
 use slop_fri::FriConfig;
 use slop_jagged::JaggedPcs;
 use slop_merkle_tree::FieldMerkleTreeMmcs;
@@ -10,7 +10,7 @@ use slop_multilinear::{StackedPcsProver, StackedPcsVerifier};
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 
-use crate::{BaseFoldPcs, BaseFoldProver};
+use crate::{poseidon2::my_perm, BaseFoldPcs, BaseFoldProver};
 
 pub type Val = BabyBear;
 pub type Challenge = BinomialExtensionField<Val, 4>;
