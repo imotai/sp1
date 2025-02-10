@@ -239,111 +239,112 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     #![allow(clippy::print_stdout)]
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::print_stdout)]
 
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
-//     use rand::{thread_rng, Rng};
-//     use sp1_core_executor::{
-//         events::{AluEvent, MemoryRecordEnum},
-//         ExecutionRecord, Instruction, Opcode, Program,
-//     };
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver,
-//         StarkGenericConfig, Val,
-//     };
+    use p3_baby_bear::BabyBear;
+    use p3_matrix::dense::RowMajorMatrix;
+    use sp1_core_executor::{events::AluEvent, ExecutionRecord, Opcode};
+    use sp1_stark::{
+        air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
+        baby_bear_poseidon2::BabyBearPoseidon2,
+        Chip, StarkMachine,
+    };
 
-//     use crate::{
-//         io::SP1Stdin,
-//         riscv::RiscvAir,
-//         utils::{run_malicious_test, uni_stark_prove, uni_stark_verify},
-//     };
+    use crate::utils::{run_test_machine, setup_test_machine};
 
-//     use super::BitwiseChip;
+    use super::BitwiseChip;
 
-//     #[test]
-//     fn generate_trace() {
-//         let mut shard = ExecutionRecord::default();
-//         shard.bitwise_events = vec![AluEvent::new(0, Opcode::XOR, 25, 10, 19, false)];
-//         let chip = BitwiseChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         println!("{:?}", trace.values)
-//     }
+    #[test]
+    fn generate_trace() {
+        let mut shard = ExecutionRecord::default();
+        shard.bitwise_events = vec![AluEvent::new(0, Opcode::XOR, 25, 10, 19, false)];
+        let chip = BitwiseChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+        println!("{:?}", trace.values)
+    }
 
-//     #[test]
-//     fn prove_babybear() {
-//         let config = BabyBearPoseidon2::new();
-//         let mut challenger = config.challenger();
+    #[test]
+    fn prove_babybear() {
+        let mut shard = ExecutionRecord::default();
+        shard.bitwise_events = [
+            AluEvent::new(0, Opcode::XOR, 25, 10, 19, false),
+            AluEvent::new(0, Opcode::OR, 27, 10, 19, false),
+            AluEvent::new(0, Opcode::AND, 2, 10, 19, false),
+        ]
+        .repeat(1000);
 
-//         let mut shard = ExecutionRecord::default();
-//         shard.bitwise_events = [
-//             AluEvent::new(0, Opcode::XOR, 25, 10, 19, false),
-//             AluEvent::new(0, Opcode::OR, 27, 10, 19, false),
-//             AluEvent::new(0, Opcode::AND, 2, 10, 19, false),
-//         ]
-//         .repeat(1000);
-//         let chip = BitwiseChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         let proof = uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
+        // Run setup.
+        let air = BitwiseChip::default();
+        let config = BabyBearPoseidon2::new();
+        let chip = Chip::new(air);
+        let (pk, vk) = setup_test_machine(StarkMachine::new(
+            config.clone(),
+            vec![chip],
+            SP1_PROOF_NUM_PV_ELTS,
+            true,
+        ));
 
-//         let mut challenger = config.challenger();
-//         uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
-//     }
+        // Run the test.
+        let air = BitwiseChip::default();
+        let chip: Chip<BabyBear, BitwiseChip> = Chip::new(air);
+        let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+        run_test_machine::<BabyBearPoseidon2, BitwiseChip>(vec![shard], machine, pk, vk).unwrap();
+    }
 
-//     #[test]
-//     fn test_malicious_bitwise() {
-//         const NUM_TESTS: usize = 5;
+    // TODO: Re-enable when we LOGUP-GKR working.
+    // #[test]
+    // fn test_malicious_bitwise() {
+    //     const NUM_TESTS: usize = 5;
 
-//         for opcode in [Opcode::XOR, Opcode::OR, Opcode::AND] {
-//             for _ in 0..NUM_TESTS {
-//                 let op_a = thread_rng().gen_range(0..u32::MAX);
-//                 let op_b = thread_rng().gen_range(0..u32::MAX);
-//                 let op_c = thread_rng().gen_range(0..u32::MAX);
+    //     for opcode in [Opcode::XOR, Opcode::OR, Opcode::AND] {
+    //         for _ in 0..NUM_TESTS {
+    //             let op_a = thread_rng().gen_range(0..u32::MAX);
+    //             let op_b = thread_rng().gen_range(0..u32::MAX);
+    //             let op_c = thread_rng().gen_range(0..u32::MAX);
 
-//                 let correct_op_a = if opcode == Opcode::XOR {
-//                     op_b ^ op_c
-//                 } else if opcode == Opcode::OR {
-//                     op_b | op_c
-//                 } else {
-//                     op_b & op_c
-//                 };
+    //             let correct_op_a = if opcode == Opcode::XOR {
+    //                 op_b ^ op_c
+    //             } else if opcode == Opcode::OR {
+    //                 op_b | op_c
+    //             } else {
+    //                 op_b & op_c
+    //             };
 
-//                 assert!(op_a != correct_op_a);
+    //             assert!(op_a != correct_op_a);
 
-//                 let instructions = vec![
-//                     Instruction::new(opcode, 5, op_b, op_c, true, true),
-//                     Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
-//                 ];
-//                 let program = Program::new(instructions, 0, 0);
-//                 let stdin = SP1Stdin::new();
+    //             let instructions = vec![
+    //                 Instruction::new(opcode, 5, op_b, op_c, true, true),
+    //                 Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+    //             ];
+    //             let program = Program::new(instructions, 0, 0);
+    //             let stdin = SP1Stdin::new();
 
-//                 type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+    //             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
 
-//                 let malicious_trace_pv_generator = move |prover: &P,
-//                                                          record: &mut ExecutionRecord|
-//                       -> Vec<(
-//                     String,
-//                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
-//                 )> {
-//                     let mut malicious_record = record.clone();
-//                     malicious_record.cpu_events[0].a = op_a;
-//                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
-//                         malicious_record.cpu_events[0].a_record
-//                     {
-//                         write_record.value = op_a;
-//                     }
-//                     malicious_record.bitwise_events[0].a = op_a;
-//                     prover.generate_traces(&malicious_record)
-//                 };
+    //             let malicious_trace_pv_generator = move |prover: &P,
+    //                                                      record: &mut ExecutionRecord|
+    //                   -> Vec<(
+    //                 String,
+    //                 RowMajorMatrix<Val<BabyBearPoseidon2>>,
+    //             )> {
+    //                 let mut malicious_record = record.clone();
+    //                 malicious_record.cpu_events[0].a = op_a;
+    //                 if let Some(MemoryRecordEnum::Write(mut write_record)) =
+    //                     malicious_record.cpu_events[0].a_record
+    //                 {
+    //                     write_record.value = op_a;
+    //                 }
+    //                 malicious_record.bitwise_events[0].a = op_a;
+    //                 prover.generate_traces(&malicious_record)
+    //             };
 
-//                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
-//             }
-//         }
-//     }
-// }
+    //             let result =
+    //                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+    //             assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
+    //         }
+    //     }
+    // }
+}

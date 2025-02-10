@@ -465,168 +465,172 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     #![allow(clippy::print_stdout)]
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::print_stdout)]
 
-//     use std::borrow::BorrowMut;
+    use std::borrow::BorrowMut;
 
-//     use crate::{
-//         alu::LtCols,
-//         io::SP1Stdin,
-//         riscv::RiscvAir,
-//         utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
-//     };
-//     use p3_baby_bear::BabyBear;
-//     use p3_field::AbstractField;
-//     use p3_matrix::dense::RowMajorMatrix;
-//     use rand::{thread_rng, Rng};
-//     use sp1_core_executor::{
-//         events::{AluEvent, MemoryRecordEnum},
-//         ExecutionRecord, Instruction, Opcode, Program,
-//     };
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-//         MachineProver, StarkGenericConfig, Val,
-//     };
+    use crate::{
+        alu::LtCols,
+        io::SP1Stdin,
+        riscv::RiscvAir,
+        utils::{run_malicious_test, run_test_machine, setup_test_machine},
+    };
+    use p3_baby_bear::BabyBear;
+    use p3_field::AbstractField;
+    use p3_matrix::dense::RowMajorMatrix;
+    use rand::{thread_rng, Rng};
+    use sp1_core_executor::{
+        events::{AluEvent, MemoryRecordEnum},
+        ExecutionRecord, Instruction, Opcode, Program,
+    };
+    use sp1_stark::{
+        air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
+        baby_bear_poseidon2::BabyBearPoseidon2,
+        chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
+    };
 
-//     use super::LtChip;
+    use super::LtChip;
 
-//     #[test]
-//     fn generate_trace() {
-//         let mut shard = ExecutionRecord::default();
-//         shard.lt_events = vec![AluEvent::new(0, Opcode::SLT, 0, 3, 2, false)];
-//         let chip = LtChip::default();
-//         let generate_trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         let trace: RowMajorMatrix<BabyBear> = generate_trace;
-//         println!("{:?}", trace.values)
-//     }
+    #[test]
+    fn generate_trace() {
+        let mut shard = ExecutionRecord::default();
+        shard.lt_events = vec![AluEvent::new(0, Opcode::SLT, 0, 3, 2, false)];
+        let chip = LtChip::default();
+        let generate_trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());
+        let trace: RowMajorMatrix<BabyBear> = generate_trace;
+        println!("{:?}", trace.values)
+    }
 
-//     fn prove_babybear_template(shard: &mut ExecutionRecord) {
-//         let config = BabyBearPoseidon2::new();
-//         let mut challenger = config.challenger();
+    fn prove_babybear_template(shard: ExecutionRecord) {
+        // Run setup.
+        let air = LtChip::default();
+        let config = BabyBearPoseidon2::new();
+        let chip = Chip::new(air);
+        let (pk, vk) = setup_test_machine(StarkMachine::new(
+            config.clone(),
+            vec![chip],
+            SP1_PROOF_NUM_PV_ELTS,
+            true,
+        ));
 
-//         let chip = LtChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(shard, &mut ExecutionRecord::default());
-//         let proof = prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
+        // Run the test.
+        let air = LtChip::default();
+        let chip: Chip<BabyBear, LtChip> = Chip::new(air);
+        let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+        run_test_machine::<BabyBearPoseidon2, LtChip>(vec![shard], machine, pk, vk).unwrap();
+    }
 
-//         let mut challenger = config.challenger();
-//         verify(&config, &chip, &mut challenger, &proof).unwrap();
-//     }
+    #[test]
+    fn prove_babybear_slt() {
+        let mut shard = ExecutionRecord::default();
 
-//     #[test]
-//     fn prove_babybear_slt() {
-//         let mut shard = ExecutionRecord::default();
+        const NEG_3: u32 = 0b11111111111111111111111111111101;
+        const NEG_4: u32 = 0b11111111111111111111111111111100;
+        shard.lt_events = vec![
+            // 0 == 3 < 2
+            AluEvent::new(0, Opcode::SLT, 0, 3, 2, false),
+            // 1 == 2 < 3
+            AluEvent::new(0, Opcode::SLT, 1, 2, 3, false),
+            // 0 == 5 < -3
+            AluEvent::new(0, Opcode::SLT, 0, 5, NEG_3, false),
+            // 1 == -3 < 5
+            AluEvent::new(0, Opcode::SLT, 1, NEG_3, 5, false),
+            // 0 == -3 < -4
+            AluEvent::new(0, Opcode::SLT, 0, NEG_3, NEG_4, false),
+            // 1 == -4 < -3
+            AluEvent::new(0, Opcode::SLT, 1, NEG_4, NEG_3, false),
+            // 0 == 3 < 3
+            AluEvent::new(0, Opcode::SLT, 0, 3, 3, false),
+            // 0 == -3 < -3
+            AluEvent::new(0, Opcode::SLT, 0, NEG_3, NEG_3, false),
+        ];
 
-//         const NEG_3: u32 = 0b11111111111111111111111111111101;
-//         const NEG_4: u32 = 0b11111111111111111111111111111100;
-//         shard.lt_events = vec![
-//             // 0 == 3 < 2
-//             AluEvent::new(0, Opcode::SLT, 0, 3, 2, false),
-//             // 1 == 2 < 3
-//             AluEvent::new(0, Opcode::SLT, 1, 2, 3, false),
-//             // 0 == 5 < -3
-//             AluEvent::new(0, Opcode::SLT, 0, 5, NEG_3, false),
-//             // 1 == -3 < 5
-//             AluEvent::new(0, Opcode::SLT, 1, NEG_3, 5, false),
-//             // 0 == -3 < -4
-//             AluEvent::new(0, Opcode::SLT, 0, NEG_3, NEG_4, false),
-//             // 1 == -4 < -3
-//             AluEvent::new(0, Opcode::SLT, 1, NEG_4, NEG_3, false),
-//             // 0 == 3 < 3
-//             AluEvent::new(0, Opcode::SLT, 0, 3, 3, false),
-//             // 0 == -3 < -3
-//             AluEvent::new(0, Opcode::SLT, 0, NEG_3, NEG_3, false),
-//         ];
+        prove_babybear_template(shard);
+    }
 
-//         prove_babybear_template(&mut shard);
-//     }
+    #[test]
+    fn prove_babybear_sltu() {
+        let mut shard = ExecutionRecord::default();
 
-//     #[test]
-//     fn prove_babybear_sltu() {
-//         let mut shard = ExecutionRecord::default();
+        const LARGE: u32 = 0b11111111111111111111111111111101;
+        shard.lt_events = vec![
+            // 0 == 3 < 2
+            AluEvent::new(0, Opcode::SLTU, 0, 3, 2, false),
+            // 1 == 2 < 3
+            AluEvent::new(0, Opcode::SLTU, 1, 2, 3, false),
+            // 0 == LARGE < 5
+            AluEvent::new(0, Opcode::SLTU, 0, LARGE, 5, false),
+            // 1 == 5 < LARGE
+            AluEvent::new(0, Opcode::SLTU, 1, 5, LARGE, false),
+            // 0 == 0 < 0
+            AluEvent::new(0, Opcode::SLTU, 0, 0, 0, false),
+            // 0 == LARGE < LARGE
+            AluEvent::new(0, Opcode::SLTU, 0, LARGE, LARGE, false),
+        ];
 
-//         const LARGE: u32 = 0b11111111111111111111111111111101;
-//         shard.lt_events = vec![
-//             // 0 == 3 < 2
-//             AluEvent::new(0, Opcode::SLTU, 0, 3, 2, false),
-//             // 1 == 2 < 3
-//             AluEvent::new(0, Opcode::SLTU, 1, 2, 3, false),
-//             // 0 == LARGE < 5
-//             AluEvent::new(0, Opcode::SLTU, 0, LARGE, 5, false),
-//             // 1 == 5 < LARGE
-//             AluEvent::new(0, Opcode::SLTU, 1, 5, LARGE, false),
-//             // 0 == 0 < 0
-//             AluEvent::new(0, Opcode::SLTU, 0, 0, 0, false),
-//             // 0 == LARGE < LARGE
-//             AluEvent::new(0, Opcode::SLTU, 0, LARGE, LARGE, false),
-//         ];
+        prove_babybear_template(shard);
+    }
 
-//         prove_babybear_template(&mut shard);
-//     }
+    #[test]
+    fn test_malicious_lt() {
+        const NUM_TESTS: usize = 5;
 
-//     #[test]
-//     fn test_malicious_lt() {
-//         const NUM_TESTS: usize = 5;
+        for opcode in [Opcode::SLTU, Opcode::SLT] {
+            for _ in 0..NUM_TESTS {
+                let op_b = thread_rng().gen_range(0..u32::MAX);
+                let op_c = thread_rng().gen_range(0..u32::MAX);
 
-//         for opcode in [Opcode::SLTU, Opcode::SLT] {
-//             for _ in 0..NUM_TESTS {
-//                 let op_b = thread_rng().gen_range(0..u32::MAX);
-//                 let op_c = thread_rng().gen_range(0..u32::MAX);
+                let correct_op_a = if opcode == Opcode::SLTU {
+                    op_b < op_c
+                } else {
+                    (op_b as i32) < (op_c as i32)
+                };
 
-//                 let correct_op_a = if opcode == Opcode::SLTU {
-//                     op_b < op_c
-//                 } else {
-//                     (op_b as i32) < (op_c as i32)
-//                 };
+                let op_a = !correct_op_a;
 
-//                 let op_a = !correct_op_a;
+                let instructions = vec![
+                    Instruction::new(opcode, 5, op_b, op_c, true, true),
+                    Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+                ];
 
-//                 let instructions = vec![
-//                     Instruction::new(opcode, 5, op_b, op_c, true, true),
-//                     Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
-//                 ];
+                let program = Program::new(instructions, 0, 0);
+                let stdin = SP1Stdin::new();
 
-//                 let program = Program::new(instructions, 0, 0);
-//                 let stdin = SP1Stdin::new();
+                type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
 
-//                 type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+                let malicious_trace_pv_generator = move |prover: &P,
+                                                         record: &mut ExecutionRecord|
+                      -> Vec<(
+                    String,
+                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
+                )> {
+                    let mut malicious_record = record.clone();
+                    malicious_record.cpu_events[0].a = op_a as u32;
+                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                        malicious_record.cpu_events[0].a_record
+                    {
+                        write_record.value = op_a as u32;
+                    }
+                    let mut traces = prover.generate_traces(&malicious_record);
 
-//                 let malicious_trace_pv_generator = move |prover: &P,
-//                                                          record: &mut ExecutionRecord|
-//                       -> Vec<(
-//                     String,
-//                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
-//                 )> {
-//                     let mut malicious_record = record.clone();
-//                     malicious_record.cpu_events[0].a = op_a as u32;
-//                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
-//                         malicious_record.cpu_events[0].a_record
-//                     {
-//                         write_record.value = op_a as u32;
-//                     }
-//                     let mut traces = prover.generate_traces(&malicious_record);
+                    let lt_chip_name = chip_name!(LtChip, BabyBear);
+                    for (chip_name, trace) in traces.iter_mut() {
+                        if *chip_name == lt_chip_name {
+                            let first_row = trace.row_mut(0);
+                            let first_row: &mut LtCols<BabyBear> = first_row.borrow_mut();
+                            first_row.a = BabyBear::from_bool(op_a);
+                        }
+                    }
 
-//                     let lt_chip_name = chip_name!(LtChip, BabyBear);
-//                     for (chip_name, trace) in traces.iter_mut() {
-//                         if *chip_name == lt_chip_name {
-//                             let first_row = trace.row_mut(0);
-//                             let first_row: &mut LtCols<BabyBear> = first_row.borrow_mut();
-//                             first_row.a = BabyBear::from_bool(op_a);
-//                         }
-//                     }
+                    traces
+                };
 
-//                     traces
-//                 };
-
-//                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 let lt_chip_name = chip_name!(LtChip, BabyBear);
-//                 assert!(
-//                     result.is_err() && result.unwrap_err().is_constraints_failing(&lt_chip_name)
-//                 );
-//             }
-//         }
-//     }
-// }
+                let result =
+                    run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+                assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
+            }
+        }
+    }
+}

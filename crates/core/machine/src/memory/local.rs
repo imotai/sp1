@@ -269,203 +269,203 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     #![allow(clippy::print_stdout)]
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::print_stdout)]
 
-//     use crate::programs::tests::*;
-//     use crate::{
-//         memory::MemoryLocalChip, riscv::RiscvAir,
-//         syscall::precompiles::sha256::extend_tests::sha_extend_program, utils::setup_logger,
-//     };
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
-//     use sp1_core_executor::{ExecutionRecord, Executor, Trace};
-//     use sp1_stark::{
-//         air::{InteractionScope, MachineAir},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
-//         debug_interactions_with_all_chips, InteractionKind, SP1CoreOpts, StarkMachine,
-//     };
+    use crate::programs::tests::*;
+    use crate::{
+        memory::MemoryLocalChip, riscv::RiscvAir,
+        syscall::precompiles::sha256::extend_tests::sha_extend_program, utils::setup_logger,
+    };
+    use p3_baby_bear::BabyBear;
+    use p3_matrix::dense::RowMajorMatrix;
+    use sp1_core_executor::{ExecutionRecord, Executor, Trace};
+    use sp1_stark::{
+        air::{InteractionScope, MachineAir},
+        baby_bear_poseidon2::BabyBearPoseidon2,
+        debug_interactions_with_all_chips, InteractionKind, SP1CoreOpts, StarkMachine,
+    };
 
-//     #[test]
-//     fn test_local_memory_generate_trace() {
-//         let program = simple_program();
-//         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-//         runtime.run::<Trace>().unwrap();
-//         let shard = runtime.records[0].clone();
+    #[test]
+    fn test_local_memory_generate_trace() {
+        let program = simple_program();
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run::<Trace>().unwrap();
+        let shard = runtime.records[0].clone();
 
-//         let chip: MemoryLocalChip = MemoryLocalChip::new();
+        let chip: MemoryLocalChip = MemoryLocalChip::new();
 
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         println!("{:?}", trace.values);
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+        println!("{:?}", trace.values);
 
-//         for mem_event in shard.global_memory_finalize_events {
-//             println!("{:?}", mem_event);
-//         }
-//     }
+        for mem_event in shard.global_memory_finalize_events {
+            println!("{:?}", mem_event);
+        }
+    }
 
-//     #[test]
-//     fn test_memory_lookup_interactions() {
-//         setup_logger();
-//         let program = sha_extend_program();
-//         let program_clone = program.clone();
-//         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-//         runtime.run::<Trace>().unwrap();
-//         let machine: StarkMachine<BabyBearPoseidon2, RiscvAir<BabyBear>> =
-//             RiscvAir::machine(BabyBearPoseidon2::new());
-//         let (pkey, _) = machine.setup(&program_clone);
-//         let opts = SP1CoreOpts::default();
-//         machine.generate_dependencies(
-//             &mut runtime.records.clone().into_iter().map(|r| *r).collect::<Vec<_>>(),
-//             &opts,
-//             None,
-//         );
+    #[test]
+    fn test_memory_lookup_interactions() {
+        setup_logger();
+        let program = sha_extend_program();
+        let program_clone = program.clone();
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run::<Trace>().unwrap();
+        let machine: StarkMachine<BabyBearPoseidon2, RiscvAir<BabyBear>> =
+            RiscvAir::machine(BabyBearPoseidon2::new());
+        let (pkey, _) = machine.setup(&program_clone);
+        let opts = SP1CoreOpts::default();
+        machine.generate_dependencies(
+            &mut runtime.records.clone().into_iter().map(|r| *r).collect::<Vec<_>>(),
+            &opts,
+            None,
+        );
 
-//         let shards = runtime.records;
-//         for shard in shards.clone() {
-//             debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
-//                 &machine,
-//                 &pkey,
-//                 &[*shard],
-//                 vec![InteractionKind::Memory],
-//                 InteractionScope::Local,
-//             );
-//         }
-//         debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
-//             &machine,
-//             &pkey,
-//             &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),
-//             vec![InteractionKind::Memory],
-//             InteractionScope::Global,
-//         );
-//     }
+        let shards = runtime.records;
+        for shard in shards.clone() {
+            debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+                &machine,
+                &pkey,
+                &[*shard],
+                vec![InteractionKind::Memory],
+                InteractionScope::Local,
+            );
+        }
+        debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+            &machine,
+            &pkey,
+            &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),
+            vec![InteractionKind::Memory],
+            InteractionScope::Global,
+        );
+    }
 
-//     #[test]
-//     fn test_byte_lookup_interactions() {
-//         setup_logger();
-//         let program = sha_extend_program();
-//         let program_clone = program.clone();
-//         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-//         runtime.run::<Trace>().unwrap();
-//         let machine = RiscvAir::machine(BabyBearPoseidon2::new());
-//         let (pkey, _) = machine.setup(&program_clone);
-//         let opts = SP1CoreOpts::default();
-//         machine.generate_dependencies(
-//             &mut runtime.records.clone().into_iter().map(|r| *r).collect::<Vec<_>>(),
-//             &opts,
-//             None,
-//         );
+    #[test]
+    fn test_byte_lookup_interactions() {
+        setup_logger();
+        let program = sha_extend_program();
+        let program_clone = program.clone();
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run::<Trace>().unwrap();
+        let machine = RiscvAir::machine(BabyBearPoseidon2::new());
+        let (pkey, _) = machine.setup(&program_clone);
+        let opts = SP1CoreOpts::default();
+        machine.generate_dependencies(
+            &mut runtime.records.clone().into_iter().map(|r| *r).collect::<Vec<_>>(),
+            &opts,
+            None,
+        );
 
-//         let shards = runtime.records;
-//         for shard in shards.clone() {
-//             debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
-//                 &machine,
-//                 &pkey,
-//                 &[*shard],
-//                 vec![InteractionKind::Memory],
-//                 InteractionScope::Local,
-//             );
-//         }
-//         debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
-//             &machine,
-//             &pkey,
-//             &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),
-//             vec![InteractionKind::Byte],
-//             InteractionScope::Global,
-//         );
-//     }
+        let shards = runtime.records;
+        for shard in shards.clone() {
+            debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+                &machine,
+                &pkey,
+                &[*shard],
+                vec![InteractionKind::Memory],
+                InteractionScope::Local,
+            );
+        }
+        debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+            &machine,
+            &pkey,
+            &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),
+            vec![InteractionKind::Byte],
+            InteractionScope::Global,
+        );
+    }
 
-//     #[cfg(feature = "sys")]
-//     fn get_test_execution_record() -> ExecutionRecord {
-//         use p3_field::PrimeField32;
-//         use rand::{thread_rng, Rng};
-//         use sp1_core_executor::events::{MemoryLocalEvent, MemoryRecord};
+    #[cfg(feature = "sys")]
+    fn get_test_execution_record() -> ExecutionRecord {
+        use p3_field::PrimeField32;
+        use rand::{thread_rng, Rng};
+        use sp1_core_executor::events::{MemoryLocalEvent, MemoryRecord};
 
-//         let cpu_local_memory_access = (0..=255)
-//             .flat_map(|_| {
-//                 [{
-//                     let addr = thread_rng().gen_range(0..BabyBear::ORDER_U32);
-//                     let init_value = thread_rng().gen_range(0..u32::MAX);
-//                     let init_shard = thread_rng().gen_range(0..(1u32 << 16));
-//                     let init_timestamp = thread_rng().gen_range(0..(1u32 << 24));
-//                     let final_value = thread_rng().gen_range(0..u32::MAX);
-//                     let final_timestamp = thread_rng().gen_range(0..(1u32 << 24));
-//                     let final_shard = thread_rng().gen_range(0..(1u32 << 16));
-//                     MemoryLocalEvent {
-//                         addr,
-//                         initial_mem_access: MemoryRecord {
-//                             shard: init_shard,
-//                             timestamp: init_timestamp,
-//                             value: init_value,
-//                         },
-//                         final_mem_access: MemoryRecord {
-//                             shard: final_shard,
-//                             timestamp: final_timestamp,
-//                             value: final_value,
-//                         },
-//                     }
-//                 }]
-//             })
-//             .collect::<Vec<_>>();
-//         ExecutionRecord { cpu_local_memory_access, ..Default::default() }
-//     }
+        let cpu_local_memory_access = (0..=255)
+            .flat_map(|_| {
+                [{
+                    let addr = thread_rng().gen_range(0..BabyBear::ORDER_U32);
+                    let init_value = thread_rng().gen_range(0..u32::MAX);
+                    let init_shard = thread_rng().gen_range(0..(1u32 << 16));
+                    let init_timestamp = thread_rng().gen_range(0..(1u32 << 24));
+                    let final_value = thread_rng().gen_range(0..u32::MAX);
+                    let final_timestamp = thread_rng().gen_range(0..(1u32 << 24));
+                    let final_shard = thread_rng().gen_range(0..(1u32 << 16));
+                    MemoryLocalEvent {
+                        addr,
+                        initial_mem_access: MemoryRecord {
+                            shard: init_shard,
+                            timestamp: init_timestamp,
+                            value: init_value,
+                        },
+                        final_mem_access: MemoryRecord {
+                            shard: final_shard,
+                            timestamp: final_timestamp,
+                            value: final_value,
+                        },
+                    }
+                }]
+            })
+            .collect::<Vec<_>>();
+        ExecutionRecord { cpu_local_memory_access, ..Default::default() }
+    }
 
-//     #[cfg(feature = "sys")]
-//     #[test]
-//     fn test_generate_trace_ffi_eq_rust() {
-//         use p3_matrix::Matrix;
+    #[cfg(feature = "sys")]
+    #[test]
+    fn test_generate_trace_ffi_eq_rust() {
+        use p3_matrix::Matrix;
 
-//         let record = get_test_execution_record();
-//         let chip = MemoryLocalChip::new();
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&record, &mut ExecutionRecord::default());
-//         let trace_ffi = generate_trace_ffi(&record, trace.height());
+        let record = get_test_execution_record();
+        let chip = MemoryLocalChip::new();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&record, &mut ExecutionRecord::default());
+        let trace_ffi = generate_trace_ffi(&record, trace.height());
 
-//         assert_eq!(trace_ffi, trace);
-//     }
+        assert_eq!(trace_ffi, trace);
+    }
 
-//     #[cfg(feature = "sys")]
-//     fn generate_trace_ffi(input: &ExecutionRecord, height: usize) -> RowMajorMatrix<BabyBear> {
-//         use std::borrow::BorrowMut;
+    #[cfg(feature = "sys")]
+    fn generate_trace_ffi(input: &ExecutionRecord, height: usize) -> RowMajorMatrix<BabyBear> {
+        use std::borrow::BorrowMut;
 
-//         use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+        use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
-//         use crate::{
-//             memory::{
-//                 MemoryLocalCols, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW, NUM_MEMORY_LOCAL_INIT_COLS,
-//             },
-//             utils::zeroed_f_vec,
-//         };
+        use crate::{
+            memory::{
+                MemoryLocalCols, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW, NUM_MEMORY_LOCAL_INIT_COLS,
+            },
+            utils::zeroed_f_vec,
+        };
 
-//         type F = BabyBear;
-//         // Generate the trace rows for each event.
-//         let events = input.get_local_mem_events().collect::<Vec<_>>();
-//         let nb_rows = (events.len() + 3) / 4;
-//         let padded_nb_rows = height;
-//         let mut values = zeroed_f_vec(padded_nb_rows * NUM_MEMORY_LOCAL_INIT_COLS);
-//         let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 0) + 1;
+        type F = BabyBear;
+        // Generate the trace rows for each event.
+        let events = input.get_local_mem_events().collect::<Vec<_>>();
+        let nb_rows = (events.len() + 3) / 4;
+        let padded_nb_rows = height;
+        let mut values = zeroed_f_vec(padded_nb_rows * NUM_MEMORY_LOCAL_INIT_COLS);
+        let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 0) + 1;
 
-//         let mut chunks = values[..nb_rows * NUM_MEMORY_LOCAL_INIT_COLS]
-//             .chunks_mut(chunk_size * NUM_MEMORY_LOCAL_INIT_COLS)
-//             .collect::<Vec<_>>();
+        let mut chunks = values[..nb_rows * NUM_MEMORY_LOCAL_INIT_COLS]
+            .chunks_mut(chunk_size * NUM_MEMORY_LOCAL_INIT_COLS)
+            .collect::<Vec<_>>();
 
-//         chunks.par_iter_mut().enumerate().for_each(|(i, rows)| {
-//             rows.chunks_mut(NUM_MEMORY_LOCAL_INIT_COLS).enumerate().for_each(|(j, row)| {
-//                 let idx = (i * chunk_size + j) * NUM_LOCAL_MEMORY_ENTRIES_PER_ROW;
-//                 let cols: &mut MemoryLocalCols<F> = row.borrow_mut();
-//                 for k in 0..NUM_LOCAL_MEMORY_ENTRIES_PER_ROW {
-//                     let cols = &mut cols.memory_local_entries[k];
-//                     if idx + k < events.len() {
-//                         unsafe {
-//                             crate::sys::memory_local_event_to_row_babybear(events[idx + k], cols);
-//                         }
-//                     }
-//                 }
-//             });
-//         });
+        chunks.par_iter_mut().enumerate().for_each(|(i, rows)| {
+            rows.chunks_mut(NUM_MEMORY_LOCAL_INIT_COLS).enumerate().for_each(|(j, row)| {
+                let idx = (i * chunk_size + j) * NUM_LOCAL_MEMORY_ENTRIES_PER_ROW;
+                let cols: &mut MemoryLocalCols<F> = row.borrow_mut();
+                for k in 0..NUM_LOCAL_MEMORY_ENTRIES_PER_ROW {
+                    let cols = &mut cols.memory_local_entries[k];
+                    if idx + k < events.len() {
+                        unsafe {
+                            crate::sys::memory_local_event_to_row_babybear(events[idx + k], cols);
+                        }
+                    }
+                }
+            });
+        });
 
-//         // Convert the trace to a row major matrix.
-//         RowMajorMatrix::new(values, NUM_MEMORY_LOCAL_INIT_COLS)
-//     }
-// }
+        // Convert the trace to a row major matrix.
+        RowMajorMatrix::new(values, NUM_MEMORY_LOCAL_INIT_COLS)
+    }
+}

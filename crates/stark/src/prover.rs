@@ -174,7 +174,7 @@ pub trait MachineProver<
 /// A proving key for any [`MachineAir`] that is agnostic to hardware.
 pub trait MachineProvingKey<SC: StarkGenericConfig>: Send + Sync {
     /// The main commitment.
-    fn preprocessed_commit(&self) -> Com<SC>;
+    fn preprocessed_commit(&self) -> Option<Com<SC>>;
 
     /// The start pc.
     fn pc_start(&self) -> Val<SC>;
@@ -291,15 +291,27 @@ where
         let log_degrees =
             degrees.iter().map(|degree| log2_strict_usize(*degree)).collect::<Vec<_>>();
 
-        challenger.observe(pk.commit.clone());
+        let has_preprocess = pk.preprocessed_commit.is_some();
+        assert!(has_preprocess == pk.preprocessed_data.is_some());
+
+        if has_preprocess {
+            challenger.observe(pk.preprocessed_commit.as_ref().unwrap().clone());
+        }
         challenger.observe(data.main_commit.clone());
         // Finalize commit.
         let pcs = self.config().prover_pcs();
 
-        let mut prover_data = vec![pk.data.clone(), data.main_data];
-        let mut commitments = vec![pk.commit.clone(), data.main_commit];
+        let (mut prover_data, mut commitments) = if has_preprocess {
+            (
+                vec![pk.preprocessed_data.as_ref().unwrap().clone(), data.main_data.clone()],
+                vec![pk.preprocessed_commit.as_ref().unwrap().clone(), data.main_commit.clone()],
+            )
+        } else {
+            (vec![data.main_data], vec![data.main_commit])
+        };
 
         pcs.finalize(&mut prover_data, &mut commitments, challenger);
+
         challenger.observe_slice(&data.public_values[0..self.num_pv_elts()]);
 
         let prep_traces = tracing::debug_span!("generate permutation traces").in_scope(|| {
@@ -340,7 +352,7 @@ where
         // First collect the zerocheck polynomials.
         let (zerocheck_polys, num_preprocessed_columns): (Vec<_>, Vec<_>) = chips
             .iter()
-            .zip(traces.iter())
+            .zip_eq(traces.iter())
             .enumerate()
             .map(|(i, (chip, main_trace))| {
                 let preprocessed_trace = pk
@@ -354,6 +366,11 @@ where
                     preprocessed_trace.as_ref().map_or(0, |pp_trace| pp_trace.matrix_ref().width());
 
                 let num_padded_vars = pcs.max_log_row_count - log_height;
+                tracing::debug!(
+                    "zerocheck poly: chip {} has num_padded_vars: {}",
+                    chip.name(),
+                    num_padded_vars
+                );
 
                 let dummy_preprocessed_trace = vec![SC::Val::zero(); chip.preprocessed_width()];
                 let dummy_main_trace = vec![SC::Val::zero(); chip.width()];
@@ -432,10 +449,16 @@ where
         let filtered_preprocessed_openings =
             preprocessed_openings.clone().into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>();
 
+        let openings = if has_preprocess {
+            vec![filtered_preprocessed_openings.as_slice(), main_openings.as_slice()]
+        } else {
+            vec![main_openings.as_slice()]
+        };
+
         // Generate the opening proof.
         let opening_proof = pcs.prove_trusted_evaluations(
             sc_proof.point_and_eval.0.clone(),
-            &[&filtered_preprocessed_openings, &main_openings],
+            openings.as_slice(),
             &prover_data,
             challenger,
         );
@@ -521,8 +544,8 @@ where
     PcsProverData<SC>: Send + Sync + Serialize + DeserializeOwned,
     Com<SC>: Send + Sync,
 {
-    fn preprocessed_commit(&self) -> Com<SC> {
-        self.commit.clone()
+    fn preprocessed_commit(&self) -> Option<Com<SC>> {
+        self.preprocessed_commit.clone()
     }
 
     fn pc_start(&self) -> Val<SC> {

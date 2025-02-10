@@ -35,15 +35,18 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let (local, next) = (main.row_slice(0), main.row_slice(1));
+        let local = main.row_slice(0);
+        // let (local, next) = (main.row_slice(0), main.row_slice(1));
         let local: &ShaCompressCols<AB::Var> = (*local).borrow();
-        let next: &ShaCompressCols<AB::Var> = (*next).borrow();
+        // let next: &ShaCompressCols<AB::Var> = (*next).borrow();
 
-        self.eval_control_flow_flags(builder, local, next);
+        // self.eval_control_flow_flags(builder, local, next);
+        self.eval_control_flow_flags(builder, local);
 
         self.eval_memory(builder, local);
 
-        self.eval_compression_ops(builder, local, next);
+        // self.eval_compression_ops(builder, local, next);
+        self.eval_compression_ops(builder, local);
 
         self.eval_finalize_ops(builder, local);
 
@@ -65,7 +68,7 @@ impl ShaCompressChip {
         &self,
         builder: &mut AB,
         local: &ShaCompressCols<AB::Var>,
-        next: &ShaCompressCols<AB::Var>,
+        // next: &ShaCompressCols<AB::Var>,
     ) {
         // Verify that all of the octet columns are bool.
         for i in 0..8 {
@@ -80,12 +83,12 @@ impl ShaCompressChip {
         builder.assert_one(octet_sum);
 
         // Verify that the first row's octet value is correct.
-        builder.when_first_row().assert_one(local.octet[0]);
+        // builder.when_first_row().assert_one(local.octet[0]);
 
         // Verify correct transition for octet column.
-        for i in 0..8 {
-            builder.when_transition().when(local.octet[i]).assert_one(next.octet[(i + 1) % 8])
-        }
+        // for i in 0..8 {
+        //     builder.when_transition().when(local.octet[i]).assert_one(next.octet[(i + 1) % 8])
+        // }
 
         // Verify that all of the octet_num columns are bool.
         for i in 0..10 {
@@ -100,42 +103,42 @@ impl ShaCompressChip {
         builder.assert_one(octet_num_sum);
 
         // The first row should have octet_num[0] = 1 if it's real.
-        builder.when_first_row().assert_one(local.octet_num[0]);
+        // builder.when_first_row().assert_one(local.octet_num[0]);
 
         // If current row is not last of an octet and next row is real, octet_num should be the
         // same.
-        for i in 0..10 {
-            builder
-                .when_transition()
-                .when_not(local.octet[7])
-                .assert_eq(local.octet_num[i], next.octet_num[i]);
-        }
+        // for i in 0..10 {
+        //     builder
+        //         .when_transition()
+        //         .when_not(local.octet[7])
+        //         .assert_eq(local.octet_num[i], next.octet_num[i]);
+        // }
 
         // If current row is last of an octet and next row is real, octet_num should rotate by 1.
-        for i in 0..10 {
-            builder
-                .when_transition()
-                .when(local.octet[7])
-                .assert_eq(local.octet_num[i], next.octet_num[(i + 1) % 10]);
-        }
+        // for i in 0..10 {
+        //     builder
+        //         .when_transition()
+        //         .when(local.octet[7])
+        //         .assert_eq(local.octet_num[i], next.octet_num[(i + 1) % 10]);
+        // }
 
         // Constrain A-H columns
-        let vars = [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h];
-        let next_vars = [next.a, next.b, next.c, next.d, next.e, next.f, next.g, next.h];
-        for (i, var) in vars.iter().enumerate() {
-            // For all initialize and finalize cycles, A-H should be the same in the next row. The
-            // last cycle is an exception since the next row must be a new 80-cycle loop or nonreal.
-            builder
-                .when_transition()
-                .when(local.octet_num[0] + local.octet_num[9] * (AB::Expr::one() - local.octet[7]))
-                .assert_word_eq(*var, next_vars[i]);
+        // let vars = [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h];
+        // let next_vars = [next.a, next.b, next.c, next.d, next.e, next.f, next.g, next.h];
+        // for (i, var) in vars.iter().enumerate() {
+        // For all initialize and finalize cycles, A-H should be the same in the next row. The
+        // last cycle is an exception since the next row must be a new 80-cycle loop or nonreal.
+        // builder
+        //     .when_transition()
+        //     .when(local.octet_num[0] + local.octet_num[9] * (AB::Expr::one() - local.octet[7]))
+        //     .assert_word_eq(*var, next_vars[i]);
 
-            // When column is read from memory during init, is should be equal to the memory value.
-            builder
-                .when_transition()
-                .when(local.octet_num[0] * local.octet[i])
-                .assert_word_eq(*var, *local.mem.value());
-        }
+        // When column is read from memory during init, is should be equal to the memory value.
+        // builder
+        //     .when_transition()
+        //     .when(local.octet_num[0] * local.octet[i])
+        //     .assert_word_eq(*var, *local.mem.value());
+        // }
 
         // Assert that the is_initialize flag is correct.
         builder.assert_eq(local.is_initialize, local.octet_num[0] * local.is_real);
@@ -160,43 +163,43 @@ impl ShaCompressChip {
         builder.assert_eq(local.is_last_row.into(), local.octet[7] * local.octet_num[9]);
 
         // If this row is real and not the last cycle, then next row should have same inputs
-        builder
-            .when_transition()
-            .when(local.is_real)
-            .when_not(local.is_last_row)
-            .assert_eq(local.shard, next.shard);
-        builder
-            .when_transition()
-            .when(local.is_real)
-            .when_not(local.is_last_row)
-            .assert_eq(local.clk, next.clk);
-        builder
-            .when_transition()
-            .when(local.is_real)
-            .when_not(local.is_last_row)
-            .assert_eq(local.w_ptr, next.w_ptr);
-        builder
-            .when_transition()
-            .when(local.is_real)
-            .when_not(local.is_last_row)
-            .assert_eq(local.h_ptr, next.h_ptr);
+        // builder
+        //     .when_transition()
+        //     .when(local.is_real)
+        //     .when_not(local.is_last_row)
+        //     .assert_eq(local.shard, next.shard);
+        // builder
+        //     .when_transition()
+        //     .when(local.is_real)
+        //     .when_not(local.is_last_row)
+        //     .assert_eq(local.clk, next.clk);
+        // builder
+        //     .when_transition()
+        //     .when(local.is_real)
+        //     .when_not(local.is_last_row)
+        //     .assert_eq(local.w_ptr, next.w_ptr);
+        // builder
+        //     .when_transition()
+        //     .when(local.is_real)
+        //     .when_not(local.is_last_row)
+        //     .assert_eq(local.h_ptr, next.h_ptr);
 
         // Assert that is_real is a bool.
         builder.assert_bool(local.is_real);
 
         // If this row is real and not the last cycle, then next row should also be real.
-        builder
-            .when_transition()
-            .when(local.is_real)
-            .when_not(local.is_last_row)
-            .assert_one(next.is_real);
+        // builder
+        //     .when_transition()
+        //     .when(local.is_real)
+        //     .when_not(local.is_last_row)
+        //     .assert_one(next.is_real);
 
         // Once the is_real flag is changed to false, it should not be changed back.
-        builder.when_transition().when_not(local.is_real).assert_zero(next.is_real);
+        // builder.when_transition().when_not(local.is_real).assert_zero(next.is_real);
 
         // Assert that the table ends in nonreal columns. Since each compress ecall is 80 cycles and
         // the table is padded to a power of 2, the last row of the table should always be padding.
-        builder.when_last_row().assert_zero(local.is_real);
+        // builder.when_last_row().assert_zero(local.is_real);
     }
 
     /// Constrains that memory address is correct and that memory is correctly written/read.
@@ -271,7 +274,7 @@ impl ShaCompressChip {
         &self,
         builder: &mut AB,
         local: &ShaCompressCols<AB::Var>,
-        next: &ShaCompressCols<AB::Var>,
+        // next: &ShaCompressCols<AB::Var>,
     ) {
         // Constrain k column which loops over 64 constant values.
         for i in 0..64 {
@@ -455,20 +458,20 @@ impl ShaCompressChip {
         // c := b
         // b := a
         // a := temp1 + temp2
-        builder.when_transition().when(local.is_compression).assert_word_eq(next.h, local.g);
-        builder.when_transition().when(local.is_compression).assert_word_eq(next.g, local.f);
-        builder.when_transition().when(local.is_compression).assert_word_eq(next.f, local.e);
-        builder
-            .when_transition()
-            .when(local.is_compression)
-            .assert_word_eq(next.e, local.d_add_temp1.value);
-        builder.when_transition().when(local.is_compression).assert_word_eq(next.d, local.c);
-        builder.when_transition().when(local.is_compression).assert_word_eq(next.c, local.b);
-        builder.when_transition().when(local.is_compression).assert_word_eq(next.b, local.a);
-        builder
-            .when_transition()
-            .when(local.is_compression)
-            .assert_word_eq(next.a, local.temp1_add_temp2.value);
+        // builder.when_transition().when(local.is_compression).assert_word_eq(next.h, local.g);
+        // builder.when_transition().when(local.is_compression).assert_word_eq(next.g, local.f);
+        // builder.when_transition().when(local.is_compression).assert_word_eq(next.f, local.e);
+        // builder
+        //     .when_transition()
+        //     .when(local.is_compression)
+        //     .assert_word_eq(next.e, local.d_add_temp1.value);
+        // builder.when_transition().when(local.is_compression).assert_word_eq(next.d, local.c);
+        // builder.when_transition().when(local.is_compression).assert_word_eq(next.c, local.b);
+        // builder.when_transition().when(local.is_compression).assert_word_eq(next.b, local.a);
+        // builder
+        //     .when_transition()
+        //     .when(local.is_compression)
+        //     .assert_word_eq(next.a, local.temp1_add_temp2.value);
     }
 
     fn eval_finalize_ops<AB: SP1AirBuilder>(

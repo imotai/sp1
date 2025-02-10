@@ -87,7 +87,6 @@ mod tests {
 
             let result =
                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-            let syscall_chip_name = chip_name!(SyscallInstrsChip, BabyBear);
             assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
         }
     }
@@ -141,7 +140,6 @@ mod tests {
 
         let result =
             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-        let syscall_chip_name = chip_name!(SyscallInstrsChip, BabyBear);
         assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
     }
 
@@ -168,7 +166,6 @@ mod tests {
 
         let result =
             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-        let syscall_chip_name = chip_name!(SyscallInstrsChip, BabyBear);
         assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
     }
 
@@ -195,7 +192,6 @@ mod tests {
 
         let result =
             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-        let syscall_chip_name = chip_name!(SyscallInstrsChip, BabyBear);
         assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
     }
 }

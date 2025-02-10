@@ -631,87 +631,86 @@ pub fn create_dummy_record(shape: &Shape<RiscvAirId>) -> ExecutionRecord {
     record
 }
 
-// #[cfg(test)]
-// pub mod tests {
-//     #![allow(clippy::print_stdout)]
+#[cfg(test)]
+pub mod tests {
+    #![allow(clippy::print_stdout)]
 
-//     use hashbrown::HashSet;
-//     use sp1_stark::{Dom, MachineProver, StarkGenericConfig};
+    use hashbrown::HashSet;
+    use sp1_stark::{MachineProver, StarkGenericConfig};
 
-//     use super::*;
+    use super::*;
 
-//     fn try_generate_dummy_proof<SC: StarkGenericConfig, P: MachineProver<SC, RiscvAir<SC::Val>>>(
-//         prover: &P,
-//         shape: &Shape<RiscvAirId>,
-//     ) where
-//         SC::Val: PrimeField32,
-//         Dom<SC>: core::fmt::Debug,
-//     {
-//         let program = create_dummy_program(shape);
-//         let record = create_dummy_record(shape);
+    fn try_generate_dummy_proof<SC: StarkGenericConfig, P: MachineProver<SC, RiscvAir<SC::Val>>>(
+        prover: &P,
+        shape: &Shape<RiscvAirId>,
+    ) where
+        SC::Val: PrimeField32,
+    {
+        let program = create_dummy_program(shape);
+        let record = create_dummy_record(shape);
 
-//         // Try doing setup.
-//         let (pk, _) = prover.setup(&program);
+        // Try doing setup.
+        let (pk, _) = prover.setup(&program);
 
-//         // Try to generate traces.
-//         let main_traces = prover.generate_traces(&record);
+        // Try to generate traces.
+        let main_traces = prover.generate_traces(&record);
 
-//         // Try to commit the traces.
-//         let main_data = prover.commit(&record, main_traces);
+        // Try to commit the traces.
+        let main_data = prover.commit(&record, main_traces);
 
-//         let mut challenger = prover.machine().config().challenger();
+        let mut challenger = prover.machine().config().challenger();
 
-//         // Try to "open".
-//         prover.open(&pk, main_data, &mut challenger).unwrap();
-//     }
+        // Try to "open".
+        prover.open(&pk, main_data, &mut challenger).unwrap();
+    }
 
-//     #[test]
-//     #[ignore]
-//     fn test_making_shapes() {
-//         use p3_baby_bear::BabyBear;
-//         let shape_config = CoreShapeConfig::<BabyBear>::default();
-//         let num_shapes = shape_config.all_shapes().collect::<HashSet<_>>().len();
-//         println!("There are {} core shapes", num_shapes);
-//         assert!(num_shapes < 1 << 24);
-//     }
+    #[test]
+    #[ignore]
+    fn test_making_shapes() {
+        use p3_baby_bear::BabyBear;
+        let shape_config = CoreShapeConfig::<BabyBear>::default();
+        let num_shapes = shape_config.all_shapes().collect::<HashSet<_>>().len();
+        println!("There are {} core shapes", num_shapes);
+        assert!(num_shapes < 1 << 24);
+    }
 
-//     #[test]
-//     fn test_dummy_record() {
-//         use crate::utils::setup_logger;
-//         use p3_baby_bear::BabyBear;
-//         use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, CpuProver};
+    #[test]
+    fn test_dummy_record() {
+        use crate::utils::setup_logger;
+        use p3_baby_bear::BabyBear;
+        use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, CpuProver};
 
-//         type SC = BabyBearPoseidon2;
-//         type A = RiscvAir<BabyBear>;
+        type SC = BabyBearPoseidon2;
+        type A = RiscvAir<BabyBear>;
 
-//         setup_logger();
+        setup_logger();
 
-//         let preprocessed_log_heights = [(RiscvAirId::Program, 10), (RiscvAirId::Byte, 16)];
+        let preprocessed_log_heights = [(RiscvAirId::Program, 10), (RiscvAirId::Byte, 16)];
 
-//         let core_log_heights = [
-//             (RiscvAirId::Cpu, 11),
-//             (RiscvAirId::DivRem, 11),
-//             (RiscvAirId::AddSub, 10),
-//             (RiscvAirId::Bitwise, 10),
-//             (RiscvAirId::Mul, 10),
-//             (RiscvAirId::ShiftRight, 10),
-//             (RiscvAirId::ShiftLeft, 10),
-//             (RiscvAirId::Lt, 10),
-//             (RiscvAirId::MemoryLocal, 10),
-//             (RiscvAirId::SyscallCore, 10),
-//             (RiscvAirId::Global, 10),
-//         ];
+        let core_log_heights = [
+            (RiscvAirId::Cpu, 11),
+            (RiscvAirId::DivRem, 11),
+            (RiscvAirId::AddSub, 10),
+            (RiscvAirId::Bitwise, 10),
+            (RiscvAirId::Mul, 10),
+            (RiscvAirId::ShiftRight, 10),
+            (RiscvAirId::ShiftLeft, 10),
+            (RiscvAirId::Lt, 10),
+            (RiscvAirId::MemoryLocal, 10),
+            (RiscvAirId::SyscallCore, 10),
+            (RiscvAirId::Global, 10),
+        ];
 
-//         let height_map =
-//             preprocessed_log_heights.into_iter().chain(core_log_heights).collect::<HashMap<_, _>>();
+        let height_map =
+            preprocessed_log_heights.into_iter().chain(core_log_heights).collect::<HashMap<_, _>>();
 
-//         let shape = Shape::new(height_map);
+        let shape = Shape::new(height_map);
 
-//         // Try generating preprocessed traces.
-//         let config = SC::default();
-//         let machine = A::machine(config);
-//         let prover = CpuProver::new(machine);
+        // Try generating preprocessed traces.
+        let config = SC::default();
+        let machine = A::machine(config);
+        let prover = CpuProver::new(machine);
 
-//         try_generate_dummy_proof(&prover, &shape);
-//     }
-// }
+        try_generate_dummy_proof(&prover, &shape);
+    }
+}

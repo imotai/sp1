@@ -4,6 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
+use itertools::Itertools;
 use num_traits::cast::ToPrimitive;
 use p3_air::{Air, BaseAir};
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
@@ -86,7 +87,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
 
         // First check that the RLC'ed reduced eval in the zerocheck proof is correct.
         let mut rlc_eval = SC::Challenge::zero();
-        for (chip, openings) in chips.iter().zip(opened_values.chips.iter()) {
+        for (chip, openings) in chips.iter().zip_eq(opened_values.chips.iter()) {
             // Verify the shape of the opening arguments matches the expected values.
             Self::verify_opening_shape(chip, openings)
                 .map_err(|e| VerificationError::OpeningShapeError(chip.name(), e))?;
@@ -95,22 +96,28 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
 
             assert!(dimension >= openings.log_degree);
 
-            // Create the threshold point.  This should be the big-endian bit representation of
-            // 2^openings.log_degree.
-            let mut threshold_point_vals = vec![SC::Challenge::zero(); dimension];
-            if openings.log_degree < pcs.max_log_row_count {
+            let geq_val = if openings.log_degree < pcs.max_log_row_count {
+                // Create the threshold point.  This should be the big-endian bit representation of
+                // 2^openings.log_degree.
+                let mut threshold_point_vals = vec![SC::Challenge::zero(); dimension];
                 threshold_point_vals[pcs.max_log_row_count - openings.log_degree - 1] =
                     SC::Challenge::one();
-            }
-            let threshold_point = Point::new(threshold_point_vals.into());
+                let threshold_point = Point::new(threshold_point_vals.into());
+                full_geq(&threshold_point, &proof.zerocheck_proof.point_and_eval.0)
+            } else {
+                // If the log_degree is equal to the max_log_row_count, then there were no padded variables
+                // used, so there is no need to adjust the constraint eval with the padded row adjustment.
+                assert!(openings.log_degree == pcs.max_log_row_count);
+                SC::Challenge::zero()
+            };
 
             let padded_row_adjustment =
                 Self::compute_padded_row_adjustment(chip, alpha, public_values);
 
             let constraint_eval = Self::eval_constraints(chip, openings, alpha, public_values)
-                - padded_row_adjustment
-                    * full_geq(&threshold_point, &proof.zerocheck_proof.point_and_eval.0);
+                - padded_row_adjustment * geq_val;
 
+            // Horner's method.
             rlc_eval = rlc_eval * lambda + zerocheck_eq_val * constraint_eval;
         }
 
@@ -159,13 +166,23 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
         let main_column_count =
             main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
 
-        let machine_pcs =
-            MachineJaggedPcs::new(pcs, vec![preprocessed_column_count, main_column_count]);
+        let only_has_main_commitment = commitments.len() == 1;
+
+        let (column_counts, openings) = if only_has_main_commitment {
+            (vec![main_column_count], vec![main_openings.as_slice()])
+        } else {
+            (
+                vec![preprocessed_column_count, main_column_count],
+                vec![filtered_preprocessed_openings.as_slice(), main_openings.as_slice()],
+            )
+        };
+
+        let machine_pcs = MachineJaggedPcs::new(pcs, column_counts);
 
         machine_pcs
             .verify_trusted_evaluations(
                 zerocheck_proof.point_and_eval.0.clone(),
-                &[&filtered_preprocessed_openings, &main_openings],
+                openings.as_slice(),
                 commitments,
                 opening_proof,
                 challenger,

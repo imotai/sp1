@@ -44,7 +44,7 @@ pub(crate) fn sum_as_poly_in_last_variable<
     // For all rounds, we can find a root of the zerocheck polynomial by finding a root of the eq term
     // in the last coord.
     // So for the first round, we need to find an additional 2 points (since the constraint polynomial is degree 3).
-    // We calulate the eval at points 2 and 4 (since we don't need to do any multiplications
+    // We calculate the eval at points 2 and 4 (since we don't need to do any multiplications
     // when interpolating the column evals).
     // For the other rounds, we need to find an additional 1 point since we don't know the zercheck poly eval at
     // point 0 and 1.

@@ -12,10 +12,7 @@ use crate::{
     lookup::{Interaction, InteractionBuilder, InteractionKind},
 };
 
-use super::{
-    eval_permutation_constraints, generate_permutation_trace, scoped_interactions,
-    PROOF_MAX_NUM_PVS,
-};
+use super::{generate_permutation_trace, scoped_interactions, PROOF_MAX_NUM_PVS};
 
 /// An Air that encodes lookups based on interactions.
 pub struct Chip<F: Field, A> {
@@ -251,16 +248,6 @@ where
     fn eval(&self, builder: &mut AB) {
         // Evaluate the execution trace constraints.
         self.air.eval(builder);
-        // Evaluate permutation constraints.
-        // We will use logup GKR to verify the permutation constraints.
-        // let batch_size = self.logup_batch_size();
-        // eval_permutation_constraints(
-        //     &self.sends,
-        //     &self.receives,
-        //     batch_size,
-        //     self.air.commit_scope(),
-        //     builder,
-        // );
     }
 }
 

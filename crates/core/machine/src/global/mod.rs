@@ -31,9 +31,8 @@ const NUM_GLOBAL_COLS: usize = size_of::<GlobalCols<u8>>();
 
 /// Creates the column map for the CPU.
 const fn make_col_map() -> GlobalCols<usize> {
-    const NUM_GLOBAL_NON_PADDING_COLS: usize = size_of::<GlobalCols<u8>>();
-    let indices_arr = indices_arr::<NUM_GLOBAL_NON_PADDING_COLS>();
-    unsafe { transmute::<[usize; NUM_GLOBAL_NON_PADDING_COLS], GlobalCols<usize>>(indices_arr) }
+    let indices_arr = indices_arr::<NUM_GLOBAL_COLS>();
+    unsafe { transmute::<[usize; NUM_GLOBAL_COLS], GlobalCols<usize>>(indices_arr) }
 }
 
 const GLOBAL_COL_MAP: GlobalCols<usize> = make_col_map();

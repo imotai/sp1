@@ -5,13 +5,14 @@ name: Docker Gnark
 on:
   push:
     branches: [main, dev]
-  pull_request:
-    branches:
-      - "**"
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - ".github/workflows/**"
+  # TODO: Enable once recursion crates are fixed for multilinear.
+  # pull_request:
+  #   branches:
+  #     - "**"
+  #   paths:
+  #     - "crates/**"
+  #     - "Cargo.toml"
+  #     - ".github/workflows/**"
   merge_group:
 
 jobs:

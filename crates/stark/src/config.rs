@@ -81,19 +81,3 @@ pub trait StarkGenericConfig: 'static + Send + Sync + Serialize + DeserializeOwn
 pub trait ZeroCommitment<SC: StarkGenericConfig> {
     fn zero_commitment(&self) -> Com<SC>;
 }
-
-// pub struct UniConfig<SC>(pub SC);
-
-// impl<SC: StarkGenericConfig> p3_uni_stark::StarkGenericConfig for UniConfig<SC> {
-//     type Pcs = SC::Pcs;
-
-//     type Challenge = SC::Challenge;
-
-//     type Challenger = SC::Challenger;
-
-//     /// Get the PCS used by this configuration.
-//     fn prover_pcs(&self) -> &Self::MLPCSProver;
-
-//     /// Get the PCS used by this configuration.
-//     fn verifier_pcs(&self) -> &Self::MLPCSVerifier;
-// }

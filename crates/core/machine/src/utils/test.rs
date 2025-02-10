@@ -8,8 +8,8 @@ use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
     air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, Com, ConstraintSumcheckFolder,
     CpuProver, DebugConstraintBuilder, InteractionBuilder, MachineProof, MachineProver,
-    MachineRecord, MachineVerificationError, OpeningProof, PcsProverData, ProverConstraintFolder,
-    SP1CoreOpts, StarkGenericConfig, StarkMachine, StarkProvingKey, StarkVerifyingKey, Val,
+    MachineRecord, MachineVerificationError, OpeningProof, PcsProverData, SP1CoreOpts,
+    StarkGenericConfig, StarkMachine, StarkProvingKey, StarkVerifyingKey, Val,
     VerifierConstraintFolder,
 };
 
@@ -186,4 +186,30 @@ where
 {
     let prover = CpuProver::new(machine);
     run_test_machine_with_prover::<SC, A, CpuProver<_, _>>(&prover, records, pk, vk)
+}
+
+pub fn setup_test_machine<SC, A>(
+    machine: StarkMachine<SC, A>,
+) -> (StarkProvingKey<SC>, StarkVerifyingKey<SC>)
+where
+    A: MachineAir<SC::Val, Program = Program>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Val, SC::Challenge>>
+        + for<'a> Air<ConstraintSumcheckFolder<'a, SC::Val, SC::Challenge, SC::Challenge>>
+        + Air<InteractionBuilder<Val<SC>>>
+        + for<'a> Air<VerifierConstraintFolder<'a, SC>>
+        + for<'a> Air<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>
+        + Air<SymbolicAirBuilder<SC::Val>>,
+    A::Record: MachineRecord<Config = SP1CoreOpts>,
+    SC: StarkGenericConfig,
+    SC::Val: p3_field::PrimeField32,
+    SC::Challenger: Clone,
+    Com<SC>: Send + Sync,
+    PcsProverData<SC>: Send + Sync + Serialize + DeserializeOwned,
+    OpeningProof<SC>: Send + Sync,
+{
+    let prover = CpuProver::new(machine);
+    let empty_program = Program::new(vec![], 0, 0);
+    let (pk, vk) = prover.setup(&empty_program);
+
+    (pk, vk)
 }

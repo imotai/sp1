@@ -62,16 +62,16 @@ impl<SC: StarkGenericConfig, A> StarkMachine<SC, A> {
 #[serde(bound(serialize = "PcsProverData<SC>: Serialize"))]
 #[serde(bound(deserialize = "PcsProverData<SC>: DeserializeOwned"))]
 pub struct StarkProvingKey<SC: StarkGenericConfig> {
-    /// The commitment to the preprocessed traces.
-    pub commit: Com<SC>,
     /// The start pc of the program.
     pub pc_start: Val<SC>,
     /// The starting global digest of the program, after incorporating the initial memory.
     pub initial_global_cumulative_sum: SepticDigest<Val<SC>>,
+    /// The commitment to the preprocessed traces.
+    pub preprocessed_commit: Option<Com<SC>>,
     /// The preprocessed traces.
     pub traces: Vec<RowMajorMatrix<Val<SC>>>,
     /// The pcs data for the preprocessed traces.
-    pub data: Arc<JaggedProverData<SC::MLPCSProverData>>,
+    pub preprocessed_data: Option<Arc<JaggedProverData<SC::MLPCSProverData>>>,
     /// The preprocessed chip ordering.
     pub chip_ordering: HashMap<String, usize>,
     /// The preprocessed chip local only information.
@@ -394,8 +394,14 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
             .unzip();
 
         // Commit to the batch of traces.
-        let (commit, data) = tracing::debug_span!("commit to preprocessed traces")
-            .in_scope(|| JaggedPcs::commit_multilinears(pcs, traces));
+        let has_preprocess = traces.len() > 1;
+        let (preprocessed_commit, preprocessed_data) = if has_preprocess {
+            let (commit, data) = tracing::debug_span!("commit to preprocessed traces")
+                .in_scope(|| JaggedPcs::commit_multilinears(pcs, traces));
+            (Some(commit), Some(Arc::new(data)))
+        } else {
+            (None, None)
+        };
 
         // Get the chip ordering.
         let chip_ordering = named_preprocessed_traces
@@ -419,11 +425,11 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
 
         (
             StarkProvingKey {
-                commit: commit.clone(),
                 pc_start,
                 initial_global_cumulative_sum,
                 traces,
-                data: Arc::new(data),
+                preprocessed_commit,
+                preprocessed_data,
                 chip_ordering: chip_ordering.clone(),
                 local_only,
                 constraints_map,

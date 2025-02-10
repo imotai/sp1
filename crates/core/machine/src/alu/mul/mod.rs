@@ -471,194 +471,199 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::{
-//         io::SP1Stdin,
-//         riscv::RiscvAir,
-//         utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
-//     };
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
-//     use rand::{thread_rng, Rng};
-//     use sp1_core_executor::{
-//         events::{AluEvent, MemoryRecordEnum},
-//         ExecutionRecord, Instruction, Opcode, Program,
-//     };
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-//         MachineProver, StarkGenericConfig, Val,
-//     };
+#[cfg(test)]
+mod tests {
+    use crate::{
+        io::SP1Stdin,
+        riscv::RiscvAir,
+        utils::{run_malicious_test, run_test_machine, setup_test_machine},
+    };
+    use p3_baby_bear::BabyBear;
+    use p3_matrix::dense::RowMajorMatrix;
+    use rand::{thread_rng, Rng};
+    use sp1_core_executor::{
+        events::{AluEvent, MemoryRecordEnum},
+        ExecutionRecord, Instruction, Opcode, Program,
+    };
+    use sp1_stark::{
+        air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
+        baby_bear_poseidon2::BabyBearPoseidon2,
+        Chip, CpuProver, MachineProver, StarkMachine, Val,
+    };
 
-//     use super::MulChip;
+    use super::MulChip;
 
-//     #[test]
-//     fn generate_trace_mul() {
-//         let mut shard = ExecutionRecord::default();
+    #[test]
+    fn generate_trace_mul() {
+        let mut shard = ExecutionRecord::default();
 
-//         // Fill mul_events with 10^7 MULHSU events.
-//         let mut mul_events: Vec<AluEvent> = Vec::new();
-//         for _ in 0..10i32.pow(7) {
-//             mul_events.push(AluEvent::new(
-//                 0,
-//                 Opcode::MULHSU,
-//                 0x80004000,
-//                 0x80000000,
-//                 0xffff8000,
-//                 false,
-//             ));
-//         }
-//         shard.mul_events = mul_events;
-//         let chip = MulChip::default();
-//         let _trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//     }
+        // Fill mul_events with 10^7 MULHSU events.
+        let mut mul_events: Vec<AluEvent> = Vec::new();
+        for _ in 0..10i32.pow(7) {
+            mul_events.push(AluEvent::new(
+                0,
+                Opcode::MULHSU,
+                0x80004000,
+                0x80000000,
+                0xffff8000,
+                false,
+            ));
+        }
+        shard.mul_events = mul_events;
+        let chip = MulChip::default();
+        let _trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+    }
 
-//     #[test]
-//     fn prove_babybear() {
-//         let config = BabyBearPoseidon2::new();
-//         let mut challenger = config.challenger();
+    #[test]
+    fn prove_babybear() {
+        let mut shard = ExecutionRecord::default();
+        let mut mul_events: Vec<AluEvent> = Vec::new();
 
-//         let mut shard = ExecutionRecord::default();
-//         let mut mul_events: Vec<AluEvent> = Vec::new();
+        let mul_instructions: Vec<(Opcode, u32, u32, u32)> = vec![
+            (Opcode::MUL, 0x00001200, 0x00007e00, 0xb6db6db7),
+            (Opcode::MUL, 0x00001240, 0x00007fc0, 0xb6db6db7),
+            (Opcode::MUL, 0x00000000, 0x00000000, 0x00000000),
+            (Opcode::MUL, 0x00000001, 0x00000001, 0x00000001),
+            (Opcode::MUL, 0x00000015, 0x00000003, 0x00000007),
+            (Opcode::MUL, 0x00000000, 0x00000000, 0xffff8000),
+            (Opcode::MUL, 0x00000000, 0x80000000, 0x00000000),
+            (Opcode::MUL, 0x00000000, 0x80000000, 0xffff8000),
+            (Opcode::MUL, 0x0000ff7f, 0xaaaaaaab, 0x0002fe7d),
+            (Opcode::MUL, 0x0000ff7f, 0x0002fe7d, 0xaaaaaaab),
+            (Opcode::MUL, 0x00000000, 0xff000000, 0xff000000),
+            (Opcode::MUL, 0x00000001, 0xffffffff, 0xffffffff),
+            (Opcode::MUL, 0xffffffff, 0xffffffff, 0x00000001),
+            (Opcode::MUL, 0xffffffff, 0x00000001, 0xffffffff),
+            (Opcode::MULHU, 0x00000000, 0x00000000, 0x00000000),
+            (Opcode::MULHU, 0x00000000, 0x00000001, 0x00000001),
+            (Opcode::MULHU, 0x00000000, 0x00000003, 0x00000007),
+            (Opcode::MULHU, 0x00000000, 0x00000000, 0xffff8000),
+            (Opcode::MULHU, 0x00000000, 0x80000000, 0x00000000),
+            (Opcode::MULHU, 0x7fffc000, 0x80000000, 0xffff8000),
+            (Opcode::MULHU, 0x0001fefe, 0xaaaaaaab, 0x0002fe7d),
+            (Opcode::MULHU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
+            (Opcode::MULHU, 0xfe010000, 0xff000000, 0xff000000),
+            (Opcode::MULHU, 0xfffffffe, 0xffffffff, 0xffffffff),
+            (Opcode::MULHU, 0x00000000, 0xffffffff, 0x00000001),
+            (Opcode::MULHU, 0x00000000, 0x00000001, 0xffffffff),
+            (Opcode::MULHSU, 0x00000000, 0x00000000, 0x00000000),
+            (Opcode::MULHSU, 0x00000000, 0x00000001, 0x00000001),
+            (Opcode::MULHSU, 0x00000000, 0x00000003, 0x00000007),
+            (Opcode::MULHSU, 0x00000000, 0x00000000, 0xffff8000),
+            (Opcode::MULHSU, 0x00000000, 0x80000000, 0x00000000),
+            (Opcode::MULHSU, 0x80004000, 0x80000000, 0xffff8000),
+            (Opcode::MULHSU, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
+            (Opcode::MULHSU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
+            (Opcode::MULHSU, 0xff010000, 0xff000000, 0xff000000),
+            (Opcode::MULHSU, 0xffffffff, 0xffffffff, 0xffffffff),
+            (Opcode::MULHSU, 0xffffffff, 0xffffffff, 0x00000001),
+            (Opcode::MULHSU, 0x00000000, 0x00000001, 0xffffffff),
+            (Opcode::MULH, 0x00000000, 0x00000000, 0x00000000),
+            (Opcode::MULH, 0x00000000, 0x00000001, 0x00000001),
+            (Opcode::MULH, 0x00000000, 0x00000003, 0x00000007),
+            (Opcode::MULH, 0x00000000, 0x00000000, 0xffff8000),
+            (Opcode::MULH, 0x00000000, 0x80000000, 0x00000000),
+            (Opcode::MULH, 0x00000000, 0x80000000, 0x00000000),
+            (Opcode::MULH, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
+            (Opcode::MULH, 0xffff0081, 0x0002fe7d, 0xaaaaaaab),
+            (Opcode::MULH, 0x00010000, 0xff000000, 0xff000000),
+            (Opcode::MULH, 0x00000000, 0xffffffff, 0xffffffff),
+            (Opcode::MULH, 0xffffffff, 0xffffffff, 0x00000001),
+            (Opcode::MULH, 0xffffffff, 0x00000001, 0xffffffff),
+        ];
+        for t in mul_instructions.iter() {
+            mul_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
+        }
 
-//         let mul_instructions: Vec<(Opcode, u32, u32, u32)> = vec![
-//             (Opcode::MUL, 0x00001200, 0x00007e00, 0xb6db6db7),
-//             (Opcode::MUL, 0x00001240, 0x00007fc0, 0xb6db6db7),
-//             (Opcode::MUL, 0x00000000, 0x00000000, 0x00000000),
-//             (Opcode::MUL, 0x00000001, 0x00000001, 0x00000001),
-//             (Opcode::MUL, 0x00000015, 0x00000003, 0x00000007),
-//             (Opcode::MUL, 0x00000000, 0x00000000, 0xffff8000),
-//             (Opcode::MUL, 0x00000000, 0x80000000, 0x00000000),
-//             (Opcode::MUL, 0x00000000, 0x80000000, 0xffff8000),
-//             (Opcode::MUL, 0x0000ff7f, 0xaaaaaaab, 0x0002fe7d),
-//             (Opcode::MUL, 0x0000ff7f, 0x0002fe7d, 0xaaaaaaab),
-//             (Opcode::MUL, 0x00000000, 0xff000000, 0xff000000),
-//             (Opcode::MUL, 0x00000001, 0xffffffff, 0xffffffff),
-//             (Opcode::MUL, 0xffffffff, 0xffffffff, 0x00000001),
-//             (Opcode::MUL, 0xffffffff, 0x00000001, 0xffffffff),
-//             (Opcode::MULHU, 0x00000000, 0x00000000, 0x00000000),
-//             (Opcode::MULHU, 0x00000000, 0x00000001, 0x00000001),
-//             (Opcode::MULHU, 0x00000000, 0x00000003, 0x00000007),
-//             (Opcode::MULHU, 0x00000000, 0x00000000, 0xffff8000),
-//             (Opcode::MULHU, 0x00000000, 0x80000000, 0x00000000),
-//             (Opcode::MULHU, 0x7fffc000, 0x80000000, 0xffff8000),
-//             (Opcode::MULHU, 0x0001fefe, 0xaaaaaaab, 0x0002fe7d),
-//             (Opcode::MULHU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
-//             (Opcode::MULHU, 0xfe010000, 0xff000000, 0xff000000),
-//             (Opcode::MULHU, 0xfffffffe, 0xffffffff, 0xffffffff),
-//             (Opcode::MULHU, 0x00000000, 0xffffffff, 0x00000001),
-//             (Opcode::MULHU, 0x00000000, 0x00000001, 0xffffffff),
-//             (Opcode::MULHSU, 0x00000000, 0x00000000, 0x00000000),
-//             (Opcode::MULHSU, 0x00000000, 0x00000001, 0x00000001),
-//             (Opcode::MULHSU, 0x00000000, 0x00000003, 0x00000007),
-//             (Opcode::MULHSU, 0x00000000, 0x00000000, 0xffff8000),
-//             (Opcode::MULHSU, 0x00000000, 0x80000000, 0x00000000),
-//             (Opcode::MULHSU, 0x80004000, 0x80000000, 0xffff8000),
-//             (Opcode::MULHSU, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
-//             (Opcode::MULHSU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
-//             (Opcode::MULHSU, 0xff010000, 0xff000000, 0xff000000),
-//             (Opcode::MULHSU, 0xffffffff, 0xffffffff, 0xffffffff),
-//             (Opcode::MULHSU, 0xffffffff, 0xffffffff, 0x00000001),
-//             (Opcode::MULHSU, 0x00000000, 0x00000001, 0xffffffff),
-//             (Opcode::MULH, 0x00000000, 0x00000000, 0x00000000),
-//             (Opcode::MULH, 0x00000000, 0x00000001, 0x00000001),
-//             (Opcode::MULH, 0x00000000, 0x00000003, 0x00000007),
-//             (Opcode::MULH, 0x00000000, 0x00000000, 0xffff8000),
-//             (Opcode::MULH, 0x00000000, 0x80000000, 0x00000000),
-//             (Opcode::MULH, 0x00000000, 0x80000000, 0x00000000),
-//             (Opcode::MULH, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
-//             (Opcode::MULH, 0xffff0081, 0x0002fe7d, 0xaaaaaaab),
-//             (Opcode::MULH, 0x00010000, 0xff000000, 0xff000000),
-//             (Opcode::MULH, 0x00000000, 0xffffffff, 0xffffffff),
-//             (Opcode::MULH, 0xffffffff, 0xffffffff, 0x00000001),
-//             (Opcode::MULH, 0xffffffff, 0x00000001, 0xffffffff),
-//         ];
-//         for t in mul_instructions.iter() {
-//             mul_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
-//         }
+        // Append more events until we have 1000 tests.
+        for _ in 0..(1000 - mul_instructions.len()) {
+            mul_events.push(AluEvent::new(0, Opcode::MUL, 1, 1, 1, false));
+        }
 
-//         // Append more events until we have 1000 tests.
-//         for _ in 0..(1000 - mul_instructions.len()) {
-//             mul_events.push(AluEvent::new(0, Opcode::MUL, 1, 1, 1, false));
-//         }
+        shard.mul_events = mul_events;
 
-//         shard.mul_events = mul_events;
-//         let chip = MulChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         let proof = prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
+        // Run setup.
+        let air = MulChip::default();
+        let config = BabyBearPoseidon2::new();
+        let chip = Chip::new(air);
+        let (pk, vk) = setup_test_machine(StarkMachine::new(
+            config.clone(),
+            vec![chip],
+            SP1_PROOF_NUM_PV_ELTS,
+            true,
+        ));
 
-//         let mut challenger = config.challenger();
-//         verify(&config, &chip, &mut challenger, &proof).unwrap();
-//     }
+        // Run the test.
+        let air = MulChip::default();
+        let chip: Chip<BabyBear, MulChip> = Chip::new(air);
+        let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+        run_test_machine::<BabyBearPoseidon2, MulChip>(vec![shard], machine, pk, vk).unwrap();
+    }
 
-//     #[test]
-//     fn test_malicious_mul() {
-//         const NUM_TESTS: usize = 5;
+    #[test]
+    fn test_malicious_mul() {
+        const NUM_TESTS: usize = 5;
 
-//         for opcode in [Opcode::MUL, Opcode::MULH, Opcode::MULHU, Opcode::MULHSU] {
-//             for _ in 0..NUM_TESTS {
-//                 let (correct_op_a, op_b, op_c) = if opcode == Opcode::MUL {
-//                     let op_b = thread_rng().gen_range(0..i32::MAX);
-//                     let op_c = thread_rng().gen_range(0..i32::MAX);
-//                     ((op_b.overflowing_mul(op_c).0) as u32, op_b as u32, op_c as u32)
-//                 } else if opcode == Opcode::MULH {
-//                     let op_b = thread_rng().gen_range(0..i32::MAX);
-//                     let op_c = thread_rng().gen_range(0..i32::MAX);
-//                     let result = (op_b as i64) * (op_c as i64);
-//                     (((result >> 32) as i32) as u32, op_b as u32, op_c as u32)
-//                 } else if opcode == Opcode::MULHU {
-//                     let op_b = thread_rng().gen_range(0..u32::MAX);
-//                     let op_c = thread_rng().gen_range(0..u32::MAX);
-//                     let result: u64 = (op_b as u64) * (op_c as u64);
-//                     ((result >> 32) as u32, op_b as u32, op_c as u32)
-//                 } else if opcode == Opcode::MULHSU {
-//                     let op_b = thread_rng().gen_range(0..i32::MAX);
-//                     let op_c = thread_rng().gen_range(0..u32::MAX);
-//                     let result: i64 = (op_b as i64) * (op_c as i64);
-//                     ((result >> 32) as u32, op_b as u32, op_c as u32)
-//                 } else {
-//                     unreachable!()
-//                 };
+        for opcode in [Opcode::MUL, Opcode::MULH, Opcode::MULHU, Opcode::MULHSU] {
+            for _ in 0..NUM_TESTS {
+                let (correct_op_a, op_b, op_c) = if opcode == Opcode::MUL {
+                    let op_b = thread_rng().gen_range(0..i32::MAX);
+                    let op_c = thread_rng().gen_range(0..i32::MAX);
+                    ((op_b.overflowing_mul(op_c).0) as u32, op_b as u32, op_c as u32)
+                } else if opcode == Opcode::MULH {
+                    let op_b = thread_rng().gen_range(0..i32::MAX);
+                    let op_c = thread_rng().gen_range(0..i32::MAX);
+                    let result = (op_b as i64) * (op_c as i64);
+                    (((result >> 32) as i32) as u32, op_b as u32, op_c as u32)
+                } else if opcode == Opcode::MULHU {
+                    let op_b = thread_rng().gen_range(0..u32::MAX);
+                    let op_c = thread_rng().gen_range(0..u32::MAX);
+                    let result: u64 = (op_b as u64) * (op_c as u64);
+                    ((result >> 32) as u32, op_b as u32, op_c as u32)
+                } else if opcode == Opcode::MULHSU {
+                    let op_b = thread_rng().gen_range(0..i32::MAX);
+                    let op_c = thread_rng().gen_range(0..u32::MAX);
+                    let result: i64 = (op_b as i64) * (op_c as i64);
+                    ((result >> 32) as u32, op_b as u32, op_c as u32)
+                } else {
+                    unreachable!()
+                };
 
-//                 let op_a = thread_rng().gen_range(0..u32::MAX);
-//                 assert!(op_a != correct_op_a);
+                let op_a = thread_rng().gen_range(0..u32::MAX);
+                assert!(op_a != correct_op_a);
 
-//                 let instructions = vec![
-//                     Instruction::new(opcode, 5, op_b, op_c, true, true),
-//                     Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
-//                 ];
+                let instructions = vec![
+                    Instruction::new(opcode, 5, op_b, op_c, true, true),
+                    Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+                ];
 
-//                 let program = Program::new(instructions, 0, 0);
-//                 let stdin = SP1Stdin::new();
+                let program = Program::new(instructions, 0, 0);
+                let stdin = SP1Stdin::new();
 
-//                 type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+                type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
 
-//                 let malicious_trace_pv_generator = move |prover: &P,
-//                                                          record: &mut ExecutionRecord|
-//                       -> Vec<(
-//                     String,
-//                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
-//                 )> {
-//                     let mut malicious_record = record.clone();
-//                     malicious_record.cpu_events[0].a = op_a as u32;
-//                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
-//                         malicious_record.cpu_events[0].a_record
-//                     {
-//                         write_record.value = op_a as u32;
-//                     }
-//                     malicious_record.mul_events[0].a = op_a;
-//                     prover.generate_traces(&malicious_record)
-//                 };
+                let malicious_trace_pv_generator = move |prover: &P,
+                                                         record: &mut ExecutionRecord|
+                      -> Vec<(
+                    String,
+                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
+                )> {
+                    let mut malicious_record = record.clone();
+                    malicious_record.cpu_events[0].a = op_a as u32;
+                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                        malicious_record.cpu_events[0].a_record
+                    {
+                        write_record.value = op_a as u32;
+                    }
+                    malicious_record.mul_events[0].a = op_a;
+                    prover.generate_traces(&malicious_record)
+                };
 
-//                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 let mul_chip_name = chip_name!(MulChip, BabyBear);
-//                 assert!(
-//                     result.is_err() && result.unwrap_err().is_constraints_failing(&mul_chip_name)
-//                 );
-//             }
-//         }
-//     }
-// }
+                let result =
+                    run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+                assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
+            }
+        }
+    }
+}

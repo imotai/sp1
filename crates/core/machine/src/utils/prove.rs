@@ -452,19 +452,21 @@ where
                                     prover.open(pk, main_data, &mut challenger.clone()).unwrap();
                                 opening_span.exit();
 
-                                #[cfg(debug_assertions)]
-                                {
-                                    if let Some(shape) = record.shape.as_ref() {
-                                        assert_eq!(
-                                            proof.shape(),
-                                            shape
-                                                .clone()
-                                                .into_iter()
-                                                .map(|(k, v)| (k.to_string(), v as usize))
-                                                .collect(),
-                                        );
-                                    }
-                                }
+                                // TODO: Re-enable when we get chips compatible w/ v6 (specifically the first_row, last_row,
+                                // and next_row constraints).
+                                // #[cfg(debug_assertions)]
+                                // {
+                                //     if let Some(shape) = record.shape.as_ref() {
+                                //         assert_eq!(
+                                //             proof.shape(),
+                                //             shape
+                                //                 .clone()
+                                //                 .into_iter()
+                                //                 .map(|(k, v)| (k.to_string(), v as usize))
+                                //                 .collect(),
+                                //         );
+                                //     }
+                                // }
 
                                 rayon::spawn(move || {
                                     drop(record);

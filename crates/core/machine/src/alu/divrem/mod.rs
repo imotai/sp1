@@ -831,168 +831,172 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     #![allow(clippy::print_stdout)]
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::print_stdout)]
 
-//     use crate::{
-//         io::SP1Stdin,
-//         riscv::RiscvAir,
-//         utils::{run_malicious_test, uni_stark_prove, uni_stark_verify},
-//     };
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
-//     use rand::{thread_rng, Rng};
-//     use sp1_core_executor::{
-//         events::{AluEvent, MemoryRecordEnum},
-//         ExecutionRecord, Instruction, Opcode, Program,
-//     };
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-//         MachineProver, StarkGenericConfig, Val,
-//     };
+    use crate::{
+        io::SP1Stdin,
+        riscv::RiscvAir,
+        utils::{run_malicious_test, run_test_machine, setup_test_machine},
+    };
+    use p3_baby_bear::BabyBear;
+    use p3_matrix::dense::RowMajorMatrix;
+    use rand::{thread_rng, Rng};
+    use sp1_core_executor::{
+        events::{AluEvent, MemoryRecordEnum},
+        ExecutionRecord, Instruction, Opcode, Program,
+    };
+    use sp1_stark::{
+        air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
+        baby_bear_poseidon2::BabyBearPoseidon2,
+        Chip, CpuProver, MachineProver, StarkMachine, Val,
+    };
 
-//     use super::DivRemChip;
+    use super::DivRemChip;
 
-//     #[test]
-//     fn generate_trace() {
-//         let mut shard = ExecutionRecord::default();
-//         shard.divrem_events = vec![AluEvent::new(0, Opcode::DIVU, 2, 17, 3, false)];
-//         let chip = DivRemChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         println!("{:?}", trace.values)
-//     }
+    #[test]
+    fn generate_trace() {
+        let mut shard = ExecutionRecord::default();
+        shard.divrem_events = vec![AluEvent::new(0, Opcode::DIVU, 2, 17, 3, false)];
+        let chip = DivRemChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+        println!("{:?}", trace.values)
+    }
 
-//     fn neg(a: u32) -> u32 {
-//         u32::MAX - a + 1
-//     }
+    fn neg(a: u32) -> u32 {
+        u32::MAX - a + 1
+    }
 
-//     #[test]
-//     fn prove_babybear() {
-//         let config = BabyBearPoseidon2::new();
-//         let mut challenger = config.challenger();
+    #[test]
+    fn prove_babybear() {
+        let mut divrem_events: Vec<AluEvent> = Vec::new();
 
-//         let mut divrem_events: Vec<AluEvent> = Vec::new();
+        let divrems: Vec<(Opcode, u32, u32, u32)> = vec![
+            (Opcode::DIVU, 3, 20, 6),
+            (Opcode::DIVU, 715827879, neg(20), 6),
+            (Opcode::DIVU, 0, 20, neg(6)),
+            (Opcode::DIVU, 0, neg(20), neg(6)),
+            (Opcode::DIVU, 1 << 31, 1 << 31, 1),
+            (Opcode::DIVU, 0, 1 << 31, neg(1)),
+            (Opcode::DIVU, u32::MAX, 1 << 31, 0),
+            (Opcode::DIVU, u32::MAX, 1, 0),
+            (Opcode::DIVU, u32::MAX, 0, 0),
+            (Opcode::REMU, 4, 18, 7),
+            (Opcode::REMU, 6, neg(20), 11),
+            (Opcode::REMU, 23, 23, neg(6)),
+            (Opcode::REMU, neg(21), neg(21), neg(11)),
+            (Opcode::REMU, 5, 5, 0),
+            (Opcode::REMU, neg(1), neg(1), 0),
+            (Opcode::REMU, 0, 0, 0),
+            (Opcode::REM, 7, 16, 9),
+            (Opcode::REM, neg(4), neg(22), 6),
+            (Opcode::REM, 1, 25, neg(3)),
+            (Opcode::REM, neg(2), neg(22), neg(4)),
+            (Opcode::REM, 0, 873, 1),
+            (Opcode::REM, 0, 873, neg(1)),
+            (Opcode::REM, 5, 5, 0),
+            (Opcode::REM, neg(5), neg(5), 0),
+            (Opcode::REM, 0, 0, 0),
+            (Opcode::REM, 0, 0x80000001, neg(1)),
+            (Opcode::DIV, 3, 18, 6),
+            (Opcode::DIV, neg(6), neg(24), 4),
+            (Opcode::DIV, neg(2), 16, neg(8)),
+            (Opcode::DIV, neg(1), 0, 0),
+            (Opcode::DIV, 1 << 31, 1 << 31, neg(1)),
+            (Opcode::REM, 0, 1 << 31, neg(1)),
+        ];
+        for t in divrems.iter() {
+            divrem_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
+        }
 
-//         let divrems: Vec<(Opcode, u32, u32, u32)> = vec![
-//             (Opcode::DIVU, 3, 20, 6),
-//             (Opcode::DIVU, 715827879, neg(20), 6),
-//             (Opcode::DIVU, 0, 20, neg(6)),
-//             (Opcode::DIVU, 0, neg(20), neg(6)),
-//             (Opcode::DIVU, 1 << 31, 1 << 31, 1),
-//             (Opcode::DIVU, 0, 1 << 31, neg(1)),
-//             (Opcode::DIVU, u32::MAX, 1 << 31, 0),
-//             (Opcode::DIVU, u32::MAX, 1, 0),
-//             (Opcode::DIVU, u32::MAX, 0, 0),
-//             (Opcode::REMU, 4, 18, 7),
-//             (Opcode::REMU, 6, neg(20), 11),
-//             (Opcode::REMU, 23, 23, neg(6)),
-//             (Opcode::REMU, neg(21), neg(21), neg(11)),
-//             (Opcode::REMU, 5, 5, 0),
-//             (Opcode::REMU, neg(1), neg(1), 0),
-//             (Opcode::REMU, 0, 0, 0),
-//             (Opcode::REM, 7, 16, 9),
-//             (Opcode::REM, neg(4), neg(22), 6),
-//             (Opcode::REM, 1, 25, neg(3)),
-//             (Opcode::REM, neg(2), neg(22), neg(4)),
-//             (Opcode::REM, 0, 873, 1),
-//             (Opcode::REM, 0, 873, neg(1)),
-//             (Opcode::REM, 5, 5, 0),
-//             (Opcode::REM, neg(5), neg(5), 0),
-//             (Opcode::REM, 0, 0, 0),
-//             (Opcode::REM, 0, 0x80000001, neg(1)),
-//             (Opcode::DIV, 3, 18, 6),
-//             (Opcode::DIV, neg(6), neg(24), 4),
-//             (Opcode::DIV, neg(2), 16, neg(8)),
-//             (Opcode::DIV, neg(1), 0, 0),
-//             (Opcode::DIV, 1 << 31, 1 << 31, neg(1)),
-//             (Opcode::REM, 0, 1 << 31, neg(1)),
-//         ];
-//         for t in divrems.iter() {
-//             divrem_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
-//         }
+        // Append more events until we have 1000 tests.
+        for _ in 0..(1000 - divrems.len()) {
+            divrem_events.push(AluEvent::new(0, Opcode::DIVU, 1, 1, 1, false));
+        }
 
-//         // Append more events until we have 1000 tests.
-//         for _ in 0..(1000 - divrems.len()) {
-//             divrem_events.push(AluEvent::new(0, Opcode::DIVU, 1, 1, 1, false));
-//         }
+        let mut shard = ExecutionRecord::default();
+        shard.divrem_events = divrem_events;
 
-//         let mut shard = ExecutionRecord::default();
-//         shard.divrem_events = divrem_events;
-//         let chip = DivRemChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
-//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         let proof = uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
+        // Run setup.
+        let air = DivRemChip::default();
+        let config = BabyBearPoseidon2::new();
+        let chip = Chip::new(air);
+        let (pk, vk) = setup_test_machine(StarkMachine::new(
+            config.clone(),
+            vec![chip],
+            SP1_PROOF_NUM_PV_ELTS,
+            true,
+        ));
 
-//         let mut challenger = config.challenger();
-//         uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
-//     }
+        // Run the test.
+        let air = DivRemChip::default();
+        let chip: Chip<BabyBear, DivRemChip> = Chip::new(air);
+        let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+        run_test_machine::<BabyBearPoseidon2, DivRemChip>(vec![shard], machine, pk, vk).unwrap();
+    }
 
-//     #[test]
-//     fn test_malicious_divrem() {
-//         const NUM_TESTS: usize = 5;
+    #[test]
+    fn test_malicious_divrem() {
+        const NUM_TESTS: usize = 5;
 
-//         for opcode in [Opcode::DIV, Opcode::DIVU, Opcode::REM, Opcode::REMU] {
-//             for _ in 0..NUM_TESTS {
-//                 let (correct_op_a, op_b, op_c) = if opcode == Opcode::DIV {
-//                     let op_b = thread_rng().gen_range(0..i32::MAX);
-//                     let op_c = thread_rng().gen_range(0..i32::MAX);
-//                     ((op_b / op_c) as u32, op_b as u32, op_c as u32)
-//                 } else if opcode == Opcode::DIVU {
-//                     let op_b = thread_rng().gen_range(0..u32::MAX);
-//                     let op_c = thread_rng().gen_range(0..u32::MAX);
-//                     (op_b / op_c, op_b as u32, op_c as u32)
-//                 } else if opcode == Opcode::REM {
-//                     let op_b = thread_rng().gen_range(0..i32::MAX);
-//                     let op_c = thread_rng().gen_range(0..i32::MAX);
-//                     ((op_b % op_c) as u32, op_b as u32, op_c as u32)
-//                 } else if opcode == Opcode::REMU {
-//                     let op_b = thread_rng().gen_range(0..u32::MAX);
-//                     let op_c = thread_rng().gen_range(0..u32::MAX);
-//                     (op_b % op_c, op_b as u32, op_c as u32)
-//                 } else {
-//                     unreachable!()
-//                 };
+        for opcode in [Opcode::DIV, Opcode::DIVU, Opcode::REM, Opcode::REMU] {
+            for _ in 0..NUM_TESTS {
+                let (correct_op_a, op_b, op_c) = if opcode == Opcode::DIV {
+                    let op_b = thread_rng().gen_range(0..i32::MAX);
+                    let op_c = thread_rng().gen_range(0..i32::MAX);
+                    ((op_b / op_c) as u32, op_b as u32, op_c as u32)
+                } else if opcode == Opcode::DIVU {
+                    let op_b = thread_rng().gen_range(0..u32::MAX);
+                    let op_c = thread_rng().gen_range(0..u32::MAX);
+                    (op_b / op_c, op_b as u32, op_c as u32)
+                } else if opcode == Opcode::REM {
+                    let op_b = thread_rng().gen_range(0..i32::MAX);
+                    let op_c = thread_rng().gen_range(0..i32::MAX);
+                    ((op_b % op_c) as u32, op_b as u32, op_c as u32)
+                } else if opcode == Opcode::REMU {
+                    let op_b = thread_rng().gen_range(0..u32::MAX);
+                    let op_c = thread_rng().gen_range(0..u32::MAX);
+                    (op_b % op_c, op_b as u32, op_c as u32)
+                } else {
+                    unreachable!()
+                };
 
-//                 let op_a = thread_rng().gen_range(0..u32::MAX);
-//                 assert!(op_a != correct_op_a);
+                let op_a = thread_rng().gen_range(0..u32::MAX);
+                assert!(op_a != correct_op_a);
 
-//                 let instructions = vec![
-//                     Instruction::new(opcode, 5, op_b, op_c, true, true),
-//                     Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
-//                 ];
+                let instructions = vec![
+                    Instruction::new(opcode, 5, op_b, op_c, true, true),
+                    Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+                ];
 
-//                 let program = Program::new(instructions, 0, 0);
-//                 let stdin = SP1Stdin::new();
+                let program = Program::new(instructions, 0, 0);
+                let stdin = SP1Stdin::new();
 
-//                 type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+                type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
 
-//                 let malicious_trace_pv_generator = move |prover: &P,
-//                                                          record: &mut ExecutionRecord|
-//                       -> Vec<(
-//                     String,
-//                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
-//                 )> {
-//                     let mut malicious_record = record.clone();
-//                     malicious_record.cpu_events[0].a = op_a;
-//                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
-//                         malicious_record.cpu_events[0].a_record
-//                     {
-//                         write_record.value = op_a;
-//                     }
-//                     malicious_record.divrem_events[0].a = op_a;
-//                     prover.generate_traces(&malicious_record)
-//                 };
+                let malicious_trace_pv_generator = move |prover: &P,
+                                                         record: &mut ExecutionRecord|
+                      -> Vec<(
+                    String,
+                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
+                )> {
+                    let mut malicious_record = record.clone();
+                    malicious_record.cpu_events[0].a = op_a;
+                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                        malicious_record.cpu_events[0].a_record
+                    {
+                        write_record.value = op_a;
+                    }
+                    malicious_record.divrem_events[0].a = op_a;
+                    prover.generate_traces(&malicious_record)
+                };
 
-//                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 let divrem_chip_name = chip_name!(DivRemChip, BabyBear);
-//                 assert!(
-//                     result.is_err()
-//                         && result.unwrap_err().is_constraints_failing(&divrem_chip_name)
-//                 );
-//             }
-//         }
-//     }
-// }
+                let result =
+                    run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+                assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
+            }
+        }
+    }
+}

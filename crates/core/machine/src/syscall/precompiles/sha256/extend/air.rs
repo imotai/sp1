@@ -1,4 +1,4 @@
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::syscalls::SyscallCode;
@@ -14,13 +14,14 @@ use crate::{
 };
 
 use core::borrow::Borrow;
-use sp1_stark::air::BaseAirBuilder;
 
 impl<F> BaseAir<F> for ShaExtendChip {
     fn width(&self) -> usize {
         NUM_SHA_EXTEND_COLS
     }
 }
+
+// TODO: Uncomment all of the next row constraints once the next_row constraint IOP is implemented.
 
 impl<AB> Air<AB> for ShaExtendChip
 where
@@ -29,9 +30,10 @@ where
     fn eval(&self, builder: &mut AB) {
         // Initialize columns.
         let main = builder.main();
-        let (local, next) = (main.row_slice(0), main.row_slice(1));
+        let local = main.row_slice(0);
+        // let (local, next) = (main.row_slice(0), main.row_slice(1));
         let local: &ShaExtendCols<AB::Var> = (*local).borrow();
-        let next: &ShaExtendCols<AB::Var> = (*next).borrow();
+        // let next: &ShaExtendCols<AB::Var> = (*next).borrow();
 
         let i_start = AB::F::from_canonical_u32(16);
         let nb_bytes_in_word = AB::F::from_canonical_u32(4);
@@ -40,18 +42,18 @@ where
         self.eval_flags(builder);
 
         // Copy over the inputs until the result has been computed (every 48 rows).
-        builder
-            .when_transition()
-            .when_not(local.cycle_16_end.result * local.cycle_48[2])
-            .assert_eq(local.shard, next.shard);
-        builder
-            .when_transition()
-            .when_not(local.cycle_16_end.result * local.cycle_48[2])
-            .assert_eq(local.clk, next.clk);
-        builder
-            .when_transition()
-            .when_not(local.cycle_16_end.result * local.cycle_48[2])
-            .assert_eq(local.w_ptr, next.w_ptr);
+        // builder
+        //     .when_transition()
+        //     .when_not(local.cycle_16_end.result * local.cycle_48[2])
+        //     .assert_eq(local.shard, next.shard);
+        // builder
+        //     .when_transition()
+        //     .when_not(local.cycle_16_end.result * local.cycle_48[2])
+        //     .assert_eq(local.clk, next.clk);
+        // builder
+        //     .when_transition()
+        //     .when_not(local.cycle_16_end.result * local.cycle_48[2])
+        //     .assert_eq(local.w_ptr, next.w_ptr);
 
         // Read w[i-15].
         builder.eval_memory_access(
@@ -210,13 +212,13 @@ where
         builder.assert_bool(local.is_real);
 
         // Ensure that all rows in a 48 row cycle has the same `is_real` values.
-        builder
-            .when_transition()
-            .when_not(local.cycle_48_end)
-            .assert_eq(local.is_real, next.is_real);
+        // builder
+        //     .when_transition()
+        //     .when_not(local.cycle_48_end)
+        //     .assert_eq(local.is_real, next.is_real);
 
         // Assert that the table ends in nonreal columns. Since each extend ecall is 48 cycles and
         // the table is padded to a power of 2, the last row of the table should always be padding.
-        builder.when_last_row().assert_zero(local.is_real);
+        // builder.when_last_row().assert_zero(local.is_real);
     }
 }

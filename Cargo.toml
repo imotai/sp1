@@ -12,13 +12,20 @@ include = ["SP1_VERSION"]
 [workspace]
 members = [
   "crates/build",
-  "crates/cli",
   "crates/core/executor",
   "crates/core/machine",
   "crates/curves",
   "crates/derive",
-  "crates/eval",
   "crates/helper",
+  "crates/stark",
+  "crates/test-artifacts",
+  "crates/zkvm/*",
+]
+exclude = [
+  "examples/target",
+  "crates/cli",
+  "crates/cuda",
+  "crates/eval",
   "crates/perf",
   "crates/prover",
   "crates/recursion/circuit",
@@ -28,14 +35,8 @@ members = [
   "crates/recursion/gnark-cli",
   "crates/recursion/gnark-ffi",
   "crates/sdk",
-  "crates/cuda",
   "crates/verifier",
-  "crates/stark",
-  "crates/verifier",
-  "crates/zkvm/*",
-  "crates/test-artifacts",
 ]
-exclude = ["examples/target"]
 resolver = "2"
 
 [profile.release]
