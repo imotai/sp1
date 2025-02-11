@@ -132,19 +132,23 @@ where
 {
     fn mle_fix_last_variable(mle: &Tensor<F, Self>, alpha: EF) -> Tensor<EF, Self> {
         let num_polynomials = CpuBackend::num_polynomials(mle);
-        assert_eq!(num_polynomials, 1, "this is only supported for a single polynomial");
         let num_non_zero_elements_out = mle.sizes()[0].div_ceil(2);
-        let mut result = Vec::with_capacity(num_non_zero_elements_out);
-        mle.as_buffer()
-            .par_iter()
-            .chunks(2)
-            .map(|chunk| {
-                let [x, y] = chunk.try_into().unwrap();
-                // Computes alpha * y + (1 - alpha) * x
-                alpha * (*y - *x) + (*x)
+        // let mut result = Vec::with_capacity(num_non_zero_elements_out * num_polynomials);
+        let result = mle
+            .as_buffer()
+            .par_chunks(2 * num_polynomials)
+            .flat_map_iter(|chunk| {
+                (0..num_polynomials).map(|i| {
+                    let x = chunk[i];
+                    let y = chunk[i + num_polynomials];
+                    alpha * y + (EF::one() - alpha) * x
+                })
+                // let [x, y] = chunk.try_into().unwrap();
+                // // Computes alpha * y + (1 - alpha) * x
+                // alpha * (*y - *x) + (*x)
             })
-            .collect_into_vec(&mut result);
+            .collect::<Vec<_>>();
 
-        Tensor::from(result).reshape([num_non_zero_elements_out, 1])
+        Tensor::from(result).reshape([num_non_zero_elements_out, num_polynomials])
     }
 }

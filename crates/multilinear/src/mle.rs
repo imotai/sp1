@@ -523,4 +523,25 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_mle_fix_last_variable() {
+        let mut rng = rand::thread_rng();
+
+        type EF = BinomialExtensionField<BabyBear, 4>;
+
+        let num_polynomials = 5;
+        let num_variables = 11;
+        let mle = Mle::<EF>::rand(&mut rng, num_polynomials, num_variables);
+        let alpha = rng.gen::<EF>();
+
+        let fixed = mle.fix_last_variable(alpha);
+
+        let mut point = Point::<EF>::rand(&mut rng, num_variables - 1);
+        let fixed_eval = fixed.eval_at(&point);
+        point.add_dimension_back(alpha);
+        let mle_eval = mle.eval_at(&point);
+
+        assert_eq!(fixed_eval.to_vec(), mle_eval.to_vec());
+    }
 }
