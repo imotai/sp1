@@ -256,11 +256,7 @@ impl<T> From<Vec<T>> for Mle<T, CpuBackend> {
 
 impl<T: Clone + Send + Sync> From<slop_matrix::dense::RowMajorMatrix<T>> for Mle<T, CpuBackend> {
     fn from(values: slop_matrix::dense::RowMajorMatrix<T>) -> Self {
-        let num_polys = values.width;
-        let num_vars = values.height().ilog2();
-        assert_eq!(values.height(), 1 << num_vars);
-        let tensor = Tensor::from(values.values).reshape([num_polys, 1]);
-        Self::new(tensor)
+        Self::new(Tensor::from(values))
     }
 }
 
