@@ -12,8 +12,6 @@ use std::ops::{Add, Mul, Sub};
 
 use p3_air::Air;
 use p3_field::{AbstractExtensionField, ExtensionField};
-use p3_matrix::Matrix;
-use p3_util::log2_strict_usize;
 use slop_algebra::{Field, UnivariatePolynomial};
 use slop_multilinear::Point;
 use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound};
@@ -61,21 +59,19 @@ impl<'a, K: Field, F: Field, EF: ExtensionField<F>, A: MachineAir<F>>
         padded_row_adjustment: EF,
     ) -> Self {
         // The zeta random point must have the same number of variables of the trace + num_padded_vars.
+        let num_main_vars = main_values.mle_ref().num_variables() as usize;
         assert!(
-            zeta.dimension() == log2_strict_usize(main_values.matrix_ref().height()) + num_padded_vars,
+            zeta.dimension() == num_main_vars + num_padded_vars,
             "point dimension must match main values height.  point dim: {:?}, main values height: {:?}",
             zeta.dimension(),
-            log2_strict_usize(main_values.matrix_ref().height() + num_padded_vars)
+            num_main_vars + num_padded_vars
         );
         // The trace height for main and preprocessed must be the same.
         if let Some(preprocessed_values) = preprocessed_values.as_ref() {
-            assert!(
-                log2_strict_usize(preprocessed_values.matrix_ref().height())
-                    == log2_strict_usize(main_values.matrix_ref().height()),
-            );
+            let num_preprocessed_vars: usize =
+                preprocessed_values.mle_ref().num_variables().try_into().unwrap();
+            assert!(num_preprocessed_vars == num_main_vars,);
         }
-        // The height of the trace must be at least 1.
-        assert!(main_values.matrix_ref().height() > 0);
 
         Self {
             air,
@@ -101,12 +97,7 @@ impl<
     > SumcheckPolyBase for ZeroCheckPoly<'a, K, F, EF, A>
 {
     fn n_variables(&self) -> u32 {
-        let height = self.main_columns.matrix_ref().height();
-        assert!(height > 0);
-        if let Some(preprocessed_values) = self.preprocessed_columns.as_ref() {
-            assert!(preprocessed_values.matrix_ref().height() == height);
-        }
-        (log2_strict_usize(height) + self.num_padded_vars) as u32
+        self.main_columns.mle_ref().num_variables() + self.num_padded_vars as u32
     }
 }
 
@@ -122,16 +113,18 @@ impl<
         assert!(self.n_variables() == 0);
 
         // First get the preprocessed values.
-        let mut evals = if let Some(preprocessed_values) = self.preprocessed_columns.as_ref() {
-            preprocessed_values.matrix_ref().row(0).map(Into::into).collect::<Vec<_>>()
+        let evals = if let Some(preprocessed_values) = self.preprocessed_columns.as_ref() {
+            preprocessed_values.mle_ref().guts().as_slice()
         } else {
-            vec![]
+            &[]
         };
 
         // Add the main values.
-        evals.extend(self.main_columns.matrix_ref().row(0).map(Into::<EF>::into));
-
         evals
+            .iter()
+            .chain(self.main_columns.mle_ref().guts().as_slice())
+            .map(|x| (*x).into())
+            .collect::<Vec<_>>()
     }
 }
 

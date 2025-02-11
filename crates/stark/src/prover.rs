@@ -11,7 +11,6 @@ use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
 use p3_uni_stark::SymbolicAirBuilder;
-use p3_util::log2_strict_usize;
 use serde::{de::DeserializeOwned, Serialize};
 use slop_multilinear::Point;
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
@@ -34,9 +33,6 @@ pub trait MachineProver<
     A: MachineAir<SC::Val> + Air<SymbolicAirBuilder<SC::Val>>,
 >: 'static + Send + Sync
 {
-    /// The type used to store the traces.
-    type DeviceMatrix: Matrix<SC::Val>;
-
     /// The type used to store the polynomial commitment schemes data.
     type DeviceProverData;
 
@@ -99,7 +95,7 @@ pub trait MachineProver<
         &self,
         record: &A::Record,
         traces: Vec<(String, RowMajorMatrix<Val<SC>>)>,
-    ) -> ShardMainData<SC, Self::DeviceMatrix, Self::DeviceProverData>;
+    ) -> ShardMainData<SC, Self::DeviceProverData>;
 
     /// Observe the main commitment and public values and update the challenger.
     fn observe(
@@ -119,7 +115,7 @@ pub trait MachineProver<
     fn open(
         &self,
         pk: &Self::DeviceProvingKey,
-        data: ShardMainData<SC, Self::DeviceMatrix, Self::DeviceProverData>,
+        data: ShardMainData<SC, Self::DeviceProverData>,
         challenger: &mut SC::Challenger,
     ) -> Result<ShardProof<SC>, Self::Error>;
 
@@ -211,7 +207,6 @@ where
     OpeningProof<SC>: Send + Sync,
     SC::Challenger: Clone,
 {
-    type DeviceMatrix = RowMajorMatrix<Val<SC>>;
     type DeviceProverData = PcsProverData<SC>;
     type DeviceProvingKey = StarkProvingKey<SC>;
     type Error = CpuProverError;
@@ -225,7 +220,8 @@ where
     }
 
     fn setup(&self, program: &A::Program) -> (Self::DeviceProvingKey, StarkVerifyingKey<SC>) {
-        self.machine().setup(program)
+        let (pk, vk) = self.machine().setup(program);
+        (pk, vk)
     }
 
     fn pk_from_vk(
@@ -248,7 +244,7 @@ where
         &self,
         record: &A::Record,
         mut named_traces: Vec<(String, RowMajorMatrix<Val<SC>>)>,
-    ) -> ShardMainData<SC, Self::DeviceMatrix, Self::DeviceProverData> {
+    ) -> ShardMainData<SC, Self::DeviceProverData> {
         // Order the chips and traces by trace size (biggest first), and get the ordering map.
         named_traces.sort_by_key(|(name, trace)| (Reverse(trace.height()), name.clone()));
 
@@ -262,7 +258,7 @@ where
         let chip_ordering =
             named_traces.iter().enumerate().map(|(i, (name, _))| (name.to_owned(), i)).collect();
 
-        let traces = named_traces.into_iter().map(|(_, trace)| trace).collect::<Vec<_>>();
+        let traces = named_traces.into_iter().map(|(_, trace)| trace.into()).collect::<Vec<_>>();
 
         ShardMainData {
             traces,
@@ -280,16 +276,14 @@ where
     fn open(
         &self,
         pk: &StarkProvingKey<SC>,
-        data: ShardMainData<SC, Self::DeviceMatrix, Self::DeviceProverData>,
+        data: ShardMainData<SC, Self::DeviceProverData>,
         challenger: &mut <SC as StarkGenericConfig>::Challenger,
     ) -> Result<ShardProof<SC>, Self::Error> {
         let chips = self.machine().shard_chips_ordered(&data.chip_ordering).collect::<Vec<_>>();
         let traces = data.traces;
 
-        let degrees = traces.iter().map(|trace| trace.height()).collect::<Vec<_>>();
-
         let log_degrees =
-            degrees.iter().map(|degree| log2_strict_usize(*degree)).collect::<Vec<_>>();
+            traces.iter().map(|trace| trace.num_variables() as usize).collect::<Vec<_>>();
 
         let has_preprocess = pk.preprocessed_commit.is_some();
         assert!(has_preprocess == pk.preprocessed_data.is_some());
@@ -323,9 +317,9 @@ where
 
         // Compute some statistics.
         for i in 0..chips.len() {
-            let trace_width = traces[i].width();
-            let trace_height = traces[i].height();
-            let prep_width = prep_traces[i].map_or(0, |x| x.width());
+            let trace_width = traces[i].num_polynomials();
+            let trace_height = 2usize.pow(traces[i].num_variables());
+            let prep_width = prep_traces[i].map_or(0, |x| x.num_polynomials());
             tracing::debug!(
                 "{:<15} | Main Cols = {:<5} | Pre Cols = {:<5}  | Rows = {:<5} | Cells = {:<10}",
                 chips[i].name(),
@@ -360,12 +354,13 @@ where
                     .get(&chip.name())
                     .map(|&index| ZeroCheckPolyVals::Reference(&pk.traces[index]));
 
-                let log_height = log2_strict_usize(main_trace.height());
+                let log_height = main_trace.num_variables();
 
-                let num_preprocessed_cols =
-                    preprocessed_trace.as_ref().map_or(0, |pp_trace| pp_trace.matrix_ref().width());
+                let num_preprocessed_cols = preprocessed_trace
+                    .as_ref()
+                    .map_or(0, |pp_trace| pp_trace.mle_ref().num_polynomials());
 
-                let num_padded_vars = pcs.max_log_row_count - log_height;
+                let num_padded_vars = pcs.max_log_row_count - log_height as usize;
                 tracing::debug!(
                     "zerocheck poly: chip {} has num_padded_vars: {}",
                     chip.name(),
@@ -482,13 +477,13 @@ where
         let opened_values = main_opened_values
             .into_iter()
             .zip_eq(preprocessed_opened_values)
-            .zip_eq(log_degrees.iter())
+            .zip_eq(log_degrees)
             .map(|((main, preprocessed), log_degree)| ChipOpenedValues {
                 preprocessed,
                 main,
                 global_cumulative_sum: SepticDigest::<Val<SC>>::zero(),
                 local_cumulative_sum: SC::Challenge::zero(),
-                log_degree: *log_degree,
+                log_degree,
             })
             .collect::<Vec<_>>();
 

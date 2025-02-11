@@ -3009,6 +3009,7 @@ dependencies = [
  "slop-jagged",
  "slop-multilinear",
  "slop-sumcheck",
+ "slop-tensor",
  "sp1-derive",
  "sp1-primitives",
  "strum",

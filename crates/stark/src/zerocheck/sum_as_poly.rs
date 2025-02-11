@@ -3,11 +3,7 @@ use std::ops::{Add, Mul, Sub};
 use itertools::Itertools;
 use p3_air::Air;
 use p3_field::{AbstractExtensionField, ExtensionField};
-use p3_matrix::{
-    dense::{RowMajorMatrix, RowMajorMatrixView},
-    Matrix,
-};
-use p3_util::log2_strict_usize;
+use p3_matrix::dense::RowMajorMatrixView;
 use slop_algebra::{interpolate_univariate_polynomial, Field, UnivariatePolynomial};
 use slop_multilinear::Mle;
 
@@ -32,7 +28,7 @@ pub(crate) fn sum_as_poly_in_last_variable<
 ) -> UnivariatePolynomial<EF> {
     let claim = claim.expect("claim must be provided");
 
-    let num_non_padded_vars = log2_strict_usize(poly.main_columns.matrix_ref().height());
+    let num_non_padded_vars = poly.main_columns.mle_ref().num_variables();
 
     let (rest_point, last) = poly.zeta.split_at(poly.zeta.dimension() - 1);
     let last = *last[0];
@@ -59,12 +55,12 @@ pub(crate) fn sum_as_poly_in_last_variable<
     let mut y_4 = EF::zero();
 
     // When the component polynomials are constants, then we know we are processed padded variables.
-    let is_in_padded_vars = poly.main_columns.matrix_ref().height() == 1;
+    let is_in_padded_vars = num_non_padded_vars == 0;
 
     // Calculate the number of summed over terms that are non-padded.  The padded values will be zero,
     // since the adjusted constraint polynomial will be zero.
     let num_non_padded_terms =
-        if is_in_padded_vars { 1 } else { 2usize.pow(num_non_padded_vars as u32 - 1) };
+        if is_in_padded_vars { 1 } else { 2usize.pow(num_non_padded_vars - 1) };
 
     if num_non_padded_vars > 0 {
         // Handle the case when the zerocheck polynomial has non-padded variables.
@@ -76,7 +72,7 @@ pub(crate) fn sum_as_poly_in_last_variable<
                 preprocessed_column_vals_4,
             ) = if let Some(preprocessed_values) = poly.preprocessed_columns.as_ref() {
                 interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
-                    preprocessed_values.matrix_ref(),
+                    preprocessed_values.mle_ref(),
                     i,
                 )
             } else {
@@ -85,7 +81,7 @@ pub(crate) fn sum_as_poly_in_last_variable<
 
             let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
                 interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
-                    poly.main_columns.matrix_ref(),
+                    poly.main_columns.mle_ref(),
                     i,
                 );
 
@@ -111,13 +107,13 @@ pub(crate) fn sum_as_poly_in_last_variable<
         // Get the column values where the last variable is set to 0, 2, and 4.
         let (preprocessed_column_vals_0, preprocessed_column_vals_2, preprocessed_column_vals_4) =
             if let Some(preprocessed_values) = poly.preprocessed_columns.as_ref() {
-                interpolate_last_var_padded_values(preprocessed_values.matrix_ref())
+                interpolate_last_var_padded_values(preprocessed_values.mle_ref())
             } else {
                 (Vec::new(), Vec::new(), Vec::new())
             };
 
         let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
-            interpolate_last_var_padded_values(poly.main_columns.matrix_ref());
+            interpolate_last_var_padded_values(poly.main_columns.mle_ref());
 
         // Evaluate the constraint polynomial at the points 0, 2, and 4, and
         // add the results to the y_0, y_2, and y_4 accumulators.
@@ -195,16 +191,17 @@ pub(crate) fn sum_as_poly_in_last_variable<
 /// This function will calculate the column values where the last variable is set to 0, 2, and 4
 /// and it's a non-padded variable.
 fn interpolate_last_var_non_padded_values<K: Field, const IS_FIRST_ROUND: bool>(
-    values: &RowMajorMatrix<K>,
+    values: &Mle<K>,
     i: usize,
 ) -> (Vec<K>, Vec<K>, Vec<K>) {
-    assert!(2 * i + 1 < values.height());
-    let row_0 = values.row_slice(2 * i);
-    let row_1 = values.row_slice(2 * i + 1);
+    let num_variables = values.num_variables();
+    assert!(2 * i + 1 < 2usize.pow(num_variables));
+    let row_0 = values.guts().get(2 * i).unwrap().as_slice();
+    let row_1 = values.guts().get(2 * i + 1).unwrap().as_slice();
 
-    let mut vals_0 = Vec::with_capacity(values.width());
-    let mut vals_2 = Vec::with_capacity(values.width());
-    let mut vals_4 = Vec::with_capacity(values.width());
+    let mut vals_0 = Vec::with_capacity(values.num_polynomials());
+    let mut vals_2 = Vec::with_capacity(values.num_polynomials());
+    let mut vals_4 = Vec::with_capacity(values.num_polynomials());
 
     for (row_0_val, row_1_val) in row_0.iter().zip_eq(row_1.iter()) {
         let slope = *row_1_val - *row_0_val;
@@ -224,13 +221,11 @@ fn interpolate_last_var_non_padded_values<K: Field, const IS_FIRST_ROUND: bool>(
 /// This function will calculate the column values where the last variable is set to 0, 2, and 4
 /// and it's a padded variable.  The `row_0` values are taken from the values matrix (which should
 /// have a height of 1).  The `row_1` values are all zero.
-fn interpolate_last_var_padded_values<K: Field>(
-    values: &RowMajorMatrix<K>,
-) -> (Vec<K>, Vec<K>, Vec<K>) {
-    let row_0 = values.row_slice(0);
-    let vals_0 = row_0.iter().copied().collect::<Vec<_>>();
-    let vals_2 = row_0.iter().map(|val| -(*val)).collect::<Vec<_>>();
-    let vals_4 = row_0.iter().map(|val| -K::from_canonical_usize(3) * (*val)).collect::<Vec<_>>();
+fn interpolate_last_var_padded_values<K: Field>(values: &Mle<K>) -> (Vec<K>, Vec<K>, Vec<K>) {
+    let row_0 = values.guts().as_slice().iter();
+    let vals_0 = row_0.clone().copied().collect::<Vec<_>>();
+    let vals_2 = row_0.clone().map(|val| -(*val)).collect::<Vec<_>>();
+    let vals_4 = row_0.clone().map(|val| -K::from_canonical_usize(3) * (*val)).collect::<Vec<_>>();
 
     (vals_0, vals_2, vals_4)
 }

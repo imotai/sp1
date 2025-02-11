@@ -1,6 +1,7 @@
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, Field, PrimeField32, PrimeField64};
 use p3_matrix::Matrix;
+use slop_multilinear::Mle;
 use std::collections::BTreeMap;
 
 use super::InteractionKind;
@@ -70,9 +71,9 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
 
     let trace = chip.generate_trace(record, &mut A::Record::default());
     let mut pre_traces = pkey.traces.clone();
-    let mut preprocessed_trace =
+    let preprocessed_trace =
         pkey.chip_ordering.get(&chip.name()).map(|&index| pre_traces.get_mut(index).unwrap());
-    let mut main = trace.clone();
+    let main: Mle<Val<SC>> = trace.clone().into();
     let height = trace.clone().height();
 
     let sends = chip.sends().iter().filter(|s| s.scope == scope).collect::<Vec<_>>();
@@ -84,20 +85,21 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
             if !interaction_kinds.contains(&interaction.kind) {
                 continue;
             }
-            let mut empty = vec![];
+            let empty = vec![];
             let preprocessed_row = preprocessed_trace
-                .as_mut()
-                .map(|t| t.row_mut(row))
-                .or_else(|| Some(&mut empty))
-                .unwrap();
+                .as_ref()
+                .map_or(empty.as_slice(), |t| t.guts().get(row).unwrap().as_slice());
             let is_send = m < nb_send_interactions;
+
+            let main_row = main.guts().get(row).unwrap().as_slice().to_vec();
+
             let multiplicity_eval: Val<SC> =
-                interaction.multiplicity.apply(preprocessed_row, main.row_mut(row));
+                interaction.multiplicity.apply(preprocessed_row, &main_row);
 
             if !multiplicity_eval.is_zero() {
                 let mut values = vec![];
                 for value in &interaction.values {
-                    let expr: Val<SC> = value.apply(preprocessed_row, main.row_mut(row));
+                    let expr: Val<SC> = value.apply(preprocessed_row, &main_row);
                     values.push(expr);
                 }
                 let key = format!(

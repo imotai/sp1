@@ -79,6 +79,7 @@ slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
 slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
+slop-tensor = { git = "https://github.com/succinctlabs/slop" }
 slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
 
 # For local development.
@@ -87,6 +88,7 @@ slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
 # slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
 # slop-jagged = { path = "../slop/crates/jagged" }
 # slop-sumcheck = { path = "../slop/crates/sumcheck" }
+# slop-tensor = { path = "../slop/crates/tensor" }
 # slop-multilinear = { path = "../slop/crates/multilinear" }
 
 # For testing.

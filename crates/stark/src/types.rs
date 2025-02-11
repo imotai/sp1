@@ -8,7 +8,7 @@ use itertools::Itertools;
 use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_jagged::{JaggedPcsProof, JaggedProverData};
-use slop_multilinear::StackedPcsProof;
+use slop_multilinear::{Mle, StackedPcsProof};
 use slop_sumcheck::PartialSumcheckProof;
 
 use super::{Challenge, Com, StarkGenericConfig, Val};
@@ -18,17 +18,17 @@ use crate::OpeningProof;
 
 pub type QuotientOpenedValues<T> = Vec<T>;
 
-pub struct ShardMainData<SC: StarkGenericConfig, M, P> {
-    pub traces: Vec<M>,
+pub struct ShardMainData<SC: StarkGenericConfig, P> {
+    pub traces: Vec<Mle<Val<SC>>>,
     pub main_commit: Com<SC>,
     pub main_data: Arc<JaggedProverData<P>>,
     pub chip_ordering: HashMap<String, usize>,
     pub public_values: Vec<SC::Val>,
 }
 
-impl<SC: StarkGenericConfig, M, P> ShardMainData<SC, M, P> {
+impl<SC: StarkGenericConfig, P> ShardMainData<SC, P> {
     pub const fn new(
-        traces: Vec<M>,
+        traces: Vec<Mle<Val<SC>>>,
         main_commit: Com<SC>,
         main_data: Arc<JaggedProverData<P>>,
         chip_ordering: HashMap<String, usize>,
