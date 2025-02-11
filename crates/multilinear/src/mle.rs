@@ -7,6 +7,7 @@ use rayon::prelude::*;
 
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, GLOBAL_CPU_BACKEND};
 use slop_matrix::Matrix;
@@ -18,8 +19,12 @@ use crate::{
 };
 
 /// A bacth of multi-linear polynomials.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive_where(PartialEq, Eq; Tensor<T, A>)]
+#[serde(bound(
+    serialize = "Tensor<T, A>: Serialize",
+    deserialize = "Tensor<T, A>: Deserialize<'de>"
+))]
 pub struct Mle<T, A: Backend = CpuBackend> {
     guts: Tensor<T, A>,
 }
@@ -543,5 +548,19 @@ mod tests {
         let mle_eval = mle.eval_at(&point);
 
         assert_eq!(fixed_eval.to_vec(), mle_eval.to_vec());
+    }
+
+    #[test]
+    fn test_mle_serialization() {
+        let mut rng = rand::thread_rng();
+
+        type F = BabyBear;
+
+        let mle = Mle::<F>::rand(&mut rng, 5, 11);
+
+        let serialized = serde_json::to_string(&mle).unwrap();
+        let deserialized: Mle<F> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(mle, deserialized);
     }
 }

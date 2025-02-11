@@ -851,6 +851,7 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
+ "serde_json",
  "slop-algebra",
  "slop-alloc",
  "slop-baby-bear",
