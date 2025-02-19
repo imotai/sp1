@@ -11,6 +11,7 @@ missing_docs = "warn"
 
 [workspace]
 members = [
+    "crates/air",
     "crates/basefold",
     "crates/algebra",
     "crates/basefold-prover",
@@ -46,6 +47,7 @@ debug = true
 debug-assertions = true
 
 [workspace.dependencies]
+p3-air = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-field = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-commit = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-matrix = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
