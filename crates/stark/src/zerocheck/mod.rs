@@ -13,12 +13,41 @@ use std::ops::{Add, Mul, Sub};
 use p3_air::Air;
 use p3_field::{AbstractExtensionField, ExtensionField};
 use slop_algebra::{Field, UnivariatePolynomial};
-use slop_multilinear::Point;
+use slop_alloc::{Backend, CpuBackend};
+use slop_multilinear::{Mle, MleBaseBackend, Point};
 use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound};
 
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
 
-pub(crate) struct ZeroCheckPoly<'a, K: Field, F: Field, EF: ExtensionField<F>, A> {
+/// Backend that to support `sum_as_poly_in_last_variable`.
+pub trait SumAsPolyInLastVariableBackend<
+    K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+    F: Field,
+    EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
+    A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
+    const IS_FIRST_ROUND: bool,
+>: Backend
+{
+    /// Generate the univariate polynomial for a zerocheck poly.
+    fn sum_as_poly_in_last_variable(
+        partial_lagrange: &Mle<EF, Self>,
+        preprocessed_values: Option<&Mle<K, Self>>,
+        main_values: &Mle<K, Self>,
+        num_non_padded_terms: usize,
+        public_values: &[F],
+        powers_of_alpha: &[EF],
+        air: &A,
+    ) -> (EF, EF, EF);
+}
+
+pub(crate) struct ZeroCheckPoly<
+    'a,
+    K: Field,
+    F: Field,
+    EF: ExtensionField<F>,
+    A,
+    B: Backend + MleBaseBackend<K> = CpuBackend,
+> {
     /// The air that contains the constraint polynomial.
     pub air: &'a A,
     /// The public values.
@@ -26,9 +55,9 @@ pub(crate) struct ZeroCheckPoly<'a, K: Field, F: Field, EF: ExtensionField<F>, A
     /// The random challenge point at which the polynomial is evaluated.
     pub zeta: Point<EF>,
     /// The preprocessed trace.
-    pub preprocessed_columns: Option<ZeroCheckPolyVals<'a, K>>,
+    pub preprocessed_columns: Option<ZeroCheckPolyVals<'a, K, B>>,
     /// The main trace.
-    pub main_columns: ZeroCheckPolyVals<'a, K>,
+    pub main_columns: ZeroCheckPolyVals<'a, K, B>,
     /// The adjustment factor from the constant part of the eq polynomial.
     pub eq_adjustment: EF,
     /// The geq polynomial value.  This will be 0 for all zerocheck polys that are at least one non-padded variable.
@@ -41,16 +70,22 @@ pub(crate) struct ZeroCheckPoly<'a, K: Field, F: Field, EF: ExtensionField<F>, A
     pub padded_row_adjustment: EF,
 }
 
-impl<'a, K: Field, F: Field, EF: ExtensionField<F>, A: MachineAir<F>>
-    ZeroCheckPoly<'a, K, F, EF, A>
+impl<
+        'a,
+        K: Field,
+        F: Field,
+        EF: ExtensionField<F>,
+        A: MachineAir<F>,
+        B: Backend + MleBaseBackend<K>,
+    > ZeroCheckPoly<'a, K, F, EF, A, B>
 {
     /// Creates a new `ZeroCheckPoly`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         air: &'a A,
         zeta: Point<EF>,
-        preprocessed_values: Option<ZeroCheckPolyVals<'a, K>>,
-        main_values: ZeroCheckPolyVals<'a, K>,
+        preprocessed_values: Option<ZeroCheckPolyVals<'a, K, B>>,
+        main_values: ZeroCheckPolyVals<'a, K, B>,
         eq_adjustment: EF,
         geq_value: EF,
         public_values: &'a Vec<F>,
@@ -94,7 +129,8 @@ impl<
         F: Field,
         EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
         A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
-    > SumcheckPolyBase for ZeroCheckPoly<'a, K, F, EF, A>
+        B: Backend + MleBaseBackend<K>,
+    > SumcheckPolyBase for ZeroCheckPoly<'a, K, F, EF, A, B>
 {
     fn n_variables(&self) -> u32 {
         self.main_columns.mle_ref().num_variables() + self.num_padded_vars as u32

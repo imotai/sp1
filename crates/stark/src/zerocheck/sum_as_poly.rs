@@ -5,11 +5,12 @@ use p3_air::Air;
 use p3_field::{AbstractExtensionField, ExtensionField};
 use p3_matrix::dense::RowMajorMatrixView;
 use slop_algebra::{interpolate_univariate_polynomial, Field, UnivariatePolynomial};
+use slop_alloc::CpuBackend;
 use slop_multilinear::Mle;
 
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
 
-use super::ZeroCheckPoly;
+use super::{utils::ZeroCheckPolyVals, SumAsPolyInLastVariableBackend, ZeroCheckPoly};
 
 /// This function will calculate the univariate polynomial where all variables other than the last are
 /// summed on the boolean hypercube and the last variable is left as a free variable.
@@ -48,60 +49,33 @@ pub(crate) fn sum_as_poly_in_last_variable<
     let mut xs = Vec::new();
     let mut ys = Vec::new();
 
-    let eq_guts = partial_lagrange.into_guts().into_buffer().into_vec();
-
     let mut y_0 = EF::zero();
     let mut y_2 = EF::zero();
     let mut y_4 = EF::zero();
 
-    // When the component polynomials are constants, then we know we are processed padded variables.
-    let is_in_padded_vars = num_non_padded_vars == 0;
-
-    // Calculate the number of summed over terms that are non-padded.  The padded values will be zero,
-    // since the adjusted constraint polynomial will be zero.
-    let num_non_padded_terms =
-        if is_in_padded_vars { 1 } else { 2usize.pow(num_non_padded_vars - 1) };
-
     if num_non_padded_vars > 0 {
-        // Handle the case when the zerocheck polynomial has non-padded variables.
-        for (i, eq) in eq_guts.into_iter().enumerate().take(num_non_padded_terms) {
-            // Get the column values where the last variable is set to 0, 2, and 4.
-            let (
-                preprocessed_column_vals_0,
-                preprocessed_column_vals_2,
-                preprocessed_column_vals_4,
-            ) = if let Some(preprocessed_values) = poly.preprocessed_columns.as_ref() {
-                interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
-                    preprocessed_values.mle_ref(),
-                    i,
-                )
-            } else {
-                (Vec::new(), Vec::new(), Vec::new())
-            };
+        // Calculate the number of summed over terms that are non-padded.  The padded values will be zero,
+        // since the adjusted constraint polynomial will be zero.
+        let num_non_padded_terms = 2usize.pow(num_non_padded_vars - 1);
 
-            let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
-                interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
-                    poly.main_columns.mle_ref(),
-                    i,
-                );
-
-            // Evaluate the constraint polynomial at the points 0, 2, and 4, and
-            // add the results to the y_0, y_2, and y_4 accumulators.
-            increment_y_values::<K, F, EF, A, IS_FIRST_ROUND>(
-                poly,
-                &mut y_0,
-                &mut y_2,
-                &mut y_4,
-                &preprocessed_column_vals_0,
-                &main_column_vals_0,
-                &preprocessed_column_vals_2,
-                &main_column_vals_2,
-                &preprocessed_column_vals_4,
-                &main_column_vals_4,
-                eq,
-            );
-        }
+        (y_0, y_2, y_4) = <CpuBackend as SumAsPolyInLastVariableBackend<
+            K,
+            F,
+            EF,
+            A,
+            IS_FIRST_ROUND,
+        >>::sum_as_poly_in_last_variable(
+            &partial_lagrange,
+            poly.preprocessed_columns.as_ref().map(ZeroCheckPolyVals::mle_ref),
+            poly.main_columns.mle_ref(),
+            num_non_padded_terms,
+            poly.public_values,
+            &poly.powers_of_alpha,
+            poly.air,
+        );
     } else {
+        let eq_guts = partial_lagrange.into_guts().into_buffer().into_vec();
+
         // Handle the case when the zerocheck polynomial is only padded variables.
 
         // Get the column values where the last variable is set to 0, 2, and 4.
@@ -118,7 +92,9 @@ pub(crate) fn sum_as_poly_in_last_variable<
         // Evaluate the constraint polynomial at the points 0, 2, and 4, and
         // add the results to the y_0, y_2, and y_4 accumulators.
         increment_y_values::<K, F, EF, A, IS_FIRST_ROUND>(
-            poly,
+            poly.public_values,
+            &poly.powers_of_alpha,
+            poly.air,
             &mut y_0,
             &mut y_2,
             &mut y_4,
@@ -218,6 +194,68 @@ fn interpolate_last_var_non_padded_values<K: Field, const IS_FIRST_ROUND: bool>(
     (vals_0, vals_2, vals_4)
 }
 
+impl<
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        F: Field,
+        EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
+        A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
+        const IS_FIRST_ROUND: bool,
+    > SumAsPolyInLastVariableBackend<K, F, EF, A, IS_FIRST_ROUND> for CpuBackend
+{
+    fn sum_as_poly_in_last_variable(
+        partial_lagrange: &Mle<EF>,
+        preprocessed_values: Option<&Mle<K>>,
+        main_values: &Mle<K>,
+        num_non_padded_terms: usize,
+        public_values: &[F],
+        powers_of_alpha: &[EF],
+        air: &A,
+    ) -> (EF, EF, EF) {
+        let mut y_0 = EF::zero();
+        let mut y_2 = EF::zero();
+        let mut y_4 = EF::zero();
+
+        let eq_guts = partial_lagrange.guts().as_buffer().as_slice();
+
+        // Handle the case when the zerocheck polynomial has non-padded variables.
+        for (i, eq) in eq_guts.iter().enumerate().take(num_non_padded_terms) {
+            // Get the column values where the last variable is set to 0, 2, and 4.
+            let (
+                preprocessed_column_vals_0,
+                preprocessed_column_vals_2,
+                preprocessed_column_vals_4,
+            ) = if let Some(preprocessed_values) = preprocessed_values {
+                interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(preprocessed_values, i)
+            } else {
+                (Vec::new(), Vec::new(), Vec::new())
+            };
+
+            let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
+                interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(main_values, i);
+
+            // Evaluate the constraint polynomial at the points 0, 2, and 4, and
+            // add the results to the y_0, y_2, and y_4 accumulators.
+            increment_y_values::<K, F, EF, A, IS_FIRST_ROUND>(
+                public_values,
+                powers_of_alpha,
+                air,
+                &mut y_0,
+                &mut y_2,
+                &mut y_4,
+                &preprocessed_column_vals_0,
+                &main_column_vals_0,
+                &preprocessed_column_vals_2,
+                &main_column_vals_2,
+                &preprocessed_column_vals_4,
+                &main_column_vals_4,
+                *eq,
+            );
+        }
+
+        (y_0, y_2, y_4)
+    }
+}
+
 /// This function will calculate the column values where the last variable is set to 0, 2, and 4
 /// and it's a padded variable.  The `row_0` values are taken from the values matrix (which should
 /// have a height of 1).  The `row_1` values are all zero.
@@ -239,7 +277,9 @@ fn increment_y_values<
     A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
     const IS_FIRST_ROUND: bool,
 >(
-    poly: &ZeroCheckPoly<'a, K, F, EF, A>,
+    public_values: &[F],
+    powers_of_alpha: &[EF],
+    air: &A,
     y_0: &mut EF,
     y_2: &mut EF,
     y_4: &mut EF,
@@ -257,11 +297,11 @@ fn increment_y_values<
             preprocessed: RowMajorMatrixView::new_row(preprocessed_column_vals_0),
             main: RowMajorMatrixView::new_row(main_column_vals_0),
             accumulator: EF::zero(),
-            public_values: poly.public_values,
+            public_values,
             constraint_index: 0,
-            powers_of_alpha: &poly.powers_of_alpha,
+            powers_of_alpha,
         };
-        poly.air.eval(&mut folder);
+        air.eval(&mut folder);
         *y_0 += folder.accumulator * eq;
     }
 
@@ -270,11 +310,11 @@ fn increment_y_values<
         preprocessed: RowMajorMatrixView::new_row(preprocessed_column_vals_2),
         main: RowMajorMatrixView::new_row(main_column_vals_2),
         accumulator: EF::zero(),
-        public_values: poly.public_values,
+        public_values,
         constraint_index: 0,
-        powers_of_alpha: &poly.powers_of_alpha,
+        powers_of_alpha,
     };
-    poly.air.eval(&mut folder);
+    air.eval(&mut folder);
     *y_2 += folder.accumulator * eq;
 
     // Add to the y_4 accumulator.
@@ -282,10 +322,10 @@ fn increment_y_values<
         preprocessed: RowMajorMatrixView::new_row(preprocessed_column_vals_4),
         main: RowMajorMatrixView::new_row(main_column_vals_4),
         accumulator: EF::zero(),
-        public_values: poly.public_values,
+        public_values,
         constraint_index: 0,
-        powers_of_alpha: &poly.powers_of_alpha,
+        powers_of_alpha,
     };
-    poly.air.eval(&mut folder);
+    air.eval(&mut folder);
     *y_4 += folder.accumulator * eq;
 }

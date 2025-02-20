@@ -29,6 +29,7 @@ pub type MachineChip<SC, A> = Chip<Val<SC>, A>;
 pub struct StarkMachine<SC: StarkGenericConfig, A> {
     /// The STARK settings for the RISC-V STARK.
     config: SC,
+
     /// The chips that make up the RISC-V STARK machine, in order of their execution.
     chips: Vec<Chip<Val<SC>, A>>,
 

@@ -75,6 +75,7 @@ sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "4.0.1", default-feature
 
 # slop
 slop-algebra = { git = "https://github.com/succinctlabs/slop" }
+slop-alloc = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
 slop-jagged = { git = "https://github.com/succinctlabs/slop" }
@@ -84,6 +85,7 @@ slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
 
 # For local development.
 # slop-algebra = { path = "../slop/crates/algebra" }
+# slop-alloc = { path = "../slop/crates/alloc" }
 # slop-basefold = { path = "../slop/crates/basefold" }
 # slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
 # slop-jagged = { path = "../slop/crates/jagged" }

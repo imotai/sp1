@@ -481,7 +481,7 @@ pub struct ConstraintSumcheckFolder<'a, F: Field, K: Field, EF> {
     /// The main row.
     pub main: RowMajorMatrixView<'a, K>,
     /// The constraint folding challenge.
-    pub powers_of_alpha: &'a Vec<EF>,
+    pub powers_of_alpha: &'a [EF],
     /// The accumulator for the constraint folding.
     pub accumulator: EF,
     /// The public values.

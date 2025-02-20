@@ -16,6 +16,7 @@ sp1-primitives = { workspace = true }
 
 # slop
 slop-algebra = { workspace = true }
+slop-alloc = { workspace = true }
 slop-basefold = { workspace = true }
 slop-basefold-prover = { workspace = true }
 slop-jagged = { workspace = true }
