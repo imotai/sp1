@@ -3,7 +3,8 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
 };
-use sp1_stark::air::{BaseAirBuilder, Polynomial, SP1AirBuilder};
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
 use std::fmt::Debug;
 
 use num::BigUint;

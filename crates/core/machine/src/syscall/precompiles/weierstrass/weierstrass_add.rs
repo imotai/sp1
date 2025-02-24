@@ -25,7 +25,8 @@ use sp1_curves::{
     AffinePoint, CurveType, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir, Polynomial, SP1AirBuilder};
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
 use typenum::Unsigned;
 
 use crate::{

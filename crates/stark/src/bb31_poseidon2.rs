@@ -3,21 +3,20 @@
 use crate::{Com, StarkGenericConfig, ZeroCommitment};
 use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use p3_challenger::DuplexChallenger;
-use p3_commit::{ExtensionMmcs, Mmcs};
+use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, AbstractField, Field};
 use p3_fri::{
     BatchOpening, CommitPhaseProofStep, FriConfig, FriProof, QueryProof, TwoAdicFriPcsProof,
 };
-use p3_matrix::dense::RowMajorMatrix;
 use p3_merkle_tree::FieldMerkleTreeMmcs;
 use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{Hash, PaddingFreeSponge, TruncatedPermutation};
 use serde::{Deserialize, Serialize};
-use slop_basefold::BaseFoldPcs;
-use slop_basefold_prover::{BaseFoldProver, BaseFoldProverData};
-use slop_jagged::JaggedPcs;
-use slop_multilinear::{StackedPcsProver, StackedPcsVerifier};
+use slop_jagged::{
+    JaggedConfig, JaggedPcsVerifier, JaggedProver, Poseidon2BabyBearJaggedConfig,
+    Poseidon2BabyBearJaggedCpuProverComponents,
+};
 use sp1_primitives::poseidon2_init;
 
 pub const DIGEST_SIZE: usize = 8;
@@ -44,12 +43,8 @@ pub type InnerValMmcs = FieldMerkleTreeMmcs<
 pub type InnerChallengeMmcs = ExtensionMmcs<InnerVal, InnerChallenge, InnerValMmcs>;
 pub type InnerChallenger = DuplexChallenger<InnerVal, InnerPerm, 16, 8>;
 pub type InnerDft = Radix2DitParallel;
-pub type InnerPcsProver = JaggedPcs<
-    StackedPcsProver<BaseFoldProver<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>>,
->;
-pub type InnerPcsVerifier = JaggedPcs<
-    StackedPcsVerifier<BaseFoldPcs<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>>,
->;
+pub type InnerPcsProver = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
+pub type InnerPcsVerifier = JaggedPcsVerifier<Poseidon2BabyBearJaggedConfig>;
 pub type InnerQueryProof = QueryProof<InnerChallenge, InnerChallengeMmcs>;
 pub type InnerCommitPhaseStep = CommitPhaseProofStep<InnerChallenge, InnerChallengeMmcs>;
 pub type InnerFriProof = FriProof<InnerChallenge, InnerChallengeMmcs, InnerVal>;
@@ -96,12 +91,8 @@ pub fn inner_fri_config() -> FriConfig<InnerChallengeMmcs> {
 #[serde(from = "std::marker::PhantomData<BabyBearPoseidon2Inner>")]
 pub struct BabyBearPoseidon2Inner {
     pub perm: InnerPerm,
-    pub pcs_prover: JaggedPcs<
-        StackedPcsProver<BaseFoldProver<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>>,
-    >,
-    pub pcs_verifier: JaggedPcs<
-        StackedPcsVerifier<BaseFoldPcs<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>>,
-    >,
+    pub pcs_prover: JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>,
+    pub pcs_verifier: JaggedPcsVerifier<Poseidon2BabyBearJaggedConfig>,
 }
 
 impl Clone for BabyBearPoseidon2Inner {
@@ -129,29 +120,13 @@ impl BabyBearPoseidon2Inner {
     #[must_use]
     pub fn new() -> Self {
         let perm = inner_perm();
-        let hash = InnerHash::new(perm.clone());
-        let compress = InnerCompress::new(perm.clone());
-        let val_mmcs = InnerValMmcs::new(hash, compress);
-        let fri_config = inner_fri_config();
 
-        let bf_pcs = BaseFoldPcs::<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>::new(
-            fri_config,
-            val_mmcs.clone(),
-        );
-        let prover = BaseFoldProver::new(bf_pcs);
-        let stacked_prover = StackedPcsProver { pcs: prover, log_stacking_height: 21 };
-        let jagged_prover = JaggedPcs { pcs: stacked_prover, max_log_row_count: 21 };
+        let verifier =
+            JaggedPcsVerifier::<<Self as StarkGenericConfig>::JaggedConfig>::new(1, 21, 21);
 
-        let fri_config_clone = inner_fri_config();
-        let bf_pcs_clone =
-            BaseFoldPcs::<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>::new(
-                fri_config_clone,
-                val_mmcs,
-            );
-        let stacked_verifier = StackedPcsVerifier { pcs: bf_pcs_clone, log_stacking_height: 21 };
-        let jagged_verifier = JaggedPcs { pcs: stacked_verifier, max_log_row_count: 21 };
+        let prover = JaggedProver::from_verifier(&verifier);
 
-        Self { perm, pcs_prover: jagged_prover, pcs_verifier: jagged_verifier }
+        Self { perm, pcs_prover: prover, pcs_verifier: verifier }
     }
 }
 
@@ -163,20 +138,17 @@ impl Default for BabyBearPoseidon2Inner {
 
 impl StarkGenericConfig for BabyBearPoseidon2Inner {
     type Val = InnerVal;
-    type MLPCSProverData = BaseFoldProverData<
-        InnerVal,
-        <InnerValMmcs as Mmcs<InnerVal>>::ProverData<RowMajorMatrix<InnerVal>>,
-    >;
-    type MLPCSProver = BaseFoldProver<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>;
-    type MLPCSVerifier = BaseFoldPcs<InnerVal, InnerChallenge, InnerValMmcs, InnerChallenger>;
+    type JaggedConfig = Poseidon2BabyBearJaggedConfig;
     type Challenge = InnerChallenge;
     type Challenger = InnerChallenger;
+    type CpuProverComponents = Poseidon2BabyBearJaggedCpuProverComponents;
+    type Commitment = <Self::JaggedConfig as JaggedConfig>::Commitment;
 
-    fn prover_pcs(&self) -> &JaggedPcs<StackedPcsProver<Self::MLPCSProver>> {
+    fn prover_pcs(&self) -> &JaggedProver<Self::CpuProverComponents> {
         &self.pcs_prover
     }
 
-    fn verifier_pcs(&self) -> &JaggedPcs<StackedPcsVerifier<Self::MLPCSVerifier>> {
+    fn verifier_pcs(&self) -> &JaggedPcsVerifier<Self::JaggedConfig> {
         &self.pcs_verifier
     }
 
@@ -187,13 +159,13 @@ impl StarkGenericConfig for BabyBearPoseidon2Inner {
 
 impl ZeroCommitment<BabyBearPoseidon2Inner> for InnerPcsProver {
     fn zero_commitment(&self) -> Com<BabyBearPoseidon2Inner> {
-        InnerDigestHash::from([InnerVal::zero(); DIGEST_SIZE])
+        [InnerVal::zero(); DIGEST_SIZE]
     }
 }
 
 impl ZeroCommitment<BabyBearPoseidon2Inner> for InnerPcsVerifier {
     fn zero_commitment(&self) -> Com<BabyBearPoseidon2Inner> {
-        InnerDigestHash::from([InnerVal::zero(); DIGEST_SIZE])
+        [InnerVal::zero(); DIGEST_SIZE]
     }
 }
 
@@ -201,26 +173,21 @@ pub mod baby_bear_poseidon2 {
 
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use p3_challenger::DuplexChallenger;
-    use p3_commit::{ExtensionMmcs, Mmcs};
+    use p3_commit::ExtensionMmcs;
     use p3_dft::Radix2DitParallel;
     use p3_field::{extension::BinomialExtensionField, AbstractField, Field};
     use p3_fri::{FriConfig, TwoAdicFriPcs};
-    use p3_matrix::dense::RowMajorMatrix;
     use p3_merkle_tree::FieldMerkleTreeMmcs;
     use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use p3_symmetric::{Hash, PaddingFreeSponge, TruncatedPermutation};
     use serde::{Deserialize, Serialize};
-    use slop_basefold::BaseFoldPcs;
-    use slop_basefold_prover::{
-        default_jagged_basefold_config, BaseFoldProver, BaseFoldProverData,
+    use slop_jagged::{
+        JaggedConfig, JaggedPcsVerifier, JaggedProver, Poseidon2BabyBearJaggedConfig,
+        Poseidon2BabyBearJaggedCpuProverComponents,
     };
-    use slop_jagged::JaggedPcs;
-    use slop_multilinear::{StackedPcsProver, StackedPcsVerifier};
     use sp1_primitives::RC_16_30;
 
     use crate::{Com, StarkGenericConfig, ZeroCommitment, DIGEST_SIZE};
-
-    use super::{LOG_STACKING_HEIGHT, MAX_LOG_ROW_COUNT};
 
     pub type Val = BabyBear;
     pub type Challenge = BinomialExtensionField<Val, 4>;
@@ -311,10 +278,8 @@ pub mod baby_bear_poseidon2 {
     #[serde(from = "std::marker::PhantomData<BabyBearPoseidon2>")]
     pub struct BabyBearPoseidon2 {
         pub perm: Perm,
-        pcs_prover:
-            JaggedPcs<StackedPcsProver<BaseFoldProver<Val, Challenge, ValMmcs, Challenger>>>,
-        pcs_verifier:
-            JaggedPcs<StackedPcsVerifier<BaseFoldPcs<Val, Challenge, ValMmcs, Challenger>>>,
+        pcs_prover: JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>,
+        pcs_verifier: JaggedPcsVerifier<Poseidon2BabyBearJaggedConfig>,
         config_type: BabyBearPoseidon2Type,
     }
 
@@ -323,41 +288,32 @@ pub mod baby_bear_poseidon2 {
         pub fn new() -> Self {
             let perm = my_perm();
 
-            let (pcs_prover, pcs_verifier) =
-                default_jagged_basefold_config(LOG_STACKING_HEIGHT, MAX_LOG_ROW_COUNT);
+            let verifier =
+                JaggedPcsVerifier::<<Self as StarkGenericConfig>::JaggedConfig>::new(1, 21, 21);
 
-            Self { perm, pcs_prover, pcs_verifier, config_type: BabyBearPoseidon2Type::Default }
+            let prover = JaggedProver::from_verifier(&verifier);
+
+            Self {
+                perm,
+                pcs_prover: prover,
+                pcs_verifier: verifier,
+                config_type: BabyBearPoseidon2Type::Default,
+            }
         }
 
         #[must_use]
         pub fn compressed() -> Self {
             let perm = my_perm();
-            let hash = MyHash::new(perm.clone());
-            let compress = MyCompress::new(perm.clone());
-            let val_mmcs = ValMmcs::new(hash, compress);
-            let fri_config = compressed_fri_config();
 
-            let bf_pcs = BaseFoldPcs::<Val, Challenge, ValMmcs, Challenger>::new(
-                fri_config,
-                val_mmcs.clone(),
-            );
-            let prover = BaseFoldProver::new(bf_pcs);
-            let stacked_prover = StackedPcsProver { pcs: prover, log_stacking_height: 21 };
-            let jagged_prover = JaggedPcs { pcs: stacked_prover, max_log_row_count: 21 };
+            let verifier =
+                JaggedPcsVerifier::<<Self as StarkGenericConfig>::JaggedConfig>::new(2, 21, 21);
 
-            let fri_config_clone = compressed_fri_config();
-            let bf_pcs_clone = BaseFoldPcs::<Val, Challenge, ValMmcs, Challenger>::new(
-                fri_config_clone,
-                val_mmcs.clone(),
-            );
-            let stacked_verifier =
-                StackedPcsVerifier { pcs: bf_pcs_clone, log_stacking_height: 21 };
-            let jagged_verifier = JaggedPcs { pcs: stacked_verifier, max_log_row_count: 21 };
+            let prover = JaggedProver::from_verifier(&verifier);
 
             Self {
                 perm,
-                pcs_prover: jagged_prover,
-                pcs_verifier: jagged_verifier,
+                pcs_prover: prover,
+                pcs_verifier: verifier,
                 config_type: BabyBearPoseidon2Type::Compressed,
             }
         }
@@ -365,32 +321,16 @@ pub mod baby_bear_poseidon2 {
         #[must_use]
         pub fn ultra_compressed() -> Self {
             let perm = my_perm();
-            let hash = MyHash::new(perm.clone());
-            let compress = MyCompress::new(perm.clone());
-            let val_mmcs = ValMmcs::new(hash, compress);
-            let fri_config = ultra_compressed_fri_config();
 
-            let bf_pcs = BaseFoldPcs::<Val, Challenge, ValMmcs, Challenger>::new(
-                fri_config,
-                val_mmcs.clone(),
-            );
-            let prover = BaseFoldProver::new(bf_pcs);
-            let stacked_prover = StackedPcsProver { pcs: prover, log_stacking_height: 21 };
-            let jagged_prover = JaggedPcs { pcs: stacked_prover, max_log_row_count: 21 };
+            let verifier =
+                JaggedPcsVerifier::<<Self as StarkGenericConfig>::JaggedConfig>::new(3, 21, 21);
 
-            let fri_config_clone = ultra_compressed_fri_config();
-            let bf_pcs_clone = BaseFoldPcs::<Val, Challenge, ValMmcs, Challenger>::new(
-                fri_config_clone,
-                val_mmcs.clone(),
-            );
-            let stacked_verifier =
-                StackedPcsVerifier { pcs: bf_pcs_clone, log_stacking_height: 21 };
-            let jagged_verifier = JaggedPcs { pcs: stacked_verifier, max_log_row_count: 21 };
+            let prover = JaggedProver::from_verifier(&verifier);
 
             Self {
                 perm,
-                pcs_prover: jagged_prover,
-                pcs_verifier: jagged_verifier,
+                pcs_prover: prover,
+                pcs_verifier: verifier,
                 config_type: BabyBearPoseidon2Type::Compressed,
             }
         }
@@ -429,18 +369,17 @@ pub mod baby_bear_poseidon2 {
 
     impl StarkGenericConfig for BabyBearPoseidon2 {
         type Val = BabyBear;
-        type MLPCSProverData =
-            BaseFoldProverData<Val, <ValMmcs as Mmcs<Val>>::ProverData<RowMajorMatrix<Val>>>;
-        type MLPCSProver = BaseFoldProver<Val, Challenge, ValMmcs, Challenger>;
-        type MLPCSVerifier = BaseFoldPcs<Val, Challenge, ValMmcs, Challenger>;
+        type JaggedConfig = Poseidon2BabyBearJaggedConfig;
         type Challenge = Challenge;
         type Challenger = Challenger;
+        type CpuProverComponents = Poseidon2BabyBearJaggedCpuProverComponents;
+        type Commitment = <Self::JaggedConfig as JaggedConfig>::Commitment;
 
-        fn prover_pcs(&self) -> &JaggedPcs<StackedPcsProver<Self::MLPCSProver>> {
+        fn prover_pcs(&self) -> &JaggedProver<Self::CpuProverComponents> {
             &self.pcs_prover
         }
 
-        fn verifier_pcs(&self) -> &JaggedPcs<StackedPcsVerifier<Self::MLPCSVerifier>> {
+        fn verifier_pcs(&self) -> &JaggedPcsVerifier<Self::JaggedConfig> {
             &self.pcs_verifier
         }
 
@@ -451,7 +390,7 @@ pub mod baby_bear_poseidon2 {
 
     impl ZeroCommitment<BabyBearPoseidon2> for Pcs {
         fn zero_commitment(&self) -> Com<BabyBearPoseidon2> {
-            DigestHash::from([Val::zero(); DIGEST_SIZE])
+            [Val::zero(); DIGEST_SIZE]
         }
     }
 }

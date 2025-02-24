@@ -74,20 +74,22 @@ sp1-lib = { path = "crates/zkvm/lib", version = "4.0.1", default-features = fals
 sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "4.0.1", default-features = false }
 
 # slop
-slop-algebra = { git = "https://github.com/succinctlabs/slop" }
-slop-alloc = { git = "https://github.com/succinctlabs/slop" }
-slop-basefold = { git = "https://github.com/succinctlabs/slop" }
-slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
-slop-jagged = { git = "https://github.com/succinctlabs/slop" }
-slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
-slop-tensor = { git = "https://github.com/succinctlabs/slop" }
-slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
+slop-algebra = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-alloc = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-basefold = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-basefold-prover = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-commit = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-jagged = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-sumcheck = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-tensor = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
+slop-multilinear = { git = "https://github.com/succinctlabs/slop", branch = "tamir/basefold-prover" }
 
 # For local development.
 # slop-algebra = { path = "../slop/crates/algebra" }
 # slop-alloc = { path = "../slop/crates/alloc" }
 # slop-basefold = { path = "../slop/crates/basefold" }
 # slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
+# slop-commit = { path = "../slop/crates/commit" }
 # slop-jagged = { path = "../slop/crates/jagged" }
 # slop-sumcheck = { path = "../slop/crates/sumcheck" }
 # slop-tensor = { path = "../slop/crates/tensor" }

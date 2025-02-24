@@ -1,36 +1,34 @@
 #![allow(missing_docs)]
 
 use std::fmt::Debug;
-use std::sync::Arc;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_jagged::{JaggedPcsProof, JaggedProverData};
-use slop_multilinear::{Mle, StackedPcsProof};
+use slop_multilinear::Mle;
 use slop_sumcheck::PartialSumcheckProof;
 
 use super::{Challenge, Com, StarkGenericConfig, Val};
 use crate::septic_digest::SepticDigest;
 use crate::shape::OrderedShape;
-use crate::OpeningProof;
+use crate::{OpeningProof, PcsProverData};
 
 pub type QuotientOpenedValues<T> = Vec<T>;
 
-pub struct ShardMainData<SC: StarkGenericConfig, P> {
+pub struct ShardMainData<SC: StarkGenericConfig> {
     pub traces: Vec<Mle<Val<SC>>>,
     pub main_commit: Com<SC>,
-    pub main_data: Arc<JaggedProverData<P>>,
+    pub main_data: PcsProverData<SC>,
     pub chip_ordering: HashMap<String, usize>,
     pub public_values: Vec<SC::Val>,
 }
 
-impl<SC: StarkGenericConfig, P> ShardMainData<SC, P> {
+impl<SC: StarkGenericConfig> ShardMainData<SC> {
     pub const fn new(
         traces: Vec<Mle<Val<SC>>>,
         main_commit: Com<SC>,
-        main_data: Arc<JaggedProverData<P>>,
+        main_data: PcsProverData<SC>,
         chip_ordering: HashMap<String, usize>,
         public_values: Vec<Val<SC>>,
     ) -> Self {
@@ -74,8 +72,7 @@ pub const PROOF_MAX_NUM_PVS: usize = 231;
 pub struct ShardProof<SC: StarkGenericConfig> {
     pub commitments: Vec<Com<SC>>,
     pub opened_values: ShardOpenedValues<Val<SC>, Challenge<SC>>,
-    pub opening_proof:
-        JaggedPcsProof<StackedPcsProof<OpeningProof<SC>, SC::Challenge>, SC::Challenge>,
+    pub opening_proof: OpeningProof<SC>,
     pub zerocheck_proof: PartialSumcheckProof<SC::Challenge>,
     pub chip_ordering: HashMap<String, usize>,
     pub public_values: Vec<Val<SC>>,

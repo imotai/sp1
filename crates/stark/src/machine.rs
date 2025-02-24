@@ -1,4 +1,4 @@
-use crate::{septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
+use crate::{block_on, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_air::Air;
@@ -8,17 +8,18 @@ use p3_matrix::{Dimensions, Matrix};
 use p3_maybe_rayon::prelude::*;
 use p3_uni_stark::{get_symbolic_constraints, SymbolicAirBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_jagged::{JaggedPcs, JaggedProverData};
+use slop_commit::Message;
 use slop_multilinear::Mle;
-use std::{cmp::Reverse, fmt::Debug, sync::Arc, time::Instant};
+use slop_tensor::Tensor;
+use std::{cmp::Reverse, fmt::Debug, time::Instant};
 use tracing::instrument;
 
-use crate::VerifierConstraintFolder;
 use crate::{
     air::{InteractionScope, MachineAir, MachineProgram},
     record::MachineRecord,
     DebugConstraintBuilder, ShardProof,
 };
+use crate::{PcsProverData, VerifierConstraintFolder};
 
 use super::{Chip, Com, MachineProof, StarkGenericConfig, Val, VerificationError, Verifier};
 
@@ -54,8 +55,10 @@ impl<SC: StarkGenericConfig, A> StarkMachine<SC, A> {
 
 /// A proving key for a STARK.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "Mle<Val<SC>>: Serialize"))]
-#[serde(bound(deserialize = "Mle<Val<SC>>: DeserializeOwned"))]
+#[serde(bound(serialize = "Mle<Val<SC>>: Serialize, PcsProverData<SC>: Serialize"))]
+#[serde(bound(
+    deserialize = "Mle<Val<SC>>: DeserializeOwned, PcsProverData<SC>: DeserializeOwned"
+))]
 pub struct StarkProvingKey<SC: StarkGenericConfig> {
     /// The start pc of the program.
     pub pc_start: Val<SC>,
@@ -66,7 +69,7 @@ pub struct StarkProvingKey<SC: StarkGenericConfig> {
     /// The preprocessed traces.
     pub traces: Vec<Mle<Val<SC>>>,
     /// The pcs data for the preprocessed traces.
-    pub preprocessed_data: Option<Arc<JaggedProverData<SC::MLPCSProverData>>>,
+    pub preprocessed_data: Option<PcsProverData<SC>>,
     /// The preprocessed chip ordering.
     pub chip_ordering: HashMap<String, usize>,
     /// The preprocessed chip local only information.
@@ -385,15 +388,19 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
         let pcs = self.config.prover_pcs();
         let (chip_information, traces): (Vec<_>, Vec<_>) = named_preprocessed_traces
             .iter()
-            .map(|(name, _, trace)| ((name.to_owned(), trace.dimensions()), trace.to_owned()))
+            .map(|(name, _, trace)| {
+                ((name.to_owned(), trace.dimensions()), Mle::new(Tensor::from(trace.to_owned())))
+            })
             .unzip();
 
         // Commit to the batch of traces.
         let has_preprocess = traces.len() > 1;
         let (preprocessed_commit, preprocessed_data) = if has_preprocess {
-            let (commit, data) = tracing::debug_span!("commit to preprocessed traces")
-                .in_scope(|| JaggedPcs::commit_multilinears(pcs, traces));
-            (Some(commit), Some(Arc::new(data)))
+            let (commit, data) =
+                tracing::debug_span!("commit to preprocessed traces").in_scope(|| {
+                    block_on(pcs.commit_multilinears(Message::from(traces))).ok().unwrap()
+                });
+            (Some(commit), Some(data))
         } else {
             (None, None)
         };

@@ -19,8 +19,9 @@ use sp1_curves::{
     uint256::U256Field,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder},
+    air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder},
     MachineRecord,
 };
 use std::{

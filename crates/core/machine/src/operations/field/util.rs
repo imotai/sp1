@@ -1,6 +1,6 @@
 use num::BigUint;
 use p3_field::PrimeField32;
-use sp1_stark::air::Polynomial;
+use sp1_primitives::polynomial::Polynomial;
 
 fn biguint_to_field<F: PrimeField32>(num: BigUint) -> F {
     let mut x = F::zero();

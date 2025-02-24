@@ -2,38 +2,28 @@
 
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
 use p3_field::{ExtensionField, Field, PrimeField};
-use p3_matrix::dense::RowMajorMatrix;
 use serde::{de::DeserializeOwned, Serialize};
-use slop_jagged::{JaggedPcs, JaggedPcsError};
-use slop_multilinear::{
-    MainTraceProverData, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, StackedPcsError,
-    StackedPcsProver, StackedPcsVerifier,
+use slop_alloc::CpuBackend;
+use slop_jagged::{
+    JaggedConfig, JaggedPcsProof, JaggedPcsVerifier, JaggedPcsVerifierError, JaggedProver,
+    JaggedProverComponents, JaggedProverData,
 };
-use slop_sumcheck::SumcheckError;
 
-pub type Val<SC> = <<SC as StarkGenericConfig>::MLPCSVerifier as MultilinearPcsBatchVerifier>::F;
+pub type Val<SC> = <SC as StarkGenericConfig>::Val;
 
 pub type PackedVal<SC> = <Val<SC> as Field>::Packing;
 
 pub type PackedChallenge<SC> =
     <<SC as StarkGenericConfig>::Challenge as ExtensionField<Val<SC>>>::ExtensionPacking;
 
-pub type Com<SC> =
-    <<SC as StarkGenericConfig>::MLPCSVerifier as MultilinearPcsBatchVerifier>::Commitment;
+pub type Com<SC> = <SC as StarkGenericConfig>::Commitment;
 
-pub type OpeningProof<SC> =
-    <<SC as StarkGenericConfig>::MLPCSVerifier as MultilinearPcsBatchVerifier>::Proof;
+pub type OpeningProof<SC> = JaggedPcsProof<<SC as StarkGenericConfig>::JaggedConfig>;
 
 // TODO:  This is too hard coded.
-pub type OpeningError<SC> = JaggedPcsError<
-    StackedPcsError<
-        <<SC as StarkGenericConfig>::MLPCSVerifier as MultilinearPcsBatchVerifier>::Error,
-    >,
-    SumcheckError,
->;
+pub type OpeningError<SC> = JaggedPcsVerifierError<<SC as StarkGenericConfig>::JaggedConfig>;
 
-pub type PcsProverData<SC> =
-    <<SC as StarkGenericConfig>::MLPCSProver as MultilinearPcsBatchProver>::MultilinearProverData;
+pub type PcsProverData<SC> = JaggedProverData<<SC as StarkGenericConfig>::CpuProverComponents>;
 
 pub type Challenge<SC> = <SC as StarkGenericConfig>::Challenge;
 pub type Challenger<SC> = <SC as StarkGenericConfig>::Challenger;
@@ -41,20 +31,22 @@ pub type Challenger<SC> = <SC as StarkGenericConfig>::Challenger;
 pub trait StarkGenericConfig: 'static + Send + Sync + Serialize + DeserializeOwned + Clone {
     type Val: PrimeField;
 
-    type MLPCSProverData: Clone
-        + Serialize
-        + DeserializeOwned
-        + MainTraceProverData<RowMajorMatrix<Self::Val>>;
+    type Commitment: 'static + Send + Sync + Serialize + DeserializeOwned + Clone;
 
-    type MLPCSProver: MultilinearPcsBatchProver<
-        PCS = Self::MLPCSVerifier,
-        MultilinearProverData = Self::MLPCSProverData,
-    >;
-
-    type MLPCSVerifier: MultilinearPcsBatchVerifier<
+    type JaggedConfig: JaggedConfig<
         F = Self::Val,
         EF = Self::Challenge,
         Challenger = Self::Challenger,
+        Commitment = Self::Commitment,
+    >;
+
+    type CpuProverComponents: JaggedProverComponents<
+        F = Self::Val,
+        EF = Self::Challenge,
+        Config = Self::JaggedConfig,
+        Challenger = Self::Challenger,
+        Commitment = Self::Commitment,
+        A = CpuBackend,
     >;
 
     /// The field from which most random challenges are drawn.
@@ -62,17 +54,17 @@ pub trait StarkGenericConfig: 'static + Send + Sync + Serialize + DeserializeOwn
 
     /// The challenger (Fiat-Shamir) implementation used.
     type Challenger: FieldChallenger<Val<Self>>
-        + CanObserve<<Self::MLPCSVerifier as MultilinearPcsBatchVerifier>::Commitment>
         + CanSample<Self::Challenge>
+        + CanObserve<Self::Commitment>
         + CanSample<Val<Self>>
         + Serialize
         + DeserializeOwned;
 
     /// Get the PCS used by this configuration.
-    fn prover_pcs(&self) -> &JaggedPcs<StackedPcsProver<Self::MLPCSProver>>;
+    fn prover_pcs(&self) -> &JaggedProver<Self::CpuProverComponents>;
 
     /// Get the PCS used by this configuration.
-    fn verifier_pcs(&self) -> &JaggedPcs<StackedPcsVerifier<Self::MLPCSVerifier>>;
+    fn verifier_pcs(&self) -> &JaggedPcsVerifier<Self::JaggedConfig>;
 
     /// Initialize a new challenger.
     fn challenger(&self) -> Self::Challenger;

@@ -12,8 +12,9 @@ use p3_field::{AbstractField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use p3_uni_stark::SymbolicAirBuilder;
-use slop_jagged::MachineJaggedPcs;
-use slop_multilinear::{full_geq, Mle, Point};
+use slop_commit::Rounds;
+use slop_jagged::MachineJaggedPcsVerifier;
+use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 
 use super::{
@@ -152,11 +153,16 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
             .map(|x| x.local.iter().as_slice())
             .collect::<Vec<_>>();
 
-        let main_openings =
-            main_openings_for_proof.iter().map(|x| x.local.iter().as_slice()).collect::<Vec<_>>();
+        let main_openings = main_openings_for_proof
+            .iter()
+            .map(|x| x.local.iter().copied().collect::<MleEval<_>>())
+            .collect::<Evaluations<_>>();
 
-        let filtered_preprocessed_openings =
-            preprocessed_openings.into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>();
+        let filtered_preprocessed_openings = preprocessed_openings
+            .into_iter()
+            .filter(|x| !x.is_empty())
+            .map(|x| x.iter().copied().collect::<MleEval<_>>())
+            .collect::<Evaluations<_>>();
 
         let preprocessed_column_count = filtered_preprocessed_openings
             .iter()
@@ -169,21 +175,21 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
         let only_has_main_commitment = commitments.len() == 1;
 
         let (column_counts, openings) = if only_has_main_commitment {
-            (vec![main_column_count], vec![main_openings.as_slice()])
+            (vec![main_column_count], Rounds { rounds: vec![main_openings] })
         } else {
             (
                 vec![preprocessed_column_count, main_column_count],
-                vec![filtered_preprocessed_openings.as_slice(), main_openings.as_slice()],
+                Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
             )
         };
 
-        let machine_pcs = MachineJaggedPcs::new(pcs, column_counts);
+        let machine_pcs = MachineJaggedPcsVerifier::new(pcs, column_counts);
 
         machine_pcs
             .verify_trusted_evaluations(
+                commitments,
                 zerocheck_proof.point_and_eval.0.clone(),
                 openings.as_slice(),
-                commitments,
                 opening_proof,
                 challenger,
             )
@@ -381,8 +387,8 @@ impl<SC: StarkGenericConfig> Debug for VerificationError<SC> {
     #[allow(clippy::uninlined_format_args)]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            VerificationError::InvalidopeningArgument(e) => {
-                write!(f, "Invalid opening argument: {:?}", e)
+            VerificationError::InvalidopeningArgument(_) => {
+                write!(f, "Invalid opening argument")
             }
             VerificationError::ConstraintsCheckFailed(chip) => {
                 write!(f, "Constraints check failed on chip {}", chip)

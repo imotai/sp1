@@ -1,3 +1,4 @@
+use crate::block_on;
 use crate::septic_digest::SepticDigest;
 use crate::{
     utils::ZeroCheckPolyVals, AirOpenedValues, ChipOpenedValues, ShardOpenedValues, ZeroCheckPoly,
@@ -12,9 +13,10 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
 use p3_uni_stark::SymbolicAirBuilder;
 use serde::{de::DeserializeOwned, Serialize};
-use slop_multilinear::Point;
+use slop_commit::{Message, Rounds};
+use slop_multilinear::{Evaluations, Mle, MleEval, Point};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
-use std::sync::Arc;
+use slop_tensor::Tensor;
 use std::{cmp::Reverse, error::Error, time::Instant};
 
 use super::{
@@ -95,7 +97,7 @@ pub trait MachineProver<
         &self,
         record: &A::Record,
         traces: Vec<(String, RowMajorMatrix<Val<SC>>)>,
-    ) -> ShardMainData<SC, Self::DeviceProverData>;
+    ) -> ShardMainData<SC>;
 
     /// Observe the main commitment and public values and update the challenger.
     fn observe(
@@ -115,7 +117,7 @@ pub trait MachineProver<
     fn open(
         &self,
         pk: &Self::DeviceProvingKey,
-        data: ShardMainData<SC, Self::DeviceProverData>,
+        data: ShardMainData<SC>,
         challenger: &mut SC::Challenger,
     ) -> Result<ShardProof<SC>, Self::Error>;
 
@@ -244,15 +246,19 @@ where
         &self,
         record: &A::Record,
         mut named_traces: Vec<(String, RowMajorMatrix<Val<SC>>)>,
-    ) -> ShardMainData<SC, Self::DeviceProverData> {
+    ) -> ShardMainData<SC> {
         // Order the chips and traces by trace size (biggest first), and get the ordering map.
         named_traces.sort_by_key(|(name, trace)| (Reverse(trace.height()), name.clone()));
 
         let pcs = self.config().prover_pcs();
 
-        let traces = named_traces.iter().map(|(_, trace)| trace.to_owned()).collect::<Vec<_>>();
+        let traces = named_traces
+            .iter()
+            .map(|(_, trace)| Mle::new(Tensor::from(trace.to_owned())))
+            .collect::<Vec<_>>();
 
-        let (main_commit, main_data) = pcs.commit_multilinears(traces);
+        let (main_commit, main_data) =
+            block_on(pcs.commit_multilinears(Message::from(traces))).ok().unwrap();
 
         // Get the chip ordering.
         let chip_ordering =
@@ -263,7 +269,7 @@ where
         ShardMainData {
             traces,
             main_commit,
-            main_data: Arc::new(main_data),
+            main_data,
             chip_ordering,
             public_values: record.public_values(),
         }
@@ -276,7 +282,7 @@ where
     fn open(
         &self,
         pk: &StarkProvingKey<SC>,
-        data: ShardMainData<SC, Self::DeviceProverData>,
+        data: ShardMainData<SC>,
         challenger: &mut <SC as StarkGenericConfig>::Challenger,
     ) -> Result<ShardProof<SC>, Self::Error> {
         let chips = self.machine().shard_chips_ordered(&data.chip_ordering).collect::<Vec<_>>();
@@ -297,14 +303,19 @@ where
 
         let (mut prover_data, mut commitments) = if has_preprocess {
             (
-                vec![pk.preprocessed_data.as_ref().unwrap().clone(), data.main_data.clone()],
-                vec![pk.preprocessed_commit.as_ref().unwrap().clone(), data.main_commit.clone()],
+                Rounds { rounds: vec![pk.preprocessed_data.clone().unwrap(), data.main_data] },
+                Rounds {
+                    rounds: vec![
+                        pk.preprocessed_commit.as_ref().unwrap().clone(),
+                        data.main_commit.clone(),
+                    ],
+                },
             )
         } else {
-            (vec![data.main_data], vec![data.main_commit])
+            (Rounds { rounds: vec![data.main_data] }, Rounds { rounds: vec![data.main_commit] })
         };
 
-        pcs.finalize(&mut prover_data, &mut commitments, challenger);
+        block_on(pcs.finalize(&mut prover_data, &mut commitments, challenger));
 
         challenger.observe_slice(&data.public_values[0..self.num_pv_elts()]);
 
@@ -414,23 +425,23 @@ where
 
         // Compute the sumcheck proof for the zerocheck polynomials.
         let (sc_proof, component_poly_evals) = parent_span.in_scope(|| {
-            reduce_sumcheck_to_evaluation::<SC::Val, SC::Challenge, SC::Challenger>(
+            block_on(reduce_sumcheck_to_evaluation::<SC::Val, SC::Challenge, SC::Challenger>(
                 zerocheck_polys,
                 challenger,
                 vec![SC::Challenge::zero(); num_zerocheck_polys],
                 1,
                 lambda,
-            )
+            ))
         });
 
         // Split the component polynomial evaluations into preprocessed and main openings
-        let (preprocessed_openings, main_openings): (Vec<_>, Vec<_>) = component_poly_evals
+        let (preprocessed_openings, main_openings): (Vec<_>, Evaluations<_>) = component_poly_evals
             .iter()
             .zip(num_preprocessed_columns.iter())
             .map(|(evals, num_cols)| {
                 let (preprocessed_evals, main_evals) = evals.split_at(*num_cols);
 
-                (preprocessed_evals, main_evals)
+                (preprocessed_evals, MleEval::from(main_evals.to_vec()))
             })
             .unzip();
 
@@ -441,22 +452,28 @@ where
 
         // Filter out preprocessing openings that are empty (e.g. the table doesn't have any
         // preprocessing columns).
-        let filtered_preprocessed_openings =
-            preprocessed_openings.clone().into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>();
+        let filtered_preprocessed_openings = preprocessed_openings
+            .clone()
+            .into_iter()
+            .filter(|x| !x.is_empty())
+            .map(|x| x.iter().copied().collect::<MleEval<_>>())
+            .collect::<Evaluations<_>>();
 
         let openings = if has_preprocess {
-            vec![filtered_preprocessed_openings.as_slice(), main_openings.as_slice()]
+            Rounds { rounds: vec![filtered_preprocessed_openings, main_openings.clone()] }
         } else {
-            vec![main_openings.as_slice()]
+            Rounds { rounds: vec![main_openings.clone()] }
         };
 
         // Generate the opening proof.
-        let opening_proof = pcs.prove_trusted_evaluations(
+        let opening_proof = block_on(pcs.prove_trusted_evaluations(
             sc_proof.point_and_eval.0.clone(),
-            openings.as_slice(),
-            &prover_data,
+            openings,
+            prover_data,
             challenger,
-        );
+        ))
+        .ok()
+        .unwrap();
 
         // Collect the opened values for each chip.
         let preprocessed_opened_values = preprocessed_openings
@@ -488,7 +505,7 @@ where
             .collect::<Vec<_>>();
 
         Ok(ShardProof::<SC> {
-            commitments,
+            commitments: commitments.rounds.into_iter().collect(),
             zerocheck_proof: sc_proof,
             opening_proof,
             opened_values: ShardOpenedValues { chips: opened_values },

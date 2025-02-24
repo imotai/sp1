@@ -19,6 +19,7 @@ slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
 slop-basefold = { workspace = true }
 slop-basefold-prover = { workspace = true }
+slop-commit = { workspace = true }
 slop-jagged = { workspace = true }
 slop-sumcheck = { workspace = true }
 slop-tensor = { workspace = true }
@@ -41,11 +42,14 @@ p3-symmetric = { workspace = true }
 p3-poseidon2 = { workspace = true }
 
 # misc
+futures = "0.3"
 serde = { workspace = true, features = ["derive", "rc"] }
 hashbrown = { version = "0.14.5", features = ["serde", "inline-more"] }
 itertools = { workspace = true }
 tracing = { workspace = true }
 rayon-scan = "0.1.1"
+rayon = "1.5.0"
+
 arrayref = "0.3.8"
 num-bigint = { version = "0.4.3", default-features = false }
 
@@ -53,6 +57,9 @@ strum = "0.26.3"
 strum_macros = "0.26.4"
 sysinfo = "0.30.13"
 num-traits = "0.2.19"
+
+# async
+tokio = { version = "1.42.0" }
 
 [dev-dependencies]
 sp1-zkvm = { workspace = true }

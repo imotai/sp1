@@ -145,7 +145,7 @@ impl<
         A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
     > ComponentPoly<EF> for ZeroCheckPoly<'a, K, F, EF, A>
 {
-    fn get_component_poly_evals(&self) -> Vec<EF> {
+    async fn get_component_poly_evals(&self) -> Vec<EF> {
         assert!(self.n_variables() == 0);
 
         // First get the preprocessed values.
@@ -174,12 +174,12 @@ impl<
             + MachineAir<F>,
     > SumcheckPolyFirstRound<EF> for ZeroCheckPoly<'a, F, F, EF, A>
 {
-    fn fix_t_variables(self, alpha: EF, t: usize) -> impl slop_sumcheck::SumcheckPoly<EF> {
+    async fn fix_t_variables(self, alpha: EF, t: usize) -> impl SumcheckPoly<EF> {
         assert!(t == 1);
         fix_last_variable(self, alpha)
     }
 
-    fn sum_as_poly_in_last_t_variables(
+    async fn sum_as_poly_in_last_t_variables(
         &self,
         claim: Option<EF>,
         t: usize,
@@ -195,14 +195,16 @@ impl<
         'a,
         F: Field,
         EF: ExtensionField<F>,
-        A: for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>> + MachineAir<F>,
+        A: for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
+            + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+            + MachineAir<F>,
     > SumcheckPoly<EF> for ZeroCheckPoly<'a, EF, F, EF, A>
 {
-    fn fix_last_variable(self, alpha: EF) -> ZeroCheckPoly<'a, EF, F, EF, A> {
+    async fn fix_last_variable(self, alpha: EF) -> ZeroCheckPoly<'a, EF, F, EF, A> {
         fix_last_variable(self, alpha)
     }
 
-    fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
+    async fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
         assert!(self.n_variables() > 0);
         sum_as_poly_in_last_variable::<EF, F, EF, A, false>(self, claim)
     }

@@ -8,7 +8,8 @@ use p3_field::PrimeField32;
 
 use sp1_core_executor::events::{ByteRecord, FieldOperation};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{Polynomial, SP1AirBuilder};
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::air::SP1AirBuilder;
 
 use super::{
     util::{compute_root_quotient_and_shift, split_u16_limbs_to_u8_limbs},
