@@ -20,19 +20,18 @@ use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase, SumcheckPolyF
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
 
 /// Backend that to support `sum_as_poly_in_last_variable`.
-pub trait SumAsPolyInLastVariableBackend<
-    K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
-    F: Field,
-    EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
-    A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
-    const IS_FIRST_ROUND: bool,
->: Backend
-{
+pub trait SumAsPolyInLastVariableBackend {
     /// Generate the univariate polynomial for a zerocheck poly.
-    fn sum_as_poly_in_last_variable(
-        partial_lagrange: &Mle<EF, Self>,
-        preprocessed_values: Option<&Mle<K, Self>>,
-        main_values: &Mle<K, Self>,
+    fn sum_as_poly_in_last_variable<
+        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+        F: Field,
+        EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
+        A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
+        const IS_FIRST_ROUND: bool,
+    >(
+        partial_lagrange: &Mle<EF>,
+        preprocessed_values: Option<&Mle<K>>,
+        main_values: &Mle<K>,
         num_non_padded_terms: usize,
         public_values: &[F],
         powers_of_alpha: &[EF],
@@ -186,7 +185,7 @@ impl<
     ) -> UnivariatePolynomial<EF> {
         assert!(t == 1);
         assert!(self.n_variables() > 0);
-        sum_as_poly_in_last_variable::<F, F, EF, A, true>(self, claim)
+        sum_as_poly_in_last_variable::<F, F, EF, A, CpuBackend, true>(self, claim)
     }
 }
 
@@ -206,6 +205,6 @@ impl<
 
     async fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
         assert!(self.n_variables() > 0);
-        sum_as_poly_in_last_variable::<EF, F, EF, A, false>(self, claim)
+        sum_as_poly_in_last_variable::<EF, F, EF, A, CpuBackend, false>(self, claim)
     }
 }

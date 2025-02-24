@@ -22,6 +22,7 @@ pub(crate) fn sum_as_poly_in_last_variable<
     F: Field,
     EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
     A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
+    B: SumAsPolyInLastVariableBackend,
     const IS_FIRST_ROUND: bool,
 >(
     poly: &ZeroCheckPoly<'a, K, F, EF, A>,
@@ -58,13 +59,7 @@ pub(crate) fn sum_as_poly_in_last_variable<
         // since the adjusted constraint polynomial will be zero.
         let num_non_padded_terms = 2usize.pow(num_non_padded_vars - 1);
 
-        (y_0, y_2, y_4) = <CpuBackend as SumAsPolyInLastVariableBackend<
-            K,
-            F,
-            EF,
-            A,
-            IS_FIRST_ROUND,
-        >>::sum_as_poly_in_last_variable(
+        (y_0, y_2, y_4) = B::sum_as_poly_in_last_variable::<K, F, EF, A, IS_FIRST_ROUND>(
             &partial_lagrange,
             poly.preprocessed_columns.as_ref().map(ZeroCheckPolyVals::mle_ref),
             poly.main_columns.mle_ref(),
@@ -194,15 +189,14 @@ fn interpolate_last_var_non_padded_values<K: Field, const IS_FIRST_ROUND: bool>(
     (vals_0, vals_2, vals_4)
 }
 
-impl<
+impl SumAsPolyInLastVariableBackend for CpuBackend {
+    fn sum_as_poly_in_last_variable<
         K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
         F: Field,
         EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
         A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
         const IS_FIRST_ROUND: bool,
-    > SumAsPolyInLastVariableBackend<K, F, EF, A, IS_FIRST_ROUND> for CpuBackend
-{
-    fn sum_as_poly_in_last_variable(
+    >(
         partial_lagrange: &Mle<EF>,
         preprocessed_values: Option<&Mle<K>>,
         main_values: &Mle<K>,
