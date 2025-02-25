@@ -136,8 +136,8 @@ pub enum RiscvAir<F: PrimeField32> {
     Secp256r1Add(WeierstrassAddAssignChip<SwCurve<Secp256r1Parameters>>),
     /// A precompile for doubling a point on the Elliptic curve secp256r1.
     Secp256r1Double(WeierstrassDoubleAssignChip<SwCurve<Secp256r1Parameters>>),
-    // /// A precompile for the Keccak permutation.
-    // KeccakP(KeccakPermuteChip),
+    /// A precompile for the Keccak permutation.
+    KeccakP(KeccakPermuteChip),
     /// A precompile for addition on the Elliptic curve bn254.
     Bn254Add(WeierstrassAddAssignChip<SwCurve<Bn254Parameters>>),
     /// A precompile for doubling a point on the Elliptic curve bn254.
@@ -262,9 +262,9 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(secp256r1_double_assign.name(), secp256r1_double_assign.cost());
         chips.push(secp256r1_double_assign);
 
-        // let keccak_permute = Chip::new(RiscvAir::KeccakP(KeccakPermuteChip::new()));
-        // costs.insert(keccak_permute.name(), 24 * keccak_permute.cost());
-        // chips.push(keccak_permute);
+        let keccak_permute = Chip::new(RiscvAir::KeccakP(KeccakPermuteChip::new()));
+        costs.insert(keccak_permute.name(), 24 * keccak_permute.cost());
+        chips.push(keccak_permute);
 
         let bn254_add_assign = Chip::new(RiscvAir::Bn254Add(WeierstrassAddAssignChip::<
             SwCurve<Bn254Parameters>,
@@ -389,24 +389,24 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(syscall_instrs.name(), syscall_instrs.cost());
         chips.push(syscall_instrs);
 
-        // let memory_global_init = Chip::new(RiscvAir::MemoryGlobalInit(MemoryGlobalChip::new(
-        //     MemoryChipType::Initialize,
-        // )));
-        // costs.insert(memory_global_init.name(), memory_global_init.cost());
-        // chips.push(memory_global_init);
+        let memory_global_init = Chip::new(RiscvAir::MemoryGlobalInit(MemoryGlobalChip::new(
+            MemoryChipType::Initialize,
+        )));
+        costs.insert(memory_global_init.name(), memory_global_init.cost());
+        chips.push(memory_global_init);
 
-        // let memory_global_finalize =
-        //     Chip::new(RiscvAir::MemoryGlobalFinal(MemoryGlobalChip::new(MemoryChipType::Finalize)));
-        // costs.insert(memory_global_finalize.name(), memory_global_finalize.cost());
-        // chips.push(memory_global_finalize);
+        let memory_global_finalize =
+            Chip::new(RiscvAir::MemoryGlobalFinal(MemoryGlobalChip::new(MemoryChipType::Finalize)));
+        costs.insert(memory_global_finalize.name(), memory_global_finalize.cost());
+        chips.push(memory_global_finalize);
 
         let memory_local = Chip::new(RiscvAir::MemoryLocal(MemoryLocalChip::new()));
         costs.insert(memory_local.name(), memory_local.cost());
         chips.push(memory_local);
 
-        // let global = Chip::new(RiscvAir::Global(GlobalChip));
-        // costs.insert(global.name(), global.cost());
-        // chips.push(global);
+        let global = Chip::new(RiscvAir::Global(GlobalChip));
+        costs.insert(global.name(), global.cost());
+        chips.push(global);
 
         let byte = Chip::new(RiscvAir::ByteLookup(ByteChip::default()));
         costs.insert(byte.name(), byte.cost());
@@ -567,7 +567,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             Self::Bn254Fp2Mul(_) => SyscallCode::BN254_FP2_MUL,
             Self::Ed25519Add(_) => SyscallCode::ED_ADD,
             Self::Ed25519Decompress(_) => SyscallCode::ED_DECOMPRESS,
-            // Self::KeccakP(_) => SyscallCode::KECCAK_PERMUTE,
+            Self::KeccakP(_) => SyscallCode::KECCAK_PERMUTE,
             Self::Secp256k1Add(_) => SyscallCode::SECP256K1_ADD,
             Self::Secp256k1Double(_) => SyscallCode::SECP256K1_DOUBLE,
             Self::Secp256r1Add(_) => SyscallCode::SECP256R1_ADD,
@@ -820,6 +820,14 @@ pub mod tests {
     fn test_fibonacci_prove_simple() {
         setup_logger();
         let program = fibonacci_program();
+        let stdin = SP1Stdin::new();
+        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+    }
+
+    #[test]
+    fn test_keccak_permute_prove() {
+        setup_logger();
+        let program = keccak_permute_program();
         let stdin = SP1Stdin::new();
         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
     }

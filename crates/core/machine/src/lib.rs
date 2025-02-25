@@ -47,8 +47,8 @@ pub mod programs {
         use sp1_core_executor::{Instruction, Opcode, Program};
 
         pub use test_artifacts::{
-            FIBONACCI_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF, SSZ_WITHDRAWALS_ELF,
-            U256XU2048_MUL_ELF,
+            FIBONACCI_ELF, KECCAK_PERMUTE_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF,
+            SSZ_WITHDRAWALS_ELF, U256XU2048_MUL_ELF,
         };
 
         #[must_use]
@@ -109,6 +109,16 @@ pub mod programs {
         #[must_use]
         pub fn ssz_withdrawals_program() -> Program {
             Program::from(SSZ_WITHDRAWALS_ELF).unwrap()
+        }
+
+        /// Get the keccak permute program.
+        ///
+        /// # Panics
+        ///
+        /// This function will panic if the program fails to load.
+        #[must_use]
+        pub fn keccak_permute_program() -> Program {
+            Program::from(KECCAK_PERMUTE_ELF).unwrap()
         }
 
         /// Get the panic program.

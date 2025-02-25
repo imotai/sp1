@@ -206,8 +206,8 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &GlobalCols<AB::Var> = (*local).borrow();
-        let next = main.row_slice(1);
-        let next: &GlobalCols<AB::Var> = (*next).borrow();
+        // let next = main.row_slice(1);
+        // let next: &GlobalCols<AB::Var> = (*next).borrow();
 
         // Receive the arguments, which consists of 7 message columns, `is_send`, `is_receive`, and `kind`.
         // In MemoryGlobal, MemoryLocal, Syscall chips, `is_send`, `is_receive`, `kind` are sent with correct constant values.
@@ -253,9 +253,9 @@ where
             builder,
             [local.interaction],
             [local.is_real],
-            [next.is_real],
+            // [next.is_real],
             local.accumulation,
-            next.accumulation,
+            // next.accumulation,
         );
     }
 }

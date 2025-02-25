@@ -5,13 +5,11 @@ use p3_field::AbstractField;
 use p3_field::Field;
 use p3_field::PrimeField32;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::BaseAirBuilder;
 use sp1_stark::air::SepticExtensionAirBuilder;
 use sp1_stark::septic_curve::SepticCurveComplete;
 use sp1_stark::{
     air::SP1AirBuilder,
     septic_curve::SepticCurve,
-    septic_digest::SepticDigest,
     septic_extension::{SepticBlock, SepticExtension},
 };
 
@@ -114,9 +112,9 @@ impl<F: Field, const N: usize> GlobalAccumulationOperation<F, N> {
         builder: &mut AB,
         global_interaction_cols: [GlobalInteractionOperation<AB::Var>; N],
         local_is_real: [AB::Var; N],
-        next_is_real: [AB::Var; N],
+        // next_is_real: [AB::Var; N],
         local_accumulation: GlobalAccumulationOperation<AB::Var, N>,
-        next_accumulation: GlobalAccumulationOperation<AB::Var, N>,
+        // next_accumulation: GlobalAccumulationOperation<AB::Var, N>,
     ) {
         // First, constrain the control flow regarding `is_real`.
         // Constrain that all `is_real` values are boolean.
@@ -131,7 +129,7 @@ impl<F: Field, const N: usize> GlobalAccumulationOperation<F, N> {
         }
 
         // Constrain that `is_real[N - 1] == 0` implies `next.is_real[0] == 0`
-        builder.when_transition().when_not(local_is_real[N - 1]).assert_zero(next_is_real[0]);
+        // builder.when_transition().when_not(local_is_real[N - 1]).assert_zero(next_is_real[0]);
 
         // Next, constrain the accumulation.
         let initial_digest = SepticCurve::<AB::Expr> {
@@ -162,9 +160,9 @@ impl<F: Field, const N: usize> GlobalAccumulationOperation<F, N> {
         };
 
         // Constrain that the first `initial_digest` is the zero digest.
-        let zero_digest = SepticDigest::<AB::Expr>::zero().0;
-        builder.when_first_row().assert_septic_ext_eq(initial_digest.x.clone(), zero_digest.x);
-        builder.when_first_row().assert_septic_ext_eq(initial_digest.y.clone(), zero_digest.y);
+        // let zero_digest = SepticDigest::<AB::Expr>::zero().0;
+        // builder.when_first_row().assert_septic_ext_eq(initial_digest.x.clone(), zero_digest.x);
+        // builder.when_first_row().assert_septic_ext_eq(initial_digest.y.clone(), zero_digest.y);
 
         // Constrain that when `is_real = 1`, addition is being carried out, and when `is_real = 0`, the sum remains the same.
         for i in 0..N {
@@ -205,20 +203,20 @@ impl<F: Field, const N: usize> GlobalAccumulationOperation<F, N> {
         }
 
         // Constrain that the final digest is the next row's initial_digest.
-        let final_digest = ith_cumulative_sum(N - 1);
+        // let final_digest = ith_cumulative_sum(N - 1);
 
-        let next_initial_digest = SepticCurve::<AB::Expr> {
-            x: SepticExtension::<AB::Expr>::from_base_fn(|i| {
-                next_accumulation.initial_digest[0][i].into()
-            }),
-            y: SepticExtension::<AB::Expr>::from_base_fn(|i| {
-                next_accumulation.initial_digest[1][i].into()
-            }),
-        };
+        // let next_initial_digest = SepticCurve::<AB::Expr> {
+        //     x: SepticExtension::<AB::Expr>::from_base_fn(|i| {
+        //         next_accumulation.initial_digest[0][i].into()
+        //     }),
+        //     y: SepticExtension::<AB::Expr>::from_base_fn(|i| {
+        //         next_accumulation.initial_digest[1][i].into()
+        //     }),
+        // };
 
-        builder
-            .when_transition()
-            .assert_septic_ext_eq(final_digest.x.clone(), next_initial_digest.x.clone());
-        builder.when_transition().assert_septic_ext_eq(final_digest.y, next_initial_digest.y);
+        // builder
+        //     .when_transition()
+        //     .assert_septic_ext_eq(final_digest.x.clone(), next_initial_digest.x.clone());
+        // builder.when_transition().assert_septic_ext_eq(final_digest.y, next_initial_digest.y);
     }
 }

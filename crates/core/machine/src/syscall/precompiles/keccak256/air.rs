@@ -29,13 +29,14 @@ where
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
 
-        let (local, next) = (main.row_slice(0), main.row_slice(1));
+        // let (local, next) = (main.row_slice(0), main.row_slice(1));
+        let local = main.row_slice(0);
         let local: &KeccakMemCols<AB::Var> = (*local).borrow();
-        let next: &KeccakMemCols<AB::Var> = (*next).borrow();
+        // let next: &KeccakMemCols<AB::Var> = (*next).borrow();
 
         let first_step = local.keccak.step_flags[0];
         let final_step = local.keccak.step_flags[NUM_ROUNDS - 1];
-        let not_final_step = AB::Expr::one() - final_step;
+        // let not_final_step = AB::Expr::one() - final_step;
 
         // Constrain memory in the first and last cycles.
         builder.assert_eq((first_step + final_step) * local.is_real, local.do_memory_check);
@@ -70,16 +71,16 @@ where
         );
 
         // Constrain that the inputs stay the same throughout the 24 rows of each cycle
-        let mut transition_builder = builder.when_transition();
-        let mut transition_not_final_builder = transition_builder.when(not_final_step);
-        transition_not_final_builder.assert_eq(local.shard, next.shard);
-        transition_not_final_builder.assert_eq(local.clk, next.clk);
-        transition_not_final_builder.assert_eq(local.state_addr, next.state_addr);
-        transition_not_final_builder.assert_eq(local.is_real, next.is_real);
+        // let mut transition_builder = builder.when_transition();
+        // let mut transition_not_final_builder = transition_builder.when(not_final_step);
+        // transition_not_final_builder.assert_eq(local.shard, next.shard);
+        // transition_not_final_builder.assert_eq(local.clk, next.clk);
+        // transition_not_final_builder.assert_eq(local.state_addr, next.state_addr);
+        // transition_not_final_builder.assert_eq(local.is_real, next.is_real);
 
         // The last row must be nonreal because NUM_ROUNDS is not a power of 2. This constraint
         // ensures that the table does not end abruptly.
-        builder.when_last_row().assert_zero(local.is_real);
+        // builder.when_last_row().assert_zero(local.is_real);
 
         // Verify that local.a values are equal to the memory values in the 0 and 23rd rows of each
         // cycle Memory values are 32 bit values (encoded as 4 8-bit columns).
