@@ -187,7 +187,7 @@ impl<F: PrimeField32> RiscvAir<F> {
     /// Get all the different RISC-V AIRs and their costs.
     pub fn get_airs_and_costs() -> (Vec<Self>, HashMap<String, u64>) {
         let (chips, costs) = Self::get_chips_and_costs();
-        (chips.into_iter().map(|chip| chip.into_inner()).collect(), costs)
+        (chips.into_iter().map(|chip| chip.into_inner().unwrap()).collect(), costs)
     }
 
     /// Get all the different RISC-V chips and their costs.
@@ -543,7 +543,7 @@ impl<F: PrimeField32> RiscvAir<F> {
                     })
                     .count();
 
-                (chip.into_inner(), local_mem_events_per_row)
+                (chip.into_inner().unwrap(), local_mem_events_per_row)
             })
             .collect()
     }

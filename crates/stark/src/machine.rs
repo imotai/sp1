@@ -11,7 +11,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_commit::Message;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
-use std::{cmp::Reverse, fmt::Debug, time::Instant};
+use std::{cmp::Reverse, fmt::Debug, sync::Arc, time::Instant};
 use tracing::instrument;
 
 use crate::{
@@ -67,7 +67,7 @@ pub struct StarkProvingKey<SC: StarkGenericConfig> {
     /// The commitment to the preprocessed traces.
     pub preprocessed_commit: Option<Com<SC>>,
     /// The preprocessed traces.
-    pub traces: Vec<Mle<Val<SC>>>,
+    pub traces: Vec<Arc<Mle<Val<SC>>>>,
     /// The pcs data for the preprocessed traces.
     pub preprocessed_data: Option<PcsProverData<SC>>,
     /// The preprocessed chip ordering.
@@ -364,7 +364,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
 
                         // Count the number of constraints.
                         let num_main_constraints = get_symbolic_constraints(
-                            &chip.air,
+                            chip.air.as_ref(),
                             chip.preprocessed_width(),
                             PROOF_MAX_NUM_PVS,
                         )
@@ -422,7 +422,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
         // Get the preprocessed traces
         let traces = named_preprocessed_traces
             .into_iter()
-            .map(|(_, _, trace)| trace.into())
+            .map(|(_, _, trace)| Arc::new(trace.into()))
             .collect::<Vec<_>>();
 
         let pc_start = program.pc_start();

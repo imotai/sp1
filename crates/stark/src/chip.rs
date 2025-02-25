@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{hash::Hash, sync::Arc};
 
 use p3_air::{Air, BaseAir, PairBuilder};
 use p3_field::{ExtensionField, Field, PrimeField, PrimeField32};
@@ -15,9 +15,10 @@ use crate::{
 use super::{generate_permutation_trace, scoped_interactions, PROOF_MAX_NUM_PVS};
 
 /// An Air that encodes lookups based on interactions.
+#[derive(Debug, Clone)]
 pub struct Chip<F: Field, A> {
     /// The underlying AIR of the chip for constraint evaluation.
-    pub air: A,
+    pub air: Arc<A>,
     /// The interactions that the chip sends.
     pub sends: Vec<Interaction<F>>,
     /// The interactions that the chip receives.
@@ -28,23 +29,27 @@ pub struct Chip<F: Field, A> {
 
 impl<F: Field, A> Chip<F, A> {
     /// The send interactions of the chip.
+    #[must_use]
     pub fn sends(&self) -> &[Interaction<F>] {
         &self.sends
     }
 
     /// The receive interactions of the chip.
+    #[must_use]
     pub fn receives(&self) -> &[Interaction<F>] {
         &self.receives
     }
 
     /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
+    #[must_use]
     pub const fn log_quotient_degree(&self) -> usize {
         self.log_quotient_degree
     }
 
     /// Consumes the chip and returns the underlying air.
-    pub fn into_inner(self) -> A {
-        self.air
+    #[must_use]
+    pub fn into_inner(self) -> Option<A> {
+        Arc::into_inner(self.air)
     }
 }
 
@@ -85,29 +90,34 @@ where
         }
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
+        let air = Arc::new(air);
         Self { air, sends, receives, log_quotient_degree }
     }
 
     /// Returns the number of interactions in the chip.
     #[inline]
+    #[must_use]
     pub fn num_interactions(&self) -> usize {
         self.sends.len() + self.receives.len()
     }
 
     /// Returns the number of sent byte lookups in the chip.
     #[inline]
+    #[must_use]
     pub fn num_sent_byte_lookups(&self) -> usize {
         self.sends.iter().filter(|i| i.kind == InteractionKind::Byte).count()
     }
 
     /// Returns the number of sends of the given kind.
     #[inline]
+    #[must_use]
     pub fn num_sends_by_kind(&self, kind: InteractionKind) -> usize {
         self.sends.iter().filter(|i| i.kind == kind).count()
     }
 
     /// Returns the number of receives of the given kind.
     #[inline]
+    #[must_use]
     pub fn num_receives_by_kind(&self, kind: InteractionKind) -> usize {
         self.receives.iter().filter(|i| i.kind == kind).count()
     }
@@ -136,6 +146,7 @@ where
 
     /// Returns the width of the permutation trace.
     #[inline]
+    #[must_use]
     pub fn permutation_width(&self) -> usize {
         let (scoped_sends, scoped_receives) = scoped_interactions(self.sends(), self.receives());
         let empty = Vec::new();
@@ -150,6 +161,7 @@ where
 
     /// Returns the cost of a row in the chip.
     #[inline]
+    #[must_use]
     pub fn cost(&self) -> u64
     where
         A: MachineAir<F>,
@@ -163,12 +175,14 @@ where
 
     /// Returns the width of the quotient polynomial.
     #[inline]
+    #[must_use]
     pub const fn quotient_width(&self) -> usize {
         1 << self.log_quotient_degree
     }
 
     /// Returns the log2 of the batch size.
     #[inline]
+    #[must_use]
     pub const fn logup_batch_size(&self) -> usize {
         1 << self.log_quotient_degree
     }
@@ -177,7 +191,7 @@ where
 impl<F, A> BaseAir<F> for Chip<F, A>
 where
     F: Field,
-    A: BaseAir<F>,
+    A: BaseAir<F> + Send,
 {
     fn width(&self) -> usize {
         self.air.width()

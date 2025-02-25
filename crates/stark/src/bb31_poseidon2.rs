@@ -148,7 +148,7 @@ impl StarkGenericConfig for BabyBearPoseidon2Inner {
         &self.pcs_prover
     }
 
-    fn verifier_pcs(&self) -> &JaggedPcsVerifier<Self::JaggedConfig> {
+    fn pcs_verifier(&self) -> &JaggedPcsVerifier<Self::JaggedConfig> {
         &self.pcs_verifier
     }
 
@@ -379,7 +379,7 @@ pub mod baby_bear_poseidon2 {
             &self.pcs_prover
         }
 
-        fn verifier_pcs(&self) -> &JaggedPcsVerifier<Self::JaggedConfig> {
+        fn pcs_verifier(&self) -> &JaggedPcsVerifier<Self::JaggedConfig> {
             &self.pcs_verifier
         }
 

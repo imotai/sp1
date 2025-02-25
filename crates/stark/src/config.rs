@@ -64,7 +64,7 @@ pub trait StarkGenericConfig: 'static + Send + Sync + Serialize + DeserializeOwn
     fn prover_pcs(&self) -> &JaggedProver<Self::CpuProverComponents>;
 
     /// Get the PCS used by this configuration.
-    fn verifier_pcs(&self) -> &JaggedPcsVerifier<Self::JaggedConfig>;
+    fn pcs_verifier(&self) -> &JaggedPcsVerifier<Self::JaggedConfig>;
 
     /// Initialize a new challenger.
     fn challenger(&self) -> Self::Challenger;

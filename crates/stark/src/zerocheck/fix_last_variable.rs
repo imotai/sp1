@@ -1,24 +1,26 @@
-use std::ops::{Add, Mul};
+use std::{
+    ops::{Add, Mul},
+    sync::Arc,
+};
 
+use futures::future::OptionFuture;
 use p3_field::ExtensionField;
 use slop_algebra::Field;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
 
-use crate::air::MachineAir;
-
-use super::{ZeroCheckPoly, ZeroCheckPolyVals};
+use super::{sum_as_poly::ZerocheckProver, ZeroCheckPoly};
 
 /// This function will set the last variable to `alpha`.
-pub(crate) fn fix_last_variable<
+pub(crate) async fn fix_last_variable<
     K: Field,
     F: Field,
     EF: ExtensionField<F> + Add<K, Output = EF> + Mul<K, Output = EF> + From<K> + ExtensionField<K>,
-    A: MachineAir<F>,
+    A: ZerocheckProver<F, K, EF>,
 >(
-    poly: ZeroCheckPoly<'_, K, F, EF, A>,
+    poly: ZeroCheckPoly<K, F, EF, A>,
     alpha: EF,
-) -> ZeroCheckPoly<'_, EF, F, EF, A> {
+) -> ZeroCheckPoly<EF, F, EF, A> {
     let (rest, last) = poly.zeta.split_at(poly.zeta.dimension() - 1);
     let last = *last[0];
 
@@ -27,33 +29,28 @@ pub(crate) fn fix_last_variable<
     let eq_adjustment =
         poly.eq_adjustment * ((alpha * last) + (EF::one() - alpha) * (EF::one() - last));
 
-    let has_non_padded_vars = poly.main_columns.mle_ref().num_variables() > 0;
+    let has_non_padded_vars = poly.main_columns.num_variables() > 0;
 
     let (new_preprocessed_values, new_main_values, num_padded_vars, geq_value) =
         if has_non_padded_vars {
             let folded_preprocessed_columns =
-                poly.preprocessed_columns.as_ref().map(|preprocessed_values| {
-                    ZeroCheckPolyVals::Owned(preprocessed_values.mle_ref().fix_last_variable(alpha))
+                poly.preprocessed_columns.as_ref().map(|preprocessed_values| async move {
+                    Arc::new(preprocessed_values.fix_last_variable(alpha).await)
                 });
+            let folded_preprocessed_columns = OptionFuture::from(folded_preprocessed_columns).await;
 
-            let folded_main_columns =
-                ZeroCheckPolyVals::Owned(poly.main_columns.mle_ref().fix_last_variable(alpha));
+            let folded_main_columns = Arc::new(poly.main_columns.fix_last_variable(alpha).await);
 
             (folded_preprocessed_columns, folded_main_columns, poly.num_padded_vars, EF::zero())
         } else {
             // Handling padded variables.
             let preprocessed_values =
                 poly.preprocessed_columns.as_ref().map(|preprocessed_values| {
-                    ZeroCheckPolyVals::Owned(fold_padded_values::<K, F, EF>(
-                        preprocessed_values.mle_ref(),
-                        alpha,
-                    ))
+                    Arc::new(fold_padded_values::<K, F, EF>(preprocessed_values, alpha))
                 });
 
-            let main_values = ZeroCheckPolyVals::Owned(fold_padded_values::<K, F, EF>(
-                poly.main_columns.mle_ref(),
-                alpha,
-            ));
+            let main_values =
+                Arc::new(fold_padded_values::<K, F, EF>(poly.main_columns.as_ref(), alpha));
 
             // We can factor out one term of the geq polynomial.  We can think of the guts of the geq
             // polynomial as being 0 for all non padded values and 1 for all padded values.
@@ -66,20 +63,16 @@ pub(crate) fn fix_last_variable<
             (preprocessed_values, main_values, poly.num_padded_vars - 1, geq_value)
         };
 
-    let ret = ZeroCheckPoly::<EF, F, EF, _>::new(
-        poly.air,
+    ZeroCheckPoly::<EF, F, EF, _>::new(
+        poly.air_data,
         rest,
         new_preprocessed_values,
         new_main_values,
         eq_adjustment,
         geq_value,
-        poly.public_values,
-        poly.powers_of_alpha,
         num_padded_vars,
         poly.padded_row_adjustment,
-    );
-
-    ret
+    )
 }
 
 /// This function will fold the preprocessed and main columns `ZerocheckPolys` that have only padded variables.

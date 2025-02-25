@@ -42,7 +42,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>> + Air<SymbolicAirBuilder<Val
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
     {
-        let pcs = config.verifier_pcs();
+        let pcs = config.pcs_verifier();
 
         let ShardProof { commitments, opened_values, zerocheck_proof, public_values, .. } = proof;
 

@@ -1,8 +1,6 @@
 use crate::block_on;
 use crate::septic_digest::SepticDigest;
-use crate::{
-    utils::ZeroCheckPolyVals, AirOpenedValues, ChipOpenedValues, ShardOpenedValues, ZeroCheckPoly,
-};
+use crate::{AirOpenedValues, ChipOpenedValues, ShardOpenedValues, ZeroCheckPoly};
 use core::fmt::Display;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -17,6 +15,7 @@ use slop_commit::{Message, Rounds};
 use slop_multilinear::{Evaluations, Mle, MleEval, Point};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
 use slop_tensor::Tensor;
+use std::sync::Arc;
 use std::{cmp::Reverse, error::Error, time::Instant};
 
 use super::{
@@ -25,8 +24,8 @@ use super::{
 };
 use crate::{
     air::MachineAir, lookup::InteractionBuilder, opts::SP1CoreOpts, record::MachineRecord,
-    Challenger, ConstraintSumcheckFolder, DebugConstraintBuilder, MachineChip, MachineProof,
-    PcsProverData, ShardMainData, ShardProof, StarkVerifyingKey,
+    zerocheck::ZerocheckCpuProver, Challenger, ConstraintSumcheckFolder, DebugConstraintBuilder,
+    MachineChip, MachineProof, PcsProverData, ShardMainData, ShardProof, StarkVerifyingKey,
 };
 
 /// An algorithmic & hardware independent prover implementation for any [`MachineAir`].
@@ -354,22 +353,20 @@ where
         let max_num_constraints = pk.constraints_map.values().max().unwrap();
         let powers_of_alpha = alpha.powers().take(*max_num_constraints).collect::<Vec<_>>();
 
+        let public_values = Arc::new(data.public_values.clone());
         // First collect the zerocheck polynomials.
         let (zerocheck_polys, num_preprocessed_columns): (Vec<_>, Vec<_>) = chips
             .iter()
-            .zip_eq(traces.iter())
+            .zip_eq(traces)
             .enumerate()
             .map(|(i, (chip, main_trace))| {
-                let preprocessed_trace = pk
-                    .chip_ordering
-                    .get(&chip.name())
-                    .map(|&index| ZeroCheckPolyVals::Reference(&pk.traces[index]));
+                let preprocessed_trace =
+                    pk.chip_ordering.get(&chip.name()).map(|&index| pk.traces[index].clone());
 
                 let log_height = main_trace.num_variables();
 
-                let num_preprocessed_cols = preprocessed_trace
-                    .as_ref()
-                    .map_or(0, |pp_trace| pp_trace.mle_ref().num_polynomials());
+                let num_preprocessed_cols =
+                    preprocessed_trace.as_ref().map_or(0, |pp_trace| pp_trace.num_polynomials());
 
                 let num_padded_vars = pcs.max_log_row_count - log_height as usize;
                 tracing::debug!(
@@ -400,16 +397,18 @@ where
                 chip.air.eval(&mut folder);
                 let padded_row_adjustment = folder.accumulator;
 
+                let main_trace = Arc::new(main_trace);
+                let alpha_powers = Arc::new(chip_powers_of_alpha);
+                let air_data =
+                    ZerocheckCpuProver::new(chip.air.clone(), public_values.clone(), alpha_powers);
                 (
                     ZeroCheckPoly::new(
-                        &chip.air,
+                        air_data,
                         zeta.clone(),
                         preprocessed_trace,
-                        ZeroCheckPolyVals::Reference(main_trace),
+                        main_trace,
                         SC::Challenge::one(),
                         SC::Challenge::zero(),
-                        &data.public_values,
-                        chip_powers_of_alpha,
                         num_padded_vars,
                         padded_row_adjustment,
                     ),

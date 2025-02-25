@@ -56,4 +56,4 @@ pub use types::*;
 pub use util::*;
 pub use verifier::*;
 pub use word::*;
-use zerocheck::{utils, ZeroCheckPoly};
+use zerocheck::ZeroCheckPoly;
