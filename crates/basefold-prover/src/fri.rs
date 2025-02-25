@@ -137,14 +137,13 @@ impl<
                         *batch += batch_row;
                     });
             }
-
             let batch_mle_f =
                 Buffer::from(batch_mle.clone().into_guts().storage.as_slice().to_vec())
                     .flatten_to_base::<F>();
             let batch_mle_f = Tensor::from(batch_mle_f).reshape([1 << num_variables, EF::D]);
-            let batch_codeword = handle.block_on(async {
-                encoder.encode_batch(Message::from(Mle::new(batch_mle_f))).await.unwrap()
-            });
+            let batch_codeword = handle
+                .block_on(encoder.encode_batch(Message::from(Mle::new(batch_mle_f))))
+                .unwrap();
             let batch_codeword = (*batch_codeword[0]).clone();
 
             let batched_eval_claim = evaluation_claims
