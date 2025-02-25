@@ -300,7 +300,7 @@ where
         // Finalize commit.
         let pcs = self.config().prover_pcs();
 
-        let (mut prover_data, mut commitments) = if has_preprocess {
+        let (prover_data, commitments) = if has_preprocess {
             (
                 Rounds { rounds: vec![pk.preprocessed_data.clone().unwrap(), data.main_data] },
                 Rounds {
@@ -313,8 +313,6 @@ where
         } else {
             (Rounds { rounds: vec![data.main_data] }, Rounds { rounds: vec![data.main_commit] })
         };
-
-        block_on(pcs.finalize(&mut prover_data, &mut commitments, challenger));
 
         challenger.observe_slice(&data.public_values[0..self.num_pv_elts()]);
 
