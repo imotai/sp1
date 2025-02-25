@@ -1,52 +1,168 @@
+use futures::prelude::*;
+use std::sync::Arc;
+
 use slop_algebra::Field;
-use slop_alloc::{mem::CopyError, CpuBackend};
-use slop_multilinear::{Mle, Point};
-use slop_tensor::TransposeBackend;
+use slop_alloc::{mem::CopyError, Buffer, CopyIntoBackend, CopyToBackend, CpuBackend, ToHost};
+use slop_multilinear::{Evaluations, Mle, MleEval, Point};
+use slop_tensor::{Tensor, TransposeBackend};
+use tokio::sync::oneshot;
 
-use crate::{IntoDevice, IntoHost, TaskScope};
+use crate::{DeviceCopy, SmallBuffer, SmallTensor, TaskScope};
 
-impl<F: Field> IntoHost for Mle<F, TaskScope>
+impl<F: Field> CopyIntoBackend<CpuBackend, TaskScope> for Mle<F, TaskScope>
 where
     TaskScope: TransposeBackend<F>,
 {
-    type HostData = Mle<F, CpuBackend>;
-
-    async fn into_host(self) -> Result<Self::HostData, CopyError> {
+    type Output = Mle<F, CpuBackend>;
+    async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
         // Transpose the values in the device since it's usually faster.
         let tensor = self.into_guts().transpose();
-        let guts = tensor.into_host().await?;
+        let guts = tensor.copy_into_backend(backend).await?;
         Ok(Mle::new(guts))
     }
 }
 
-impl<F: Field> IntoDevice for Mle<F, CpuBackend>
+impl<F: Field> CopyIntoBackend<CpuBackend, TaskScope> for Arc<Mle<F, TaskScope>>
 where
     TaskScope: TransposeBackend<F>,
 {
-    type DeviceData = Mle<F, TaskScope>;
+    type Output = Mle<F, CpuBackend>;
+    async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let tensor = self.guts().transpose();
+        let guts = tensor.copy_into_backend(backend).await?;
+        Ok(Mle::new(guts))
+    }
+}
 
-    async fn into_device_in(self, scope: &TaskScope) -> Result<Self::DeviceData, CopyError> {
+impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Mle<F, CpuBackend>
+where
+    TaskScope: TransposeBackend<F>,
+{
+    type Output = Mle<F, TaskScope>;
+    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         // Transfer to device and then do trasnspose since it's usually faster.
-        let guts = self.into_guts().into_device_in(scope).await?;
+        let tensor = self.into_guts();
+        let guts = tensor.copy_into_backend(backend).await?;
         let guts = guts.transpose();
         Ok(Mle::new(guts))
     }
 }
 
-impl<F: Field> IntoDevice for Point<F, CpuBackend> {
-    type DeviceData = Point<F, TaskScope>;
+impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Arc<Mle<F, CpuBackend>>
+where
+    TaskScope: TransposeBackend<F>,
+{
+    type Output = Mle<F, TaskScope>;
+    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        // Transfer to device and then do trasnspose since it's usually faster.
+        let (tx, rx) = oneshot::channel();
+        let backend = backend.clone();
+        tokio::task::spawn_blocking(move || {
+            let dimensions = self.guts().dimensions.clone();
+            let storage_buf = self.guts().as_buffer();
+            let mut storage = Buffer::with_capacity_in(storage_buf.len(), backend);
+            storage.extend_from_host_slice(storage_buf).unwrap();
+            let guts = Tensor { storage, dimensions };
+            tx.send(guts).ok();
+        });
+        let guts = rx.await.unwrap();
+        let guts = guts.transpose();
+        Ok(Mle::new(guts))
+    }
+}
 
-    async fn into_device_in(self, scope: &TaskScope) -> Result<Self::DeviceData, CopyError> {
-        let values = self.into_values().into_device_in(scope).await?;
+impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for MleEval<F, TaskScope> {
+    type Output = MleEval<F, CpuBackend>;
+    async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let tensor = self.into_evaluations();
+        let evaluations = tensor.copy_into_backend(backend).await?;
+        Ok(MleEval::new(evaluations))
+    }
+}
+
+impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for MleEval<F, CpuBackend> {
+    type Output = MleEval<F, TaskScope>;
+    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        let tensor = self.into_evaluations();
+        let evaluations = tensor.copy_into_backend(backend).await?;
+        Ok(MleEval::new(evaluations))
+    }
+}
+
+impl<F: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for MleEval<F, TaskScope> {
+    type Output = MleEval<F, CpuBackend>;
+    async fn copy_to_backend(&self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let tensor = unsafe { SmallTensor::new(self.evaluations()) };
+        let evaluations = tensor.copy_into_backend(backend).await?;
+        Ok(MleEval::new(evaluations))
+    }
+}
+
+impl<F: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for MleEval<F, CpuBackend> {
+    type Output = MleEval<F, TaskScope>;
+    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        // Transfer to device and then do trasnspose since it's usually faster.
+        let tensor = unsafe { SmallTensor::new(self.evaluations()) };
+        let evaluations = tensor.copy_into_backend(backend).await?;
+        Ok(MleEval::new(evaluations))
+    }
+}
+
+impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Point<F, TaskScope> {
+    type Output = Point<F, CpuBackend>;
+    async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let tensor = self.into_values();
+        let values = tensor.copy_into_backend(backend).await?;
         Ok(Point::new(values))
     }
 }
 
-impl<F: Field> IntoHost for Point<F, TaskScope> {
-    type HostData = Point<F, CpuBackend>;
-
-    async fn into_host(self) -> Result<Self::HostData, CopyError> {
-        let values = self.into_values().into_host().await?;
+impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Point<F, CpuBackend> {
+    type Output = Point<F, TaskScope>;
+    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        let tensor = self.into_values();
+        let values = tensor.copy_into_backend(backend).await?;
         Ok(Point::new(values))
+    }
+}
+
+impl<F: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Point<F, TaskScope> {
+    type Output = Point<F, CpuBackend>;
+    async fn copy_to_backend(&self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let tensor = unsafe { SmallBuffer::new(self.values()) };
+        let values = tensor.copy_into_backend(backend).await?;
+        Ok(Point::new(values))
+    }
+}
+
+impl<F: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Point<F, CpuBackend> {
+    type Output = Point<F, TaskScope>;
+    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        // Transfer to device and then do trasnspose since it's usually faster.
+        let tensor = unsafe { SmallBuffer::new(self.values()) };
+        let values = tensor.copy_into_backend(backend).await?;
+        Ok(Point::new(values))
+    }
+}
+
+impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Evaluations<F, CpuBackend> {
+    type Output = Evaluations<F, TaskScope>;
+    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        let evaluations = stream::iter(self.into_iter())
+            .then(|evals| async { backend.into_device(evals).await.unwrap() })
+            .collect::<Vec<_>>()
+            .await;
+        Ok(Evaluations::new(evaluations))
+    }
+}
+
+impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Evaluations<F, TaskScope> {
+    type Output = Evaluations<F, CpuBackend>;
+    async fn copy_into_backend(self, _backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let evaluations = stream::iter(self.into_iter())
+            .then(|evals| async move { evals.to_host().await.unwrap() })
+            .collect::<Vec<_>>()
+            .await;
+        Ok(Evaluations::new(evaluations))
     }
 }

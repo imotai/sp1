@@ -99,8 +99,10 @@ public:
     __device__ __forceinline__ bb31_extension_t &operator*=(const bb31_extension_t b)
     {
         bb31_t product[4] = {bb31_t(0), bb31_t(0), bb31_t(0), bb31_t(0)};
+#pragma unroll
         for (size_t i = 0; i < D; i++)
         {
+#pragma unroll
             for (size_t j = 0; j < D; j++)
             {
                 if (i + j >= D)
@@ -114,6 +116,7 @@ public:
             }
         }
 
+#pragma unroll
         for (size_t i = 0; i < D; i++)
         {
             value[i] = product[i];
@@ -124,6 +127,7 @@ public:
 
     __device__ __forceinline__ bb31_extension_t &operator*=(const bb31_t b)
     {
+#pragma unroll
         for (size_t i = 0; i < D; i++)
         {
             value[i] *= b;

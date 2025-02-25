@@ -22,12 +22,17 @@ use csl_sys::runtime::{
 use pin_project::pin_project;
 use slop_alloc::{
     mem::{CopyDirection, CopyError, DeviceMemory},
-    AllocError, Allocator, Backend, Buffer,
+    AllocError, Allocator, Backend, Buffer, Slice,
 };
 use thiserror::Error;
-use tokio::sync::{
-    oneshot, AcquireError, OwnedSemaphorePermit, Semaphore, SemaphorePermit, TryAcquireError,
+use tokio::{
+    sync::{
+        oneshot, AcquireError, OwnedSemaphorePermit, Semaphore, SemaphorePermit, TryAcquireError,
+    },
+    task::JoinHandle,
 };
+
+use crate::{DeviceCopy, ToDevice};
 
 use super::{
     stream::{StreamRef, INTERVAL_MS},
@@ -61,6 +66,18 @@ pub async fn task() -> Result<TaskRef<'static>, SpawnError> {
 pub async fn owned_task() -> Result<OwnedTask, SpawnError> {
     let pool = global_task_pool();
     pool.clone().owned_task().await
+}
+
+pub fn spawn<F, Fut>(f: F) -> JoinHandle<TaskHandle<'static, Fut::Output>>
+where
+    F: FnOnce(TaskScope) -> Fut + Send + 'static,
+    Fut: Future + Send + 'static,
+    Fut::Output: Send + 'static,
+{
+    tokio::spawn(async move {
+        let task = task().await.unwrap();
+        task.run(f).await
+    })
 }
 
 /// Gets a task from the global task pool.
@@ -374,6 +391,18 @@ impl TaskScope {
         }
     }
 
+    /// Copies data between slices using CudaMemCpyAsync
+    ///
+    /// # Safety
+    /// The caller must ensure that the data is valid and that the data remains valid as this call
+    pub unsafe fn copy<T: DeviceCopy>(
+        &self,
+        dst: &mut Slice<T, Self>,
+        src: &Slice<T, Self>,
+    ) -> Result<(), CopyError> {
+        dst.copy_from_slice(src, self)
+    }
+
     /// Waits for all work enqueued so far in this task to finish.
     ///
     /// This function can be useful in case there is work to be enqueued but for some reason this
@@ -414,8 +443,13 @@ impl TaskScope {
 
     /// Copies data from the host to the device.
     #[inline]
-    pub async fn into_device<T: IntoDevice>(&self, data: T) -> Result<T::DeviceData, CopyError> {
+    pub async fn into_device<T: IntoDevice>(&self, data: T) -> Result<T::Output, CopyError> {
         T::into_device_in(data, self).await
+    }
+
+    #[inline]
+    pub async fn to_device<T: ToDevice>(&self, data: &T) -> Result<T::Output, CopyError> {
+        T::to_device_in(data, self).await
     }
 
     /// Waits for all work enqueued so far in this task to finish.
@@ -534,7 +568,7 @@ impl<'a> TaskRef<'a> {
     where
         F: FnOnce(TaskScope) -> Fut,
         Fut: Future<Output = R>,
-        R: CudaSend,
+        R: Send,
     {
         let scope = unsafe { self.task.scope() };
         let value = f(scope).await;
@@ -733,7 +767,7 @@ impl<'a, T> IntoFuture for TaskHandle<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::IntoHost;
+    use slop_alloc::{Buffer, IntoHost};
 
     #[tokio::test]
     async fn test_async_task_pool() {
@@ -751,7 +785,8 @@ mod tests {
     async fn test_async_task_buffer() {
         let task = crate::task().await.unwrap();
         let values = vec![1, 2, 3, 4, 5];
-        let handle = task.run(|t| async move { t.into_device(values).await.unwrap() }).await;
+        let handle =
+            task.run(|t| async move { t.into_device(Buffer::from(values)).await.unwrap() }).await;
 
         let buffer = handle.await.unwrap();
         let values_back = buffer.into_host().await.unwrap().into_vec();

@@ -1,163 +1,204 @@
-// use std::marker::PhantomData;
+use std::sync::Arc;
 
-// use slop_algebra::Field;
+use csl_cuda::{
+    args,
+    sys::{jagged::jagged_baby_bear_extension_populate, runtime::KernelPtr},
+    TaskScope,
+};
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use slop_algebra::{extension::BinomialExtensionField, Field};
+use slop_baby_bear::BabyBear;
+use slop_commit::Rounds;
+use slop_jagged::{JaggedLittlePolynomialProverParams, JaggedMleGenerator, LongMle};
+use slop_multilinear::{Mle, PartialLagrangeBackend, Point};
 
-// pub trait PopulateJaggedPolynomialBackend<F: Field>: MleBaseBackend<F> {
-//     #[allow(clippy::too_many_arguments)]
-//     fn populate_table_row_major(
-//         &self,
-//         out: TensorViewMut<F, Self>,
-//         eq_z_tab: TensorView<F, Self>,
-//         eq_z_col: TensorView<F, Self>,
-//         eq_z_row: TensorView<F, Self>,
-//         offset: usize,
-//         table_idx: usize,
-//         height: usize,
-//         width: usize,
-//     );
+#[derive(Debug, Clone, Default, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CudaJaggedMleGenerator;
 
-//     #[allow(clippy::too_many_arguments)]
-//     fn populate_table_col_major(
-//         &self,
-//         out: TensorViewMut<F, Self>,
-//         eq_z_tab: TensorView<F, Self>,
-//         eq_z_col: TensorView<F, Self>,
-//         eq_z_row: TensorView<F, Self>,
-//         offset: usize,
-//         table_idx: usize,
-//         height: usize,
-//         width: usize,
-//     );
+/// # Safety    
+pub unsafe trait JaggedPopulateKernel<F: Field> {
+    fn jagged_populate_kernel() -> KernelPtr;
+}
 
-//     fn populate_column_row_major(
-//         &self,
-//         out: TensorViewMut<F, Self>,
-//         eq_z_col: TensorView<F, Self>,
-//         eq_z_row: TensorView<F, Self>,
-//         offset: usize,
-//         height: usize,
-//         width: usize,
-//     );
+unsafe impl JaggedPopulateKernel<BinomialExtensionField<BabyBear, 4>> for CudaJaggedMleGenerator {
+    fn jagged_populate_kernel() -> KernelPtr {
+        unsafe { jagged_baby_bear_extension_populate() }
+    }
+}
 
-//     fn populate_column_col_major(
-//         &self,
-//         out: TensorViewMut<F, Self>,
-//         eq_z_col: TensorView<F, Self>,
-//         eq_z_row: TensorView<F, Self>,
-//         offset: usize,
-//         height: usize,
-//         width: usize,
-//     );
-// }
+impl<F> JaggedMleGenerator<F, TaskScope> for CudaJaggedMleGenerator
+where
+    F: Field,
+    Self: JaggedPopulateKernel<F>,
+    TaskScope: PartialLagrangeBackend<F>,
+{
+    async fn partial_jagged_multilinear(
+        &self,
+        _jagged_params: &JaggedLittlePolynomialProverParams,
+        row_data: Rounds<Arc<Vec<usize>>>,
+        column_data: Rounds<Arc<Vec<usize>>>,
+        z_row: &Point<F, TaskScope>,
+        z_col: &Point<F, TaskScope>,
+        _num_components: usize,
+    ) -> LongMle<F, TaskScope> {
+        let eq_z_col = Mle::partial_lagrange(z_col).await;
+        let eq_z_row = Mle::partial_lagrange(z_row).await;
 
-// #[derive(Debug, Clone, Copy, Default)]
-// pub struct PopulateJagged<T, B>(PhantomData<(T, B)>);
+        let total_size = row_data
+            .iter()
+            .zip(column_data.iter())
+            .map(|(r, c)| r.iter().zip(c.iter()).map(|(r, c)| r * c).sum::<usize>())
+            .sum::<usize>();
 
-// pub enum JaggedStoreConfig {
-//     RowMajor,
-//     ColMajor,
-// }
+        let total_number_of_variables = total_size.next_power_of_two().ilog2();
 
-// #[derive(Debug, Clone, Copy)]
-// pub struct TableDimensions {
-//     pub width: usize,
-//     pub height: usize,
-// }
+        let backend = z_row.backend();
+        let mut jagged_polynomial = Mle::<F, _>::uninit(1, 1 << total_number_of_variables, backend);
 
-// pub struct JaggedTableConfiguration {
-//     pub table_dimensions: Vec<TableDimensions>,
-//     pub offsets: Vec<usize>,
-//     pub storage: JaggedStoreConfig,
-// }
+        let mut offset = 0;
+        let mut col_offset = 0;
+        for (row_counts, column_counts) in row_data.iter().zip_eq(column_data.iter()) {
+            for (row_count, column_count) in row_counts.iter().zip_eq(column_counts.iter()) {
+                // Populate the entries corresponding to this table
+                let block_dim = 256;
+                let grid_dim = row_count.div_ceil(block_dim).max(1);
+                let args = args!(
+                    jagged_polynomial.guts_mut().as_mut_ptr(),
+                    eq_z_col.guts().as_ptr(),
+                    eq_z_row.guts().as_ptr(),
+                    offset,
+                    col_offset,
+                    *row_count,
+                    *column_count
+                );
+                unsafe {
+                    backend
+                        .launch_kernel(
+                            Self::jagged_populate_kernel(),
+                            grid_dim,
+                            block_dim,
+                            &args,
+                            0,
+                        )
+                        .unwrap();
+                }
+                offset += row_count * column_count;
+                col_offset += *column_count;
+            }
+        }
+        unsafe {
+            jagged_polynomial.guts_mut().as_mut_buffer().set_len(offset);
+        }
+        let padding_size = ((1 << total_number_of_variables) - offset) * std::mem::size_of::<F>();
+        jagged_polynomial.guts_mut().as_mut_buffer().write_bytes(0, padding_size).unwrap();
 
-// impl JaggedTableConfiguration {
-//     pub fn new(table_dimensions: Vec<TableDimensions>, storage: JaggedStoreConfig) -> Self {
-//         let offsets = std::iter::once(0)
-//             .chain(table_dimensions.iter().scan(0, |acc, t| {
-//                 let total_size = t.width * t.height;
-//                 *acc += total_size;
-//                 Some(*acc)
-//             }))
-//             .collect::<Vec<_>>();
-//         Self { table_dimensions, offsets, storage }
-//     }
+        LongMle::from_components(vec![jagged_polynomial], total_number_of_variables)
+    }
+}
 
-//     pub fn total_size(&self) -> usize {
-//         *self.offsets.last().unwrap()
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use rand::thread_rng;
+    use serial_test::serial;
+    use slop_alloc::IntoHost;
+    use slop_jagged::CpuJaggedMleGenerator;
 
-// impl<F: Field, B: PopulateJaggedPolynomialBackend<F>> PopulateJagged<F, B> {
-//     pub fn generate_table_jagged_polynomial(
-//         config: &JaggedTableConfiguration,
-//         eq_z_tab: &Mle<F, B>,
-//         eq_z_col: &Mle<F, B>,
-//         eq_z_row: &Mle<F, B>,
-//     ) -> Mle<F, B> {
-//         let total_size = config
-//             .table_dimensions
-//             .iter()
-//             .map(|t| t.height * t.width)
-//             .sum::<usize>()
-//             .next_power_of_two();
-//         let scope = eq_z_tab.scope().clone();
-//         let mut f = Mle::uninit(1, total_size.ilog2() as usize, &scope);
+    use super::*;
 
-//         let generate_for_table = match config.storage {
-//             JaggedStoreConfig::RowMajor => B::populate_table_row_major,
-//             JaggedStoreConfig::ColMajor => B::populate_table_col_major,
-//         };
+    #[tokio::test]
+    #[serial]
+    async fn test_jagged_populate() {
+        let row_counts_rounds = vec![vec![1 << 8, 1 << 9], vec![1 << 10]];
+        let column_counts_rounds = vec![vec![3, 2], vec![1]];
+        let max_log_row_count = 11;
 
-//         for (table_idx, (offset, table_dimensions)) in
-//             config.offsets.iter().zip(config.table_dimensions.iter()).enumerate()
-//         {
-//             unsafe {
-//                 f.assume_init();
-//                 generate_for_table(
-//                     &scope,
-//                     f.guts_mut().as_view_mut(),
-//                     eq_z_tab.guts().as_view(),
-//                     eq_z_col.guts().as_view(),
-//                     eq_z_row.guts().as_view(),
-//                     *offset,
-//                     table_idx,
-//                     table_dimensions.height,
-//                     table_dimensions.width,
-//                 );
-//             }
-//         }
-//         f
-//     }
+        type F = BabyBear;
+        type EF = BinomialExtensionField<F, 4>;
 
-//     pub fn generate_column_jagged_polynomial(
-//         config: JaggedTableConfiguration,
-//         eq_z_col: &Mle<F, B>,
-//         eq_z_row: &Mle<F, B>,
-//     ) -> Mle<F, B> {
-//         let total_size = config.offsets.iter().sum::<usize>().next_power_of_two();
-//         let scope = eq_z_col.scope().clone();
-//         let mut f = Mle::uninit(1, total_size.ilog2() as usize, &scope);
+        let row_counts =
+            row_counts_rounds.into_iter().map(Arc::new).collect::<Rounds<Arc<Vec<usize>>>>();
+        let column_counts =
+            column_counts_rounds.into_iter().map(Arc::new).collect::<Rounds<Arc<Vec<usize>>>>();
 
-//         let generate_for_column = match config.storage {
-//             JaggedStoreConfig::RowMajor => B::populate_column_row_major,
-//             JaggedStoreConfig::ColMajor => B::populate_column_col_major,
-//         };
+        let params = JaggedLittlePolynomialProverParams::new(
+            row_counts
+                .iter()
+                .zip_eq(column_counts.iter())
+                .flat_map(|(row_counts, column_counts)| {
+                    row_counts.iter().copied().zip_eq(column_counts.iter().copied()).flat_map(
+                        |(row_count, column_count)| std::iter::repeat(row_count).take(column_count),
+                    )
+                })
+                .collect(),
+            max_log_row_count,
+        );
 
-//         for (offset, table_dimensions) in config.offsets.iter().zip(config.table_dimensions.iter())
-//         {
-//             unsafe {
-//                 f.assume_init();
-//                 generate_for_column(
-//                     &scope,
-//                     f.guts_mut().as_view_mut(),
-//                     eq_z_col.guts().as_view(),
-//                     eq_z_row.guts().as_view(),
-//                     *offset,
-//                     table_dimensions.height,
-//                     table_dimensions.width,
-//                 );
-//             }
-//         }
-//         f
-//     }
-// }
+        let num_col_variables = column_counts
+            .iter()
+            .map(|column_counts| column_counts.iter().sum::<usize>())
+            .sum::<usize>()
+            .next_power_of_two()
+            .ilog2();
+
+        let num_row_variables = max_log_row_count as u32;
+
+        let mut rng = thread_rng();
+        let z_row = Point::<EF>::rand(&mut rng, num_row_variables);
+        let z_col = Point::<EF>::rand(&mut rng, num_col_variables);
+
+        let host_generator = CpuJaggedMleGenerator;
+
+        let host_jagged_polynomial = host_generator
+            .partial_jagged_multilinear(
+                &params,
+                row_counts.clone(),
+                column_counts.clone(),
+                &z_row,
+                &z_col,
+                1,
+            )
+            .await;
+
+        let devide_generator = CudaJaggedMleGenerator;
+        let device_paramerters = params.clone();
+        let device_jagged_polynomial = csl_cuda::task()
+            .await
+            .unwrap()
+            .run(|t| async move {
+                let z_row = t.to_device(&z_row).await.unwrap();
+                let z_col = t.to_device(&z_col).await.unwrap();
+                let device_jagged_polynomial = devide_generator
+                    .partial_jagged_multilinear(
+                        &device_paramerters,
+                        row_counts,
+                        column_counts,
+                        &z_row,
+                        &z_col,
+                        1,
+                    )
+                    .await;
+                device_jagged_polynomial.into_host().await.unwrap()
+            })
+            .await
+            .await
+            .unwrap();
+
+        for (host_component, device_component) in host_jagged_polynomial
+            .into_components()
+            .into_iter()
+            .zip(device_jagged_polynomial.into_components().into_iter())
+        {
+            for (idx, (host_val, device_val)) in host_component
+                .guts()
+                .as_slice()
+                .iter()
+                .zip(device_component.guts().as_slice().iter())
+                .enumerate()
+            {
+                assert_eq!(host_val, device_val, "Index: {:?}", idx);
+            }
+        }
+    }
+}

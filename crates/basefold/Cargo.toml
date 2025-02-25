@@ -8,3 +8,30 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+csl-dft = { workspace = true }
+csl-cuda = { workspace = true }
+csl-merkle-tree = { workspace = true }
+
+slop-basefold = { workspace = true }
+slop-futures = { workspace = true }
+slop-alloc = { workspace = true }
+slop-tensor = { workspace = true }
+slop-commit = { workspace = true }
+slop-dft = { workspace = true }
+slop-basefold-prover = { workspace = true }
+slop-algebra = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-challenger = { workspace = true }
+
+
+serde = { workspace = true }
+itertools = { workspace = true }
+
+[dev-dependencies]
+slop-stacked = { workspace = true }
+futures = { workspace = true }
+
+rand = { workspace = true }
+tokio = { workspace = true }

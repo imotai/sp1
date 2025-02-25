@@ -13,4 +13,8 @@ extern "C" {
     pub fn partial_dot_baby_bear_kernel() -> KernelPtr;
     pub fn partial_dot_baby_bear_extension_kernel() -> KernelPtr;
     pub fn partial_dot_baby_bear_base_extension_kernel() -> KernelPtr;
+
+    pub fn dot_along_short_dimension_kernel_baby_bear_base_base() -> KernelPtr;
+    pub fn dot_along_short_dimension_kernel_baby_bear_base_extension() -> KernelPtr;
+    pub fn dot_along_short_dimension_kernel_baby_bear_extension_extension() -> KernelPtr;
 }

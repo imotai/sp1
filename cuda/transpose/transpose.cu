@@ -14,8 +14,8 @@ namespace transpose
     {
         size_t startX = blockIdx.x * blockDim.x + threadIdx.x;
         size_t startY = blockIdx.y * blockDim.y + threadIdx.y;
-        size_t gridStrideX = blockDim.y * gridDim.y;
-        size_t gridStrideY = blockDim.x * gridDim.x;
+        size_t gridStrideX = blockDim.x * gridDim.x;
+        size_t gridStrideY = blockDim.y * gridDim.y;
         size_t startZ = blockIdx.z * blockDim.z + threadIdx.z;
         size_t gridStrideZ = blockDim.z * gridDim.z;
 
@@ -25,7 +25,7 @@ namespace transpose
             {
                 for (size_t idxZ = startZ; idxZ < dimZ; idxZ += gridStrideZ)
                 {
-                    out[idxZ * dimX * dimY + idxX * dimY + idxY] = in[idxZ * dimX * dimY + idxY * dimX + idxX];
+                    out[idxZ * dimX * dimY + idxY * dimX + idxX] = in[idxZ * dimX * dimY + idxX * dimY + idxY];
                 }
             }
         }

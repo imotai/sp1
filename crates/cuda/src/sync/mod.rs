@@ -114,8 +114,9 @@ tuple_cuda_send_impl! {
 mod tests {
     use csl_derive::CudaSend;
     use mpsc::Channel;
+    use slop_alloc::IntoHost;
 
-    use crate::{DeviceBuffer, IntoHost, TaskPoolBuilder};
+    use crate::TaskPoolBuilder;
 
     use super::*;
 
@@ -123,7 +124,7 @@ mod tests {
     struct MyTestStruct<T> {
         a: u8,
         b: u8,
-        buffer: DeviceBuffer<T>,
+        buffer: Buffer<T, TaskScope>,
     }
 
     #[tokio::test]

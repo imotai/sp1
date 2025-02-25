@@ -172,7 +172,10 @@ impl<T: DeviceCopy> ReduceSumBackend<T> for TaskScope
 where
     TaskScope: DeviceSumKernel<T>,
 {
-    fn sum_tensor_dim_into(src: &Tensor<T, Self>, dst: &mut Tensor<T, Self>, dim: usize) {
+    async fn sum_tensor_dim(src: &Tensor<T, Self>, dim: usize) -> Tensor<T, Self> {
+        let mut sizes = src.sizes().to_vec();
+        sizes.remove(dim);
+        let mut dst = Tensor::zeros_in(sizes, src.backend().clone());
         const BLOCK_SIZE: usize = 512;
         const INTIAL_STRIDE: usize = 8;
         assert!(dim == src.sizes().len() - 1, "only summing over the last dimension is supported");
@@ -182,7 +185,7 @@ where
 
         if height <= BLOCK_SIZE {
             block_sum::<T, BLOCK_SIZE, INTIAL_STRIDE>(src, dst.as_view_mut(), dim);
-            return;
+            return dst;
         }
 
         // If the number of elements to sum is bigger than the block size, we need to use a two
@@ -203,13 +206,6 @@ where
                 src.backend(),
             );
         }
-    }
-
-    fn sum_tensor_dim(src: &Tensor<T, Self>, dim: usize) -> Tensor<T, Self> {
-        let mut sizes = src.sizes().to_vec();
-        sizes.remove(dim);
-        let mut dst = Tensor::zeros_in(sizes, src.backend().clone());
-        Self::sum_tensor_dim_into(src, &mut dst, dim);
         dst
     }
 }
@@ -237,10 +233,9 @@ unsafe impl DeviceSumKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
 #[cfg(test)]
 mod tests {
     use slop_algebra::extension::BinomialExtensionField;
+    use slop_alloc::IntoHost;
     use slop_baby_bear::BabyBear;
     use slop_tensor::Tensor;
-
-    use crate::IntoHost;
 
     #[tokio::test]
     async fn test_baby_bear_sum() {
@@ -256,7 +251,7 @@ mod tests {
                 .unwrap()
                 .run(|t| async move {
                     let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                    let sums = device_tensor.sum(1);
+                    let sums = device_tensor.sum(1).await;
                     sums.into_host().await.unwrap()
                 })
                 .await
@@ -288,7 +283,7 @@ mod tests {
             .unwrap()
             .run(|t| async move {
                 let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                let sums = device_tensor.sum(1);
+                let sums = device_tensor.sum(1).await;
                 sums.into_host().await.unwrap()
             })
             .await

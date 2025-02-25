@@ -381,7 +381,6 @@ impl DeviceMemory for CudaStream {
                 self.0,
             ),
         };
-
         CudaError::result_from_ffi(maybe_err).map_err(|_| CopyError)
     }
 

@@ -1,25 +1,36 @@
 use std::{marker::PhantomData, os::raw::c_void};
 
-use csl_device::{
-    cuda::{CudaError, TaskScope},
-    mem::DeviceData,
-    tensor::TensorView,
-    DeviceBuffer, DeviceTensor, GlobalAllocator, KernelPtr,
+use csl_cuda::DeviceCopy;
+use csl_cuda::{
+    args,
+    sys::{
+        poseidon2::{
+            compress_poseidon_2_baby_bear_16_kernel,
+            compute_openings_poseidon_2_baby_bear_16_kernel,
+            compute_paths_poseidon_2_baby_bear_16_kernel, leaf_hash_poseidon_2_baby_bear_16_kernel,
+        },
+        runtime::{Dim3, KernelPtr},
+    },
+    CudaError, TaskScope,
 };
-use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
+use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
+use slop_commit::{ComputeTcsOpenings, Message, TensorCsProver};
+use slop_futures::OwnedBorrow;
+use slop_merkle_tree::{
+    MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2BabyBearConfig,
+};
+use slop_tensor::Tensor;
+use thiserror::Error;
 
-use crate::{MerkleTree, MerkleTreeTcs, MerkleTreeTcsProof, TensorCSPDeviceProver};
+use crate::tree::MerkleTree;
 
 /// # Safety
 ///
 /// The implementor must make sure that the kernel signatures are the same as the ones expected
 /// by [`MerkleTreeSingleLayerProver`].
-pub unsafe trait MerkeTreeSingleLayerKernels {
-    type Data: DeviceData;
-    type Digest: DeviceData + Eq;
-    type Hasher: CryptographicHasher<Self::Data, Self::Digest>;
-    type Compressor: PseudoCompressionFunction<Self::Digest, 2>;
-
+pub unsafe trait MerkeTreeSingleLayerKernels<M: MerkleTreeConfig>:
+    'static + Send + Sync
+{
     fn leaf_hash_kernel() -> KernelPtr;
 
     fn compress_layer_kernel() -> KernelPtr;
@@ -30,111 +41,284 @@ pub unsafe trait MerkeTreeSingleLayerKernels {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MerkleTreeSingleLayerProver<K>(PhantomData<K>);
+pub struct MerkleTreeSingleLayerProver<K, M>(PhantomData<(K, M)>);
 
-impl<K: MerkeTreeSingleLayerKernels> MerkleTreeSingleLayerProver<K> {
-    pub fn compute_openings(
-        &self,
-        tensor: TensorView<K::Data, TaskScope>,
-        indices: &[usize],
-        scope: &TaskScope,
-    ) -> Result<DeviceTensor<K::Data>, CudaError> {
-        let mut openings = scope.tensor::<K::Data>([indices.len(), tensor.sizes()[0]]);
-        let indices_device =
-            DeviceBuffer::from_host_slice_blocking(indices, scope.clone()).unwrap();
-        unsafe {
-            openings.assume_init();
-
-            let block_dim = 256;
-            let grid_dim = indices.len().div_ceil(block_dim);
-            let args = [
-                &tensor.as_ptr() as *const _ as *mut c_void,
-                &mut (openings.as_mut_ptr()) as *mut _ as *mut c_void,
-                &(indices_device.as_ptr()) as *const _ as *mut c_void,
-                &indices.len() as *const usize as _,
-                &tensor.sizes()[0] as *const usize as _,
-                &tensor.sizes()[1] as *const usize as _,
-            ];
-            scope.launch_kernel(K::compute_openings_kernel(), grid_dim, block_dim, &args, 0)?;
-        }
-
-        Ok(openings)
-    }
+#[derive(Debug, Clone, Copy, Error)]
+pub enum SingleLayerMerkleTreeProverError {
+    #[error("cuda error: {0}")]
+    Cuda(#[from] CudaError),
+    #[error("copy error: {0}")]
+    Copy(#[from] CopyError),
 }
 
-impl<K: MerkeTreeSingleLayerKernels>
-    TensorCSPDeviceProver<MerkleTreeTcs<K::Data, K::Digest, K::Hasher, K::Compressor>>
-    for MerkleTreeSingleLayerProver<K>
+impl<K, M> TensorCsProver<TaskScope> for MerkleTreeSingleLayerProver<K, M>
+where
+    M: MerkleTreeConfig,
+    M::Digest: Copy,
+    K: MerkeTreeSingleLayerKernels<M>,
 {
-    type ProverData = MerkleTree<K::Digest, TaskScope>;
-    type ProverError = CudaError;
-    type ProverScope = TaskScope;
+    type Cs = MerkleTreeTcs<M>;
+    type ProverError = SingleLayerMerkleTreeProverError;
+    type ProverData = MerkleTree<M::Digest, TaskScope>;
 
-    fn commit_tensor(
+    async fn commit_tensors<T>(
         &self,
-        tensor: TensorView<K::Data, TaskScope>,
-        scope: &Self::ProverScope,
-    ) -> Result<(K::Digest, Self::ProverData), Self::ProverError> {
-        let height = tensor.sizes()[1].ilog2() as usize;
-        let mut tree = MerkleTree::<K::Digest, _>::uninit(height, scope.clone());
+        tensors: Message<T>,
+    ) -> Result<
+        (<Self::Cs as slop_commit::TensorCs>::Commitment, Self::ProverData),
+        Self::ProverError,
+    >
+    where
+        T: OwnedBorrow<Tensor<M::Data, TaskScope>>,
+    {
+        // assert_eq!(tensors.len(), 1, "Only one tensor is supported");
+        let height = tensors[0].borrow().sizes()[1].ilog2() as usize;
+        let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) = tensors
+            .iter()
+            .map(|t| {
+                let tensor = t.borrow();
+                assert_eq!(tensor.sizes().len(), 2, "Tensor must be 2D");
+                assert_eq!(tensor.sizes()[1], 1 << height, "Height must be a power of two");
+                (tensor.as_ptr(), tensor.sizes()[0])
+            })
+            .unzip();
+        let scope = tensors[0].borrow().backend();
+        let num_inputs = tensors.len();
+        let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
+        tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host)?;
+        let mut widths = Buffer::with_capacity_in(widths_host.len(), scope.clone());
+        widths.extend_from_host_slice(&widths_host)?;
+        let height = tensors[0].borrow().sizes()[1].ilog2() as usize;
+        assert_eq!(1 << height, tensors[0].borrow().sizes()[1], "Height must be a power of two");
+        let mut tree = MerkleTree::<M::Digest, _>::uninit(height, scope.clone());
         unsafe {
             tree.assume_init();
             // Compute the leaf hashes.
             let block_dim = 256;
-            let grid_dim = tensor.sizes()[1].div_ceil(block_dim);
-            let args = [
-                &(tensor.as_ptr()) as *const _ as *mut c_void,
-                &mut (tree.digests.as_mut_ptr()) as *mut _ as *mut c_void,
-                &tensor.sizes()[0] as *const usize as _,
-                &height as *const usize as _,
-            ];
+            let grid_dim = (1usize << height).div_ceil(block_dim);
+            let args = args!(
+                tensor_ptrs.as_ptr(),
+                tree.digests.as_mut_ptr(),
+                widths.as_ptr(),
+                num_inputs,
+                height
+            );
             scope.launch_kernel(K::leaf_hash_kernel(), grid_dim, block_dim, &args, 0)?;
         }
 
         // Iterate over the layers and compute the compressions.
         for k in (0..height).rev() {
-            let block_dim = 256;
-            let grid_dim = ((1 << k) as usize).div_ceil(block_dim);
-            let args = [
-                &mut (tree.digests.as_mut_ptr()) as *mut _ as *mut c_void,
-                &k as *const usize as _,
-            ];
+            let block_dim: Dim3 = (128u32, 4, 1).into();
+            let grid_dim: Dim3 = ((1u32 << k).div_ceil(block_dim.x), 1, num_inputs as u32).into();
+            let args = args!(tree.digests.as_mut_ptr(), k);
             unsafe {
                 scope.launch_kernel(K::compress_layer_kernel(), grid_dim, block_dim, &args, 0)?;
             }
         }
 
-        let root = tree.digests[0].to_host_blocking(scope).unwrap();
+        let root = tree.digests[0].copy_into_host(scope);
 
         Ok((root, tree))
     }
 
-    fn prove_openings(
+    async fn prove_openings_at_indices(
         &self,
-        data: &Self::ProverData,
+        data: Self::ProverData,
         indices: &[usize],
-        scope: &Self::ProverScope,
-    ) -> Result<MerkleTreeTcsProof<K::Digest, GlobalAllocator>, Self::ProverError> {
-        let mut paths = scope.tensor::<K::Digest>([indices.len(), data.height]);
-        let indices_device =
-            DeviceBuffer::from_host_slice_blocking(indices, scope.clone()).unwrap();
-        unsafe {
-            paths.assume_init();
+    ) -> Result<<Self::Cs as slop_commit::TensorCs>::Proof, Self::ProverError> {
+        let paths = {
+            let scope = data.backend();
+            let mut paths =
+                Tensor::<M::Digest, _>::with_sizes_in([indices.len(), data.height], scope.clone());
+            let mut indices_buffer =
+                Buffer::<usize, _>::with_capacity_in(indices.len(), scope.clone());
+            indices_buffer.extend_from_host_slice(indices)?;
+            let indices = indices_buffer;
+            unsafe {
+                paths.assume_init();
 
-            let block_dim = 256;
-            let grid_dim = indices.len().div_ceil(block_dim);
-            let args = [
-                &(paths.as_mut_ptr()) as *const _ as *mut c_void,
-                &(indices_device.as_ptr()) as *const _ as *mut c_void,
-                &indices.len() as *const usize as _,
-                &(data.digests.as_ptr()) as *const _ as *mut c_void,
-                (&data.height) as *const usize as _,
-            ];
-            scope.launch_kernel(K::compute_paths_kernel(), grid_dim, block_dim, &args, 0)?;
+                let block_dim = 256;
+                let grid_dim = indices.len().div_ceil(block_dim);
+                let args = [
+                    &(paths.as_mut_ptr()) as *const _ as *mut c_void,
+                    &(indices.as_ptr()) as *const _ as *mut c_void,
+                    &indices.len() as *const usize as _,
+                    &(data.digests.as_ptr()) as *const _ as *mut c_void,
+                    (&data.height) as *const usize as _,
+                ];
+                scope.launch_kernel(K::compute_paths_kernel(), grid_dim, block_dim, &args, 0)?;
+            }
+            paths
+        };
+        let paths = paths.into_host().await.unwrap();
+
+        Ok(MerkleTreeTcsProof { paths })
+    }
+}
+
+impl<M, K> ComputeTcsOpenings<TaskScope> for MerkleTreeSingleLayerProver<K, M>
+where
+    M: MerkleTreeConfig,
+    M::Data: DeviceCopy,
+    M::Digest: DeviceCopy,
+    K: MerkeTreeSingleLayerKernels<M>,
+{
+    async fn compute_openings_at_indices<T>(
+        &self,
+        tensors: Message<T>,
+        indices: &[usize],
+    ) -> Vec<Tensor<<Self::Cs as slop_commit::TensorCs>::Data>>
+    where
+        T: OwnedBorrow<Tensor<M::Data, TaskScope>>,
+    {
+        let openings = {
+            let height = tensors[0].borrow().sizes()[1].ilog2() as usize;
+            let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) = tensors
+                .iter()
+                .map(|t| {
+                    let tensor = t.borrow();
+                    assert_eq!(tensor.sizes().len(), 2, "Tensor must be 2D");
+                    assert_eq!(tensor.sizes()[1], 1 << height, "Height must be a power of two");
+                    (tensor.as_ptr(), tensor.sizes()[0])
+                })
+                .unzip();
+            let scope = tensors[0].borrow().backend();
+            let num_inputs = tensors.len();
+            let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
+            tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host).unwrap();
+            let mut widths = Buffer::with_capacity_in(widths_host.len(), scope.clone());
+            widths.extend_from_host_slice(&widths_host).unwrap();
+            let tensor_height = tensors[0].borrow().sizes()[1];
+
+            // Allocate tensors for the openings.
+            let mut openings = tensors
+                .iter()
+                .map(|tensor| {
+                    Tensor::<M::Data, _>::with_sizes_in(
+                        [indices.len(), tensor.borrow().sizes()[0]],
+                        scope.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let openings_ptrs_host =
+                openings.iter_mut().map(|tensor| tensor.as_mut_ptr()).collect::<Vec<_>>();
+            let mut openings_ptrs =
+                Buffer::with_capacity_in(openings_ptrs_host.len(), scope.clone());
+            openings_ptrs.extend_from_host_slice(&openings_ptrs_host).unwrap();
+            let mut indices_buffer =
+                Buffer::<usize, _>::with_capacity_in(indices.len(), scope.clone());
+            indices_buffer.extend_from_host_slice(indices).unwrap();
+            let indices = indices_buffer;
+            unsafe {
+                for opening in openings.iter_mut() {
+                    opening.assume_init();
+                }
+
+                let block_dim = 256;
+                let grid_dim = indices.len().div_ceil(block_dim);
+                let args = args!(
+                    tensor_ptrs.as_ptr(),
+                    openings_ptrs.as_mut_ptr(),
+                    indices.as_ptr(),
+                    indices.len(),
+                    num_inputs,
+                    widths.as_ptr(),
+                    tensor_height
+                );
+                scope
+                    .launch_kernel(K::compute_openings_kernel(), grid_dim, block_dim, &args, 0)
+                    .unwrap();
+            }
+            openings
+        };
+        let mut openings_host = vec![];
+        for opening in openings {
+            openings_host.push(opening.into_host().await.unwrap());
         }
 
-        let host_paths = paths.into_host_blocking().unwrap();
+        openings_host
+    }
+}
 
-        Ok(MerkleTreeTcsProof { paths: host_paths })
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2BabyBear16Kernels;
+
+pub type Poseidon2BabyBear16CudaProver =
+    MerkleTreeSingleLayerProver<Poseidon2BabyBear16Kernels, Poseidon2BabyBearConfig>;
+
+unsafe impl MerkeTreeSingleLayerKernels<Poseidon2BabyBearConfig> for Poseidon2BabyBear16Kernels {
+    #[inline]
+    fn leaf_hash_kernel() -> KernelPtr {
+        unsafe { leaf_hash_poseidon_2_baby_bear_16_kernel() }
+    }
+
+    #[inline]
+    fn compress_layer_kernel() -> KernelPtr {
+        unsafe { compress_poseidon_2_baby_bear_16_kernel() }
+    }
+
+    #[inline]
+    fn compute_paths_kernel() -> KernelPtr {
+        unsafe { compute_paths_poseidon_2_baby_bear_16_kernel() }
+    }
+
+    #[inline]
+    fn compute_openings_kernel() -> KernelPtr {
+        unsafe { compute_openings_poseidon_2_baby_bear_16_kernel() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{thread_rng, Rng};
+    use slop_baby_bear::BabyBear;
+    use slop_commit::{TensorCs, TensorCsOpening};
+    use slop_merkle_tree::Poseidon2BabyBear16Prover;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_merkle_proof() {
+        let mut rng = thread_rng();
+
+        let height = 1 << 12;
+
+        let num_indices = 50;
+        let widths = [10, 20, 30, 5, 140];
+
+        let host_tensors = widths
+            .into_iter()
+            .map(|width| Tensor::<BabyBear>::rand(&mut rng, [height, width]))
+            .collect::<Message<_>>();
+        let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect::<Vec<_>>();
+
+        let host_prover = Poseidon2BabyBear16Prover::default();
+        let (host_root, _) = host_prover.commit_tensors(host_tensors.clone()).await.unwrap();
+        csl_cuda::task()
+            .await
+            .unwrap()
+            .run(|t| async move {
+                let mut tensors = vec![];
+                for host_tensor in host_tensors {
+                    let host_tensor = Tensor::<BabyBear>::clone(&host_tensor);
+                    let tensor = t.into_device(host_tensor).await.unwrap().transpose();
+                    tensors.push(tensor);
+                }
+                let tensors = Message::<Tensor<BabyBear, TaskScope>>::from(tensors);
+                let prover = Poseidon2BabyBear16CudaProver::default();
+                let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+
+                let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
+                let openings = prover.compute_openings_at_indices(tensors, &indices).await;
+
+                assert_eq!(host_root, root);
+
+                let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
+                let opening = TensorCsOpening { values: openings, proof };
+                tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
+            })
+            .await
+            .await
+            .unwrap();
     }
 }

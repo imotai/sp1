@@ -335,7 +335,9 @@ impl<T: CudaSend> OwnedReceiver<T> {
 mod tests {
     use std::time::Duration;
 
-    use crate::{DeviceBuffer, IntoHost, TaskPoolBuilder};
+    use slop_alloc::{Buffer, IntoHost};
+
+    use crate::TaskPoolBuilder;
 
     use super::*;
 
@@ -344,7 +346,7 @@ mod tests {
         let pool = TaskPoolBuilder::new().num_tasks(10).build().unwrap();
         let task_1 = pool.task().await.unwrap();
         let task_2 = pool.task().await.unwrap();
-        let chan = Channel::<DeviceBuffer<u8>>::new(10).unwrap();
+        let chan = Channel::<Buffer<u8, TaskScope>>::new(10).unwrap();
         let (tx, mut rx) = chan.split();
 
         let (handle_1, handle_2) = tokio::join!(
@@ -368,7 +370,7 @@ mod tests {
     async fn test_owned_channel() {
         let task_1 = crate::owned_task().await.unwrap();
         let task_2 = crate::owned_task().await.unwrap();
-        let chan = Arc::new(OwnedChannel::<DeviceBuffer<u8>>::new(10).unwrap());
+        let chan = Arc::new(OwnedChannel::<Buffer<u8, TaskScope>>::new(10).unwrap());
         let (tx, mut rx) = chan.split();
 
         let handle_2 = tokio::spawn(task_2.run(|t| async move {

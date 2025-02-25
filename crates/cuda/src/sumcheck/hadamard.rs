@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use csl_sys::{
     runtime::KernelPtr,
     sumcheck::{
@@ -11,26 +9,26 @@ use slop_algebra::{
     extension::BinomialExtensionField, interpolate_univariate_polynomial, ExtensionField, Field,
     UnivariatePolynomial,
 };
-use slop_alloc::HasBackend;
+use slop_alloc::IntoHost;
 use slop_baby_bear::BabyBear;
-use slop_multilinear::MleFixLastVariableBackend;
-use slop_sumcheck::{
-    ComponentPolyEvalBackend, HadamardProduct, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend,
-};
+use slop_jagged::HadamardProduct;
+use slop_multilinear::{MleFixLastVariableBackend, MleFixLastVariableInPlaceBackend};
+use slop_sumcheck::{ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend};
 use slop_tensor::{ReduceSumBackend, Tensor};
 
-use crate::{args, TaskScope};
+use crate::{args, SmallTensor, TaskScope};
 
-impl<'a, F, EF> ComponentPolyEvalBackend<EF, HadamardProduct<'a, F, EF, TaskScope>> for TaskScope
+impl<F, EF> ComponentPolyEvalBackend<HadamardProduct<F, EF, TaskScope>, EF> for TaskScope
 where
     F: Field,
     EF: ExtensionField<F>,
 {
-    fn get_component_poly_evals(poly: &HadamardProduct<'a, F, EF, TaskScope>) -> Vec<EF> {
-        let backend = poly.backend();
-        let base_eval: EF = (poly.base.guts()[[0, 0]]).copy_into_host(backend).into();
-        let ext_eval: EF = (poly.ext.guts()[[0, 0]]).copy_into_host(backend);
-        vec![ext_eval, base_eval]
+    async fn get_component_poly_evals(poly: &HadamardProduct<F, EF, TaskScope>) -> Vec<EF> {
+        let base_eval = unsafe { SmallTensor::new(poly.base.first_component_mle().guts()) };
+        let base_eval = EF::from_base(base_eval.into_host().await.unwrap().as_slice()[0]);
+        let ext_eval = unsafe { SmallTensor::new(poly.ext.first_component_mle().guts()) };
+        let ext_eval = ext_eval.into_host().await.unwrap().as_slice()[0];
+        vec![base_eval, ext_eval]
     }
 }
 
@@ -39,7 +37,7 @@ pub unsafe trait HadamardUnivariatePolyEvalKernel<F, EF> {
     fn hadamard_sum_as_poly_kernel() -> KernelPtr;
 }
 
-fn sum_as_poly_in_last_variable<F, EF>(
+async fn sum_as_poly_in_last_variable<F, EF>(
     poly: &HadamardProduct<F, EF, TaskScope>,
     claim: EF,
 ) -> UnivariatePolynomial<EF>
@@ -50,27 +48,31 @@ where
         + HadamardUnivariatePolyEvalKernel<F, EF>
         + ReduceSumBackend<EF>,
 {
-    let num_variables = poly.base.num_variables();
-    let num_polys = poly.base.num_polynomials();
-    assert_eq!(num_polys, 1);
-    let scope = poly.backend();
-    // let mut univariate_evals =
-    //     Tensor::<EF, TaskScope>::with_sizes_in([2, 1 << (num_variables - 1)], scope.clone());
+    assert!(poly.base.num_components() == 1);
+    assert!(poly.ext.num_components() == 1);
 
-    const BLOCK_SIZE: usize = 1024;
-    const STRIDE: usize = 32;
+    let poly_base = poly.base.first_component_mle();
+    let poly_ext = poly.ext.first_component_mle();
+
+    let num_variables = poly_base.num_variables();
+    let num_polys = poly_base.num_polynomials();
+    assert_eq!(num_polys, 1);
+    let scope = poly_base.backend();
+
+    const BLOCK_SIZE: usize = 512;
+    const STRIDE: usize = 128;
 
     let grid_dim = (1usize << (num_variables - 1)).div_ceil(BLOCK_SIZE).div_ceil(STRIDE);
     let mut univariate_evals = Tensor::<EF, TaskScope>::with_sizes_in([2, grid_dim], scope.clone());
     let num_tiles = BLOCK_SIZE.checked_div(32).unwrap_or(1);
     let shared_mem = num_tiles * std::mem::size_of::<EF>();
-    let args = args!(
-        univariate_evals.as_mut_ptr(),
-        poly.base.as_ref().guts().as_ptr(),
-        poly.ext.as_ref().guts().as_ptr(),
-        num_variables - 1
-    );
     unsafe {
+        let args = args!(
+            univariate_evals.as_mut_ptr(),
+            poly_base.guts().as_ptr(),
+            poly_ext.guts().as_ptr(),
+            num_variables - 1
+        );
         univariate_evals.assume_init();
         scope
             .launch_kernel(
@@ -83,8 +85,8 @@ where
             .unwrap();
     }
 
-    let univariate_evals = univariate_evals.sum(1);
-    let host_evals = univariate_evals.into_buffer().copy_into_host_vec();
+    let univariate_evals = univariate_evals.sum(1).await;
+    let host_evals = unsafe { univariate_evals.into_buffer().copy_into_host_vec() };
 
     let [eval_zero, eval_half] = host_evals.try_into().unwrap();
     let eval_one = claim - eval_zero;
@@ -99,59 +101,62 @@ where
     )
 }
 
-impl<'a, F> SumcheckPolyBackend<F, HadamardProduct<'a, F, F, TaskScope>> for TaskScope
+impl<F> SumcheckPolyBackend<HadamardProduct<F, F, TaskScope>, F> for TaskScope
 where
     F: Field,
     TaskScope: MleFixLastVariableBackend<F, F>
         + HadamardUnivariatePolyEvalKernel<F, F>
         + ReduceSumBackend<F>,
 {
-    fn fix_last_variable(
-        poly: HadamardProduct<'a, F, F, Self>,
+    async fn fix_last_variable(
+        poly: HadamardProduct<F, F, Self>,
         alpha: F,
-    ) -> HadamardProduct<'static, F, F, TaskScope> {
-        let base = poly.base.as_ref().fix_last_variable(alpha);
-        let ext = poly.ext.as_ref().fix_last_variable(alpha);
-        HadamardProduct { base: Cow::Owned(base), ext: Cow::Owned(ext) }
+    ) -> HadamardProduct<F, F, TaskScope> {
+        let ext = poly.ext.fix_last_variable(alpha).await;
+        let base = poly.base.fix_last_variable(alpha).await;
+        HadamardProduct { base, ext }
     }
 
     #[inline]
-    fn sum_as_poly_in_last_variable(
-        poly: &HadamardProduct<'a, F, F, Self>,
+    async fn sum_as_poly_in_last_variable(
+        poly: &HadamardProduct<F, F, Self>,
         claim: Option<F>,
     ) -> UnivariatePolynomial<F> {
-        sum_as_poly_in_last_variable(poly, claim.unwrap())
+        sum_as_poly_in_last_variable(poly, claim.unwrap()).await
     }
 }
 
-impl<F, EF> SumCheckPolyFirstRoundBackend<EF, HadamardProduct<'static, F, EF, TaskScope>>
-    for TaskScope
+impl<F, EF> SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, TaskScope>, EF> for TaskScope
 where
     F: Field,
     EF: ExtensionField<F>,
     TaskScope: MleFixLastVariableBackend<F, EF>
         + MleFixLastVariableBackend<EF, EF>
+        + MleFixLastVariableInPlaceBackend<EF>
         + HadamardUnivariatePolyEvalKernel<F, EF>
         + HadamardUnivariatePolyEvalKernel<EF, EF>
         + ReduceSumBackend<EF>,
 {
-    fn fix_t_variables(
-        poly: HadamardProduct<'static, F, EF, TaskScope>,
+    async fn fix_t_variables(
+        poly: HadamardProduct<F, EF, TaskScope>,
         alpha: EF,
         _t: usize,
     ) -> impl slop_sumcheck::SumcheckPoly<EF> {
-        let base = poly.base.as_ref().fix_last_variable(alpha);
-        let ext = poly.ext.as_ref().fix_last_variable(alpha);
-        HadamardProduct { base: Cow::Owned(base), ext: Cow::Owned(ext) }
+        let base = poly.base.fix_last_variable(alpha).await;
+        let ext = poly.ext.fix_last_variable(alpha).await;
+        // let HadamardProduct { base, ext } = poly;
+        // let base = base.fix_last_variable(alpha).await;
+        // let ext = ext.fix_last_variable_in_place(alpha).await;
+        HadamardProduct { base, ext }
     }
 
-    fn sum_as_poly_in_last_t_variables(
-        poly: &HadamardProduct<'static, F, EF, TaskScope>,
+    async fn sum_as_poly_in_last_t_variables(
+        poly: &HadamardProduct<F, EF, TaskScope>,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {
         assert_eq!(t, 1);
-        sum_as_poly_in_last_variable(poly, claim.unwrap())
+        sum_as_poly_in_last_variable(poly, claim.unwrap()).await
     }
 }
 
@@ -179,10 +184,12 @@ unsafe impl
 mod tests {
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::{BabyBear, Challenger, DiffusionMatrixBabyBear, Perm};
+    use slop_alloc::ToHost;
+    use slop_baby_bear::BabyBear;
+    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_challenger::CanSample;
+    use slop_jagged::LongMle;
     use slop_multilinear::Mle;
-    use slop_poseidon2::Poseidon2ExternalMatrixGeneral;
     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
 
     use super::*;
@@ -191,80 +198,92 @@ mod tests {
     async fn test_hadamard_product_sumcheck() {
         let mut rng = thread_rng();
 
+        type C = Poseidon2BabyBear16BasefoldConfig;
+
         type F = BabyBear;
         type EF = BinomialExtensionField<BabyBear, 4>;
 
-        let perm = Perm::new_from_rng_128(
-            Poseidon2ExternalMatrixGeneral,
-            DiffusionMatrixBabyBear,
-            &mut thread_rng(),
-        );
-
-        for num_variables in [19, 21, 24, 27, 29] {
+        for num_variables in [19, 21, 24, 27, 28] {
             let base = Mle::<F>::rand(&mut rng, 1, num_variables);
             let ext = Mle::<EF>::rand(&mut rng, 1, num_variables);
 
-            let perm = &perm;
             crate::task()
                 .await
                 .unwrap()
                 .run(|t| async move {
-                    let base_guts_device = t
-                        .into_device(base.into_guts())
-                        .await
-                        .unwrap()
-                        .reshape([1, 1 << num_variables]);
-                    let ext_guts_device = t
-                        .into_device(ext.into_guts())
-                        .await
-                        .unwrap()
-                        .reshape([1, 1 << num_variables]);
-                    let base_device = Mle::new(base_guts_device);
-                    let ext_device = Mle::new(ext_guts_device);
+                    let base = t.into_device(base).await.unwrap();
+                    let ext = t.into_device(ext).await.unwrap();
+                    let base = LongMle::from_components(vec![base], num_variables);
+                    let ext = LongMle::from_components(vec![ext], num_variables);
 
-                    let product_device = HadamardProduct::<F, EF, TaskScope> {
-                        base: Cow::Owned(base_device),
-                        ext: Cow::Owned(ext_device),
-                    };
+                    let product = HadamardProduct { base, ext };
+
+                    let verifier = BasefoldVerifier::<C>::new(1);
+
+                    let mut challenger = verifier.challenger();
 
                     t.synchronize().await.unwrap();
                     let time = tokio::time::Instant::now();
-                    let claim = product_device
+                    let claim = product
                         .base
-                        .as_ref()
+                        .first_component_mle()
                         .guts()
-                        .dot(product_device.ext.as_ref().guts(), 1);
-                    let claim = claim[[0]].copy_into_host(&t);
-                    t.synchronize().await.unwrap();
-                    println!("Time for getting claim for {num_variables}: {:?}", time.elapsed());
+                        .dot(product.ext.first_component_mle().guts(), 1)
+                        .await;
 
-                    let mut challenger = Challenger::new(perm.clone());
+                    let claim = claim.into_host().await.unwrap().as_slice()[0];
+                    t.synchronize().await.unwrap();
+                    println!("time for getting claim for {num_variables}: {:?}", time.elapsed());
+
                     let lambda: EF = challenger.sample();
+
                     t.synchronize().await.unwrap();
                     let time = tokio::time::Instant::now();
-                    let (proof, _eval_claims) = reduce_sumcheck_to_evaluation::<F, EF, _>(
-                        vec![product_device],
+                    let (proof, mut eval_claims) = reduce_sumcheck_to_evaluation::<F, EF, _>(
+                        vec![product.clone()],
                         &mut challenger,
                         vec![claim],
                         1,
                         lambda,
-                    );
+                    )
+                    .await;
                     t.synchronize().await.unwrap();
                     println!(
-                        "Time for partial sumcheck proof for {num_variables}: {:?}",
+                        "time for partial sumcheck proof for {num_variables}: {:?}",
                         time.elapsed()
                     );
 
-                    // let point = &proof.point_and_eval.0;
-                    // let [exp_eval_ext, exp_eval_base] = eval_claims.pop().unwrap().try_into().unwrap();
+                    let point = &proof.point_and_eval.0;
+                    let [exp_eval_base, exp_eval_ext] =
+                        eval_claims.pop().unwrap().try_into().unwrap();
 
-                    // let eval_ext = ext.eval_at(point).to_vec().pop().unwrap();
-                    // let eval_base = base.eval_at(point).to_vec().pop().unwrap();
+                    let point = t.to_device(point).await.unwrap();
 
-                    // assert_eq!(eval_ext, exp_eval_ext);
-                    // assert_eq!(eval_base, exp_eval_base);
+                    let eval_ext = product
+                        .ext
+                        .first_component_mle()
+                        .eval_at(&point)
+                        .await
+                        .to_host()
+                        .await
+                        .unwrap()[0];
+                    let eval_base = product
+                        .base
+                        .first_component_mle()
+                        .eval_at(&point)
+                        .await
+                        .to_host()
+                        .await
+                        .unwrap()[0];
 
-                    let mut challenger = Challenger::new(perm.clone());
+                    assert_eq!(eval_ext, exp_eval_ext);
+                    assert_eq!(eval_base, exp_eval_base);
+
+                    // Check that the final claimed evaluation is the product of the two evaluations
+                    let claimed_eval = proof.point_and_eval.1;
+                    assert_eq!(claimed_eval, exp_eval_ext * exp_eval_base);
+
+                    let mut challenger = verifier.challenger();
                     let _lambda: EF = challenger.sample();
                     assert!(partially_verify_sumcheck_proof::<F, EF, _>(&proof, &mut challenger)
                         .is_ok());

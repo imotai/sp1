@@ -1,5 +1,8 @@
 use csl_sys::{
     reduce::{
+        dot_along_short_dimension_kernel_baby_bear_base_base,
+        dot_along_short_dimension_kernel_baby_bear_base_extension,
+        dot_along_short_dimension_kernel_baby_bear_extension_extension,
         partial_dot_baby_bear_base_extension_kernel, partial_dot_baby_bear_extension_kernel,
         partial_dot_baby_bear_kernel,
     },
@@ -13,91 +16,122 @@ use crate::{args, reduce::partial_sum_reduction_into, DeviceCopy, TaskScope};
 
 use super::reduce::DeviceSumKernel;
 
-///
 /// # Safety
+///
 pub unsafe trait DotKernel<T: DeviceCopy, U: DeviceCopy>: DeviceSumKernel<U> {
-    fn partial_dot_kernel() -> KernelPtr;
+    fn partial_dot_kernel_last_dim() -> KernelPtr;
+
+    fn dot_along_short_dimension_kernel() -> KernelPtr;
 }
 
 impl<T: DeviceCopy, U: DeviceCopy> DotBackend<T, U> for TaskScope
 where
     TaskScope: DotKernel<T, U>,
 {
-    fn dot_along_dim_into(
-        src: &Tensor<T, Self>,
-        scalars: &Tensor<U, Self>,
-        dst: &mut Tensor<U, Self>,
-        dim: usize,
-    ) {
-        assert!(
-            dim == src.sizes().len() - 1,
-            "only dot product over the last dimension is supported"
-        );
-        for scalar_size in scalars.sizes().iter().rev().skip(1) {
-            assert_eq!(*scalar_size, 1, "The scalar tensor must be a 1D tensor");
-        }
-
-        let height = src.sizes()[dim];
-        let width = src.total_len() / height;
-
-        let null_ptr = std::ptr::null::<std::ffi::c_void>();
-        let partial_args = args!(null_ptr, src.as_ptr(), scalars.as_ptr(), width, height);
-        const BLOCK_SIZE: usize = 256;
-        const INTIAL_STRIDE: usize = 4;
-        unsafe {
-            partial_sum_reduction_into::<U, BLOCK_SIZE, INTIAL_STRIDE, 5>(
-                dst.as_view_mut(),
-                TaskScope::partial_dot_kernel(),
-                partial_args,
-                0,
-                src.shape(),
-                dim,
-                src.backend(),
-            );
-        }
-    }
-
-    fn dot_along_dim(
+    async fn dot_along_dim(
         src: &Tensor<T, Self>,
         scalars: &Tensor<U, Self>,
         dim: usize,
     ) -> Tensor<U, Self> {
         let mut sizes = src.sizes().to_vec();
         sizes.remove(dim);
-        let mut dst = Tensor::zeros_in(sizes, src.backend().clone());
-        Self::dot_along_dim_into(src, scalars, &mut dst, dim);
+        let mut dst = Tensor::with_sizes_in(sizes, src.backend().clone());
+        assert_eq!(src.sizes().len(), 2, "Dot product only supported for 2D tensors",);
+        let max_scalar_dim = *scalars.sizes().iter().max().unwrap();
+        assert_eq!(max_scalar_dim, scalars.total_len(), "The scalar tensor must be a 1D tensor");
+        match dim {
+            dim if dim == src.sizes().len() - 1 => {
+                let height = src.sizes()[dim];
+                let width = src.total_len() / height;
+
+                let null_ptr = std::ptr::null::<std::ffi::c_void>();
+                let partial_args = args!(null_ptr, src.as_ptr(), scalars.as_ptr(), width, height);
+                const BLOCK_SIZE: usize = 256;
+                const INTIAL_STRIDE: usize = 4;
+                dst.storage.write_bytes(0, dst.total_len() * std::mem::size_of::<U>()).unwrap();
+                unsafe {
+                    partial_sum_reduction_into::<U, BLOCK_SIZE, INTIAL_STRIDE, 5>(
+                        dst.as_view_mut(),
+                        TaskScope::partial_dot_kernel_last_dim(),
+                        partial_args,
+                        0,
+                        src.shape(),
+                        dim,
+                        src.backend(),
+                    );
+                }
+            }
+            0 => {
+                let height = src.sizes()[1];
+                let width = src.total_len() / height;
+
+                const BLOCK_SIZE: usize = 256;
+                let args = args!(dst.as_mut_ptr(), src.as_ptr(), scalars.as_ptr(), width, height);
+                let grid_dim = height.div_ceil(BLOCK_SIZE);
+                unsafe {
+                    dst.assume_init();
+                    src.backend()
+                        .launch_kernel(
+                            Self::dot_along_short_dimension_kernel(),
+                            grid_dim,
+                            BLOCK_SIZE,
+                            &args,
+                            0,
+                        )
+                        .unwrap();
+                }
+            }
+            _ => panic!(
+                "Dot product is not supported along dimension {} for tensor of sizes {:?}",
+                dim,
+                src.sizes()
+            ),
+        }
         dst
     }
 }
 
 unsafe impl DotKernel<BabyBear, BabyBear> for TaskScope {
-    fn partial_dot_kernel() -> KernelPtr {
+    fn partial_dot_kernel_last_dim() -> KernelPtr {
         unsafe { partial_dot_baby_bear_kernel() }
+    }
+
+    fn dot_along_short_dimension_kernel() -> KernelPtr {
+        unsafe { dot_along_short_dimension_kernel_baby_bear_base_base() }
     }
 }
 
 unsafe impl DotKernel<BinomialExtensionField<BabyBear, 4>, BinomialExtensionField<BabyBear, 4>>
     for TaskScope
 {
-    fn partial_dot_kernel() -> KernelPtr {
+    fn partial_dot_kernel_last_dim() -> KernelPtr {
         unsafe { partial_dot_baby_bear_extension_kernel() }
+    }
+
+    fn dot_along_short_dimension_kernel() -> KernelPtr {
+        unsafe { dot_along_short_dimension_kernel_baby_bear_extension_extension() }
     }
 }
 
 unsafe impl DotKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
-    fn partial_dot_kernel() -> KernelPtr {
+    fn partial_dot_kernel_last_dim() -> KernelPtr {
         unsafe { partial_dot_baby_bear_base_extension_kernel() }
+    }
+
+    fn dot_along_short_dimension_kernel() -> KernelPtr {
+        unsafe { dot_along_short_dimension_kernel_baby_bear_base_extension() }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use slop_algebra::extension::BinomialExtensionField;
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_alloc::IntoHost;
     use slop_baby_bear::BabyBear;
     use slop_tensor::Tensor;
 
-    use crate::IntoHost;
+    type BabyBearExt = BinomialExtensionField<BabyBear, 4>;
 
     #[tokio::test]
     async fn test_baby_bear_dot() {
@@ -116,7 +150,7 @@ mod tests {
                 .run(|t| async move {
                     let device_tensor = t.into_device(tensor_sent).await.unwrap();
                     let device_scalars = t.into_device(scalars_sent).await.unwrap();
-                    let inner_product = device_tensor.dot(&device_scalars, 1);
+                    let inner_product = device_tensor.dot(&device_scalars, 1).await;
                     inner_product.into_host().await.unwrap()
                 })
                 .await
@@ -158,7 +192,7 @@ mod tests {
                 .run(|t| async move {
                     let device_tensor = t.into_device(tensor_sent).await.unwrap();
                     let device_scalars = t.into_device(scalars_sent).await.unwrap();
-                    let inner_product = device_tensor.dot(&device_scalars, 1);
+                    let inner_product = device_tensor.dot(&device_scalars, 1).await;
                     inner_product.into_host().await.unwrap()
                 })
                 .await
@@ -203,7 +237,7 @@ mod tests {
                         let device_scalars = t.into_device(scalars_sent).await.unwrap();
                         t.synchronize_blocking().unwrap();
                         let time = std::time::Instant::now();
-                        let inner_product = device_tensor.dot(&device_scalars, 1);
+                        let inner_product = device_tensor.dot(&device_scalars, 1).await;
                         t.synchronize_blocking().unwrap();
                         println!(
                             "Dot time for size {}, num_summands: {}, time: {:?}",
@@ -231,6 +265,111 @@ mod tests {
                     assert_eq!(expected_inner_product, *inner_product[[i]]);
                 }
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dot_along_dim_0_base_base() {
+        let mut rng = rand::thread_rng();
+
+        let width = 10;
+        let height = 1500;
+
+        let host_tensor = Tensor::<BabyBear>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<BabyBear>::rand(&mut rng, [width]);
+
+        let tensor = host_tensor.clone();
+        let scalars = host_scalars.clone();
+        let dot = crate::task()
+            .await
+            .unwrap()
+            .run(|t| async move {
+                let tensor = t.into_device(tensor).await.unwrap();
+                let scalars = t.into_device(scalars).await.unwrap();
+                let dot = tensor.dot(&scalars, 0).await;
+                dot.into_host().await.unwrap()
+            })
+            .await
+            .await
+            .unwrap();
+
+        assert_eq!(dot.sizes(), [height]);
+        for i in 0..height {
+            let mut dot_product = BabyBear::zero();
+            for j in 0..width {
+                dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
+            }
+            assert_eq!(*dot[[i]], dot_product, "Dot product at index {} is incorrect", i);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dot_along_dim_0_base_ext() {
+        let mut rng = rand::thread_rng();
+
+        let width = 10;
+        let height = 1500;
+
+        let host_tensor = Tensor::<BabyBear>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<BabyBearExt>::rand(&mut rng, [width]);
+
+        let tensor = host_tensor.clone();
+        let scalars = host_scalars.clone();
+        let dot = crate::task()
+            .await
+            .unwrap()
+            .run(|t| async move {
+                let tensor = t.into_device(tensor).await.unwrap();
+                let scalars = t.into_device(scalars).await.unwrap();
+                let dot = tensor.dot(&scalars, 0).await;
+                dot.into_host().await.unwrap()
+            })
+            .await
+            .await
+            .unwrap();
+
+        assert_eq!(dot.sizes(), [height]);
+        for i in 0..height {
+            let mut dot_product = BabyBearExt::zero();
+            for j in 0..width {
+                dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
+            }
+            assert_eq!(*dot[[i]], dot_product, "Dot product at index {} is incorrect", i);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dot_along_dim_0_ext_ext() {
+        let mut rng = rand::thread_rng();
+
+        let width = 10;
+        let height = 1500;
+
+        let host_tensor = Tensor::<BabyBearExt>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<BabyBearExt>::rand(&mut rng, [width]);
+
+        let tensor = host_tensor.clone();
+        let scalars = host_scalars.clone();
+        let dot = crate::task()
+            .await
+            .unwrap()
+            .run(|t| async move {
+                let tensor = t.into_device(tensor).await.unwrap();
+                let scalars = t.into_device(scalars).await.unwrap();
+                let dot = tensor.dot(&scalars, 0).await;
+                dot.into_host().await.unwrap()
+            })
+            .await
+            .await
+            .unwrap();
+
+        assert_eq!(dot.sizes(), [height]);
+        for i in 0..height {
+            let mut dot_product = BabyBearExt::zero();
+            for j in 0..width {
+                dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
+            }
+            assert_eq!(*dot[[i]], dot_product, "Dot product at index {} is incorrect", i);
         }
     }
 }

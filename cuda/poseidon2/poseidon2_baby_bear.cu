@@ -8,9 +8,10 @@ using HasherState_t = poseidon2::BabyBearHasherState;
 
 __global__ void
 leafHashPoseidon2BabyBear16(
-    bb31_t *__restrict__ in,
+    bb31_t **inputs,
     bb31_t (*digests)[HashParams::DIGEST_WIDTH],
-    size_t width,
+    size_t *widths,
+    size_t num_inputs,
     size_t tree_height)
 {
     poseidon2::BabyBearHasher hasher;
@@ -19,7 +20,10 @@ leafHashPoseidon2BabyBear16(
     size_t matrixHeight = 1 << tree_height;
     for (size_t idx = (blockIdx.x * blockDim.x) + threadIdx.x; idx < matrixHeight; idx += blockDim.x * gridDim.x)
     {
-        state.absorbRow(hasher, in, idx, width, matrixHeight);
+        for (size_t j = 0; j < num_inputs; j++)
+        {
+            state.absorbRow(hasher, inputs[j], idx, widths[j], matrixHeight);
+        }
         size_t digestIdx = idx + (matrixHeight - 1);
         state.finalize(hasher, digests[digestIdx]);
     }
@@ -83,19 +87,26 @@ extern "C" void *compute_paths_poseidon_2_baby_bear_16_kernel()
 }
 
 __global__ void computeOpeningsBabyBear16(
-    bb31_t *__restrict__ in,
-    bb31_t *__restrict__ out,
+    bb31_t **__restrict__ inputs,
+    bb31_t **__restrict__ outputs,
     size_t *indices,
     size_t numIndices,
-    size_t batchSize,
+    size_t numInputs,
+    size_t *batchSizes,
     size_t matrixHeight)
 {
-    for (size_t i = (blockIdx.x * blockDim.x) + threadIdx.x; i < numIndices; i += blockDim.x * gridDim.x)
+    for (size_t batchIdx = (blockIdx.z * blockDim.z) + threadIdx.z; batchIdx < numInputs; batchIdx += blockDim.z * gridDim.z)
     {
-        size_t rowIdx = indices[i];
-        for (size_t j = (blockIdx.y * blockDim.y) + threadIdx.y; j < batchSize; j += blockDim.y * gridDim.y)
+        bb31_t *in = inputs[batchIdx];
+        bb31_t *out = outputs[batchIdx];
+        size_t batchSize = batchSizes[batchIdx];
+        for (size_t i = (blockIdx.x * blockDim.x) + threadIdx.x; i < numIndices; i += blockDim.x * gridDim.x)
         {
-            out[i * batchSize + j] = in[j * matrixHeight + rowIdx];
+            size_t rowIdx = indices[i];
+            for (size_t j = (blockIdx.y * blockDim.y) + threadIdx.y; j < batchSize; j += blockDim.y * gridDim.y)
+            {
+                out[i * batchSize + j] = in[j * matrixHeight + rowIdx];
+            }
         }
     }
 }

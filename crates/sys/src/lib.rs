@@ -1,4 +1,5 @@
 pub mod algebra;
+pub mod basefold;
 pub mod dft;
 pub mod jagged;
 pub mod mle;

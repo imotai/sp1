@@ -117,3 +117,40 @@ extern "C" void *partial_dot_baby_bear_base_extension_kernel()
 {
     return (void *)partialBlockDotKernel<bb31_extension_t, bb31_t>;
 }
+
+template <typename F, typename EF>
+__global__ void dotAlongShortDimensionKernel(
+    EF *__restrict__ result,
+    F *__restrict__ A,
+    EF *B,
+    size_t width,
+    size_t height)
+{
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < height;
+         i += blockDim.x * gridDim.x)
+    {
+        EF acc = EF::zero();
+        for (size_t j = 0; j < width; j++)
+        {
+            EF b = EF::load(B, j);
+            F a = F::load(A, j * height + i);
+            acc += b * a;
+        }
+        EF::store(result, i, acc);
+    }
+}
+
+extern "C" void *dot_along_short_dimension_kernel_baby_bear_base_base()
+{
+    return (void *)dotAlongShortDimensionKernel<bb31_t, bb31_t>;
+}
+
+extern "C" void *dot_along_short_dimension_kernel_baby_bear_base_extension()
+{
+    return (void *)dotAlongShortDimensionKernel<bb31_t, bb31_extension_t>;
+}
+
+extern "C" void *dot_along_short_dimension_kernel_baby_bear_extension_extension()
+{
+    return (void *)dotAlongShortDimensionKernel<bb31_extension_t, bb31_extension_t>;
+}

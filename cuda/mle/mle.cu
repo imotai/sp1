@@ -175,3 +175,70 @@ extern "C" void *mle_fix_last_variable_baby_bear_ext_ext()
 {
     return (void *)fixLastVariable<bb31_extension_t, bb31_extension_t>;
 }
+
+template <typename F>
+__global__ void fixLastVariableInPlace(
+    F *inout,
+    F alpha,
+    size_t outputHeight,
+    size_t width)
+{
+    size_t inputHeight = outputHeight << 1;
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
+    {
+        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
+        {
+            F zeroValue = F::load(inout, j * inputHeight + (i << 1));
+            F oneValue = F::load(inout, j * inputHeight + (i << 1) + 1);
+            // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
+            F value = alpha * (oneValue - zeroValue) + zeroValue;
+            F::store(inout, j * outputHeight + i, value);
+        }
+    }
+}
+
+extern "C" void *mle_fix_last_variable_in_place_baby_bear_base()
+{
+    return (void *)fixLastVariableInPlace<bb31_t>;
+}
+
+extern "C" void *mle_fix_last_variable_in_place_baby_bear_extension()
+{
+    return (void *)fixLastVariableInPlace<bb31_extension_t>;
+}
+
+template <typename F, typename EF>
+__global__ void foldMle(
+    const F *input,
+    EF *__restrict__ output,
+    EF beta,
+    size_t outputHeight,
+    size_t width)
+{
+    size_t inputHeight = outputHeight << 1;
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
+    {
+        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
+        {
+            F evenValue = F::load(input, j * inputHeight + (i << 1));
+            F oddValue = F::load(input, j * inputHeight + (i << 1) + 1);
+            EF value = beta * oddValue + evenValue;
+            EF::store(output, j * outputHeight + i, value);
+        }
+    }
+}
+
+extern "C" void *mle_fold_baby_bear_base_base()
+{
+    return (void *)foldMle<bb31_t, bb31_t>;
+}
+
+extern "C" void *mle_fold_baby_bear_base_extension()
+{
+    return (void *)foldMle<bb31_t, bb31_extension_t>;
+}
+
+extern "C" void *mle_fold_baby_bear_ext_ext()
+{
+    return (void *)foldMle<bb31_extension_t, bb31_extension_t>;
+}

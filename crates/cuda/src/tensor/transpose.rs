@@ -24,13 +24,13 @@ where
     fn transpose_tensor_into(src: &Tensor<T, Self>, mut dst: TensorViewMut<T, Self>) {
         let num_dims = src.sizes().len();
 
-        let dim_x = src.sizes()[num_dims - 1];
-        let dim_y = src.sizes()[num_dims - 2];
+        let dim_x = src.sizes()[num_dims - 2];
+        let dim_y = src.sizes()[num_dims - 1];
         let dim_z: usize = src.sizes().iter().take(num_dims - 2).product();
-        assert_eq!(dim_x, dst.sizes()[num_dims - 2]);
-        assert_eq!(dim_y, dst.sizes()[num_dims - 1]);
+        assert_eq!(dim_x, dst.sizes()[num_dims - 1]);
+        assert_eq!(dim_y, dst.sizes()[num_dims - 2]);
 
-        let block_dim: Dim3 = (256u32, 256u32, 32u32).into();
+        let block_dim: Dim3 = (32u32, 32u32, 1u32).into();
         let grid_dim: Dim3 = (
             dim_x.div_ceil(block_dim.x as usize),
             dim_y.div_ceil(block_dim.y as usize),
@@ -40,7 +40,7 @@ where
         let args = args!(src.as_ptr(), dst.as_mut_ptr(), dim_x, dim_y, dim_z);
         unsafe {
             src.backend()
-                .launch_kernel(Self::transpose_kernel(), block_dim, grid_dim, &args, 0)
+                .launch_kernel(Self::transpose_kernel(), grid_dim, block_dim, &args, 0)
                 .unwrap();
         }
     }
@@ -78,15 +78,25 @@ unsafe impl DeviceTransposeKernel<[BabyBear; 8]> for TaskScope {
 
 #[cfg(test)]
 mod tests {
-    use crate::IntoHost;
+
+    use slop_alloc::IntoHost;
 
     use super::*;
 
     #[tokio::test]
-    async fn test_transpose() {
+    async fn test_tensor_transpose() {
         let mut rng = rand::thread_rng();
 
-        for (width, height) in [(1024, 1024), (1024, 2048), (2048, 1024), (2048, 2048)] {
+        for (height, width) in [
+            (1024, 1024),
+            (1024, 6),
+            (6, 1024),
+            (1024, 6),
+            (1024, 2048),
+            (2048, 1024),
+            (2048, 2048),
+            (1 << 22, 100),
+        ] {
             let tensor = Tensor::<u32>::rand(&mut rng, [height, width]);
             let transposed_expected = tensor.transpose();
             let transposed = crate::task()

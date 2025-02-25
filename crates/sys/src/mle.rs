@@ -7,4 +7,11 @@ extern "C" {
     pub fn mle_fix_last_variable_baby_bear_base_base() -> KernelPtr;
     pub fn mle_fix_last_variable_baby_bear_base_extension() -> KernelPtr;
     pub fn mle_fix_last_variable_baby_bear_ext_ext() -> KernelPtr;
+
+    pub fn mle_fold_baby_bear_base_base() -> KernelPtr;
+    pub fn mle_fold_baby_bear_base_extension() -> KernelPtr;
+    pub fn mle_fold_baby_bear_ext_ext() -> KernelPtr;
+
+    pub fn mle_fix_last_variable_in_place_baby_bear_base() -> KernelPtr;
+    pub fn mle_fix_last_variable_in_place_baby_bear_extension() -> KernelPtr;
 }
