@@ -12,7 +12,6 @@ pub use slop_fri::fold_even_odd as host_fold_even_odd;
 use slop_futures::OwnedBorrow;
 use slop_multilinear::{Mle, MleEval, Point};
 use slop_tensor::Tensor;
-use tokio::runtime::Handle;
 
 use crate::ReedSolomonEncoder;
 
@@ -107,10 +106,10 @@ impl<
         Code: OwnedBorrow<RsCodeWord<F>>,
     {
         let encoder = encoder.clone();
+        let num_variables = mles.first().unwrap().as_ref().borrow().num_variables() as usize;
 
         let (tx, rx) = tokio::sync::oneshot::channel();
 
-        let handle = Handle::current();
         rayon::spawn(move || {
             // Compute all the batch challenge powers.
             let total_num_polynomials =
@@ -137,14 +136,6 @@ impl<
                         *batch += batch_row;
                     });
             }
-            let batch_mle_f =
-                Buffer::from(batch_mle.clone().into_guts().storage.as_slice().to_vec())
-                    .flatten_to_base::<F>();
-            let batch_mle_f = Tensor::from(batch_mle_f).reshape([1 << num_variables, EF::D]);
-            let batch_codeword = handle
-                .block_on(encoder.encode_batch(Message::from(Mle::new(batch_mle_f))))
-                .unwrap();
-            let batch_codeword = (*batch_codeword[0]).clone();
 
             let batched_eval_claim = evaluation_claims
                 .iter()
@@ -154,9 +145,19 @@ impl<
                 .zip(batching_challenge.powers())
                 .map(|(eval, batch_power)| eval * batch_power)
                 .sum::<EF>();
-            tx.send((batch_mle, batch_codeword, batched_eval_claim)).unwrap();
+            tx.send((batch_mle, batched_eval_claim)).unwrap();
         });
-        rx.await.unwrap()
+
+        let (batch_mle, batched_eval_claim) = rx.await.unwrap();
+
+        let batch_mle_f = Buffer::from(batch_mle.clone().into_guts().storage.as_slice().to_vec())
+            .flatten_to_base::<F>();
+        let batch_mle_f = Tensor::from(batch_mle_f).reshape([1 << num_variables, EF::D]);
+        let batch_codeword =
+            encoder.encode_batch(Message::from(Mle::new(batch_mle_f))).await.unwrap();
+        let batch_codeword = (*batch_codeword[0]).clone();
+
+        (batch_mle, batch_codeword, batched_eval_claim)
     }
 }
 
