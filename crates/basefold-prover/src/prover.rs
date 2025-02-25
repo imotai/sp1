@@ -57,13 +57,14 @@ pub trait BasefoldProverComponents: Clone + Send + Sync + 'static + Debug {
     >;
 
     /// The encoder for encoding the Mle guts into codewords.
-    type Encoder: ReedSolomonEncoder<Self::F, Self::A> + Send + Sync + 'static;
+    type Encoder: ReedSolomonEncoder<Self::F, Self::A> + Clone + Send + Sync + 'static;
     /// The prover for the FRI proximity test.
     type FriProver: FriIoppProver<
             Self::F,
             Self::EF,
             Self::Tcs,
             Self::Challenger,
+            Self::Encoder,
             Self::A,
             Encoder = Self::Encoder,
             TcsProver = Self::TcsProver,
@@ -101,7 +102,7 @@ pub enum BasefoldProverError<C: BasefoldProverComponents> {
     #[error("Commit phase error: {0}")]
     #[allow(clippy::type_complexity)]
     CommitPhaseError(
-        <C::FriProver as FriIoppProver<C::F, C::EF, C::Tcs, C::Challenger, C::A>>::FriProverError,
+        <C::FriProver as FriIoppProver<C::F, C::EF, C::Tcs, C::Challenger, C::Encoder, C::A>>::FriProverError,
     ),
 }
 
@@ -236,7 +237,7 @@ impl<C: BasefoldProverComponents> BasefoldProver<C> {
         // Batch the mles and codewords.
         let (mle_batch, codeword_batch, batched_eval_claim) = self
             .fri_prover
-            .batch(batching_challenge, mles, encoded_messages, evaluation_claims)
+            .batch(batching_challenge, mles, encoded_messages, evaluation_claims, &self.encoder)
             .await;
         // From this point on, run the BaseFold protocol on the random linear combination codeword,
         // the random linear combination multilinear, and the random linear combination of the
