@@ -32,6 +32,9 @@ members = [
     "crates/alloc",
     "crates/slop",
     "crates/jagged",
+    "crates/stacked",
+    "crates/pcs-bench",
+    "crates/futures",
 ]
 resolver = "2"
 
@@ -87,6 +90,9 @@ slop-alloc = { path = "crates/alloc" }
 slop = { path = "crates/slop" }
 slop-jagged = { path = "crates/jagged" }
 slop-basefold-prover = { path = "crates/basefold-prover" }
+slop-stacked = { path = "crates/stacked" }
+slop-pcs-bench = { path = "crates/pcs-bench" }
+slop-futures = { path = "crates/futures" }
 
 # For local development. 
 # p3-air = { path = "../Plonky3/air" }
@@ -126,3 +132,7 @@ rand = "0.8"
 serde = { version = "1.0.217", features = ["derive"] }
 tracing = "0.1.40"
 serde_json = "1.0"
+futures = "0.3.31"
+
+# async
+tokio = { version = "1.42.0", features = ["full"] }

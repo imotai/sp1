@@ -1,14 +1,19 @@
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::{
+    mem::ManuallyDrop,
+    ops::{Deref, DerefMut, Index, IndexMut},
+};
 
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution};
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
-use slop_alloc::{buffer, Backend, Buffer, CpuBackend, Init, Slice};
+use slop_alloc::{
+    buffer, Backend, Buffer, CanCopyFromRef, CanCopyIntoRef, CpuBackend, HasBackend, Init, Slice,
+};
 use slop_tensor::Tensor;
 
-#[derive(Debug, Serialize, Deserialize)]
-#[derive_where(PartialEq, Eq, Clone; Buffer<T, A>)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where(PartialEq, Eq; Buffer<T, A>)]
 #[serde(bound(
     serialize = "Buffer<T, A>: Serialize",
     deserialize = "Buffer<T, A>: Deserialize<'de>"
@@ -64,10 +69,24 @@ impl<T, A: Backend> Point<T, A> {
         self.values.as_mut_ptr()
     }
 
+    /// # Safety
+    ///
+    /// This function is unsafe because it violates the lifetime rules. Users should make sure any
+    /// side effects remain in the scope of nthe original point.
     #[inline]
-    pub fn copy_into_host(&self) -> Point<T, CpuBackend> {
-        Point::new(Buffer::from(self.values.copy_into_host_vec()))
+    pub unsafe fn onwed_unchecked(&self) -> ManuallyDrop<Self> {
+        let ptr = self.values.as_ptr() as *mut _;
+        let len = self.values.len();
+        let cap = self.values.capacity();
+        let allocator = self.values.allocator().clone();
+        let values = Buffer::from_raw_parts(ptr, len, cap, allocator);
+        ManuallyDrop::new(Self { values })
     }
+
+    // #[inline]
+    // pub fn copy_into_host(&self) -> Point<T, CpuBackend> {
+    //     Point::new(unsafe { Buffer::from(self.values.copy_into_host_vec()) })
+    // }
 }
 
 impl<T, A: Backend> Index<usize> for Point<T, A> {
@@ -147,7 +166,10 @@ impl<T> Point<T, CpuBackend> {
     }
 
     #[inline]
-    pub fn reversed(&self) -> Self {
+    pub fn reversed(&self) -> Self
+    where
+        T: Clone,
+    {
         let mut point = self.clone();
         point.reverse();
         point
@@ -212,4 +234,24 @@ impl<T, A: Backend> DerefMut for Point<T, A> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.values
     }
+}
+
+impl<T, A: Backend> HasBackend for Point<T, A> {
+    type Backend = A;
+
+    fn backend(&self) -> &Self::Backend {
+        self.values.allocator()
+    }
+}
+
+pub trait PointBackend<T>:
+    CanCopyFromRef<Point<T>, CpuBackend, Output = Point<T, Self>>
+    + CanCopyIntoRef<Point<T, Self>, CpuBackend, Output = Point<T>>
+{
+}
+
+impl<T, A> PointBackend<T> for A where
+    A: CanCopyFromRef<Point<T>, CpuBackend, Output = Point<T, Self>>
+        + CanCopyIntoRef<Point<T, A>, CpuBackend, Output = Point<T>>
+{
 }

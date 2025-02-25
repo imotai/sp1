@@ -12,6 +12,7 @@ slop-algebra = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-basefold = { workspace = true }
 slop-utils = { workspace = true }
+slop-futures = { workspace = true }
 slop-challenger = { workspace = true }
 slop-dft = { workspace = true }
 slop-commit = { workspace = true }
@@ -25,7 +26,7 @@ slop-symmetric = { workspace = true }
 slop-maybe-rayon = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-fri = { workspace = true }
-slop-jagged = { workspace = true }
+
 clap = { version = "4.5.9", features = ["derive", "env"] }
 itertools = "0.12.0"
 rand = "0.8.5"
@@ -34,11 +35,8 @@ serde = { version = "1.0.207", features = ["derive"] }
 tracing = "0.1"
 rayon = "1.10.0"
 thiserror = { workspace = true }
+tokio = { workspace = true }
+derive-where = { workspace = true }
 
-[[bin]]
-name = "benchmark_stacked_basefold"
-path = "scripts/benchmark_stacked_basefold.rs"
-
-[[bin]]
-name = "benchmark_jagged_basefold"
-path = "scripts/benchmark_jagged_basefold.rs"
+[dev-dependencies]
+futures = { workspace = true }

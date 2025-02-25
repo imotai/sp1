@@ -13,7 +13,7 @@ pub enum DftOrdering {
     BitReversed,
 }
 
-pub trait Dft<T: Field, A: Backend = CpuBackend> {
+pub trait Dft<T: Field, A: Backend = CpuBackend>: 'static + Send + Sync {
     type Error: Error;
 
     /// Perofrms a discrete Fourier transform along a given dimension.

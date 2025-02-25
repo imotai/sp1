@@ -1,15 +1,34 @@
 mod cpu;
+mod io;
 
-use std::{borrow::Cow, rc::Rc, sync::Arc};
+use std::{borrow::Cow, fmt::Debug, future::Future, rc::Rc, sync::Arc};
 
 pub use cpu::*;
+pub use io::*;
 
-use crate::{mem::DeviceMemory, Allocator};
+use crate::{
+    mem::{CopyError, DeviceMemory},
+    Allocator,
+};
 
 /// # Safety
 ///
 /// TODO
-pub unsafe trait Backend: Sized + Allocator + DeviceMemory + Clone {}
+pub unsafe trait Backend:
+    Sized + Allocator + DeviceMemory + Clone + Debug + Send + Sync + 'static
+{
+    fn copy_from<B, T>(&self, data: T) -> impl Future<Output = Result<T::Output, CopyError>> + Send
+    where
+        B: Backend,
+        T: HasBackend + CopyIntoBackend<Self, B>,
+    {
+        data.copy_into_backend(self)
+    }
+}
+
+pub trait GlobalBackend: Backend + 'static {
+    fn global() -> &'static Self;
+}
 
 pub trait HasBackend {
     type Backend: Backend;

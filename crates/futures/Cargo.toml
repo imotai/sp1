@@ -1,0 +1,20 @@
+[package]
+name = "slop-futures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+slop-alloc = { workspace = true }
+
+rayon = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+pin-project = "1"
+
+[lints]
+workspace = true

@@ -8,12 +8,18 @@ use crate::{
     AllocError, Allocator,
 };
 
-use super::Backend;
+use super::{Backend, GlobalBackend};
 
 pub const GLOBAL_CPU_BACKEND: CpuBackend = CpuBackend;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CpuBackend;
+
+impl GlobalBackend for CpuBackend {
+    fn global() -> &'static Self {
+        &GLOBAL_CPU_BACKEND
+    }
+}
 
 unsafe impl Allocator for CpuBackend {
     #[inline]

@@ -1,60 +1,38 @@
-use std::borrow::{Borrow, BorrowMut};
-
 use derive_where::derive_where;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, TwoAdicField};
-use slop_alloc::{Backend, CpuBackend};
+use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    marker::PhantomData,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(bound(serialize = "", deserialize = ""))]
-pub struct ReedSolomonCode<F: TwoAdicField> {
-    pub log_degree: usize,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FriConfig<F> {
     pub log_blowup: usize,
-    pub shift: F,
-}
-
-#[derive(Debug, Clone)]
-pub struct FriConfig<F: TwoAdicField> {
-    pub code: ReedSolomonCode<F>,
     pub num_queries: usize,
     pub proof_of_work_bits: usize,
+    _marker: PhantomData<F>,
 }
 
 impl<F: TwoAdicField> FriConfig<F> {
     #[inline]
-    pub const fn new(
-        log_degree: usize,
-        log_blowup: usize,
-        shift: F,
-        num_queries: usize,
-        proof_of_work_bits: usize,
-    ) -> Self {
-        Self {
-            code: ReedSolomonCode { log_degree, log_blowup, shift },
-            num_queries,
-            proof_of_work_bits,
-        }
+    pub const fn new(log_blowup: usize, num_queries: usize, proof_of_work_bits: usize) -> Self {
+        Self { log_blowup, num_queries, proof_of_work_bits, _marker: PhantomData }
     }
 
-    #[inline]
-    pub const fn log_degree(&self) -> usize {
-        self.code.log_degree
-    }
-
-    #[inline]
-    pub const fn log_max_degree(&self) -> usize {
-        self.code.log_degree + self.code.log_blowup
+    pub fn auto(log_blowup: usize, bits_of_security: usize) -> Self {
+        assert_eq!(bits_of_security, 100);
+        assert_eq!(log_blowup, 1);
+        let num_queries = 100;
+        let proof_of_work_bits = 16;
+        Self::new(log_blowup, num_queries, proof_of_work_bits)
     }
 
     #[inline]
     pub const fn log_blowup(&self) -> usize {
-        self.code.log_blowup
-    }
-
-    #[inline]
-    pub const fn shift(&self) -> F {
-        self.code.shift
+        self.log_blowup
     }
 
     #[inline]
@@ -68,10 +46,20 @@ impl<F: TwoAdicField> FriConfig<F> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive_where(PartialEq, Eq; Tensor<F, A>)]
-pub struct RsCodeWord<F: AbstractField, A: Backend = CpuBackend> {
+#[serde(bound(
+    serialize = "Tensor<F, A>: Serialize",
+    deserialize = "Tensor<F, A>: Deserialize<'de>"
+))]
+pub struct RsCodeWord<F, A: Backend = CpuBackend> {
     pub data: Tensor<F, A>,
+}
+
+impl<F: AbstractField, A: Backend> RsCodeWord<F, A> {
+    pub const fn new(data: Tensor<F, A>) -> Self {
+        Self { data }
+    }
 }
 
 impl<F: AbstractField, A: Backend> Borrow<Tensor<F, A>> for RsCodeWord<F, A> {
@@ -83,5 +71,14 @@ impl<F: AbstractField, A: Backend> Borrow<Tensor<F, A>> for RsCodeWord<F, A> {
 impl<F: AbstractField, A: Backend> BorrowMut<Tensor<F, A>> for RsCodeWord<F, A> {
     fn borrow_mut(&mut self) -> &mut Tensor<F, A> {
         &mut self.data
+    }
+}
+
+impl<F, A: Backend> HasBackend for RsCodeWord<F, A> {
+    type Backend = A;
+
+    #[inline]
+    fn backend(&self) -> &Self::Backend {
+        self.data.backend()
     }
 }

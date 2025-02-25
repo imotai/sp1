@@ -10,6 +10,8 @@ categories.workspace = true
 [dependencies]
 slop-alloc = { workspace = true }
 slop-tensor = { workspace = true }
+slop-futures = { workspace = true }
+slop-commit = { workspace = true }
 # slop-baby-bear = { workspace = true }
 
 slop-algebra = { workspace = true }
@@ -22,6 +24,7 @@ rayon = { workspace = true }
 tracing = "0.1.0"
 derive-where = { workspace = true }
 rand = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

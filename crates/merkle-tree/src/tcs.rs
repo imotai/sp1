@@ -1,16 +1,26 @@
+use std::fmt::Debug;
+
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_commit::{TensorCs, TensorCsOpening};
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
 use thiserror::Error;
 
 /// An interfacr defining a Merkle tree.
-pub trait MerkleTreeConfig: 'static + Send + Sync {
-    type Data: 'static + Clone + Send + Sync;
-    type Digest: 'static + Clone + Send + Sync + PartialEq + Eq;
-    type Hasher: CryptographicHasher<Self::Data, Self::Digest>;
-    type Compressor: PseudoCompressionFunction<Self::Digest, 2>;
+pub trait MerkleTreeConfig: 'static + Clone + Send + Sync {
+    type Data: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
+    type Digest: 'static
+        + Debug
+        + Clone
+        + Send
+        + Sync
+        + PartialEq
+        + Eq
+        + Serialize
+        + DeserializeOwned;
+    type Hasher: CryptographicHasher<Self::Data, Self::Digest> + Send + Sync + Clone;
+    type Compressor: PseudoCompressionFunction<Self::Digest, 2> + Send + Sync + Clone;
 }
 
 pub trait DefaultMerkleTreeConfig: MerkleTreeConfig {
@@ -21,6 +31,7 @@ pub trait DefaultMerkleTreeConfig: MerkleTreeConfig {
 ///
 /// A tensor commitment scheme based on merkleizing the committed tensors at a given dimension,
 /// which the prover is free to choose.
+#[derive(Debug, Clone, Copy)]
 pub struct MerkleTreeTcs<M: MerkleTreeConfig> {
     pub hasher: M::Hasher,
     pub compressor: M::Compressor,

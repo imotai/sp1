@@ -9,7 +9,7 @@ use crate::{DefaultMerkleTreeConfig, MerkleTreeConfig};
 #[derive(Debug, Clone, Default, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Poseidon2BabyBearConfig<const STATE_WIDTH: usize = 16>;
 
-type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
+pub type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
 
 impl MerkleTreeConfig for Poseidon2BabyBearConfig {
     type Data = BabyBear;
@@ -20,14 +20,14 @@ impl MerkleTreeConfig for Poseidon2BabyBearConfig {
 
 impl DefaultMerkleTreeConfig for Poseidon2BabyBearConfig {
     fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor) {
-        let perm = my_perm();
+        let perm = my_bb_16_perm();
         let hasher = Self::Hasher::new(perm.clone());
         let compressor = Self::Compressor::new(perm.clone());
         (hasher, compressor)
     }
 }
 
-fn my_perm() -> Perm {
+pub fn my_bb_16_perm() -> Perm {
     const ROUNDS_F: usize = 8;
     const ROUNDS_P: usize = 13;
     let mut round_constants = RC_16_30.to_vec();

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize, Serializer};
+use slop_algebra::{ExtensionField, Field};
 
 use crate::backend::{Backend, CpuBackend, GLOBAL_CPU_BACKEND};
 use crate::mem::{CopyDirection, CopyError};
@@ -64,6 +65,17 @@ where
         self.buf.capacity()
     }
 
+    /// # Safety
+    ///
+    /// This function is unsafe because it enables bypassing the lifetime of the buffer.
+    pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
+        let ptr = self.as_ptr() as *mut T;
+        let len = self.len();
+        let cap = self.capacity();
+        let allocator = self.allocator().clone();
+        ManuallyDrop::new(Self::from_raw_parts(ptr, len, cap, allocator))
+    }
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
@@ -96,13 +108,13 @@ where
         self.set_len(cap);
     }
 
-    /// Copies all elements from `src` into `self`, using a cudaMemcpy.
+    /// Copies all elements from `src` into `self`, using `copy_nonoverlapping`.
     ///
     /// The length of `src` must be the same as `self`.
     ///
     /// # Panics
     ///
-    /// This function will panic if the two slices have different lengths or if cudaMalloc
+    /// This function will panic if the two slices have different lengths or if the allocator
     /// returned an error.
     ///
     /// # Safety
@@ -148,12 +160,56 @@ where
         self.buf.allocator_mut()
     }
 
-    /// Appends all the elements from `src` into `self`, using a cudaMemcpy.
+    /// Appends all the elements from `src` into `self`, using `copy_nonoverlapping`.
     ///
     /// # Panics
     ///
     /// This function will panic if the resulting length will extend the buffer's capacity or if
-    /// cudaMalloc returned an error.
+    /// the allocator returned an error.
+    ///
+    ///  # Safety
+    /// This operation is potentially asynchronous. The caller must insure the memory of the source
+    /// is valid for the duration of the operation.
+    pub fn extend_from_device_slice(&mut self, src: &Slice<T, A>) -> Result<(), CopyError> {
+        // The panic code path was put into a cold function to not bloat the
+        // call site.
+        #[inline(never)]
+        #[cold]
+        #[track_caller]
+        fn capacity_fail(dst_len: usize, src_len: usize, cap: usize) -> ! {
+            panic!(
+                "source slice length ({}) too long for buffer of length ({}) and capacity ({})",
+                src_len, dst_len, cap
+            );
+        }
+
+        if self.len() + src.len() > self.capacity() {
+            capacity_fail(self.len(), src.len(), self.capacity());
+        }
+
+        let layout = Layout::array::<T>(src.len()).unwrap();
+
+        unsafe {
+            self.buf.allocator().copy_nonoverlapping(
+                src.as_ptr() as *const u8,
+                self.buf.ptr().add(self.len()) as *mut u8,
+                layout.size(),
+                CopyDirection::DeviceToDevice,
+            )?;
+        }
+
+        // Extend the length of the buffer to include the new elements.
+        self.len += src.len();
+
+        Ok(())
+    }
+
+    /// Appends all the elements from `src` into `self`, using `copy_nonoverlapping`.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the resulting length will extend the buffer's capacity or if
+    /// the allocator returned an error.
     ///
     ///  # Safety
     /// This operation is potentially asynchronous. The caller must insure the memory of the source
@@ -192,7 +248,7 @@ where
         Ok(())
     }
 
-    /// Copies all elements from `self` into `dst`, using a cudaMemcpy.
+    /// Copies all elements from `self` into `dst`, using `copy_nonoverlapping`.
     ///
     /// The length of `dst` must be the same as `self`.
     ///
@@ -202,7 +258,7 @@ where
     ///
     /// This operation is potentially asynchronous. The caller must insure the memory of the
     /// destination is valid for the duration of the operation.
-    pub fn copy_into_host(&self, dst: &mut [MaybeUninit<T>]) -> Result<(), CopyError> {
+    pub unsafe fn copy_into_host(&self, dst: &mut [MaybeUninit<T>]) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
         #[inline(never)]
@@ -232,13 +288,25 @@ where
     }
 
     /// Copies all elements from `self` into a newely allocated [Vec<T>] and returns it.
-    pub fn copy_into_host_vec(&self) -> Vec<T> {
+    ///
+    /// # Safety
+    ///  See [Buffer::copy_into_host]
+    pub unsafe fn copy_into_host_vec(&self) -> Vec<T> {
         let mut vec = Vec::with_capacity(self.len());
         self.copy_into_host(vec.spare_capacity_mut()).unwrap();
         unsafe {
             vec.set_len(self.len());
         }
         vec
+    }
+
+    /// Copies all elements from `self` into a newely allocated [Vec<T>] and returns it.
+    ///
+    /// # Safety
+    ///  See [Buffer::copy_into_host]
+    pub unsafe fn copy_into_host_buffer(&self) -> Buffer<T, CpuBackend> {
+        let vec = self.copy_into_host_vec();
+        Buffer::from(vec)
     }
 
     pub fn write_bytes(&mut self, value: u8, len: usize) -> Result<(), CopyError> {
@@ -287,6 +355,35 @@ where
         self.len += len / std::mem::size_of::<T>();
 
         Ok(())
+    }
+
+    /// Reinterprets the values of the buffer as elements of the base field.
+    pub fn flatten_to_base<E>(self) -> Buffer<E, A>
+    where
+        T: ExtensionField<E>,
+        E: Field,
+    {
+        let mut buffer = ManuallyDrop::new(self);
+        let (original_ptr, original_len, original_cap, allocator) =
+            (buffer.as_mut_ptr(), buffer.len(), buffer.capacity(), buffer.allocator().clone());
+        let ptr = original_ptr as *mut E;
+        let len = original_len * T::D;
+        let cap = original_cap * T::D;
+        unsafe { Buffer::from_raw_parts(ptr, len, cap, allocator) }
+    }
+
+    pub fn into_extension<E>(self) -> Buffer<E, A>
+    where
+        T: Field,
+        E: ExtensionField<T>,
+    {
+        let mut buffer = ManuallyDrop::new(self);
+        let (original_ptr, original_len, original_cap, allocator) =
+            (buffer.as_mut_ptr(), buffer.len(), buffer.capacity(), buffer.allocator().clone());
+        let ptr = original_ptr as *mut E;
+        let len = original_len.checked_div(E::D).unwrap();
+        let cap = original_cap.checked_div(E::D).unwrap();
+        unsafe { Buffer::from_raw_parts(ptr, len, cap, allocator) }
     }
 }
 
@@ -421,6 +518,13 @@ impl<T> From<Buffer<T, CpuBackend>> for Vec<T> {
                 self_undropped.capacity(),
             )
         }
+    }
+}
+
+impl<T> FromIterator<T> for Buffer<T, CpuBackend> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let vec: Vec<T> = iter.into_iter().collect();
+        Self::from(vec)
     }
 }
 

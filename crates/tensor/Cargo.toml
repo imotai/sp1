@@ -10,9 +10,7 @@ categories.workspace = true
 [dependencies]
 slop-alloc = { workspace = true }
 slop-algebra = { workspace = true }
-
 slop-matrix = { workspace = true }
-
 
 rayon = { workspace = true }
 transpose = "0.2.3"
@@ -22,6 +20,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 itertools = { workspace = true }
 derive-where = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

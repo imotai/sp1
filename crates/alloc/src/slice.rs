@@ -1,3 +1,4 @@
+use std::alloc::Layout;
 use std::marker::PhantomData;
 use std::ops::{
     Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
@@ -5,6 +6,7 @@ use std::ops::{
 };
 
 use crate::backend::CpuBackend;
+use crate::mem::{CopyDirection, CopyError, DeviceMemory};
 use crate::{Allocator, Init};
 
 /// A slice of data associated with a specific allocator type.
@@ -69,6 +71,55 @@ impl<T, A: Allocator> Slice<T, A> {
     pub fn split_at(&self, mid: usize) -> (&Self, &Self) {
         let (left, right) = self.slice.split_at(mid);
         unsafe { (Self::from_slice(left), Self::from_slice(right)) }
+    }
+
+    /// Copies all elements from `src` into `self`, using `copy_nonoverlapping`.
+    ///
+    /// The length of `src` must be the same as `self`.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the two slices have different lengths or if cudaMalloc
+    /// returned an error.
+    ///
+    /// # Safety
+    /// This operation is potentially asynchronous. The caller must insure the memory of the source
+    /// is valid for the duration of the operation.
+    #[inline]
+    pub unsafe fn copy_from_slice(
+        &mut self,
+        src: &Slice<T, A>,
+        allocator: &A,
+    ) -> Result<(), CopyError>
+    where
+        A: DeviceMemory,
+    {
+        // The panic code path was put into a cold function to not bloat the
+        // call site.
+        #[inline(never)]
+        #[cold]
+        #[track_caller]
+        fn len_mismatch_fail(dst_len: usize, src_len: usize) -> ! {
+            panic!(
+                "source slice length ({}) does not match destination slice length ({})",
+                src_len, dst_len,
+            );
+        }
+
+        if self.len() != src.len() {
+            len_mismatch_fail(self.len(), src.len());
+        }
+
+        let layout = Layout::array::<T>(src.len()).unwrap();
+
+        unsafe {
+            allocator.copy_nonoverlapping(
+                src.as_ptr() as *const u8,
+                self.as_mut_ptr() as *mut u8,
+                layout.size(),
+                CopyDirection::DeviceToDevice,
+            )
+        }
     }
 }
 

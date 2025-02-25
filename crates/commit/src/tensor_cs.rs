@@ -1,9 +1,15 @@
-use std::{borrow::Borrow, error::Error};
+use std::{error::Error, fmt::Debug, future::Future};
 
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_alloc::Backend;
+use slop_futures::OwnedBorrow;
 use slop_tensor::Tensor;
 
+use crate::Message;
+
 /// An opening of a tensor commitment scheme.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound(serialize = "", deserialize = ""))]
 pub struct TensorCsOpening<C: TensorCs> {
     /// The claimed values of the opening.
     pub values: Vec<Tensor<C::Data>>,
@@ -22,10 +28,10 @@ pub struct TensorCsOpening<C: TensorCs> {
 /// As tensors are stored contiguously in memory, it is not always desirable to have all committed
 /// data in a single tensor. Hence, a tensor commitment scheme assumes the prover commits as above
 /// to a list of tensors of the same shape at a given order.
-pub trait TensorCs: Sized {
-    type Data: Clone + Send + Sync;
-    type Commitment: Clone + Send + Sync;
-    type Proof;
+pub trait TensorCs: 'static + Clone + Send + Sync {
+    type Data: Clone + Send + Sync + Serialize + DeserializeOwned;
+    type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
+    type Proof: Debug + Clone + Send + Sync + Serialize + DeserializeOwned;
     type VerifierError: Error;
 
     /// Verify a batch of openings.
@@ -48,32 +54,38 @@ impl<C: TensorCs> TensorCsOpening<C> {
     }
 }
 
-pub trait TensorCsProver<A: Backend> {
+pub trait TensorCsProver<A: Backend>: 'static + Send + Sync {
     type Cs: TensorCs;
-    type ProverData;
+    type ProverData: 'static + Send + Sync + Debug + Clone;
     type ProverError: Error;
 
     /// Commit to a batch of tensors of the same shape.
     ///
     /// The prover is free to choose which dimension index is supported.
     #[allow(clippy::type_complexity)]
-    fn commit_tensors(
+    fn commit_tensors<T>(
         &self,
-        tensors: &[impl Borrow<Tensor<<Self::Cs as TensorCs>::Data, A>>],
-    ) -> Result<(<Self::Cs as TensorCs>::Commitment, Self::ProverData), Self::ProverError>;
+        tensors: Message<T>,
+    ) -> impl Future<
+        Output = Result<(<Self::Cs as TensorCs>::Commitment, Self::ProverData), Self::ProverError>,
+    > + Send
+    where
+        T: OwnedBorrow<Tensor<<Self::Cs as TensorCs>::Data, A>>;
 
     /// Prove openings at a list of indices.
     fn prove_openings_at_indices(
         &self,
-        data: &Self::ProverData,
+        data: Self::ProverData,
         indices: &[usize],
-    ) -> Result<<Self::Cs as TensorCs>::Proof, Self::ProverError>;
+    ) -> impl Future<Output = Result<<Self::Cs as TensorCs>::Proof, Self::ProverError>> + Send;
 }
 
 pub trait ComputeTcsOpenings<A: Backend>: TensorCsProver<A> {
-    fn compute_openings_at_indices(
+    fn compute_openings_at_indices<T>(
         &self,
-        tensors: &[impl Borrow<Tensor<<Self::Cs as TensorCs>::Data, A>>],
+        tensors: Message<T>,
         indices: &[usize],
-    ) -> Vec<Tensor<<Self::Cs as TensorCs>::Data, A>>;
+    ) -> impl Future<Output = Vec<Tensor<<Self::Cs as TensorCs>::Data>>> + Send
+    where
+        T: OwnedBorrow<Tensor<<Self::Cs as TensorCs>::Data, A>>;
 }

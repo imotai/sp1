@@ -1,5 +1,6 @@
 use std::{
     marker::PhantomData,
+    mem::ManuallyDrop,
     ops::{Index, IndexMut},
 };
 
@@ -141,6 +142,21 @@ impl<T, A: Backend> Tensor<T, A> {
     #[inline]
     pub fn as_ptr(&self) -> *const T {
         self.storage.as_ptr()
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it enables bypassing the lifetime of the tensor.
+    #[inline]
+    pub unsafe fn onwed_unchecked(&self) -> ManuallyDrop<Self> {
+        let dimensions = self.dimensions.clone();
+        let storage_ptr = self.storage.as_ptr() as *mut T;
+        let storage_len = self.storage.len();
+        let storage_cap = self.storage.capacity();
+        let storage_allocator = self.storage.allocator().clone();
+        let storage =
+            Buffer::from_raw_parts(storage_ptr, storage_len, storage_cap, storage_allocator);
+        ManuallyDrop::new(Self { storage, dimensions })
     }
 
     #[inline]

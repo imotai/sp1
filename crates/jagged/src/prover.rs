@@ -1,0 +1,368 @@
+use derive_where::derive_where;
+use futures::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::{fmt::Debug, sync::Arc};
+
+use slop_algebra::{AbstractField, ExtensionField, Field};
+use slop_alloc::{HasBackend, ToHost};
+use slop_challenger::{CanObserve, FieldChallenger};
+use slop_commit::{Message, Rounds};
+use slop_multilinear::{
+    Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsProver, Point,
+};
+use slop_stacked::{
+    FixedRateInterleave, FixedRateInterleaveBackend, InterleaveMultilinears, StackedPcsProver,
+    StackedPcsProverData, StackedPcsProverError,
+};
+use slop_sumcheck::{
+    reduce_sumcheck_to_evaluation, ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend,
+    SumcheckPolyBackend,
+};
+use thiserror::Error;
+
+use crate::{
+    HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams, JaggedMleGenerator,
+    JaggedPcsProof, JaggedPcsVerifier, LongMle,
+};
+
+pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
+    MleBaseBackend<F>
+    + MleBaseBackend<EF>
+    + MleEvaluationBackend<F, EF>
+    + FixedRateInterleaveBackend<F>
+    + ComponentPolyEvalBackend<HadamardProduct<F, EF, Self>, EF>
+    + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
+    + SumcheckPolyBackend<HadamardProduct<EF, EF, Self>, EF>
+    + SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF>
+{
+}
+
+impl<F, EF, A> JaggedBackend<F, EF> for A
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    A: MleBaseBackend<F>
+        + MleBaseBackend<EF>
+        + MleEvaluationBackend<F, EF>
+        + FixedRateInterleaveBackend<F>
+        + ComponentPolyEvalBackend<HadamardProduct<F, EF, Self>, EF>
+        + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
+        + SumcheckPolyBackend<HadamardProduct<EF, EF, Self>, EF>
+        + SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF>,
+{
+}
+
+pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
+    type F: Field;
+    type EF: ExtensionField<Self::F>;
+    type A: JaggedBackend<Self::F, Self::EF>;
+    type Challenger: FieldChallenger<Self::F> + CanObserve<Self::Commitment> + Send + Sync + 'static;
+
+    type Commitment: 'static + Clone + Send + Sync;
+
+    type BatchPcsProof;
+
+    type Config: JaggedConfig<
+        F = Self::F,
+        EF = Self::EF,
+        Commitment = Self::Commitment,
+        Challenger = Self::Challenger,
+        BatchPcsProof = Self::BatchPcsProof,
+    >;
+
+    type JaggedGenerator: JaggedMleGenerator<Self::EF, Self::A>;
+
+    type BatchPcsProver: MultilinearPcsProver<
+        F = Self::F,
+        EF = Self::EF,
+        A = Self::A,
+        Commitment = Self::Commitment,
+        Challenger = Self::Challenger,
+        Verifier = <Self::Config as JaggedConfig>::BatchPcsVerifier,
+        Proof = Self::BatchPcsProof,
+    >;
+    type Stacker: InterleaveMultilinears<Self::F, Self::A>;
+}
+
+#[derive(Debug, Clone)]
+pub struct JaggedProver<C: JaggedProverComponents> {
+    stacked_pcs_prover: StackedPcsProver<C::BatchPcsProver, C::Stacker>,
+    jagged_generator: C::JaggedGenerator,
+    pub max_log_row_count: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+#[derive_where(Debug, Clone; StackedPcsProverData<C::BatchPcsProver>: Debug + Clone)]
+#[serde(bound(
+    serialize = "StackedPcsProverData<C::BatchPcsProver>: Serialize",
+    deserialize = "StackedPcsProverData<C::BatchPcsProver>: Deserialize<'de>"
+))]
+pub struct JaggedProverData<C: JaggedProverComponents> {
+    stacked_pcs_prover_data: StackedPcsProverData<C::BatchPcsProver>,
+    row_counts: Arc<Vec<usize>>,
+    column_counts: Arc<Vec<usize>>,
+}
+
+#[derive(Debug, Error)]
+pub enum JaggedProverError<C: JaggedProverComponents> {
+    #[error("batch pcs prover error")]
+    BatchPcsProverError(
+        StackedPcsProverError<<C::BatchPcsProver as MultilinearPcsProver>::ProverError>,
+    ),
+}
+
+pub trait DfeaultJaggedProver: JaggedProverComponents {
+    fn prover_from_verifier(verifier: &JaggedPcsVerifier<Self::Config>) -> JaggedProver<Self>;
+}
+
+impl<C: JaggedProverComponents> JaggedProver<C> {
+    pub const fn new(
+        max_log_row_count: usize,
+        stacked_pcs_prover: StackedPcsProver<C::BatchPcsProver, C::Stacker>,
+        jagged_generator: C::JaggedGenerator,
+    ) -> Self {
+        Self { stacked_pcs_prover, jagged_generator, max_log_row_count }
+    }
+
+    pub fn from_verifier(verifier: &JaggedPcsVerifier<C::Config>) -> Self
+    where
+        C: DfeaultJaggedProver,
+    {
+        C::prover_from_verifier(verifier)
+    }
+
+    #[inline]
+    pub const fn log_stacking_height(&self) -> u32 {
+        self.stacked_pcs_prover.log_stacking_height
+    }
+
+    pub async fn commit_multilinears(
+        &self,
+        multilinears: Message<Mle<C::F, C::A>>,
+    ) -> Result<(C::Commitment, JaggedProverData<C>), JaggedProverError<C>> {
+        let mut row_counts =
+            multilinears.iter().map(|x| x.num_non_zero_entries()).collect::<Vec<_>>();
+        let mut column_counts =
+            multilinears.iter().map(|x| x.num_polynomials()).collect::<Vec<_>>();
+        // TODO: why is this here?
+        column_counts.push(1);
+
+        // TODO: more comments
+        let next_multiple = multilinears
+            .iter()
+            .map(|mle| mle.num_non_zero_entries() * mle.num_polynomials())
+            .sum::<usize>()
+            .next_multiple_of(1 << self.log_stacking_height());
+
+        let next_multiple = if next_multiple > 0 {
+            next_multiple
+        } else {
+            1 << self.stacked_pcs_prover.log_stacking_height
+        };
+
+        row_counts.push(
+            next_multiple
+                - multilinears
+                    .iter()
+                    .map(|mle| mle.num_non_zero_entries() * mle.num_polynomials())
+                    .sum::<usize>(),
+        );
+
+        let (commitment, data) =
+            self.stacked_pcs_prover.commit_multilinears(multilinears).await.unwrap();
+
+        let jagged_prover_data = JaggedProverData {
+            stacked_pcs_prover_data: data,
+            row_counts: Arc::new(row_counts),
+            column_counts: Arc::new(column_counts),
+        };
+
+        Ok((commitment, jagged_prover_data))
+    }
+
+    pub async fn finalize(
+        &self,
+        data: &mut Rounds<JaggedProverData<C>>,
+        commits: &mut Rounds<C::Commitment>,
+        challenger: &mut C::Challenger,
+    ) {
+        let total_area = data
+            .iter()
+            .map(|x| {
+                x.column_counts
+                    .iter()
+                    .zip(x.row_counts.iter())
+                    .map(|(col_count, row_count)| (col_count * row_count))
+                    .sum::<usize>()
+            })
+            .sum::<usize>();
+        let needed_zeroes = (total_area.next_power_of_two() - total_area)
+            .next_multiple_of(1 << self.log_stacking_height());
+
+        assert_eq!(needed_zeroes % (1 << self.log_stacking_height()), 0);
+
+        if needed_zeroes != 0 {
+            let num_polynomials = needed_zeroes / (1 << self.log_stacking_height());
+            let backend = data[0].stacked_pcs_prover_data.backend();
+            let zero_mle = Mle::zeros(num_polynomials, 1 << self.log_stacking_height(), backend);
+            let message = Message::from(vec![zero_mle]);
+            let (commit, new_data) = self.commit_multilinears(message).await.ok().unwrap();
+            challenger.observe(commit.clone());
+            commits.push(commit);
+            data.push(new_data);
+        }
+    }
+
+    pub async fn prove_trusted_evaluations(
+        &self,
+        eval_point: Point<C::EF>,
+        evaluation_claims: Rounds<Evaluations<C::EF, C::A>>,
+        prover_data: Rounds<JaggedProverData<C>>,
+        challenger: &mut C::Challenger,
+    ) -> Result<JaggedPcsProof<C::Config>, JaggedProverError<C>> {
+        let num_col_variables = prover_data
+            .iter()
+            .map(|data| data.column_counts.iter().sum::<usize>())
+            .sum::<usize>()
+            .next_power_of_two()
+            .ilog2();
+        let z_col = (0..num_col_variables)
+            .map(|_| challenger.sample_ext_element::<C::EF>())
+            .collect::<Point<_>>();
+
+        let z_row = eval_point;
+
+        // Collect the claims for the different polynomials.
+        let mut column_claims = stream::iter(evaluation_claims.iter().flatten())
+            .then(|evals| evals.to_host())
+            .flat_map(|evals| stream::iter(evals.unwrap()))
+            .collect::<Vec<C::EF>>()
+            .await;
+
+        let insertion_points = prover_data
+            .iter()
+            .map(|data| data.column_counts.iter().sum::<usize>() - 1)
+            .scan(0, |state, x| {
+                *state += x;
+                Some(*state)
+            })
+            .collect::<Vec<_>>();
+
+        for insertion_point in insertion_points.iter().rev().skip(1) {
+            column_claims.insert(*insertion_point, C::EF::zero());
+        }
+
+        column_claims.resize(column_claims.len().next_power_of_two(), C::EF::zero());
+
+        assert!(prover_data
+            .iter()
+            .flat_map(|data| data.row_counts.iter())
+            .all(|x| *x <= 1 << self.max_log_row_count));
+
+        let row_data =
+            prover_data.iter().map(|data| data.row_counts.clone()).collect::<Rounds<_>>();
+        let column_data =
+            prover_data.iter().map(|data| data.column_counts.clone()).collect::<Rounds<_>>();
+
+        // Collect the jagged polynomial parameters.
+        let params = JaggedLittlePolynomialProverParams::new(
+            prover_data
+                .iter()
+                .flat_map(|data| {
+                    data.row_counts
+                        .iter()
+                        .copied()
+                        .zip(data.column_counts.iter().copied())
+                        .flat_map(|(row_count, column_count)| {
+                            std::iter::repeat(row_count).take(column_count)
+                        })
+                })
+                .collect(),
+            self.max_log_row_count,
+        );
+
+        // Generate the jagged sumcheck proof.
+        let backend = prover_data[0].stacked_pcs_prover_data.interleaved_mles[0].backend().clone();
+
+        let z_row_backend = z_row.copy_into(&backend);
+        let z_col_backend = z_col.copy_into(&backend);
+        // Generate the jagged mle.
+        let jaggled_mle = self
+            .jagged_generator
+            .partial_jagged_multilinear(
+                &params,
+                row_data,
+                column_data,
+                &z_row_backend,
+                &z_col_backend,
+                1,
+            )
+            .await;
+
+        let total_num_variables = jaggled_mle.num_variables();
+
+        // Restack the mles into a single one to match the jagged polynomial.
+        // TODO: make the jagged match the multilinear.
+        let all_mles = prover_data
+            .iter()
+            .flat_map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
+            .collect::<Message<Mle<C::F, C::A>>>();
+        let stacker = FixedRateInterleave::<C::F, C::A>::new(1);
+        let restacked_mle = LongMle::from_message(
+            stacker.interleave_multilinears(all_mles, total_num_variables).await,
+            total_num_variables,
+        );
+
+        let sumcheck_poly = HadamardProduct { base: restacked_mle, ext: jaggled_mle };
+
+        // The overall evaluation claim of the sparse polynomial is inferred from the individual
+        // table claims.
+        let column_claims = Mle::from(column_claims);
+        let sumcheck_claim = column_claims.eval_at(&z_col).await[0];
+
+        let lambda: C::EF = challenger.sample_ext_element();
+
+        let (sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
+            vec![sumcheck_poly],
+            challenger,
+            vec![sumcheck_claim],
+            1,
+            lambda,
+        )
+        .await;
+
+        let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
+
+        let (_, stack_point) = final_eval_point
+            .split_at(final_eval_point.dimension() - self.log_stacking_height() as usize);
+        let stack_point = stack_point.copy_into(&backend);
+        let batch_evaluations = stream::iter(prover_data.iter())
+            .then(|data| {
+                self.stacked_pcs_prover
+                    .round_batch_evaluations(&stack_point, &data.stacked_pcs_prover_data)
+            })
+            .collect::<Rounds<_>>()
+            .await;
+
+        let stacked_prover_data =
+            prover_data.into_iter().map(|data| data.stacked_pcs_prover_data).collect::<Rounds<_>>();
+
+        let stacked_pcs_proof = self
+            .stacked_pcs_prover
+            .prove_trusted_evaluation(
+                final_eval_point,
+                component_poly_evals[0][0],
+                stacked_prover_data,
+                batch_evaluations,
+                challenger,
+            )
+            .await
+            .unwrap();
+
+        Ok(JaggedPcsProof {
+            stacked_pcs_proof,
+            sumcheck_proof,
+            params: params.into_verifier_params(),
+        })
+    }
+}

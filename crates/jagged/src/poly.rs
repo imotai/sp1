@@ -153,7 +153,7 @@ pub struct JaggedLittlePolynomialVerifierParams<K: AbstractField> {
     pub(crate) max_log_row_count: usize,
 }
 
-impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
+impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> {
     /// Given `z_index`, evaluate the special multilinear polynomial appearing in the jagged sumcheck
     /// protocol.
     pub fn full_jagged_little_polynomial_evaluation(
@@ -178,7 +178,7 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
                 // For `z_col` on the Boolean hypercube, this is the delta function to pick out
                 // the right column count for the current table.
                 let c_tab_correction =
-                    Mle::partial_lagrange(z_col).guts().as_slice()[col_num].clone();
+                    Mle::blocking_partial_lagrange(z_col).guts().as_slice()[col_num].clone();
 
                 let mut state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
 
@@ -220,7 +220,7 @@ impl<K: AbstractField> JaggedLittlePolynomialVerifierParams<K> {
                     ]
                     .into_iter()
                     .collect::<Point<K>>();
-                    let four_var_eq = Mle::partial_lagrange(&point);
+                    let four_var_eq = Mle::blocking_partial_lagrange(&point);
 
                     // For each memory state in the new layer, compute the result of the branching
                     // program that starts at that memory state and in the current layer.
@@ -289,10 +289,10 @@ impl JaggedLittlePolynomialProverParams {
     ) -> Mle<K> {
         let log_total_area = log2_ceil_usize(*self.col_prefix_sums_usize.last().unwrap());
 
-        let col_eq = Mle::partial_lagrange(
+        let col_eq = Mle::blocking_partial_lagrange(
             &z_col.last_k(log2_ceil_usize(self.col_prefix_sums_usize.len() - 1)),
         );
-        let row_eq = Mle::partial_lagrange(&z_row.last_k(self.max_log_row_count));
+        let row_eq = Mle::blocking_partial_lagrange(&z_row.last_k(self.max_log_row_count));
 
         let mut result = Vec::with_capacity(1 << log_total_area);
         tracing::info_span!("compute jagged values").in_scope(|| {
@@ -392,7 +392,7 @@ pub mod tests {
 
                     let prover_result = prover_params
                         .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                        .eval_at(&z_index);
+                        .blocking_eval_at(&z_index);
 
                     assert_eq!(result, prover_result.to_vec()[0]);
 
@@ -408,7 +408,7 @@ pub mod tests {
                             assert_eq!(
                                 prover_params
                                     .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                                    .eval_at(&Point::<F>::from_usize(other_index, log_m))
+                                    .blocking_eval_at(&Point::<F>::from_usize(other_index, log_m))
                                     .to_vec()[0],
                                 F::zero()
                             );
@@ -448,7 +448,7 @@ pub mod tests {
                                 .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                             prover_params
                                 .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                                .eval_at(&z_index)
+                                .blocking_eval_at(&z_index)
                                 .to_vec()[0]
                         );
                     }
@@ -503,7 +503,7 @@ pub mod tests {
                         assert_eq!(
                             prover_params
                                 .partial_jagged_little_polynomial_evaluation(&new_z_row, &new_z_col)
-                                .eval_at(&z_index)
+                                .blocking_eval_at(&z_index)
                                 .to_vec()[0],
                             F::zero()
                         );
@@ -529,7 +529,7 @@ pub mod tests {
                     assert_eq!(
                         prover_params
                             .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                            .eval_at(&Point::<F>::from_usize(other_index, log_m))
+                            .blocking_eval_at(&Point::<F>::from_usize(other_index, log_m))
                             .to_vec()[0],
                         F::zero()
                     );
@@ -553,7 +553,7 @@ pub mod tests {
                 verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                 params
                     .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                    .eval_at(&z_index)
+                    .blocking_eval_at(&z_index)
                     .to_vec()[0]
             );
         }
@@ -582,7 +582,7 @@ pub mod tests {
                             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                         params
                             .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                            .eval_at(&z_index)
+                            .blocking_eval_at(&z_index)
                             .to_vec()[0]
                     );
 
@@ -592,7 +592,7 @@ pub mod tests {
                             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                         params
                             .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                            .eval_at(&z_index)
+                            .blocking_eval_at(&z_index)
                             .to_vec()[0]
                     );
                 }

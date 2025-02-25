@@ -9,6 +9,7 @@ categories.workspace = true
 
 [dependencies]
 p3-merkle-tree = { workspace = true }
+slop-futures = { workspace = true }
 
 slop-commit = { workspace = true }
 slop-symmetric = { workspace = true }
@@ -24,6 +25,7 @@ serde = { workspace = true }
 lazy_static = "1.5.0"
 itertools = { workspace = true }
 derive-where = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
 rand = { workspace = true }

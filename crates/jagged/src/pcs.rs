@@ -5,10 +5,7 @@ use slop_algebra::{
 };
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use slop_multilinear::{
-    MainTraceProverData, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier,
-    MultilinearPcsProver, MultilinearPcsVerifier, Point, StackedPcsProof, StackedPcsProver,
-};
+use slop_multilinear::{Mle, MultilinearPcsProver, MultilinearPcsVerifier, Point};
 use slop_sumcheck::{
     partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation, ComponentPoly,
     PartialSumcheckProof, SumcheckError, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound,
@@ -18,13 +15,6 @@ use slop_utils::log2_ceil_usize;
 use std::{iter::repeat, sync::Arc};
 
 use crate::{JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams};
-
-type StackedProof<Pcs> = StackedPcsProof<
-    <Pcs as MultilinearPcsBatchVerifier>::Proof,
-    <Pcs as MultilinearPcsBatchVerifier>::EF,
->;
-
-type Com<Pcs> = <Pcs as MultilinearPcsBatchVerifier>::Commitment;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum JaggedPcsError<PcsError, SumcheckError> {
