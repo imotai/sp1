@@ -1,7 +1,6 @@
 use std::{error::Error, future::Future, marker::PhantomData, sync::Arc};
 
 use itertools::Itertools;
-use rayon::prelude::*;
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field, TwoAdicField};
@@ -13,11 +12,16 @@ pub use slop_fri::fold_even_odd as host_fold_even_odd;
 use slop_futures::OwnedBorrow;
 use slop_multilinear::{Mle, MleEval, Point};
 use slop_tensor::Tensor;
+use tokio::runtime::Handle;
 
 use crate::ReedSolomonEncoder;
 
-pub trait BasefoldBatcher<F: TwoAdicField, EF: ExtensionField<F>, A: Backend = CpuBackend>:
-    'static + Send + Sync
+pub trait BasefoldBatcher<
+    F: TwoAdicField,
+    EF: ExtensionField<F>,
+    E: ReedSolomonEncoder<F, A> + Clone,
+    A: Backend = CpuBackend,
+>: 'static + Send + Sync
 {
     fn batch<M, Code>(
         &self,
@@ -25,6 +29,7 @@ pub trait BasefoldBatcher<F: TwoAdicField, EF: ExtensionField<F>, A: Backend = C
         mles: Message<M>,
         codewords: Message<Code>,
         evaluation_claims: Vec<MleEval<EF, A>>,
+        encoder: &E,
     ) -> impl Future<Output = (Mle<EF, A>, RsCodeWord<F, A>, EF)> + Send
     where
         M: OwnedBorrow<Mle<F, A>>,
@@ -40,8 +45,9 @@ pub trait FriIoppProver<
     EF: ExtensionField<F>,
     Tcs: TensorCs<Data = F>,
     Challenger: FieldChallenger<F> + CanObserve<Tcs::Commitment>,
+    E: ReedSolomonEncoder<F, A> + Clone,
     A: Backend = CpuBackend,
->: BasefoldBatcher<F, EF, A>
+>: BasefoldBatcher<F, EF, E, A>
 {
     type FriProverError: Error;
     type TcsProver: TensorCsProver<A, Cs = Tcs>;
@@ -84,22 +90,27 @@ pub struct FriCpuProver<E, P>(pub PhantomData<(E, P)>);
 impl<
         F: TwoAdicField,
         EF: ExtensionField<F>,
-        E: ReedSolomonEncoder<F, CpuBackend>,
+        E: ReedSolomonEncoder<F, CpuBackend> + Clone,
         P: TensorCsProver<CpuBackend>,
-    > BasefoldBatcher<F, EF, CpuBackend> for FriCpuProver<E, P>
+    > BasefoldBatcher<F, EF, E, CpuBackend> for FriCpuProver<E, P>
 {
     async fn batch<M, Code>(
         &self,
         batching_challenge: EF,
         mles: Message<M>,
-        codewords: Message<Code>,
+        _codewords: Message<Code>,
         evaluation_claims: Vec<MleEval<EF, CpuBackend>>,
+        encoder: &E,
     ) -> (Mle<EF, CpuBackend>, RsCodeWord<F, CpuBackend>, EF)
     where
         M: OwnedBorrow<Mle<F>>,
         Code: OwnedBorrow<RsCodeWord<F>>,
     {
+        let encoder = encoder.clone();
+
         let (tx, rx) = tokio::sync::oneshot::channel();
+
+        let handle = Handle::current();
         rayon::spawn(move || {
             // Compute all the batch challenge powers.
             let total_num_polynomials =
@@ -109,11 +120,8 @@ impl<
 
             // Compute the random linear combination of the MLEs of the columns of the matrices
             let num_variables = mles.first().unwrap().as_ref().borrow().num_variables() as usize;
-            let codeword_size = codewords.first().unwrap().as_ref().borrow().data.sizes()[0];
-            assert_eq!(codeword_size, 1 << (num_variables + 1));
             let mut batch_mle = Mle::from(vec![EF::zero(); 1 << num_variables]);
-            let mut batch_codeword = vec![EF::zero(); codeword_size];
-            for (mle, codeword) in mles.iter().zip_eq(codewords.iter()) {
+            for mle in mles.iter() {
                 let mle: &Mle<_, _> = mle.as_ref().borrow();
                 let batch_size = mle.num_polynomials();
                 let mut powers = batch_challenge_powers;
@@ -128,21 +136,16 @@ impl<
                         let batch_row = powers.iter().zip_eq(row).map(|(a, b)| *a * *b).sum::<EF>();
                         *batch += batch_row;
                     });
-                // Batch the codewords as an inner product.
-                let codeword: &RsCodeWord<_, _> = codeword.as_ref().borrow();
-                batch_codeword
-                    .as_mut_slice()
-                    .par_iter_mut()
-                    .zip_eq(codeword.data.as_slice().par_chunks(batch_size))
-                    .for_each(|(batch, row)| {
-                        let batch_row = powers.iter().zip_eq(row).map(|(a, b)| *a * *b).sum::<EF>();
-                        *batch += batch_row;
-                    });
             }
 
-            let batch_codeword = Buffer::from(batch_codeword).flatten_to_base::<F>();
-            let batch_codeword = Tensor::from(batch_codeword).reshape([codeword_size, EF::D]);
-            let batch_codeword = RsCodeWord::new(batch_codeword);
+            let batch_mle_f =
+                Buffer::from(batch_mle.clone().into_guts().storage.as_slice().to_vec())
+                    .flatten_to_base::<F>();
+            let batch_mle_f = Tensor::from(batch_mle_f).reshape([1 << num_variables, EF::D]);
+            let batch_codeword = handle.block_on(async {
+                encoder.encode_batch(Message::from(Mle::new(batch_mle_f))).await.unwrap()
+            });
+            let batch_codeword = (*batch_codeword[0]).clone();
 
             let batched_eval_claim = evaluation_claims
                 .iter()
@@ -163,9 +166,9 @@ impl<
         EF: ExtensionField<F> + TwoAdicField,
         Tcs: TensorCs<Data = F>,
         Challenger: FieldChallenger<F> + CanObserve<Tcs::Commitment> + Send + Sync + 'static,
-        E: ReedSolomonEncoder<F, CpuBackend>,
+        E: ReedSolomonEncoder<F, CpuBackend> + Clone,
         P: TensorCsProver<CpuBackend, Cs = Tcs> + Send + Sync + 'static,
-    > FriIoppProver<F, EF, Tcs, Challenger, CpuBackend> for FriCpuProver<E, P>
+    > FriIoppProver<F, EF, Tcs, Challenger, E, CpuBackend> for FriCpuProver<E, P>
 {
     type FriProverError = P::ProverError;
     type TcsProver = P;
