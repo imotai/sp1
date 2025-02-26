@@ -1,0 +1,34 @@
+[package]
+name = "csl-zerocheck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+csl-cuda = { workspace = true }
+csl-air = { workspace = true }
+
+slop-tensor = { workspace = true }
+slop-algebra = { workspace = true }
+slop-air = { workspace = true }
+slop-alloc = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-multilinear = { workspace = true }
+
+sp1-stark = { workspace = true }
+sp1-core-machine = { workspace = true }
+
+futures = { workspace = true }
+once_cell = "1.20.3"
+
+[dev-dependencies]
+sp1-core-machine = { workspace = true }
+tokio = { workspace = true }
+
+rand = { workspace = true }
+
+[lints]
+workspace = true

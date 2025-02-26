@@ -54,11 +54,11 @@ pub unsafe trait MleFlattenKernel<F: TwoAdicField, EF: ExtensionField<F>> {
 )]
 pub struct FriCudaProver<E, P>(pub PhantomData<(E, P)>);
 
-impl<F, EF, E, P> BasefoldBatcher<F, EF, TaskScope> for FriCudaProver<E, P>
+impl<F, EF, E, P> BasefoldBatcher<F, EF, E, TaskScope> for FriCudaProver<E, P>
 where
     F: TwoAdicField,
     EF: ExtensionField<F>,
-    E: ReedSolomonEncoder<F, TaskScope>,
+    E: ReedSolomonEncoder<F, TaskScope> + Clone,
     P: TensorCsProver<TaskScope>,
     TaskScope: MleBatchKernel<F, EF> + RsCodeWordBatchKernel<F, EF> + TransposeBackend<EF>,
 {
@@ -68,6 +68,7 @@ where
         mles: Message<M>,
         codewords: Message<Code>,
         evaluation_claims: Vec<MleEval<EF, TaskScope>>,
+        _encoder: &E,
     ) -> (Mle<EF, TaskScope>, RsCodeWord<F, TaskScope>, EF)
     where
         M: OwnedBorrow<Mle<F, TaskScope>>,
@@ -152,14 +153,14 @@ where
     }
 }
 
-impl<F, EF, Tcs, Challenger, E, P> FriIoppProver<F, EF, Tcs, Challenger, TaskScope>
+impl<F, EF, Tcs, Challenger, E, P> FriIoppProver<F, EF, Tcs, Challenger, E, TaskScope>
     for FriCudaProver<E, P>
 where
     F: TwoAdicField,
     EF: ExtensionField<F> + TwoAdicField,
     Tcs: TensorCs<Data = F>,
     Challenger: FieldChallenger<F> + CanObserve<Tcs::Commitment> + 'static + Send + Sync,
-    E: ReedSolomonEncoder<F, TaskScope>,
+    E: ReedSolomonEncoder<F, TaskScope> + Clone,
     P: TensorCsProver<TaskScope, Cs = Tcs>,
     TaskScope: MleBatchKernel<F, EF>
         + RsCodeWordBatchKernel<F, EF>
@@ -300,7 +301,7 @@ unsafe impl MleFlattenKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for 
 
 #[cfg(test)]
 mod tests {
-    use futures::prelude::*;
+    use futures::{future::join_all, prelude::*};
     use rand::Rng;
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
@@ -320,23 +321,6 @@ mod tests {
         let codeword_size = 1 << (num_variables + log_blowup as u32);
         let point = Point::<BinomialExtensionField<BabyBear, 4>>::rand(&mut rng, num_variables);
 
-        let (host_mles, host_codewords): (Vec<_>, Vec<_>) = widths
-            .iter()
-            .map(|&num_polynomials| {
-                let mle = Mle::<BabyBear>::rand(&mut rng, num_polynomials, num_variables);
-                let codeword = RsCodeWord::new(Tensor::<BabyBear>::rand(
-                    &mut rng,
-                    [codeword_size, num_polynomials],
-                ));
-                (mle, codeword)
-            })
-            .unzip();
-
-        let host_eval_claims = stream::iter(host_mles.iter())
-            .then(|mle| mle.eval_at(&point))
-            .collect::<Vec<_>>()
-            .await;
-
         type C = Poseidon2BabyBear16BasefoldConfig;
         type CudaProver = BasefoldProver<Poseidon2BabyBear16BasefoldCudaProverComponents>;
         type HostProver = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
@@ -345,6 +329,31 @@ mod tests {
         let verifier = BasefoldVerifier::<C>::new(log_blowup);
         let cuda_prover = CudaProver::new(&verifier);
         let host_prover = HostProver::new(&verifier);
+
+        let host_mles = widths
+            .iter()
+            .map(|&num_polynomials| Mle::<BabyBear>::rand(&mut rng, num_polynomials, num_variables))
+            .collect::<Vec<_>>();
+
+        let codeward_futures = host_mles.iter().map(|mle| async {
+            host_prover
+                .encoder
+                .encode_batch(Message::<Mle<BabyBear>>::from(vec![mle.clone()]))
+                .await
+                .unwrap()[0]
+                .clone()
+        });
+
+        let host_codewords = join_all(codeward_futures)
+            .await
+            .into_iter()
+            .map(|codeword| Arc::into_inner(codeword).unwrap())
+            .collect::<Vec<_>>();
+
+        let host_eval_claims = stream::iter(host_mles.iter())
+            .then(|mle| mle.eval_at(&point))
+            .collect::<Vec<_>>()
+            .await;
 
         let batching_challenge = rng.gen::<EF>();
         // Batch the mles and codewords on the host.
@@ -357,6 +366,7 @@ mod tests {
                 host_mles_message,
                 host_codewords_message,
                 host_eval_claims.clone(),
+                &host_prover.encoder,
             )
             .await;
 
@@ -382,7 +392,7 @@ mod tests {
                 let codewords = Message::<RsCodeWord<BabyBear, TaskScope>>::from(codewords);
                 let (batch_mle, batch_codeword, eval_claim) = cuda_prover
                     .fri_prover
-                    .batch(batching_challenge, mles, codewords, eval_claims)
+                    .batch(batching_challenge, mles, codewords, eval_claims, &cuda_prover.encoder)
                     .await;
                 let batch_mle = batch_mle.into_host().await.unwrap();
                 let batch_codeword = batch_codeword.into_host().await.unwrap();

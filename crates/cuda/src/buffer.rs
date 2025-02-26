@@ -1,4 +1,6 @@
-use slop_alloc::{mem::CopyError, Backend, Buffer, CopyIntoBackend, CpuBackend, HasBackend};
+use slop_alloc::{
+    mem::CopyError, Backend, Buffer, CopyIntoBackend, CopyToBackend, CpuBackend, HasBackend,
+};
 use tokio::sync::oneshot;
 
 use crate::{DeviceCopy, TaskScope};
@@ -29,6 +31,38 @@ impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Buffer<T, CpuBack
             let buf = self;
             let mut buffer = Buffer::with_capacity_in(buf.len(), scope);
             let res = buffer.extend_from_host_slice(&buf);
+            tx.send(res.map(move |_| buffer)).ok();
+        });
+        rx.await.unwrap()
+    }
+}
+
+impl<T: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Buffer<T, TaskScope> {
+    type Output = Buffer<T, CpuBackend>;
+    async fn copy_to_backend(&self, _backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let (tx, rx) = oneshot::channel::<Result<Buffer<T, CpuBackend>, CopyError>>();
+        let buffer = unsafe { self.owned_unchecked() };
+        tokio::task::spawn_blocking(move || {
+            let mut vec = Vec::with_capacity(buffer.len());
+            unsafe {
+                let res = buffer.copy_into_host(vec.spare_capacity_mut());
+                vec.set_len(buffer.len());
+                tx.send(res.map(move |_| Buffer::from(vec)))
+            }
+        });
+        rx.await.unwrap()
+    }
+}
+
+impl<T: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Buffer<T, CpuBackend> {
+    type Output = Buffer<T, TaskScope>;
+    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        let scope = backend.clone();
+        let (tx, rx) = oneshot::channel::<Result<Self::Output, CopyError>>();
+        let src = unsafe { self.owned_unchecked() };
+        tokio::task::spawn_blocking(move || {
+            let mut buffer = Buffer::with_capacity_in(src.len(), scope);
+            let res = buffer.extend_from_host_slice(&src);
             tx.send(res.map(move |_| buffer)).ok();
         });
         rx.await.unwrap()

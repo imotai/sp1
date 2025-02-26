@@ -609,6 +609,8 @@ public:
 
     friend bb31_t operator-(bb31_t a, bb31_t b) { return a -= b; }
 
+    inline bb31_t operator-() const { return bb31_t::zero() - *this; }
+
     friend bb31_t operator*(bb31_t a, bb31_t b) { return a *= b; }
 
     inline bb31_t &operator<<=(uint32_t l)

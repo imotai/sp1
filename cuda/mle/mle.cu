@@ -152,6 +152,8 @@ __global__ void fixLastVariable(
     {
         for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
         {
+            // j is polynomial index
+            // i is the row index
             F zeroValue = F::load(input, j * inputHeight + (i << 1));
             F oneValue = F::load(input, j * inputHeight + (i << 1) + 1);
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha

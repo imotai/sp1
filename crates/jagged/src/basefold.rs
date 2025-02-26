@@ -141,10 +141,6 @@ mod tests {
                         total_number_of_variables, commit_time
                     );
 
-                    jagged_prover
-                        .finalize(&mut prover_data, &mut commitments, &mut challenger)
-                        .await;
-
                     let d_point = t.to_device(&eval_point).await.unwrap();
                     let evaluation_claims = stream::iter(rounds.iter())
                         .then(|round| {

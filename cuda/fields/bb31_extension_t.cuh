@@ -10,6 +10,8 @@ public:
 
     bb31_t value[D];
 
+    inline constexpr bb31_extension_t(int a) : value{bb31_t(a), bb31_t(0), bb31_t(0), bb31_t(0)} {}
+
     __device__ __forceinline__ bb31_extension_t() {}
 
     __device__ __forceinline__ bb31_extension_t(bb31_t value[4])
@@ -232,5 +234,15 @@ public:
         }
 
         return frobeniusInverse();
+    }
+
+    friend __device__ __forceinline__ bb31_extension_t operator-(bb31_extension_t a)
+    {
+        bb31_extension_t ret;
+        for (size_t i = 0; i < D; i++)
+        {
+            ret.value[i] = -a.value[i];
+        }
+        return ret;
     }
 };

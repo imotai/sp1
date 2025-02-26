@@ -556,7 +556,7 @@ impl<'a> TaskRef<'a> {
     pub fn blocking_run<F, R>(self, f: F) -> TaskHandle<'a, R>
     where
         F: FnOnce(TaskScope) -> R,
-        R: CudaSend,
+        R: Send,
     {
         let scope = unsafe { self.task.scope() };
         let value = f(scope);

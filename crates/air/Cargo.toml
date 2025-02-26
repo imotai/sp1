@@ -1,0 +1,16 @@
+[package]
+name = "csl-air"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+slop-air = { workspace = true }
+slop-matrix = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-algebra = { workspace = true }
+
+sp1-core-machine = { workspace = true }
+sp1-stark = { workspace = true }
+
+lazy_static = "1.4.0"
+tracing = "0.1.40"

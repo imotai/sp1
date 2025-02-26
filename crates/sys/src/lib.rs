@@ -8,3 +8,4 @@ pub mod reduce;
 pub mod runtime;
 pub mod sumcheck;
 pub mod transpose;
+pub mod zerocheck;
