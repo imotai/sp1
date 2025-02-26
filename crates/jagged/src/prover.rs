@@ -180,39 +180,6 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         Ok((commitment, jagged_prover_data))
     }
 
-    pub async fn finalize(
-        &self,
-        data: &mut Rounds<JaggedProverData<C>>,
-        commits: &mut Rounds<C::Commitment>,
-        challenger: &mut C::Challenger,
-    ) {
-        let total_area = data
-            .iter()
-            .map(|x| {
-                x.column_counts
-                    .iter()
-                    .zip(x.row_counts.iter())
-                    .map(|(col_count, row_count)| (col_count * row_count))
-                    .sum::<usize>()
-            })
-            .sum::<usize>();
-        let needed_zeroes = (total_area.next_power_of_two() - total_area)
-            .next_multiple_of(1 << self.log_stacking_height());
-
-        assert_eq!(needed_zeroes % (1 << self.log_stacking_height()), 0);
-
-        if needed_zeroes != 0 {
-            let num_polynomials = needed_zeroes / (1 << self.log_stacking_height());
-            let backend = data[0].stacked_pcs_prover_data.backend();
-            let zero_mle = Mle::zeros(num_polynomials, 1 << self.log_stacking_height(), backend);
-            let message = Message::from(vec![zero_mle]);
-            let (commit, new_data) = self.commit_multilinears(message).await.ok().unwrap();
-            challenger.observe(commit.clone());
-            commits.push(commit);
-            data.push(new_data);
-        }
-    }
-
     pub async fn prove_trusted_evaluations(
         &self,
         eval_point: Point<C::EF>,

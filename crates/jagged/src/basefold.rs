@@ -193,8 +193,6 @@ mod tests {
             commitments.push(commit);
         }
 
-        jagged_prover.finalize(&mut prover_data, &mut commitments, &mut challenger).await;
-
         let mut evaluation_claims = Rounds::new();
         for round in round_mles.iter() {
             let mut evals = Evaluations::default();

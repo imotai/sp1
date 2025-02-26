@@ -337,39 +337,6 @@ where
 
         JaggedPcsProof { pcs_proof, sumcheck_proof, params: params.into_verifier_params() }
     }
-
-    pub fn finalize(
-        &self,
-        data: &mut Vec<Arc<JaggedProverData<Pcs::MultilinearProverData>>>,
-        commits: &mut Vec<Com<Pcs::PCS>>,
-        challenger: &mut <Pcs::PCS as MultilinearPcsBatchVerifier>::Challenger,
-    ) {
-        let total_area = data
-            .iter()
-            .map(|x| {
-                x.column_counts
-                    .iter()
-                    .zip(x.row_counts.iter())
-                    .map(|(col_count, row_count)| (col_count * row_count))
-                    .sum::<usize>()
-            })
-            .sum::<usize>();
-        let needed_zeroes = total_area.next_power_of_two() - total_area;
-
-        let new_matrix = RowMajorMatrix::new(
-            repeat(<Pcs::PCS as MultilinearPcsBatchVerifier>::F::zero())
-                .take(needed_zeroes)
-                .collect(),
-            needed_zeroes / (1 << self.pcs.log_stacking_height),
-        );
-
-        if needed_zeroes != 0 {
-            let (commit, new_data) = self.commit_multilinears(vec![new_matrix]);
-            challenger.observe(commit.clone());
-            commits.push(commit);
-            data.push(Arc::new(new_data));
-        }
-    }
 }
 
 impl<K: Field, EK: ExtensionField<K>> JaggedSumcheckPoly<K, EK> {
