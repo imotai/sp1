@@ -24,6 +24,14 @@ pub struct PaddedMle<T, A: Backend = CpuBackend> {
 }
 
 impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
+    #[inline]
+    pub const fn new(
+        inner: Option<Arc<Mle<T, A>>>,
+        num_variables: u32,
+        padding_values: MleEval<T, A>,
+    ) -> Self {
+        Self { inner, num_variables, padding_values }
+    }
     pub fn padded(inner: Arc<Mle<T, A>>, num_variables: u32, padding_values: MleEval<T, A>) -> Self
     where
         A: MleBaseBackend<T>,
