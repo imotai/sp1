@@ -4,7 +4,7 @@ use slop_algebra::{Field, UnivariatePolynomial};
 
 /// The basic functionality required of a struct for which a sumcheck proof can be generated.
 pub trait SumcheckPolyBase {
-    fn n_variables(&self) -> u32;
+    fn num_variables(&self) -> u32;
 }
 
 pub trait ComponentPoly<K: Field> {
@@ -13,11 +13,12 @@ pub trait ComponentPoly<K: Field> {
 
 /// The fix_first_variable function applied to a sumcheck's first round's polynomial .
 pub trait SumcheckPolyFirstRound<K: Field>: SumcheckPolyBase {
+    type NextRoundPoly: SumcheckPoly<K>;
     fn fix_t_variables(
         self,
         alpha: K,
         t: usize,
-    ) -> impl Future<Output = impl SumcheckPoly<K>> + Send;
+    ) -> impl Future<Output = Self::NextRoundPoly> + Send;
 
     fn sum_as_poly_in_last_t_variables(
         &self,

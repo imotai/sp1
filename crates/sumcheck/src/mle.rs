@@ -15,7 +15,7 @@ where
     A: MleBaseBackend<F>,
 {
     #[inline]
-    fn n_variables(&self) -> u32 {
+    fn num_variables(&self) -> u32 {
         self.num_variables()
     }
 }
@@ -26,7 +26,7 @@ where
     A: MleBaseBackend<F>,
 {
     #[inline]
-    fn n_variables(&self) -> u32 {
+    fn num_variables(&self) -> u32 {
         (*self).num_variables()
     }
 }

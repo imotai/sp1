@@ -19,12 +19,14 @@ slop-matrix = { workspace = true }
 slop-challenger = { workspace = true }
 slop-utils = { workspace = true }
 slop-maybe-rayon = { workspace = true }
+
 serde = { workspace = true }
 rayon = { workspace = true }
 tracing = "0.1.0"
 derive-where = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

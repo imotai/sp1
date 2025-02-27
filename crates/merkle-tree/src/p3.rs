@@ -27,6 +27,14 @@ pub struct FieldMerkleTreeProver<P, PW, M: MerkleTreeConfig, const DIGEST_ELEMS:
     _phantom: PhantomData<(P, PW)>,
 }
 
+impl<P, PW, M: MerkleTreeConfig, const DIGEST_ELEMS: usize> std::fmt::Debug
+    for FieldMerkleTreeProver<P, PW, M, DIGEST_ELEMS>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FieldMerkleTreeProver")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "[W; DIGEST_ELEMS]: Serialize",

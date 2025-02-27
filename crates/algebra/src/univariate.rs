@@ -51,6 +51,14 @@ impl<K: Field> UnivariatePolynomial<K> {
     }
 }
 
+impl<K> IntoIterator for UnivariatePolynomial<K> {
+    type Item = K;
+    type IntoIter = std::vec::IntoIter<K>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.coefficients.into_iter()
+    }
+}
 /// Scalar multiplication for univariate polynomials.
 impl<K: Field> Mul<K> for UnivariatePolynomial<K> {
     type Output = Self;

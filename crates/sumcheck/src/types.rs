@@ -79,7 +79,7 @@ impl<
             + Default,
     > SumcheckPolyBase<S> for Mle<K>
 {
-    fn n_variables(&self) -> u32 {
+    fn num_variables(&self) -> u32 {
         self.num_variables()
     }
 

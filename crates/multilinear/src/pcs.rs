@@ -110,7 +110,7 @@ pub trait MultilinearPcsVerifier {
 }
 
 /// The prover of a multilinear commitment scheme.
-pub trait MultilinearPcsProver: 'static + Send + Sync {
+pub trait MultilinearPcsProver: 'static + Debug + Send + Sync {
     /// The base field.
     ///
     /// This is the field on which the MLEs committed to are defined over.

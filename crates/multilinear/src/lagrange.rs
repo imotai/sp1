@@ -32,7 +32,7 @@ pub(crate) fn partial_lagrange_blocking<F: AbstractField>(
     let mut evals = Vec::with_capacity(1 << point.dimension());
     evals.push(one);
 
-    // Build evals in n_variables rounds. In each round, we consider one more entry of `point`,
+    // Build evals in num_variables rounds. In each round, we consider one more entry of `point`,
     // hence the zip.
     point.iter().for_each(|coordinate| {
         evals = evals

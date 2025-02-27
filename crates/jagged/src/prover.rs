@@ -33,7 +33,7 @@ pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
     + ComponentPolyEvalBackend<HadamardProduct<F, EF, Self>, EF>
     + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
     + SumcheckPolyBackend<HadamardProduct<EF, EF, Self>, EF>
-    + SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF>
+    + SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF, NextRoundPoly: Send + Sync>
 {
 }
 
@@ -49,6 +49,8 @@ where
         + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
         + SumcheckPolyBackend<HadamardProduct<EF, EF, Self>, EF>
         + SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF>,
+    <A as SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF>>::NextRoundPoly:
+        Send + Sync,
 {
 }
 

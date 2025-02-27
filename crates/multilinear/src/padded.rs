@@ -1,0 +1,234 @@
+use futures::future::OptionFuture;
+use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, AbstractField};
+use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost};
+use slop_tensor::Tensor;
+
+use crate::{
+    full_geq, HostEvaluationBackend, Mle, MleBaseBackend, MleEval, MleEvaluationBackend,
+    MleFixLastVariableBackend, Point, PointBackend,
+};
+
+/// A bacth of multi-linear polynomials, potentially padded with additional variables.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "T: Serialize, Tensor<T, A>: Serialize",
+    deserialize = "T: Deserialize<'de>, Tensor<T, A>: Deserialize<'de>"
+))]
+// #[derive_where(PartialEq, Eq; (Tensor<T, A>, usize, T))]
+pub struct PaddedMle<T, A: Backend = CpuBackend> {
+    inner: Option<Mle<T, A>>,
+    padding_values: MleEval<T, A>,
+    num_variables: u32,
+}
+
+impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
+    pub fn padded(inner: Mle<T, A>, num_variables: u32, padding_values: MleEval<T, A>) -> Self
+    where
+        A: MleBaseBackend<T>,
+    {
+        assert!(inner.num_non_zero_entries() <= 1 << num_variables);
+        assert!(padding_values.num_polynomials() == inner.num_polynomials());
+        Self { inner: Some(inner), num_variables, padding_values }
+    }
+
+    pub fn dummy(num_variables: u32, padding_values: MleEval<T, A>) -> Self {
+        Self { inner: None, num_variables, padding_values }
+    }
+
+    pub fn with_minimal_padding(guts: Mle<T, A>, padding_values: MleEval<T, A>) -> Self
+    where
+        A: MleBaseBackend<T>,
+    {
+        let num_padded_variables = guts.num_variables();
+        Self::padded(guts, num_padded_variables, padding_values)
+    }
+
+    /// Returns the number of variables in the multi-linear polynomial.
+    pub fn num_variables(&self) -> u32 {
+        self.num_variables
+    }
+
+    /// Returns the padding value.
+    pub fn padding_values(&self) -> &MleEval<T, A> {
+        &self.padding_values
+    }
+
+    /// Returns the underlying tensor.
+    pub fn inner(&self) -> &Option<Mle<T, A>> {
+        &self.inner
+    }
+
+    #[inline]
+    pub fn num_polynomials(&self) -> usize
+    where
+        A: MleBaseBackend<T>,
+    {
+        self.padding_values.num_polynomials()
+    }
+
+    #[inline]
+    pub async fn fix_last_variable<EF>(&self, alpha: EF) -> PaddedMle<EF, A>
+    where
+        T: AbstractField,
+        EF: AbstractExtensionField<T>,
+        A: MleFixLastVariableBackend<T, EF>
+            + MleBaseBackend<EF>
+            + HostEvaluationBackend<T, T>
+            + HostEvaluationBackend<T, EF>,
+    {
+        assert!(self.num_variables > 0);
+        let backend = self.padding_values.backend().clone();
+        let new_padding_values: MleEval<EF> = self
+            .padding_values
+            .to_host()
+            .await
+            .unwrap()
+            .to_vec()
+            .iter()
+            .cloned()
+            .map(EF::from_base)
+            .collect::<Vec<_>>()
+            .into();
+        let padding_values: MleEval<EF, A> = backend.copy_to(&new_padding_values).await.unwrap();
+        let inner = OptionFuture::from(self.inner.as_ref().map(|mle| async move {
+            let guts =
+                A::mle_fix_last_variable(mle.guts(), alpha, Some(&self.padding_values)).await;
+            Mle::<EF, A>::new(guts)
+        }))
+        .await;
+        PaddedMle { inner, padding_values, num_variables: self.num_variables - 1 }
+    }
+
+    pub async fn eval_at<ET: AbstractExtensionField<T> + Send + Sync + Eq + 'static>(
+        &self,
+        point: &Point<ET>,
+    ) -> MleEval<ET, A>
+    where
+        A: MleEvaluationBackend<T, ET>
+            + MleBaseBackend<ET>
+            + HostEvaluationBackend<T, T>
+            + HostEvaluationBackend<T, ET>
+            + PointBackend<ET>,
+    {
+        let num_real_entries =
+            self.inner.as_ref().map(|mle| mle.num_non_zero_entries()).unwrap_or(0);
+        let geq_adjustments: MleEval<ET> = if num_real_entries < 1 << self.num_variables {
+            self.padding_values
+                .to_host()
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|x| {
+                    full_geq(
+                        &Point::from_usize(num_real_entries, self.num_variables as usize),
+                        point,
+                    ) * x
+                })
+                .collect::<Vec<_>>()
+                .into()
+        } else {
+            assert!(num_real_entries == 1 << self.num_variables);
+            vec![ET::zero(); self.num_polynomials()].into()
+        };
+
+        let final_evals = if let Some(inner) = self.inner.as_ref() {
+            let point = self.backend().copy_to(point).await.unwrap();
+            let evals = inner.eval_at(&point).await.to_host().await.unwrap();
+            evals.add_evals(geq_adjustments)
+        } else {
+            geq_adjustments
+        };
+
+        self.backend().copy_to(&final_evals).await.unwrap()
+    }
+}
+
+impl<T, A: Backend> HasBackend for PaddedMle<T, A> {
+    type Backend = A;
+
+    fn backend(&self) -> &Self::Backend {
+        self.padding_values.backend()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::Rng;
+    use slop_baby_bear::BabyBear;
+
+    use crate::Mle;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_padded_eval_at() {
+        let padded_guts = vec![1, 2, 3, 1, 1, 1, 1, 1]
+            .into_iter()
+            .map(BabyBear::from_canonical_usize)
+            .collect::<Vec<_>>();
+
+        let point = (0..3).map(|_| rand::thread_rng().gen::<BabyBear>()).collect::<Point<_>>();
+        for i in 3..8 {
+            println!("i: {}", i);
+            let virtually_padded_mle = PaddedMle::padded(
+                padded_guts[..i].to_vec().into(),
+                3,
+                vec![BabyBear::one()].into(),
+            );
+            assert_eq!(
+                Into::<Mle<_>>::into(padded_guts.clone()).eval_at(&point).await.to_vec()[0],
+                virtually_padded_mle.eval_at(&point).await.to_vec()[0]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pure_padded_mle() {
+        let mut rng = rand::thread_rng();
+        let padded_values = (0..1000).map(|_| rng.gen::<BabyBear>()).collect::<Vec<_>>();
+        let padded_values = MleEval::<BabyBear, CpuBackend>::from(padded_values);
+        let num_variables = 16;
+        let padded_mle = PaddedMle::dummy(num_variables, padded_values.clone());
+        let point =
+            (0..num_variables).map(|_| rand::thread_rng().gen::<BabyBear>()).collect::<Point<_>>();
+        let evals = padded_mle.eval_at(&point).await;
+        assert_eq!(evals.to_vec(), padded_values.to_vec());
+    }
+
+    #[tokio::test]
+    async fn test_padded_fix_last_variable() {
+        let padded_guts = vec![1, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            .into_iter()
+            .map(BabyBear::from_canonical_usize)
+            .collect::<Vec<_>>();
+
+        for i in 3..16 {
+            println!("i: {}", i);
+            let virtually_padded_mle = PaddedMle::padded(
+                padded_guts[..i].to_vec().into(),
+                4,
+                vec![BabyBear::one()].into(),
+            );
+            let mut virtual_cursor = virtually_padded_mle.clone();
+            let mut cursor: Mle<_> = padded_guts.clone().into();
+
+            for j in 0..4 {
+                println!("Round: {}", j);
+                let alpha = rand::thread_rng().gen::<BabyBear>();
+                virtual_cursor = virtual_cursor.fix_last_variable(alpha).await;
+                cursor = cursor.fix_last_variable(alpha).await;
+                println!(
+                    "Virtual cursor: {:?}",
+                    virtual_cursor.inner().as_ref().unwrap().guts().as_slice().to_vec()
+                );
+                println!("Cursor: {:?}", cursor.guts().as_slice().to_vec());
+                let beta = (0..(3 - j)).map(|_| rand::thread_rng().gen::<BabyBear>()).collect();
+                assert_eq!(
+                    virtual_cursor.eval_at(&beta).await.to_vec()[0],
+                    cursor.eval_at(&beta).await.to_vec()[0]
+                );
+            }
+        }
+    }
+}

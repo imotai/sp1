@@ -3,7 +3,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
-const MAX_DIMENSIONS: usize = 10;
+const MAX_DIMENSIONS: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(C)]

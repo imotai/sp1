@@ -1,6 +1,6 @@
 use std::{
     mem::ManuallyDrop,
-    ops::{Deref, DerefMut},
+    ops::{Add, Deref, DerefMut},
 };
 
 use rayon::prelude::*;
@@ -177,7 +177,7 @@ impl<F, A: Backend> Mle<F, A> {
         EF: AbstractExtensionField<F>,
         A: MleFixLastVariableBackend<F, EF>,
     {
-        let guts = A::mle_fix_last_variable(&self.guts, alpha).await;
+        let guts = A::mle_fix_last_variable(&self.guts, alpha, None).await;
         Mle::new(guts)
     }
 
@@ -206,7 +206,7 @@ impl<F, A: Backend> Mle<F, A> {
     ///
     /// This function is unsafe because it enables bypassing the lifetime of the mle.
     #[inline]
-    pub unsafe fn onwed_unchecked(&self) -> ManuallyDrop<Self> {
+    pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
         let dimensions = self.guts.dimensions.clone();
         let storage_ptr = self.guts.storage.as_ptr() as *mut F;
         let storage_len = self.guts.storage.len();
@@ -276,34 +276,14 @@ impl<T> Mle<T, CpuBackend> {
         Mle::new(guts)
     }
 
-    // /// legacy method to be compatible with the old API.
-    // pub fn eval_matrix_at_point<E>(
-    //     matrix: &slop_matrix::dense::RowMajorMatrix<T>,
-    //     point: &Point<E>,
-    // ) -> Vec<E>
-    // where
-    //     T: AbstractField + Send + Sync,
-    //     E: AbstractExtensionField<T> + Send + Sync,
-    // {
-    //     let mle = unsafe {
-    //         ManuallyDrop::new(Self::from_raw_parts(
-    //             matrix.values.as_ptr() as *mut T,
-    //             matrix.width,
-    //             matrix.height(),
-    //         ))
-    //     };
-    //     mle.eval_at(point).to_vec()
-    // }
-
     /// Evaluates the 2n-variate multilinear polynomial f(X,Y) = Prod_i (X_i * Y_i + (1-X_i) * (1-Y_i))
     /// at a given pair (X,Y) of n-dimenional BabyBearExtensionField points.
     ///
-    ///
     /// This evaluation takes time linear in n to compute, so the verifier can easily compute it. Hence,
     /// even though
-    /// ```full_lagrange_eval(point_1,
-    /// point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
+    /// ```full_lagrange_eval(point_1, point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
     /// the RHS of the above equation runs in O(2^n) time, while the LHS runs in O(n).
+    ///
     /// The polynomial f(X,Y) is an important building block in zerocheck and other protocols which use
     /// sumcheck.
     pub fn full_lagrange_eval(point_1: &Point<T>, point_2: &Point<T>) -> T
@@ -322,6 +302,18 @@ impl<T> Mle<T, CpuBackend> {
                 prod.clone() + prod + T::one() - x.clone() - y.clone()
             })
             .product()
+    }
+}
+
+impl<T: AbstractField + Send + Sync> TryInto<slop_matrix::dense::RowMajorMatrix<T>>
+    for Mle<T, CpuBackend>
+{
+    type Error = ();
+
+    fn try_into(self) -> Result<slop_matrix::dense::RowMajorMatrix<T>, Self::Error> {
+        let num_polys = self.num_polynomials();
+        let values = self.guts.into_buffer().to_vec();
+        Ok(slop_matrix::dense::RowMajorMatrix::new(values, num_polys))
     }
 }
 
@@ -360,13 +352,14 @@ pub fn partial_geq<F: Field>(threshold: usize, num_variables: usize) -> Vec<F> {
 /// # Panics
 /// If the dimensions of `threshold` and `eval_point` do not match.
 /// If any of the entries in `threshold` are not boolean-valued.
-pub fn full_geq<F: Field>(threshold: &Point<F>, eval_point: &Point<F>) -> F {
+pub fn full_geq<F: AbstractField + Eq>(threshold: &Point<F>, eval_point: &Point<F>) -> F {
     assert_eq!(threshold.dimension(), eval_point.dimension());
     for bit in threshold.iter() {
-        assert_eq!(*bit * (F::one() - *bit), F::zero());
+        assert_eq!(bit.clone() * (F::one() - bit.clone()), F::zero());
     }
     threshold.iter().rev().zip(eval_point.iter().rev()).fold(F::one(), |acc, (x, y)| {
-        ((F::one() - *x) * (F::one() - *y) + *x * *y) * acc + (F::one() - *x) * *y
+        ((F::one() - x.clone()) * (F::one() - y.clone()) + x.clone() * y.clone()) * acc
+            + (F::one() - x.clone()) * y.clone()
     })
 }
 
@@ -403,6 +396,29 @@ impl<T, A: Backend> MleEval<T, A> {
     pub fn into_evaluations(self) -> Tensor<T, A> {
         self.evaluations
     }
+
+    //. It is expected that `self.evaluations.sizes()` is one of the three options:
+    /// `[1, num_polynomials]`, `[num_polynomials,1]`, or `[num_polynomials]`.
+    #[inline]
+    pub fn num_polynomials(&self) -> usize {
+        self.evaluations.total_len()
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it enables bypassing the lifetime of the mle.
+    #[inline]
+    pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
+        let dimensions = self.evaluations.dimensions.clone();
+        let storage_ptr = self.evaluations.storage.as_ptr() as *mut T;
+        let storage_len = self.evaluations.storage.len();
+        let storage_cap = self.evaluations.storage.capacity();
+        let storage_allocator = self.evaluations.storage.allocator().clone();
+        let storage =
+            Buffer::from_raw_parts(storage_ptr, storage_len, storage_cap, storage_allocator);
+        let evaluations = Tensor { storage, dimensions };
+        ManuallyDrop::new(Self { evaluations })
+    }
 }
 
 impl<T> MleEval<T, CpuBackend> {
@@ -416,11 +432,18 @@ impl<T> MleEval<T, CpuBackend> {
     pub fn iter(&self) -> impl Iterator<Item = &[T]> + '_ {
         self.evaluations.split().map(|t| t.as_slice())
     }
+
+    pub fn add_evals(self, other: Self) -> Self
+    where
+        T: Add<Output = T> + Clone,
+    {
+        self.to_vec().into_iter().zip(other.to_vec()).map(|(a, b)| a + b).collect::<Vec<_>>().into()
+    }
 }
 
 impl<T> From<Vec<T>> for MleEval<T, CpuBackend> {
-    fn from(values: Vec<T>) -> Self {
-        Self::new(Tensor::from(values))
+    fn from(evaluations: Vec<T>) -> Self {
+        Self::new(evaluations.into())
     }
 }
 

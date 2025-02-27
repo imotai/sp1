@@ -975,6 +975,7 @@ dependencies = [
 name = "slop-alloc"
 version = "1.2.0"
 dependencies = [
+ "itertools 0.14.0",
  "serde",
  "slop-algebra",
  "slop-baby-bear",
@@ -1167,6 +1168,7 @@ name = "slop-multilinear"
 version = "1.2.0"
 dependencies = [
  "derive-where",
+ "futures",
  "rand",
  "rayon",
  "serde",

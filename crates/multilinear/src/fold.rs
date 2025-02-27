@@ -17,7 +17,7 @@ pub trait MleFoldBackend<F: AbstractField>: MleBaseBackend<F> {
 
 impl<F: Field> MleFoldBackend<F> for CpuBackend {
     async fn fold_mle(guts: &Tensor<F, Self>, beta: F) -> Tensor<F, Self> {
-        let guts = unsafe { guts.onwed_unchecked() };
+        let guts = unsafe { guts.owned_unchecked() };
         assert_eq!(guts.sizes()[1], 1, "this is only supported for a single polynomial");
         let (tx, rx) = oneshot::channel();
         rayon::spawn(move || {

@@ -6,7 +6,7 @@ use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field}
 use slop_alloc::CpuBackend;
 use slop_tensor::Tensor;
 
-use crate::{MleBaseBackend, MleEvaluationBackend, Point};
+use crate::{MleBaseBackend, MleEval, MleEvaluationBackend, Point};
 
 pub trait MleFixLastVariableBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
     MleBaseBackend<F>
@@ -14,6 +14,7 @@ pub trait MleFixLastVariableBackend<F: AbstractField, EF: AbstractExtensionField
     fn mle_fix_last_variable(
         mle: &Tensor<F, Self>,
         alpha: EF,
+        padding_values: Option<&MleEval<F, Self>>,
     ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
 }
 
@@ -29,8 +30,21 @@ where
     F: Field,
     EF: ExtensionField<F>,
 {
-    async fn mle_fix_last_variable(mle: &Tensor<F, Self>, alpha: EF) -> Tensor<EF, Self> {
-        let mle = unsafe { mle.onwed_unchecked() };
+    async fn mle_fix_last_variable(
+        mle: &Tensor<F, Self>,
+        alpha: EF,
+        padding_values: Option<&MleEval<F, Self>>,
+    ) -> Tensor<EF, Self> {
+        let width = CpuBackend::num_polynomials(mle);
+        let mle = unsafe { mle.owned_unchecked() };
+        let padding_values = match padding_values {
+            Some(p) => unsafe { p.owned_unchecked() },
+            None => {
+                let zeros: MleEval<_> = vec![F::zero(); width].into();
+                unsafe { zeros.owned_unchecked() }
+            }
+        };
+
         let (tx, rx) = oneshot::channel();
         rayon::spawn(move || {
             let mle = mle;
@@ -43,7 +57,10 @@ where
                 .flat_map_iter(|chunk| {
                     (0..num_polynomials).map(|i| {
                         let x = chunk[i];
-                        let y = chunk[i + num_polynomials];
+                        let y = chunk
+                            .get(i + num_polynomials)
+                            .copied()
+                            .unwrap_or_else(|| padding_values[i]);
                         // return alpha * y + (EF::one() - alpha) * x, but in a more efficient way
                         // that minimizes extension field multiplications.
                         alpha * (y - x) + x
@@ -71,7 +88,7 @@ impl<F: Field, EF: ExtensionField<F>> MleFixedAtZeroBackend<F, EF> for CpuBacken
     async fn fixed_at_zero(mle: &Tensor<F, Self>, point: &Point<EF, Self>) -> Tensor<EF, Self> {
         // TODO: A smarter way to do this is pre-cache the partial_lagrange_evals that are implicit
         // in `eval_at_point` so we don't recompute it at every step of BaseFold.
-        let mle = unsafe { mle.onwed_unchecked() };
+        let mle = unsafe { mle.owned_unchecked() };
         let (tx, rx) = oneshot::channel();
         rayon::spawn(move || {
             let even_values = mle.as_slice().par_iter().step_by(2).copied().collect::<Vec<_>>();

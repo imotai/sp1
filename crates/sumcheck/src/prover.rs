@@ -13,10 +13,10 @@ use crate::{ComponentPoly, PartialSumcheckProof, SumcheckPoly, SumcheckPolyFirst
 ///  Will panic if the polynomial has zero variables.
 pub async fn reduce_sumcheck_to_evaluation<
     F: Field,
-    EF: ExtensionField<F>,
+    EF: ExtensionField<F> + Send + Sync,
     Challenger: FieldChallenger<F>,
 >(
-    polys: Vec<impl SumcheckPolyFirstRound<EF>>,
+    polys: Vec<impl SumcheckPolyFirstRound<EF, NextRoundPoly: Send + Sync> + Send + Sync>,
     challenger: &mut Challenger,
     claims: Vec<EF>,
     t: usize,
@@ -25,13 +25,13 @@ pub async fn reduce_sumcheck_to_evaluation<
     assert!(!polys.is_empty());
     // Check that all the polynomials have the same number of variables.
 
-    let n_variables = polys[0].n_variables();
+    let num_variables = polys[0].num_variables();
 
     // Check that all the polynomials have the same number of variables.
-    assert!(polys.iter().all(|poly| poly.n_variables() == n_variables));
+    assert!(polys.iter().all(|poly| poly.num_variables() == num_variables));
 
     // The first round will process the first t variables, so we need to ensure that there are at least t variables.
-    assert!(n_variables >= t as u32);
+    assert!(num_variables >= t as u32);
 
     // The point at which the reduced sumcheck proof should be evaluated.
     let mut point = vec![];
@@ -63,7 +63,7 @@ pub async fn reduce_sumcheck_to_evaluation<
         .await;
     fix_first_span.exit();
     // The multi-variate polynomial used at the start of each sumcheck round.
-    for _ in t..n_variables as usize {
+    for _ in t..num_variables as usize {
         // Get the round claims from the last round's univariate poly messages.
         let round_claims = uni_polys.iter().map(|poly| poly.eval_at_point(*point.first().unwrap()));
 
@@ -95,9 +95,8 @@ pub async fn reduce_sumcheck_to_evaluation<
         fix_first_span.exit();
     }
 
-    let evals = tracing::debug_span!("eval_at_point")
-        .in_scope(|| uni_polys.iter().map(|poly| poly.eval_at_point(*point.first().unwrap())))
-        .collect_vec();
+    let evals =
+        uni_polys.iter().map(|poly| poly.eval_at_point(*point.first().unwrap())).collect_vec();
 
     let component_poly_evals = stream::iter(polys_cursor.iter())
         .then(|poly| poly.get_component_poly_evals())

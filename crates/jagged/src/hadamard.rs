@@ -7,7 +7,7 @@ use slop_algebra::{
 use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_multilinear::MleBaseBackend;
 use slop_sumcheck::{
-    SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound,
+    SumcheckPolyBase, SumcheckPolyFirstRound,
     {ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend},
 };
 use tokio::sync::oneshot;
@@ -40,7 +40,7 @@ where
     A: MleBaseBackend<F> + MleBaseBackend<EF>,
 {
     #[inline]
-    fn n_variables(&self) -> u32 {
+    fn num_variables(&self) -> u32 {
         self.base.num_variables()
     }
 }
@@ -85,11 +85,12 @@ where
     F: Field,
     EF: ExtensionField<F>,
 {
+    type NextRoundPoly = HadamardProduct<EF, EF, CpuBackend>;
     async fn fix_t_variables(
         poly: HadamardProduct<F, EF, CpuBackend>,
         alpha: EF,
         t: usize,
-    ) -> impl SumcheckPoly<EF> {
+    ) -> HadamardProduct<EF, EF, CpuBackend> {
         assert_eq!(t, 1);
         let base = poly.base.fix_last_variable(alpha).await;
         let ext = poly.ext.fix_last_variable(alpha).await;

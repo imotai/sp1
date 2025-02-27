@@ -13,6 +13,7 @@ slop-algebra = { workspace = true }
 
 thiserror = { workspace = true }
 serde = { workspace = true }
+itertools = { workspace = true }
 
 [lints]
 workspace = true

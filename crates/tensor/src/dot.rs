@@ -38,8 +38,8 @@ impl<T: AbstractField + 'static + Sync, U: AbstractExtensionField<T> + 'static +
         dim: usize,
     ) -> Tensor<U, Self> {
         let (src, scalars) = unsafe {
-            let src = src.onwed_unchecked();
-            let scalars = scalars.onwed_unchecked();
+            let src = src.owned_unchecked();
+            let scalars = scalars.owned_unchecked();
             (src, scalars)
         };
         let (tx, rx) = oneshot::channel();

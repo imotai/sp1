@@ -36,11 +36,12 @@ where
     K: Field,
     P: SumcheckPolyBase + HasBackend<Backend = Self>,
 {
+    type NextRoundPoly: SumcheckPoly<K>;
     fn fix_t_variables(
         poly: P,
         alpha: K,
         t: usize,
-    ) -> impl Future<Output = impl SumcheckPoly<K>> + Send;
+    ) -> impl Future<Output = Self::NextRoundPoly> + Send;
 
     fn sum_as_poly_in_last_t_variables(
         poly: &P,
@@ -55,12 +56,13 @@ where
     P: SumcheckPolyBase + ComponentPoly<K> + HasBackend + Send + Sync,
     P::Backend: SumCheckPolyFirstRoundBackend<P, K>,
 {
+    type NextRoundPoly = <P::Backend as SumCheckPolyFirstRoundBackend<P, K>>::NextRoundPoly;
     #[inline]
     fn fix_t_variables(
         self,
         alpha: K,
         t: usize,
-    ) -> impl Future<Output = impl SumcheckPoly<K>> + Send {
+    ) -> impl Future<Output = Self::NextRoundPoly> + Send {
         P::Backend::fix_t_variables(self, alpha, t)
     }
 

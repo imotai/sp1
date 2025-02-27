@@ -285,16 +285,11 @@ where
             prover_data.iter().map(|x| x.base_data.split_off_main_traces()).unzip();
 
         // TODO: Eliminate this clone.
-        let mut table_data_vec = table_data
+        let table_data_vec = table_data
             .iter()
             .flat_map(|y| y.iter())
             .flat_map(|x| x.clone().transpose().values.into_iter())
             .collect::<Vec<_>>();
-
-        table_data_vec.resize(
-            table_data_vec.len().next_power_of_two(),
-            <Pcs::PCS as MultilinearPcsBatchVerifier>::F::zero(),
-        );
 
         let sumcheck_poly = tracing::info_span!("make sumcheck poly").in_scope(|| {
             JaggedSumcheckPoly::<
@@ -395,7 +390,7 @@ impl<K: Field, EK: ExtensionField<K>> JaggedSumcheckPoly<K, EK> {
         )
     }
 
-    fn n_variables(&self) -> u32 {
+    fn num_variables(&self) -> u32 {
         assert!(self.mle.num_variables() == self.jagged_evals.num_variables());
         self.mle.num_variables()
     }
@@ -407,8 +402,8 @@ impl<K: Field, EK: ExtensionField<K>> JaggedSumcheckPoly<K, EK> {
 }
 
 impl<K: Field, EK: ExtensionField<K>> SumcheckPolyBase for JaggedSumcheckPoly<K, EK> {
-    fn n_variables(&self) -> u32 {
-        self.n_variables()
+    fn num_variables(&self) -> u32 {
+        self.num_variables()
     }
 }
 
@@ -435,12 +430,13 @@ impl<EK: Field> SumcheckPoly<EK> for JaggedSumcheckPoly<EK, EK> {
 }
 
 impl<K: Field, EK: ExtensionField<K>> SumcheckPolyFirstRound<EK> for JaggedSumcheckPoly<K, EK> {
-    fn fix_t_variables(self, alpha: EK, t: usize) -> impl SumcheckPoly<EK> {
+    type Output = JaggedSumcheckPoly<EK, EK>;
+    fn fix_t_variables(self, alpha: EK, t: usize) -> Self::Output {
         assert!(t == 1);
         let new_mle: Mle<EK> = self.mle.fix_last_variable(alpha);
         let new_jagged_evals = self.jagged_evals.fix_last_variable(alpha);
 
-        JaggedSumcheckPoly::<EK, EK> { mle: new_mle, jagged_evals: new_jagged_evals }
+        JaggedSumcheckPoly { mle: new_mle, jagged_evals: new_jagged_evals }
     }
 
     fn sum_as_poly_in_last_t_variables(

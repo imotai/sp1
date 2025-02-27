@@ -57,7 +57,7 @@ pub trait BasefoldProverComponents: Clone + Send + Sync + 'static + Debug {
     >;
 
     /// The encoder for encoding the Mle guts into codewords.
-    type Encoder: ReedSolomonEncoder<Self::F, Self::A> + Clone + Send + Sync + 'static;
+    type Encoder: ReedSolomonEncoder<Self::F, Self::A> + Clone + Debug + Send + Sync + 'static;
     /// The prover for the FRI proximity test.
     type FriProver: FriIoppProver<
             Self::F,
@@ -69,13 +69,18 @@ pub trait BasefoldProverComponents: Clone + Send + Sync + 'static + Debug {
             Encoder = Self::Encoder,
             TcsProver = Self::TcsProver,
         > + Send
+        + Debug
         + Sync
         + 'static;
     /// The TCS prover for committing to the encoded messages.
     type TcsProver: TensorCsProver<Self::A, Cs = Self::Tcs>
-        + ComputeTcsOpenings<Self::A, Cs = Self::Tcs>;
+        + ComputeTcsOpenings<Self::A, Cs = Self::Tcs>
+        + Debug
+        + 'static
+        + Send
+        + Sync;
     /// The prover for the proof-of-work grinding phase.
-    type PowProver: PowProver<Self::Challenger>;
+    type PowProver: PowProver<Self::Challenger> + Debug + Send + Sync + 'static;
 }
 
 pub trait DefaultBasefoldProver: BasefoldProverComponents + Sized {

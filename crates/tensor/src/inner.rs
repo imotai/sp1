@@ -148,7 +148,7 @@ impl<T, A: Backend> Tensor<T, A> {
     ///
     /// This function is unsafe because it enables bypassing the lifetime of the tensor.
     #[inline]
-    pub unsafe fn onwed_unchecked(&self) -> ManuallyDrop<Self> {
+    pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
         let dimensions = self.dimensions.clone();
         let storage_ptr = self.storage.as_ptr() as *mut T;
         let storage_len = self.storage.len();
