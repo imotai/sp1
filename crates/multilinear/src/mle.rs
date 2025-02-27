@@ -15,7 +15,7 @@ use slop_tensor::Tensor;
 use crate::{
     eval_mle_at_point_blocking, partial_lagrange_blocking, MleBaseBackend, MleEvaluationBackend,
     MleFixLastVariableBackend, MleFixLastVariableInPlaceBackend, MleFixedAtZeroBackend,
-    MleFoldBackend, PartialLagrangeBackend, Point,
+    MleFoldBackend, PartialLagrangeBackend, Point, ZeroEvalBackend,
 };
 
 /// A bacth of multi-linear polynomials.
@@ -386,6 +386,15 @@ impl<T, A: Backend> MleEval<T, A> {
         &self.evaluations
     }
 
+    #[inline]
+    pub fn zeros_in(num_polynomials: usize, allocator: &A) -> MleEval<T, A>
+    where
+        T: AbstractField,
+        A: ZeroEvalBackend<T>,
+    {
+        MleEval::new(allocator.zero_evaluations(num_polynomials))
+    }
+
     /// # Safety
     #[inline]
     pub unsafe fn evaluations_mut(&mut self) -> &mut Tensor<T, A> {
@@ -431,6 +440,13 @@ impl<T> MleEval<T, CpuBackend> {
 
     pub fn iter(&self) -> impl Iterator<Item = &[T]> + '_ {
         self.evaluations.split().map(|t| t.as_slice())
+    }
+
+    pub fn zeros(num_polynomials: usize) -> MleEval<T, CpuBackend>
+    where
+        T: AbstractField,
+    {
+        MleEval::zeros_in(num_polynomials, &GLOBAL_CPU_BACKEND)
     }
 
     pub fn add_evals(self, other: Self) -> Self

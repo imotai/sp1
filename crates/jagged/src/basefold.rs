@@ -123,9 +123,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use rand::{thread_rng, Rng};
-    use slop_commit::{Message, Rounds};
-    use slop_multilinear::{Evaluations, Mle, Point};
+    use slop_commit::Rounds;
+    use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
     use crate::MachineJaggedPcsVerifier;
 
@@ -133,8 +135,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_jagged_basefold() {
-        let row_counts_rounds = vec![vec![1 << 10, 1 << 10], vec![1 << 8]];
-        let column_counts_rounds = vec![vec![128, 32], vec![512]];
+        let row_counts_rounds = vec![vec![1 << 10, 0, 1 << 10], vec![1 << 8]];
+        let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
 
         let log_blowup = 1;
         let log_stacking_height = 10;
@@ -160,14 +162,22 @@ mod tests {
                     .iter()
                     .zip(col_counts.iter())
                     .map(|(num_rows, num_cols)| {
-                        Mle::<F>::rand(&mut rng, *num_cols, num_rows.ilog(2))
+                        if *num_rows == 0 {
+                            PaddedMle::zeros(*num_cols, max_log_row_count)
+                        } else {
+                            let mle = Mle::<F>::rand(&mut rng, *num_cols, num_rows.ilog(2));
+                            PaddedMle::padded_with_zeros(Arc::new(mle), max_log_row_count)
+                        }
                     })
-                    .collect::<Message<_>>()
+                    .collect::<Vec<_>>()
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier =
-            JaggedPcsVerifier::<JC>::new(log_blowup, log_stacking_height, max_log_row_count);
+        let jagged_verifier = JaggedPcsVerifier::<JC>::new(
+            log_blowup,
+            log_stacking_height,
+            max_log_row_count as usize,
+        );
 
         let jagged_prover = Prover::from_verifier(&jagged_verifier);
 
@@ -202,12 +212,6 @@ mod tests {
             }
             evaluation_claims.push(evals);
         }
-        // let evaluation_claims = round_mles
-        //     .iter()
-        //     .map(|round| {
-        //         round.iter().map(|mle| mle.eval_at(&eval_point)).collect::<Evaluations<_>>()
-        //     })
-        //     .collect::<Rounds<_>>();
 
         let proof = jagged_prover
             .prove_trusted_evaluations(

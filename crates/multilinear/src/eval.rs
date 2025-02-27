@@ -8,7 +8,7 @@ use slop_tensor::{Dimensions, Tensor};
 use crate::{partial_lagrange_blocking, MleBaseBackend, MleEval, PartialLagrangeBackend, Point};
 
 pub trait MleEvaluationBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
-    MleBaseBackend<F> + HostEvaluationBackend<F, EF>
+    MleBaseBackend<F> + HostEvaluationBackend<F, EF> + ZeroEvalBackend<F> + ZeroEvalBackend<EF>
 {
     fn eval_mle_at_point(
         mle: &Tensor<F, Self>,
@@ -26,6 +26,16 @@ impl<F: AbstractField, EF: AbstractExtensionField<F>, A: Backend> HostEvaluation
     A: CanCopyFromRef<MleEval<EF>, CpuBackend, Output = MleEval<EF, A>>
         + CanCopyIntoRef<MleEval<EF, Self>, CpuBackend, Output = MleEval<EF>>
 {
+}
+
+pub trait ZeroEvalBackend<F: AbstractField>: Backend {
+    fn zero_evaluations(&self, num_polynomials: usize) -> Tensor<F, Self>;
+}
+
+impl<F: AbstractField> ZeroEvalBackend<F> for CpuBackend {
+    fn zero_evaluations(&self, num_polynomials: usize) -> Tensor<F, Self> {
+        Tensor::zeros_in([num_polynomials], *self)
+    }
 }
 
 impl<F, EF> MleEvaluationBackend<F, EF> for CpuBackend

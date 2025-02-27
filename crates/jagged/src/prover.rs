@@ -8,7 +8,7 @@ use slop_alloc::{HasBackend, ToHost};
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::{Message, Rounds};
 use slop_multilinear::{
-    Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsProver, Point,
+    Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsProver, PaddedMle, Point,
 };
 use slop_stacked::{
     FixedRateInterleave, FixedRateInterleaveBackend, InterleaveMultilinears, StackedPcsProver,
@@ -138,21 +138,31 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         self.stacked_pcs_prover.log_stacking_height
     }
 
+    /// Commit to a batch of padded multilinears.
+    ///
+    /// The jagged polyniomial commitments scheme is able to commit to sparse polynomials having
+    /// very few or no real rows.
+    /// **Note** the padding values will be ignored and treated as though they are zero.
     pub async fn commit_multilinears(
         &self,
-        multilinears: Message<Mle<C::F, C::A>>,
+        multilinears: Vec<PaddedMle<C::F, C::A>>,
     ) -> Result<(C::Commitment, JaggedProverData<C>), JaggedProverError<C>> {
-        let mut row_counts =
-            multilinears.iter().map(|x| x.num_non_zero_entries()).collect::<Vec<_>>();
+        let mut row_counts = multilinears.iter().map(|x| x.num_real_entries()).collect::<Vec<_>>();
         let mut column_counts =
             multilinears.iter().map(|x| x.num_polynomials()).collect::<Vec<_>>();
         // TODO: why is this here?
         column_counts.push(1);
 
+        // Check the vality of the input multilinears.
+        for padded_mle in multilinears.iter() {
+            // Check that the number of variables matches what the prover expects.
+            assert_eq!(padded_mle.num_variables(), self.max_log_row_count as u32);
+        }
+
         // TODO: more comments
         let next_multiple = multilinears
             .iter()
-            .map(|mle| mle.num_non_zero_entries() * mle.num_polynomials())
+            .map(|mle| mle.num_real_entries() * mle.num_polynomials())
             .sum::<usize>()
             .next_multiple_of(1 << self.log_stacking_height());
 
@@ -166,12 +176,17 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             next_multiple
                 - multilinears
                     .iter()
-                    .map(|mle| mle.num_non_zero_entries() * mle.num_polynomials())
+                    .map(|mle| mle.num_real_entries() * mle.num_polynomials())
                     .sum::<usize>(),
         );
 
+        // Collect all the multilinears that have at least one non-zero entry into a commit message
+        // for the dense PCS.
+        let message =
+            multilinears.into_iter().filter_map(|mle| mle.into_inner()).collect::<Message<_>>();
+
         let (commitment, data) =
-            self.stacked_pcs_prover.commit_multilinears(multilinears).await.unwrap();
+            self.stacked_pcs_prover.commit_multilinears(message).await.unwrap();
 
         let jagged_prover_data = JaggedProverData {
             stacked_pcs_prover_data: data,
