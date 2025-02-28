@@ -55,7 +55,7 @@ where
         let (tx, rx) = oneshot::channel();
         let multilinears = multilinears;
         let batch_size = stacker.batch_size;
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let mut batch_multilinears = vec![];
 
             let mut overflow_buffer = Vec::with_capacity(1 << log_stacking_height);

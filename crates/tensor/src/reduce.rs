@@ -34,7 +34,7 @@ impl<T: Field> ReduceSumBackend<T> for CpuBackend {
         let src_buffer = unsafe { src.as_buffer().owned_unchecked() };
         let (tx, rx) = oneshot::channel();
         let dim_stride = src.strides()[dim];
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let sums = src_buffer
                 .par_chunks_exact(dim_stride)
                 .fold(

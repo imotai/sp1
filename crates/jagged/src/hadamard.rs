@@ -109,7 +109,7 @@ where
         let poly_base = poly.base.first_component_mle().clone();
         let poly_ext = poly.ext.first_component_mle().clone();
         let (tx, rx) = oneshot::channel();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             // The sumcheck polynomial is a multi-quadratic polynomial, so three evaluations are needed.
             let eval_0 = poly_ext
                 .guts()

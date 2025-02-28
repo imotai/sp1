@@ -19,7 +19,7 @@ slop-alloc = { workspace = true }
 slop-commit = { workspace = true }
 slop-basefold-prover = { workspace = true }
 slop-basefold = { workspace = true }
-
+slop-futures = { workspace = true }
 
 itertools = "0.12.0"
 tracing = "0.1"

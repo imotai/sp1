@@ -17,7 +17,7 @@ impl<F: AbstractField + 'static> PartialLagrangeBackend<F> for CpuBackend {
     async fn partial_lagrange(point: &Point<F, Self>) -> Tensor<F, Self> {
         let (tx, rx) = oneshot::channel();
         let point = point.clone();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let result = partial_lagrange_blocking(&point);
             tx.send(result).unwrap();
         });

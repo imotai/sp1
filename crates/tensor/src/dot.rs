@@ -43,7 +43,7 @@ impl<T: AbstractField + 'static + Sync, U: AbstractExtensionField<T> + 'static +
             (src, scalars)
         };
         let (tx, rx) = oneshot::channel();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let mut sizes = src.sizes().to_vec();
             sizes.remove(dim);
             let dimensions = Dimensions::try_from(sizes).unwrap();

@@ -8,8 +8,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-slop-alloc = { workspace = true }
-
 rayon = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }

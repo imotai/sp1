@@ -42,7 +42,7 @@ impl<F: Field> JaggedMleGenerator<F, CpuBackend> for CpuJaggedMleGenerator {
         let z_row = z_row.clone();
         let z_col = z_col.clone();
         let jagged_params = jagged_params.clone();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let values = jagged_params.partial_jagged_little_polynomial_evaluation(&z_row, &z_col);
             let log_stacking_height = values.num_variables();
             let mle = LongMle::from_components(vec![values], log_stacking_height);

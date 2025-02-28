@@ -46,7 +46,7 @@ where
         };
 
         let (tx, rx) = oneshot::channel();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let mle = mle;
             let num_polynomials = CpuBackend::num_polynomials(&mle);
             let num_non_zero_elements_out = mle.sizes()[0].div_ceil(2);
@@ -90,7 +90,7 @@ impl<F: Field, EF: ExtensionField<F>> MleFixedAtZeroBackend<F, EF> for CpuBacken
         // in `eval_at_point` so we don't recompute it at every step of BaseFold.
         let mle = unsafe { mle.owned_unchecked() };
         let (tx, rx) = oneshot::channel();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let even_values = mle.as_slice().par_iter().step_by(2).copied().collect::<Vec<_>>();
             tx.send(even_values).unwrap();
         });

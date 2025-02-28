@@ -110,7 +110,7 @@ impl<
 
         let (tx, rx) = tokio::sync::oneshot::channel();
 
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             // Compute all the batch challenge powers.
             let total_num_polynomials =
                 mles.iter().map(|mle| mle.borrow().num_polynomials()).sum::<usize>();

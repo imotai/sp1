@@ -1,4 +1,7 @@
+use std::any::Any;
+use std::sync::OnceLock;
 use std::{
+    backtrace::Backtrace,
     future::Future,
     marker::PhantomData,
     pin::Pin,
@@ -10,6 +13,28 @@ use thiserror::Error;
 
 use tokio::sync::oneshot;
 
+static GLOBAL_POOL: OnceLock<()> = OnceLock::new();
+
+fn init_global_pool() {
+    rayon::ThreadPoolBuilder::new().panic_handler(panic_handler).build_global().ok();
+}
+
+fn panic_handler(panic_payload: Box<dyn Any + Send>) {
+    let backtrace = Backtrace::capture();
+
+    if let Some(message) = panic_payload.downcast_ref::<&str>() {
+        eprintln!("Rayon thread panic: '{}'", message);
+    } else if let Some(message) = panic_payload.downcast_ref::<String>() {
+        eprintln!("Rayon thread panic: '{}'", message);
+    } else {
+        eprintln!("Rayon thread panic with unknown payload");
+    }
+
+    eprintln!("Backtrace:\n{:?}", backtrace);
+
+    // TODO: perhaps safer to abort the process
+}
+
 pub enum TaskPool {
     Global,
     Local(rayon::ThreadPool),
@@ -20,6 +45,7 @@ where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
+    GLOBAL_POOL.get_or_init(init_global_pool);
     let (tx, rx) = oneshot::channel();
     rayon::spawn(move || {
         let result = func();
@@ -73,11 +99,22 @@ impl CpuTaskPoolBuilder {
 
 #[cfg(test)]
 mod tests {
+    use core::panic;
+    use tokio::sync::oneshot;
+
     use super::*;
 
     #[tokio::test]
+    #[should_panic]
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
     async fn test_spawn() {
-        let handle = spawn(|| (0..100).sum::<usize>());
-        assert_eq!(handle.await.unwrap(), 4950);
+        let (tx, rx) = oneshot::channel();
+        spawn(move || {
+            panic!("test");
+            tx.send(()).unwrap();
+        });
+        rx.await.unwrap();
+        // handle.await.unwrap();
     }
 }

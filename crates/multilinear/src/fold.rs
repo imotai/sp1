@@ -20,7 +20,7 @@ impl<F: Field> MleFoldBackend<F> for CpuBackend {
         let guts = unsafe { guts.owned_unchecked() };
         assert_eq!(guts.sizes()[1], 1, "this is only supported for a single polynomial");
         let (tx, rx) = oneshot::channel();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             // Compute the random linear combination of the even and odd coefficients of `vals`. This is
             // used to reduce the two evaluation claims for new_point into a single evaluation claim.
             let fold_guts = guts

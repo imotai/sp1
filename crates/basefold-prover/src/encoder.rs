@@ -47,7 +47,7 @@ impl<F: TwoAdicField, D: Dft<F>> ReedSolomonEncoder<F> for CpuDftEncoder<F, D> {
         let dft = self.dft.clone();
         let log_blowup = self.config.log_blowup();
         let data = data.to_vec();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let mut results = Vec::with_capacity(data.len());
             for data in data {
                 let data = data.borrow().guts();
