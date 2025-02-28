@@ -39,13 +39,10 @@ pub async fn reduce_sumcheck_to_evaluation<
     // The univariate poly messages.  This will be a rlc of the polys' univariate polys.
     let mut univariate_poly_msgs: Vec<UnivariatePolynomial<EF>> = vec![];
 
-    let sum_as_first_span =
-        tracing::debug_span!("sum_as_poly_in_first_variable first round").entered();
     let mut uni_polys = stream::iter(polys.iter().zip(claims.iter()))
         .then(|(poly, claim)| poly.sum_as_poly_in_last_t_variables(Some(*claim), t))
         .collect::<Vec<_>>()
         .await;
-    sum_as_first_span.exit();
 
     let mut rlc_uni_poly = rlc_univariate_polynomials(&uni_polys, lambda);
     let coefficients =
@@ -56,23 +53,19 @@ pub async fn reduce_sumcheck_to_evaluation<
 
     let alpha: EF = challenger.sample_ext_element();
     point.insert(0, alpha);
-    let fix_first_span = tracing::debug_span!("fix_first_variable first round").entered();
     let mut polys_cursor = stream::iter(polys.into_iter())
         .then(|poly| poly.fix_t_variables(alpha, t))
         .collect::<Vec<_>>()
         .await;
-    fix_first_span.exit();
     // The multi-variate polynomial used at the start of each sumcheck round.
     for _ in t..num_variables as usize {
         // Get the round claims from the last round's univariate poly messages.
         let round_claims = uni_polys.iter().map(|poly| poly.eval_at_point(*point.first().unwrap()));
 
-        let sum_as_first_span = tracing::debug_span!("sum_as_poly_in_first_variable").entered();
         uni_polys = stream::iter(polys_cursor.iter().zip_eq(round_claims))
             .then(|(poly, round_claim)| poly.sum_as_poly_in_last_variable(Some(round_claim)))
             .collect::<Vec<_>>()
             .await;
-        sum_as_first_span.exit();
         rlc_uni_poly = rlc_univariate_polynomials(&uni_polys, lambda);
         challenger.observe_slice(
             &rlc_uni_poly
@@ -87,12 +80,10 @@ pub async fn reduce_sumcheck_to_evaluation<
 
         let alpha: EF = challenger.sample_ext_element();
         point.insert(0, alpha);
-        let fix_first_span = tracing::debug_span!("fix_first_variable").entered();
         polys_cursor = stream::iter(polys_cursor.into_iter())
             .then(|poly| poly.fix_last_variable(alpha))
             .collect::<Vec<_>>()
             .await;
-        fix_first_span.exit();
     }
 
     let evals =

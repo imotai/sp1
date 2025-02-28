@@ -5,7 +5,7 @@ use slop_alloc::Backend;
 use slop_commit::Message;
 use slop_multilinear::Mle;
 
-pub trait InterleaveMultilinears<F: Field, A: Backend> {
+pub trait InterleaveMultilinears<F: Field, A: Backend>: 'static + Send + Sync {
     fn interleave_multilinears(
         &self,
         multilinears: Message<Mle<F, A>>,

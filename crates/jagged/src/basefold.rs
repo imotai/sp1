@@ -15,7 +15,7 @@ use crate::{
     JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
 };
 
-pub type Poseidon2BabyBearJaggedConfig = JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig>;
+pub type BabyBearPoseidon2 = JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig>;
 
 pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCpuProverComponents,
@@ -142,7 +142,7 @@ mod tests {
         let log_stacking_height = 10;
         let max_log_row_count = 10;
 
-        type JC = Poseidon2BabyBearJaggedConfig;
+        type JC = BabyBearPoseidon2;
         type Prover = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;

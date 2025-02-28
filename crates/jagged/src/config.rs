@@ -1,6 +1,6 @@
 use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{CanObserve, FieldChallenger};
 use slop_multilinear::MultilinearPcsVerifier;
 
 use std::fmt::Debug;
@@ -17,7 +17,12 @@ pub trait JaggedConfig:
     ///
     /// The challenger is observing all the messages sent throughout the protocol and uses this
     /// to create the verifier messages of the IOP.
-    type Challenger: FieldChallenger<Self::F>;
+    type Challenger: FieldChallenger<Self::F>
+        + CanObserve<Self::Commitment>
+        + 'static
+        + Send
+        + Sync
+        + Clone;
 
     type BatchPcsProof: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
 

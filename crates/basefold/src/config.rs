@@ -35,7 +35,13 @@ pub trait BasefoldConfig:
     ///
     /// The challenger is observing all the messages sent throughout the protocol and uses this
     /// to create the verifier messages of the IOP.
-    type Challenger: FieldChallenger<Self::F> + GrindingChallenger + CanObserve<Self::Commitment>;
+    type Challenger: FieldChallenger<Self::F>
+        + GrindingChallenger
+        + CanObserve<Self::Commitment>
+        + 'static
+        + Send
+        + Sync
+        + Clone;
 }
 
 pub trait DefaultBasefoldConfig: BasefoldConfig + Sized {

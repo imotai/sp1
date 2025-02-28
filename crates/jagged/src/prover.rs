@@ -1,6 +1,6 @@
 use derive_where::derive_where;
 use futures::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
 
 use slop_algebra::{AbstractField, ExtensionField, Field};
@@ -58,19 +58,29 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
     type F: Field;
     type EF: ExtensionField<Self::F>;
     type A: JaggedBackend<Self::F, Self::EF>;
-    type Challenger: FieldChallenger<Self::F> + CanObserve<Self::Commitment> + Send + Sync + 'static;
+    type Challenger: FieldChallenger<Self::F>
+        + CanObserve<Self::Commitment>
+        + 'static
+        + Send
+        + Sync
+        + Clone;
 
-    type Commitment: 'static + Clone + Send + Sync;
+    type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
 
-    type BatchPcsProof;
+    type BatchPcsProof: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
 
     type Config: JaggedConfig<
-        F = Self::F,
-        EF = Self::EF,
-        Commitment = Self::Commitment,
-        Challenger = Self::Challenger,
-        BatchPcsProof = Self::BatchPcsProof,
-    >;
+            F = Self::F,
+            EF = Self::EF,
+            Commitment = Self::Commitment,
+            Challenger = Self::Challenger,
+            BatchPcsProof = Self::BatchPcsProof,
+        >
+        + 'static
+        + Send
+        + Sync
+        + Clone
+        + Debug;
 
     type JaggedGenerator: JaggedMleGenerator<Self::EF, Self::A>;
 

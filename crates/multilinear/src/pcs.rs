@@ -31,7 +31,7 @@ pub struct Evaluations<F, A: Backend = CpuBackend> {
 /// [MultilinearPcsVerifier::Commitment] which represents a batch of multilinear polynomials. After
 /// all the rounds are complete, the verifier can check an evaluation claim for all the polynomials
 /// in all rounds, evaluated at same [Point].
-pub trait MultilinearPcsVerifier {
+pub trait MultilinearPcsVerifier: 'static + Send + Sync + Clone {
     /// The base field.
     ///
     /// This is the field on which the MLEs committed to are defined over.
@@ -276,3 +276,11 @@ impl<F, A: Backend> DerefMut for Evaluations<F, A> {
         &mut self.round_evaluations
     }
 }
+
+pub trait MultilinearPcsChallenger<F: Field>: FieldChallenger<F> {
+    fn sample_point<EF: ExtensionField<F>>(&mut self, num_variables: u32) -> Point<EF> {
+        (0..num_variables).map(|_| self.sample_ext_element::<EF>()).collect()
+    }
+}
+
+impl<F: Field, C> MultilinearPcsChallenger<F> for C where C: FieldChallenger<F> {}
