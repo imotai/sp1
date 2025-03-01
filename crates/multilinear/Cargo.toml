@@ -27,6 +27,7 @@ derive-where = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
+num_cpus = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

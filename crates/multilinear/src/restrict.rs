@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use std::future::Future;
+use std::{cmp::max, future::Future};
 use tokio::sync::oneshot;
 
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
@@ -50,23 +50,39 @@ where
             let mle = mle;
             let num_polynomials = CpuBackend::num_polynomials(&mle);
             let num_non_zero_elements_out = mle.sizes()[0].div_ceil(2);
-            // let mut result = Vec::with_capacity(num_non_zero_elements_out * num_polynomials);
-            let result = mle
-                .as_buffer()
-                .par_chunks(2 * num_polynomials)
-                .flat_map_iter(|chunk| {
-                    (0..num_polynomials).map(|i| {
-                        let x = chunk[i];
-                        let y = chunk
-                            .get(i + num_polynomials)
-                            .copied()
-                            .unwrap_or_else(|| padding_values[i]);
-                        // return alpha * y + (EF::one() - alpha) * x, but in a more efficient way
-                        // that minimizes extension field multiplications.
-                        alpha * (y - x) + x
-                    })
-                })
-                .collect::<Vec<_>>();
+            let result_size = num_non_zero_elements_out * num_polynomials;
+
+            let mut result: Vec<EF> = Vec::with_capacity(result_size);
+
+            #[allow(clippy::uninit_vec)]
+            unsafe {
+                result.set_len(result_size);
+            }
+
+            let result_chunk_size =
+                max(num_non_zero_elements_out / num_cpus::get() * num_polynomials, num_polynomials);
+            let mle_chunk_size = 2 * result_chunk_size;
+
+            mle.as_slice()
+                .chunks(mle_chunk_size)
+                .zip(result.chunks_mut(result_chunk_size))
+                .par_bridge()
+                .for_each(|(mle_chunk, result_chunk)| {
+                    let num_result_rows = result_chunk.len() / num_polynomials;
+
+                    (0..num_result_rows).for_each(|i| {
+                        (0..num_polynomials).for_each(|j| {
+                            let x = mle_chunk[(2 * i) * num_polynomials + j];
+                            let y = mle_chunk
+                                .get((2 * i + 1) * num_polynomials + j)
+                                .copied()
+                                .unwrap_or_else(|| padding_values[j]);
+                            // return alpha * y + (EF::one() - alpha) * x, but in a more efficient way
+                            // that minimizes extension field multiplications.
+                            result_chunk[i * num_polynomials + j] = alpha * (y - x) + x;
+                        });
+                    });
+                });
 
             let result = Tensor::from(result).reshape([num_non_zero_elements_out, num_polynomials]);
             tx.send(result).unwrap();

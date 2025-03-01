@@ -30,6 +30,7 @@ thiserror = { workspace = true }
 futures = { workspace = true }
 derive-where = { workspace = true }
 rand = { workspace = true }
+num_cpus = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

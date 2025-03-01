@@ -1,4 +1,4 @@
-use futures::prelude::*;
+use futures::{future::join_all, prelude::*};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
 
@@ -91,20 +91,20 @@ impl<F, A: Backend> LongMle<F, A> {
                 .await;
             let restacked_mle =
                 LongMle { components: new_components, log_stacking_height: total_num_of_variables };
-            let components = stream::iter(restacked_mle.components.iter())
-                .then(move |mle| mle.fix_last_variable(alpha))
-                .collect::<Message<_>>()
-                .await;
+            let components =
+                join_all(restacked_mle.components.iter().map(|mle| mle.fix_last_variable(alpha)))
+                    .await;
             return LongMle {
-                components,
+                components: Message::from(components),
                 log_stacking_height: restacked_mle.log_stacking_height - 1,
             };
         }
-        let components = stream::iter(self.components.iter())
-            .then(move |mle| mle.fix_last_variable(alpha))
-            .collect::<Message<_>>()
-            .await;
-        LongMle { components, log_stacking_height: self.log_stacking_height - 1 }
+        let components =
+            join_all(self.components.iter().map(|mle| mle.fix_last_variable(alpha))).await;
+        LongMle {
+            components: Message::from(components),
+            log_stacking_height: self.log_stacking_height - 1,
+        }
     }
 
     pub async fn fix_last_variable_in_place(self, alpha: F) -> Self

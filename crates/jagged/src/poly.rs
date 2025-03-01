@@ -20,11 +20,13 @@
 //! above, and also checks that index < t_{tab+1}. Assuming that c_{tab} is a power of 2, the
 //! multiplication `row * c_{tab}` can be done by bit-shift, and the addition is checked via the
 //! grade-school algorithm.
+use std::cmp::max;
 use std::collections::BTreeMap;
+use std::iter::once;
 
 use rayon::prelude::*;
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field};
 use slop_utils::log2_ceil_usize;
@@ -288,31 +290,50 @@ impl JaggedLittlePolynomialProverParams {
         z_col: &Point<K>,
     ) -> Mle<K> {
         let log_total_area = log2_ceil_usize(*self.col_prefix_sums_usize.last().unwrap());
+        let total_area = 1 << log_total_area;
 
         let col_eq = Mle::blocking_partial_lagrange(
             &z_col.last_k(log2_ceil_usize(self.col_prefix_sums_usize.len() - 1)),
         );
         let row_eq = Mle::blocking_partial_lagrange(&z_row.last_k(self.max_log_row_count));
 
-        let mut result = Vec::with_capacity(1 << log_total_area);
-        tracing::info_span!("compute jagged values").in_scope(|| {
-            result.par_extend(
-                self.col_prefix_sums_usize
-                    .par_iter()
-                    .zip(self.col_prefix_sums_usize[1..].par_iter())
-                    .enumerate()
-                    .flat_map(|(i, (&prefix_sum, &next_prefix_sum))| {
-                        let col_eq_val = col_eq.guts().as_slice()[i];
-                        let col_height = next_prefix_sum - prefix_sum;
-                        let row_eq_ref = &row_eq;
-                        (0..col_height)
-                            .into_par_iter()
-                            .map(move |row| row_eq_ref.guts().as_slice()[row] * col_eq_val)
-                    }),
-            );
+        let mut result: Vec<K> = Vec::with_capacity(total_area);
 
-            // Add zero padding if needed
-            result.resize(1 << log_total_area, K::zero())
+        #[allow(clippy::uninit_vec)]
+        unsafe {
+            result.set_len(total_area);
+        }
+
+        let col_ranges = ColRanges::new(&self.col_prefix_sums_usize, total_area);
+
+        let result_chunk_size = max(total_area / num_cpus::get(), 1);
+        tracing::info_span!("compute jagged values").in_scope(|| {
+            (result.chunks_mut(result_chunk_size).enumerate().par_bridge()).for_each(
+                |(chunk_idx, chunk)| {
+                    let i = chunk_idx * result_chunk_size;
+                    let mut col_range_iter = col_ranges.get_col_range(i).peekable();
+                    let mut current_col_range = col_range_iter.next().unwrap();
+                    let mut current_row = i - current_col_range.start_i;
+
+                    chunk.iter_mut().for_each(|val| {
+                        *val = if current_col_range.is_last {
+                            K::zero()
+                        } else {
+                            col_eq.guts().as_slice()[current_col_range.col_idx]
+                                * row_eq.guts().as_slice()[current_row]
+                        };
+
+                        current_row += 1;
+                        while current_row == current_col_range.col_size {
+                            if col_range_iter.peek().is_none() {
+                                break;
+                            }
+                            current_col_range = col_range_iter.next().unwrap();
+                            current_row = 0;
+                        }
+                    });
+                },
+            );
         });
 
         result.into()
@@ -334,6 +355,69 @@ impl JaggedLittlePolynomialProverParams {
             col_prefix_sums,
             next_col_prefix_sums,
             max_log_row_count: self.max_log_row_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ColRange {
+    col_idx: usize,
+    start_i: usize,
+    end_i: usize,
+    col_size: usize,
+    is_last: bool,
+}
+
+impl ColRange {
+    #[inline]
+    fn in_range(&self, i: usize) -> bool {
+        i >= self.start_i && i < self.end_i
+    }
+}
+
+#[derive(Debug)]
+struct ColRanges {
+    col_ranges: Vec<ColRange>,
+}
+
+impl ColRanges {
+    fn new(col_prefix_sums_usizes: &[usize], last_prefix_sum: usize) -> Self {
+        let num_col_prefix_sums = col_prefix_sums_usizes.len();
+
+        let last_range = ColRange {
+            col_idx: num_col_prefix_sums - 1,
+            start_i: col_prefix_sums_usizes[num_col_prefix_sums - 1],
+            end_i: last_prefix_sum,
+            col_size: last_prefix_sum - col_prefix_sums_usizes[num_col_prefix_sums - 1],
+            is_last: true,
+        };
+
+        ColRanges {
+            col_ranges: col_prefix_sums_usizes
+                .iter()
+                .take(num_col_prefix_sums - 1)
+                .enumerate()
+                .map(|(i, prefix_sum)| ColRange {
+                    col_idx: i,
+                    start_i: *prefix_sum,
+                    end_i: col_prefix_sums_usizes[i + 1],
+                    col_size: col_prefix_sums_usizes[i + 1] - *prefix_sum,
+                    is_last: false,
+                })
+                .chain(once(last_range))
+                .collect::<Vec<_>>(),
+        }
+    }
+
+    #[inline]
+    fn get_col_range(&self, i: usize) -> impl Iterator<Item = &ColRange> {
+        let mut col_range_iter = self.col_ranges.iter().peekable();
+        loop {
+            let col_range = col_range_iter.peek().expect("i is out of range");
+            if col_range.in_range(i) {
+                return col_range_iter;
+            }
+            col_range_iter.next().expect("must have next element");
         }
     }
 }
