@@ -9,7 +9,7 @@ use slop_multilinear::{
 use super::{sum_as_poly::ZerocheckRoundProver, ZeroCheckPoly};
 
 /// This function will set the last variable to `alpha`.
-pub async fn fix_last_variable<
+pub async fn zerocheck_fix_last_variable<
     K: Field,
     F: Field,
     EF: ExtensionField<F> + Add<K, Output = EF> + Mul<K, Output = EF> + From<K> + ExtensionField<K>,

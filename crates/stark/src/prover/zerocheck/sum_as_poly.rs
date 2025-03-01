@@ -6,6 +6,7 @@ use std::{
 };
 
 use itertools::Itertools;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{
@@ -119,53 +120,109 @@ where
         let powers_of_alpha = self.powers_of_alpha.clone();
         let (tx, rx) = oneshot::channel();
         slop_futures::rayon::spawn(move || {
-            let mut y_0 = EF::zero();
-            let mut y_2 = EF::zero();
-            let mut y_4 = EF::zero();
+            let num_non_padded_vars = main_values.num_real_entries().next_power_of_two().ilog2();
+            let num_non_padded_terms = 2usize.pow(num_non_padded_vars - 1);
+            let eq_chunk_size = std::cmp::max(num_non_padded_terms / num_cpus::get(), 1);
+            let values_chunk_size = eq_chunk_size * 2;
 
             let eq_guts = partial_lagrange.guts().as_buffer().as_slice();
 
-            let num_non_padded_vars = main_values.num_real_entries().next_power_of_two().ilog2();
-            let num_non_padded_terms = 2usize.pow(num_non_padded_vars - 1);
+            let num_main_columns = main_values.num_polynomials();
+            let num_preprocessed_columns = preprocessed_values
+                .as_ref()
+                .map_or(0, slop_multilinear::PaddedMle::num_polynomials);
+
+            let main_values = main_values.inner().as_ref().unwrap().guts().as_buffer().as_slice();
+            let has_preprocessed_values = preprocessed_values.is_some();
+            let preprocessed_values = preprocessed_values.as_ref().map_or([].as_slice(), |p| {
+                p.inner().as_ref().unwrap().guts().as_buffer().as_slice()
+            });
+
             // Handle the case when the zerocheck polynomial has non-padded variables.
-            for (i, eq) in eq_guts.iter().enumerate().take(num_non_padded_terms) {
-                // Get the column values where the last variable is set to 0, 2, and 4.
-                let (
-                    preprocessed_column_vals_0,
-                    preprocessed_column_vals_2,
-                    preprocessed_column_vals_4,
-                ) = if let Some(preprocessed_values) = preprocessed_values.as_ref() {
-                    interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
-                        preprocessed_values.inner().as_ref().unwrap(),
-                        i,
-                    )
-                } else {
-                    (Vec::new(), Vec::new(), Vec::new())
-                };
+            let eq_guts = eq_guts[0..num_non_padded_terms].to_vec();
+            let cumul_ys = eq_guts
+                .chunks(eq_chunk_size)
+                .zip_eq(main_values.chunks(values_chunk_size * num_main_columns))
+                .enumerate()
+                .par_bridge()
+                .map(|(i, (eq_chunk, main_chunk))| {
+                    // Evaluate the constraint polynomial at the points 0, 2, and 4, and
+                    // add the results to the y_0, y_2, and y_4 accumulators.
+                    let mut cumul_y_0 = EF::zero();
+                    let mut cumul_y_2 = EF::zero();
+                    let mut cumul_y_4 = EF::zero();
 
-                // Since it's non-paddded we cxpect to have main values.
-                let main_value_mle = main_values.inner().as_ref().unwrap();
-                let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
-                    interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(main_value_mle, i);
+                    let mut main_values_0 = vec![K::zero(); num_main_columns];
+                    let mut main_values_2 = vec![K::zero(); num_main_columns];
+                    let mut main_values_4 = vec![K::zero(); num_main_columns];
 
-                // Evaluate the constraint polynomial at the points 0, 2, and 4, and
-                // add the results to the y_0, y_2, and y_4 accumulators.
-                increment_y_values::<K, F, EF, A, IS_FIRST_ROUND>(
-                    &public_values,
-                    &powers_of_alpha,
-                    &air,
-                    &mut y_0,
-                    &mut y_2,
-                    &mut y_4,
-                    &preprocessed_column_vals_0,
-                    &main_column_vals_0,
-                    &preprocessed_column_vals_2,
-                    &main_column_vals_2,
-                    &preprocessed_column_vals_4,
-                    &main_column_vals_4,
-                    *eq,
-                );
-            }
+                    let mut preprocessed_values_0 = vec![K::zero(); num_preprocessed_columns];
+                    let mut preprocessed_values_2 = vec![K::zero(); num_preprocessed_columns];
+                    let mut preprocessed_values_4 = vec![K::zero(); num_preprocessed_columns];
+
+                    for (j, (eq, main_row)) in eq_chunk
+                        .iter()
+                        .zip_eq(main_chunk.chunks_exact(num_main_columns * 2))
+                        .enumerate()
+                    {
+                        let main_row_0 = &main_row[0..num_main_columns];
+                        let main_row_1 = &main_row[num_main_columns..num_main_columns * 2];
+
+                        interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
+                            main_row_0,
+                            main_row_1,
+                            &mut main_values_0,
+                            &mut main_values_2,
+                            &mut main_values_4,
+                        );
+
+                        if has_preprocessed_values {
+                            let preprocess_chunk_size =
+                                values_chunk_size * num_preprocessed_columns;
+                            let preprocessed_row_0_start_idx =
+                                i * preprocess_chunk_size + 2 * j * num_preprocessed_columns;
+                            let preprocessed_row_0 = &preprocessed_values
+                                [preprocessed_row_0_start_idx
+                                    ..preprocessed_row_0_start_idx + num_preprocessed_columns];
+                            let preprocessed_row_1_start_idx =
+                                preprocessed_row_0_start_idx + num_preprocessed_columns;
+                            let preprocessed_row_1 = &preprocessed_values
+                                [preprocessed_row_1_start_idx
+                                    ..preprocessed_row_1_start_idx + num_preprocessed_columns];
+
+                            interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
+                                preprocessed_row_0,
+                                preprocessed_row_1,
+                                &mut preprocessed_values_0,
+                                &mut preprocessed_values_2,
+                                &mut preprocessed_values_4,
+                            );
+                        }
+
+                        increment_y_values::<K, F, EF, A, IS_FIRST_ROUND>(
+                            &public_values,
+                            &powers_of_alpha,
+                            &air,
+                            &mut cumul_y_0,
+                            &mut cumul_y_2,
+                            &mut cumul_y_4,
+                            &preprocessed_values_0,
+                            &main_values_0,
+                            &preprocessed_values_2,
+                            &main_values_2,
+                            &preprocessed_values_4,
+                            &main_values_4,
+                            *eq,
+                        );
+                    }
+                    (cumul_y_0, cumul_y_2, cumul_y_4)
+                })
+                .collect::<Vec<_>>();
+
+            let (y_0, y_2, y_4) = cumul_ys.into_iter().fold(
+                (EF::zero(), EF::zero(), EF::zero()),
+                |(y_0, y_2, y_4), (y_0_i, y_2_i, y_4_i)| (y_0 + y_0_i, y_2 + y_2_i, y_4 + y_4_i),
+            );
 
             tx.send((y_0, y_2, y_4)).unwrap();
         });
@@ -178,7 +235,7 @@ where
 /// summed on the boolean hypercube and the last variable is left as a free variable.
 /// TODO:  Add flexibility to support degree 2 and degree 3 constraint polynomials.
 #[allow(clippy::too_many_lines)]
-pub async fn sum_as_poly_in_last_variable<
+pub async fn zerocheck_sum_as_poly_in_last_variable<
     K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     F: Field,
     EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
@@ -338,31 +395,23 @@ pub async fn sum_as_poly_in_last_variable<
 /// This function will calculate the column values where the last variable is set to 0, 2, and 4
 /// and it's a non-padded variable.
 fn interpolate_last_var_non_padded_values<K: Field, const IS_FIRST_ROUND: bool>(
-    values: &Mle<K>,
-    i: usize,
-) -> (Vec<K>, Vec<K>, Vec<K>) {
-    let num_variables = values.num_variables();
-    assert!(2 * i + 1 < 2usize.pow(num_variables));
-    let row_0 = values.guts().get(2 * i).unwrap().as_slice();
-    let row_1 = values.guts().get(2 * i + 1).unwrap().as_slice();
-
-    let mut vals_0 = Vec::with_capacity(values.num_polynomials());
-    let mut vals_2 = Vec::with_capacity(values.num_polynomials());
-    let mut vals_4 = Vec::with_capacity(values.num_polynomials());
-
-    for (row_0_val, row_1_val) in row_0.iter().zip_eq(row_1.iter()) {
+    row_0: &[K],
+    row_1: &[K],
+    vals_0: &mut [K],
+    vals_2: &mut [K],
+    vals_4: &mut [K],
+) {
+    for (i, (row_0_val, row_1_val)) in row_0.iter().zip_eq(row_1.iter()).enumerate() {
         let slope = *row_1_val - *row_0_val;
         let slope_times_2 = slope + slope;
         let slope_times_4 = slope_times_2 + slope_times_2;
 
         if !IS_FIRST_ROUND {
-            vals_0.push(*row_0_val);
+            vals_0[i] = *row_0_val;
         }
-        vals_2.push(slope_times_2 + *row_0_val);
-        vals_4.push(slope_times_4 + *row_0_val);
+        vals_2[i] = slope_times_2 + *row_0_val;
+        vals_4[i] = slope_times_4 + *row_0_val;
     }
-
-    (vals_0, vals_2, vals_4)
 }
 
 /// The data required to produce zerocheck proofs on CPU.

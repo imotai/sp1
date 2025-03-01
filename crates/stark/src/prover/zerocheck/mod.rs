@@ -264,7 +264,7 @@ where
         t: usize,
     ) -> Self::NextRoundPoly {
         assert!(t == 1);
-        fix_last_variable(poly, alpha).await
+        zerocheck_fix_last_variable(poly, alpha).await
     }
 
     async fn sum_as_poly_in_last_t_variables(
@@ -274,7 +274,8 @@ where
     ) -> UnivariatePolynomial<EF> {
         assert!(t == 1);
         assert!(poly.num_variables() > 0);
-        sum_as_poly_in_last_variable::<F, F, EF, AirData, CpuBackend, true>(poly, claim).await
+        zerocheck_sum_as_poly_in_last_variable::<F, F, EF, AirData, CpuBackend, true>(poly, claim)
+            .await
     }
 }
 
@@ -312,7 +313,7 @@ where
         poly: ZeroCheckPoly<EF, F, EF, AirData>,
         alpha: EF,
     ) -> ZeroCheckPoly<EF, F, EF, AirData> {
-        fix_last_variable(poly, alpha).await
+        zerocheck_fix_last_variable(poly, alpha).await
     }
 
     async fn sum_as_poly_in_last_variable(
@@ -320,7 +321,8 @@ where
         claim: Option<EF>,
     ) -> UnivariatePolynomial<EF> {
         assert!(poly.num_variables() > 0);
-        sum_as_poly_in_last_variable::<EF, F, EF, AirData, CpuBackend, false>(poly, claim).await
+        zerocheck_sum_as_poly_in_last_variable::<EF, F, EF, AirData, CpuBackend, false>(poly, claim)
+            .await
     }
 }
 
