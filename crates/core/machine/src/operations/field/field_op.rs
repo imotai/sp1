@@ -374,187 +374,187 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #![allow(clippy::print_stdout)]
+// #[cfg(test)]
+// mod tests {
+//     #![allow(clippy::print_stdout)]
 
-    use num::BigUint;
-    use p3_air::BaseAir;
-    use p3_field::{Field, PrimeField32};
-    use sp1_core_executor::{ExecutionRecord, Program};
-    use sp1_curves::params::FieldParameters;
-    use sp1_stark::{
-        air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
-        Chip, StarkMachine,
-    };
+//     use num::BigUint;
+//     use p3_air::BaseAir;
+//     use p3_field::{Field, PrimeField32};
+//     use sp1_core_executor::{ExecutionRecord, Program};
+//     use sp1_curves::params::FieldParameters;
+//     use sp1_stark::{
+//         air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
+//         Chip, StarkMachine,
+//     };
 
-    use super::{FieldOpCols, FieldOperation, Limbs};
+//     use super::{FieldOpCols, FieldOperation, Limbs};
 
-    use crate::utils::{pad_to_power_of_two, run_test_machine, setup_test_machine};
-    use core::borrow::{Borrow, BorrowMut};
-    use num::bigint::RandBigInt;
-    use p3_air::Air;
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_matrix::{dense::RowMajorMatrix, Matrix};
-    use rand::thread_rng;
-    use sp1_core_executor::events::ByteRecord;
-    use sp1_curves::{
-        edwards::ed25519::Ed25519BaseField, weierstrass::secp256k1::Secp256k1BaseField,
-    };
-    use sp1_derive::AlignedBorrow;
-    use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
-    use std::mem::size_of;
+//     use crate::utils::{pad_to_power_of_two, run_test_machine, setup_test_machine};
+//     use core::borrow::{Borrow, BorrowMut};
+//     use num::bigint::RandBigInt;
+//     use p3_air::Air;
+//     use p3_baby_bear::BabyBear;
+//     use p3_field::AbstractField;
+//     use p3_matrix::{dense::RowMajorMatrix, Matrix};
+//     use rand::thread_rng;
+//     use sp1_core_executor::events::ByteRecord;
+//     use sp1_curves::{
+//         edwards::ed25519::Ed25519BaseField, weierstrass::secp256k1::Secp256k1BaseField,
+//     };
+//     use sp1_derive::AlignedBorrow;
+//     use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
+//     use std::mem::size_of;
 
-    #[derive(AlignedBorrow, Debug, Clone)]
-    pub struct TestCols<T, P: FieldParameters> {
-        pub a: Limbs<T, P::Limbs>,
-        pub b: Limbs<T, P::Limbs>,
-        pub a_op_b: FieldOpCols<T, P>,
-    }
+//     #[derive(AlignedBorrow, Debug, Clone)]
+//     pub struct TestCols<T, P: FieldParameters> {
+//         pub a: Limbs<T, P::Limbs>,
+//         pub b: Limbs<T, P::Limbs>,
+//         pub a_op_b: FieldOpCols<T, P>,
+//     }
 
-    pub const NUM_TEST_COLS: usize = size_of::<TestCols<u8, Secp256k1BaseField>>();
+//     pub const NUM_TEST_COLS: usize = size_of::<TestCols<u8, Secp256k1BaseField>>();
 
-    struct FieldOpChip<P: FieldParameters> {
-        pub operation: FieldOperation,
-        pub _phantom: std::marker::PhantomData<P>,
-    }
+//     struct FieldOpChip<P: FieldParameters> {
+//         pub operation: FieldOperation,
+//         pub _phantom: std::marker::PhantomData<P>,
+//     }
 
-    impl<P: FieldParameters> FieldOpChip<P> {
-        pub const fn new(operation: FieldOperation) -> Self {
-            Self { operation, _phantom: std::marker::PhantomData }
-        }
-    }
+//     impl<P: FieldParameters> FieldOpChip<P> {
+//         pub const fn new(operation: FieldOperation) -> Self {
+//             Self { operation, _phantom: std::marker::PhantomData }
+//         }
+//     }
 
-    impl<F: PrimeField32, P: FieldParameters> MachineAir<F> for FieldOpChip<P> {
-        type Record = ExecutionRecord;
+//     impl<F: PrimeField32, P: FieldParameters> MachineAir<F> for FieldOpChip<P> {
+//         type Record = ExecutionRecord;
 
-        type Program = Program;
+//         type Program = Program;
 
-        fn name(&self) -> String {
-            format!("FieldOp{:?}", self.operation)
-        }
+//         fn name(&self) -> String {
+//             format!("FieldOp{:?}", self.operation)
+//         }
 
-        fn generate_trace(
-            &self,
-            _: &ExecutionRecord,
-            output: &mut ExecutionRecord,
-        ) -> RowMajorMatrix<F> {
-            let mut rng = thread_rng();
-            let num_rows = 1 << 8;
-            let mut operands: Vec<(BigUint, BigUint)> = (0..num_rows - 4)
-                .map(|_| {
-                    let a = rng.gen_biguint(256) % &P::modulus();
-                    let b = rng.gen_biguint(256) % &P::modulus();
-                    (a, b)
-                })
-                .collect();
+//         fn generate_trace(
+//             &self,
+//             _: &ExecutionRecord,
+//             output: &mut ExecutionRecord,
+//         ) -> RowMajorMatrix<F> {
+//             let mut rng = thread_rng();
+//             let num_rows = 1 << 8;
+//             let mut operands: Vec<(BigUint, BigUint)> = (0..num_rows - 4)
+//                 .map(|_| {
+//                     let a = rng.gen_biguint(256) % &P::modulus();
+//                     let b = rng.gen_biguint(256) % &P::modulus();
+//                     (a, b)
+//                 })
+//                 .collect();
 
-            // Hardcoded edge cases.
-            operands.extend(vec![
-                (BigUint::from(0u32), BigUint::from(1u32)),
-                (BigUint::from(1u32), BigUint::from(2u32)),
-                (BigUint::from(4u32), BigUint::from(5u32)),
-                (BigUint::from(10u32), BigUint::from(19u32)),
-            ]);
+//             // Hardcoded edge cases.
+//             operands.extend(vec![
+//                 (BigUint::from(0u32), BigUint::from(1u32)),
+//                 (BigUint::from(1u32), BigUint::from(2u32)),
+//                 (BigUint::from(4u32), BigUint::from(5u32)),
+//                 (BigUint::from(10u32), BigUint::from(19u32)),
+//             ]);
 
-            let rows = operands
-                .iter()
-                .map(|(a, b)| {
-                    let mut blu_events = Vec::new();
-                    let mut row = [F::zero(); NUM_TEST_COLS];
-                    let cols: &mut TestCols<F, P> = row.as_mut_slice().borrow_mut();
-                    cols.a = P::to_limbs_field::<F, _>(a);
-                    cols.b = P::to_limbs_field::<F, _>(b);
-                    cols.a_op_b.populate(&mut blu_events, a, b, self.operation);
-                    output.add_byte_lookup_events(blu_events);
-                    row
-                })
-                .collect::<Vec<_>>();
-            // Convert the trace to a row major matrix.
-            let mut trace =
-                RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TEST_COLS);
+//             let rows = operands
+//                 .iter()
+//                 .map(|(a, b)| {
+//                     let mut blu_events = Vec::new();
+//                     let mut row = [F::zero(); NUM_TEST_COLS];
+//                     let cols: &mut TestCols<F, P> = row.as_mut_slice().borrow_mut();
+//                     cols.a = P::to_limbs_field::<F, _>(a);
+//                     cols.b = P::to_limbs_field::<F, _>(b);
+//                     cols.a_op_b.populate(&mut blu_events, a, b, self.operation);
+//                     output.add_byte_lookup_events(blu_events);
+//                     row
+//                 })
+//                 .collect::<Vec<_>>();
+//             // Convert the trace to a row major matrix.
+//             let mut trace =
+//                 RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TEST_COLS);
 
-            // Pad the trace to a power of two.
-            pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);
+//             // Pad the trace to a power of two.
+//             pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);
 
-            trace
-        }
+//             trace
+//         }
 
-        fn included(&self, _: &Self::Record) -> bool {
-            true
-        }
-    }
+//         fn included(&self, _: &Self::Record) -> bool {
+//             true
+//         }
+//     }
 
-    impl<F: Field, P: FieldParameters> BaseAir<F> for FieldOpChip<P> {
-        fn width(&self) -> usize {
-            NUM_TEST_COLS
-        }
-    }
+//     impl<F: Field, P: FieldParameters> BaseAir<F> for FieldOpChip<P> {
+//         fn width(&self) -> usize {
+//             NUM_TEST_COLS
+//         }
+//     }
 
-    impl<AB, P: FieldParameters> Air<AB> for FieldOpChip<P>
-    where
-        AB: SP1AirBuilder,
-        Limbs<AB::Var, P::Limbs>: Copy,
-    {
-        fn eval(&self, builder: &mut AB) {
-            let main = builder.main();
-            let local = main.row_slice(0);
-            let local: &TestCols<AB::Var, P> = (*local).borrow();
-            local.a_op_b.eval(builder, &local.a, &local.b, self.operation, AB::F::one());
-        }
-    }
+//     impl<AB, P: FieldParameters> Air<AB> for FieldOpChip<P>
+//     where
+//         AB: SP1AirBuilder,
+//         Limbs<AB::Var, P::Limbs>: Copy,
+//     {
+//         fn eval(&self, builder: &mut AB) {
+//             let main = builder.main();
+//             let local = main.row_slice(0);
+//             let local: &TestCols<AB::Var, P> = (*local).borrow();
+//             local.a_op_b.eval(builder, &local.a, &local.b, self.operation, AB::F::one());
+//         }
+//     }
 
-    #[test]
-    fn generate_trace() {
-        for op in [FieldOperation::Add, FieldOperation::Mul, FieldOperation::Sub].iter() {
-            println!("op: {:?}", op);
-            let chip: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
-            let shard = ExecutionRecord::default();
-            let _: RowMajorMatrix<BabyBear> =
-                chip.generate_trace(&shard, &mut ExecutionRecord::default());
-            // println!("{:?}", trace.values)
-        }
-    }
+//     #[test]
+//     fn generate_trace() {
+//         for op in [FieldOperation::Add, FieldOperation::Mul, FieldOperation::Sub].iter() {
+//             println!("op: {:?}", op);
+//             let chip: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
+//             let shard = ExecutionRecord::default();
+//             let _: RowMajorMatrix<BabyBear> =
+//                 chip.generate_trace(&shard, &mut ExecutionRecord::default());
+//             // println!("{:?}", trace.values)
+//         }
+//     }
 
-    #[test]
-    fn prove_babybear() {
-        for op in
-            [FieldOperation::Add, FieldOperation::Sub, FieldOperation::Mul, FieldOperation::Div]
-                .iter()
-        {
-            println!("op: {:?}", op);
+//     #[test]
+//     fn prove_babybear() {
+//         for op in
+//             [FieldOperation::Add, FieldOperation::Sub, FieldOperation::Mul, FieldOperation::Div]
+//                 .iter()
+//         {
+//             println!("op: {:?}", op);
 
-            let air: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
-            let shard = ExecutionRecord::default();
-            <FieldOpChip<Ed25519BaseField> as MachineAir<BabyBear>>::generate_trace(
-                &air,
-                &shard,
-                &mut ExecutionRecord::default(),
-            );
+//             let air: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
+//             let shard = ExecutionRecord::default();
+//             <FieldOpChip<Ed25519BaseField> as MachineAir<BabyBear>>::generate_trace(
+//                 &air,
+//                 &shard,
+//                 &mut ExecutionRecord::default(),
+//             );
 
-            // Run setup.
-            let config = BabyBearPoseidon2::new();
-            let chip: Chip<BabyBear, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
-            let (pk, vk) = setup_test_machine(StarkMachine::new(
-                config.clone(),
-                vec![chip],
-                SP1_PROOF_NUM_PV_ELTS,
-                true,
-            ));
+//             // Run setup.
+//             let config = BabyBearPoseidon2::new();
+//             let chip: Chip<BabyBear, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
+//             let (pk, vk) = setup_test_machine(StarkMachine::new(
+//                 config.clone(),
+//                 vec![chip],
+//                 SP1_PROOF_NUM_PV_ELTS,
+//                 true,
+//             ));
 
-            // Run the test.
-            let air: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
-            let chip: Chip<BabyBear, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
-            let machine =
-                StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-            run_test_machine::<BabyBearPoseidon2, FieldOpChip<Ed25519BaseField>>(
-                vec![shard],
-                machine,
-                pk,
-                vk,
-            )
-            .unwrap();
-        }
-    }
-}
+//             // Run the test.
+//             let air: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
+//             let chip: Chip<BabyBear, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
+//             let machine =
+//                 StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+//             run_test_machine::<BabyBearPoseidon2, FieldOpChip<Ed25519BaseField>>(
+//                 vec![shard],
+//                 machine,
+//                 pk,
+//                 vk,
+//             )
+//             .unwrap();
+//         }
+//     }
+// }

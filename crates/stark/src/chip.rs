@@ -1,21 +1,20 @@
 use std::{hash::Hash, sync::Arc};
 
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_field::{ExtensionField, Field, PrimeField, PrimeField32};
-use p3_matrix::dense::RowMajorMatrix;
 use p3_uni_stark::{get_max_constraint_degree, SymbolicAirBuilder};
-use p3_util::log2_ceil_usize;
+use slop_air::{Air, BaseAir, PairBuilder};
+use slop_algebra::{Field, PrimeField32};
+use slop_matrix::dense::RowMajorMatrix;
 
 use crate::{
-    air::{InteractionScope, MachineAir, MultiTableAirBuilder, SP1AirBuilder},
-    local_permutation_trace_width,
+    air::{MachineAir, MultiTableAirBuilder, SP1AirBuilder},
+    log2_ceil_usize,
     lookup::{Interaction, InteractionBuilder, InteractionKind},
 };
 
-use super::{generate_permutation_trace, scoped_interactions, PROOF_MAX_NUM_PVS};
+use super::PROOF_MAX_NUM_PVS;
 
 /// An Air that encodes lookups based on interactions.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Chip<F: Field, A> {
     /// The underlying AIR of the chip for constraint evaluation.
     pub air: Arc<A>,
@@ -25,6 +24,17 @@ pub struct Chip<F: Field, A> {
     pub receives: Vec<Interaction<F>>,
     /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
     pub log_quotient_degree: usize,
+}
+
+impl<F: Field, A> Clone for Chip<F, A> {
+    fn clone(&self) -> Self {
+        Self {
+            air: self.air.clone(),
+            sends: self.sends.clone(),
+            receives: self.receives.clone(),
+            log_quotient_degree: self.log_quotient_degree,
+        }
+    }
 }
 
 impl<F: Field, A> Chip<F, A> {
@@ -122,42 +132,42 @@ where
         self.receives.iter().filter(|i| i.kind == kind).count()
     }
 
-    /// Generates a permutation trace for the given matrix.
-    pub fn generate_permutation_trace<EF: ExtensionField<F>>(
-        &self,
-        preprocessed: Option<&RowMajorMatrix<F>>,
-        main: &RowMajorMatrix<F>,
-        random_elements: &[EF],
-    ) -> (RowMajorMatrix<EF>, EF)
-    where
-        F: PrimeField,
-        A: MachineAir<F>,
-    {
-        let batch_size = self.logup_batch_size();
-        generate_permutation_trace::<F, EF>(
-            &self.sends,
-            &self.receives,
-            preprocessed,
-            main,
-            random_elements,
-            batch_size,
-        )
-    }
+    // /// Generates a permutation trace for the given matrix.
+    // pub fn generate_permutation_trace<EF: ExtensionField<F>>(
+    //     &self,
+    //     preprocessed: Option<&RowMajorMatrix<F>>,
+    //     main: &RowMajorMatrix<F>,
+    //     random_elements: &[EF],
+    // ) -> (RowMajorMatrix<EF>, EF)
+    // where
+    //     F: PrimeField,
+    //     A: MachineAir<F>,
+    // {
+    //     let batch_size = self.logup_batch_size();
+    //     generate_permutation_trace::<F, EF>(
+    //         &self.sends,
+    //         &self.receives,
+    //         preprocessed,
+    //         main,
+    //         random_elements,
+    //         batch_size,
+    //     )
+    // }
 
-    /// Returns the width of the permutation trace.
-    #[inline]
-    #[must_use]
-    pub fn permutation_width(&self) -> usize {
-        let (scoped_sends, scoped_receives) = scoped_interactions(self.sends(), self.receives());
-        let empty = Vec::new();
-        let local_sends = scoped_sends.get(&InteractionScope::Local).unwrap_or(&empty);
-        let local_receives = scoped_receives.get(&InteractionScope::Local).unwrap_or(&empty);
+    // /// Returns the width of the permutation trace.
+    // #[inline]
+    // #[must_use]
+    // pub fn permutation_width(&self) -> usize {
+    //     let (scoped_sends, scoped_receives) = scoped_interactions(self.sends(), self.receives());
+    //     let empty = Vec::new();
+    //     let local_sends = scoped_sends.get(&InteractionScope::Local).unwrap_or(&empty);
+    //     let local_receives = scoped_receives.get(&InteractionScope::Local).unwrap_or(&empty);
 
-        local_permutation_trace_width(
-            local_sends.len() + local_receives.len(),
-            self.logup_batch_size(),
-        )
-    }
+    //     local_permutation_trace_width(
+    //         local_sends.len() + local_receives.len(),
+    //         self.logup_batch_size(),
+    //     )
+    // }
 
     /// Returns the cost of a row in the chip.
     #[inline]
@@ -168,9 +178,7 @@ where
     {
         let preprocessed_cols = self.preprocessed_width();
         let main_cols = self.width();
-        let permutation_cols = self.permutation_width() * 4;
-        let quotient_cols = self.quotient_width() * 4;
-        (preprocessed_cols + main_cols + permutation_cols + quotient_cols) as u64
+        (preprocessed_cols + main_cols) as u64
     }
 
     /// Returns the width of the quotient polynomial.

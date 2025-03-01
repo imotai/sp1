@@ -2,9 +2,9 @@ use std::fmt;
 use std::{cmp::Reverse, collections::BTreeSet};
 
 use itertools::Itertools;
-use p3_matrix::dense::RowMajorMatrix;
-use p3_matrix::Matrix;
 use serde::{Deserialize, Serialize};
+use slop_matrix::dense::RowMajorMatrix;
+use slop_matrix::Matrix;
 
 /// A way to keep track of the log2 heights of some set of chips and in canonical order.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd, Ord, Eq, Hash)]

@@ -35,9 +35,8 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
                 .verify_deferred_proof(proof, proof_vk, vkey_bytes, pv_digest_bytes)
                 .unwrap_or_else(|e| {
                     panic!(
-                        "Failed to verify proof {proof_index} with digest {}: {}",
+                        "Failed to verify proof {proof_index} with digest {}:",
                         hex::encode(bytemuck::cast_slice(&pv_digest_bytes)),
-                        e
                     )
                 });
         } else if rt.state.proof_stream_ptr == 1 {

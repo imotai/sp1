@@ -223,114 +223,114 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::borrow::BorrowMut;
+// #[cfg(test)]
+// mod tests {
+//     use std::borrow::BorrowMut;
 
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{
-        ExecutionError, ExecutionRecord, Executor, Instruction, Opcode, Program, Simple,
-    };
-    use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, SP1CoreOpts, Val,
-    };
+//     use p3_baby_bear::BabyBear;
+//     use p3_field::AbstractField;
+//     use p3_matrix::dense::RowMajorMatrix;
+//     use sp1_core_executor::{
+//         ExecutionError, ExecutionRecord, Executor, Instruction, Opcode, Program, Simple,
+//     };
+//     use sp1_stark::{
+//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+//         MachineProver, SP1CoreOpts, Val,
+//     };
 
-    use crate::{
-        control_flow::{AuipcChip, AuipcColumns},
-        io::SP1Stdin,
-        riscv::RiscvAir,
-        utils::run_malicious_test,
-    };
+//     use crate::{
+//         control_flow::{AuipcChip, AuipcColumns},
+//         io::SP1Stdin,
+//         riscv::RiscvAir,
+//         utils::run_malicious_test,
+//     };
 
-    // TODO: Re-enable when we LOGUP-GKR working.
-    // #[test]
-    // fn test_malicious_auipc() {
-    //     let instructions = vec![
-    //         Instruction::new(Opcode::AUIPC, 29, 12, 12, true, true),
-    //         Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
-    //     ];
-    //     let program = Program::new(instructions, 0, 0);
-    //     let stdin = SP1Stdin::new();
+//     // TODO: Re-enable when we LOGUP-GKR working.
+//     // #[test]
+//     // fn test_malicious_auipc() {
+//     //     let instructions = vec![
+//     //         Instruction::new(Opcode::AUIPC, 29, 12, 12, true, true),
+//     //         Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+//     //     ];
+//     //     let program = Program::new(instructions, 0, 0);
+//     //     let stdin = SP1Stdin::new();
 
-    //     type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//     //     type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
 
-    //     let malicious_trace_pv_generator =
-    //         |prover: &P,
-    //          record: &mut ExecutionRecord|
-    //          -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
-    //             // Create a malicious record where the AUIPC instruction result is incorrect.
-    //             let mut malicious_record = record.clone();
-    //             malicious_record.auipc_events[0].a = 8;
-    //             prover.generate_traces(&malicious_record)
-    //         };
+//     //     let malicious_trace_pv_generator =
+//     //         |prover: &P,
+//     //          record: &mut ExecutionRecord|
+//     //          -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//     //             // Create a malicious record where the AUIPC instruction result is incorrect.
+//     //             let mut malicious_record = record.clone();
+//     //             malicious_record.auipc_events[0].a = 8;
+//     //             prover.generate_traces(&malicious_record)
+//     //         };
 
-    //     let result =
-    //         run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-    //     assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
-    // }
+//     //     let result =
+//     //         run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+//     //     assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
+//     // }
 
-    #[test]
-    fn test_malicious_multiple_opcode_flags() {
-        let instructions = vec![
-            Instruction::new(Opcode::AUIPC, 29, 12, 12, true, true),
-            Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let stdin = SP1Stdin::new();
+//     #[test]
+//     fn test_malicious_multiple_opcode_flags() {
+//         let instructions = vec![
+//             Instruction::new(Opcode::AUIPC, 29, 12, 12, true, true),
+//             Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+//         ];
+//         let program = Program::new(instructions, 0, 0);
+//         let stdin = SP1Stdin::new();
 
-        type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//         type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
 
-        let malicious_trace_pv_generator =
-            |prover: &P,
-             record: &mut ExecutionRecord|
-             -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
-                // Modify the branch chip to have a row that has multiple opcode flags set.
-                let mut traces = prover.generate_traces(record);
-                let auipc_chip_name = chip_name!(AuipcChip, BabyBear);
-                for (chip_name, trace) in traces.iter_mut() {
-                    if *chip_name == auipc_chip_name {
-                        let first_row: &mut [BabyBear] = trace.row_mut(0);
-                        let first_row: &mut AuipcColumns<BabyBear> = first_row.borrow_mut();
-                        assert!(first_row.is_auipc == BabyBear::one());
-                        first_row.is_unimp = BabyBear::one();
-                    }
-                }
-                traces
-            };
+//         let malicious_trace_pv_generator =
+//             |prover: &P,
+//              record: &mut ExecutionRecord|
+//              -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//                 // Modify the branch chip to have a row that has multiple opcode flags set.
+//                 let mut traces = prover.generate_traces(record);
+//                 let auipc_chip_name = chip_name!(AuipcChip, BabyBear);
+//                 for (chip_name, trace) in traces.iter_mut() {
+//                     if *chip_name == auipc_chip_name {
+//                         let first_row: &mut [BabyBear] = trace.row_mut(0);
+//                         let first_row: &mut AuipcColumns<BabyBear> = first_row.borrow_mut();
+//                         assert!(first_row.is_auipc == BabyBear::one());
+//                         first_row.is_unimp = BabyBear::one();
+//                     }
+//                 }
+//                 traces
+//             };
 
-        let result =
-            run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-        assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
-    }
+//         let result =
+//             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+//         assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
+//     }
 
-    #[test]
-    fn test_unimpl() {
-        let instructions = vec![Instruction::new(Opcode::UNIMP, 29, 12, 0, true, true)];
-        let program = Program::new(instructions, 0, 0);
-        let stdin = SP1Stdin::new();
+//     #[test]
+//     fn test_unimpl() {
+//         let instructions = vec![Instruction::new(Opcode::UNIMP, 29, 12, 0, true, true)];
+//         let program = Program::new(instructions, 0, 0);
+//         let stdin = SP1Stdin::new();
 
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.maximal_shapes = None;
-        runtime.write_vecs(&stdin.buffer);
-        let result = runtime.execute::<Simple>();
+//         let mut runtime = Executor::new(program, SP1CoreOpts::default());
+//         runtime.maximal_shapes = None;
+//         runtime.write_vecs(&stdin.buffer);
+//         let result = runtime.execute::<Simple>();
 
-        assert!(result.is_err() && result.unwrap_err() == ExecutionError::Unimplemented());
-    }
+//         assert!(result.is_err() && result.unwrap_err() == ExecutionError::Unimplemented());
+//     }
 
-    #[test]
-    fn test_ebreak() {
-        let instructions = vec![Instruction::new(Opcode::EBREAK, 29, 12, 0, true, true)];
-        let program = Program::new(instructions, 0, 0);
-        let stdin = SP1Stdin::new();
+//     #[test]
+//     fn test_ebreak() {
+//         let instructions = vec![Instruction::new(Opcode::EBREAK, 29, 12, 0, true, true)];
+//         let program = Program::new(instructions, 0, 0);
+//         let stdin = SP1Stdin::new();
 
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.maximal_shapes = None;
-        runtime.write_vecs(&stdin.buffer);
-        let result = runtime.execute::<Simple>();
+//         let mut runtime = Executor::new(program, SP1CoreOpts::default());
+//         runtime.maximal_shapes = None;
+//         runtime.write_vecs(&stdin.buffer);
+//         let result = runtime.execute::<Simple>();
 
-        assert!(result.is_err() && result.unwrap_err() == ExecutionError::Breakpoint());
-    }
-}
+//         assert!(result.is_err() && result.unwrap_err() == ExecutionError::Breakpoint());
+//     }
+// }

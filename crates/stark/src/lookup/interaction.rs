@@ -1,7 +1,7 @@
 use core::fmt::{Debug, Display};
 
-use p3_air::VirtualPairCol;
-use p3_field::Field;
+use slop_air::VirtualPairCol;
+use slop_algebra::Field;
 
 use crate::air::InteractionScope;
 

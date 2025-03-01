@@ -1,8 +1,8 @@
 //! Elliptic Curve digests with a starting point to avoid weierstrass addition exceptions.
 use crate::septic_curve::SepticCurve;
 use crate::septic_extension::SepticExtension;
-use p3_field::{AbstractExtensionField, AbstractField, Field};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 use std::iter::Sum;
 
 /// The x-coordinate for a curve point used as a starting cumulative sum for global permutation trace generation, derived from `sqrt(2)`.
@@ -79,7 +79,7 @@ mod test {
     use crate::septic_curve::{CURVE_WITNESS_DUMMY_POINT_X, CURVE_WITNESS_DUMMY_POINT_Y};
 
     use super::*;
-    use p3_baby_bear::BabyBear;
+    use slop_baby_bear::BabyBear;
     #[test]
     fn test_const_points() {
         let x: SepticExtension<BabyBear> = SepticExtension::from_base_fn(|i| {

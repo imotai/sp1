@@ -83,6 +83,13 @@ slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
 slop-tensor = { git = "https://github.com/succinctlabs/slop" }
 slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
+slop-challenger = { git = "https://github.com/succinctlabs/slop" }
+slop-air = { git = "https://github.com/succinctlabs/slop" }
+slop-matrix = { git = "https://github.com/succinctlabs/slop" }
+slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
+slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
+slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
+slop-futures = { git = "https://github.com/succinctlabs/slop" }
 
 # For local development.
 # slop-algebra = { path = "../slop/crates/algebra" }
@@ -94,6 +101,13 @@ slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
 # slop-sumcheck = { path = "../slop/crates/sumcheck" }
 # slop-tensor = { path = "../slop/crates/tensor" }
 # slop-multilinear = { path = "../slop/crates/multilinear" }
+# slop-challenger = { path = "../slop/crates/challenger" }
+# slop-air = { path = "../slop/crates/air" }
+# slop-matrix = { path = "../slop/crates/matrix" }
+# slop-baby-bear = { path = "../slop/crates/baby-bear" }
+# slop-symmetric = { path = "../slop/crates/symmetric" }
+# slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
+# slop-futures = { path = "../slop/crates/futures" }
 
 # For testing.
 test-artifacts = { path = "crates/test-artifacts" }
@@ -126,27 +140,6 @@ p3-bn254-fr = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_co
 
 # For local development. 
 
-# p3-air = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-field = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-commit = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-matrix = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-util = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-challenger = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-dft = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-fri = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-keccak = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-keccak-air = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-blake3 = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-mds = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-symmetric = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-uni-stark = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-# p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-
 # p3-air = { path = "../Plonky3/air" }
 # p3-field = { path = "../Plonky3/field" }
 # p3-commit = { path = "../Plonky3/commit" }
@@ -175,6 +168,8 @@ serde = "1.0.204"
 serde_json = "1.0.132"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
+tokio = "1.42.0"
+derive-where = "1.2.7"
 
 [workspace.metadata.typos]
 default.extend-ignore-re = [

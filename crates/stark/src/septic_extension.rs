@@ -1,9 +1,9 @@
 //! A septic extension with an irreducible polynomial `z^7 - 2z - 5`.
 use num_bigint::BigUint;
 use num_traits::One;
-use p3_field::PrimeField32;
-use p3_field::{AbstractExtensionField, AbstractField, ExtensionField, Field, Packable};
 use serde::{Deserialize, Serialize};
+use slop_algebra::PrimeField32;
+use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field, Packable};
 use std::array;
 use std::fmt::Display;
 use std::iter::{Product, Sum};
@@ -813,7 +813,7 @@ impl<T> IntoIterator for SepticBlock<T> {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use p3_baby_bear::BabyBear;
+    use slop_baby_bear::BabyBear;
 
     use super::*;
 

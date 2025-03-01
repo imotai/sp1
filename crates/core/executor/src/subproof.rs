@@ -1,8 +1,6 @@
 //! Types and methods for subproof verification inside the [`crate::Executor`].
 
-use sp1_stark::{
-    baby_bear_poseidon2::BabyBearPoseidon2, MachineVerificationError, StarkVerifyingKey,
-};
+use sp1_stark::{BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey};
 
 use crate::SP1ReduceProof;
 
@@ -17,10 +15,10 @@ pub trait SubproofVerifier: Sync + Send {
     fn verify_deferred_proof(
         &self,
         proof: &SP1ReduceProof<BabyBearPoseidon2>,
-        vk: &StarkVerifyingKey<BabyBearPoseidon2>,
+        vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerificationError<BabyBearPoseidon2>>;
+    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>>;
 }
 
 /// A dummy verifier which does nothing.
@@ -30,10 +28,10 @@ impl SubproofVerifier for NoOpSubproofVerifier {
     fn verify_deferred_proof(
         &self,
         _proof: &SP1ReduceProof<BabyBearPoseidon2>,
-        _vk: &StarkVerifyingKey<BabyBearPoseidon2>,
+        _vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         _vk_hash: [u32; 8],
         _committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerificationError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>> {
         Ok(())
     }
 }

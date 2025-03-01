@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use serde::{de::DeserializeOwned, Serialize};
-use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkVerifyingKey};
+use sp1_stark::{BabyBearPoseidon2, MachineVerifyingKey};
 
 use super::Executor;
 use crate::SP1ReduceProof;
@@ -37,7 +37,7 @@ impl Executor<'_> {
     pub fn write_proof(
         &mut self,
         proof: SP1ReduceProof<BabyBearPoseidon2>,
-        vk: StarkVerifyingKey<BabyBearPoseidon2>,
+        vk: MachineVerifyingKey<BabyBearPoseidon2>,
     ) {
         self.state.proof_stream.push((proof, vk));
     }

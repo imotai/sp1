@@ -5,12 +5,12 @@ use std::{
 };
 
 use itertools::Itertools;
-use p3_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder, PermutationAirBuilder};
-use p3_field::{AbstractField, Field};
 use p3_uni_stark::{
     ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, VerifierConstraintFolder,
 };
 use serde::{Deserialize, Serialize};
+use slop_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder, PermutationAirBuilder};
+use slop_algebra::{AbstractField, Field};
 use strum_macros::{Display, EnumIter};
 
 use super::{interaction::AirInteraction, BinomialExtension};

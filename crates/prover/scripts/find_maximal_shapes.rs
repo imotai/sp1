@@ -164,7 +164,7 @@ fn main() {
             let stdin = stdin.clone();
             let new_context = SP1Context::default();
             let s3_path = s3_path.clone();
-            rayon::spawn(move || {
+            slop_futures::rayon::spawn(move || {
                 opts.shard_size = 1 << log_shard_size;
                 let maximal_shapes = collect_maximal_shapes(&elf, &stdin, opts, new_context);
                 tracing::info!(

@@ -264,6 +264,8 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
+    use std::sync::Arc;
+
     use super::*;
     use crate::programs::tests::*;
     use p3_baby_bear::BabyBear;
@@ -274,7 +276,7 @@ mod tests {
     #[test]
     fn test_global_generate_trace() {
         let program = simple_program();
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
         runtime.run::<Trace>().unwrap();
         let shard = runtime.records[0].clone();
 

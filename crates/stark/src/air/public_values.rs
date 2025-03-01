@@ -2,8 +2,8 @@ use core::{fmt::Debug, mem::size_of};
 use std::borrow::{Borrow, BorrowMut};
 
 use itertools::Itertools;
-use p3_field::{AbstractField, PrimeField32};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractField, PrimeField32};
 
 use crate::{Word, PROOF_MAX_NUM_PVS};
 

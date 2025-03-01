@@ -268,7 +268,7 @@ pub enum ExecutionError {
 impl<'a> Executor<'a> {
     /// Create a new [``Executor``] from a program and options.
     #[must_use]
-    pub fn new(program: Program, opts: SP1CoreOpts) -> Self {
+    pub fn new(program: Arc<Program>, opts: SP1CoreOpts) -> Self {
         Self::with_context(program, opts, SP1Context::default())
     }
 
@@ -283,11 +283,11 @@ impl<'a> Executor<'a> {
         let program = Program::from(elf_bytes).expect("Failed to create program from ELF bytes");
 
         #[cfg(not(feature = "profiling"))]
-        return Self::with_context(program, opts, context);
+        return Self::with_context(Arc::new(program), opts, context);
 
         #[cfg(feature = "profiling")]
         {
-            let mut this = Self::with_context(program, opts, context);
+            let mut this = Self::with_context(Arc::new(program), opts, context);
 
             let trace_buf = std::env::var("TRACE_FILE").ok().map(|file| {
                 let file = File::create(file).unwrap();
@@ -320,10 +320,7 @@ impl<'a> Executor<'a> {
     ///
     /// Note: This function *will not* set up the profiler.
     #[must_use]
-    pub fn with_context(program: Program, opts: SP1CoreOpts, context: SP1Context<'a>) -> Self {
-        // Create a shared reference to the program.
-        let program = Arc::new(program);
-
+    pub fn with_context(program: Arc<Program>, opts: SP1CoreOpts, context: SP1Context<'a>) -> Self {
         // Create a default record with the program.
         let record = ExecutionRecord::new(program.clone());
 
@@ -397,7 +394,7 @@ impl<'a> Executor<'a> {
 
     /// Recover runtime state from a program and existing execution state.
     #[must_use]
-    pub fn recover(program: Program, state: ExecutionState, opts: SP1CoreOpts) -> Self {
+    pub fn recover(program: Arc<Program>, state: ExecutionState, opts: SP1CoreOpts) -> Self {
         let mut runtime = Self::new(program, opts);
         runtime.state = state;
         // Disable deferred proof verification since we're recovering from a checkpoint, and the
@@ -2276,6 +2273,8 @@ pub const fn align(addr: u32) -> u32 {
 #[cfg(test)]
 mod tests {
 
+    use std::sync::Arc;
+
     use sp1_stark::SP1CoreOpts;
     use sp1_zkvm::syscalls::SHA_COMPRESS;
 
@@ -2297,7 +2296,7 @@ mod tests {
 
     #[test]
     fn test_simple_program_run() {
-        let program = simple_program();
+        let program = Arc::new(simple_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 42);
@@ -2305,35 +2304,35 @@ mod tests {
 
     #[test]
     fn test_fibonacci_program_run() {
-        let program = fibonacci_program();
+        let program = Arc::new(fibonacci_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_secp256r1_add_program_run() {
-        let program = secp256r1_add_program();
+        let program = Arc::new(secp256r1_add_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_secp256r1_double_program_run() {
-        let program = secp256r1_double_program();
+        let program = Arc::new(secp256r1_double_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_u256xu2048_mul() {
-        let program = u256xu2048_mul_program();
+        let program = Arc::new(u256xu2048_mul_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
 
     #[test]
     fn test_ssz_withdrawals_program_run() {
-        let program = ssz_withdrawals_program();
+        let program = Arc::new(ssz_withdrawals_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
@@ -2341,7 +2340,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_panic() {
-        let program = panic_program();
+        let program = Arc::new(panic_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
@@ -2357,7 +2356,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 42);
@@ -2373,7 +2372,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SUB, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
@@ -2390,7 +2389,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::XOR, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
@@ -2407,7 +2406,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::OR, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 
@@ -2425,7 +2424,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::AND, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
@@ -2442,7 +2441,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SLL, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2459,7 +2458,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SRL, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2476,7 +2475,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SRA, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2493,7 +2492,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SLT, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2510,7 +2509,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SLTU, 31, 30, 29, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2527,7 +2526,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 29, 37, false, true),
             Instruction::new(Opcode::ADD, 31, 30, 42, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2544,7 +2543,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 30, 29, 0xFFFF_FFFF, false, true),
             Instruction::new(Opcode::ADD, 31, 30, 4, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 5 - 1 + 4);
@@ -2560,7 +2559,7 @@ mod tests {
             Instruction::new(Opcode::XOR, 30, 29, 37, false, true),
             Instruction::new(Opcode::XOR, 31, 30, 42, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 10);
@@ -2576,7 +2575,7 @@ mod tests {
             Instruction::new(Opcode::OR, 30, 29, 37, false, true),
             Instruction::new(Opcode::OR, 31, 30, 42, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 47);
@@ -2592,7 +2591,7 @@ mod tests {
             Instruction::new(Opcode::AND, 30, 29, 37, false, true),
             Instruction::new(Opcode::AND, 31, 30, 42, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 0);
@@ -2606,7 +2605,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::SLL, 31, 29, 4, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 80);
@@ -2620,7 +2619,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SRL, 31, 29, 4, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 2);
@@ -2634,7 +2633,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SRA, 31, 29, 4, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 2);
@@ -2648,7 +2647,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SLT, 31, 29, 37, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 0);
@@ -2662,7 +2661,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SLTU, 31, 29, 37, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 0);
@@ -2681,7 +2680,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 11, 11, 100, false, true),
             Instruction::new(Opcode::JALR, 5, 11, 8, false, true),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.registers::<Simple>()[Register::X5 as usize], 8);
@@ -2695,7 +2694,7 @@ mod tests {
             Instruction::new(Opcode::ADD, 11, 0, b, false, true),
             Instruction::new(opcode, 12, 10, 11, false, false),
         ];
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.registers::<Simple>()[Register::X12 as usize], expected);
@@ -2873,7 +2872,7 @@ mod tests {
     #[test]
     #[allow(clippy::unreadable_literal)]
     fn test_simple_memory_program_run() {
-        let program = simple_memory_program();
+        let program = Arc::new(simple_memory_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
 
@@ -2917,7 +2916,7 @@ mod tests {
             Instruction::new(Opcode::SW, 0, 29, 0, false, true),
         ];
 
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
@@ -2930,7 +2929,7 @@ mod tests {
             Instruction::new(Opcode::LW, 29, 29, 0, false, true),
         ];
 
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }
@@ -2945,7 +2944,7 @@ mod tests {
             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false),
         ];
 
-        let program = Program::new(instructions, 0, 0);
+        let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
     }

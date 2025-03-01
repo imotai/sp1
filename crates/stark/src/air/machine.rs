@@ -1,6 +1,6 @@
-use p3_air::BaseAir;
-use p3_field::Field;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_air::BaseAir;
+use slop_algebra::Field;
+use slop_matrix::dense::RowMajorMatrix;
 
 use crate::{septic_digest::SepticDigest, MachineRecord};
 

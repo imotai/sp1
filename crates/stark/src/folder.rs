@@ -3,160 +3,26 @@ use std::{
     ops::{Add, Mul, MulAssign, Sub},
 };
 
-use p3_field::{AbstractExtensionField, AbstractField, ExtensionField, Field};
-use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_air::{
+    AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder, PermutationAirBuilder,
+};
+use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
+use slop_jagged::JaggedConfig;
+use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 
-use super::{Challenge, PackedChallenge, PackedVal, StarkGenericConfig, Val};
 use crate::{
     air::{EmptyMessageBuilder, MultiTableAirBuilder},
     septic_digest::SepticDigest,
 };
-use p3_air::{
-    AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder, PermutationAirBuilder,
-};
-
-/// A folder for prover constraints.
-pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
-    /// The preprocessed trace.
-    pub preprocessed:
-        VerticalPair<RowMajorMatrixView<'a, PackedVal<SC>>, RowMajorMatrixView<'a, PackedVal<SC>>>,
-    /// The main trace.
-    pub main:
-        VerticalPair<RowMajorMatrixView<'a, PackedVal<SC>>, RowMajorMatrixView<'a, PackedVal<SC>>>,
-    /// The permutation trace.
-    pub perm: VerticalPair<
-        RowMajorMatrixView<'a, PackedChallenge<SC>>,
-        RowMajorMatrixView<'a, PackedChallenge<SC>>,
-    >,
-    /// The challenges for the permutation.
-    pub perm_challenges: &'a [PackedChallenge<SC>],
-    /// The local cumulative sum for the permutation.
-    pub local_cumulative_sum: &'a PackedChallenge<SC>,
-    /// The global cumulative sum for the permutation.
-    pub global_cumulative_sum: &'a SepticDigest<Val<SC>>,
-    /// The selector for the first row.
-    pub is_first_row: PackedVal<SC>,
-    /// The selector for the last row.
-    pub is_last_row: PackedVal<SC>,
-    /// The selector for the transition.
-    pub is_transition: PackedVal<SC>,
-    /// The powers of the constraint folding challenge.
-    pub powers_of_alpha: &'a Vec<SC::Challenge>,
-    /// The accumulator for the constraint folding.
-    pub accumulator: PackedChallenge<SC>,
-    /// The public values.
-    pub public_values: &'a [Val<SC>],
-    /// The constraint index.
-    pub constraint_index: usize,
-}
-
-impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
-    type F = Val<SC>;
-    type Expr = PackedVal<SC>;
-    type Var = PackedVal<SC>;
-    type M =
-        VerticalPair<RowMajorMatrixView<'a, PackedVal<SC>>, RowMajorMatrixView<'a, PackedVal<SC>>>;
-
-    fn main(&self) -> Self::M {
-        self.main
-    }
-
-    fn is_first_row(&self) -> Self::Expr {
-        self.is_first_row
-    }
-
-    fn is_last_row(&self) -> Self::Expr {
-        self.is_last_row
-    }
-
-    fn is_transition_window(&self, size: usize) -> Self::Expr {
-        if size == 2 {
-            self.is_transition
-        } else {
-            panic!("uni-stark only supports a window size of 2")
-        }
-    }
-
-    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
-        let x: PackedVal<SC> = x.into();
-        self.accumulator +=
-            PackedChallenge::<SC>::from_f(self.powers_of_alpha[self.constraint_index]) * x;
-        self.constraint_index += 1;
-    }
-}
-
-impl<SC: StarkGenericConfig> ExtensionBuilder for ProverConstraintFolder<'_, SC> {
-    type EF = SC::Challenge;
-
-    type ExprEF = PackedChallenge<SC>;
-
-    type VarEF = PackedChallenge<SC>;
-
-    fn assert_zero_ext<I>(&mut self, x: I)
-    where
-        I: Into<Self::ExprEF>,
-    {
-        let x: PackedChallenge<SC> = x.into();
-        self.accumulator +=
-            PackedChallenge::<SC>::from_f(self.powers_of_alpha[self.constraint_index]) * x;
-        self.constraint_index += 1;
-    }
-}
-
-impl<'a, SC: StarkGenericConfig> PermutationAirBuilder for ProverConstraintFolder<'a, SC> {
-    type MP = VerticalPair<
-        RowMajorMatrixView<'a, PackedChallenge<SC>>,
-        RowMajorMatrixView<'a, PackedChallenge<SC>>,
-    >;
-
-    type RandomVar = PackedChallenge<SC>;
-
-    fn permutation(&self) -> Self::MP {
-        self.perm
-    }
-
-    fn permutation_randomness(&self) -> &[Self::RandomVar] {
-        self.perm_challenges
-    }
-}
-
-impl<'a, SC: StarkGenericConfig> MultiTableAirBuilder<'a> for ProverConstraintFolder<'a, SC> {
-    type LocalSum = PackedChallenge<SC>;
-    type GlobalSum = Val<SC>;
-
-    fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
-        self.local_cumulative_sum
-    }
-
-    fn global_cumulative_sum(&self) -> &'a SepticDigest<Self::GlobalSum> {
-        self.global_cumulative_sum
-    }
-}
-
-impl<SC: StarkGenericConfig> PairBuilder for ProverConstraintFolder<'_, SC> {
-    fn preprocessed(&self) -> Self::M {
-        self.preprocessed
-    }
-}
-
-impl<SC: StarkGenericConfig> EmptyMessageBuilder for ProverConstraintFolder<'_, SC> {}
-
-impl<SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraintFolder<'_, SC> {
-    type PublicVar = Self::F;
-
-    fn public_values(&self) -> &[Self::PublicVar] {
-        self.public_values
-    }
-}
 
 /// A folder for verifier constraints.
-pub type VerifierConstraintFolder<'a, SC> = GenericVerifierConstraintFolder<
+pub type VerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
     'a,
-    Val<SC>,
-    Challenge<SC>,
-    Val<SC>,
-    Challenge<SC>,
-    Challenge<SC>,
+    <C as JaggedConfig>::F,
+    <C as JaggedConfig>::EF,
+    <C as JaggedConfig>::F,
+    <C as JaggedConfig>::EF,
+    <C as JaggedConfig>::EF,
 >;
 
 /// A folder for verifier constraints.

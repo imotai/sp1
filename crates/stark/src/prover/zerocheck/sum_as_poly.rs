@@ -1,23 +1,32 @@
 use std::{
     future::Future,
+    marker::PhantomData,
     ops::{Add, Mul, Sub},
     sync::Arc,
 };
 
 use itertools::Itertools;
-use p3_air::Air;
-use p3_field::{AbstractExtensionField, ExtensionField};
-use p3_matrix::dense::RowMajorMatrixView;
-use slop_algebra::{interpolate_univariate_polynomial, Field, UnivariatePolynomial};
-use slop_multilinear::Mle;
+use serde::{Deserialize, Serialize};
+use slop_air::Air;
+use slop_algebra::{
+    interpolate_univariate_polynomial, AbstractExtensionField, ExtensionField, Field,
+    UnivariatePolynomial,
+};
+use slop_matrix::dense::RowMajorMatrixView;
+use slop_multilinear::{
+    HostEvaluationBackend, Mle, MleBaseBackend, PaddedMle, PartialLagrangeBackend, PointBackend,
+};
 use tokio::sync::oneshot;
 
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
+use slop_alloc::{Backend, CanCopyIntoRef, CpuBackend, HasBackend, ToHost};
 
 use super::ZeroCheckPoly;
 
 /// The data required for a zerocheck sumcheck.
-pub trait ZerocheckProver<F: Field, K, EF>: 'static + Send + Sync {
+pub trait ZerocheckRoundProver<F: Field, K, EF, B: Backend = CpuBackend>:
+    'static + Send + Sync
+{
     /// The AIR that contains the constraint polynomial.
     type Air: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>;
 
@@ -33,11 +42,29 @@ pub trait ZerocheckProver<F: Field, K, EF>: 'static + Send + Sync {
     /// Sum the zerocheck polynomial in the last variable.
     fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
         &self,
-        partial_lagrange: Arc<Mle<EF>>,
-        preprocessed_values: Option<Arc<Mle<K>>>,
-        main_values: Arc<Mle<K>>,
-        num_non_padded_terms: usize,
+        partial_lagrange: Arc<Mle<EF, B>>,
+        preprocessed_values: Option<PaddedMle<K, B>>,
+        main_values: PaddedMle<K, B>,
     ) -> impl Future<Output = (EF, EF, EF)> + Send;
+}
+
+/// The data required to produce zerocheck proofs.
+pub trait ZerocheckProverData<F: Field, EF: ExtensionField<F>, B: Backend = CpuBackend>:
+    'static + Send + Sync
+{
+    /// The AIR that contains the constraint polynomial.
+    type Air;
+    /// The round prover for the zerocheck sumcheck.
+    type RoundProver: ZerocheckRoundProver<F, F, EF, B, Air = Self::Air>
+        + ZerocheckRoundProver<F, EF, EF, B, Air = Self::Air>;
+
+    /// Generate a round prover for the zerocheck sumcheck from constraint data.
+    fn round_prover(
+        &self,
+        air: Arc<Self::Air>,
+        public_values: Arc<Vec<F>>,
+        powers_of_alpha: Arc<Vec<EF>>,
+    ) -> Self::RoundProver;
 }
 
 /// Zerocheck data for the CPU backend.
@@ -57,7 +84,7 @@ impl<F, EF, A> ZerocheckCpuProver<F, EF, A> {
     }
 }
 
-impl<F, K, EF, A> ZerocheckProver<F, K, EF> for ZerocheckCpuProver<F, EF, A>
+impl<F, K, EF, A> ZerocheckRoundProver<F, K, EF> for ZerocheckCpuProver<F, EF, A>
 where
     K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     F: Field,
@@ -84,21 +111,22 @@ where
     async fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
         &self,
         partial_lagrange: Arc<Mle<EF>>,
-        preprocessed_values: Option<Arc<Mle<K>>>,
-        main_values: Arc<Mle<K>>,
-        num_non_padded_terms: usize,
+        preprocessed_values: Option<PaddedMle<K>>,
+        main_values: PaddedMle<K>,
     ) -> (EF, EF, EF) {
         let air = self.air.clone();
         let public_values = self.public_values.clone();
         let powers_of_alpha = self.powers_of_alpha.clone();
         let (tx, rx) = oneshot::channel();
-        rayon::spawn(move || {
+        slop_futures::rayon::spawn(move || {
             let mut y_0 = EF::zero();
             let mut y_2 = EF::zero();
             let mut y_4 = EF::zero();
 
             let eq_guts = partial_lagrange.guts().as_buffer().as_slice();
 
+            let num_non_padded_vars = main_values.num_real_entries().next_power_of_two().ilog2();
+            let num_non_padded_terms = 2usize.pow(num_non_padded_vars - 1);
             // Handle the case when the zerocheck polynomial has non-padded variables.
             for (i, eq) in eq_guts.iter().enumerate().take(num_non_padded_terms) {
                 // Get the column values where the last variable is set to 0, 2, and 4.
@@ -108,15 +136,17 @@ where
                     preprocessed_column_vals_4,
                 ) = if let Some(preprocessed_values) = preprocessed_values.as_ref() {
                     interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
-                        preprocessed_values,
+                        preprocessed_values.inner().as_ref().unwrap(),
                         i,
                     )
                 } else {
                     (Vec::new(), Vec::new(), Vec::new())
                 };
 
+                // Since it's non-paddded we cxpect to have main values.
+                let main_value_mle = main_values.inner().as_ref().unwrap();
                 let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
-                    interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(&main_values, i);
+                    interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(main_value_mle, i);
 
                 // Evaluate the constraint polynomial at the points 0, 2, and 4, and
                 // add the results to the y_0, y_2, and y_4 accumulators.
@@ -148,25 +178,32 @@ where
 /// summed on the boolean hypercube and the last variable is left as a free variable.
 /// TODO:  Add flexibility to support degree 2 and degree 3 constraint polynomials.
 #[allow(clippy::too_many_lines)]
-pub(crate) async fn sum_as_poly_in_last_variable<
+pub async fn sum_as_poly_in_last_variable<
     K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     F: Field,
     EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
-    AirData: ZerocheckProver<F, K, EF>,
+    AirData: ZerocheckRoundProver<F, K, EF, B>,
+    B: MleBaseBackend<K>
+        + PartialLagrangeBackend<EF>
+        + HostEvaluationBackend<K, K>
+        + CanCopyIntoRef<Mle<K, B>, CpuBackend, Output = Mle<K, CpuBackend>>
+        + PointBackend<EF>,
     const IS_FIRST_ROUND: bool,
 >(
-    poly: &ZeroCheckPoly<K, F, EF, AirData>,
+    poly: &ZeroCheckPoly<K, F, EF, AirData, B>,
     claim: Option<EF>,
 ) -> UnivariatePolynomial<EF> {
     let claim = claim.expect("claim must be provided");
 
-    let num_non_padded_vars = poly.main_columns.num_variables();
+    let num_non_padded_vars = poly.main_columns.num_real_entries().next_power_of_two().ilog2();
 
     let (rest_point, last) = poly.zeta.split_at(poly.zeta.dimension() - 1);
     let last = *last[0];
 
     // TODO:  Optimization of computing this once per zerocheck sumcheck.
-    let partial_lagrange: Mle<EF> = Mle::partial_lagrange(&rest_point).await;
+    let backend = poly.main_columns.backend();
+    let rest_point = backend.copy_to(&rest_point).await.unwrap();
+    let partial_lagrange: Mle<EF, B> = Mle::partial_lagrange(&rest_point).await;
     let partial_lagrange = Arc::new(partial_lagrange);
 
     // For the first round, we know that at point 0 and 1, the zerocheck polynomial will evaluate to 0.
@@ -186,37 +223,42 @@ pub(crate) async fn sum_as_poly_in_last_variable<
     let mut y_4 = EF::zero();
 
     if num_non_padded_vars > 0 {
-        // Calculate the number of summed over terms that are non-padded.  The padded values will be zero,
-        // since the adjusted constraint polynomial will be zero.
-        let num_non_padded_terms = 2usize.pow(num_non_padded_vars - 1);
-
         (y_0, y_2, y_4) = poly
             .air_data
             .sum_as_poly_in_last_variable::<IS_FIRST_ROUND>(
                 partial_lagrange,
                 poly.preprocessed_columns.clone(),
                 poly.main_columns.clone(),
-                num_non_padded_terms,
-                // poly.public_values,
-                // &poly.powers_of_alpha,
-                // poly.air,
             )
             .await;
     } else {
-        let eq_guts = partial_lagrange.guts().as_buffer().as_slice();
+        let eq_guts_0 = partial_lagrange.guts().as_buffer()[0].copy_into_host(backend);
 
         // Handle the case when the zerocheck polynomial is only padded variables.
 
         // Get the column values where the last variable is set to 0, 2, and 4.
         let (preprocessed_column_vals_0, preprocessed_column_vals_2, preprocessed_column_vals_4) =
             if let Some(preprocessed_values) = poly.preprocessed_columns.as_ref() {
-                interpolate_last_var_padded_values(preprocessed_values)
+                let preprocessed_cols =
+                    preprocessed_values.inner().as_ref().unwrap().as_ref().to_host().await.unwrap();
+                interpolate_last_var_padded_values(&preprocessed_cols)
             } else {
                 (Vec::new(), Vec::new(), Vec::new())
             };
 
+        // let main_cols = poly.main_columns.inner().as_ref().unwrap_or_else(|| {
+        //     let padded_values = self.main_colums.
+        // });
+        let main_cols = if let Some(main_cols) = poly.main_columns.inner().as_ref() {
+            main_cols.to_host().await.unwrap()
+        } else {
+            let padded_values = poly.main_columns.padding_values().to_host().await.unwrap();
+            let num_polys = poly.main_columns.num_polynomials();
+            let guts = padded_values.into_evaluations().reshape([num_polys, 1]);
+            Mle::new(guts)
+        };
         let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
-            interpolate_last_var_padded_values(&poly.main_columns);
+            interpolate_last_var_padded_values(&main_cols);
 
         // Evaluate the constraint polynomial at the points 0, 2, and 4, and
         // add the results to the y_0, y_2, and y_4 accumulators.
@@ -233,21 +275,21 @@ pub(crate) async fn sum_as_poly_in_last_variable<
             &main_column_vals_2,
             &preprocessed_column_vals_4,
             &main_column_vals_4,
-            eq_guts[0],
+            eq_guts_0,
         );
 
         // Adjust the y_0 value by the padded_row_adjustment and the geq_value.
-        y_0 -= poly.geq_value * poly.padded_row_adjustment * eq_guts[0];
+        y_0 -= poly.geq_value * poly.padded_row_adjustment * eq_guts_0;
 
         // Adjust the y_2 value by the padded_row_adjustment and the geq_value.
         let geq_last_term_value =
             (EF::one() - poly.geq_value) * EF::from_canonical_usize(2) + poly.geq_value;
-        y_2 -= geq_last_term_value * poly.padded_row_adjustment * eq_guts[0];
+        y_2 -= geq_last_term_value * poly.padded_row_adjustment * eq_guts_0;
 
         // Adjust the y_4 value by the padded_row_adjustment and the geq_value.
         let geq_last_term_value =
             (EF::one() - poly.geq_value) * EF::from_canonical_usize(4) + poly.geq_value;
-        y_4 -= geq_last_term_value * poly.padded_row_adjustment * eq_guts[0];
+        y_4 -= geq_last_term_value * poly.padded_row_adjustment * eq_guts_0;
     }
 
     // Add the point 0 and it's eval to the xs and ys.
@@ -321,6 +363,37 @@ fn interpolate_last_var_non_padded_values<K: Field, const IS_FIRST_ROUND: bool>(
     }
 
     (vals_0, vals_2, vals_4)
+}
+
+/// The data required to produce zerocheck proofs on CPU.
+#[derive(Clone, Debug, Copy, Serialize, Deserialize)]
+pub struct ZerocheckCpuProverData<A>(PhantomData<A>);
+
+impl<A> Default for ZerocheckCpuProverData<A> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<F, EF, A> ZerocheckProverData<F, EF, CpuBackend> for ZerocheckCpuProverData<A>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    A: for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
+        + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+        + MachineAir<F>,
+{
+    type Air = A;
+    type RoundProver = ZerocheckCpuProver<F, EF, A>;
+
+    fn round_prover(
+        &self,
+        air: Arc<A>,
+        public_values: Arc<Vec<F>>,
+        powers_of_alpha: Arc<Vec<EF>>,
+    ) -> Self::RoundProver {
+        ZerocheckCpuProver::new(air, public_values, powers_of_alpha)
+    }
 }
 
 /// This function will calculate the column values where the last variable is set to 0, 2, and 4
