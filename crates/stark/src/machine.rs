@@ -2,7 +2,7 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_algebra::Field;
 
-use crate::{air::MachineAir, Chip, MachineConfig, MachineRecord, ShardVerifierError};
+use crate::{air::MachineAir, Chip, MachineRecord};
 
 /// A STARK for proving RISC-V execution.
 pub struct Machine<F: Field, A> {
@@ -112,74 +112,6 @@ where
         });
     }
 }
-
-// /// A proving key for a STARK.
-// #[derive(Clone, Serialize, Deserialize)]
-// #[serde(bound(serialize = "Mle<Val<SC>>: Serialize, PcsProverData<SC>: Serialize"))]
-// #[serde(bound(
-//     deserialize = "Mle<Val<SC>>: DeserializeOwned, PcsProverData<SC>: DeserializeOwned"
-// ))]
-// pub struct StarkProvingKey<SC: StarkGenericConfig> {
-//     /// The start pc of the program.
-//     pub pc_start: Val<SC>,
-//     /// The starting global digest of the program, after incorporating the initial memory.
-//     pub initial_global_cumulative_sum: SepticDigest<Val<SC>>,
-//     /// The commitment to the preprocessed traces.
-//     pub preprocessed_commit: Option<Com<SC>>,
-//     /// The preprocessed traces.
-//     pub traces: Vec<Arc<Mle<Val<SC>>>>,
-//     /// The pcs data for the preprocessed traces.
-//     pub preprocessed_data: Option<PcsProverData<SC>>,
-//     /// The preprocessed chip ordering.
-//     pub chip_ordering: HashMap<String, usize>,
-//     /// The preprocessed chip local only information.
-//     pub local_only: Vec<bool>,
-//     /// The number of total constraints for each chip.
-//     pub constraints_map: HashMap<String, usize>,
-// }
-
-// impl<SC: StarkGenericConfig> StarkProvingKey<SC> {
-//     /// Observes the values of the proving key into the challenger.
-//     pub fn observe_into(&self, challenger: &mut SC::Challenger) {
-//         challenger.observe(self.pc_start);
-//         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
-//         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);
-//         // Observe the padding.
-//         challenger.observe(Val::<SC>::zero());
-//     }
-// }
-
-// /// A verifying key for a STARK.
-// #[derive(Clone, Serialize, Deserialize)]
-// #[serde(bound(serialize = "SC: Serialize"))]
-// #[serde(bound(deserialize = "SC: DeserializeOwned"))]
-// pub struct StarkVerifyingKey<SC: StarkGenericConfig> {
-//     /// The start pc of the program.
-//     pub pc_start: Val<SC>,
-//     /// The starting global digest of the program, after incorporating the initial memory.
-//     pub initial_global_cumulative_sum: SepticDigest<Val<SC>>,
-//     /// The chip information.
-//     pub chip_information: Vec<(String, Dimensions)>,
-//     /// The chip ordering.
-//     pub chip_ordering: HashMap<String, usize>,
-// }
-
-// impl<SC: StarkGenericConfig> StarkVerifyingKey<SC> {
-//     /// Observes the values of the verifying key into the challenger.
-//     pub fn observe_into(&self, challenger: &mut SC::Challenger) {
-//         challenger.observe(self.pc_start);
-//         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
-//         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);
-//         // Observe the padding.
-//         challenger.observe(Val::<SC>::zero());
-//     }
-// }
-
-// impl<SC: StarkGenericConfig> Debug for StarkVerifyingKey<SC> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("VerifyingKey").finish()
-//     }
-// }
 
 // impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
 //     /// Returns an iterator over the chips in the machine that are included in the given shard.

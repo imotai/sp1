@@ -252,8 +252,6 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
 ) -> UnivariatePolynomial<EF> {
     let claim = claim.expect("claim must be provided");
 
-    let num_non_padded_vars = poly.main_columns.num_real_entries().next_power_of_two().ilog2();
-
     let (rest_point, last) = poly.zeta.split_at(poly.zeta.dimension() - 1);
     let last = *last[0];
 
@@ -279,7 +277,8 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     let mut y_2 = EF::zero();
     let mut y_4 = EF::zero();
 
-    if num_non_padded_vars > 0 {
+    let num_real_entries = poly.main_columns.num_real_entries();
+    if num_real_entries > 0 {
         (y_0, y_2, y_4) = poly
             .air_data
             .sum_as_poly_in_last_variable::<IS_FIRST_ROUND>(
@@ -289,7 +288,11 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
             )
             .await;
     } else {
+        // TODO: do not use the unsafe copy API.
         let eq_guts_0 = partial_lagrange.guts().as_buffer()[0].copy_into_host(backend);
+        // let partial_lagrange_host = Mle::partial_lagrange(&rest_point_host).await;
+        // let eq_guts_0_host = partial_lagrange_host.guts().as_buffer().as_slice()[0];
+        // assert_eq!(eq_guts_0, eq_guts_0_host);
 
         // Handle the case when the zerocheck polynomial is only padded variables.
 

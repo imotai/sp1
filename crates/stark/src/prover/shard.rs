@@ -388,6 +388,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
 
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();
+
         // Generate the zerocheck proof.
         let (shard_open_values, zerocheck_partial_sumcheck_proof) = self
             .zerocheck(
