@@ -166,6 +166,9 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
     ) -> K {
         let memory_states = all_memory_states();
         let bit_states = all_bit_states();
+
+        let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
+        let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
         // Iterate over all column. For each column, we need to know the total length of all the columns
         // up to the current one, this number - 1, and the
         // number of rows in the current column.
@@ -179,8 +182,7 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
 
                 // For `z_col` on the Boolean hypercube, this is the delta function to pick out
                 // the right column count for the current table.
-                let c_tab_correction =
-                    Mle::blocking_partial_lagrange(z_col).guts().as_slice()[col_num].clone();
+                let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
                 let mut state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
 
