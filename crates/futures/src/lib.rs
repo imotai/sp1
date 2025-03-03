@@ -1,3 +1,4 @@
+pub mod queue;
 pub mod rayon;
 mod values;
 
