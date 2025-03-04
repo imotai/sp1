@@ -207,7 +207,13 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
-                let mut state_by_state_results: [K; 4] = [K::one(), K::one(), K::one(), K::one()];
+                let mut state_by_state_results: [K; 4] =
+                    [K::zero(), K::zero(), K::zero(), K::zero()];
+                for memory_state in all_memory_states().iter() {
+                    if memory_state == &MemoryState::success() {
+                        state_by_state_results[memory_state.get_index()] = K::one();
+                    }
+                }
 
                 // The dynamic programming algorithm to output the result of the branching
                 // iterates over the layers of the branching program in reverse order.
