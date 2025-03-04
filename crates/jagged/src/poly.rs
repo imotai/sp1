@@ -20,12 +20,8 @@
 //! above, and also checks that index < t_{tab+1}. Assuming that c_{tab} is a power of 2, the
 //! multiplication `row * c_{tab}` can be done by bit-shift, and the addition is checked via the
 //! grade-school algorithm.
-<<<<<<< Updated upstream
 use std::cmp::max;
-use std::collections::BTreeMap;
 use std::iter::once;
-=======
->>>>>>> Stashed changes
 
 use rayon::prelude::*;
 
