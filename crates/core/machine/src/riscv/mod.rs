@@ -632,12 +632,14 @@ impl<F: PrimeField32> fmt::Debug for RiscvAir<F> {
 #[cfg(test)]
 pub mod tests {
 
-    //     use crate::{
-    //         io::SP1Stdin,
-    //         riscv::RiscvAir,
-    //         utils::{self, prove_core, run_test, setup_logger},
-    //     };
+    use std::sync::Arc;
 
+    use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
+    use sp1_stark::prover::CpuProver;
+    use sp1_stark::{MachineVerifier, SP1CoreOpts, ShardVerifier};
+
+    use crate::riscv::RiscvAir;
+    use crate::utils::prove_core;
     use crate::{programs::tests::*, utils::setup_logger};
     //     use p3_baby_bear::BabyBear;
     //     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
@@ -646,15 +648,15 @@ pub mod tests {
     //         StarkProvingKey, StarkVerifyingKey,
     //     };
 
-    //     // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
-    // first_row, last_row,     // and next_row constraints).
-    //     // #[test]
-    //     // fn test_primitives_and_machine_air_names_match() {
-    //     //     let chips = RiscvAir::<BabyBear>::chips();
-    //     //     for (a, b) in chips.iter().zip_eq(RiscvAirId::iter()) {
-    //     //         assert_eq!(a.name(), b.to_string());
-    //     //     }
-    //     // }
+    // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
+    // first_row, last_row.
+    // #[test]
+    // fn test_primitives_and_machine_air_names_match() {
+    //     let chips = RiscvAir::<BabyBear>::chips();
+    //     for (a, b) in chips.iter().zip_eq(RiscvAirId::iter()) {
+    //         assert_eq!(a.name(), b.to_string());
+    //     }
+    // }
 
     //     // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
     // first_row, last_row,     // and next_row constraints).
@@ -738,83 +740,83 @@ pub mod tests {
     //     run_test(program, stdin).await.unwrap();
     // }
 
-    //     #[test]
-    //     fn test_mul_prove() {
-    //         let mul_ops = [Opcode::MUL, Opcode::MULH, Opcode::MULHU, Opcode::MULHSU];
-    //         utils::setup_logger();
-    //         let operands =
-    //             [(1, 1), (1234, 5678), (8765, 4321), (0xffff, 0xffff - 1), (u32::MAX - 1,
-    // u32::MAX)];         for mul_op in mul_ops.iter() {
-    //             for operand in operands.iter() {
-    //                 let instructions = vec![
-    //                     Instruction::new(Opcode::ADD, 29, 0, operand.0, false, true),
-    //                     Instruction::new(Opcode::ADD, 30, 0, operand.1, false, true),
-    //                     Instruction::new(*mul_op, 31, 30, 29, false, false),
-    //                 ];
-    //                 let program = Program::new(instructions, 0, 0);
-    //                 let stdin = SP1Stdin::new();
-    //                 run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    //             }
-    //         }
-    //     }
+    #[tokio::test]
+    async fn test_mul_prove() {
+        let mul_ops = [Opcode::MUL, Opcode::MULH, Opcode::MULHU, Opcode::MULHSU];
+        setup_logger();
+        let operands =
+            [(1, 1), (1234, 5678), (8765, 4321), (0xffff, 0xffff - 1), (u32::MAX - 1, u32::MAX)];
+        for mul_op in mul_ops.iter() {
+            for operand in operands.iter() {
+                let instructions = vec![
+                    Instruction::new(Opcode::ADD, 29, 0, operand.0, false, true),
+                    Instruction::new(Opcode::ADD, 30, 0, operand.1, false, true),
+                    Instruction::new(*mul_op, 31, 30, 29, false, false),
+                ];
+                let program = Program::new(instructions, 0, 0);
+                let stdin = SP1Stdin::new();
+                run_test(program, stdin).await.unwrap();
+            }
+        }
+    }
 
-    //     #[test]
-    //     fn test_lt_prove() {
-    //         setup_logger();
-    //         let less_than = [Opcode::SLT, Opcode::SLTU];
-    //         for lt_op in less_than.iter() {
-    //             let instructions = vec![
-    //                 Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-    //                 Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
-    //                 Instruction::new(*lt_op, 31, 30, 29, false, false),
-    //             ];
-    //             let program = Program::new(instructions, 0, 0);
-    //             let stdin = SP1Stdin::new();
-    //             run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    //         }
-    //     }
+    #[tokio::test]
+    async fn test_lt_prove() {
+        setup_logger();
+        let less_than = [Opcode::SLT, Opcode::SLTU];
+        for lt_op in less_than.iter() {
+            let instructions = vec![
+                Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
+                Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
+                Instruction::new(*lt_op, 31, 30, 29, false, false),
+            ];
+            let program = Program::new(instructions, 0, 0);
+            let stdin = SP1Stdin::new();
+            run_test(program, stdin).await.unwrap();
+        }
+    }
 
-    //     #[test]
-    //     fn test_bitwise_prove() {
-    //         setup_logger();
-    //         let bitwise_opcodes = [Opcode::XOR, Opcode::OR, Opcode::AND];
+    #[tokio::test]
+    async fn test_bitwise_prove() {
+        setup_logger();
+        let bitwise_opcodes = [Opcode::XOR, Opcode::OR, Opcode::AND];
 
-    //         for bitwise_op in bitwise_opcodes.iter() {
-    //             let instructions = vec![
-    //                 Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-    //                 Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
-    //                 Instruction::new(*bitwise_op, 31, 30, 29, false, false),
-    //             ];
-    //             let program = Program::new(instructions, 0, 0);
-    //             let stdin = SP1Stdin::new();
-    //             run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    //         }
-    //     }
+        for bitwise_op in bitwise_opcodes.iter() {
+            let instructions = vec![
+                Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
+                Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
+                Instruction::new(*bitwise_op, 31, 30, 29, false, false),
+            ];
+            let program = Program::new(instructions, 0, 0);
+            let stdin = SP1Stdin::new();
+            run_test(program, stdin).await.unwrap();
+        }
+    }
 
-    //     #[test]
-    //     fn test_divrem_prove() {
-    //         setup_logger();
-    //         let div_rem_ops = [Opcode::DIV, Opcode::DIVU, Opcode::REM, Opcode::REMU];
-    //         let operands = [
-    //             (1, 1),
-    //             (123, 456 * 789),
-    //             (123 * 456, 789),
-    //             (0xffff * (0xffff - 1), 0xffff),
-    //             (u32::MAX - 5, u32::MAX - 7),
-    //         ];
-    //         for div_rem_op in div_rem_ops.iter() {
-    //             for op in operands.iter() {
-    //                 let instructions = vec![
-    //                     Instruction::new(Opcode::ADD, 29, 0, op.0, false, true),
-    //                     Instruction::new(Opcode::ADD, 30, 0, op.1, false, true),
-    //                     Instruction::new(*div_rem_op, 31, 29, 30, false, false),
-    //                 ];
-    //                 let program = Program::new(instructions, 0, 0);
-    //                 let stdin = SP1Stdin::new();
-    //                 run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    //             }
-    //         }
-    //     }
+    #[tokio::test]
+    async fn test_divrem_prove() {
+        setup_logger();
+        let div_rem_ops = [Opcode::DIV, Opcode::DIVU, Opcode::REM, Opcode::REMU];
+        let operands = [
+            (1, 1),
+            (123, 456 * 789),
+            (123 * 456, 789),
+            (0xffff * (0xffff - 1), 0xffff),
+            (u32::MAX - 5, u32::MAX - 7),
+        ];
+        for div_rem_op in div_rem_ops.iter() {
+            for op in operands.iter() {
+                let instructions = vec![
+                    Instruction::new(Opcode::ADD, 29, 0, op.0, false, true),
+                    Instruction::new(Opcode::ADD, 30, 0, op.1, false, true),
+                    Instruction::new(*div_rem_op, 31, 29, 30, false, false),
+                ];
+                let program = Program::new(instructions, 0, 0);
+                let stdin = SP1Stdin::new();
+                run_test(program, stdin).await.unwrap();
+            }
+        }
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fibonacci_prove_simple() {
@@ -824,74 +826,104 @@ pub mod tests {
         run_test(program, stdin).await.unwrap();
     }
 
-    //     #[test]
-    //     fn test_keccak_permute_prove() {
-    //         setup_logger();
-    //         let program = keccak_permute_program();
-    //         let stdin = SP1Stdin::new();
-    //         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    //     }
+    #[tokio::test]
+    async fn test_keccak_permute_prove() {
+        setup_logger();
+        let program = keccak_permute_program();
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
 
-    //     #[test]
-    //     fn test_fibonacci_prove_checkpoints() {
-    //         setup_logger();
+    #[tokio::test]
+    async fn test_fibonacci_prove_checkpoints() {
+        setup_logger();
 
-    //         let program = fibonacci_program();
-    //         let stdin = SP1Stdin::new();
-    //         let mut opts = SP1CoreOpts::default();
-    //         opts.shard_size = 1024;
-    //         opts.shard_batch_size = 2;
+        let program = fibonacci_program();
+        let stdin = SP1Stdin::new();
+        let mut opts = SP1CoreOpts::default();
+        opts.shard_size = 1024;
+        opts.shard_batch_size = 2;
 
-    //         let config = BabyBearPoseidon2::new();
-    //         let machine = RiscvAir::machine(config);
-    //         let prover = CpuProver::new(machine);
-    //         let (pk, vk) = prover.setup(&program);
-    //         prove_core::<_, _>(
-    //             &prover,
-    //             &pk,
-    //             &vk,
-    //             program,
-    //             &stdin,
-    //             opts,
-    //             SP1Context::default(),
-    //             None,
-    //             None,
-    //         )
-    //         .unwrap();
-    //     }
+        let log_blowup = 1;
+        let log_stacking_height = 21;
+        let max_log_row_count = 21;
+        let machine = RiscvAir::machine();
+        let verifier = ShardVerifier::from_basefold_parameters(
+            log_blowup,
+            log_stacking_height,
+            max_log_row_count,
+            machine,
+        );
+        let prover = CpuProver::new(verifier.clone());
+        let challenger = verifier.pcs_verifier.challenger();
 
-    //     #[test]
-    //     fn test_fibonacci_prove_batch() {
-    //         setup_logger();
-    //         let program = fibonacci_program();
-    //         let stdin = SP1Stdin::new();
+        let program = Arc::new(program);
+        let (pk, vk) = prover.setup(program.clone()).await;
+        let proof = prove_core(
+            Arc::new(prover),
+            Arc::new(pk),
+            program,
+            &stdin,
+            opts,
+            SP1Context::default(),
+            challenger,
+        )
+        .await
+        .unwrap();
 
-    //         let opts = SP1CoreOpts::default();
-    //         let config = BabyBearPoseidon2::new();
-    //         let machine = RiscvAir::machine(config);
-    //         let prover = CpuProver::new(machine);
-    //         let (pk, vk) = prover.setup(&program);
-    //         prove_core::<_, _>(
-    //             &prover,
-    //             &pk,
-    //             &vk,
-    //             program,
-    //             &stdin,
-    //             opts,
-    //             SP1Context::default(),
-    //             None,
-    //             None,
-    //         )
-    //         .unwrap();
-    //     }
+        let mut challenger = verifier.pcs_verifier.challenger();
+        let machine_verifier = MachineVerifier::new(verifier);
+        tracing::debug_span!("verify the proof")
+            .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))
+            .unwrap();
+    }
 
-    //     #[test]
-    //     fn test_simple_memory_program_prove() {
-    //         setup_logger();
-    //         let program = simple_memory_program();
-    //         let stdin = SP1Stdin::new();
-    //         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    //     }
+    #[tokio::test]
+    async fn test_fibonacci_prove_batch() {
+        setup_logger();
+        let program = Arc::new(fibonacci_program());
+        let stdin = SP1Stdin::new();
+
+        let opts = SP1CoreOpts::default();
+        let log_blowup = 1;
+        let log_stacking_height = 21;
+        let max_log_row_count = 21;
+        let machine = RiscvAir::machine();
+        let verifier = ShardVerifier::from_basefold_parameters(
+            log_blowup,
+            log_stacking_height,
+            max_log_row_count,
+            machine,
+        );
+        let prover = CpuProver::new(verifier.clone());
+        let challenger = verifier.pcs_verifier.challenger();
+        let (pk, vk) = prover.setup(program.clone()).await;
+        let proof = prove_core(
+            Arc::new(prover),
+            Arc::new(pk),
+            program,
+            &stdin,
+            opts,
+            SP1Context::default(),
+            challenger,
+        )
+        .await
+        .unwrap();
+
+        let mut challenger = verifier.pcs_verifier.challenger();
+        let machine_verifier = MachineVerifier::new(verifier);
+        tracing::debug_span!("verify the proof")
+            .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_simple_memory_program_prove() {
+        setup_logger();
+        let program = simple_memory_program();
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_ssz_withdrawal() {
@@ -901,33 +933,33 @@ pub mod tests {
         run_test(program, stdin).await.unwrap();
     }
 
-    //     #[test]
-    //     fn test_key_serde() {
-    //         let program = ssz_withdrawals_program();
-    //         let config = BabyBearPoseidon2::new();
-    //         let machine = RiscvAir::machine(config);
-    //         let (pk, vk) = machine.setup(&program);
+    // #[test]
+    // fn test_key_serde() {
+    //     let program = ssz_withdrawals_program();
+    //     let config = BabyBearPoseidon2::new();
+    //     let machine = RiscvAir::machine(config);
+    //     let (pk, vk) = machine.setup(&program);
 
-    //         let serialized_pk = bincode::serialize(&pk).unwrap();
-    //         let deserialized_pk: StarkProvingKey<BabyBearPoseidon2> =
-    //             bincode::deserialize(&serialized_pk).unwrap();
-    //         assert_eq!(pk.preprocessed_commit, deserialized_pk.preprocessed_commit);
-    //         assert_eq!(pk.pc_start, deserialized_pk.pc_start);
-    //         assert_eq!(pk.traces, deserialized_pk.traces);
-    //         // assert_eq!(pk.data, deserialized_pk.data);
-    //         assert_eq!(pk.chip_ordering, deserialized_pk.chip_ordering);
-    //         assert_eq!(pk.local_only, deserialized_pk.local_only);
+    //     let serialized_pk = bincode::serialize(&pk).unwrap();
+    //     let deserialized_pk: StarkProvingKey<BabyBearPoseidon2> =
+    //         bincode::deserialize(&serialized_pk).unwrap();
+    //     assert_eq!(pk.preprocessed_commit, deserialized_pk.preprocessed_commit);
+    //     assert_eq!(pk.pc_start, deserialized_pk.pc_start);
+    //     assert_eq!(pk.traces, deserialized_pk.traces);
+    //     // assert_eq!(pk.data, deserialized_pk.data);
+    //     assert_eq!(pk.chip_ordering, deserialized_pk.chip_ordering);
+    //     assert_eq!(pk.local_only, deserialized_pk.local_only);
 
-    //         let serialized_vk = bincode::serialize(&vk).unwrap();
-    //         let deserialized_vk: StarkVerifyingKey<BabyBearPoseidon2> =
-    //             bincode::deserialize(&serialized_vk).unwrap();
-    //         assert_eq!(vk.pc_start, deserialized_vk.pc_start);
-    //         assert_eq!(vk.chip_information.len(), deserialized_vk.chip_information.len());
-    //         for (a, b) in vk.chip_information.iter().zip(deserialized_vk.chip_information.iter())
-    // {             assert_eq!(a.0, b.0);
-    //             assert_eq!(a.1.height, b.1.height);
-    //             assert_eq!(a.1.width, b.1.width);
-    //         }
-    //         assert_eq!(vk.chip_ordering, deserialized_vk.chip_ordering);
+    //     let serialized_vk = bincode::serialize(&vk).unwrap();
+    //     let deserialized_vk: StarkVerifyingKey<BabyBearPoseidon2> =
+    //         bincode::deserialize(&serialized_vk).unwrap();
+    //     assert_eq!(vk.pc_start, deserialized_vk.pc_start);
+    //     assert_eq!(vk.chip_information.len(), deserialized_vk.chip_information.len());
+    //     for (a, b) in vk.chip_information.iter().zip(deserialized_vk.chip_information.iter()) {
+    //         assert_eq!(a.0, b.0);
+    //         assert_eq!(a.1.height, b.1.height);
+    //         assert_eq!(a.1.width, b.1.width);
     //     }
+    //     assert_eq!(vk.chip_ordering, deserialized_vk.chip_ordering);
+    // }
 }

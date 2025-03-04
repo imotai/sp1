@@ -100,15 +100,11 @@ pub async fn run_test_core(
     .await
     .unwrap();
 
-    tokio::task::spawn_blocking(move || {
-        let mut challenger = verifier.pcs_verifier.challenger();
-        let machine_verifier = MachineVerifier::new(verifier);
-        machine_verifier.verify(&vk, &proof, &mut challenger)?;
-        Ok(proof)
-    })
-    .instrument(tracing::debug_span!("verify the proof"))
-    .await
-    .unwrap()
+    let mut challenger = verifier.pcs_verifier.challenger();
+    let machine_verifier = MachineVerifier::new(verifier);
+    tracing::debug_span!("verify the proof")
+        .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))?;
+    Ok(proof)
 }
 
 // #[allow(unused_variables)]
