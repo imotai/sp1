@@ -20,9 +20,8 @@
 //! above, and also checks that index < t_{tab+1}. Assuming that c_{tab} is a power of 2, the
 //! multiplication `row * c_{tab}` can be done by bit-shift, and the addition is checked via the
 //! grade-school algorithm.
-use std::cmp::max;
-use std::collections::BTreeMap;
 use std::iter::once;
+use std::{array, cmp::max};
 
 use rayon::prelude::*;
 
@@ -34,13 +33,19 @@ use slop_utils::log2_ceil_usize;
 use slop_multilinear::{Mle, Point};
 
 /// A struct recording the state of the memory of the branching program. Because the program performs
-/// a three-way addition and one u32 comparison, the memory needed is a carry (which lies in {0,1,2})
+/// a two-way addition and one u32 comparison, the memory needed is a carry (which lies in {0,1})
 /// and a boolean to store the comparison of the u32s up to the current bit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MemoryState {
     pub carry: bool,
 
     pub comparison_so_far: bool,
+}
+
+impl MemoryState {
+    fn get_index(&self) -> usize {
+        (self.carry as usize) + ((self.comparison_so_far as usize) << 1)
+    }
 }
 
 impl MemoryState {
@@ -120,14 +125,14 @@ pub fn transition_function(bit_state: BitState<bool>, memory_state: MemoryState)
             != ((bit_state.row_bit as usize)
                 + Into::<usize>::into(memory_state.carry)
                 + bit_state.curr_col_prefix_sum_bit as usize)
-                % 2
+                & 1
         {
             return StateOrFail::Fail;
         }
         (bit_state.row_bit as usize
             + Into::<usize>::into(memory_state.carry)
             + bit_state.curr_col_prefix_sum_bit as usize)
-            / 2
+            >> 1
     };
     // Successful transition.
     StateOrFail::State(MemoryState {
@@ -155,7 +160,7 @@ pub struct JaggedLittlePolynomialVerifierParams<K: AbstractField> {
     pub(crate) max_log_row_count: usize,
 }
 
-impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> {
+impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierParams<K> {
     /// Given `z_index`, evaluate the special multilinear polynomial appearing in the jagged sumcheck
     /// protocol.
     pub fn full_jagged_little_polynomial_evaluation(
@@ -169,97 +174,98 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
 
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
+
+        // The program below reads only the first log_m +1 bits of z_row, but z_row could in theory
+        // be longer than that if the total trace area is less than the padded height. This
+        // correction ensures that the higher bits are zero.
+        let log_m = z_index.dimension();
+        let z_row_correction: K = z_row
+            .reversed()
+            .to_vec()
+            .iter()
+            .skip(log_m + 1)
+            .cloned()
+            .map(|x| K::one() - x)
+            .product();
+
+        let z_row_rev = z_row.reversed();
+        let z_index_rev = z_index.reversed();
+
         // Iterate over all column. For each column, we need to know the total length of all the columns
         // up to the current one, this number - 1, and the
         // number of rows in the current column.
         self.col_prefix_sums
             .iter()
-            .cloned()
             .zip(self.next_col_prefix_sums.iter())
             .enumerate()
+            .par_bridge()
             .map(|(col_num, (prefix_sum, next_prefix_sum))| {
-                let log_m = z_index.dimension();
+                let prefix_sum_rev = prefix_sum.reversed();
+                let next_prefix_sum_rev = next_prefix_sum.reversed();
 
                 // For `z_col` on the Boolean hypercube, this is the delta function to pick out
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
-                let mut state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
-
-                // Initialize the state-by-state results for the last layer of the branching
-                // program, namely the success state returns 1 and all other states return 0.
-                for memory_state in all_memory_states().iter() {
-                    state_by_state_results.insert(
-                        StateOrFail::State(*memory_state),
-                        if memory_state == &MemoryState::success() { K::one() } else { K::zero() },
-                    );
-                }
-
-                // The program below reads only the first log_m +1 bits of z_row, but z_row could in theory
-                // be longer than that if the total trace area is less than the padded height. This
-                // correction ensures that the higher bits are zero.
-                let z_row_correction: K = z_row
-                    .reversed()
-                    .to_vec()
-                    .iter()
-                    .skip(log_m + 1)
-                    .cloned()
-                    .map(|x| K::one() - x)
-                    .product();
+                let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
+                state_by_state_results[MemoryState::success().get_index()] = K::one();
 
                 // The dynamic programming algorithm to output the result of the branching
                 // iterates over the layers of the branching program in reverse order.
                 for layer in (0..log_m + 1).rev() {
-                    let mut new_state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
-                    new_state_by_state_results.insert(StateOrFail::Fail, K::zero());
+                    let mut new_state_by_state_results: [K; 4] =
+                        [K::zero(), K::zero(), K::zero(), K::zero()];
 
                     // We assume that bits are aligned in big-endian order. The algorithm,
                     // in the ith layer, looks at the ith least significant bit, which is
                     // the m - 1 - i th bit if the bits are in a bit array in big-endian.
                     let point = [
-                        z_row.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                        z_index.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                        prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                        next_prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                        z_row_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        z_index_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        next_prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
                     ]
                     .into_iter()
                     .collect::<Point<K>>();
+
                     let four_var_eq = Mle::blocking_partial_lagrange(&point);
 
                     // For each memory state in the new layer, compute the result of the branching
                     // program that starts at that memory state and in the current layer.
-                    for memory_state in &memory_states {
-                        let mut accum = K::zero();
 
+                    for memory_state in &memory_states {
                         // For each possible bit state, compute the result of the branching
                         // program transition function and modify the accumulator accordingly.
+                        let mut accum_elems: [K; 4] = array::from_fn(|_| K::zero());
+
                         for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
                             let bit_state = &bit_states[i];
 
                             let state_or_fail = transition_function(*bit_state, *memory_state);
 
-                            // TODO: Group these by target.
-                            accum += match state_or_fail {
-                                StateOrFail::State(state) => {
-                                    elem.clone()
-                                        * state_by_state_results
-                                            .get(&StateOrFail::State(state))
-                                            .unwrap()
-                                            .clone()
-                                }
-                                StateOrFail::Fail => K::zero(),
-                            };
+                            if let StateOrFail::State(output_state) = state_or_fail {
+                                accum_elems[output_state.get_index()] += elem.clone();
+                            }
+                            // If the state is a fail state, we don't need to add anything to the accumulator.
                         }
-                        new_state_by_state_results.insert(StateOrFail::State(*memory_state), accum);
+
+                        let accum = accum_elems.iter().zip(state_by_state_results.iter()).fold(
+                            K::zero(),
+                            |acc, (accum_elem, state_by_state_result)| {
+                                acc + accum_elem.clone() * state_by_state_result.clone()
+                            },
+                        );
+
+                        new_state_by_state_results[memory_state.get_index()] = accum;
                     }
                     state_by_state_results = new_state_by_state_results;
                 }
 
                 // Perform the multiplication outside of the main loop to avoid redundant
                 // multiplications.
-                z_row_correction
+                z_row_correction.clone()
                     * c_tab_correction.clone()
-                    * state_by_state_results[&StateOrFail::State(MemoryState::success())].clone()
+                    * state_by_state_results[MemoryState::success().get_index()].clone()
             })
             .sum()
     }
