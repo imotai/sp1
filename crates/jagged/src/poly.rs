@@ -20,8 +20,8 @@
 //! above, and also checks that index < t_{tab+1}. Assuming that c_{tab} is a power of 2, the
 //! multiplication `row * c_{tab}` can be done by bit-shift, and the addition is checked via the
 //! grade-school algorithm.
-use std::cmp::max;
 use std::iter::once;
+use std::{array, cmp::max};
 
 use rayon::prelude::*;
 
@@ -207,8 +207,7 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
-                let mut state_by_state_results: [K; 4] =
-                    [K::zero(), K::zero(), K::zero(), K::zero()];
+                let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
                 state_by_state_results[MemoryState::success().get_index()] = K::one();
 
                 // The dynamic programming algorithm to output the result of the branching
@@ -237,8 +236,7 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                     for memory_state in &memory_states {
                         // For each possible bit state, compute the result of the branching
                         // program transition function and modify the accumulator accordingly.
-                        let mut input_val_accumulators: [K; 4] =
-                            [K::zero(), K::zero(), K::zero(), K::zero()];
+                        let mut accum_elems: [K; 4] = array::from_fn(|_| K::zero());
 
                         for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
                             let bit_state = &bit_states[i];
@@ -246,17 +244,17 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                             let state_or_fail = transition_function(*bit_state, *memory_state);
 
                             if let StateOrFail::State(output_state) = state_or_fail {
-                                input_val_accumulators[output_state.get_index()] += elem.clone();
+                                accum_elems[output_state.get_index()] += elem.clone();
                             }
                             // If the state is a fail state, we don't need to add anything to the accumulator.
                         }
 
-                        let mut accum = K::zero();
-                        for (i, input_val_accumulator) in input_val_accumulators.iter().enumerate()
-                        {
-                            accum +=
-                                input_val_accumulator.clone() * state_by_state_results[i].clone();
-                        }
+                        let accum = accum_elems.iter().zip(state_by_state_results.iter()).fold(
+                            K::zero(),
+                            |acc, (accum_elem, state_by_state_result)| {
+                                acc + accum_elem.clone() * state_by_state_result.clone()
+                            },
+                        );
 
                         new_state_by_state_results[memory_state.get_index()] = accum;
                     }
