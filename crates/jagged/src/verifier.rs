@@ -81,11 +81,14 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         // Compute the expected evaluation of the jagged little polynomial from its succinct
         // description.
-        let jagged_eval = params.full_jagged_little_polynomial_evaluation(
-            &z_row,
-            &z_col,
-            &sumcheck_proof.point_and_eval.0,
-        );
+        let jagged_eval = tracing::debug_span!("full_jagged_little_polynomial_evaluation")
+            .in_scope(|| {
+                params.full_jagged_little_polynomial_evaluation(
+                    &z_row,
+                    &z_col,
+                    &sumcheck_proof.point_and_eval.0,
+                )
+            });
 
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;

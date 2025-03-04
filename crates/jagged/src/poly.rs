@@ -125,14 +125,14 @@ pub fn transition_function(bit_state: BitState<bool>, memory_state: MemoryState)
             != ((bit_state.row_bit as usize)
                 + Into::<usize>::into(memory_state.carry)
                 + bit_state.curr_col_prefix_sum_bit as usize)
-                % 2
+                & 1
         {
             return StateOrFail::Fail;
         }
         (bit_state.row_bit as usize
             + Into::<usize>::into(memory_state.carry)
             + bit_state.curr_col_prefix_sum_bit as usize)
-            / 2
+            >> 1
     };
     // Successful transition.
     StateOrFail::State(MemoryState {
@@ -160,7 +160,7 @@ pub struct JaggedLittlePolynomialVerifierParams<K: AbstractField> {
     pub(crate) max_log_row_count: usize,
 }
 
-impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> {
+impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierParams<K> {
     /// Given `z_index`, evaluate the special multilinear polynomial appearing in the jagged sumcheck
     /// protocol.
     pub fn full_jagged_little_polynomial_evaluation(
@@ -174,40 +174,40 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
 
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
+
+        // The program below reads only the first log_m +1 bits of z_row, but z_row could in theory
+        // be longer than that if the total trace area is less than the padded height. This
+        // correction ensures that the higher bits are zero.
+        let log_m = z_index.dimension();
+        let z_row_correction: K = z_row
+            .reversed()
+            .to_vec()
+            .iter()
+            .skip(log_m + 1)
+            .cloned()
+            .map(|x| K::one() - x)
+            .product();
+
+        let z_row_rev = z_row.reversed();
+        let z_index_rev = z_index.reversed();
+
         // Iterate over all column. For each column, we need to know the total length of all the columns
         // up to the current one, this number - 1, and the
         // number of rows in the current column.
         self.col_prefix_sums
             .iter()
-            .cloned()
             .zip(self.next_col_prefix_sums.iter())
             .enumerate()
+            .par_bridge()
             .map(|(col_num, (prefix_sum, next_prefix_sum))| {
-                let log_m = z_index.dimension();
+                let prefix_sum_rev = prefix_sum.reversed();
+                let next_prefix_sum_rev = next_prefix_sum.reversed();
 
                 // For `z_col` on the Boolean hypercube, this is the delta function to pick out
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
                 let mut state_by_state_results: [K; 4] = [K::one(), K::one(), K::one(), K::one()];
-
-                // Initialize the state-by-state results for the last layer of the branching
-                // program, namely the success state returns 1 and all other states return 0.
-                for memory_state in all_memory_states().iter() {
-                    state_by_state_results[memory_state.get_index()] = K::one();
-                }
-
-                // The program below reads only the first log_m +1 bits of z_row, but z_row could in theory
-                // be longer than that if the total trace area is less than the padded height. This
-                // correction ensures that the higher bits are zero.
-                let z_row_correction: K = z_row
-                    .reversed()
-                    .to_vec()
-                    .iter()
-                    .skip(log_m + 1)
-                    .cloned()
-                    .map(|x| K::one() - x)
-                    .product();
 
                 // The dynamic programming algorithm to output the result of the branching
                 // iterates over the layers of the branching program in reverse order.
@@ -219,13 +219,14 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
                     // in the ith layer, looks at the ith least significant bit, which is
                     // the m - 1 - i th bit if the bits are in a bit array in big-endian.
                     let point = [
-                        z_row.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                        z_index.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                        prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
-                        next_prefix_sum.reversed().get(layer).unwrap_or(&K::zero()).clone(),
+                        z_row_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        z_index_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        next_prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
                     ]
                     .into_iter()
                     .collect::<Point<K>>();
+
                     let four_var_eq = Mle::blocking_partial_lagrange(&point);
 
                     // For each memory state in the new layer, compute the result of the branching
@@ -261,7 +262,7 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
 
                 // Perform the multiplication outside of the main loop to avoid redundant
                 // multiplications.
-                z_row_correction
+                z_row_correction.clone()
                     * c_tab_correction.clone()
                     * state_by_state_results[MemoryState::success().get_index()].clone()
             })
