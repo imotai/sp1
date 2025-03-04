@@ -169,9 +169,6 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
         z_col: &Point<K>,
         z_index: &Point<K>,
     ) -> K {
-        let memory_states = all_memory_states();
-        let bit_states = all_bit_states();
-
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
@@ -188,8 +185,7 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
             .map(|x| K::one() - x)
             .product();
 
-        let z_row_rev = z_row.reversed();
-        let z_index_rev = z_index.reversed();
+        let h_poly = HPolyParams::new(z_row.clone(), z_index.clone());
 
         // Iterate over all column. For each column, we need to know the total length of all the columns
         // up to the current one, this number - 1, and the
@@ -200,72 +196,15 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
             .enumerate()
             .par_bridge()
             .map(|(col_num, (prefix_sum, next_prefix_sum))| {
-                let prefix_sum_rev = prefix_sum.reversed();
-                let next_prefix_sum_rev = next_prefix_sum.reversed();
-
                 // For `z_col` on the Boolean hypercube, this is the delta function to pick out
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
-                let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
-                state_by_state_results[MemoryState::success().get_index()] = K::one();
-
-                // The dynamic programming algorithm to output the result of the branching
-                // iterates over the layers of the branching program in reverse order.
-                for layer in (0..log_m + 1).rev() {
-                    let mut new_state_by_state_results: [K; 4] =
-                        [K::zero(), K::zero(), K::zero(), K::zero()];
-
-                    // We assume that bits are aligned in big-endian order. The algorithm,
-                    // in the ith layer, looks at the ith least significant bit, which is
-                    // the m - 1 - i th bit if the bits are in a bit array in big-endian.
-                    let point = [
-                        z_row_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                        z_index_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                        prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                        next_prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                    ]
-                    .into_iter()
-                    .collect::<Point<K>>();
-
-                    let four_var_eq = Mle::blocking_partial_lagrange(&point);
-
-                    // For each memory state in the new layer, compute the result of the branching
-                    // program that starts at that memory state and in the current layer.
-
-                    for memory_state in &memory_states {
-                        // For each possible bit state, compute the result of the branching
-                        // program transition function and modify the accumulator accordingly.
-                        let mut accum_elems: [K; 4] = array::from_fn(|_| K::zero());
-
-                        for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
-                            let bit_state = &bit_states[i];
-
-                            let state_or_fail = transition_function(*bit_state, *memory_state);
-
-                            if let StateOrFail::State(output_state) = state_or_fail {
-                                accum_elems[output_state.get_index()] += elem.clone();
-                            }
-                            // If the state is a fail state, we don't need to add anything to the accumulator.
-                        }
-
-                        let accum = accum_elems.iter().zip(state_by_state_results.iter()).fold(
-                            K::zero(),
-                            |acc, (accum_elem, state_by_state_result)| {
-                                acc + accum_elem.clone() * state_by_state_result.clone()
-                            },
-                        );
-
-                        new_state_by_state_results[memory_state.get_index()] = accum;
-                    }
-                    state_by_state_results = new_state_by_state_results;
-                }
+                let h_val = h_poly.eval(prefix_sum, next_prefix_sum);
 
                 // Perform the multiplication outside of the main loop to avoid redundant
                 // multiplications.
-                z_row_correction.clone()
-                    * c_tab_correction.clone()
-                    * state_by_state_results[MemoryState::success().get_index()].clone()
+                z_row_correction.clone() * c_tab_correction.clone() * h_val
             })
             .sum()
     }
@@ -427,6 +366,89 @@ impl ColRanges {
             }
             col_range_iter.next().expect("must have next element");
         }
+    }
+}
+
+struct HPolyParams<K: AbstractField> {
+    z_row_rev: Point<K>,
+    z_index_rev: Point<K>,
+    memory_states: Vec<MemoryState>,
+    bit_states: Vec<BitState<bool>>,
+    log_m: usize,
+}
+
+impl<K: AbstractField + 'static> HPolyParams<K> {
+    fn new(z_row: Point<K>, z_index: Point<K>) -> Self {
+        let log_m = z_index.dimension();
+
+        Self {
+            z_row_rev: z_row.reversed(),
+            z_index_rev: z_index.reversed(),
+            memory_states: all_memory_states(),
+            bit_states: all_bit_states(),
+            log_m,
+        }
+    }
+
+    fn eval(&self, prefix_sums: &Point<K>, next_prefix_sums: &Point<K>) -> K {
+        let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
+        state_by_state_results[MemoryState::success().get_index()] = K::one();
+
+        let prefix_sum_rev = prefix_sums.reversed();
+        let next_prefix_sum_rev = next_prefix_sums.reversed();
+
+        // The dynamic programming algorithm to output the result of the branching
+        // iterates over the layers of the branching program in reverse order.
+        for layer in (0..self.log_m + 1).rev() {
+            let mut new_state_by_state_results: [K; 4] =
+                [K::zero(), K::zero(), K::zero(), K::zero()];
+
+            // We assume that bits are aligned in big-endian order. The algorithm,
+            // in the ith layer, looks at the ith least significant bit, which is
+            // the m - 1 - i th bit if the bits are in a bit array in big-endian.
+            let point = [
+                self.z_row_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                self.z_index_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                next_prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
+            ]
+            .into_iter()
+            .collect::<Point<K>>();
+
+            let four_var_eq = Mle::blocking_partial_lagrange(&point);
+
+            // For each memory state in the new layer, compute the result of the branching
+            // program that starts at that memory state and in the current layer.
+
+            for memory_state in &self.memory_states {
+                // For each possible bit state, compute the result of the branching
+                // program transition function and modify the accumulator accordingly.
+                let mut accum_elems: [K; 4] = array::from_fn(|_| K::zero());
+
+                for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
+                    let bit_state = &self.bit_states[i];
+
+                    let state_or_fail = transition_function(*bit_state, *memory_state);
+
+                    if let StateOrFail::State(output_state) = state_or_fail {
+                        accum_elems[output_state.get_index()] += elem.clone();
+                    }
+                    // If the state is a fail state, we don't need to add anything to the accumulator.
+                }
+
+                let accum = accum_elems.iter().zip(state_by_state_results.iter()).fold(
+                    K::zero(),
+                    |acc, (accum_elem, state_by_state_result)| {
+                        acc + accum_elem.clone() * state_by_state_result.clone()
+                    },
+                );
+
+                new_state_by_state_results[memory_state.get_index()] = accum;
+            }
+            state_by_state_results = new_state_by_state_results;
+        }
+
+        state_by_state_results[MemoryState::success().get_index()].clone()
     }
 }
 
