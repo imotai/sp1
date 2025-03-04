@@ -209,11 +209,7 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
 
                 let mut state_by_state_results: [K; 4] =
                     [K::zero(), K::zero(), K::zero(), K::zero()];
-                for memory_state in all_memory_states().iter() {
-                    if memory_state == &MemoryState::success() {
-                        state_by_state_results[memory_state.get_index()] = K::one();
-                    }
-                }
+                state_by_state_results[MemoryState::success().get_index()] = K::one();
 
                 // The dynamic programming algorithm to output the result of the branching
                 // iterates over the layers of the branching program in reverse order.
@@ -238,20 +234,21 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                     // For each memory state in the new layer, compute the result of the branching
                     // program that starts at that memory state and in the current layer.
 
-                    let mut input_val_accumulators: [K; 4] =
-                        [K::zero(), K::zero(), K::zero(), K::zero()];
                     for memory_state in &memory_states {
                         // For each possible bit state, compute the result of the branching
                         // program transition function and modify the accumulator accordingly.
+                        let mut input_val_accumulators: [K; 4] =
+                            [K::zero(), K::zero(), K::zero(), K::zero()];
+
                         for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
                             let bit_state = &bit_states[i];
 
                             let state_or_fail = transition_function(*bit_state, *memory_state);
 
-                            if let StateOrFail::State(_state) = state_or_fail {
-                                input_val_accumulators[memory_state.get_index()] += elem.clone();
+                            if let StateOrFail::State(output_state) = state_or_fail {
+                                input_val_accumulators[output_state.get_index()] += elem.clone();
                             }
-                            // If the state is a fail state, we don't needß to add anything to the accumulator.
+                            // If the state is a fail state, we don't need to add anything to the accumulator.
                         }
 
                         let mut accum = K::zero();
