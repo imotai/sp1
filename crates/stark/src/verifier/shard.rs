@@ -37,24 +37,6 @@ pub enum ShardVerifierError<C: MachineConfig> {
     MissingCpuChip,
 }
 
-// /// An error that occurs during the verification.
-// pub enum VerificationError<SC: StarkGenericConfig> {
-//     /// Opening proof is invalid.
-//     InvalidopeningArgument(OpeningError<SC>),
-//     /// The constraints check failed.
-//     ConstraintsCheckFailed(SumcheckError),
-//     /// The shape of the opening arguments is invalid.
-//     OpeningShapeError(String, OpeningShapeError),
-//     /// The cpu chip is missing.
-//     MissingCpuChip,
-//     /// The length of the chip opening does not match the expected length.
-//     ChipOpeningLengthMismatch,
-//     /// The preprocessed chip id does not match the claimed opening id.
-//     PreprocessedChipIdMismatch(String, String),
-//     /// Cumulative sums error
-//     CumulativeSumsError(&'static str),
-// }
-
 impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
     /// Get a shard verifier from a jagged pcs verifier.
     pub fn new(pcs_verifier: JaggedPcsVerifier<C>, machine: Machine<C::F, A>) -> Self {
@@ -206,7 +188,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
                     &commitments,
                     zerocheck_proof.point_and_eval.0.clone(),
                     openings.as_slice(),
-                    &proof.evaluation_proof,
+                    evaluation_proof,
                     challenger,
                 )
                 .map_err(ShardVerifierError::InvalidopeningArgument)?;

@@ -142,7 +142,7 @@ where
             let eq_guts = eq_guts[0..num_non_padded_terms].to_vec();
             let cumul_ys = eq_guts
                 .chunks(eq_chunk_size)
-                .zip_eq(main_values.chunks(values_chunk_size * num_main_columns))
+                .zip(main_values.chunks(values_chunk_size * num_main_columns))
                 .enumerate()
                 .par_bridge()
                 .map(|(i, (eq_chunk, main_chunk))| {
