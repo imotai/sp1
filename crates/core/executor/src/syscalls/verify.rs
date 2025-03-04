@@ -33,7 +33,7 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
         if let Some(verifier) = rt.subproof_verifier {
             verifier
                 .verify_deferred_proof(proof, proof_vk, vkey_bytes, pv_digest_bytes)
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|_| {
                     panic!(
                         "Failed to verify proof {proof_index} with digest {}:",
                         hex::encode(bytemuck::cast_slice(&pv_digest_bytes)),

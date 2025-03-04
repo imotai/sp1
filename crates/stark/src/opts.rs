@@ -77,8 +77,8 @@ impl SP1ProverOpts {
             opts.core_opts.split_opts = SplitOpts::new(1 << log2_deferred_threshold);
 
             opts.core_opts.records_and_traces_channel_capacity = 4;
-            // opts.core_opts.trace_gen_workers = 4;
-            opts.core_opts.trace_gen_workers = 1;
+            opts.core_opts.trace_gen_workers = 4;
+            // opts.core_opts.trace_gen_workers = 1;
 
             if cpu_ram_gb <= 20 {
                 opts.core_opts.records_and_traces_channel_capacity = 1;

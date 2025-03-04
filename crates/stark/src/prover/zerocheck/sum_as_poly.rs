@@ -120,8 +120,9 @@ where
         let powers_of_alpha = self.powers_of_alpha.clone();
         let (tx, rx) = oneshot::channel();
         slop_futures::rayon::spawn(move || {
-            let num_non_padded_vars = main_values.num_real_entries().next_power_of_two().ilog2();
-            let num_non_padded_terms = 2usize.pow(num_non_padded_vars - 1);
+            let num_non_padded_vars =
+                main_values.num_real_entries().next_power_of_two().ilog2() - 1;
+            let num_non_padded_terms = 1 << num_non_padded_vars;
             let eq_chunk_size = std::cmp::max(num_non_padded_terms / num_cpus::get(), 1);
             let values_chunk_size = eq_chunk_size * 2;
 
@@ -140,6 +141,7 @@ where
 
             // Handle the case when the zerocheck polynomial has non-padded variables.
             let eq_guts = eq_guts[0..num_non_padded_terms].to_vec();
+
             let cumul_ys = eq_guts
                 .chunks(eq_chunk_size)
                 .zip(main_values.chunks(values_chunk_size * num_main_columns))
@@ -278,7 +280,7 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     let mut y_4 = EF::zero();
 
     let num_real_entries = poly.main_columns.num_real_entries();
-    if num_real_entries > 0 {
+    if num_real_entries > 1 {
         (y_0, y_2, y_4) = poly
             .air_data
             .sum_as_poly_in_last_variable::<IS_FIRST_ROUND>(
@@ -290,9 +292,6 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     } else {
         // TODO: do not use the unsafe copy API.
         let eq_guts_0 = partial_lagrange.guts().as_buffer()[0].copy_into_host(backend);
-        // let partial_lagrange_host = Mle::partial_lagrange(&rest_point_host).await;
-        // let eq_guts_0_host = partial_lagrange_host.guts().as_buffer().as_slice()[0];
-        // assert_eq!(eq_guts_0, eq_guts_0_host);
 
         // Handle the case when the zerocheck polynomial is only padded variables.
 
@@ -306,15 +305,12 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
                 (Vec::new(), Vec::new(), Vec::new())
             };
 
-        // let main_cols = poly.main_columns.inner().as_ref().unwrap_or_else(|| {
-        //     let padded_values = self.main_colums.
-        // });
         let main_cols = if let Some(main_cols) = poly.main_columns.inner().as_ref() {
             main_cols.to_host().await.unwrap()
         } else {
             let padded_values = poly.main_columns.padding_values().to_host().await.unwrap();
             let num_polys = poly.main_columns.num_polynomials();
-            let guts = padded_values.into_evaluations().reshape([num_polys, 1]);
+            let guts = padded_values.into_evaluations().reshape([1, num_polys]);
             Mle::new(guts)
         };
         let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =

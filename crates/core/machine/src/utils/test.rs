@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
-use serde::{de::DeserializeOwned, Serialize};
-use sp1_core_executor::{ExecutionRecord, Executor, Program, SP1Context, Trace};
+use sp1_core_executor::{Executor, Program, SP1Context, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
-    air::MachineAir,
-    prover::{CpuProver, MachineProver},
-    BabyBearPoseidon2, ConstraintSumcheckFolder, InteractionBuilder, MachineProof, MachineRecord,
-    MachineVerifier, MachineVerifierError, SP1CoreOpts, ShardVerifier, VerifierConstraintFolder,
+    prover::CpuProver, BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError,
+    SP1CoreOpts, ShardVerifier,
 };
 use tracing::Instrument;
 
-use crate::{io::SP1Stdin, riscv::RiscvAir, utils::setup_logger};
+use crate::{io::SP1Stdin, riscv::RiscvAir};
 
 use super::prove_core;
 

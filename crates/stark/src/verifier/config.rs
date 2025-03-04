@@ -1,23 +1,13 @@
 use std::collections::BTreeMap;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_challenger::{CanObserve, FieldChallenger};
+use slop_algebra::AbstractField;
+use slop_challenger::CanObserve;
 use slop_jagged::JaggedConfig;
 
 use crate::septic_digest::SepticDigest;
 
-// pub trait MachineConfig: 'static + Send + Sync {
-//     type F: Field;
-//     type EF: ExtensionField<Self::F>;
-
-//     type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
-
-//     type Challenger: FieldChallenger<Self::F>;
-
-//     type PcsConfig: JaggedConfig<F = Self::F, EF = Self::EF, Commitment = Self::Commitment>;
-// }
-
+/// A configuration for a machine.
 pub trait MachineConfig:
     JaggedConfig + 'static + Send + Sync + Serialize + DeserializeOwned
 {

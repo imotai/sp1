@@ -50,7 +50,7 @@ pub struct ChipOpenedValues<F, EF> {
     /// The local cumulative sum.
     pub local_cumulative_sum: EF,
     /// The log degree of the chip.
-    pub log_degree: usize,
+    pub log_degree: Option<u32>,
 }
 
 /// The opening values for a given table section at a random point.
@@ -65,6 +65,7 @@ pub struct AirOpenedValues<T> {
 }
 
 impl<T> AirOpenedValues<T> {
+    /// Organize the opening values into a vertical pair.
     #[must_use]
     pub fn view(&self) -> VerticalPair<RowMajorMatrixView<'_, T>, RowMajorMatrixView<'_, T>>
     where

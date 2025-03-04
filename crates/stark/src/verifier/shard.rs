@@ -1,46 +1,192 @@
+use std::marker::PhantomData;
+
 use derive_where::derive_where;
 use itertools::Itertools;
+use slop_air::{Air, BaseAir};
 use slop_algebra::AbstractField;
 use slop_basefold::DefaultBasefoldConfig;
-use slop_challenger::{CanObserve, CanSample, FieldChallenger};
+use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{
     JaggedBasefoldConfig, JaggedPcsVerifier, JaggedPcsVerifierError, MachineJaggedPcsVerifier,
 };
+use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsChallenger, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
-use crate::{air::MachineAir, Machine};
+use crate::{
+    air::MachineAir, septic_digest::SepticDigest, Chip, ChipOpenedValues, Machine,
+    VerifierConstraintFolder,
+};
 
 use super::{MachineConfig, MachineVerifyingKey, ShardProof};
 
+/// A verifier for shard proofs.
 #[derive_where(Clone)]
 pub struct ShardVerifier<C: MachineConfig, A: MachineAir<C::F>> {
+    /// The jagged pcs verifier.
     pub pcs_verifier: JaggedPcsVerifier<C>,
+    /// The machine.
     pub machine: Machine<C::F, A>,
 }
 
+/// An error that occurs during the verification of a shard proof.
 #[derive(Debug, Error)]
 pub enum ShardVerifierError<C: MachineConfig> {
+    /// The pcs opening proof is invalid.
     #[error("invalid pcs opening proof: {0}")]
     InvalidopeningArgument(JaggedPcsVerifierError<C>),
+    /// The constraints check failed.
     #[error("constraints check failed: {0}")]
     ConstraintsCheckFailed(SumcheckError),
+    /// The cumulative sums error.
     #[error("cumulative sums error: {0}")]
     CumulativeSumsError(&'static str),
+    /// The preprocessed chip id mismatch.
     #[error("preprocessed chip id mismatch: {0}")]
     PreprocessedChipIdMismatch(String, String),
+    /// The chip opening length mismatch.
     #[error("chip opening length mismatch")]
     ChipOpeningLengthMismatch,
+    /// The cpu chip is missing.
     #[error("missing cpu chip")]
     MissingCpuChip,
+    /// The shape of the openings does not match the expected shape.
+    #[error("opening shape mismatch: {0}")]
+    OpeningShapeMismatch(#[from] OpeningShapeError),
 }
 
-impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
+/// An error that occurs when the shape of the openings does not match the expected shape.
+///
+#[derive(Debug, Error)]
+pub enum OpeningShapeError {
+    /// The width of the preprocessed trace does not match the expected width.
+    #[error("preprocessed width mismatch: {0} != {1}")]
+    PreprocessedWidthMismatch(usize, usize),
+    /// The width of the main trace does not match the expected width.
+    #[error("main width mismatch: {0} != {1}")]
+    MainWidthMismatch(usize, usize),
+}
+
+impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A>
+where
+    A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+{
     /// Get a shard verifier from a jagged pcs verifier.
     pub fn new(pcs_verifier: JaggedPcsVerifier<C>, machine: Machine<C::F, A>) -> Self {
         Self { pcs_verifier, machine }
+    }
+
+    /// Compute the padded row adjustment for a chip.
+    pub fn compute_padded_row_adjustment(
+        chip: &Chip<C::F, A>,
+        alpha: C::EF,
+        public_values: &[C::F],
+    ) -> C::EF
+    where
+        A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+    {
+        let dummy_preprocessed_trace = vec![C::EF::zero(); chip.preprocessed_width()];
+        let dummy_main_trace = vec![C::EF::zero(); chip.width()];
+
+        let default_challenge = C::EF::default();
+        let default_septic_digest = SepticDigest::<C::F>::default();
+
+        let mut folder = VerifierConstraintFolder::<C> {
+            preprocessed: VerticalPair::new(
+                RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
+                RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
+            ),
+            main: VerticalPair::new(
+                RowMajorMatrixView::new_row(&dummy_main_trace),
+                RowMajorMatrixView::new_row(&dummy_main_trace),
+            ),
+            perm: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            perm_challenges: &[],
+            local_cumulative_sum: &default_challenge,
+            global_cumulative_sum: &default_septic_digest,
+            is_first_row: default_challenge,
+            is_last_row: default_challenge,
+            is_transition: default_challenge,
+            alpha,
+            accumulator: C::EF::zero(),
+            public_values,
+            _marker: PhantomData,
+        };
+
+        chip.eval(&mut folder);
+
+        folder.accumulator
+    }
+
+    /// Evaluates the constraints for a chip and opening.
+    pub fn eval_constraints(
+        chip: &Chip<C::F, A>,
+        opening: &ChipOpenedValues<C::F, C::EF>,
+        alpha: C::EF,
+        public_values: &[C::F],
+    ) -> C::EF
+    where
+        A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+    {
+        let default_challenge = C::EF::default();
+        let default_septic_digest = SepticDigest::<C::F>::default();
+
+        let mut folder = VerifierConstraintFolder::<C> {
+            preprocessed: VerticalPair::new(
+                RowMajorMatrixView::new_row(&opening.preprocessed.local),
+                RowMajorMatrixView::new_row(&opening.preprocessed.local),
+            ),
+            main: VerticalPair::new(
+                RowMajorMatrixView::new_row(&opening.main.local),
+                RowMajorMatrixView::new_row(&opening.main.local),
+            ),
+            perm: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            perm_challenges: &[],
+            local_cumulative_sum: &default_challenge,
+            global_cumulative_sum: &default_septic_digest,
+            is_first_row: default_challenge,
+            is_last_row: default_challenge,
+            is_transition: default_challenge,
+            alpha,
+            accumulator: C::EF::zero(),
+            public_values,
+            _marker: PhantomData,
+        };
+
+        chip.eval(&mut folder);
+
+        folder.accumulator
+    }
+
+    fn verify_opening_shape(
+        chip: &Chip<C::F, A>,
+        opening: &ChipOpenedValues<C::F, C::EF>,
+    ) -> Result<(), OpeningShapeError> {
+        // Verify that the preprocessed width matches the expected value for the chip.
+        if opening.preprocessed.local.len() != chip.preprocessed_width() {
+            return Err(OpeningShapeError::PreprocessedWidthMismatch(
+                chip.preprocessed_width(),
+                opening.preprocessed.local.len(),
+            ));
+        }
+
+        // Verify that the main width matches the expected value for the chip.
+        if opening.main.local.len() != chip.width() {
+            return Err(OpeningShapeError::MainWidthMismatch(
+                chip.width(),
+                opening.main.local.len(),
+            ));
+        }
+
+        Ok(())
     }
 
     /// Verify a shard proof.
@@ -49,7 +195,10 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         vk: &MachineVerifyingKey<C>,
         proof: &ShardProof<C>,
         challenger: &mut C::Challenger,
-    ) -> Result<(), ShardVerifierError<C>> {
+    ) -> Result<(), ShardVerifierError<C>>
+    where
+        A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+    {
         let ShardProof {
             main_commitment,
             opened_values,
@@ -76,42 +225,40 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         let zerocheck_eq_val =
             Mle::full_lagrange_eval(&zeta, &proof.zerocheck_proof.point_and_eval.0);
 
-        // // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
-        // // proof is correct.
-        // let mut rlc_eval = C::EF::zero();
-        // let max_log_row_count = self.pcs_verifier.max_log_row_count;
-        // for (chip, openings) in self.machine.chips().iter().zip_eq(opened_values.chips.iter()) {
-        //     // Verify the shape of the opening arguments matches the expected values.
-        //     Self::verify_opening_shape(chip, openings)
-        //         .map_err(|e| ShardVerifierError::OpeningShapeError(chip.name(), e))?;
+        // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
+        // proof is correct.
+        let mut rlc_eval = C::EF::zero();
+        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+        for (chip, openings) in self.machine.chips().iter().zip_eq(opened_values.chips.iter()) {
+            // Verify the shape of the opening arguments matches the expected values.
+            Self::verify_opening_shape(chip, openings)?;
 
-        //     let dimension = proof.zerocheck_proof.point_and_eval.0.dimension();
+            let dimension = proof.zerocheck_proof.point_and_eval.0.dimension();
 
-        //     assert!(dimension >= openings.log_degree);
+            assert!(dimension >= openings.log_degree.unwrap_or_default() as usize);
 
-        //     let geq_val = if openings.log_degree < max_log_row_count {
-        //         // Create the threshold point.  This should be the big-endian bit representation of
-        //         // 2^openings.log_degree.
-        //         let mut threshold_point_vals = vec![C::EF::zero(); dimension];
-        //         threshold_point_vals[max_log_row_count - openings.log_degree - 1] = C::EF::one();
-        //         let threshold_point = Point::new(threshold_point_vals.into());
-        //         full_geq(&threshold_point, &proof.zerocheck_proof.point_and_eval.0)
-        //     } else {
-        //         // If the log_degree is equal to the max_log_row_count, then there were no padded variables
-        //         // used, so there is no need to adjust the constraint eval with the padded row adjustment.
-        //         assert!(openings.log_degree == max_log_row_count);
-        //         C::EF::zero()
-        //     };
+            let geq_val = match openings.log_degree {
+                None => C::EF::one(),
+                Some(log_d) if log_d < max_log_row_count as u32 => {
+                    // Create the threshold point. This should be the big-endian bit representation
+                    // of 2^openings.log_degree.
+                    let mut threshold_point_vals = vec![C::EF::zero(); dimension];
+                    threshold_point_vals[max_log_row_count - (log_d as usize) - 1] = C::EF::one();
+                    let threshold_point = Point::new(threshold_point_vals.into());
+                    full_geq(&threshold_point, &proof.zerocheck_proof.point_and_eval.0)
+                }
+                _ => C::EF::zero(),
+            };
 
-        //     let padded_row_adjustment =
-        //         Self::compute_padded_row_adjustment(chip, alpha, public_values);
+            let padded_row_adjustment =
+                Self::compute_padded_row_adjustment(chip, alpha, public_values);
 
-        //     let constraint_eval = Self::eval_constraints(chip, openings, alpha, public_values)
-        //         - padded_row_adjustment * geq_val;
+            let constraint_eval = Self::eval_constraints(chip, openings, alpha, public_values)
+                - padded_row_adjustment * geq_val;
 
-        //     // Horner's method.
-        //     rlc_eval = rlc_eval * lambda + zerocheck_eq_val * constraint_eval;
-        // }
+            // Horner's method.
+            rlc_eval = rlc_eval * lambda + zerocheck_eq_val * constraint_eval;
+        }
 
         // if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
         //     return Err(ShardVerifierError::ConstraintsCheckFailed(
@@ -119,12 +266,12 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         //     ));
         // }
 
-        // // Verify that the rlc claim is zero.
-        // if proof.zerocheck_proof.claimed_sum != C::EF::zero() {
-        //     return Err(ShardVerifierError::ConstraintsCheckFailed(
-        //         SumcheckError::InconsistencyWithClaimedSum,
-        //     ));
-        // }
+        // Verify that the rlc claim is zero.
+        if proof.zerocheck_proof.claimed_sum != C::EF::zero() {
+            return Err(ShardVerifierError::ConstraintsCheckFailed(
+                SumcheckError::InconsistencyWithClaimedSum,
+            ));
+        }
 
         // Verify the zerocheck proof.
         partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger)
@@ -180,18 +327,21 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         let machine_jagged_verifier =
             MachineJaggedPcsVerifier::new(&self.pcs_verifier, column_counts);
 
-        let verify_pcs: bool =
-            std::env::var("VERIFY_PCS").unwrap_or("true".to_string()).parse().unwrap();
-        if verify_pcs {
-            machine_jagged_verifier
-                .verify_trusted_evaluations(
-                    &commitments,
-                    zerocheck_proof.point_and_eval.0.clone(),
-                    openings.as_slice(),
-                    evaluation_proof,
-                    challenger,
-                )
-                .map_err(ShardVerifierError::InvalidopeningArgument)?;
+        machine_jagged_verifier
+            .verify_trusted_evaluations(
+                &commitments,
+                zerocheck_proof.point_and_eval.0.clone(),
+                openings.as_slice(),
+                evaluation_proof,
+                challenger,
+            )
+            .map_err(ShardVerifierError::InvalidopeningArgument)?;
+
+        // Todo: put back to right before the sumcheck.
+        if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
+            return Err(ShardVerifierError::ConstraintsCheckFailed(
+                SumcheckError::InconsistencyWithEval,
+            ));
         }
 
         Ok(())
@@ -203,6 +353,8 @@ where
     A: MachineAir<BC::F>,
     BC: DefaultBasefoldConfig,
 {
+    /// Create a shard verifier from basefold parameters.
+    #[must_use]
     pub fn from_basefold_parameters(
         log_blowup: usize,
         log_stacking_height: u32,

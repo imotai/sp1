@@ -6,30 +6,31 @@ use slop_air::Air;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_alloc::CpuBackend;
 use slop_baby_bear::BabyBear;
-use slop_basefold_prover::BasefoldProverComponents;
 use slop_jagged::{
-    JaggedBasefoldProverComponents, JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
-    Poseidon2BabyBearJaggedCpuProverComponents,
+    JaggedProver, JaggedProverComponents, Poseidon2BabyBearJaggedCpuProverComponents,
 };
 
-use crate::{air::MachineAir, BabyBearPoseidon2, ConstraintSumcheckFolder, Machine, ShardVerifier};
+use crate::{air::MachineAir, BabyBearPoseidon2, ConstraintSumcheckFolder, ShardVerifier};
 
 use super::{
-    DefaultTraceGenerator, MachineProver, MachineProverComponents, ZerocheckAir,
+    DefaultTraceGenerator, MachineProverComponents, ShardProver, ZerocheckAir,
     ZerocheckCpuProverData,
 };
 
+/// The components of a CPU prover.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CpuProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
 
-pub type CpuProver<PcsComponents, A> = MachineProver<CpuProverComponents<PcsComponents, A>>;
+/// A CPU prover.
+pub type CpuProver<PcsComponents, A> = ShardProver<CpuProverComponents<PcsComponents, A>>;
 
 impl<A, PcsComponents> MachineProverComponents for CpuProverComponents<PcsComponents, A>
 where
     // F: Field,
     // EF: ExtensionField<F>,
-    PcsComponents: JaggedProverComponents<A = CpuBackend>,
-    A: MachineAir<PcsComponents::F>
+    PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug,
+    A: std::fmt::Debug
+        + MachineAir<PcsComponents::F>
         + Air<SymbolicAirBuilder<PcsComponents::F>>
         + for<'b> Air<
             ConstraintSumcheckFolder<'b, PcsComponents::F, PcsComponents::F, PcsComponents::EF>,
@@ -59,8 +60,10 @@ where
 
 impl<A> CpuProver<Poseidon2BabyBearJaggedCpuProverComponents, A>
 where
-    A: ZerocheckAir<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+    A: ZerocheckAir<BabyBear, BinomialExtensionField<BabyBear, 4>> + std::fmt::Debug,
 {
+    /// Create a new CPU prover.
+    #[must_use]
     pub fn new(verifier: ShardVerifier<BabyBearPoseidon2, A>) -> Self {
         let ShardVerifier { pcs_verifier, machine } = verifier;
         let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);

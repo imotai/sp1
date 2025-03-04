@@ -6,7 +6,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedSender};
-use tracing::Instrument;
 
 use crate::riscv::RiscvAir;
 use thiserror::Error;
@@ -14,7 +13,9 @@ use thiserror::Error;
 use p3_field::PrimeField32;
 use sp1_stark::{
     air::PublicValues,
-    prover::{MachineProver, MachineProverComponents, MachineProvingKey, ShardData},
+    prover::{
+        MachineProver, MachineProverComponents, MachineProverOpts, MachineProvingKey, ShardProver,
+    },
     Machine, MachineProof, MachineRecord, SP1CoreOpts, ShardProof, Word,
 };
 
@@ -141,7 +142,7 @@ fn generate_records<F: PrimeField32>(
 }
 
 pub async fn prove_core<F, PC>(
-    prover: Arc<MachineProver<PC>>,
+    prover: Arc<ShardProver<PC>>,
     pk: Arc<MachineProvingKey<PC>>,
     program: Arc<Program>,
     stdin: &SP1Stdin,
@@ -172,14 +173,15 @@ where
 
 #[allow(clippy::too_many_arguments)]
 pub async fn prove_core_stream<F, PC>(
-    prover: Arc<MachineProver<PC>>,
+    // TODO: clean this up
+    prover: Arc<ShardProver<PC>>,
     pk: Arc<MachineProvingKey<PC>>,
     program: Arc<Program>,
     stdin: &SP1Stdin,
     opts: SP1CoreOpts,
     context: SP1Context<'static>,
     proof_tx: UnboundedSender<ShardProof<PC::Config>>,
-    mut challenger: PC::Challenger,
+    challenger: PC::Challenger,
 ) -> Result<(), SP1CoreProverError>
 where
     PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
@@ -192,6 +194,14 @@ where
         let (proof, vk) = proof.clone();
         runtime.write_proof(proof, vk);
     }
+    // Setup the machine prover.
+    let machine_prover_opts = MachineProverOpts {
+        num_prover_workers: opts.shard_batch_size,
+        num_trace_workers: opts.trace_gen_workers,
+        shard_data_channel_capacity: opts.shard_batch_size,
+    };
+    let machine = prover.machine().clone();
+    let prover = MachineProver::new(machine_prover_opts, &prover);
 
     // Spawn the checkpoint generator task.
     let (checkpoints_tx, checkpoints_rx) =
@@ -216,7 +226,7 @@ where
         let deferred = Arc::clone(&deferred);
         let report_aggregate = report_aggregate.clone();
         let program = program.clone();
-        let machine = prover.machine().clone();
+        let machine = machine.clone();
         let handle = tokio::task::spawn_blocking(move || {
             generate_records(
                 &machine,
@@ -235,74 +245,77 @@ where
     drop(records_tx);
     drop(deferred);
 
-    // Spawn the trace generation tasks.
-    let (data_tx, data_rx) = mpsc::channel::<ShardData<F, PC::B>>(opts.shard_batch_size);
-    let records_rx = Arc::new(tokio::sync::Mutex::new(records_rx));
-    for _ in 0..opts.trace_gen_workers {
-        let data_tx = data_tx.clone();
-        let prover = prover.clone();
-        let records_rx = records_rx.clone();
-        tokio::task::spawn(async move {
-            loop {
-                let mut received = { records_rx.lock().await };
-                if let Some(record) = received.recv().await {
-                    let shard = record.public_values.shard;
-                    prover
-                        .generate_traces(record, &data_tx)
-                        .instrument(tracing::debug_span!("generate traces", shard = shard))
-                        .await;
-                } else {
-                    break;
-                }
-            }
-        });
-    }
-    drop(data_tx);
-
-    // Spawn the proving tasks.
-
-    // Observe the proving key.
-    pk.observe_into(&mut challenger);
-
-    let prover = prover.clone();
-    let proof_tx = proof_tx.clone();
-    let data_rx = Arc::new(tokio::sync::Mutex::new(data_rx));
-    let mut prover_handles = vec![];
-    for _ in 0..opts.shard_batch_size {
-        let pk = pk.clone();
-        let mut challenger = challenger.clone();
-        let proof_tx = proof_tx.clone();
-        let data_rx = data_rx.clone();
-        let prover = prover.clone();
-        let pk = pk.clone();
-        let handle = tokio::task::spawn(async move {
-            loop {
-                let received = { data_rx.lock().await.recv().await };
-                if let Some(data) = received {
-                    let pv: &PublicValues<Word<F>, F> = data.public_values.as_slice().borrow();
-                    let shard = pv.shard.as_canonical_u32();
-                    let time = tokio::time::Instant::now();
-                    let proof = prover
-                        .prove_shard(&pk, data, &mut challenger)
-                        .instrument(tracing::debug_span!("prove shard", shard = shard))
-                        .await;
-                    tracing::info!("prove shard {} took {:?}", shard, time.elapsed());
-                    proof_tx.send(proof).unwrap();
-                } else {
-                    break;
-                }
-            }
-        });
-        prover_handles.push(handle);
-    }
-    drop(proof_tx);
-
-    // Wait for the prover handles to finish.
-    for handle in prover_handles {
-        handle.await.unwrap();
-    }
-
+    prover.prove_stream(pk, records_rx, proof_tx, challenger).await.unwrap();
     Ok(())
+
+    // // Spawn the trace generation tasks.
+    // let (data_tx, data_rx) = mpsc::channel::<ShardData<F, PC::B>>(opts.shard_batch_size);
+    // let records_rx = Arc::new(tokio::sync::Mutex::new(records_rx));
+    // for _ in 0..opts.trace_gen_workers {
+    //     let data_tx = data_tx.clone();
+    //     let prover = prover.clone();
+    //     let records_rx = records_rx.clone();
+    //     tokio::task::spawn(async move {
+    //         loop {
+    //             let mut received = { records_rx.lock().await };
+    //             if let Some(record) = received.recv().await {
+    //                 let shard = record.public_values.shard;
+    //                 prover
+    //                     .generate_traces(record, &data_tx)
+    //                     .instrument(tracing::debug_span!("generate traces", shard = shard))
+    //                     .await;
+    //             } else {
+    //                 break;
+    //             }
+    //         }
+    //     });
+    // }
+    // drop(data_tx);
+
+    // // Spawn the proving tasks.
+
+    // // Observe the proving key.
+    // pk.observe_into(&mut challenger);
+
+    // let prover = prover.clone();
+    // let proof_tx = proof_tx.clone();
+    // let data_rx = Arc::new(tokio::sync::Mutex::new(data_rx));
+    // let mut prover_handles = vec![];
+    // for _ in 0..opts.shard_batch_size {
+    //     let pk = pk.clone();
+    //     let mut challenger = challenger.clone();
+    //     let proof_tx = proof_tx.clone();
+    //     let data_rx = data_rx.clone();
+    //     let prover = prover.clone();
+    //     let pk = pk.clone();
+    //     let handle = tokio::task::spawn(async move {
+    //         loop {
+    //             let received = { data_rx.lock().await.recv().await };
+    //             if let Some(data) = received {
+    //                 let pv: &PublicValues<Word<F>, F> = data.public_values.as_slice().borrow();
+    //                 let shard = pv.shard.as_canonical_u32();
+    //                 let time = tokio::time::Instant::now();
+    //                 let proof = prover
+    //                     .prove_shard(&pk, data, &mut challenger)
+    //                     .instrument(tracing::debug_span!("prove shard", shard = shard))
+    //                     .await;
+    //                 tracing::info!("prove shard {} took {:?}", shard, time.elapsed());
+    //                 proof_tx.send(proof).unwrap();
+    //             } else {
+    //                 break;
+    //             }
+    //         }
+    //     });
+    //     prover_handles.push(handle);
+    // }
+    // drop(proof_tx);
+
+    // // Wait for the prover handles to finish.
+    // for handle in prover_handles {
+    //     handle.await.unwrap();
+    // }
+
+    // Ok(())
 }
 
 pub fn trace_checkpoint(

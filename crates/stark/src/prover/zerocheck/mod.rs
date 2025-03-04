@@ -77,6 +77,7 @@ pub trait ZercocheckBackend<
 {
 }
 
+/// An AIR compatible with the standard zerocheck prover.
 pub trait ZerocheckAir<F: Field, EF: ExtensionField<F>>:
     MachineAir<F>
     + Air<SymbolicAirBuilder<F>>
@@ -279,30 +280,6 @@ where
     }
 }
 
-// #[allow(clippy::mismatching_type_param_order)]
-// impl<
-//         F: Field,
-//         EF: ExtensionField<F>,
-//         AirData: ZerocheckRoundProver<F, F, EF> + ZerocheckRoundProver<F, EF, EF>,
-//     > SumcheckPolyFirstRound<EF> for ZeroCheckPoly<F, F, EF, AirData>
-// {
-//     type NextRoundPoly = ZeroCheckPoly<EF, F, EF, AirData>;
-//     async fn fix_t_variables(self, alpha: EF, t: usize) -> ZeroCheckPoly<EF, F, EF, AirData> {
-//         assert!(t == 1);
-//         fix_last_variable(self, alpha).await
-//     }
-
-//     async fn sum_as_poly_in_last_t_variables(
-//         &self,
-//         claim: Option<EF>,
-//         t: usize,
-//     ) -> UnivariatePolynomial<EF> {
-//         assert!(t == 1);
-//         assert!(self.num_variables() > 0);
-//         sum_as_poly_in_last_variable::<F, F, EF, AirData, CpuBackend, true>(self, claim).await
-//     }
-// }
-
 impl<F, EF, AirData> SumcheckPolyBackend<ZeroCheckPoly<EF, F, EF, AirData>, EF> for CpuBackend
 where
     F: Field,
@@ -325,20 +302,6 @@ where
             .await
     }
 }
-
-// #[allow(clippy::mismatching_type_param_order)]
-// impl<F: Field, EF: ExtensionField<F>, AirData: ZerocheckRoundProver<F, EF, EF>> SumcheckPoly<EF>
-//     for ZeroCheckPoly<EF, F, EF, AirData>
-// {
-//     async fn fix_last_variable(self, alpha: EF) -> ZeroCheckPoly<EF, F, EF, AirData> {
-//         fix_last_variable(self, alpha).await
-//     }
-
-//     async fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
-//         assert!(self.num_variables() > 0);
-//         sum_as_poly_in_last_variable::<EF, F, EF, AirData, CpuBackend, false>(self, claim).await
-//     }
-// }
 
 impl<K, F, EF, AirData, B: Backend> HasBackend for ZeroCheckPoly<K, F, EF, AirData, B> {
     type Backend = B;

@@ -13,9 +13,11 @@ use slop_algebra::Field;
 use slop_alloc::{Backend, CanCopyFrom, CpuBackend, GLOBAL_CPU_BACKEND};
 use slop_multilinear::{Mle, MleBaseBackend, PaddedMle, ZeroEvalBackend};
 use slop_tensor::Tensor;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc::Sender, oneshot};
 
-use crate::{air::MachineAir, Machine};
+use crate::{air::MachineAir, Machine, MachineRecord};
+
+use super::ShardData;
 
 /// A collection of traces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,14 +67,16 @@ pub trait TraceGenerator<F: Field, A: MachineAir<F>, B: Backend>: 'static + Send
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
-    ) -> impl Future<Output = Traces<F, B>> + Send;
+        output: &Sender<Traces<F, B>>,
+    ) -> impl Future<Output = ()> + Send;
 
     /// Generate the main traces for the given execution record.
     fn generate_main_traces(
         &self,
         record: A::Record,
         max_log_row_count: usize,
-    ) -> impl Future<Output = Traces<F, B>> + Send;
+        output: &Sender<ShardData<F, B>>,
+    ) -> impl Future<Output = ()> + Send;
 }
 
 /// A trace generator that used the default methods on chips for generating traces.
@@ -82,12 +86,16 @@ pub struct DefaultTraceGenerator<F: Field, A, B = CpuBackend> {
 }
 
 impl<F: Field, A: MachineAir<F>, B: Backend> DefaultTraceGenerator<F, A, B> {
+    /// Create a new trace generator.
+    #[must_use]
     pub fn new_in(machine: Machine<F, A>, trace_allocator: B) -> Self {
         Self { machine, trace_allocator }
     }
 }
 
 impl<F: Field, A: MachineAir<F>> DefaultTraceGenerator<F, A, CpuBackend> {
+    /// Create a new trace generator on the CPU.
+    #[must_use]
     pub fn new(machine: Machine<F, A>) -> Self {
         Self { machine, trace_allocator: GLOBAL_CPU_BACKEND }
     }
@@ -110,7 +118,10 @@ where
         &self,
         record: A::Record,
         max_log_row_count: usize,
-    ) -> Traces<F, B> {
+        output: &Sender<ShardData<F, B>>,
+    ) {
+        // Get the public values from the record.
+        let public_values = record.public_values::<F>();
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -136,7 +147,9 @@ where
         });
         // Wait for the traces to be generated and copy them to the target backend.
         let named_traces = rx.await.unwrap();
-        let traces =
+        // Wait for the device to be available.
+        let permit = output.reserve().await.unwrap();
+        let named_traces =
             join_all(named_traces.into_iter().map(|(name, (trace, num_polynomials))| async move {
                 let trace = OptionFuture::from(trace.map(|tr| self.trace_allocator.copy_into(tr)))
                     .await
@@ -158,14 +171,17 @@ where
             .await
             .into_iter()
             .collect::<BTreeMap<_, _>>();
-        Traces { named_traces: traces }
+        let traces = Traces { named_traces };
+        let data = ShardData { traces, public_values };
+        permit.send(data);
     }
 
     async fn generate_preprocessed_traces(
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
-    ) -> Traces<F, B> {
+        output: &Sender<Traces<F, B>>,
+    ) {
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -180,8 +196,12 @@ where
                 .collect::<BTreeMap<_, _>>();
             tx.send(named_preprocessed_traces).ok().unwrap();
         });
-        let named_preprocessed_traces = rx.await.unwrap();
+
         // Wait for the traces to be generated and copy them to the target backend.
+        // Wait for traces.
+        let named_preprocessed_traces = rx.await.unwrap();
+        // Wait for the device to be available.
+        let permit = output.reserve().await.unwrap();
         let named_traces =
             join_all(named_preprocessed_traces.into_iter().map(|(name, trace)| async move {
                 let trace = self.trace_allocator.copy_into(trace).await.unwrap();
@@ -192,6 +212,7 @@ where
             .await
             .into_iter()
             .collect::<BTreeMap<_, _>>();
-        Traces { named_traces }
+        let traces = Traces { named_traces };
+        permit.send(traces);
     }
 }

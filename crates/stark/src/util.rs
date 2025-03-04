@@ -23,6 +23,8 @@ pub fn batch_multiplicative_inverse_inplace<F: Field>(values: &mut [F]) {
     }
 }
 
+/// Compute the ceiling of the base-2 logarithm of a number.
+#[must_use]
 pub fn log2_ceil_usize(n: usize) -> usize {
     n.next_power_of_two().ilog2() as usize
 }

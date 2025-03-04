@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, iter::once, sync::Arc};
+use std::{collections::BTreeMap, fmt::Debug, iter::once, sync::Arc};
 
 use itertools::Itertools;
 use p3_uni_stark::get_symbolic_constraints;
@@ -10,7 +10,9 @@ use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
-use slop_multilinear::{Evaluations, MleEval, Point};
+use slop_multilinear::{
+    Evaluations, HostEvaluationBackend, MleEval, MultilinearPcsChallenger, PointBackend,
+};
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
 use tokio::sync::mpsc::Sender;
@@ -30,7 +32,7 @@ use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 /// The components of the machine prover.
 ///
 /// This trait is used specify a configuration of a hypercube prover.
-pub trait MachineProverComponents: 'static + Send + Sync + Sized {
+pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
     /// The base field.
     ///
     /// This is the field on which the traces committed to are defined over.
@@ -48,7 +50,11 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized {
     type Air: ZerocheckAir<Self::F, Self::EF, Program = Self::Program, Record = Self::Record>;
     /// The backend used by the prover.
     type B: JaggedBackend<Self::F, Self::EF>
-        + ZercocheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>;
+        + ZercocheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>
+        + PointBackend<Self::EF>
+        + HostEvaluationBackend<Self::F, Self::EF>
+        + HostEvaluationBackend<Self::F, Self::F>
+        + HostEvaluationBackend<Self::EF, Self::EF>;
 
     /// The commitment representing a batch of traces sent to the verifier.
     type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
@@ -101,12 +107,14 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized {
 #[serde(bound(serialize = "F: Serialize, Tensor<F, B>: Serialize,"))]
 #[serde(bound(deserialize = "F: Deserialize<'de>, Tensor<F, B>: Deserialize<'de>, "))]
 pub struct ShardData<F, B: Backend> {
+    /// The traces.
     pub traces: Traces<F, B>,
+    /// The public values.
     pub public_values: Vec<F>,
 }
 
 /// A prover for the hypercube STARK, given a configuration.
-pub struct MachineProver<C: MachineProverComponents> {
+pub struct ShardProver<C: MachineProverComponents> {
     /// A prover for the PCS.
     pub pcs_prover: JaggedProver<C::PcsProverComponents>,
     /// A prover for the zerocheck IOP.
@@ -115,7 +123,7 @@ pub struct MachineProver<C: MachineProverComponents> {
     pub trace_generator: C::TraceGenerator,
 }
 
-impl<C: MachineProverComponents> MachineProver<C> {
+impl<C: MachineProverComponents> ShardProver<C> {
     /// Get all the chips in the machine.
     pub fn chips(&self) -> &[Chip<C::F, C::Air>] {
         self.trace_generator.machine().chips()
@@ -161,10 +169,12 @@ impl<C: MachineProverComponents> MachineProver<C> {
         initial_global_cumulative_sum: SepticDigest<C::F>,
     ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
         let pc_start = program.pc_start();
-        let preprocessed_traces = self
-            .trace_generator
-            .generate_preprocessed_traces(program, self.max_log_row_count())
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        self.trace_generator
+            .generate_preprocessed_traces(program, self.max_log_row_count(), &tx)
             .await;
+
+        let preprocessed_traces = rx.recv().await.unwrap();
 
         let constraints_map = self
             .chips()
@@ -183,7 +193,12 @@ impl<C: MachineProverComponents> MachineProver<C> {
 
         // Commit to the preprocessed traces, if there are any.
         let (preprocessed_commit, preprocessed_data) = if preprocessed_traces.len() > 0 {
-            let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
+            let message = self
+                .chips()
+                .iter()
+                .filter_map(|air| preprocessed_traces.get(&air.name()))
+                .cloned()
+                .collect::<Vec<_>>();
             let (commit, data) = self.pcs_prover.commit_multilinears(message).await.unwrap();
 
             (Some(commit), Some(data))
@@ -227,7 +242,11 @@ impl<C: MachineProverComponents> MachineProver<C> {
         &self,
         traces: &Traces<C::F, C::B>,
     ) -> (C::Commitment, JaggedProverData<C::PcsProverComponents>) {
-        let message = traces.values().cloned().collect::<Vec<_>>();
+        let message = self
+            .chips()
+            .iter()
+            .map(|air| traces.get(&air.name()).unwrap().clone())
+            .collect::<Vec<_>>();
         self.pcs_prover.commit_multilinears(message).await.unwrap()
     }
 
@@ -240,30 +259,22 @@ impl<C: MachineProverComponents> MachineProver<C> {
         public_values: Vec<C::F>,
         challenger: &mut C::Challenger,
     ) -> (ShardOpenedValues<C::F, C::EF>, PartialSumcheckProof<C::EF>) {
-        // Get the max num variables for all chips to determine the random point dimensions.
-        let zeta = Point::<C::EF>::new(
-            (0..self.max_log_row_count())
-                .map(|_| challenger.sample_ext_element())
-                .collect::<Vec<_>>()
-                .into(),
-        );
+        // Sample the random point to make the zerocheck claims.
+        let zeta = challenger.sample_point::<C::EF>(self.max_log_row_count() as u32);
         let max_num_constraints = itertools::max(constraints_map.values()).unwrap();
         let powers_of_challenge =
             batching_challenge.powers().take(*max_num_constraints).collect::<Vec<_>>();
-        let airs = self
-            .trace_generator
-            .machine()
-            .chips()
-            .iter()
-            .map(|chip| chip.air.clone())
-            .collect::<Vec<_>>();
+        let airs = self.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
 
         let public_values = Arc::new(public_values);
 
         let mut zerocheck_polys = Vec::new();
 
-        for air in airs.iter() {
+        let mut log_degrees = BTreeMap::new();
+        for air in self.chips().iter() {
             let main_trace = traces.get(&air.name()).unwrap().clone();
+            let log_degree = main_trace.num_real_entries().next_power_of_two().checked_ilog2();
+            log_degrees.insert(air.name(), log_degree);
             let name = air.name();
             let num_variables = main_trace.num_variables();
             assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
@@ -294,14 +305,14 @@ impl<C: MachineProverComponents> MachineProver<C> {
 
             let alpha_powers = Arc::new(chip_powers_of_alpha);
             let air_data = self.zerocheck_prover_data.round_prover(
-                air.clone(),
+                air.air.clone(),
                 public_values.clone(),
                 alpha_powers,
             );
             let preprocessed_trace = preprocessed_traces.get(&name).cloned();
 
             let initial_geq_value =
-                if main_trace.num_real_entries() > 1 { C::EF::zero() } else { C::EF::one() };
+                if main_trace.num_real_entries() > 0 { C::EF::zero() } else { C::EF::one() };
             let zerocheck_poly = ZeroCheckPoly::new(
                 air_data,
                 zeta.clone(),
@@ -318,7 +329,6 @@ impl<C: MachineProverComponents> MachineProver<C> {
         let lambda = challenger.sample_ext_element::<C::EF>();
 
         let num_zerocheck_polys = zerocheck_polys.len();
-
         // Compute the sumcheck proof for the zerocheck polynomials.
         let (partial_sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
             zerocheck_polys,
@@ -332,6 +342,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
 
         // Compute the chip openings from the component poly evaluations.
 
+        assert_eq!(component_poly_evals.len(), airs.len());
         let shard_open_values = airs
             .into_iter()
             .zip_eq(component_poly_evals)
@@ -348,7 +359,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
                     main,
                     global_cumulative_sum: SepticDigest::zero(),
                     local_cumulative_sum: C::EF::zero(),
-                    log_degree: 0,
+                    log_degree: log_degrees[&air.name()],
                 }
             })
             .collect::<Vec<_>>();
@@ -358,15 +369,10 @@ impl<C: MachineProverComponents> MachineProver<C> {
         (shard_open_values, partial_sumcheck_proof)
     }
 
-    /// Generate
+    /// Generate the shard data
     pub async fn generate_traces(&self, record: C::Record, tx: &Sender<ShardData<C::F, C::B>>) {
-        // Get the public values from the record.
-        let public_values = record.public_values::<C::F>();
         // Generate the traces.
-        let traces =
-            self.trace_generator.generate_main_traces(record, self.max_log_row_count()).await;
-
-        tx.send(ShardData { traces, public_values }).await.unwrap();
+        self.trace_generator.generate_main_traces(record, self.max_log_row_count(), tx).await;
     }
 
     /// Generate a proof for a given execution record.
@@ -410,7 +416,9 @@ impl<C: MachineProverComponents> MachineProver<C> {
         let mut main_evaluation_claims = Evaluations::new(vec![]);
 
         let alloc = self.trace_generator.allocator();
-        for open_values in shard_open_values.chips.iter() {
+
+        for (air, open_values) in self.chips().iter().zip_eq(shard_open_values.chips.iter()) {
+            tracing::info!("air: {:?}", air.name());
             let prep_local = &open_values.preprocessed.local;
             let main_local = &open_values.main.local;
             if !prep_local.is_empty() {
@@ -423,7 +431,6 @@ impl<C: MachineProverComponents> MachineProver<C> {
                     preprocessed_evaluation_claims = Some(evals);
                 }
             }
-
             let main_evals = alloc.copy_to(&MleEval::from(main_local.clone())).await.unwrap();
             main_evaluation_claims.push(main_evals);
         }

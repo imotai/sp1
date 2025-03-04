@@ -723,8 +723,6 @@ pub mod tests {
     //         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
     //     }
 
-    use sp1_core_executor::{Instruction, Opcode, Program};
-
     use crate::{io::SP1Stdin, utils::run_test};
 
     // #[tokio::test]
