@@ -85,7 +85,7 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
     ///
     /// The zerocheck prover data contains the information needed to make a zerocheck prover given
     /// an AIR. The zerocheck prover implements the zerocheck IOP and reduces the claim that
-    /// constraints vanish into an evaluation claim at a random point for the traces, consideres
+    /// constraints vanish into an evaluation claim at a random point for the traces, considered
     /// as multilinear polynomials.
     type ZerocheckProverData: ZerocheckProverData<Self::F, Self::EF, Self::B, Air = Self::Air>;
 
