@@ -495,8 +495,8 @@ where
         }
 
         // SAFETY: All selectors `is_srl`, `is_sra` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_srl + is_sra` is boolean.
-        // All interactions are done with multiplicity `is_real`.
+        // Each "real" row has exactly one selector turned on, as `is_real = is_srl + is_sra` is
+        // boolean. All interactions are done with multiplicity `is_real`.
         // Therefore, the `opcode` matches the corresponding opcode.
 
         // Check that the operation flags are boolean.
@@ -691,17 +691,17 @@ where
 //                     for (name, trace) in traces.iter_mut() {
 //                         if *name == shift_right_chip_name {
 //                             let first_row = trace.row_mut(0);
-//                             let first_row: &mut ShiftRightCols<BabyBear> = first_row.borrow_mut();
-//                             first_row.a = op_a.into();
+//                             let first_row: &mut ShiftRightCols<BabyBear> =
+// first_row.borrow_mut();                             first_row.a = op_a.into();
 //                         }
 //                     }
 //                     traces
 //                 };
 
 //                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
-//             }
+//                     run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));                 assert!(result.is_err() &&
+// result.unwrap_err().is_constraints_failing());             }
 //         }
 //     }
 // }

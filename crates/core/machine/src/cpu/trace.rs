@@ -159,9 +159,10 @@ impl CpuChip {
         // Populate memory accesses for a, b, and c.
         if let Some(record) = event.a_record {
             if instruction.is_ecall_instruction() {
-                // For ecall instructions, pass in a dummy byte lookup vector.  This syscall instruction
-                // chip also has a op_a_access field that will be populated and that will contribute
-                // to the byte lookup dependencies.
+                // For ecall instructions, pass in a dummy byte lookup vector.  This syscall
+                // instruction chip also has a op_a_access field that will be
+                // populated and that will contribute to the byte lookup
+                // dependencies.
                 cols.op_a_access.populate(record, &mut Vec::new());
             } else {
                 cols.op_a_access.populate(record, blu_events);

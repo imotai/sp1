@@ -18,10 +18,9 @@ use super::{BranchChip, BranchColumns};
 /// It does this in few parts:
 /// 1. It verifies that the next pc is correct based on the branching column.  That column is a
 ///    boolean that indicates whether the branch condition is true.
-/// 2. It verifies the correct value of branching based on the helper bool columns (a_eq_b,
-///    a_gt_b, a_lt_b).
+/// 2. It verifies the correct value of branching based on the helper bool columns (a_eq_b, a_gt_b,
+///    a_lt_b).
 /// 3. It verifier the correct values of the helper bool columns based on op_a and op_b.
-///
 impl<AB> Air<AB> for BranchChip
 where
     AB: SP1AirBuilder,
@@ -33,9 +32,10 @@ where
         let local = main.row_slice(0);
         let local: &BranchColumns<AB::Var> = (*local).borrow();
 
-        // SAFETY: All selectors `is_beq`, `is_bne`, `is_blt`, `is_bge`, `is_bltu`, `is_bgeu` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the six selectors, is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode.
+        // SAFETY: All selectors `is_beq`, `is_bne`, `is_blt`, `is_bge`, `is_bltu`, `is_bgeu` are
+        // checked to be boolean. Each "real" row has exactly one selector turned on, as
+        // `is_real`, the sum of the six selectors, is boolean. Therefore, the `opcode`
+        // matches the corresponding opcode.
         builder.assert_bool(local.is_beq);
         builder.assert_bool(local.is_bne);
         builder.assert_bool(local.is_blt);
@@ -88,8 +88,9 @@ where
             // Range check branch_cols.pc and branch_cols.next_pc.
             // SAFETY: `is_real` is already checked to be boolean.
             // The `BabyBearWordRangeChecker` assumes that the value is checked to be a valid word.
-            // This is done when the word form is relevant, i.e. when `pc` and `next_pc` are sent to the ADD ALU table.
-            // The ADD ALU table checks the inputs are valid words, when it invokes `AddOperation`.
+            // This is done when the word form is relevant, i.e. when `pc` and `next_pc` are sent to
+            // the ADD ALU table. The ADD ALU table checks the inputs are valid words,
+            // when it invokes `AddOperation`.
             BabyBearWordRangeChecker::<AB::F>::range_check(
                 builder,
                 local.pc,
@@ -136,7 +137,8 @@ where
 
             // Assert that either we are branching or not branching when the instruction is a
             // branch.
-            // The `next_pc` is constrained in both branching and not branching cases, so it is fully constrained.
+            // The `next_pc` is constrained in both branching and not branching cases, so it is
+            // fully constrained.
             builder.when(is_real.clone()).assert_one(local.is_branching + local.not_branching);
             builder.when(is_real.clone()).assert_bool(local.is_branching);
             builder.when(is_real.clone()).assert_bool(local.not_branching);

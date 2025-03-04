@@ -1,5 +1,7 @@
-use sp1_primitives::consts::fd::{FD_HINT, FD_PUBLIC_VALUES, LOWEST_ALLOWED_FD};
-use sp1_primitives::consts::num_to_comma_separated;
+use sp1_primitives::consts::{
+    fd::{FD_HINT, FD_PUBLIC_VALUES, LOWEST_ALLOWED_FD},
+    num_to_comma_separated,
+};
 
 use crate::{Executor, ExecutorConfig, Register};
 
@@ -7,8 +9,7 @@ use super::{SyscallCode, SyscallContext};
 /// Handle writes to file descriptors during execution.
 ///
 /// If stdout (fd = 1):
-/// - If the stream is a cycle tracker, either log the cycle tracker or accumulate it in the
-///   report.
+/// - If the stream is a cycle tracker, either log the cycle tracker or accumulate it in the report.
 /// - Else, print the stream to stdout.
 ///
 /// If stderr (fd = 2):

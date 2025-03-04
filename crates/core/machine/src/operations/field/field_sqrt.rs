@@ -205,8 +205,8 @@ where
 //             let num_rows = 1 << 8;
 //             let mut operands: Vec<BigUint> = (0..num_rows - 2)
 //                 .map(|_| {
-//                     // Take the square of a random number to make sure that the square root exists.
-//                     let a = rng.gen_biguint(256);
+//                     // Take the square of a random number to make sure that the square root
+// exists.                     let a = rng.gen_biguint(256);
 //                     let sq = a.clone() * a.clone();
 //                     // We want to mod by the ed25519 modulus.
 //                     sq % &Ed25519BaseField::modulus()
@@ -230,7 +230,8 @@ where
 //                 .collect::<Vec<_>>();
 //             // Convert the trace to a row major matrix.
 //             let mut trace =
-//                 RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TEST_COLS);
+//                 RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(),
+// NUM_TEST_COLS);
 
 //             // Pad the trace to a power of two.
 //             pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);

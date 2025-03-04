@@ -7,14 +7,11 @@ pub use cluster::*;
 pub use ordered::*;
 
 use itertools::Itertools;
-use slop_matrix::dense::RowMajorMatrix;
-use slop_matrix::Matrix;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 
-use std::fmt::Debug;
-use std::{hash::Hash, str::FromStr};
+use std::{fmt::Debug, hash::Hash, str::FromStr};
 
-use hashbrown::hash_map::IntoIter;
-use hashbrown::{HashMap, HashSet};
+use hashbrown::{hash_map::IntoIter, HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use slop_algebra::PrimeField;
 

@@ -195,9 +195,9 @@ impl<C: MachineProverComponents> MachineProver<C> {
 //                 loop {
 //                     let received = { data_rx.lock().await.recv().await };
 //                     if let Some(data) = received {
-//                         let pv: &PublicValues<Word<F>, F> = data.public_values.as_slice().borrow();
-//                         let shard = pv.shard.as_canonical_u32();
-//                         let time = tokio::time::Instant::now();
+//                         let pv: &PublicValues<Word<F>, F> =
+// data.public_values.as_slice().borrow();                         let shard =
+// pv.shard.as_canonical_u32();                         let time = tokio::time::Instant::now();
 //                         let proof = prover
 //                             .prove_shard(&pk, data, &mut challenger)
 //                             .instrument(tracing::debug_span!("prove shard", shard = shard))

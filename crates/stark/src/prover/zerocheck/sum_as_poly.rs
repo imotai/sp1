@@ -233,8 +233,8 @@ where
     }
 }
 
-/// This function will calculate the univariate polynomial where all variables other than the last are
-/// summed on the boolean hypercube and the last variable is left as a free variable.
+/// This function will calculate the univariate polynomial where all variables other than the last
+/// are summed on the boolean hypercube and the last variable is left as a free variable.
 /// TODO:  Add flexibility to support degree 2 and degree 3 constraint polynomials.
 #[allow(clippy::too_many_lines)]
 pub async fn zerocheck_sum_as_poly_in_last_variable<
@@ -263,14 +263,14 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     let partial_lagrange: Mle<EF, B> = Mle::partial_lagrange(&rest_point).await;
     let partial_lagrange = Arc::new(partial_lagrange);
 
-    // For the first round, we know that at point 0 and 1, the zerocheck polynomial will evaluate to 0.
-    // For all rounds, we can find a root of the zerocheck polynomial by finding a root of the eq term
-    // in the last coord.
-    // So for the first round, we need to find an additional 2 points (since the constraint polynomial is degree 3).
-    // We calculate the eval at points 2 and 4 (since we don't need to do any multiplications
-    // when interpolating the column evals).
-    // For the other rounds, we need to find an additional 1 point since we don't know the zercheck poly eval at
-    // point 0 and 1.
+    // For the first round, we know that at point 0 and 1, the zerocheck polynomial will evaluate to
+    // 0. For all rounds, we can find a root of the zerocheck polynomial by finding a root of
+    // the eq term in the last coord.
+    // So for the first round, we need to find an additional 2 points (since the constraint
+    // polynomial is degree 3). We calculate the eval at points 2 and 4 (since we don't need to
+    // do any multiplications when interpolating the column evals).
+    // For the other rounds, we need to find an additional 1 point since we don't know the zercheck
+    // poly eval at point 0 and 1.
     // We calculate the eval at point 0 and then infer the eval at point 1 by the passed in claim.
     let mut xs = Vec::new();
     let mut ys = Vec::new();

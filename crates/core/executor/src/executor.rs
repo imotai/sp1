@@ -81,8 +81,9 @@ pub struct Executor<'a> {
     /// checkpoints.
     pub memory_checkpoint: Memory<Option<MemoryRecord>>,
 
-    /// Memory addresses that were initialized in this batch of shards. Used to minimize the size of
-    /// checkpoints. The value stored is whether or not it had a value at the beginning of the batch.
+    /// Memory addresses that were initialized in this batch of shards. Used to minimize the size
+    /// of checkpoints. The value stored is whether or not it had a value at the beginning of
+    /// the batch.
     pub uninitialized_memory_checkpoint: Memory<bool>,
 
     /// Statistics for event counts.
@@ -555,11 +556,11 @@ impl<'a> Executor<'a> {
         };
 
         // We update the local memory counter in two cases:
-        //  1. This is the first time the address is touched, this corresponds to the
-        //     condition record.shard != shard.
+        //  1. This is the first time the address is touched, this corresponds to the condition
+        //     record.shard != shard.
         //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
-        //     local_memory_access to detect this. *WARNING*: This means that we are counting
-        //     on the .is_some() condition to be true only in the SyscallContext.
+        //     local_memory_access to detect this. *WARNING*: This means that we are counting on the
+        //     .is_some() condition to be true only in the SyscallContext.
         if !E::UNCONSTRAINED && (record.shard != shard || local_memory_access.is_some()) {
             self.local_counts.local_mem += 1;
         }
@@ -773,11 +774,11 @@ impl<'a> Executor<'a> {
         };
 
         // We update the local memory counter in two cases:
-        //  1. This is the first time the address is touched, this corresponds to the
-        //     condition record.shard != shard.
+        //  1. This is the first time the address is touched, this corresponds to the condition
+        //     record.shard != shard.
         //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
-        //     local_memory_access to detect this. *WARNING*: This means that we are counting
-        //     on the .is_some() condition to be true only in the SyscallContext.
+        //     local_memory_access to detect this. *WARNING*: This means that we are counting on the
+        //     .is_some() condition to be true only in the SyscallContext.
         if !E::UNCONSTRAINED && (record.shard != shard || local_memory_access.is_some()) {
             self.local_counts.local_mem += 1;
         }
@@ -1222,9 +1223,10 @@ impl<'a> Executor<'a> {
         };
 
         // If op_a_0 is None, then we assume it is not register 0.  Note that this will happen
-        // for syscall events that are created within the precompiles' execute function.  Those events will be
-        // added to precompile tables, which wouldn't use the op_a_0 field.  Note that we can't make
-        // the op_a_0 field an Option<bool> in SyscallEvent because of the cbindgen.
+        // for syscall events that are created within the precompiles' execute function.  Those
+        // events will be added to precompile tables, which wouldn't use the op_a_0 field.
+        // Note that we can't make the op_a_0 field an Option<bool> in SyscallEvent because
+        // of the cbindgen.
         let op_a_0 = op_a_0.unwrap_or(false);
 
         SyscallEvent {
@@ -2114,8 +2116,9 @@ impl<'a> Executor<'a> {
                 if record.is_some() {
                     self.report.touched_memory_addresses += 1;
 
-                    // Program memory is initialized in the MemoryProgram chip and doesn't require any
-                    // events, so we only send init events for other memory addresses.
+                    // Program memory is initialized in the MemoryProgram chip and doesn't require
+                    // any events, so we only send init events for other memory
+                    // addresses.
                     if !self.record.program.memory_image.contains_key(&addr) {
                         let initial_value =
                             self.state.uninitialized_memory.registers.get(addr).unwrap_or(&0);

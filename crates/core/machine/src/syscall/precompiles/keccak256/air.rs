@@ -201,7 +201,8 @@ where
 //         let machine = RiscvAir::machine(config);
 //         let (_, vk) = machine.setup(&Program::from(KECCAK256_ELF).unwrap());
 //         let _ =
-//             tracing::info_span!("verify").in_scope(|| machine.verify(&vk, &proof, &mut challenger));
+//             tracing::info_span!("verify").in_scope(|| machine.verify(&vk, &proof, &mut
+// challenger));
 
 //         for i in 0..NUM_TEST_CASES {
 //             let expected = outputs.get(i).unwrap();

@@ -473,7 +473,8 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //                 .collect::<Vec<_>>();
 //             // Convert the trace to a row major matrix.
 //             let mut trace =
-//                 RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TEST_COLS);
+//                 RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(),
+// NUM_TEST_COLS);
 
 //             // Pad the trace to a power of two.
 //             pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);

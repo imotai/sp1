@@ -70,9 +70,9 @@ impl<F> BaseAir<F> for MemoryInstructionsChip {
 
 //         for test_case in test_cases {
 //             let instructions = vec![
-//                 Instruction::new(Opcode::ADD, 29, 0, 0xDEADBEEF, false, true), // Set the stored value to 5.
-//                 Instruction::new(Opcode::ADD, 30, 0, 100, false, true), // Set the address to 100.
-//                 Instruction::new(test_case.opcode, 29, 30, 0, false, true),
+//                 Instruction::new(Opcode::ADD, 29, 0, 0xDEADBEEF, false, true), // Set the stored
+// value to 5.                 Instruction::new(Opcode::ADD, 30, 0, 100, false, true), // Set the
+// address to 100.                 Instruction::new(test_case.opcode, 29, 30, 0, false, true),
 //             ];
 //             let program = Program::new(instructions, 0, 0);
 //             let stdin = SP1Stdin::new();
@@ -102,8 +102,8 @@ impl<F> BaseAir<F> for MemoryInstructionsChip {
 //                 } // TODO: Re-enable when we LOGUP-GKR working.
 //                   // FailureType::CumulativeSumFailing => {
 //                   //     assert!(
-//                   //         result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing()
-//                   //     );
+//                   //         result.is_err() &&
+// result.unwrap_err().is_local_cumulative_sum_failing()                   //     );
 //                   // }
 //             }
 //         }
@@ -143,11 +143,11 @@ impl<F> BaseAir<F> for MemoryInstructionsChip {
 
 //         for test_case in test_cases {
 //             let instructions = vec![
-//                 Instruction::new(Opcode::ADD, 29, 0, 0xDEADBEEF, false, true), // Set the stored value to 0xDEADBEEF.
-//                 Instruction::new(Opcode::ADD, 30, 0, 100, false, true), // Set the address to 100.
-//                 Instruction::new(Opcode::SW, 29, 30, 0, false, true), // Store the value to memory.
-//                 Instruction::new(test_case.opcode, 25, 30, 0, false, true), // Load the value from memory.
-//             ];
+//                 Instruction::new(Opcode::ADD, 29, 0, 0xDEADBEEF, false, true), // Set the stored
+// value to 0xDEADBEEF.                 Instruction::new(Opcode::ADD, 30, 0, 100, false, true), //
+// Set the address to 100.                 Instruction::new(Opcode::SW, 29, 30, 0, false, true), //
+// Store the value to memory.                 Instruction::new(test_case.opcode, 25, 30, 0, false,
+// true), // Load the value from memory.             ];
 //             let program = Program::new(instructions, 0, 0);
 //             let stdin = SP1Stdin::new();
 
@@ -173,8 +173,8 @@ impl<F> BaseAir<F> for MemoryInstructionsChip {
 //                 } // TODO: Re-enable when we LOGUP-GKR working.
 //                   // FailureType::CumulativeSumFailing => {
 //                   //     assert!(
-//                   //         result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing()
-//                   //     );
+//                   //         result.is_err() &&
+// result.unwrap_err().is_local_cumulative_sum_failing()                   //     );
 //                   // }
 //             }
 //         }

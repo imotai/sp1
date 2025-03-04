@@ -23,15 +23,10 @@
 // where
 //     A: MachineAir<BabyBear>
 //         + Air<SymbolicAirBuilder<BabyBear>>
-//         + for<'b> Air<
-//             ConstraintSumcheckFolder<'b, BabyBear, BabyBear, BinomialExtensionField<BabyBear, 4>>,
-//         > + for<'b> Air<
-//             ConstraintSumcheckFolder<
-//                 'b,
-//                 BabyBear,
-//                 BinomialExtensionField<BabyBear, 4>,
-//                 BinomialExtensionField<BabyBear, 4>,
-//             >,
+//         + for<'b> Air< ConstraintSumcheckFolder<'b, BabyBear, BabyBear,
+//           BinomialExtensionField<BabyBear, 4>>,
+//         > + for<'b> Air< ConstraintSumcheckFolder< 'b, BabyBear, BinomialExtensionField<BabyBear,
+//         > 4>, BinomialExtensionField<BabyBear, 4>, >,
 //         >,
 // {
 //     type F = BabyBear;
@@ -233,8 +228,8 @@
 //     pub type Val = BabyBear;
 //     pub type Challenge = BinomialExtensionField<Val, 4>;
 
-//     pub type Perm = Poseidon2<Val, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
-//     pub type MyHash = PaddingFreeSponge<Perm, 16, 8, DIGEST_SIZE>;
+//     pub type Perm = Poseidon2<Val, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16,
+// 7>;     pub type MyHash = PaddingFreeSponge<Perm, 16, 8, DIGEST_SIZE>;
 //     pub type DigestHash = Hash<Val, Val, DIGEST_SIZE>;
 //     pub type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
 //     pub type ValMmcs = FieldMerkleTreeMmcs<

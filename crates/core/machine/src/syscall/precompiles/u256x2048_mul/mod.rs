@@ -9,8 +9,8 @@ pub use air::*;
 //     use rand::Rng;
 //     use sp1_core_executor::{
 //         events::{
-//             MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent, U256xU2048MulEvent,
-//         },
+//             MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent,
+// U256xU2048MulEvent,         },
 //         syscalls::SyscallCode,
 //         ExecutionRecord, Program,
 //     };

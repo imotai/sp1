@@ -186,8 +186,8 @@ where
 //         //     // Generate the main trace for each chip.
 //         //     let pre_traces = chips
 //         //         .iter()
-//         //         .map(|chip| pk.chip_ordering.get(&chip.name()).map(|index| &pk.traces[*index]))
-//         //         .collect::<Vec<_>>();
+//         //         .map(|chip| pk.chip_ordering.get(&chip.name()).map(|index|
+// &pk.traces[*index]))         //         .collect::<Vec<_>>();
 //         //     let mut traces = chips
 //         //         .par_iter()
 //         //         .map(|chip| chip.generate_trace(shard, &mut A::Record::default()))
@@ -215,8 +215,8 @@ where
 //         //                         &main_trace.values[main_trace_size - 14..main_trace_size];
 //         //                     SepticDigest(SepticCurve {
 //         //                         x: SepticExtension::<Val<SC>>::from_base_fn(|i| last_row[i]),
-//         //                         y: SepticExtension::<Val<SC>>::from_base_fn(|i| last_row[i + 7]),
-//         //                     })
+//         //                         y: SepticExtension::<Val<SC>>::from_base_fn(|i| last_row[i +
+// 7]),         //                     })
 //         //                 };
 //         //                 (trace, (global_sum, local_sum))
 //         //             })
@@ -250,8 +250,8 @@ where
 //         //         let pre_width = traces[i].1.map_or(0, Mle::num_polynomials);
 //         //         let total_width = trace_width + pre_width;
 //         //         tracing::debug!(
-//         //             "{:<11} | Main Cols = {:<5} | Pre Cols = {:<5} | Rows = {:<10} | Cells = {:<10}",
-//         //             chips[i].name(),
+//         //             "{:<11} | Main Cols = {:<5} | Pre Cols = {:<5} | Rows = {:<10} | Cells =
+// {:<10}",         //             chips[i].name(),
 //         //             trace_width,
 //         //             pre_width,
 //         //             traces[i].0.height(),
@@ -263,8 +263,8 @@ where
 //         //         tracing::info_span!("debug constraints").in_scope(|| {
 //         //             for i in 0..chips.len() {
 //         //                 let preprocessed_trace =
-//         //                     pk.chip_ordering.get(&chips[i].name()).map(|index| &pk.traces[*index]);
-//         //                 debug_constraints::<SC, A>(
+//         //                     pk.chip_ordering.get(&chips[i].name()).map(|index|
+// &pk.traces[*index]);         //                 debug_constraints::<SC, A>(
 //         //                     chips[i],
 //         //                     preprocessed_trace,
 //         //                     &traces[i].0,
@@ -324,8 +324,8 @@ where
 //         self.chips().iter().map(|chip| proof.chip_ordering.get(&chip.name()).copied()).collect()
 //     }
 
-//     /// The setup preprocessing phase. Same as `setup` but initial global cumulative sum is precomputed.
-//     pub fn setup_core(
+//     /// The setup preprocessing phase. Same as `setup` but initial global cumulative sum is
+// precomputed.     pub fn setup_core(
 //         &self,
 //         program: &A::Program,
 //         initial_global_cumulative_sum: SepticDigest<Val<SC>>,
@@ -441,8 +441,8 @@ where
 
 //     /// The setup preprocessing phase.
 //     ///
-//     /// Given a program, this function generates the proving and verifying keys. The keys correspond
-//     /// to the program code and other preprocessed colunms such as lookup tables.
+//     /// Given a program, this function generates the proving and verifying keys. The keys
+// correspond     /// to the program code and other preprocessed colunms such as lookup tables.
 //     #[instrument("setup machine", level = "debug", skip_all)]
 //     #[allow(clippy::map_unwrap_or)]
 //     #[allow(clippy::redundant_closure_for_method_calls)]
@@ -629,7 +629,8 @@ where
 //     pub fn is_constraints_failing(&self) -> bool {
 //         matches!(
 //             self,
-//             MachineVerificationError::InvalidShardProof(VerificationError::ConstraintsCheckFailed(
+//
+// MachineVerificationError::InvalidShardProof(VerificationError::ConstraintsCheckFailed(
 //                 _
 //             ))
 //         )

@@ -12,8 +12,10 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use sp1_core_executor::events::GlobalInteractionEvent;
-use sp1_core_executor::{events::MemoryInitializeFinalizeEvent, ExecutionRecord, Program};
+use sp1_core_executor::{
+    events::{GlobalInteractionEvent, MemoryInitializeFinalizeEvent},
+    ExecutionRecord, Program,
+};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{
@@ -325,7 +327,8 @@ where
 
         // Assert that addr < addr' when the next row is real.
         // builder.when_transition().assert_eq(next.is_next_comp, next.is_real);
-        // next.lt_cols.eval(builder, &local.addr_bits.bits, &next.addr_bits.bits, next.is_next_comp);
+        // next.lt_cols.eval(builder, &local.addr_bits.bits, &next.addr_bits.bits,
+        // next.is_next_comp);
 
         // // Assert that the real rows are all padded to the top.
         // builder.when_transition().when_not(local.is_real).assert_zero(next.is_real);
@@ -361,7 +364,8 @@ where
 
         // Constrain the is_prev_addr_zero operation only in the first row.
         // let is_first_row = builder.is_first_row();
-        // IsZeroOperation::<AB::F>::eval(builder, prev_addr, local.is_prev_addr_zero, is_first_row);
+        // IsZeroOperation::<AB::F>::eval(builder, prev_addr, local.is_prev_addr_zero,
+        // is_first_row);
 
         // Constrain the is_first_comp column.
         builder.assert_bool(local.is_first_comp);
@@ -383,7 +387,8 @@ where
         // builder.when_first_row().when(local.is_prev_addr_zero.result).assert_one(next.is_real);
         // Ensure that in the address zero case the comparison is being made so that there is an
         // address bigger than zero being committed to.
-        // builder.when_first_row().when(local.is_prev_addr_zero.result).assert_one(next.is_next_comp);
+        // builder.when_first_row().when(local.is_prev_addr_zero.result).assert_one(next.
+        // is_next_comp);
 
         // Make assertions for specific types of memory chips.
 

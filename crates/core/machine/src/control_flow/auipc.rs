@@ -76,8 +76,8 @@ where
         let local: &AuipcColumns<AB::Var> = (*local).borrow();
 
         // SAFETY: All selectors `is_auipc`, `is_unimp`, `is_ebreak` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three selectors, is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode.
+        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three
+        // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
         builder.assert_bool(local.is_auipc);
         builder.assert_bool(local.is_unimp);
         builder.assert_bool(local.is_ebreak);
@@ -150,7 +150,8 @@ where
             local.op_a_not_0,
         );
 
-        // Assert that in padding rows, `op_a_not_0 == 0`, so all interactions are with zero multiplicity.
+        // Assert that in padding rows, `op_a_not_0 == 0`, so all interactions are with zero
+        // multiplicity.
         builder.when(local.op_a_not_0).assert_one(is_real);
     }
 }

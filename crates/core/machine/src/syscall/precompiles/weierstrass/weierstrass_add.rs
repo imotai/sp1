@@ -315,7 +315,8 @@ where
 
             local.slope_denominator.eval(builder, &q_x, &p_x, FieldOperation::Sub, local.is_real);
 
-            // We check that (q.x - p.x) is non-zero in the base field, by computing 1 / (q.x - p.x).
+            // We check that (q.x - p.x) is non-zero in the base field, by computing 1 / (q.x -
+            // p.x).
             let mut coeff_1 = Vec::new();
             coeff_1.resize(<E::BaseField as NumLimbs>::Limbs::USIZE, AB::Expr::zero());
             coeff_1[0] = AB::Expr::one();

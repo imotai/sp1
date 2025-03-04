@@ -188,8 +188,9 @@ where
         let local: &AddSubCols<AB::Var> = (*local).borrow();
 
         // SAFETY: All selectors `is_add` and `is_sub` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_add + is_sub` is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode of the instruction.
+        // Each "real" row has exactly one selector turned on, as `is_real = is_add + is_sub` is
+        // boolean. Therefore, the `opcode` matches the corresponding opcode of the
+        // instruction.
         let is_real = local.is_add + local.is_sub;
         builder.assert_bool(local.is_add);
         builder.assert_bool(local.is_sub);
@@ -209,7 +210,8 @@ where
             local.op_a_not_0.into(),
         );
 
-        // SAFETY: We check that a padding row has `op_a_not_0 == 0`, to prevent a padding row sending byte lookups.
+        // SAFETY: We check that a padding row has `op_a_not_0 == 0`, to prevent a padding row
+        // sending byte lookups.
         builder.when(local.op_a_not_0).assert_one(is_real.clone());
 
         // Receive the arguments.  There are separate receives for ADD and SUB.
@@ -402,7 +404,8 @@ where
 //         type F = BabyBear;
 
 //         let chunk_size =
-//             std::cmp::max((input.add_events.len() + input.sub_events.len()) / num_cpus::get(), 1);
+//             std::cmp::max((input.add_events.len() + input.sub_events.len()) / num_cpus::get(),
+// 1);
 
 //         let events = input.add_events.iter().chain(input.sub_events.iter()).collect::<Vec<_>>();
 //         let row_batches = events
@@ -487,8 +490,9 @@ where
 //                     let add_sub_chip_name = chip_name!(AddSubChip, BabyBear);
 //                     for (chip_name, trace) in traces.iter_mut() {
 //                         if *chip_name == add_sub_chip_name {
-//                             // Add the add instructions are added first to the trace, before the sub instructions.
-//                             let index = if opcode == Opcode::ADD { 0 } else { 1 };
+//                             // Add the add instructions are added first to the trace, before the
+// sub instructions.                             let index = if opcode == Opcode::ADD { 0 } else { 1
+// };
 
 //                             let first_row = trace.row_mut(index);
 //                             let first_row: &mut AddSubCols<BabyBear> = first_row.borrow_mut();
@@ -504,9 +508,9 @@ where
 //                 };
 
 //                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
-//             }
+//                     run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));                 assert!(result.is_err() &&
+// result.unwrap_err().is_constraints_failing());             }
 //         }
 //     }
 // }

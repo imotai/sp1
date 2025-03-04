@@ -357,8 +357,9 @@ where
             limbs_from_vec::<AB::Expr, <E::BaseField as NumLimbs>::Limbs, AB::F>(modulus_limbs);
         local.neg_y_range_check.eval(builder, &local.neg_y.result, &modulus_limbs, local.is_real);
 
-        // Constrain that `y` is a square root. Note that `y.multiplication.result` is constrained to be canonical here.
-        // Since `y_limbs` is constrained to be either `y.multiplication.result` or `neg_y.result`, `y_limbs` will be canonical.
+        // Constrain that `y` is a square root. Note that `y.multiplication.result` is constrained
+        // to be canonical here. Since `y_limbs` is constrained to be either
+        // `y.multiplication.result` or `neg_y.result`, `y_limbs` will be canonical.
         local.y.eval(builder, &local.x_3_plus_b_plus_ax.result, local.y.lsb, local.is_real);
 
         let y_limbs: Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs> =
@@ -536,8 +537,8 @@ where
 
 //             let stdin = SP1Stdin::from(&compressed);
 //             let mut public_values =
-//                 run_test::<CpuProver<_, _>>(Program::from(BLS12381_DECOMPRESS_ELF).unwrap(), stdin)
-//                     .unwrap();
+//                 run_test::<CpuProver<_, _>>(Program::from(BLS12381_DECOMPRESS_ELF).unwrap(),
+// stdin)                     .unwrap();
 
 //             let mut result = [0; 96];
 //             public_values.read_slice(&mut result);

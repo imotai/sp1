@@ -46,19 +46,19 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //         let test_cases = vec![
 //             TestCase {
 //                 program: vec![
-//                     Instruction::new(Opcode::ADD, 5, 0, HALT, false, true), // Set the syscall code in register x5.
-//                     Instruction::new(Opcode::ECALL, 5, 10, 11, false, false), // Call the syscall.
-//                     Instruction::new(Opcode::ADD, 30, 0, 100, false, true),
-//                 ],
+//                     Instruction::new(Opcode::ADD, 5, 0, HALT, false, true), // Set the syscall
+// code in register x5.                     Instruction::new(Opcode::ECALL, 5, 10, 11, false,
+// false), // Call the syscall.                     Instruction::new(Opcode::ADD, 30, 0, 100, false,
+// true),                 ],
 //                 incorrect_next_pc: 8, // The correct next_pc is 0.
 //             },
 //             TestCase {
 //                 program: vec![
-//                     Instruction::new(Opcode::ADD, 5, 0, SHA_EXTEND, false, true), // Set the syscall code in register x5.
-//                     Instruction::new(Opcode::ADD, 10, 0, 40, false, true), // Set the syscall arg1 to 40.
-//                     Instruction::new(Opcode::ECALL, 5, 10, 11, false, false), // Call the syscall.
-//                     Instruction::new(Opcode::ADD, 30, 0, 100, false, true),
-//                 ],
+//                     Instruction::new(Opcode::ADD, 5, 0, SHA_EXTEND, false, true), // Set the
+// syscall code in register x5.                     Instruction::new(Opcode::ADD, 10, 0, 40, false,
+// true), // Set the syscall arg1 to 40.                     Instruction::new(Opcode::ECALL, 5, 10,
+// 11, false, false), // Call the syscall.                     Instruction::new(Opcode::ADD, 30, 0,
+// 100, false, true),                 ],
 //                 incorrect_next_pc: 0, // The correct next_pc is 12.
 //             },
 //         ];
@@ -76,8 +76,8 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //                     // Create a malicious record where the next pc is set to the incorrect value.
 //                     let mut malicious_record = record.clone();
 
-//                     // There can be multiple shards for programs with syscalls, so need to figure out which
-//                     // record is for a CPU shard.
+//                     // There can be multiple shards for programs with syscalls, so need to figure
+// out which                     // record is for a CPU shard.
 //                     if !malicious_record.cpu_events.is_empty() {
 //                         malicious_record.syscall_events[0].next_pc = test_case.incorrect_next_pc;
 //                     }
@@ -94,10 +94,10 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //     #[test]
 //     fn test_malicious_extra_cycles() {
 //         let instructions = vec![
-//             Instruction::new(Opcode::ADD, 5, 0, SHA_EXTEND, false, true), // Set the syscall code in register x5.
-//             Instruction::new(Opcode::ADD, 10, 0, 40, false, true), // Set the syscall arg1 to 40.
-//             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false), // Call the syscall.
-//             Instruction::new(Opcode::ADD, 30, 20, 100, true, true),
+//             Instruction::new(Opcode::ADD, 5, 0, SHA_EXTEND, false, true), // Set the syscall code
+// in register x5.             Instruction::new(Opcode::ADD, 10, 0, 40, false, true), // Set the
+// syscall arg1 to 40.             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false), // Call
+// the syscall.             Instruction::new(Opcode::ADD, 30, 20, 100, true, true),
 //         ];
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
@@ -129,9 +129,9 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 
 //                     if *chip_name == syscall_chip_name {
 //                         let first_row = trace.row_mut(0);
-//                         let first_row: &mut SyscallInstrColumns<BabyBear> = first_row.borrow_mut();
-//                         first_row.num_extra_cycles = BabyBear::from_canonical_usize(4);
-//                         // Correct value is 48.
+//                         let first_row: &mut SyscallInstrColumns<BabyBear> =
+// first_row.borrow_mut();                         first_row.num_extra_cycles =
+// BabyBear::from_canonical_usize(4);                         // Correct value is 48.
 //                     }
 //                 }
 
@@ -146,11 +146,11 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //     #[test]
 //     fn test_malicious_commit() {
 //         let instructions = vec![
-//             Instruction::new(Opcode::ADD, 5, 0, COMMIT, false, true), // Set the syscall code in register x5.
-//             Instruction::new(Opcode::ADD, 10, 0, 0, false, false), // Set the syscall code in register x5.
-//             Instruction::new(Opcode::ADD, 11, 0, 40, false, true), // Set the syscall arg1 to 40.
-//             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false), // Call the syscall.
-//         ];
+//             Instruction::new(Opcode::ADD, 5, 0, COMMIT, false, true), // Set the syscall code in
+// register x5.             Instruction::new(Opcode::ADD, 10, 0, 0, false, false), // Set the
+// syscall code in register x5.             Instruction::new(Opcode::ADD, 11, 0, 40, false, true),
+// // Set the syscall arg1 to 40.             Instruction::new(Opcode::ECALL, 5, 10, 11, false,
+// false), // Call the syscall.         ];
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
@@ -172,11 +172,11 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //     #[test]
 //     fn test_malicious_commit_deferred() {
 //         let instructions = vec![
-//             Instruction::new(Opcode::ADD, 5, 0, COMMIT_DEFERRED_PROOFS, false, true), // Set the syscall code in register x5.
-//             Instruction::new(Opcode::ADD, 10, 0, 0, false, false), // Set the syscall code in register x5.
-//             Instruction::new(Opcode::ADD, 11, 0, 40, false, true), // Set the syscall arg1 to 40.
-//             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false), // Call the syscall.
-//         ];
+//             Instruction::new(Opcode::ADD, 5, 0, COMMIT_DEFERRED_PROOFS, false, true), // Set the
+// syscall code in register x5.             Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+// // Set the syscall code in register x5.             Instruction::new(Opcode::ADD, 11, 0, 40,
+// false, true), // Set the syscall arg1 to 40.             Instruction::new(Opcode::ECALL, 5, 10,
+// 11, false, false), // Call the syscall.         ];
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 

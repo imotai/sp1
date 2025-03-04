@@ -381,8 +381,9 @@ where
         );
 
         // SAFETY: `is_real` is checked to be boolean.
-        // All interactions are done with multiplicity `is_real`, so padding rows lead to no interactions.
-        // This chip only deals with the `SLL` opcode, so the opcode matches the instruction.
+        // All interactions are done with multiplicity `is_real`, so padding rows lead to no
+        // interactions. This chip only deals with the `SLL` opcode, so the opcode matches
+        // the instruction.
         builder.assert_bool(local.is_real);
 
         // Receive the arguments.

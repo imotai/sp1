@@ -36,8 +36,8 @@ pub fn vec_to_string<F: Field>(vec: Vec<F>) -> String {
 
 // /// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
 // ///
-// /// This presentation is useful when debugging interactions as it makes it clear which interactions
-// /// are `send` and which are `receive`.
+// /// This presentation is useful when debugging interactions as it makes it clear which
+// interactions /// are `send` and which are `receive`.
 // fn field_to_int<F: PrimeField32>(x: F) -> i32 {
 //     let modulus = BabyBear::ORDER_U64;
 //     let val = x.as_canonical_u64();
@@ -100,8 +100,8 @@ pub fn vec_to_string<F: Field>(vec: Vec<F>) -> String {
 //                     &interaction.kind.to_string(),
 //                     vec_to_string(values)
 //                 );
-//                 key_to_vec_data.entry(key.clone()).or_insert_with(Vec::new).push(InteractionData {
-//                     chip_name: chip.name(),
+//                 key_to_vec_data.entry(key.clone()).or_insert_with(Vec::new).push(InteractionData
+// {                     chip_name: chip.name(),
 //                     kind: interaction.kind,
 //                     row,
 //                     interaction_number: m,
@@ -155,8 +155,8 @@ pub fn vec_to_string<F: Field>(vec: Vec<F>) -> String {
 //                 debug_interactions::<C, A>(chip, pkey, shard, interaction_kinds.clone(), scope);
 //             total_events += count.len();
 //             for (key, value) in count.iter() {
-//                 let entry = final_map.entry(key.clone()).or_insert((C::F::zero(), BTreeMap::new()));
-//                 entry.0 += *value;
+//                 let entry = final_map.entry(key.clone()).or_insert((C::F::zero(),
+// BTreeMap::new()));                 entry.0 += *value;
 //                 total += *value;
 //                 *entry.1.entry(chip.name()).or_insert(C::F::zero()) += *value;
 //             }

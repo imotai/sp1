@@ -65,8 +65,8 @@ impl<F> BaseAir<F> for JumpChip {
 //     //                 for (chip_name, trace) in traces.iter_mut() {
 //     //                     if *chip_name == jump_chip_name {
 //     //                         let first_row = trace.row_mut(0);
-//     //                         let first_row: &mut JumpColumns<BabyBear> = first_row.borrow_mut();
-//     //                         first_row.next_pc = 4.into();
+//     //                         let first_row: &mut JumpColumns<BabyBear> =
+// first_row.borrow_mut();     //                         first_row.next_pc = 4.into();
 //     //                     }
 //     //                 }
 
@@ -74,9 +74,9 @@ impl<F> BaseAir<F> for JumpChip {
 //     //             };
 
 //     //         let result =
-//     //             run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//     //         assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
-//     //     }
+//     //             run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));     //         assert!(result.is_err() &&
+// result.unwrap_err().is_local_cumulative_sum_failing());     //     }
 //     // }
 
 //     #[test]

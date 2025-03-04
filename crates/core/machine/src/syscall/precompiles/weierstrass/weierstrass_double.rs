@@ -29,8 +29,7 @@ use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
 
 use crate::{
     memory::{MemoryCols, MemoryWriteCols},
-    operations::field::field_op::FieldOpCols,
-    operations::field::range::FieldLtCols,
+    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
     utils::limbs_from_prev_access,
 };
 

@@ -779,9 +779,10 @@ where
         // Receive the arguments.
         {
             // Exactly one of the opcode flags must be on.
-            // SAFETY: All selectors `is_divu`, `is_remu`, `is_div`, `is_rem` are checked to be boolean.
-            // Each row has exactly one selector turned on, as their sum is checked to be one.
-            // Therefore, the `opcode` matches the corresponding opcode of the instruction.
+            // SAFETY: All selectors `is_divu`, `is_remu`, `is_div`, `is_rem` are checked to be
+            // boolean. Each row has exactly one selector turned on, as their sum is
+            // checked to be one. Therefore, the `opcode` matches the corresponding
+            // opcode of the instruction.
             builder.assert_eq(
                 one.clone(),
                 local.is_divu + local.is_remu + local.is_div + local.is_rem,
@@ -994,9 +995,9 @@ where
 //                 };
 
 //                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
-//             }
+//                     run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));                 assert!(result.is_err() &&
+// result.unwrap_err().is_constraints_failing());             }
 //         }
 //     }
 // }

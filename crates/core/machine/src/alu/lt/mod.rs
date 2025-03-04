@@ -425,8 +425,8 @@ where
         // Constrain the operation flags.
 
         // SAFETY: All selectors `is_slt`, `is_sltu` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_slt + is_sltu` is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode.
+        // Each "real" row has exactly one selector turned on, as `is_real = is_slt + is_sltu` is
+        // boolean. Therefore, the `opcode` matches the corresponding opcode.
 
         // Check that the operation flags are boolean.
         builder.assert_bool(local.is_slt);
@@ -628,9 +628,9 @@ where
 //                 };
 
 //                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
-//             }
+//                     run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));                 assert!(result.is_err() &&
+// result.unwrap_err().is_constraints_failing());             }
 //         }
 //     }
 // }

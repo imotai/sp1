@@ -14,7 +14,8 @@ use subenum::subenum;
 /// These identifiers are for the various chips in the rv32im prover. We need them in the
 /// executor to compute the memory cost of the current shard of execution.
 ///
-/// The [`CoreAirId`]s are the AIRs that are not part of precompile shards and not the program or byte AIR.
+/// The [`CoreAirId`]s are the AIRs that are not part of precompile shards and not the program or
+/// byte AIR.
 #[subenum(CoreAirId)]
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter, PartialOrd, Ord, Enum,

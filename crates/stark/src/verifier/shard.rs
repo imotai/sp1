@@ -58,7 +58,6 @@ pub enum ShardVerifierError<C: MachineConfig> {
 }
 
 /// An error that occurs when the shape of the openings does not match the expected shape.
-///
 #[derive(Debug, Error)]
 pub enum OpeningShapeError {
     /// The width of the preprocessed trace does not match the expected width.
@@ -214,8 +213,8 @@ where
         // Get the random challenge to merge the constraints.
         let alpha = challenger.sample_ext_element::<C::EF>();
 
-        // Get the random point to evaluate the batched sumcheck polynomial.  It must evaluate to zero
-        // for the constraint check to pass.
+        // Get the random point to evaluate the batched sumcheck polynomial.  It must evaluate to
+        // zero for the constraint check to pass.
         let zeta = challenger.sample_point::<C::EF>(self.pcs_verifier.max_log_row_count as u32);
 
         // Get the random lambda to RLC the zerocheck polynomials.

@@ -191,7 +191,8 @@ where
             builder.send_byte(opcode.clone(), a, b, c, local.op_a_not_0);
         }
 
-        // SAFETY: We check that a padding row has `op_a_not_0 == 0`, to prevent a padding row sending byte lookups.
+        // SAFETY: We check that a padding row has `op_a_not_0 == 0`, to prevent a padding row
+        // sending byte lookups.
         builder.when(local.op_a_not_0).assert_one(mult.clone());
 
         // Get the cpu opcode, which corresponds to the opcode being sent in the CPU table.
@@ -229,8 +230,9 @@ where
         );
 
         // SAFETY: All selectors `is_xor`, `is_or`, `is_and` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three selectors, is boolean.
-        // Therefore, the `opcode` and `cpu_opcode` matches the corresponding opcode.
+        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three
+        // selectors, is boolean. Therefore, the `opcode` and `cpu_opcode` matches the
+        // corresponding opcode.
         let is_real = local.is_xor + local.is_or + local.is_and;
         builder.assert_bool(local.is_xor);
         builder.assert_bool(local.is_or);
@@ -291,8 +293,8 @@ where
 //         let air = BitwiseChip::default();
 //         let chip: Chip<BabyBear, BitwiseChip> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, BitwiseChip>(vec![shard], machine, pk, vk).unwrap();
-//     }
+//         run_test_machine::<BabyBearPoseidon2, BitwiseChip>(vec![shard], machine, pk,
+// vk).unwrap();     }
 
 //     // TODO: Re-enable when we LOGUP-GKR working.
 //     // #[test]
@@ -342,9 +344,9 @@ where
 //     //             };
 
 //     //             let result =
-//     //                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//     //             assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
-//     //         }
+//     //                 run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));     //             assert!(result.is_err() &&
+// result.unwrap_err().is_local_cumulative_sum_failing());     //         }
 //     //     }
 //     // }
 // }

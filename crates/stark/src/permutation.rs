@@ -47,11 +47,12 @@
 //                 let mut denominator = alpha;
 //                 let mut betas = betas.clone();
 //                 denominator +=
-//                     betas.next().unwrap() * EF::from_canonical_usize(interaction.argument_index());
-//                 for (columns, beta) in interaction.values.iter().zip(betas) {
-//                     denominator += beta * columns.apply::<F, F>(preprocessed_row, main_row);
-//                 }
-//                 let mut mult = interaction.multiplicity.apply::<F, F>(preprocessed_row, main_row);
+//                     betas.next().unwrap() *
+// EF::from_canonical_usize(interaction.argument_index());                 for (columns, beta) in
+// interaction.values.iter().zip(betas) {                     denominator += beta *
+// columns.apply::<F, F>(preprocessed_row, main_row);                 }
+//                 let mut mult = interaction.multiplicity.apply::<F, F>(preprocessed_row,
+// main_row);
 
 //                 if !is_send {
 //                     mult = -mult;
@@ -68,8 +69,8 @@
 // pub fn scoped_interactions<F: Field>(
 //     sends: &[Interaction<F>],
 //     receives: &[Interaction<F>],
-// ) -> (HashMap<InteractionScope, Vec<Interaction<F>>>, HashMap<InteractionScope, Vec<Interaction<F>>>)
-// {
+// ) -> (HashMap<InteractionScope, Vec<Interaction<F>>>, HashMap<InteractionScope,
+// Vec<Interaction<F>>>) {
 //     // Create a hashmap of scope -> vec<send interactions>.
 //     let mut sends = sends.to_vec();
 //     sends.sort_by_key(|k| k.scope);
@@ -93,8 +94,8 @@
 //     (grouped_sends, grouped_receives)
 // }
 
-// /// Generates the permutation trace for the given chip and main trace based on a variant of `LogUp`.
-// #[allow(clippy::too_many_lines)]
+// /// Generates the permutation trace for the given chip and main trace based on a variant of
+// `LogUp`. #[allow(clippy::too_many_lines)]
 // pub fn generate_permutation_trace<F: PrimeField, EF: ExtensionField<F>>(
 //     sends: &[Interaction<F>],
 //     receives: &[Interaction<F>],
@@ -128,8 +129,8 @@
 //             assert_eq!(
 //                 prep.height(),
 //                 main.height(),
-//                 "preprocessed and main have different heights: main width = {}, preprocessed width = {}",
-//                 main.width(),
+//                 "preprocessed and main have different heights: main width = {}, preprocessed
+// width = {}",                 main.width(),
 //                 prep.width()
 //             );
 //             assert_eq!(
@@ -237,8 +238,8 @@
 //     // Assert that the permutation trace width is correct.
 //     if perm_width != permutation_trace_width {
 //         panic!(
-//             "permutation trace width is incorrect: expected {permutation_trace_width}, got {perm_width}",
-//         );
+//             "permutation trace width is incorrect: expected {permutation_trace_width}, got
+// {perm_width}",         );
 //     }
 
 //     // Get the permutation challenges.
@@ -260,8 +261,8 @@
 //         // Assert that the i-eth entry is equal to the sum_i m_i/rlc_i by constraints:
 //         // entry * \prod_i rlc_i = \sum_i m_i * \prod_{j!=i} rlc_j over all columns of the
 //         // permutation trace except the last column.
-//         for (entry, chunk) in perm_local[0..perm_local.len() - 1].iter().zip(interaction_chunks) {
-//             // First, we calculate the random linear combinations and multiplicities with the
+//         for (entry, chunk) in perm_local[0..perm_local.len() - 1].iter().zip(interaction_chunks)
+// {             // First, we calculate the random linear combinations and multiplicities with the
 //             // correct sign depending on wetther the interaction is a send or a receive.
 //             let mut rlcs: Vec<AB::ExprEF> = Vec::with_capacity(batch_size);
 //             let mut multiplicities: Vec<AB::Expr> = Vec::with_capacity(batch_size);
@@ -324,21 +325,21 @@
 //         // Assert that cumulative sum is initialized to `phi_local` on the first row.
 //         builder.when_first_row().assert_eq_ext(phi_local.clone(), sum_local);
 
-//         // Assert that the cumulative sum is constrained to `phi_next - phi_local` on the transition
-//         // rows.
+//         // Assert that the cumulative sum is constrained to `phi_next - phi_local` on the
+// transition         // rows.
 //         builder.when_transition().assert_eq_ext(phi_next - phi_local.clone(), sum_next);
-//         builder.when_last_row().assert_eq_ext(*perm_local.last().unwrap(), *local_cumulative_sum);
-//     }
+//         builder.when_last_row().assert_eq_ext(*perm_local.last().unwrap(),
+// *local_cumulative_sum);     }
 
 //     // Handle global cumulative sums.
-//     // If the chip's scope is `InteractionScope::Global`, the last row's final 14 columns is equal to the global cumulative sum.
-//     let global_cumulative_sum = builder.global_cumulative_sum();
-//     if commit_scope == InteractionScope::Global {
+//     // If the chip's scope is `InteractionScope::Global`, the last row's final 14 columns is
+// equal to the global cumulative sum.     let global_cumulative_sum =
+// builder.global_cumulative_sum();     if commit_scope == InteractionScope::Global {
 //         for i in 0..7 {
 //             builder
 //                 .when_last_row()
-//                 .assert_eq(main_local[main_local.len() - 14 + i], global_cumulative_sum.0.x.0[i]);
-//             builder
+//                 .assert_eq(main_local[main_local.len() - 14 + i],
+// global_cumulative_sum.0.x.0[i]);             builder
 //                 .when_last_row()
 //                 .assert_eq(main_local[main_local.len() - 7 + i], global_cumulative_sum.0.y.0[i]);
 //         }

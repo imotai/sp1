@@ -407,10 +407,11 @@ where
         builder.when(local.b_sign_extend).assert_eq(local.b_msb, one.clone());
         builder.when(local.c_sign_extend).assert_eq(local.c_msb, one.clone());
 
-        // SAFETY: All selectors `is_mul`, `is_mulh`, `is_mulhu`, `is_mulhsu` are checked to be boolean.
-        // Also, the multiplicity `is_real` is checked to be boolean, and `is_real = 0` leads to no interactions.
-        // Each "real" row has exactly one selector turned on, as constrained below.
-        // Therefore, in "real" rows, the `opcode` matches the corresponding opcode.
+        // SAFETY: All selectors `is_mul`, `is_mulh`, `is_mulhu`, `is_mulhsu` are checked to be
+        // boolean. Also, the multiplicity `is_real` is checked to be boolean, and `is_real
+        // = 0` leads to no interactions. Each "real" row has exactly one selector turned
+        // on, as constrained below. Therefore, in "real" rows, the `opcode` matches the
+        // corresponding opcode.
 
         // Calculate the opcode.
         let opcode = {
@@ -661,9 +662,9 @@ where
 //                 };
 
 //                 let result =
-//                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-//                 assert!(result.is_err() && result.unwrap_err().is_constraints_failing());
-//             }
+//                     run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));                 assert!(result.is_err() &&
+// result.unwrap_err().is_constraints_failing());             }
 //         }
 //     }
 // }

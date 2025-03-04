@@ -1,5 +1,4 @@
-use std::collections::BTreeMap;
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 use hashbrown::HashMap;
 use itertools::Itertools;
@@ -702,7 +701,8 @@ pub fn create_dummy_record(shape: &Shape<RiscvAirId>) -> ExecutionRecord {
 //         ];
 
 //         let height_map =
-//             preprocessed_log_heights.into_iter().chain(core_log_heights).collect::<HashMap<_, _>>();
+//             preprocessed_log_heights.into_iter().chain(core_log_heights).collect::<HashMap<_,
+// _>>();
 
 //         let shape = Shape::new(height_map);
 

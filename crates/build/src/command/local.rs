@@ -4,8 +4,10 @@ use crate::{BuildArgs, HELPER_TARGET_SUBDIR};
 use cargo_metadata::camino::Utf8PathBuf;
 use dirs::home_dir;
 
-use super::utils::{get_program_build_args, get_rust_compiler_flags};
-use super::TOOLCHAIN_NAME;
+use super::{
+    utils::{get_program_build_args, get_rust_compiler_flags},
+    TOOLCHAIN_NAME,
+};
 
 /// Get the command to build the program locally.
 pub(crate) fn create_local_command(

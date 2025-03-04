@@ -52,8 +52,8 @@ where
         // Assert the shard and clk to send.  Only the memory and syscall instructions need the
         // actual shard and clk values for memory access evals.
         // SAFETY: The usage of `builder.if_else` requires `is_memory + is_syscall` to be boolean.
-        // The correctness of `is_memory` and `is_syscall` will be checked in the opcode specific chips.
-        // In these correct cases, `is_memory + is_syscall` will be always boolean.
+        // The correctness of `is_memory` and `is_syscall` will be checked in the opcode specific
+        // chips. In these correct cases, `is_memory + is_syscall` will be always boolean.
         let expected_shard_to_send =
             builder.if_else(local.is_memory + local.is_syscall, local.shard, AB::Expr::zero());
         let expected_clk_to_send =
@@ -65,13 +65,17 @@ where
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         // The `shard`, `clk`, `pc` are constrained throughout the CpuChip.
         // The `local.instruction.opcode`, `local.instruction.op_a_0` are from the ProgramChip.
-        // The `local.op_b_val()` and `local.op_c_val()` are constrained in `eval_registers` in the CpuChip.
-        // Therefore, opcode specific chips that will receive this instruction need to the following.
-        // - For an instruction with a valid opcode, exactly one opcode specific chip can receive the instruction.
-        // - The `next_pc`, `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`, `is_syscall`, `is_halt` are constrained correctly.
-        // Note that in this case, `shard_to_send` and `clk_to_send` will be correctly constrained as well.
-        // If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val() == 0`.
-        // Therefore, in this case, `op_a_val` doesn't need to be constrained in the opcode specific chips.
+        // The `local.op_b_val()` and `local.op_c_val()` are constrained in `eval_registers` in the
+        // CpuChip. Therefore, opcode specific chips that will receive this instruction need
+        // to the following.
+        // - For an instruction with a valid opcode, exactly one opcode specific chip can receive
+        //   the instruction.
+        // - The `next_pc`, `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`,
+        //   `is_syscall`, `is_halt` are constrained correctly.
+        // Note that in this case, `shard_to_send` and `clk_to_send` will be correctly constrained
+        // as well. If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val()
+        // == 0`. Therefore, in this case, `op_a_val` doesn't need to be constrained in the
+        // opcode specific chips.
         builder.send_instruction(
             local.shard_to_send,
             local.clk_to_send,
@@ -195,8 +199,8 @@ impl CpuChip {
     //         .assert_eq(public_values.next_pc, local.next_pc);
 
     //     If the last real row is the last row, verify the public value's next pc.
-    //     builder.when_last_row().when(local.is_real).assert_eq(public_values.next_pc, local.next_pc);
-    // }
+    //     builder.when_last_row().when(local.is_real).assert_eq(public_values.next_pc,
+    // local.next_pc); }
 
     /// Constraints related to the is_real column.
     ///

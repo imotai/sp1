@@ -20,7 +20,7 @@ pub use sum_as_poly::*;
 
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
 
-/// A zerocheck backend. This trait is automatically implemented for any backend satisifying the
+/// A zerocheck backend. This trait is automatically implemented for any backend satisfying the
 /// required bounds.
 pub trait ZercocheckBackend<
     F: Field,
@@ -159,9 +159,11 @@ pub struct ZeroCheckPoly<K, F, EF, AirData, B: Backend = CpuBackend> {
     pub main_columns: PaddedMle<K, B>,
     /// The adjustment factor from the constant part of the eq polynomial.
     pub eq_adjustment: EF,
-    ///  The geq polynomial value.  This will be 0 for all zerocheck polys that are at least one non-padded variable.
+    ///  The geq polynomial value.  This will be 0 for all zerocheck polys that are at least one
+    /// non-padded variable.
     pub geq_value: EF,
-    /// Num padded variables.  These padded variables are the first-most (e.g. the most significant) variables.
+    /// Num padded variables.  These padded variables are the first-most (e.g. the most
+    /// significant) variables.
     // pub num_padded_vars: usize,
     /// The padded row adjustment.
     pub padded_row_adjustment: EF,
@@ -182,7 +184,8 @@ impl<K: Field, F: Field, EF: ExtensionField<F>, AirData, B: Backend + MleBaseBac
         geq_value: EF,
         padded_row_adjustment: EF,
     ) -> Self {
-        // The zeta random point must have the same number of variables of the trace + num_padded_vars.
+        // The zeta random point must have the same number of variables of the trace +
+        // num_padded_vars.
         let num_main_vars = main_values.num_variables() as usize;
         assert!(
             zeta.dimension() == num_main_vars,

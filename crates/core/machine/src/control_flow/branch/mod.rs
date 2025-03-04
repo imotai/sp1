@@ -50,8 +50,8 @@ impl<F> BaseAir<F> for BranchChip {
 //             error_type: ErrorType,
 //         }
 
-//         // The PC of the branch instruction is 8, and it will branch to 16 if the condition is true.
-//         let branch_test_cases = vec![
+//         // The PC of the branch instruction is 8, and it will branch to 16 if the condition is
+// true.         let branch_test_cases = vec![
 //             // TODO: Re-enable when we LOGUP-GKR working.
 //             // BranchTestCase {
 //             //     branch_opcode: Opcode::BEQ,
@@ -162,9 +162,9 @@ impl<F> BaseAir<F> for BranchChip {
 
 //         for test_case in branch_test_cases {
 //             let instructions = vec![
-//                 Instruction::new(Opcode::ADD, 29, 0, test_case.branch_operand_b_value, false, true),
-//                 Instruction::new(Opcode::ADD, 30, 0, test_case.branch_operand_c_value, false, true),
-//                 Instruction::new(test_case.branch_opcode, 29, 30, 8, false, true),
+//                 Instruction::new(Opcode::ADD, 29, 0, test_case.branch_operand_b_value, false,
+// true),                 Instruction::new(Opcode::ADD, 30, 0, test_case.branch_operand_c_value,
+// false, true),                 Instruction::new(test_case.branch_opcode, 29, 30, 8, false, true),
 //                 Instruction::new(Opcode::ADD, 28, 0, 5, false, true),
 //                 Instruction::new(Opcode::ADD, 28, 0, 5, false, true),
 //             ];
@@ -190,8 +190,8 @@ impl<F> BaseAir<F> for BranchChip {
 //                 // TODO: Re-enable when we LOGUP-GKR working.
 //                 // ErrorType::LocalCumulativeSumFailing => {
 //                 //     assert!(
-//                 //         result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing()
-//                 //     );
+//                 //         result.is_err() &&
+// result.unwrap_err().is_local_cumulative_sum_failing()                 //     );
 //                 // }
 //                 ErrorType::ConstraintsFailing => {
 //                     assert!(result.is_err() && result.unwrap_err().is_constraints_failing());

@@ -15,8 +15,8 @@ use sp1_stark::{
 };
 use strum_macros::{EnumDiscriminants, EnumIter};
 
-use crate::bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS;
 use crate::{
+    bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{AuipcChip, BranchChip, JumpChip},
     global::GlobalChip,
     memory::{
@@ -646,8 +646,8 @@ pub mod tests {
     //         StarkProvingKey, StarkVerifyingKey,
     //     };
 
-    //     // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the first_row, last_row,
-    //     // and next_row constraints).
+    //     // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
+    // first_row, last_row,     // and next_row constraints).
     //     // #[test]
     //     // fn test_primitives_and_machine_air_names_match() {
     //     //     let chips = RiscvAir::<BabyBear>::chips();
@@ -656,16 +656,16 @@ pub mod tests {
     //     //     }
     //     // }
 
-    //     // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the first_row, last_row,
-    //     // and next_row constraints).
+    //     // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
+    // first_row, last_row,     // and next_row constraints).
     //     // #[test]
     //     // fn core_air_cost_consistency() {
     //     //     // Load air costs from file
-    //     //     let file = std::fs::File::open("../executor/src/artifacts/rv32im_costs.json").unwrap();
-    //     //     let costs: HashMap<String, u64> = serde_json::from_reader(file).unwrap();
-    //     //     // Compare with costs computed by machine
-    //     //     let machine_costs = RiscvAir::<BabyBear>::costs();
-    //     //     assert_eq!(costs, machine_costs);
+    //     //     let file =
+    // std::fs::File::open("../executor/src/artifacts/rv32im_costs.json").unwrap();     //
+    // let costs: HashMap<String, u64> = serde_json::from_reader(file).unwrap();     //     //
+    // Compare with costs computed by machine     //     let machine_costs =
+    // RiscvAir::<BabyBear>::costs();     //     assert_eq!(costs, machine_costs);
     //     // }
     //     #[test]
     //     #[ignore]
@@ -695,8 +695,8 @@ pub mod tests {
     //         utils::setup_logger();
     //         let shift_ops = [Opcode::SRL, Opcode::SRA, Opcode::SLL];
     //         let operands =
-    //             [(1, 1), (1234, 5678), (0xffff, 0xffff - 1), (u32::MAX - 1, u32::MAX), (u32::MAX, 0)];
-    //         for shift_op in shift_ops.iter() {
+    //             [(1, 1), (1234, 5678), (0xffff, 0xffff - 1), (u32::MAX - 1, u32::MAX), (u32::MAX,
+    // 0)];         for shift_op in shift_ops.iter() {
     //             for op in operands.iter() {
     //                 let instructions = vec![
     //                     Instruction::new(Opcode::ADD, 29, 0, op.0, false, true),
@@ -743,8 +743,8 @@ pub mod tests {
     //         let mul_ops = [Opcode::MUL, Opcode::MULH, Opcode::MULHU, Opcode::MULHSU];
     //         utils::setup_logger();
     //         let operands =
-    //             [(1, 1), (1234, 5678), (8765, 4321), (0xffff, 0xffff - 1), (u32::MAX - 1, u32::MAX)];
-    //         for mul_op in mul_ops.iter() {
+    //             [(1, 1), (1234, 5678), (8765, 4321), (0xffff, 0xffff - 1), (u32::MAX - 1,
+    // u32::MAX)];         for mul_op in mul_ops.iter() {
     //             for operand in operands.iter() {
     //                 let instructions = vec![
     //                     Instruction::new(Opcode::ADD, 29, 0, operand.0, false, true),
@@ -923,8 +923,8 @@ pub mod tests {
     //             bincode::deserialize(&serialized_vk).unwrap();
     //         assert_eq!(vk.pc_start, deserialized_vk.pc_start);
     //         assert_eq!(vk.chip_information.len(), deserialized_vk.chip_information.len());
-    //         for (a, b) in vk.chip_information.iter().zip(deserialized_vk.chip_information.iter()) {
-    //             assert_eq!(a.0, b.0);
+    //         for (a, b) in vk.chip_information.iter().zip(deserialized_vk.chip_information.iter())
+    // {             assert_eq!(a.0, b.0);
     //             assert_eq!(a.1.height, b.1.height);
     //             assert_eq!(a.1.width, b.1.width);
     //         }

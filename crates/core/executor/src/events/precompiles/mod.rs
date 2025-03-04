@@ -8,8 +8,7 @@ mod u256x2048_mul;
 mod uint256;
 
 use super::{MemoryLocalEvent, SyscallEvent};
-use crate::syscalls::SyscallCode;
-use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec};
+use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, syscalls::SyscallCode};
 pub use ec::*;
 pub use edwards::*;
 pub use fptower::*;
