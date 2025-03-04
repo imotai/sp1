@@ -273,7 +273,13 @@ impl<C: MachineProverComponents> ShardProver<C> {
         let mut log_degrees = BTreeMap::new();
         for air in self.chips().iter() {
             let main_trace = traces.get(&air.name()).unwrap().clone();
-            let log_degree = main_trace.num_real_entries().next_power_of_two().checked_ilog2();
+            let num_real_entries = main_trace.num_real_entries();
+            let log_degree = num_real_entries.checked_ilog2();
+            if let Some(log_degree) = log_degree {
+                assert_eq!(1 << log_degree, num_real_entries);
+            } else {
+                assert_eq!(num_real_entries, 0);
+            }
             log_degrees.insert(air.name(), log_degree);
             let name = air.name();
             let num_variables = main_trace.num_variables();
@@ -417,8 +423,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
         let alloc = self.trace_generator.allocator();
 
-        for (air, open_values) in self.chips().iter().zip_eq(shard_open_values.chips.iter()) {
-            tracing::info!("air: {:?}", air.name());
+        for open_values in shard_open_values.chips.iter() {
             let prep_local = &open_values.preprocessed.local;
             let main_local = &open_values.main.local;
             if !prep_local.is_empty() {

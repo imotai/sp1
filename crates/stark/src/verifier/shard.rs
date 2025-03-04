@@ -260,11 +260,11 @@ where
             rlc_eval = rlc_eval * lambda + zerocheck_eq_val * constraint_eval;
         }
 
-        // if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
-        //     return Err(ShardVerifierError::ConstraintsCheckFailed(
-        //         SumcheckError::InconsistencyWithEval,
-        //     ));
-        // }
+        if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
+            return Err(ShardVerifierError::ConstraintsCheckFailed(
+                SumcheckError::InconsistencyWithEval,
+            ));
+        }
 
         // Verify that the rlc claim is zero.
         if proof.zerocheck_proof.claimed_sum != C::EF::zero() {
@@ -336,13 +336,6 @@ where
                 challenger,
             )
             .map_err(ShardVerifierError::InvalidopeningArgument)?;
-
-        // Todo: put back to right before the sumcheck.
-        if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
-            return Err(ShardVerifierError::ConstraintsCheckFailed(
-                SumcheckError::InconsistencyWithEval,
-            ));
-        }
 
         Ok(())
     }
