@@ -20,9 +20,12 @@
 //! above, and also checks that index < t_{tab+1}. Assuming that c_{tab} is a power of 2, the
 //! multiplication `row * c_{tab}` can be done by bit-shift, and the addition is checked via the
 //! grade-school algorithm.
+<<<<<<< Updated upstream
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::iter::once;
+=======
+>>>>>>> Stashed changes
 
 use rayon::prelude::*;
 
@@ -34,13 +37,19 @@ use slop_utils::log2_ceil_usize;
 use slop_multilinear::{Mle, Point};
 
 /// A struct recording the state of the memory of the branching program. Because the program performs
-/// a three-way addition and one u32 comparison, the memory needed is a carry (which lies in {0,1,2})
+/// a two-way addition and one u32 comparison, the memory needed is a carry (which lies in {0,1})
 /// and a boolean to store the comparison of the u32s up to the current bit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MemoryState {
     pub carry: bool,
 
     pub comparison_so_far: bool,
+}
+
+impl MemoryState {
+    fn get_index(&self) -> usize {
+        (self.carry as usize) + ((self.comparison_so_far as usize) << 1)
+    }
 }
 
 impl MemoryState {
@@ -184,15 +193,12 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
-                let mut state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
+                let mut state_by_state_results: [K; 4] = [K::one(), K::one(), K::one(), K::one()];
 
                 // Initialize the state-by-state results for the last layer of the branching
                 // program, namely the success state returns 1 and all other states return 0.
                 for memory_state in all_memory_states().iter() {
-                    state_by_state_results.insert(
-                        StateOrFail::State(*memory_state),
-                        if memory_state == &MemoryState::success() { K::one() } else { K::zero() },
-                    );
+                    state_by_state_results[memory_state.get_index()] = K::one();
                 }
 
                 // The program below reads only the first log_m +1 bits of z_row, but z_row could in theory
@@ -210,8 +216,8 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
                 // The dynamic programming algorithm to output the result of the branching
                 // iterates over the layers of the branching program in reverse order.
                 for layer in (0..log_m + 1).rev() {
-                    let mut new_state_by_state_results: BTreeMap<StateOrFail, K> = BTreeMap::new();
-                    new_state_by_state_results.insert(StateOrFail::Fail, K::zero());
+                    let mut new_state_by_state_results: [K; 4] =
+                        [K::zero(), K::zero(), K::zero(), K::zero()];
 
                     // We assume that bits are aligned in big-endian order. The algorithm,
                     // in the ith layer, looks at the ith least significant bit, which is
@@ -228,9 +234,10 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
 
                     // For each memory state in the new layer, compute the result of the branching
                     // program that starts at that memory state and in the current layer.
-                    for memory_state in &memory_states {
-                        let mut accum = K::zero();
 
+                    let mut input_val_accumulators: [K; 4] =
+                        [K::zero(), K::zero(), K::zero(), K::zero()];
+                    for memory_state in &memory_states {
                         // For each possible bit state, compute the result of the branching
                         // program transition function and modify the accumulator accordingly.
                         for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
@@ -238,19 +245,20 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
 
                             let state_or_fail = transition_function(*bit_state, *memory_state);
 
-                            // TODO: Group these by target.
-                            accum += match state_or_fail {
-                                StateOrFail::State(state) => {
-                                    elem.clone()
-                                        * state_by_state_results
-                                            .get(&StateOrFail::State(state))
-                                            .unwrap()
-                                            .clone()
-                                }
-                                StateOrFail::Fail => K::zero(),
-                            };
+                            if let StateOrFail::State(_state) = state_or_fail {
+                                input_val_accumulators[memory_state.get_index()] += elem.clone();
+                            }
+                            // If the state is a fail state, we don't needß to add anything to the accumulator.
                         }
-                        new_state_by_state_results.insert(StateOrFail::State(*memory_state), accum);
+
+                        let mut accum = K::zero();
+                        for (i, input_val_accumulator) in input_val_accumulators.iter().enumerate()
+                        {
+                            accum +=
+                                input_val_accumulator.clone() * state_by_state_results[i].clone();
+                        }
+
+                        new_state_by_state_results[memory_state.get_index()] = accum;
                     }
                     state_by_state_results = new_state_by_state_results;
                 }
@@ -259,7 +267,7 @@ impl<K: AbstractField + 'static + Send> JaggedLittlePolynomialVerifierParams<K> 
                 // multiplications.
                 z_row_correction
                     * c_tab_correction.clone()
-                    * state_by_state_results[&StateOrFail::State(MemoryState::success())].clone()
+                    * state_by_state_results[MemoryState::success().get_index()].clone()
             })
             .sum()
     }
