@@ -13,7 +13,7 @@ use slop_algebra::Field;
 use slop_alloc::{Backend, CanCopyFrom, CpuBackend, GLOBAL_CPU_BACKEND};
 use slop_multilinear::{Mle, MleBaseBackend, PaddedMle, ZeroEvalBackend};
 use slop_tensor::Tensor;
-use tokio::sync::{mpsc::Sender, oneshot};
+use tokio::sync::{mpsc::Sender, oneshot, Semaphore};
 
 use crate::{air::MachineAir, Machine, MachineRecord};
 
@@ -76,6 +76,7 @@ pub trait TraceGenerator<F: Field, A: MachineAir<F>, B: Backend>: 'static + Send
         record: A::Record,
         max_log_row_count: usize,
         output: &Sender<ShardData<F, B>>,
+        prover_permits: Arc<Semaphore>,
     ) -> impl Future<Output = ()> + Send;
 }
 
@@ -119,6 +120,7 @@ where
         record: A::Record,
         max_log_row_count: usize,
         output: &Sender<ShardData<F, B>>,
+        prover_permits: Arc<Semaphore>,
     ) {
         // Get the public values from the record.
         let public_values = record.public_values::<F>();
@@ -147,8 +149,9 @@ where
         });
         // Wait for the traces to be generated and copy them to the target backend.
         let named_traces = rx.await.unwrap();
-        // Wait for the device to be available.
-        let permit = output.reserve().await.unwrap();
+        // Wait for a prover to be available.
+        let permit = prover_permits.acquire_owned().await.unwrap();
+        // Copy the traces to the target backend.
         let named_traces =
             join_all(named_traces.into_iter().map(|(name, (trace, num_polynomials))| async move {
                 let trace = OptionFuture::from(trace.map(|tr| self.trace_allocator.copy_into(tr)))
@@ -172,8 +175,8 @@ where
             .into_iter()
             .collect::<BTreeMap<_, _>>();
         let traces = Traces { named_traces };
-        let data = ShardData { traces, public_values };
-        permit.send(data);
+        let data = ShardData { traces, public_values, permit };
+        output.send(data).await.unwrap();
     }
 
     async fn generate_preprocessed_traces(

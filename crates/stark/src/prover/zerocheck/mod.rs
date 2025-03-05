@@ -1,7 +1,6 @@
 //! Zerocheck Sumcheck polynomial.
 
 mod fix_last_variable;
-mod folder;
 mod sum_as_poly;
 
 use p3_uni_stark::SymbolicAirBuilder;

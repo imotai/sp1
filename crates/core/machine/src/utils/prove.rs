@@ -247,75 +247,6 @@ where
 
     prover.prove_stream(pk, records_rx, proof_tx, challenger).await.unwrap();
     Ok(())
-
-    // // Spawn the trace generation tasks.
-    // let (data_tx, data_rx) = mpsc::channel::<ShardData<F, PC::B>>(opts.shard_batch_size);
-    // let records_rx = Arc::new(tokio::sync::Mutex::new(records_rx));
-    // for _ in 0..opts.trace_gen_workers {
-    //     let data_tx = data_tx.clone();
-    //     let prover = prover.clone();
-    //     let records_rx = records_rx.clone();
-    //     tokio::task::spawn(async move {
-    //         loop {
-    //             let mut received = { records_rx.lock().await };
-    //             if let Some(record) = received.recv().await {
-    //                 let shard = record.public_values.shard;
-    //                 prover
-    //                     .generate_traces(record, &data_tx)
-    //                     .instrument(tracing::debug_span!("generate traces", shard = shard))
-    //                     .await;
-    //             } else {
-    //                 break;
-    //             }
-    //         }
-    //     });
-    // }
-    // drop(data_tx);
-
-    // // Spawn the proving tasks.
-
-    // // Observe the proving key.
-    // pk.observe_into(&mut challenger);
-
-    // let prover = prover.clone();
-    // let proof_tx = proof_tx.clone();
-    // let data_rx = Arc::new(tokio::sync::Mutex::new(data_rx));
-    // let mut prover_handles = vec![];
-    // for _ in 0..opts.shard_batch_size {
-    //     let pk = pk.clone();
-    //     let mut challenger = challenger.clone();
-    //     let proof_tx = proof_tx.clone();
-    //     let data_rx = data_rx.clone();
-    //     let prover = prover.clone();
-    //     let pk = pk.clone();
-    //     let handle = tokio::task::spawn(async move {
-    //         loop {
-    //             let received = { data_rx.lock().await.recv().await };
-    //             if let Some(data) = received {
-    //                 let pv: &PublicValues<Word<F>, F> = data.public_values.as_slice().borrow();
-    //                 let shard = pv.shard.as_canonical_u32();
-    //                 let time = tokio::time::Instant::now();
-    //                 let proof = prover
-    //                     .prove_shard(&pk, data, &mut challenger)
-    //                     .instrument(tracing::debug_span!("prove shard", shard = shard))
-    //                     .await;
-    //                 tracing::info!("prove shard {} took {:?}", shard, time.elapsed());
-    //                 proof_tx.send(proof).unwrap();
-    //             } else {
-    //                 break;
-    //             }
-    //         }
-    //     });
-    //     prover_handles.push(handle);
-    // }
-    // drop(proof_tx);
-
-    // // Wait for the prover handles to finish.
-    // for handle in prover_handles {
-    //     handle.await.unwrap();
-    // }
-
-    // Ok(())
 }
 
 pub fn trace_checkpoint(
@@ -329,9 +260,6 @@ pub fn trace_checkpoint(
     let state: ExecutionState =
         bincode::deserialize_from(&mut reader).expect("failed to deserialize state");
     let mut runtime = Executor::recover(program, state, opts);
-    // runtime.maximal_shapes = shape_config.map(|config| {
-    //     config.maximal_core_shapes(opts.shard_size.ilog2() as usize).into_iter().collect()
-    // });
 
     // We already passed the deferred proof verifier when creating checkpoints, so the proofs were
     // already verified. So here we use a noop verifier to not print any warnings.

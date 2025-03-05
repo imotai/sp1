@@ -15,7 +15,7 @@ use slop_multilinear::{
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc::Sender, OwnedSemaphorePermit, Semaphore};
 use tracing::Instrument;
 
 use crate::{
@@ -103,14 +103,16 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
 }
 
 /// A collection of traces.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "F: Serialize, Tensor<F, B>: Serialize,"))]
-#[serde(bound(deserialize = "F: Deserialize<'de>, Tensor<F, B>: Deserialize<'de>, "))]
+#[derive(Debug)]
+// #[serde(bound(serialize = "F: Serialize, Tensor<F, B>: Serialize,"))]
+// #[serde(bound(deserialize = "F: Deserialize<'de>, Tensor<F, B>: Deserialize<'de>, "))]
 pub struct ShardData<F, B: Backend> {
     /// The traces.
     pub traces: Traces<F, B>,
     /// The public values.
     pub public_values: Vec<F>,
+    /// A permit for a prover resource.
+    pub permit: OwnedSemaphorePermit,
 }
 
 /// A prover for the hypercube STARK, given a configuration.
@@ -376,9 +378,16 @@ impl<C: MachineProverComponents> ShardProver<C> {
     }
 
     /// Generate the shard data
-    pub async fn generate_traces(&self, record: C::Record, tx: &Sender<ShardData<C::F, C::B>>) {
+    pub async fn generate_traces(
+        &self,
+        record: C::Record,
+        tx: &Sender<ShardData<C::F, C::B>>,
+        prover_permits: Arc<Semaphore>,
+    ) {
         // Generate the traces.
-        self.trace_generator.generate_main_traces(record, self.max_log_row_count(), tx).await;
+        self.trace_generator
+            .generate_main_traces(record, self.max_log_row_count(), tx, prover_permits)
+            .await;
     }
 
     /// Generate a proof for a given execution record.
@@ -388,7 +397,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         data: ShardData<C::F, C::B>,
         challenger: &mut C::Challenger,
     ) -> ShardProof<C::Config> {
-        let ShardData { traces, public_values } = data;
+        let ShardData { traces, public_values, permit } = data;
         // Observe the public values.
         challenger.observe_slice(&public_values[0..self.num_pv_elts()]);
 
@@ -460,6 +469,9 @@ impl<C: MachineProverComponents> ShardProver<C> {
             .instrument(tracing::debug_span!("prove evaluation claims"))
             .await
             .unwrap();
+
+        // Allow the permit to be used again.
+        drop(permit);
 
         ShardProof {
             main_commitment: main_commit,
