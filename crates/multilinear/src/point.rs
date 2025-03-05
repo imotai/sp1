@@ -200,6 +200,11 @@ impl<T> Point<T, CpuBackend> {
     pub fn add_dimension_back(&mut self, dim_val: T) {
         self.values.push(dim_val);
     }
+
+    #[inline]
+    pub fn extend(&mut self, other: &Self) {
+        self.values.extend_from_slice(&other.values);
+    }
 }
 
 impl<T> From<Vec<T>> for Point<T, CpuBackend> {

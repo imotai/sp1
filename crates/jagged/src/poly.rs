@@ -185,7 +185,7 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
             .map(|x| K::one() - x)
             .product();
 
-        let h_poly = HPolyParams::new(z_row.clone(), z_index.clone());
+        let h_poly = HPoly::new(z_row.clone(), z_index.clone());
 
         // Iterate over all column. For each column, we need to know the total length of all the columns
         // up to the current one, this number - 1, and the
@@ -369,16 +369,16 @@ impl ColRanges {
     }
 }
 
-struct HPolyParams<K: AbstractField> {
+pub(crate) struct HPoly<K: AbstractField> {
     z_row_rev: Point<K>,
     z_index_rev: Point<K>,
     memory_states: Vec<MemoryState>,
     bit_states: Vec<BitState<bool>>,
-    log_m: usize,
+    pub(crate) num_vars: usize,
 }
 
-impl<K: AbstractField + 'static> HPolyParams<K> {
-    fn new(z_row: Point<K>, z_index: Point<K>) -> Self {
+impl<K: AbstractField + 'static> HPoly<K> {
+    pub(crate) fn new(z_row: Point<K>, z_index: Point<K>) -> Self {
         let log_m = z_index.dimension();
 
         Self {
@@ -386,11 +386,11 @@ impl<K: AbstractField + 'static> HPolyParams<K> {
             z_index_rev: z_index.reversed(),
             memory_states: all_memory_states(),
             bit_states: all_bit_states(),
-            log_m,
+            num_vars: log_m,
         }
     }
 
-    fn eval(&self, prefix_sums: &Point<K>, next_prefix_sums: &Point<K>) -> K {
+    pub(crate) fn eval(&self, prefix_sums: &Point<K>, next_prefix_sums: &Point<K>) -> K {
         let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
         state_by_state_results[MemoryState::success().get_index()] = K::one();
 
@@ -399,7 +399,7 @@ impl<K: AbstractField + 'static> HPolyParams<K> {
 
         // The dynamic programming algorithm to output the result of the branching
         // iterates over the layers of the branching program in reverse order.
-        for layer in (0..self.log_m + 1).rev() {
+        for layer in (0..self.num_vars + 1).rev() {
             let mut new_state_by_state_results: [K; 4] =
                 [K::zero(), K::zero(), K::zero(), K::zero()];
 
