@@ -69,7 +69,7 @@ impl<K: Field + 'static> ComponentPoly<K> for BatchEvalPoly<K> {
 impl<K: Field + 'static> SumcheckPolyFirstRound<K> for BatchEvalPoly<K> {
     type NextRoundPoly = BatchEvalPoly<K>;
 
-    async fn fix_t_variables(self, alpha: K, t: usize) -> Self::NextRoundPoly {
+    async fn fix_t_variables(self, alpha: K, _t: usize) -> Self::NextRoundPoly {
         self.fix_last_variable(alpha).await
     }
 
@@ -103,9 +103,6 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // We can get a point from the eq root, and since f(0) + f(1) == claim, we can just
         // calculate f(0) and infer f(1).
 
-        println!("powers of beta: {:?}", self.powers_of_beta.len());
-        println!("merged prefix sums: {:?}", self.merged_prefix_sums.len());
-
         let (y_0, y_2) = self
             .powers_of_beta
             .iter()
@@ -134,9 +131,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
 
         let y_1 = claim.unwrap() - y_0;
 
-        let ret = interpolate_univariate_polynomial(&[K::zero(), K::one()], &[y_0, y_1]);
-        println!("Completed sum_as_poly_in_last_variable");
-        ret
+        interpolate_univariate_polynomial(&[K::zero(), K::one(), K::two()], &[y_0, y_1, y_2])
     }
 }
 
@@ -148,7 +143,7 @@ mod tests {
     use slop_baby_bear::BabyBear;
     use slop_challenger::DuplexChallenger;
     use slop_merkle_tree::{my_bb_16_perm, Perm};
-    use slop_sumcheck::reduce_sumcheck_to_evaluation;
+    use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
     use slop_utils::log2_ceil_usize;
 
     use super::*;
@@ -197,10 +192,9 @@ mod tests {
         let batch_eval_poly = BatchEvalPoly::new(z_row, z_index, prefix_sums, beta, 0);
 
         let default_perm = my_bb_16_perm();
-        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
+        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
 
-        println!("starting sumcheck");
-        reduce_sumcheck_to_evaluation(
+        let (sc_proof, _) = reduce_sumcheck_to_evaluation(
             vec![batch_eval_poly],
             &mut challenger,
             vec![expected_sum],
@@ -208,5 +202,14 @@ mod tests {
             EF::zero(),
         )
         .await;
+
+        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
+        partially_verify_sumcheck_proof(&sc_proof, &mut challenger).unwrap();
+
+        let (first_half_point, second_half_point) =
+            sc_proof.point_and_eval.0.split_at(sc_proof.point_and_eval.0.dimension() / 2);
+
+        let eval = h_poly.eval(&first_half_point, &second_half_point);
+        assert!(eval == sc_proof.point_and_eval.1);
     }
 }
