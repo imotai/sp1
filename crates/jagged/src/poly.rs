@@ -390,12 +390,12 @@ impl<K: AbstractField + 'static> HPoly<K> {
         }
     }
 
-    pub(crate) fn eval(&self, prefix_sums: &Point<K>, next_prefix_sums: &Point<K>) -> K {
+    pub(crate) fn eval(&self, prefix_sum: &Point<K>, next_prefix_sum: &Point<K>) -> K {
         let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
         state_by_state_results[MemoryState::success().get_index()] = K::one();
 
-        let prefix_sum_rev = prefix_sums.reversed();
-        let next_prefix_sum_rev = next_prefix_sums.reversed();
+        let prefix_sum_rev = prefix_sum.reversed();
+        let next_prefix_sum_rev = next_prefix_sum.reversed();
 
         // The dynamic programming algorithm to output the result of the branching
         // iterates over the layers of the branching program in reverse order.

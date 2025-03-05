@@ -1166,6 +1166,7 @@ dependencies = [
  "slop-commit",
  "slop-futures",
  "slop-matrix",
+ "slop-merkle-tree",
  "slop-multilinear",
  "slop-stacked",
  "slop-sumcheck",

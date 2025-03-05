@@ -1,8 +1,8 @@
 use itertools::Itertools;
-use slop_algebra::{Field, UnivariatePolynomial};
+use slop_algebra::{interpolate_univariate_polynomial, Field, UnivariatePolynomial};
 use slop_alloc::Buffer;
-use slop_multilinear::Point;
-use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase};
+use slop_multilinear::{Mle, Point};
+use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound};
 
 use crate::poly::HPoly;
 
@@ -56,13 +56,30 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
 
 impl<K: Field + 'static> SumcheckPolyBase for BatchEvalPoly<K> {
     fn num_variables(&self) -> u32 {
-        self.h_poly.num_vars as u32 * 2
+        (self.h_poly.num_vars as u32 + 1) * 2
     }
 }
 
 impl<K: Field + 'static> ComponentPoly<K> for BatchEvalPoly<K> {
     async fn get_component_poly_evals(&self) -> Vec<K> {
-        unimplemented!()
+        Vec::new()
+    }
+}
+
+impl<K: Field + 'static> SumcheckPolyFirstRound<K> for BatchEvalPoly<K> {
+    type NextRoundPoly = BatchEvalPoly<K>;
+
+    async fn fix_t_variables(self, alpha: K, t: usize) -> Self::NextRoundPoly {
+        self.fix_last_variable(alpha).await
+    }
+
+    async fn sum_as_poly_in_last_t_variables(
+        &self,
+        claim: Option<K>,
+        t: usize,
+    ) -> UnivariatePolynomial<K> {
+        assert!(t == 1);
+        self.sum_as_poly_in_last_variable(claim).await
     }
 }
 
@@ -86,36 +103,110 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // We can get a point from the eq root, and since f(0) + f(1) == claim, we can just
         // calculate f(0) and infer f(1).
 
+        println!("powers of beta: {:?}", self.powers_of_beta.len());
+        println!("merged prefix sums: {:?}", self.merged_prefix_sums.len());
+
         let (y_0, y_2) = self
             .powers_of_beta
             .iter()
-            .zip_eq(self.is_empty_col.iter())
             .zip_eq(self.merged_prefix_sums.iter())
-            .map(|((beta, is_empty), merged_prefix_sum)| {
+            .map(|(beta, merged_prefix_sum)| {
                 let func = |x: K| -> K {
-                    let (mut h_prefix_sum, eq_prefix_sum) =
+                    let (eq_prefix_sum, mut h_prefix_sum) =
                         merged_prefix_sum.split_at(self.round_num + 1);
 
                     let mut rho = self.rho.clone();
                     rho.add_dimension_back(x);
-                    let eq_eval = full_lagrange_eval(eq_prefix_sum, rho);
+                    let eq_eval = Mle::full_lagrange_eval(&eq_prefix_sum, &rho);
 
-                    h_prefix_sum.add_dimension_back(s);
+                    h_prefix_sum.add_dimension_back(x);
                     h_prefix_sum.extend(&self.rho);
                     let num_dimensions = h_prefix_sum.dimension();
-                    assert!(num_dimensions == self.h_poly.num_vars * 2);
                     let (h_left, h_right) = h_prefix_sum.split_at(num_dimensions / 2);
 
                     let h_eval = self.h_poly.eval(&h_left, &h_right);
-                    beta * h_eval * eq_eval
+                    *beta * h_eval * eq_eval
                 };
 
                 (func(K::zero()), func(K::two()))
             })
             .fold((K::zero(), K::zero()), |(y_0, y_1), (y_0_i, y_1_i)| (y_0 + y_0_i, y_1 + y_1_i));
 
-        let y_1 = *claim.unwrap() - y_0;
+        let y_1 = claim.unwrap() - y_0;
 
-        interpolate_univariate_polynomial(&[K::zero(), K::one(), K::two()], &[y_0, y_1, y_2])
+        let ret = interpolate_univariate_polynomial(&[K::zero(), K::one()], &[y_0, y_1]);
+        println!("Completed sum_as_poly_in_last_variable");
+        ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use rand::{thread_rng, Rng};
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_baby_bear::BabyBear;
+    use slop_challenger::DuplexChallenger;
+    use slop_merkle_tree::{my_bb_16_perm, Perm};
+    use slop_sumcheck::reduce_sumcheck_to_evaluation;
+    use slop_utils::log2_ceil_usize;
+
+    use super::*;
+
+    type F = BabyBear;
+    type EF = BinomialExtensionField<F, 4>;
+
+    #[tokio::test]
+    async fn test_batch_eval_poly() {
+        let row_counts = [12, 1, 2, 1, 17, 0];
+
+        let mut rng = thread_rng();
+
+        let mut prefix_sums = row_counts
+            .iter()
+            .scan(0, |state, row_count| {
+                let result = *state;
+                *state += row_count;
+                Some(result)
+            })
+            .collect::<Vec<_>>();
+
+        prefix_sums.push(*prefix_sums.last().unwrap() + row_counts.last().unwrap());
+        let log_m = log2_ceil_usize(*prefix_sums.last().unwrap());
+
+        let log_max_row_count = 7;
+
+        let z_row: Point<EF> = (0..log_max_row_count).map(|_| rng.gen::<EF>()).collect();
+        let z_index: Point<EF> = (0..log_m).map(|_| rng.gen::<EF>()).collect();
+        let beta = rng.gen::<EF>();
+        let beta_powers = beta.powers();
+
+        let h_poly = HPoly::new(z_row.clone(), z_index.clone());
+        let expected_sum = prefix_sums
+            .windows(2)
+            .zip(beta_powers)
+            .map(|(prefix_sum_range, beta_power)| {
+                let lower = Point::from_usize(prefix_sum_range[0], log_m + 1);
+                let upper = Point::from_usize(prefix_sum_range[1], log_m + 1);
+
+                let h_eval = h_poly.eval(&lower, &upper);
+                beta_power * h_eval
+            })
+            .sum::<EF>();
+
+        let batch_eval_poly = BatchEvalPoly::new(z_row, z_index, prefix_sums, beta, 0);
+
+        let default_perm = my_bb_16_perm();
+        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
+
+        println!("starting sumcheck");
+        reduce_sumcheck_to_evaluation(
+            vec![batch_eval_poly],
+            &mut challenger,
+            vec![expected_sum],
+            1,
+            EF::zero(),
+        )
+        .await;
     }
 }
