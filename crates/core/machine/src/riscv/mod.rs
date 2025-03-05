@@ -859,7 +859,7 @@ pub mod tests {
 
         let program = Arc::new(program);
         let (pk, vk) = prover.setup(program.clone()).await;
-        let proof = prove_core(
+        let (proof, _) = prove_core(
             Arc::new(prover),
             Arc::new(pk),
             program,
@@ -898,7 +898,7 @@ pub mod tests {
         let prover = CpuProver::new(verifier.clone());
         let challenger = verifier.pcs_verifier.challenger();
         let (pk, vk) = prover.setup(program.clone()).await;
-        let proof = prove_core(
+        let (proof, _) = prove_core(
             Arc::new(prover),
             Arc::new(pk),
             program,

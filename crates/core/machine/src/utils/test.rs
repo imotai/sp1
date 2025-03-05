@@ -87,7 +87,7 @@ pub async fn run_test_core(
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
     let challenger = verifier.pcs_verifier.challenger();
-    let proof = prove_core(
+    let (proof, _) = prove_core(
         Arc::new(prover),
         Arc::new(pk),
         runtime.program.clone(),

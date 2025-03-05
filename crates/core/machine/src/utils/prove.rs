@@ -149,14 +149,14 @@ pub async fn prove_core<F, PC>(
     opts: SP1CoreOpts,
     context: SP1Context<'static>,
     challenger: PC::Challenger,
-) -> Result<MachineProof<PC::Config>, SP1CoreProverError>
+) -> Result<(MachineProof<PC::Config>, u64), SP1CoreProverError>
 where
     PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
     F: PrimeField32,
 {
     let (proof_tx, mut proof_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    prove_core_stream(prover, pk, program, stdin, opts, context, proof_tx, challenger)
+    let cycles = prove_core_stream(prover, pk, program, stdin, opts, context, proof_tx, challenger)
         .await
         .unwrap();
 
@@ -168,7 +168,7 @@ where
     let shard_proofs = shard_proofs.into_values().collect();
     let proof = MachineProof { shard_proofs };
 
-    Ok(proof)
+    Ok((proof, cycles))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -182,7 +182,7 @@ pub async fn prove_core_stream<F, PC>(
     context: SP1Context<'static>,
     proof_tx: UnboundedSender<ShardProof<PC::Config>>,
     challenger: PC::Challenger,
-) -> Result<(), SP1CoreProverError>
+) -> Result<u64, SP1CoreProverError>
 where
     PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
     F: PrimeField32,
@@ -245,8 +245,12 @@ where
     drop(records_tx);
     drop(deferred);
 
+    // Run the prover and wait for all proofs to be sent.
     prover.prove_stream(pk, records_rx, proof_tx, challenger).await.unwrap();
-    Ok(())
+    // Get the cycles from the aggregate report.
+    let report_aggregate = report_aggregate.lock().unwrap();
+    let cycles = report_aggregate.total_instruction_count();
+    Ok(cycles)
 }
 
 pub fn trace_checkpoint(
