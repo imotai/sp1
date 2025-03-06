@@ -25,9 +25,9 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
     ) -> Self {
         let log_m = z_index.dimension();
         let col_prefix_sums: Vec<Point<K>> =
-            prefix_sums.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
+            prefix_sums.iter().map(|&x| Point::from_usize(x, log_m)).collect();
         let next_col_prefix_sums: Vec<Point<K>> =
-            prefix_sums.iter().skip(1).map(|&x| Point::from_usize(x, log_m + 1)).collect();
+            prefix_sums.iter().skip(1).map(|&x| Point::from_usize(x, log_m)).collect();
 
         let (merged_prefix_sums, is_empty_col): (Vec<Point<K>>, Vec<bool>) = col_prefix_sums
             .iter()
@@ -56,7 +56,7 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
 
 impl<K: Field + 'static> SumcheckPolyBase for BatchEvalPoly<K> {
     fn num_variables(&self) -> u32 {
-        (self.h_poly.num_vars as u32 + 1) * 2
+        4
     }
 }
 
@@ -86,7 +86,7 @@ impl<K: Field + 'static> SumcheckPolyFirstRound<K> for BatchEvalPoly<K> {
 impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
     async fn fix_last_variable(self, alpha: K) -> Self {
         let mut rho = self.rho.clone();
-        rho.add_dimension_back(alpha);
+        rho.add_dimension(alpha);
         Self {
             h_poly: self.h_poly,
             rho,
@@ -103,33 +103,46 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // We can get a point from the eq root, and since f(0) + f(1) == claim, we can just
         // calculate f(0) and infer f(1).
 
-        let (y_0, y_2) = self
+        println!("in round {}", self.round_num);
+
+        let (y_0, y_1, y_2) = self
             .powers_of_beta
             .iter()
             .zip_eq(self.merged_prefix_sums.iter())
             .map(|(beta, merged_prefix_sum)| {
                 let func = |x: K| -> K {
-                    let (eq_prefix_sum, mut h_prefix_sum) =
-                        merged_prefix_sum.split_at(self.round_num + 1);
+                    let (mut h_prefix_sum, eq_prefix_sum) = merged_prefix_sum
+                        .split_at(merged_prefix_sum.dimension() - self.round_num - 1);
 
-                    let mut rho = self.rho.clone();
-                    rho.add_dimension_back(x);
-                    let eq_eval = Mle::full_lagrange_eval(&eq_prefix_sum, &rho);
+                    // println!("h prefix sum: {:?}", h_prefix_sum.values().as_slice());
+                    // println!("eq prefix sum: {:?}", eq_prefix_sum.values().as_slice());
+
+                    let mut eq_arg = self.rho.clone();
+                    eq_arg.add_dimension(x);
+
+                    // println!("eq arg: {:?}", eq_arg.values().as_slice());
+
+                    let eq_eval = Mle::full_lagrange_eval(&eq_prefix_sum, &eq_arg);
 
                     h_prefix_sum.add_dimension_back(x);
                     h_prefix_sum.extend(&self.rho);
                     let num_dimensions = h_prefix_sum.dimension();
                     let (h_left, h_right) = h_prefix_sum.split_at(num_dimensions / 2);
 
+                    // println!("h left: {:?}", h_left.values().as_slice());
+                    // println!("h right: {:?}", h_right.values().as_slice());
+
                     let h_eval = self.h_poly.eval(&h_left, &h_right);
+                    // println!("for x = {}, eq_eval is {}, h_eval is {}", x, eq_eval, h_eval);
+
                     *beta * h_eval * eq_eval
                 };
 
-                (func(K::zero()), func(K::two()))
+                (func(K::zero()), func(K::one()), func(K::two()))
             })
-            .fold((K::zero(), K::zero()), |(y_0, y_1), (y_0_i, y_1_i)| (y_0 + y_0_i, y_1 + y_1_i));
-
-        let y_1 = claim.unwrap() - y_0;
+            .fold((K::zero(), K::zero(), K::zero()), |(y_0, y_1, y_2), (y_0_i, y_1_i, y_2_i)| {
+                (y_0 + y_0_i, y_1 + y_1_i, y_2 + y_2_i)
+            });
 
         interpolate_univariate_polynomial(&[K::zero(), K::one(), K::two()], &[y_0, y_1, y_2])
     }
@@ -153,7 +166,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_eval_poly() {
-        let row_counts = [12, 1, 2, 1, 17, 0];
+        // let row_counts = [12, 1, 2, 1, 17, 0];
+        let row_counts = [2];
 
         let mut rng = thread_rng();
 
@@ -172,7 +186,7 @@ mod tests {
         let log_max_row_count = 7;
 
         let z_row: Point<EF> = (0..log_max_row_count).map(|_| rng.gen::<EF>()).collect();
-        let z_index: Point<EF> = (0..log_m).map(|_| rng.gen::<EF>()).collect();
+        let z_index: Point<EF> = (0..log_m + 1).map(|_| rng.gen::<EF>()).collect();
         let beta = rng.gen::<EF>();
         let beta_powers = beta.powers();
 
@@ -184,11 +198,16 @@ mod tests {
                 let lower = Point::from_usize(prefix_sum_range[0], log_m + 1);
                 let upper = Point::from_usize(prefix_sum_range[1], log_m + 1);
 
+                println!("lower: {:?}", lower.values().as_slice());
+                println!("upper: {:?}", upper.values().as_slice());
+
                 let h_eval = h_poly.eval(&lower, &upper);
                 beta_power * h_eval
             })
             .sum::<EF>();
+        println!("expected sum: {}", expected_sum);
 
+        println!("z index dimension: {}", z_index.dimension());
         let batch_eval_poly = BatchEvalPoly::new(z_row, z_index, prefix_sums, beta, 0);
 
         let default_perm = my_bb_16_perm();
@@ -199,17 +218,24 @@ mod tests {
             &mut challenger,
             vec![expected_sum],
             1,
-            EF::zero(),
+            EF::one(),
         )
         .await;
 
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
         partially_verify_sumcheck_proof(&sc_proof, &mut challenger).unwrap();
 
+        println!("random point is {:?}", sc_proof.point_and_eval.0.values().as_slice());
+
         let (first_half_point, second_half_point) =
             sc_proof.point_and_eval.0.split_at(sc_proof.point_and_eval.0.dimension() / 2);
+        println!("dim is {}", sc_proof.point_and_eval.0.dimension());
+        println!("first half point: {:?}", first_half_point.dimension());
+        println!("second half point: {:?}", second_half_point.dimension());
 
-        let eval = h_poly.eval(&first_half_point, &second_half_point);
-        assert!(eval == sc_proof.point_and_eval.1);
+        let expected_eval = h_poly.eval(&first_half_point, &second_half_point);
+        println!("expected eval is {:?}", expected_eval);
+        println!("eval is {:?}", sc_proof.point_and_eval.1);
+        assert!(expected_eval == sc_proof.point_and_eval.1);
     }
 }

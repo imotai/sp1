@@ -395,6 +395,19 @@ impl<K: AbstractField + 'static> HPoly<K> {
     }
 
     pub(crate) fn eval(&self, prefix_sum: &Point<K>, next_prefix_sum: &Point<K>) -> K {
+        assert!(
+            prefix_sum.dimension() == next_prefix_sum.dimension(),
+            "prefix_sum has dimension {} but next_prefix_sum has dimension {}",
+            prefix_sum.dimension(),
+            next_prefix_sum.dimension()
+        );
+        assert!(
+            next_prefix_sum.dimension() == self.z_index_rev.dimension(),
+            "next_prefix_sum has dimension {} but z_index_rev has dimension {}",
+            next_prefix_sum.dimension(),
+            self.z_index_rev.dimension()
+        );
+
         let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
         state_by_state_results[MemoryState::success().get_index()] = K::one();
 
@@ -520,13 +533,16 @@ pub mod tests {
                                 verifier_params.full_jagged_little_polynomial_evaluation(
                                     &z_row,
                                     &z_col,
-                                    &Point::<F>::from_usize(other_index, log_m)
+                                    &Point::<F>::from_usize(other_index, log_m + 1)
                                 ) == F::zero()
                             );
                             assert_eq!(
                                 prover_params
                                     .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                                    .blocking_eval_at(&Point::<F>::from_usize(other_index, log_m))
+                                    .blocking_eval_at(&Point::<F>::from_usize(
+                                        other_index,
+                                        log_m + 1
+                                    ))
                                     .to_vec()[0],
                                 F::zero()
                             );
@@ -553,14 +569,14 @@ pub mod tests {
                     let wrong_result = verifier_params.full_jagged_little_polynomial_evaluation(
                         &z_row,
                         &z_col,
-                        &Point::<F>::from_usize(index ^ 1, log_num_cols + 1),
+                        &Point::<F>::from_usize(index ^ 1, log_m + 1),
                     );
                     assert_eq!(wrong_result, F::zero());
 
                     let mut rng = rand::thread_rng();
 
                     for _ in 0..3 {
-                        let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
+                        let z_index: Point<F> = (0..log_m + 1).map(|_| rng.gen::<F>()).collect();
                         assert_eq!(
                             verifier_params
                                 .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
@@ -608,7 +624,7 @@ pub mod tests {
             for new_row in 0..(1 << log_max_row_count) {
                 for new_col in 0..row_counts.len() {
                     if !(new_col == col && new_row == row) {
-                        let z_index = Point::from_usize(index, log_m);
+                        let z_index = Point::from_usize(index, log_m + 1);
 
                         let new_z_row = Point::from_usize(new_row, log_max_row_count);
                         let new_z_col =
@@ -640,7 +656,7 @@ pub mod tests {
                         verifier_params.full_jagged_little_polynomial_evaluation(
                             &z_row,
                             &z_col,
-                            &Point::from_usize(other_index, log_m)
+                            &Point::from_usize(other_index, log_m + 1)
                         ) == F::zero()
                     );
 
@@ -666,7 +682,7 @@ pub mod tests {
         let verifier_params = params.clone().into_verifier_params();
 
         for _ in 0..100 {
-            let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
+            let z_index: Point<F> = (0..log_m + 1).map(|_| rng.gen::<F>()).collect();
             assert_eq!(
                 verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                 params
@@ -694,7 +710,7 @@ pub mod tests {
 
                     let verifier_params = params.clone().into_verifier_params();
 
-                    let z_index = Point::from_usize(index, log_m);
+                    let z_index = Point::from_usize(index, log_m + 1);
                     assert_eq!(
                         verifier_params
                             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
@@ -704,7 +720,7 @@ pub mod tests {
                             .to_vec()[0]
                     );
 
-                    let z_index = (0..log_m).map(|_| rng.gen::<F>()).collect();
+                    let z_index = (0..log_m + 1).map(|_| rng.gen::<F>()).collect();
                     assert_eq!(
                         verifier_params
                             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
