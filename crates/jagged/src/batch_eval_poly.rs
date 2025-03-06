@@ -27,7 +27,7 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
         let col_prefix_sums: Vec<Point<K>> =
             prefix_sums.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
         let next_col_prefix_sums: Vec<Point<K>> =
-            prefix_sums.iter().skip(1).map(|&x| Point::from_usize(x - 1, log_m + 1)).collect();
+            prefix_sums.iter().skip(1).map(|&x| Point::from_usize(x, log_m + 1)).collect();
 
         let (merged_prefix_sums, is_empty_col): (Vec<Point<K>>, Vec<bool>) = col_prefix_sums
             .iter()

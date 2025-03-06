@@ -53,6 +53,10 @@ impl MemoryState {
     fn success() -> Self {
         MemoryState { carry: false, comparison_so_far: true }
     }
+
+    fn initial_state() -> Self {
+        MemoryState { carry: false, comparison_so_far: false }
+    }
 }
 
 /// An enum to represent a potentially failed computation at a layer of the branching program.
@@ -296,7 +300,7 @@ impl JaggedLittlePolynomialProverParams {
             .col_prefix_sums_usize
             .iter()
             .skip(1)
-            .map(|&x| Point::from_usize(x - 1, log_m + 1))
+            .map(|&x| Point::from_usize(x, log_m + 1))
             .collect();
         JaggedLittlePolynomialVerifierParams {
             col_prefix_sums,
@@ -448,7 +452,7 @@ impl<K: AbstractField + 'static> HPoly<K> {
             state_by_state_results = new_state_by_state_results;
         }
 
-        state_by_state_results[MemoryState::success().get_index()].clone()
+        state_by_state_results[MemoryState::initial_state().get_index()].clone()
     }
 }
 
