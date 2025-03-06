@@ -14,6 +14,8 @@ struct BatchEvalPoly<K: Field + 'static> {
     is_empty_col: Vec<bool>,
     z_col_eq_vals: Vec<K>,
     round_num: usize,
+    eq_adjustments: Vec<K>,
+    half: K,
 }
 
 impl<K: Field + 'static> BatchEvalPoly<K> {
@@ -23,6 +25,8 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
         z_index: Point<K>,
         prefix_sums: Vec<usize>,
         round_num: usize,
+        eq_adjustments: Vec<K>,
+        half: K,
     ) -> Self {
         let log_m = z_index.dimension();
         let col_prefix_sums: Vec<Point<K>> =
@@ -42,12 +46,15 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
             .unzip();
 
         let num_polys = prefix_sums.len();
-        let z_col_eq_vals = (0..num_polys)
+        let z_col_eq_vals = (0..num_polys - 1)
             .map(|c| {
                 let c_point = Point::from_usize(c, z_col.dimension());
                 Mle::full_lagrange_eval(&c_point, &z_col)
             })
             .collect_vec();
+
+        assert!(merged_prefix_sums.len() == z_col_eq_vals.len());
+        assert!(eq_adjustments.len() == z_col_eq_vals.len());
 
         Self {
             h_poly: HPoly::new(z_row, z_index),
@@ -57,6 +64,8 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
             round_num,
             is_empty_col,
             z_col_eq_vals,
+            eq_adjustments,
+            half,
         }
     }
 }
@@ -94,6 +103,21 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
     async fn fix_last_variable(self, alpha: K) -> Self {
         let mut rho = self.rho.clone();
 
+        let merged_prefix_sum_dim = self.merged_prefix_sums[0].dimension();
+
+        let new_eq_adjustments = self
+            .merged_prefix_sums
+            .iter()
+            .zip_eq(self.eq_adjustments.iter())
+            .map(|(merged_prefix_sum, eq_adjustment)| {
+                let x_i = merged_prefix_sum
+                    .values()
+                    .get(merged_prefix_sum_dim - 1 - self.round_num)
+                    .unwrap();
+                *eq_adjustment * ((alpha * *x_i) + (K::one() - alpha) * (K::one() - *x_i))
+            })
+            .collect_vec();
+
         rho.add_dimension(alpha);
         Self {
             h_poly: self.h_poly,
@@ -103,6 +127,8 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
             round_num: self.round_num + 1,
             is_empty_col: self.is_empty_col,
             z_col_eq_vals: self.z_col_eq_vals,
+            eq_adjustments: new_eq_adjustments,
+            half: self.half,
         }
     }
 
@@ -111,20 +137,22 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // at 3 points.
         // We can get a point from the eq root, and since f(0) + f(1) == claim, we can just
         // calculate f(0) and infer f(1).
-        let (y_0, y_2) = self
+        let (y_0, y_half) = self
             .merged_prefix_sums
             .iter()
-            .zip(self.z_col_eq_vals.iter())
-            .map(|(merged_prefix_sum, z_col_eq_val)| {
-                let func = |x: K| -> K {
-                    let (mut h_prefix_sum, eq_prefix_sum) = merged_prefix_sum
-                        .split_at(merged_prefix_sum.dimension() - self.round_num - 1);
+            .zip_eq(self.z_col_eq_vals.iter())
+            .zip_eq(self.eq_adjustments.iter())
+            .map(|((merged_prefix_sum, z_col_eq_val), eq_adjustment)| {
+                let (h_prefix_sum, eq_prefix_sum) =
+                    merged_prefix_sum.split_at(merged_prefix_sum.dimension() - self.round_num - 1);
+                let eq_prefix_sum_value = *eq_prefix_sum.values()[0];
+                let eq_val_0 = K::one() - eq_prefix_sum_value;
+                let eq_val_half = K::two().inverse();
 
-                    let mut eq_arg = self.rho.clone();
-                    eq_arg.add_dimension(x);
+                let func = |x: K, eq_val: K| -> K {
+                    let eq_eval = *eq_adjustment * eq_val;
 
-                    let eq_eval = Mle::full_lagrange_eval(&eq_prefix_sum, &eq_arg);
-
+                    let mut h_prefix_sum = h_prefix_sum.clone();
                     h_prefix_sum.add_dimension_back(x);
                     h_prefix_sum.extend(&self.rho);
                     let num_dimensions = h_prefix_sum.dimension();
@@ -135,13 +163,16 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
                     *z_col_eq_val * h_eval * eq_eval
                 };
 
-                (func(K::zero()), func(K::two()))
+                (func(K::zero(), eq_val_0), func(K::two().inverse(), eq_val_half))
             })
             .fold((K::zero(), K::zero()), |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i));
 
         let y_1 = claim.unwrap() - y_0;
 
-        interpolate_univariate_polynomial(&[K::zero(), K::one(), K::two()], &[y_0, y_1, y_2])
+        interpolate_univariate_polynomial(
+            &[K::zero(), K::one(), K::two().inverse()],
+            &[y_0, y_1, y_half],
+        )
     }
 }
 
@@ -210,8 +241,15 @@ mod tests {
         let expected_sum =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 
-        let batch_eval_poly =
-            BatchEvalPoly::new(z_row.clone(), z_col.clone(), z_index.clone(), prefix_sums, 0);
+        let batch_eval_poly = BatchEvalPoly::new(
+            z_row.clone(),
+            z_col.clone(),
+            z_index.clone(),
+            prefix_sums.clone(),
+            0,
+            vec![EF::one(); prefix_sums.len() - 1],
+            EF::two().inverse(),
+        );
 
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
