@@ -9,18 +9,19 @@ use crate::poly::HPoly;
 struct BatchEvalPoly<K: Field + 'static> {
     h_poly: HPoly<K>,
     rho: Point<K>,
+    z_col: Point<K>,
     merged_prefix_sums: Vec<Point<K>>,
-    powers_of_beta: Vec<K>,
     is_empty_col: Vec<bool>,
+    z_col_eq_vals: Vec<K>,
     round_num: usize,
 }
 
 impl<K: Field + 'static> BatchEvalPoly<K> {
     pub fn new(
         z_row: Point<K>,
+        z_col: Point<K>,
         z_index: Point<K>,
         prefix_sums: Vec<usize>,
-        beta: K,
         round_num: usize,
     ) -> Self {
         let log_m = z_index.dimension();
@@ -40,16 +41,22 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
             })
             .unzip();
 
-        let num_polys = merged_prefix_sums.len();
-        let powers_of_beta = beta.powers().take(num_polys).collect();
+        let num_polys = prefix_sums.len();
+        let z_col_eq_vals = (0..num_polys)
+            .map(|c| {
+                let c_point = Point::from_usize(c, z_col.dimension());
+                Mle::full_lagrange_eval(&c_point, &z_col)
+            })
+            .collect_vec();
 
         Self {
             h_poly: HPoly::new(z_row, z_index),
             rho: Point::new(Buffer::default()),
+            z_col,
             merged_prefix_sums,
-            powers_of_beta,
             round_num,
             is_empty_col,
+            z_col_eq_vals,
         }
     }
 }
@@ -86,14 +93,16 @@ impl<K: Field + 'static> SumcheckPolyFirstRound<K> for BatchEvalPoly<K> {
 impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
     async fn fix_last_variable(self, alpha: K) -> Self {
         let mut rho = self.rho.clone();
+
         rho.add_dimension(alpha);
         Self {
             h_poly: self.h_poly,
             rho,
             merged_prefix_sums: self.merged_prefix_sums,
-            powers_of_beta: self.powers_of_beta,
+            z_col: self.z_col,
             round_num: self.round_num + 1,
             is_empty_col: self.is_empty_col,
+            z_col_eq_vals: self.z_col_eq_vals,
         }
     }
 
@@ -103,10 +112,10 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // We can get a point from the eq root, and since f(0) + f(1) == claim, we can just
         // calculate f(0) and infer f(1).
         let (y_0, y_2) = self
-            .powers_of_beta
+            .merged_prefix_sums
             .iter()
-            .zip_eq(self.merged_prefix_sums.iter())
-            .map(|(beta, merged_prefix_sum)| {
+            .zip(self.z_col_eq_vals.iter())
+            .map(|(merged_prefix_sum, z_col_eq_val)| {
                 let func = |x: K| -> K {
                     let (mut h_prefix_sum, eq_prefix_sum) = merged_prefix_sum
                         .split_at(merged_prefix_sum.dimension() - self.round_num - 1);
@@ -123,7 +132,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
 
                     let h_eval = self.h_poly.eval(&h_left, &h_right);
 
-                    *beta * h_eval * eq_eval
+                    *z_col_eq_val * h_eval * eq_eval
                 };
 
                 (func(K::zero()), func(K::two()))
@@ -181,22 +190,29 @@ mod tests {
         let log_max_row_count = 7;
 
         let z_row: Point<EF> = (0..log_max_row_count).map(|_| rng.gen::<EF>()).collect();
+        let z_col: Point<EF> =
+            (0..log2_ceil_usize(row_counts.len())).map(|_| rng.gen::<EF>()).collect();
         let z_index: Point<EF> = (0..log_m + 1).map(|_| rng.gen::<EF>()).collect();
-        let beta = rng.gen::<EF>();
-        let beta_powers = beta.powers();
+
+        let z_col_eq_vals = (0..row_counts.len())
+            .map(|c| {
+                let c_point = Point::from_usize(c, z_col.dimension());
+                Mle::full_lagrange_eval(&c_point, &z_col)
+            })
+            .collect_vec();
 
         let h_poly = HPoly::new(z_row.clone(), z_index.clone());
         let expected_sum = merged_prefix_sums
             .iter()
-            .zip(beta_powers)
-            .map(|(merged_prefix_sum, beta_power)| {
+            .zip(z_col_eq_vals.iter())
+            .map(|(merged_prefix_sum, z_col_eq_val)| {
                 let (lower, upper) = merged_prefix_sum.split_at(merged_prefix_sum.dimension() / 2);
                 let h_eval = h_poly.eval(&lower, &upper);
-                beta_power * h_eval
+                *z_col_eq_val * h_eval
             })
             .sum::<EF>();
 
-        let batch_eval_poly = BatchEvalPoly::new(z_row, z_index.clone(), prefix_sums, beta, 0);
+        let batch_eval_poly = BatchEvalPoly::new(z_row, z_col, z_index.clone(), prefix_sums, 0);
 
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
@@ -217,15 +233,14 @@ mod tests {
 
         let out_of_domain_point = sc_proof.point_and_eval.0;
 
-        let beta_powers = beta.powers();
         let expected_eval = merged_prefix_sums
             .iter()
-            .zip(beta_powers)
-            .map(|(merged_prefix_sum, beta_power)| {
+            .zip(z_col_eq_vals.iter())
+            .map(|(merged_prefix_sum, z_col_eq_val)| {
                 let (lower, upper) =
                     out_of_domain_point.split_at(out_of_domain_point.dimension() / 2);
                 let h_eval = h_poly.eval(&lower, &upper);
-                beta_power
+                *z_col_eq_val
                     * Mle::full_lagrange_eval(merged_prefix_sum, &out_of_domain_point)
                     * h_eval
             })
