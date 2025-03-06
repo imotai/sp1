@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use slop_algebra::{interpolate_univariate_polynomial, Field, UnivariatePolynomial};
 use slop_alloc::Buffer;
 use slop_multilinear::{Mle, Point};
@@ -6,7 +7,7 @@ use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase, SumcheckPolyF
 
 use crate::poly::HPoly;
 
-struct BatchEvalPoly<K: Field + 'static> {
+pub(crate) struct BatchEvalPoly<K: Field + 'static> {
     h_poly: HPoly<K>,
     rho: Point<K>,
     z_col: Point<K>,
@@ -24,9 +25,6 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
         z_col: Point<K>,
         z_index: Point<K>,
         prefix_sums: Vec<usize>,
-        round_num: usize,
-        eq_adjustments: Vec<K>,
-        half: K,
     ) -> Self {
         let log_m = z_index.dimension();
         let col_prefix_sums: Vec<Point<K>> =
@@ -53,19 +51,33 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
             })
             .collect_vec();
 
-        assert!(merged_prefix_sums.len() == z_col_eq_vals.len());
-        assert!(eq_adjustments.len() == z_col_eq_vals.len());
+        // Condense the merged_prefix_sums and z_col_eq_vals.
+        let (merged_prefix_sums, z_col_eq_vals): (Vec<Point<K>>, Vec<K>) = merged_prefix_sums
+            .iter()
+            .zip_eq(z_col_eq_vals.iter())
+            .group_by(|(merged_prefix_sum, _)| *merged_prefix_sum)
+            .into_iter()
+            .map(|(merged_prefix_sum, group)| {
+                let group_elements =
+                    group.into_iter().map(|(_, z_col_eq_val)| *z_col_eq_val).collect_vec();
+                (merged_prefix_sum.clone(), group_elements.into_iter().sum::<K>())
+            })
+            .unzip();
+
+        let merged_prefix_sums_len = merged_prefix_sums.len();
+
+        assert!(merged_prefix_sums_len == z_col_eq_vals.len());
 
         Self {
             h_poly: HPoly::new(z_row, z_index),
             rho: Point::new(Buffer::default()),
             z_col,
             merged_prefix_sums,
-            round_num,
+            round_num: 0,
             is_empty_col,
             z_col_eq_vals,
-            eq_adjustments,
-            half,
+            eq_adjustments: vec![K::one(); merged_prefix_sums_len],
+            half: K::two().inverse(),
         }
     }
 }
@@ -139,9 +151,9 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // calculate f(0) and infer f(1).
         let (y_0, y_half) = self
             .merged_prefix_sums
-            .iter()
-            .zip_eq(self.z_col_eq_vals.iter())
-            .zip_eq(self.eq_adjustments.iter())
+            .par_iter()
+            .zip_eq(self.z_col_eq_vals.par_iter())
+            .zip_eq(self.eq_adjustments.par_iter())
             .map(|((merged_prefix_sum, z_col_eq_val), eq_adjustment)| {
                 let (h_prefix_sum, eq_prefix_sum) =
                     merged_prefix_sum.split_at(merged_prefix_sum.dimension() - self.round_num - 1);
@@ -165,7 +177,14 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
 
                 (func(K::zero(), eq_val_0), func(K::two().inverse(), eq_val_half))
             })
-            .fold((K::zero(), K::zero()), |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i));
+            .fold(
+                || (K::zero(), K::zero()),
+                |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i),
+            )
+            .reduce(
+                || (K::zero(), K::zero()),
+                |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i),
+            );
 
         let y_1 = claim.unwrap() - y_0;
 
@@ -195,7 +214,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_eval_poly() {
-        let row_counts = [12, 1, 2, 1, 17, 0];
+        let row_counts = [12, 1, 0, 0, 17, 0];
 
         let mut rng = thread_rng();
 
@@ -241,15 +260,8 @@ mod tests {
         let expected_sum =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 
-        let batch_eval_poly = BatchEvalPoly::new(
-            z_row.clone(),
-            z_col.clone(),
-            z_index.clone(),
-            prefix_sums.clone(),
-            0,
-            vec![EF::one(); prefix_sums.len() - 1],
-            EF::two().inverse(),
-        );
+        let batch_eval_poly =
+            BatchEvalPoly::new(z_row.clone(), z_col.clone(), z_index.clone(), prefix_sums.clone());
 
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());

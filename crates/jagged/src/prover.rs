@@ -2,6 +2,7 @@ use derive_where::derive_where;
 use futures::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
+use tracing::Instrument;
 
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{HasBackend, ToHost};
@@ -21,8 +22,8 @@ use slop_sumcheck::{
 use thiserror::Error;
 
 use crate::{
-    HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams, JaggedMleGenerator,
-    JaggedPcsProof, JaggedPcsVerifier, LongMle,
+    BatchEvalPoly, HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams,
+    JaggedMleGenerator, JaggedPcsProof, JaggedPcsVerifier, LongMle,
 };
 
 pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
@@ -326,6 +327,35 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         .await;
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
+
+        let prefix_sums: Vec<usize> = prover_data
+            .iter()
+            .flat_map(|data| {
+                data.row_counts.iter().copied().zip(data.column_counts.iter().copied()).flat_map(
+                    |(row_count, column_count)| std::iter::repeat(row_count).take(column_count),
+                )
+            })
+            .collect();
+
+        let batch_eval_poly =
+            BatchEvalPoly::new(z_row.clone(), z_col.clone(), final_eval_point.clone(), prefix_sums);
+
+        let verifier_params = params.clone().into_verifier_params();
+        let expected_sum = verifier_params.full_jagged_little_polynomial_evaluation(
+            &z_row,
+            &z_col,
+            &final_eval_point,
+        );
+
+        reduce_sumcheck_to_evaluation(
+            vec![batch_eval_poly],
+            challenger,
+            vec![expected_sum],
+            1,
+            C::EF::one(),
+        )
+        .instrument(tracing::debug_span!("batch eval poly sumcheck"))
+        .await;
 
         let (_, stack_point) = final_eval_point
             .split_at(final_eval_point.dimension() - self.log_stacking_height() as usize);
