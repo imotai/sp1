@@ -102,8 +102,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // at 3 points.
         // We can get a point from the eq root, and since f(0) + f(1) == claim, we can just
         // calculate f(0) and infer f(1).
-
-        let (y_0, y_1, y_2) = self
+        let (y_0, y_2) = self
             .powers_of_beta
             .iter()
             .zip_eq(self.merged_prefix_sums.iter())
@@ -127,11 +126,11 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
                     *beta * h_eval * eq_eval
                 };
 
-                (func(K::zero()), func(K::one()), func(K::two()))
+                (func(K::zero()), func(K::two()))
             })
-            .fold((K::zero(), K::zero(), K::zero()), |(y_0, y_1, y_2), (y_0_i, y_1_i, y_2_i)| {
-                (y_0 + y_0_i, y_1 + y_1_i, y_2 + y_2_i)
-            });
+            .fold((K::zero(), K::zero()), |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i));
+
+        let y_1 = claim.unwrap() - y_0;
 
         interpolate_univariate_polynomial(&[K::zero(), K::one(), K::two()], &[y_0, y_1, y_2])
     }
