@@ -1,5 +1,8 @@
 use itertools::Itertools;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::ParallelSlice,
+};
 use slop_algebra::{interpolate_univariate_polynomial, Field, UnivariatePolynomial};
 use slop_alloc::Buffer;
 use slop_multilinear::{Mle, Point};
@@ -149,38 +152,45 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         // at 3 points.
         // We can get a point from the eq root, and since f(0) + f(1) == claim, we can just
         // calculate f(0) and infer f(1).
+        let chunk_size = std::cmp::max(self.z_col_eq_vals.len() / num_cpus::get(), 1);
+
         let (y_0, y_half) = self
             .merged_prefix_sums
-            .par_iter()
-            .zip_eq(self.z_col_eq_vals.par_iter())
-            .zip_eq(self.eq_adjustments.par_iter())
-            .map(|((merged_prefix_sum, z_col_eq_val), eq_adjustment)| {
-                let (h_prefix_sum, eq_prefix_sum) =
-                    merged_prefix_sum.split_at(merged_prefix_sum.dimension() - self.round_num - 1);
-                let eq_prefix_sum_value = *eq_prefix_sum.values()[0];
-                let eq_val_0 = K::one() - eq_prefix_sum_value;
-                let eq_val_half = K::two().inverse();
+            .par_chunks(chunk_size)
+            .zip_eq(self.z_col_eq_vals.par_chunks(chunk_size))
+            .zip_eq(self.eq_adjustments.par_chunks(chunk_size))
+            .map(|((merged_prefix_sum_chunk, z_col_eq_val_chunk), eq_adjustment_chunk)| {
+                merged_prefix_sum_chunk
+                    .iter()
+                    .zip_eq(z_col_eq_val_chunk.iter())
+                    .zip_eq(eq_adjustment_chunk.iter())
+                    .map(|((merged_prefix_sum, z_col_eq_val), eq_adjustment)| {
+                        let (h_prefix_sum, eq_prefix_sum) = merged_prefix_sum
+                            .split_at(merged_prefix_sum.dimension() - self.round_num - 1);
+                        let eq_prefix_sum_value = *eq_prefix_sum.values()[0];
+                        let eq_val_0 = K::one() - eq_prefix_sum_value;
+                        let eq_val_half = K::two().inverse();
 
-                let func = |x: K, eq_val: K| -> K {
-                    let eq_eval = *eq_adjustment * eq_val;
+                        let func = |x: K, eq_val: K| -> K {
+                            let eq_eval = *eq_adjustment * eq_val;
 
-                    let mut h_prefix_sum = h_prefix_sum.clone();
-                    h_prefix_sum.add_dimension_back(x);
-                    h_prefix_sum.extend(&self.rho);
-                    let num_dimensions = h_prefix_sum.dimension();
-                    let (h_left, h_right) = h_prefix_sum.split_at(num_dimensions / 2);
+                            let mut h_prefix_sum = h_prefix_sum.clone();
+                            h_prefix_sum.add_dimension_back(x);
+                            h_prefix_sum.extend(&self.rho);
+                            let num_dimensions = h_prefix_sum.dimension();
+                            let (h_left, h_right) = h_prefix_sum.split_at(num_dimensions / 2);
 
-                    let h_eval = self.h_poly.eval(&h_left, &h_right);
+                            let h_eval = self.h_poly.eval(&h_left, &h_right);
 
-                    *z_col_eq_val * h_eval * eq_eval
-                };
+                            *z_col_eq_val * h_eval * eq_eval
+                        };
 
-                (func(K::zero(), eq_val_0), func(K::two().inverse(), eq_val_half))
+                        (func(K::zero(), eq_val_0), func(K::two().inverse(), eq_val_half))
+                    })
+                    .fold((K::zero(), K::zero()), |(y_0, y_2), (y_0_i, y_2_i)| {
+                        (y_0 + y_0_i, y_2 + y_2_i)
+                    })
             })
-            .fold(
-                || (K::zero(), K::zero()),
-                |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i),
-            )
             .reduce(
                 || (K::zero(), K::zero()),
                 |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i),
