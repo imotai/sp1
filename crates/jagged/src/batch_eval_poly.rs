@@ -148,6 +148,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
 #[cfg(test)]
 mod tests {
 
+    use crate::JaggedLittlePolynomialProverParams;
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_baby_bear::BabyBear;
@@ -202,17 +203,15 @@ mod tests {
             .collect_vec();
 
         let h_poly = HPoly::new(z_row.clone(), z_index.clone());
-        let expected_sum = merged_prefix_sums
-            .iter()
-            .zip(z_col_eq_vals.iter())
-            .map(|(merged_prefix_sum, z_col_eq_val)| {
-                let (lower, upper) = merged_prefix_sum.split_at(merged_prefix_sum.dimension() / 2);
-                let h_eval = h_poly.eval(&lower, &upper);
-                *z_col_eq_val * h_eval
-            })
-            .sum::<EF>();
 
-        let batch_eval_poly = BatchEvalPoly::new(z_row, z_col, z_index.clone(), prefix_sums, 0);
+        let prover_params =
+            JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
+        let verifier_params = prover_params.clone().into_verifier_params();
+        let expected_sum =
+            verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
+
+        let batch_eval_poly =
+            BatchEvalPoly::new(z_row.clone(), z_col.clone(), z_index.clone(), prefix_sums, 0);
 
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());

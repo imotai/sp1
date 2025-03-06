@@ -395,19 +395,6 @@ impl<K: AbstractField + 'static> HPoly<K> {
     }
 
     pub(crate) fn eval(&self, prefix_sum: &Point<K>, next_prefix_sum: &Point<K>) -> K {
-        assert!(
-            prefix_sum.dimension() == next_prefix_sum.dimension(),
-            "prefix_sum has dimension {} but next_prefix_sum has dimension {}",
-            prefix_sum.dimension(),
-            next_prefix_sum.dimension()
-        );
-        assert!(
-            next_prefix_sum.dimension() == self.z_index_rev.dimension(),
-            "next_prefix_sum has dimension {} but z_index_rev has dimension {}",
-            next_prefix_sum.dimension(),
-            self.z_index_rev.dimension()
-        );
-
         let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
         state_by_state_results[MemoryState::success().get_index()] = K::one();
 
