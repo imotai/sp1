@@ -159,6 +159,7 @@ pub struct JaggedLittlePolynomialProverParams {
 /// the prover as field elements. The verifier program thus depends only on the usize parameters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JaggedLittlePolynomialVerifierParams<K: AbstractField> {
+    pub(crate) col_prefix_sums_usize: Vec<usize>,
     pub(crate) col_prefix_sums: Vec<Point<K>>,
     pub(crate) next_col_prefix_sums: Vec<Point<K>>,
     pub(crate) max_log_row_count: usize,
@@ -194,10 +195,10 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
         // Iterate over all column. For each column, we need to know the total length of all the columns
         // up to the current one, this number - 1, and the
         // number of rows in the current column.
-        let mut branching_program_evals = Vec::with_capacity(self.col_prefix_sums.len());
+        let mut branching_program_evals = Vec::with_capacity(self.col_prefix_sums.len() - 1);
         #[allow(clippy::uninit_vec)]
         unsafe {
-            branching_program_evals.set_len(self.col_prefix_sums.len());
+            branching_program_evals.set_len(self.col_prefix_sums.len() - 1);
         }
         let res = self
             .col_prefix_sums
@@ -312,6 +313,7 @@ impl JaggedLittlePolynomialProverParams {
             .map(|&x| Point::from_usize(x, log_m + 1))
             .collect();
         JaggedLittlePolynomialVerifierParams {
+            col_prefix_sums_usize: self.col_prefix_sums_usize,
             col_prefix_sums,
             next_col_prefix_sums,
             max_log_row_count: self.max_log_row_count,

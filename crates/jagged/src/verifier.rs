@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::FieldChallenger;
@@ -13,7 +14,7 @@ pub struct JaggedPcsProof<C: JaggedConfig> {
     pub stacked_pcs_proof: StackedPcsProof<C::BatchPcsProof, C::EF>,
     pub sumcheck_proof: PartialSumcheckProof<C::EF>,
     pub branching_program_evals: Vec<C::EF>,
-    // pub branching_program_evals_proof: PartialSumcheckProof<C::EF>,
+    pub branching_program_evals_proof: PartialSumcheckProof<C::EF>,
     pub params: JaggedLittlePolynomialVerifierParams<C::EF>,
 }
 
@@ -43,8 +44,13 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         insertion_points: &[usize],
         challenger: &mut C::Challenger,
     ) -> Result<(), JaggedPcsVerifierError<C>> {
-        let JaggedPcsProof { stacked_pcs_proof, sumcheck_proof, branching_program_evals, params } =
-            proof;
+        let JaggedPcsProof {
+            stacked_pcs_proof,
+            sumcheck_proof,
+            branching_program_evals,
+            branching_program_evals_proof,
+            params,
+        } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
             .map(|_| challenger.sample_ext_element::<C::EF>())
@@ -82,9 +88,30 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
+        let col_eq_vals = (0..1 << num_col_variables as usize)
+            .map(|c| {
+                let point = Point::<C::EF>::from_usize(c, num_col_variables as usize);
+                Mle::full_lagrange_eval(&point, &z_col)
+            })
+            .collect::<Vec<_>>();
+
         // Compute the expected evaluation of the jagged little polynomial from its succinct
         // description.
-        let (jagged_eval, branching_program_evals) =
+        println!("branching_program_eval: {:?}", branching_program_evals[0..10].to_vec());
+        let jagged_eval = col_eq_vals
+            .iter()
+            .zip(branching_program_evals.iter())
+            .map(|(z_col_eq_val, branching_program_eval)| *z_col_eq_val * *branching_program_eval)
+            .sum::<C::EF>();
+
+        println!("z_row is {:?}", z_row.values().to_vec());
+        println!("z_col is {:?}", z_col.values().to_vec());
+        println!(
+            "sumcheck_proof.point_and_eval.0 is {:?}",
+            sumcheck_proof.point_and_eval.0.values().to_vec()
+        );
+        println!("verifer: params is {:?}", params.col_prefix_sums_usize);
+        let (expected_jagged_eval, expected_branching_program_evals) =
             tracing::debug_span!("full_jagged_little_polynomial_evaluation").in_scope(|| {
                 params.full_jagged_little_polynomial_evaluation(
                     &z_row,
@@ -92,9 +119,14 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
                     &sumcheck_proof.point_and_eval.0,
                 )
             });
+        assert!(expected_branching_program_evals == *branching_program_evals);
+        assert!(expected_jagged_eval == jagged_eval);
 
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;
+
+        partially_verify_sumcheck_proof(&branching_program_evals_proof, challenger)
+            .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
         // Verify the evaluation proof.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();

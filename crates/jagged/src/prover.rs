@@ -344,7 +344,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         let (expected_sum, branching_program_evals) = verifier_params
             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &final_eval_point);
 
-        reduce_sumcheck_to_evaluation(
+        let (branching_program_evals_proof, _) = reduce_sumcheck_to_evaluation(
             vec![batch_eval_poly],
             challenger,
             vec![expected_sum],
@@ -384,6 +384,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             stacked_pcs_proof,
             sumcheck_proof,
             branching_program_evals,
+            branching_program_evals_proof,
             params: params.into_verifier_params(),
         })
     }
