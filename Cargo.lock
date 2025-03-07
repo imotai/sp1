@@ -513,6 +513,7 @@ version = "1.2.0"
 dependencies = [
  "csl-basefold",
  "csl-cuda",
+ "csl-tracing",
  "futures",
  "itertools 0.14.0",
  "rand",
@@ -527,7 +528,11 @@ dependencies = [
  "slop-commit",
  "slop-jagged",
  "slop-multilinear",
+ "slop-stacked",
+ "slop-sumcheck",
+ "slop-tensor",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -828,9 +833,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.14.0"
+version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7914353092ddf589ad78f25c5c1c21b7f80b0ff8621e7c814c3485b5306da9d"
+checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "elf"
@@ -1126,9 +1131,9 @@ checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
 
 [[package]]
 name = "hermit-abi"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbf6a919d6cf397374f7dfeeea91d974c7c0a7221d0d0f4f20d859d329e53fcc"
+checksum = "fbd780fe5cc30f81464441920d82ac8740e2e46b29a6fad543ddd075229ce37e"
 
 [[package]]
 name = "hex"
@@ -1183,11 +1188,11 @@ dependencies = [
 
 [[package]]
 name = "is-terminal"
-version = "0.4.15"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e19b23d53f35ce9f56aebc7d1bb4e6ac1e9c0db7ac85c8d1760c04379edced37"
+checksum = "e04d7f318608d35d4b61ddd75cbdaee86b023ebe2bd5a66ee0915f0bf93095a9"
 dependencies = [
- "hermit-abi 0.4.0",
+ "hermit-abi 0.5.0",
  "libc",
  "windows-sys 0.59.0",
 ]
@@ -1282,6 +1287,12 @@ name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
+
+[[package]]
+name = "linux-raw-sys"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6db9c683daf087dc577b7506e9695b3d556a9f3849903fa28186283afd6809e9"
 
 [[package]]
 name = "lock_api"
@@ -1748,7 +1759,7 @@ version = "3.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "581c837bb6b9541ce7faa9377c20616e4fb7650f6b0f68bc93c827ee504fb7b3"
 dependencies = [
- "proc-macro-crate 3.2.0",
+ "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
  "syn 2.0.99",
@@ -1884,9 +1895,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-crate"
-version = "3.2.0"
+version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ecf48c7ca261d60b74ab1a7b20da18bede46776b2e55535cb958eb595c5fa7b"
+checksum = "edce586971a4dfaa28950c6f18ed55e0406c1ab88bbce2c6f6293a7aaba73d35"
 dependencies = [
  "toml_edit 0.22.24",
 ]
@@ -2068,7 +2079,20 @@ dependencies = [
  "bitflags",
  "errno",
  "libc",
- "linux-raw-sys",
+ "linux-raw-sys 0.4.15",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "rustix"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dade4812df5c384711475be5fcd8c162555352945401aed22a35bffeab61f657"
+dependencies = [
+ "bitflags",
+ "errno",
+ "libc",
+ "linux-raw-sys 0.9.2",
  "windows-sys 0.59.0",
 ]
 
@@ -2102,7 +2126,7 @@ version = "2.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6630024bf739e2179b91fb424b28898baf819414262c5d376677dbff1fe7ebf"
 dependencies = [
- "proc-macro-crate 3.2.0",
+ "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
  "syn 2.0.99",
@@ -2272,7 +2296,7 @@ dependencies = [
 [[package]]
 name = "slop-air"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-air",
 ]
@@ -2280,7 +2304,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-field",
  "serde",
@@ -2289,7 +2313,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "itertools 0.14.0",
  "serde",
@@ -2301,7 +2325,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-baby-bear",
 ]
@@ -2309,7 +2333,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -2336,7 +2360,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "clap",
  "derive-where",
@@ -2370,7 +2394,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-challenger",
 ]
@@ -2378,7 +2402,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-commit",
  "serde",
@@ -2390,7 +2414,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-dft",
  "serde",
@@ -2403,7 +2427,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-fri",
 ]
@@ -2411,7 +2435,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "crossbeam",
  "futures",
@@ -2424,7 +2448,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "derive-where",
  "futures",
@@ -2453,7 +2477,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-matrix",
 ]
@@ -2461,7 +2485,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-maybe-rayon",
 ]
@@ -2469,7 +2493,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "derive-where",
  "itertools 0.14.0",
@@ -2492,7 +2516,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "derive-where",
  "futures",
@@ -2516,7 +2540,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -2524,7 +2548,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "derive-where",
  "futures",
@@ -2543,7 +2567,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "futures",
  "itertools 0.14.0",
@@ -2562,7 +2586,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-symmetric",
 ]
@@ -2570,7 +2594,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -2590,7 +2614,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#52403bb05f00b3ec2922e679247a1dedac7cd63c"
+source = "git+https://github.com/succinctlabs/slop#910b05dc5031ffd60c95c59e6c25f7466470cf50"
 dependencies = [
  "p3-util",
  "tracing-forest",
@@ -2626,7 +2650,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#41f1d724f1ffa189e763b6eaef998fe7dba4009f"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#951458dde6a2aead48b489af78be6413256de864"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -2664,7 +2688,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#41f1d724f1ffa189e763b6eaef998fe7dba4009f"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#951458dde6a2aead48b489af78be6413256de864"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -2721,7 +2745,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#41f1d724f1ffa189e763b6eaef998fe7dba4009f"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#951458dde6a2aead48b489af78be6413256de864"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -2741,7 +2765,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#41f1d724f1ffa189e763b6eaef998fe7dba4009f"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#951458dde6a2aead48b489af78be6413256de864"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -2750,7 +2774,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#41f1d724f1ffa189e763b6eaef998fe7dba4009f"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#951458dde6a2aead48b489af78be6413256de864"
 dependencies = [
  "bincode",
  "hex",
@@ -2768,7 +2792,7 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#41f1d724f1ffa189e763b6eaef998fe7dba4009f"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/device-backend-clean#951458dde6a2aead48b489af78be6413256de864"
 dependencies = [
  "arrayref",
  "derive-where",
@@ -2929,15 +2953,15 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.17.1"
+version = "3.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22e5a0acb1f3f55f65cc4a866c361b2fb2a0ff6366785ae6fbb5f85df07ba230"
+checksum = "2c317e0a526ee6120d8dabad239c8dadca62b24b6f168914bbbc8e2fb1f0e567"
 dependencies = [
  "cfg-if",
  "fastrand",
  "getrandom 0.3.1",
  "once_cell",
- "rustix",
+ "rustix 1.0.1",
  "windows-sys 0.59.0",
 ]
 
@@ -3290,7 +3314,7 @@ checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
 dependencies = [
  "either",
  "home",
- "rustix",
+ "rustix 0.38.44",
  "winsafe",
 ]
 

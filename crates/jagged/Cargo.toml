@@ -10,6 +10,8 @@ categories.workspace = true
 [dependencies]
 csl-cuda = { workspace = true }
 csl-basefold = { workspace = true }
+csl-tracing = { workspace = true }
+slop-tensor = { workspace = true }
 
 slop-baby-bear = { workspace = true }
 slop-algebra = { workspace = true }
@@ -17,15 +19,17 @@ slop-jagged = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-challenger = { workspace = true }
 slop-basefold = { workspace = true }
+slop-stacked = { workspace = true }
 slop-basefold-prover = { workspace = true }
 slop-commit = { workspace = true }
 slop-alloc = { workspace = true }
+slop-sumcheck = { workspace = true }
 
 tokio = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 itertools = { workspace = true }
-
+tracing = { workspace = true }
 [lints]
 workspace = true
 

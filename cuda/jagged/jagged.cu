@@ -4,6 +4,8 @@
 #include "../fields/bb31_t.cuh"
 #include "../fields/bb31_extension_t.cuh"
 
+#include "../reduce/reduction.cuh"
+
 template <typename EF>
 __global__ void jaggedPopulate(
     EF *f,
@@ -31,4 +33,111 @@ __global__ void jaggedPopulate(
 extern "C" void *jagged_baby_bear_extension_populate()
 {
     return (void *)jaggedPopulate<bb31_extension_t>;
+}
+
+template <typename F, typename EF>
+__global__ void jaggedSumAsPoly(
+    EF *result,
+    const F *base,
+    const EF *eqzCol,
+    const EF *eqzRow,
+    size_t offset,
+    size_t colOffset,
+    size_t halfHeight,
+    size_t width)
+{
+    EF evalZero = EF::zero();
+    EF evalHalf = EF::zero();
+
+    for (size_t rowIdx = blockIdx.x * blockDim.x + threadIdx.x; rowIdx < halfHeight; rowIdx += gridDim.x * blockDim.x)
+    {
+        size_t evenRowIdx = rowIdx << 1;
+        size_t oddRowIdx = (rowIdx << 1) + 1;
+
+        EF eqzRowZero = EF::load(eqzRow, evenRowIdx);
+        EF eqzRowOne = EF::load(eqzRow, oddRowIdx);
+        for (size_t colIdx = blockIdx.y * blockDim.y + threadIdx.y; colIdx < width; colIdx += gridDim.y * blockDim.y)
+        {
+            EF eqzColVal = EF::load(eqzCol, colIdx + colOffset);
+
+            EF jaggedValZero = eqzColVal * eqzRowZero;
+            EF jaggedValOne = eqzColVal * eqzRowOne;
+
+            size_t halfOffset = offset / 2;
+            size_t baseIdx = colIdx * halfHeight + rowIdx + halfOffset;
+
+            size_t evenIdx = baseIdx << 1;
+            size_t oddIdx = (baseIdx << 1) + 1;
+
+            F baseZero = F::load(base, evenIdx);
+            F baseOne = F::load(base, oddIdx);
+
+            evalZero += jaggedValZero * baseZero;
+            evalHalf += (jaggedValZero + jaggedValOne) * (baseZero + baseOne);
+        }
+    }
+
+    // Allocate shared memory
+    extern __shared__ unsigned char memory[];
+    EF *shared = reinterpret_cast<EF *>(memory);
+
+    AddOp<EF> op;
+
+    auto block = cg::this_thread_block();
+    auto tile = cg::tiled_partition<32>(block);
+    EF evalZeroblockSum = partialBlockReduce(block, tile, evalZero, shared, op);
+    EF evalHalfblockSum = partialBlockReduce(block, tile, evalHalf, shared, op);
+
+    if (threadIdx.x == 0)
+    {
+        EF::store(result, gridDim.x * blockIdx.y + blockIdx.x, evalZeroblockSum);
+        EF::store(result, gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x, evalHalfblockSum);
+    }
+}
+
+extern "C" void *jagged_baby_bear_base_ext_sum_as_poly()
+{
+    return (void *)jaggedSumAsPoly<bb31_t, bb31_extension_t>;
+}
+
+template <typename EF>
+__global__ void jaggedVirtualFixLastVariable(
+    EF *result,
+    const EF *eqzCol,
+    const EF *eqzRow,
+    EF alpha,
+    size_t offset,
+    size_t colOffset,
+    size_t halfHeight,
+    size_t width)
+{
+    // TODO: here we assume height is a power of 2
+    size_t height = halfHeight << 1;
+    for (size_t rowIdx = blockIdx.x * blockDim.x + threadIdx.x; rowIdx < halfHeight; rowIdx += gridDim.x * blockDim.x)
+    {
+        size_t evenRowIdx = rowIdx << 1;
+        size_t oddRowIdx = (rowIdx << 1) + 1;
+
+        EF eqzRowZero = EF::load(eqzRow, evenRowIdx);
+        EF eqzRowOne = EF::load(eqzRow, oddRowIdx);
+        for (size_t colIdx = blockIdx.y * blockDim.y + threadIdx.y; colIdx < width; colIdx += gridDim.y * blockDim.y)
+        {
+            EF eqzColVal = EF::load(eqzCol, colIdx + colOffset);
+
+            EF jaggedValZero = eqzColVal * eqzRowZero;
+            EF jaggedValOne = eqzColVal * eqzRowOne;
+
+            size_t halfOffset = offset / 2;
+            size_t baseIdx = colIdx * halfHeight + rowIdx + halfOffset;
+
+            // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
+            EF value = alpha * (jaggedValOne - jaggedValZero) + jaggedValZero;
+            EF::store(result, baseIdx, value);
+        }
+    }
+}
+
+extern "C" void *jagged_baby_bear_extension_virtual_fix_last_variable()
+{
+    return (void *)jaggedVirtualFixLastVariable<bb31_extension_t>;
 }

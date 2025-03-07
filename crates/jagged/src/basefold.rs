@@ -1,11 +1,11 @@
 use csl_basefold::Poseidon2BabyBear16BasefoldCudaProverComponents;
 use slop_jagged::JaggedBasefoldProverComponents;
 
-use crate::CudaJaggedMleGenerator;
+use crate::VirtualJaggedSumcheckProver;
 
 pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCudaProverComponents,
-    CudaJaggedMleGenerator,
+    VirtualJaggedSumcheckProver,
 >;
 
 #[cfg(test)]
@@ -38,7 +38,9 @@ mod tests {
 
         let mut rng = thread_rng();
 
-        for (log_stacking_height, max_log_row_count) in [(10, 10), (11, 11), (16, 16), (20, 20)] {
+        for (log_stacking_height, max_log_row_count) in
+            [(10, 10), (11, 11), (16, 16), (20, 20), (21, 21)]
+        {
             let row_counts_rounds = vec![
                 vec![1 << (max_log_row_count - 2), 1 << max_log_row_count],
                 vec![
