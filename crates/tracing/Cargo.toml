@@ -1,0 +1,17 @@
+[package]
+name = "csl-tracing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+csl-cuda = { workspace = true }
+
+tracing-subscriber = "0.3.19"
+tracing = { workspace = true }
+
+[lints]
+workspace = true

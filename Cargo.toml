@@ -21,6 +21,9 @@ members = [
     "crates/basefold",
     "crates/jagged",
     "crates/zerocheck",
+    "crates/machine",
+    "crates/tracing",
+    "crates/perf",
 ]
 resolver = "2"
 
@@ -47,32 +50,36 @@ csl-basefold = { path = "crates/basefold" }
 csl-jagged = { path = "crates/jagged" }
 csl-air = { path = "crates/air" }
 csl-zerocheck = { path = "crates/zerocheck" }
+csl-tracing = { path = "crates/tracing" }
+csl-machine = { path = "crates/machine" }
+csl-perf = { path = "crates/perf" }
 
 # slop 
-slop-baby-bear = { git = "https://github.com/succinctlabs/slop.git" }
-slop-basefold = { git = "https://github.com/succinctlabs/slop.git" }
-slop-basefold-prover = { git = "https://github.com/succinctlabs/slop.git" }
-slop-dft = { git = "https://github.com/succinctlabs/slop.git" }
-slop-matrix = { git = "https://github.com/succinctlabs/slop.git" }
-slop-algebra = { git = "https://github.com/succinctlabs/slop.git" }
-slop-symmetric = { git = "https://github.com/succinctlabs/slop.git" }
-slop-merkle-tree = { git = "https://github.com/succinctlabs/slop.git" }
-slop-poseidon2 = { git = "https://github.com/succinctlabs/slop.git" }
-slop-commit = { git = "https://github.com/succinctlabs/slop.git" }
-slop-challenger = { git = "https://github.com/succinctlabs/slop.git" }
-slop-multilinear = { git = "https://github.com/succinctlabs/slop.git" }
-slop-tensor = { git = "https://github.com/succinctlabs/slop.git" }
-slop-sumcheck = { git = "https://github.com/succinctlabs/slop.git" }
-slop-alloc = { git = "https://github.com/succinctlabs/slop.git" }
-slop-futures = { git = "https://github.com/succinctlabs/slop.git" }
-slop-stacked = { git = "https://github.com/succinctlabs/slop.git" }
-slop-jagged = { git = "https://github.com/succinctlabs/slop.git" }
-slop-air = { git = "https://github.com/succinctlabs/slop.git" }
-
+slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
+slop-basefold = { git = "https://github.com/succinctlabs/slop" }
+slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
+slop-dft = { git = "https://github.com/succinctlabs/slop" }
+slop-matrix = { git = "https://github.com/succinctlabs/slop" }
+slop-algebra = { git = "https://github.com/succinctlabs/slop" }
+slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
+slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
+slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
+slop-commit = { git = "https://github.com/succinctlabs/slop" }
+slop-challenger = { git = "https://github.com/succinctlabs/slop" }
+slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
+slop-tensor = { git = "https://github.com/succinctlabs/slop" }
+slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
+slop-alloc = { git = "https://github.com/succinctlabs/slop" }
+slop-futures = { git = "https://github.com/succinctlabs/slop" }
+slop-stacked = { git = "https://github.com/succinctlabs/slop" }
+slop-jagged = { git = "https://github.com/succinctlabs/slop" }
+slop-air = { git = "https://github.com/succinctlabs/slop" }
 
 # SP1
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend" }
-sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
+sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
 
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
@@ -95,10 +102,17 @@ sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tam
 # slop-stacked = { path = "../slop/crates/stacked" }
 # slop-jagged = { path = "../slop/crates/jagged" }
 
+# for local development
+# sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
+# sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
+# sp1-stark = { path = "../sp1-wip/crates/stark" }
+# sp1-primitives = { path = "../sp1-wip/crates/primitives" }
+
 # async
 tokio = { version = "1.42.0" }
 futures = "0.3.31"
 # misc
+tracing = "0.1.40"
 thiserror = "1.0"
 itertools = "0.14.0"
 derive-where = "1.2.7"

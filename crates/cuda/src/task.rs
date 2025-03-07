@@ -14,7 +14,6 @@ use std::{
     time::Duration,
 };
 
-use crossbeam::queue::ArrayQueue;
 use csl_sys::runtime::{
     cuda_device_get_mem_pool, cuda_mem_pool_set_release_threshold, CudaDevice, CudaMemPool,
     CudaStreamHandle, Dim3, KernelPtr,
@@ -24,13 +23,9 @@ use slop_alloc::{
     mem::{CopyDirection, CopyError, DeviceMemory},
     AllocError, Allocator, Backend, Buffer, Slice,
 };
+use slop_futures::queue::{AcquireWorkerError, TryAcquireWorkerError, Worker, WorkerQueue};
 use thiserror::Error;
-use tokio::{
-    sync::{
-        oneshot, AcquireError, OwnedSemaphorePermit, Semaphore, SemaphorePermit, TryAcquireError,
-    },
-    task::JoinHandle,
-};
+use tokio::{sync::oneshot, task::JoinHandle};
 
 use crate::{DeviceCopy, ToDevice};
 
@@ -57,18 +52,13 @@ pub(crate) fn global_task_pool() -> &'static Arc<TaskPool> {
 }
 
 /// Acquires a task from the global task pool.
-pub async fn task() -> Result<TaskRef<'static>, SpawnError> {
+pub async fn task() -> Result<OwnedTask, SpawnError> {
     let pool = global_task_pool();
-    pool.task().await
+    let task = pool.task().await?;
+    Ok(task)
 }
 
-/// Acquires an owned task from the global task pool.
-pub async fn owned_task() -> Result<OwnedTask, SpawnError> {
-    let pool = global_task_pool();
-    pool.clone().owned_task().await
-}
-
-pub fn spawn<F, Fut>(f: F) -> JoinHandle<TaskHandle<'static, Fut::Output>>
+pub fn spawn<F, Fut>(f: F) -> JoinHandle<OwnedTaskHandle<Fut::Output>>
 where
     F: FnOnce(TaskScope) -> Fut + Send + 'static,
     Fut: Future + Send + 'static,
@@ -80,34 +70,12 @@ where
     })
 }
 
-/// Gets a task from the global task pool.
-///
-/// This function will block the current thread until a task becomes available.
-pub fn get_task() -> Result<TaskRef<'static>, SpawnError> {
-    futures::executor::block_on(task())
-}
-
-/// Gets an owned task from the global task pool.
-///
-/// This function will block the current thread until a task becomes available.
-pub fn get_owned_task() -> Result<OwnedTask, SpawnError> {
-    futures::executor::block_on(owned_task())
-}
-
 /// Attempts to get a task from the global task pool.
 ///
 /// This function will not block, and will return an error if no task is currently available.
-pub fn try_get_task() -> Result<TaskRef<'static>, TrySpawnError> {
+pub fn try_get_task() -> Result<OwnedTask, TrySpawnError> {
     let pool = global_task_pool();
     pool.try_get_task()
-}
-
-/// Attempts to get an owned task from the global task pool.
-///
-/// This function will not block, and will return an error if no task is currently available.
-pub fn try_get_owned_task() -> Result<OwnedTask, TrySpawnError> {
-    let pool = global_task_pool();
-    pool.clone().try_get_owned_task()
 }
 
 #[derive(Debug, Clone, Error)]
@@ -166,7 +134,7 @@ impl TaskPoolBuilder {
 
     pub fn build(self) -> Result<TaskPool, TaskPoolBuildError> {
         let id = self.allocate_new_id();
-        let tasks = ArrayQueue::new(self.capacity.unwrap_or(DEFAULT_NUM_TASKS));
+        let num_tasks = self.capacity.unwrap_or(DEFAULT_NUM_TASKS);
 
         // Set the memory release threshold
         unsafe {
@@ -180,17 +148,15 @@ impl TaskPoolBuilder {
             .unwrap();
         };
 
-        for (i, _) in (0..tasks.capacity()).enumerate() {
+        let mut tasks = Vec::with_capacity(num_tasks);
+        for (i, _) in (0..num_tasks).enumerate() {
             let stream = CudaStream::create().map_err(TaskPoolBuildError::StreamCreationFailed)?;
             let end_event = CudaEvent::create().map_err(TaskPoolBuildError::EventCreationFailed)?;
-            tasks
-                .push(Task { owner_id: id, id: i, stream, end_event })
-                .map_err(|_| TaskPoolBuildError::PushTaskFailed)?;
+            tasks.push(Task { owner_id: id, id: i, stream, end_event });
         }
+        let inner = Arc::new(WorkerQueue::new(tasks));
 
-        let permits = Arc::new(Semaphore::new(tasks.capacity()));
-
-        Ok(TaskPool { tasks, permits })
+        Ok(TaskPool { inner })
     }
 
     pub fn build_global(self) -> Result<(), GlobalTaskPoolBuildError> {
@@ -207,94 +173,40 @@ impl Default for TaskPoolBuilder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TaskPool {
-    permits: Arc<Semaphore>,
-    tasks: ArrayQueue<Task>,
+    inner: Arc<WorkerQueue<Task>>,
+}
+
+pub struct OwnedTask {
+    inner: Worker<Task>,
 }
 
 #[derive(Debug, Error)]
 #[error("failed to acquire a task from the pool")]
 pub enum SpawnError {
-    AcquireError(#[from] AcquireError),
-    PopTaskError,
+    AcquireError(#[from] AcquireWorkerError),
 }
 
 #[derive(Debug, Error)]
 #[error("failed to acquire a task from the pool")]
 pub enum TrySpawnError {
-    AcquireError(#[from] TryAcquireError),
-    PopTaskError,
+    TryAcquireError(#[from] TryAcquireWorkerError),
 }
 
 impl TaskPool {
-    #[inline]
-    fn task_ref<'a>(&'a self, task: Task, permit: SemaphorePermit<'a>) -> TaskRef {
-        let task = ManuallyDrop::new(task);
-        TaskRef { task, owner: self, _permit: permit }
-    }
-
-    #[inline]
-    fn task_owned(self: Arc<Self>, task: Task, permit: OwnedSemaphorePermit) -> OwnedTask {
-        OwnedTask { task: ManuallyDrop::new(task), _owner: self.clone(), _permit: permit }
-    }
-
     /// Get a task from the task pool.
-    pub async fn task(&self) -> Result<TaskRef, SpawnError> {
-        let permit = self.permits.acquire().await?;
-        let task = self.tasks.pop().ok_or(SpawnError::PopTaskError)?;
-        Ok(self.task_ref(task, permit))
-    }
-
-    /// Get an owned task from the task pool.
-    pub async fn owned_task(self: Arc<Self>) -> Result<OwnedTask, SpawnError> {
-        let permit = self.permits.clone().acquire_owned().await?;
-        let task = self.tasks.pop().ok_or(SpawnError::PopTaskError)?;
-        Ok(self.task_owned(task, permit))
+    pub async fn task(&self) -> Result<OwnedTask, SpawnError> {
+        let worker = self.inner.clone().pop().await.map_err(SpawnError::AcquireError)?;
+        Ok(OwnedTask { inner: worker })
     }
 
     /// Get a task from the task pool.
     ///
     /// This function will block the current thread until a task becomes available.
-    pub fn get_task(&self) -> Result<TaskRef, SpawnError> {
-        futures::executor::block_on(async { self.task().await })
-    }
-
-    /// Get an owned task from the task pool.
-    ///
-    /// This function will block the current thread until a task becomes available.
-    pub fn get_owned_task(self: Arc<Self>) -> Result<OwnedTask, SpawnError> {
-        futures::executor::block_on(async { self.owned_task().await })
-    }
-
-    /// Try to get a task from the task pool.
-    ///
-    /// This function will not block, and will return an error if no task is currently available.
-    pub fn try_get_task(&self) -> Result<TaskRef, TrySpawnError> {
-        let permit = self.permits.try_acquire()?;
-        let task = self.tasks.pop().ok_or(TrySpawnError::PopTaskError)?;
-        Ok(self.task_ref(task, permit))
-    }
-
-    /// Try to get an owned task from the task pool.
-    ///
-    /// This function will not block, and will return an error if no task is currently available.
-    pub fn try_get_owned_task(self: Arc<Self>) -> Result<OwnedTask, TrySpawnError> {
-        let permit = self.permits.clone().try_acquire_owned()?;
-        let task = self.tasks.pop().ok_or(TrySpawnError::PopTaskError)?;
-        Ok(self.task_owned(task, permit))
-    }
-}
-
-impl Drop for TaskPool {
-    fn drop(&mut self) {
-        // Assert that all tasks have finished
-        while let Some(task) = self.tasks.pop() {
-            unsafe {
-                task.end_event.query().expect("attempting to drop a task that did not finish");
-                task.stream.query().expect("attempting to drop a task that did not finish");
-            }
-        }
+    pub fn try_get_task(&self) -> Result<OwnedTask, TrySpawnError> {
+        let task = self.inner.clone().try_pop().map_err(TrySpawnError::TryAcquireError)?;
+        Ok(OwnedTask { inner: task })
     }
 }
 
@@ -509,71 +421,21 @@ impl StreamRef for Task {
     }
 }
 
+impl Drop for Task {
+    fn drop(&mut self) {
+        unsafe {
+            self.end_event.query().expect("attempting to drop a task that did not finish");
+            self.stream.query().expect("attempting to drop a task that did not finish");
+        }
+    }
+}
+
 impl IntoFuture for Task {
     type Output = Result<(), CudaError>;
     type IntoFuture = StreamCallbackFuture<Self>;
 
     fn into_future(self) -> Self::IntoFuture {
         StreamCallbackFuture::new(self)
-    }
-}
-
-/// A task running on a CUDA stream.
-pub struct TaskRef<'a> {
-    task: ManuallyDrop<Task>,
-    owner: &'a TaskPool,
-    _permit: SemaphorePermit<'a>,
-}
-
-/// A task running on a CUDA stream.
-pub struct OwnedTask {
-    task: ManuallyDrop<Task>,
-    _owner: Arc<TaskPool>,
-    _permit: OwnedSemaphorePermit,
-}
-
-impl<'a> TaskRef<'a> {
-    pub fn is_finished(&self) -> Result<bool, CudaError> {
-        self.task.end_event.query().map(|()| true).or_else(|e| match e {
-            CudaError::NotReady => Ok(false),
-            e => Err(e),
-        })
-    }
-
-    /// Joins this task into another task.
-    ///
-    /// The other task will wait for the current task to finish.
-    #[inline]
-    unsafe fn join(self, parent: &TaskScope) -> Result<(), CudaError> {
-        parent.stream.wait_unchecked(&self.task.end_event)
-    }
-
-    #[inline]
-    fn synchronize(&self) -> Result<(), CudaError> {
-        self.task.end_event.synchronize()
-    }
-
-    pub fn blocking_run<F, R>(self, f: F) -> TaskHandle<'a, R>
-    where
-        F: FnOnce(TaskScope) -> R,
-        R: Send,
-    {
-        let scope = unsafe { self.task.scope() };
-        let value = f(scope);
-        unsafe { self.task.stream.record_unchecked(&self.task.end_event).unwrap() };
-        TaskHandle { task: self, value }
-    }
-
-    pub async fn run<F, Fut, R>(self, f: F) -> TaskHandle<'a, R>
-    where
-        F: FnOnce(TaskScope) -> Fut,
-        Fut: Future<Output = R>,
-        R: Send,
-    {
-        let scope = unsafe { self.task.scope() };
-        let value = f(scope).await;
-        unsafe { self.task.stream.record_unchecked(&self.task.end_event).unwrap() };
-        TaskHandle { task: self, value }
     }
 }
 
@@ -610,7 +472,7 @@ impl DeviceMemory for TaskScope {
 
 impl OwnedTask {
     pub fn is_finished(&self) -> Result<bool, CudaError> {
-        self.task.end_event.query().map(|()| true).or_else(|e| match e {
+        self.inner.end_event.query().map(|()| true).or_else(|e| match e {
             CudaError::NotReady => Ok(false),
             e => Err(e),
         })
@@ -621,85 +483,34 @@ impl OwnedTask {
     /// The other task will wait for the current task to finish.
     #[inline]
     unsafe fn join(self, parent: &TaskScope) -> Result<(), CudaError> {
-        parent.stream.wait_unchecked(&self.task.end_event)
-    }
-
-    #[inline]
-    pub fn synchronize(&self) -> Result<(), CudaError> {
-        self.task.end_event.synchronize()
-    }
-
-    pub fn blocking_run<F, R>(self, f: F) -> OwnedTaskHandle<R>
-    where
-        F: FnOnce(TaskScope) -> R,
-        R: CudaSend,
-    {
-        let scope = unsafe { self.task.scope() };
-        let value = f(scope);
-        unsafe { self.task.stream.record_unchecked(&self.task.end_event).unwrap() };
-        OwnedTaskHandle { task: self, value }
+        parent.stream.wait_unchecked(&self.inner.end_event)
     }
 
     pub async fn run<F, Fut, R>(self, f: F) -> OwnedTaskHandle<R>
     where
         F: FnOnce(TaskScope) -> Fut,
         Fut: Future<Output = R>,
-        R: CudaSend,
+        R: Send,
     {
-        let scope = unsafe { self.task.scope() };
+        let scope = unsafe { self.inner.scope() };
         let value = f(scope).await;
-        unsafe { self.task.stream.record_unchecked(&self.task.end_event).unwrap() };
+        unsafe { self.inner.stream.record_unchecked(&self.inner.end_event).unwrap() };
         OwnedTaskHandle { task: self, value }
     }
 }
 
-impl<'a> StreamRef for TaskRef<'a> {
+impl StreamRef for OwnedTask {
     unsafe fn stream(&self) -> &CudaStream {
-        &self.task.stream
+        &self.inner.stream
     }
 }
 
-impl<'a> Drop for TaskRef<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            let task = ManuallyDrop::take(&mut self.task);
-            self.owner.tasks.push(task).expect("failed to push task back into pool");
-        }
-    }
-}
-
-impl<'a> IntoFuture for TaskRef<'a> {
+impl IntoFuture for OwnedTask {
     type Output = Result<(), CudaError>;
     type IntoFuture = StreamCallbackFuture<Self>;
 
     fn into_future(self) -> Self::IntoFuture {
         StreamCallbackFuture::new(self)
-    }
-}
-
-pub struct TaskHandle<'a, T> {
-    task: TaskRef<'a>,
-    value: T,
-}
-
-impl<'a, T> TaskHandle<'a, T> {
-    pub fn join(mut self, parent: &TaskScope) -> Result<T, CudaError>
-    where
-        T: CudaSend,
-    {
-        // The only way to get a task reference is from a pool, so we know that the parent stream
-        // will be destroyed or panic if dropped early. This is **potentially** unsafe in some
-        // weird edge cases, but it's ok for now. For users in a global pool, this is always safe.
-        unsafe {
-            self.task.join(parent)?;
-            self.value.change_scope(parent)
-        }
-        // Return the value to the caller.
-        Ok(self.value)
-    }
-
-    pub fn blocking_join(self) -> Result<T, CudaError> {
-        self.task.synchronize().map(|_| self.value)
     }
 }
 
@@ -722,20 +533,16 @@ impl<T> OwnedTaskHandle<T> {
         // Return the value to the caller.
         Ok(self.value)
     }
-
-    pub fn blocking_join(self) -> Result<T, CudaError> {
-        self.task.synchronize().map(|_| self.value)
-    }
 }
 
 #[pin_project]
-pub struct StreamHandleFuture<'a, T> {
+pub struct StreamHandleFuture<T> {
     #[pin]
-    callback: StreamCallbackFuture<TaskRef<'a>>,
+    callback: StreamCallbackFuture<OwnedTask>,
     value: MaybeUninit<T>,
 }
 
-impl<'a, T> Future for StreamHandleFuture<'a, T> {
+impl<T> Future for StreamHandleFuture<T> {
     type Output = Result<T, CudaError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -752,9 +559,9 @@ impl<'a, T> Future for StreamHandleFuture<'a, T> {
     }
 }
 
-impl<'a, T> IntoFuture for TaskHandle<'a, T> {
+impl<T> IntoFuture for OwnedTaskHandle<T> {
     type Output = Result<T, CudaError>;
-    type IntoFuture = StreamHandleFuture<'a, T>;
+    type IntoFuture = StreamHandleFuture<T>;
 
     #[inline]
     fn into_future(self) -> Self::IntoFuture {
@@ -769,16 +576,12 @@ impl<'a, T> IntoFuture for TaskHandle<'a, T> {
 mod tests {
     use slop_alloc::{Buffer, IntoHost};
 
+    use crate::TaskPoolBuilder;
+
     #[tokio::test]
-    async fn test_async_task_pool() {
+    async fn test_global_task_pool() {
         let task = crate::task().await.unwrap();
         task.run(|_| async {}).await;
-    }
-
-    #[test]
-    fn test_blocking_task_pool() {
-        let task = crate::get_task().unwrap();
-        task.blocking_run(|_| ());
     }
 
     #[tokio::test]
@@ -791,5 +594,36 @@ mod tests {
         let buffer = handle.await.unwrap();
         let values_back = buffer.into_host().await.unwrap().into_vec();
         assert_eq!(values_back, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[tokio::test]
+    async fn test_local_pool() {
+        let num_workers = 100;
+        let num_callers = 1000;
+        let pool = TaskPoolBuilder::new().num_tasks(num_workers).build().unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        for _ in 0..num_callers {
+            let pool = pool.clone();
+            let tx = tx.clone();
+            tokio::task::spawn(async move {
+                let task = pool.task().await.unwrap();
+                task.run(|_| async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                    tx.send(true).unwrap();
+                })
+                .await
+                .await
+                .unwrap();
+            });
+        }
+        drop(tx);
+
+        let mut count = 0;
+        while let Some(flag) = rx.recv().await {
+            assert!(flag);
+            count += 1;
+        }
+        assert_eq!(count, num_callers);
     }
 }

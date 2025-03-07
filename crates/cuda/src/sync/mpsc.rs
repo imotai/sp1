@@ -368,8 +368,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_owned_channel() {
-        let task_1 = crate::owned_task().await.unwrap();
-        let task_2 = crate::owned_task().await.unwrap();
+        let task_1 = crate::task().await.unwrap();
+        let task_2 = crate::task().await.unwrap();
         let chan = Arc::new(OwnedChannel::<Buffer<u8, TaskScope>>::new(10).unwrap());
         let (tx, mut rx) = chan.split();
 

@@ -8,7 +8,6 @@ on:
       - "**"
     paths:
       - "crates/**"
-      - "examples/**"
       - "Cargo.toml"
       - ".github/workflows/**"
   merge_group:
@@ -51,11 +50,17 @@ jobs:
           echo "CUDA_HOME=$CUDA_HOME"
           which nvcc
 
+      - name: Install SP1 toolchain
+        run: |
+          curl -L https://sp1.succinct.xyz | bash
+          ~/.sp1/bin/sp1up 
+          ~/.sp1/bin/cargo-prove prove --version
+
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          # toolchain: 1.81.0
+          toolchain: 1.81.0
           args: --release --workspace -- --test-threads=1 
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
@@ -91,11 +96,18 @@ jobs:
         run: |
           echo "CUDA_HOME=$CUDA_HOME"
           which nvcc
+
+      - name: Install SP1 toolchain
+        run: |
+          curl -L https://sp1.succinct.xyz | bash
+          ~/.sp1/bin/sp1up 
+          ~/.sp1/bin/cargo-prove prove --version
         
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
           command: fmt
+          toolchain: 1.81.0
           args: --all -- --check
         env:
           CARGO_INCREMENTAL: 1
@@ -104,6 +116,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
+          toolchain: 1.81.0
           args: --all-features --all-targets -- -D warnings -A incomplete-features
         env:
           CARGO_INCREMENTAL: 1

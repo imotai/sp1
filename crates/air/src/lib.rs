@@ -218,8 +218,9 @@ pub fn CUDA_P3_EVAL_RESET() {
 #[cfg(test)]
 mod tests {
 
+    use slop_baby_bear::BabyBear;
     use sp1_core_machine::{riscv::RiscvAir, utils::setup_logger};
-    use sp1_stark::{air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2};
+    use sp1_stark::air::MachineAir;
 
     use crate::codegen_cuda_eval;
 
@@ -227,8 +228,7 @@ mod tests {
     pub fn test_add() {
         setup_logger();
 
-        let config = BabyBearPoseidon2::default();
-        let machine = RiscvAir::machine(config);
+        let machine = RiscvAir::<BabyBear>::machine();
         let chips = machine.chips();
         for chip in chips {
             if chip.name() == "AddSub" {

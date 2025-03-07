@@ -1,10 +1,19 @@
-use crate::TaskScope;
+use crate::{CudaError, TaskScope};
+use csl_sys::runtime::cuda_mem_get_info;
 use slop_alloc::{mem::CopyError, CopyIntoBackend, CopyToBackend, CpuBackend};
 use std::future::Future;
 
 pub trait DeviceCopy: Copy + 'static + Sized + Send + Sync {}
 
 impl<T: Copy + 'static + Sized + Send + Sync> DeviceCopy for T {}
+
+/// Returns a pair `(free, total)` of the amount of free and total memory on the device.
+pub fn cuda_memory_info() -> Result<(usize, usize), CudaError> {
+    let mut free: usize = 0;
+    let mut total: usize = 0;
+    CudaError::result_from_ffi(unsafe { cuda_mem_get_info(&mut free, &mut total) })?;
+    Ok((free, total))
+}
 
 pub trait IntoDevice: CopyIntoBackend<TaskScope, CpuBackend> + Sized {
     fn into_device_in(

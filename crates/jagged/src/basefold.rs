@@ -10,19 +10,18 @@ pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverCompo
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{sync::Arc, time::Duration};
 
     use futures::prelude::*;
     use rand::{thread_rng, Rng};
     use serial_test::serial;
     use slop_alloc::IntoHost;
     use slop_challenger::CanObserve;
-    use slop_commit::{Message, Rounds};
-    use slop_multilinear::{Evaluations, Mle, Point};
+    use slop_commit::Rounds;
+    use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
     use slop_jagged::{
-        JaggedConfig, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier,
-        Poseidon2BabyBearJaggedConfig,
+        BabyBearPoseidon2, JaggedConfig, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier,
     };
 
     use crate::Poseidon2BabyBearJaggedCudaProverComponents;
@@ -32,7 +31,7 @@ mod tests {
     async fn test_jagged_basefold() {
         let log_blowup = 1;
 
-        type JC = Poseidon2BabyBearJaggedConfig;
+        type JC = BabyBearPoseidon2;
         type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
@@ -84,16 +83,21 @@ mod tests {
                         .iter()
                         .zip(col_counts.iter())
                         .map(|(num_rows, num_cols)| {
-                            Mle::<F>::rand(&mut rng, *num_cols, num_rows.ilog(2))
+                            if *num_rows == 0 {
+                                PaddedMle::zeros(*num_cols, max_log_row_count)
+                            } else {
+                                let mle = Mle::<F>::rand(&mut rng, *num_cols, num_rows.ilog(2));
+                                PaddedMle::padded_with_zeros(Arc::new(mle), max_log_row_count)
+                            }
                         })
                         .collect::<Vec<_>>()
                 })
-                .collect::<Vec<_>>();
+                .collect::<Rounds<_>>();
 
             let jagged_verifier = JaggedPcsVerifier::<JC>::new(
                 log_blowup as usize,
                 log_stacking_height,
-                max_log_row_count,
+                max_log_row_count as usize,
             );
 
             let jagged_prover = Prover::from_verifier(&jagged_verifier);
@@ -120,7 +124,7 @@ mod tests {
                         .then(|round| {
                             stream::iter(round.into_iter())
                                 .then(|mle| async { t.into_device(mle).await.unwrap() })
-                                .collect::<Message<_>>()
+                                .collect::<Vec<_>>()
                         })
                         .collect::<Rounds<_>>()
                         .await;
@@ -141,11 +145,10 @@ mod tests {
                         total_number_of_variables, commit_time
                     );
 
-                    let d_point = t.to_device(&eval_point).await.unwrap();
                     let evaluation_claims = stream::iter(rounds.iter())
                         .then(|round| {
                             stream::iter(round.iter())
-                                .then(|mle| mle.eval_at(&d_point))
+                                .then(|mle| mle.eval_at(&eval_point))
                                 .collect::<Evaluations<_, _>>()
                         })
                         .collect::<Rounds<_>>()

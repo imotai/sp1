@@ -137,11 +137,12 @@ where
         + HadamardUnivariatePolyEvalKernel<EF, EF>
         + ReduceSumBackend<EF>,
 {
+    type NextRoundPoly = HadamardProduct<EF, EF, TaskScope>;
     async fn fix_t_variables(
         poly: HadamardProduct<F, EF, TaskScope>,
         alpha: EF,
         _t: usize,
-    ) -> impl slop_sumcheck::SumcheckPoly<EF> {
+    ) -> Self::NextRoundPoly {
         let base = poly.base.fix_last_variable(alpha).await;
         let ext = poly.ext.fix_last_variable(alpha).await;
         // let HadamardProduct { base, ext } = poly;

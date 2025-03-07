@@ -7,6 +7,7 @@ use slop_alloc::IntoHost;
 use slop_baby_bear::BabyBear;
 use slop_multilinear::{
     MleBaseBackend, MleEvaluationBackend, MleFixedAtZeroBackend, PartialLagrangeBackend, Point,
+    ZeroEvalBackend,
 };
 use slop_tensor::{DotBackend, Tensor};
 
@@ -64,6 +65,12 @@ where
                 .unwrap();
         }
         eq
+    }
+}
+
+impl<F: Field> ZeroEvalBackend<F> for TaskScope {
+    fn zero_evaluations(&self, num_polynomials: usize) -> Tensor<F, Self> {
+        Tensor::zeros_in([num_polynomials], self.clone())
     }
 }
 

@@ -27,6 +27,7 @@ slop-basefold = { workspace = true }
 slop-stacked = { workspace = true }
 slop-commit = { workspace = true }
 slop-jagged = { workspace = true }
+slop-futures = { workspace = true }
 
 sp1-stark = { workspace = true }
 sp1-core-machine = { workspace = true }
@@ -38,7 +39,7 @@ crossbeam = "0.8.4"
 pin-project = "1"
 futures = "0.3"
 itertools = { workspace = true }
-
+tracing = { workspace = true }
 [dev-dependencies]
 rand = "0.8"
 

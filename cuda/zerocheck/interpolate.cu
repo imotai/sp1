@@ -2,10 +2,10 @@
 #include "../fields/bb31_extension_t.cuh"
 #include "../fields/bb31_t.cuh"
 
-template<typename K, size_t MEMORY_SIZE>
+template <typename K>
 __global__ void interpolate_row(
     const K *input,
-    bb31_extension_t *__restrict__ output,
+    K *__restrict__ output,
     size_t outputHeight,
     size_t width)
 {
@@ -26,19 +26,19 @@ __global__ void interpolate_row(
             K y_2 = slope_times_two + zeroValue;
             K y_4 = slope_times_four + zeroValue;
 
-            bb31_extension_t::store(output, j * outputHeight + i, y_0);
-            bb31_extension_t::store(output, 1 * (outputHeight * width) + (j * outputHeight + i), y_2);
-            bb31_extension_t::store(output, 2 * (outputHeight * width) + (j * outputHeight + i), y_4);
+            K::store(output, j * outputHeight + i, y_0);
+            K::store(output, 1 * (outputHeight * width) + (j * outputHeight + i), y_2);
+            K::store(output, 2 * (outputHeight * width) + (j * outputHeight + i), y_4);
         }
     }
 }
 
 extern "C" void *interpolate_row_baby_bear_kernel()
 {
-    return (void *)interpolate_row<bb31_t, 32>;
+    return (void *)interpolate_row<bb31_t>;
 }
 
 extern "C" void *interpolate_row_baby_bear_extension_kernel()
 {
-    return (void *)interpolate_row<bb31_extension_t, 32>;
+    return (void *)interpolate_row<bb31_extension_t>;
 }

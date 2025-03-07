@@ -1,10 +1,20 @@
+use csl_air::{codegen_cuda_eval, SymbolicProverFolder};
 use slop_air::Air;
-use slop_algebra::{AbstractExtensionField, ExtensionField, Field};
+use slop_algebra::{
+    extension::BinomialExtensionField, AbstractExtensionField, ExtensionField, Field,
+};
 use slop_alloc::{Buffer, IntoHost};
-use slop_multilinear::{Mle, MleBaseBackend};
+use slop_baby_bear::BabyBear;
+use slop_multilinear::{Mle, PaddedMle};
 use slop_tensor::{ReduceSumBackend, Tensor};
-use sp1_stark::{air::MachineAir, zerocheck::ZerocheckProver, ConstraintSumcheckFolder};
+use sp1_stark::{
+    air::MachineAir,
+    prover::{ZerocheckProverData, ZerocheckRoundProver},
+    ConstraintSumcheckFolder,
+};
 use std::{
+    collections::BTreeMap,
+    marker::PhantomData,
     ops::{Add, Mul, Sub},
     sync::Arc,
 };
@@ -13,6 +23,60 @@ use crate::{EvalProgram, InterpolateRowKernel};
 use csl_cuda::{args, TaskScope};
 
 use super::ConstraintPolyEvalKernel;
+
+pub struct ZerocheckEvalProgramProverData<F, EF, A> {
+    pub eval_programs: BTreeMap<String, Arc<EvalProgram<F, EF>>>,
+    pub allocator: TaskScope,
+    _marker: PhantomData<A>,
+}
+
+impl<A> ZerocheckEvalProgramProverData<BabyBear, BinomialExtensionField<BabyBear, 4>, A>
+where
+    A: MachineAir<BabyBear> + for<'a> Air<SymbolicProverFolder<'a>>,
+{
+    pub fn new(airs: &[Arc<A>], allocator: TaskScope) -> Self {
+        let mut eval_programs = BTreeMap::new();
+        for air in airs.iter() {
+            let (operations, f_ctr, _, f_constants, ef_constants) = codegen_cuda_eval(air.as_ref());
+            let operations = Buffer::from(operations);
+            let f_constants = Buffer::from(f_constants);
+            let ef_constants = Buffer::from(ef_constants);
+            let eval_program =
+                Arc::new(EvalProgram { operations, f_ctr, f_constants, ef_constants });
+            eval_programs.insert(air.name().to_owned(), eval_program);
+        }
+        Self { eval_programs, allocator, _marker: PhantomData }
+    }
+}
+
+impl<F, EF, A> ZerocheckProverData<F, EF, TaskScope> for ZerocheckEvalProgramProverData<F, EF, A>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    A: for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
+        + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+        + MachineAir<F>,
+    TaskScope: InterpolateRowKernel<F>
+        + InterpolateRowKernel<EF>
+        + ConstraintPolyEvalKernel<F>
+        + ConstraintPolyEvalKernel<EF>
+        + ReduceSumBackend<EF>,
+{
+    type Air = A;
+    type RoundProver = ZerocheckEvalProgramProver<F, EF, A>;
+
+    fn round_prover(
+        &self,
+        air: Arc<A>,
+        public_values: Arc<Vec<F>>,
+        powers_of_alpha: Arc<Vec<EF>>,
+    ) -> Self::RoundProver {
+        let eval_program = self.eval_programs.get(&air.name()).unwrap().clone();
+        let public_values = Arc::new(Buffer::from(public_values.to_vec()));
+        let powers_of_alpha = Arc::new(Buffer::from(powers_of_alpha.to_vec()));
+        ZerocheckEvalProgramProver::new(eval_program, air, public_values, powers_of_alpha)
+    }
+}
 
 /// A prover that uses the eval program to evaluate the constraint polynomial.
 pub struct ZerocheckEvalProgramProver<F, EF, A> {
@@ -66,11 +130,12 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         let mut output: Tensor<EF, TaskScope> =
             Tensor::with_sizes_in([3, interpolated_main_rows_height], backend.clone());
 
-        let preprocessed_ptr = if let Some(preprocessed_rows) = interpolated_preprocessed_rows {
-            preprocessed_rows.as_ptr()
-        } else {
-            std::ptr::null()
-        };
+        let (preprocessed_ptr, preprocessed_width) =
+            if let Some(preprocessed_rows) = interpolated_preprocessed_rows {
+                (preprocessed_rows.as_ptr(), preprocessed_rows.sizes()[1])
+            } else {
+                (std::ptr::null(), 0)
+            };
 
         // Evalulate the constraint polynomial on the interpolated rows.
         unsafe {
@@ -82,7 +147,7 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
                 ef_constants_device.as_ptr(),
                 partial_lagrange.guts().as_ptr(),
                 preprocessed_ptr,
-                0,
+                preprocessed_width,
                 interpolated_main_rows.as_ptr(),
                 main_width,
                 interpolated_main_rows_height,
@@ -95,6 +160,7 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
             const STRIDE: usize = 1;
             let grid_size_x = interpolated_main_rows_height.div_ceil(BLOCK_SIZE * STRIDE);
             let grid_size = (grid_size_x, 3, 1);
+
             output.assume_init();
             backend
                 .launch_kernel(
@@ -113,7 +179,7 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
     }
 }
 
-impl<F, K, EF, A> ZerocheckProver<F, K, EF, TaskScope> for ZerocheckEvalProgramProver<F, EF, A>
+impl<F, K, EF, A> ZerocheckRoundProver<F, K, EF, TaskScope> for ZerocheckEvalProgramProver<F, EF, A>
 where
     F: Field,
     EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
@@ -141,15 +207,12 @@ where
     async fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
         &self,
         partial_lagrange: Arc<Mle<EF, TaskScope>>,
-        preprocessed_values: Option<Arc<Mle<K, TaskScope>>>,
-        main_values: Arc<Mle<K, TaskScope>>,
-        _num_non_padded_terms: usize,
+        preprocessed_values: Option<PaddedMle<K, TaskScope>>,
+        main_values: PaddedMle<K, TaskScope>,
     ) -> (EF, EF, EF) {
-        let interpolated_main_rows = interpolate_rows(main_values.as_ref());
-
+        let interpolated_main_rows = interpolate_rows(main_values.inner().as_ref().unwrap());
         let interpolated_preprocessed_rows =
-            preprocessed_values.map(|values| interpolate_rows(values.as_ref()));
-
+            preprocessed_values.map(|values| interpolate_rows(values.inner().as_ref().unwrap()));
         let output = self
             .constraint_poly_eval(
                 &partial_lagrange,
@@ -157,8 +220,7 @@ where
                 &interpolated_main_rows,
             )
             .await;
-
-        let y_s_device = output.sum(1).await;
+        let y_s_device = Tensor::sum(&output, 1).await;
         let y_s_host = y_s_device.into_host().await.unwrap().into_buffer().into_vec();
 
         (y_s_host[0], y_s_host[1], y_s_host[2])
@@ -171,13 +233,12 @@ where
 {
     let backend = values.backend();
 
-    let height = (1 << TaskScope::num_variables(values.guts())) as usize;
-    let width = TaskScope::num_polynomials(values.guts());
+    let height = values.num_non_zero_entries();
+    let width = values.num_polynomials();
     let interpolated_rows_height = height.div_ceil(2);
 
     let mut interpolated_rows: Tensor<K, TaskScope> =
         Tensor::with_sizes_in([3, width, interpolated_rows_height], backend.clone());
-
     const BLOCK_SIZE: usize = 256;
     const STRIDE: usize = 1;
     let grid_size_x = interpolated_rows_height.div_ceil(BLOCK_SIZE * STRIDE);
@@ -190,7 +251,6 @@ where
         interpolated_rows_height,
         width
     );
-
     unsafe {
         interpolated_rows.assume_init();
 
@@ -204,7 +264,6 @@ where
             )
             .unwrap();
     }
-
     interpolated_rows
 }
 
@@ -221,7 +280,7 @@ mod tests {
     use slop_tensor::Tensor;
 
     use sp1_core_machine::riscv::RiscvAir;
-    use sp1_stark::{air::MachineAir, zerocheck::ZerocheckCpuProver, PROOF_MAX_NUM_PVS};
+    use sp1_stark::{air::MachineAir, prover::ZerocheckCpuProver, PROOF_MAX_NUM_PVS};
 
     #[tokio::test]
     async fn test_interpolate_rows() {
@@ -281,9 +340,9 @@ mod tests {
         assert!(cpu_chip.name() == "Cpu");
         let cpu_width = cpu_chip.width();
         let cpu_num_constraints = 36; // TODO fill this out.
-        let num_non_padded_terms = 1 << 20;
 
         let main_mle = Arc::new(Mle::<EF>::new(Tensor::rand(&mut rng, [1 << 21, cpu_width])));
+        let main_mle = PaddedMle::padded_with_zeros(main_mle, 21);
 
         let alpha: EF = rng.sample(Standard);
         let mut powers_of_alpha = alpha.powers().take(cpu_num_constraints).collect::<Vec<_>>();
@@ -302,12 +361,7 @@ mod tests {
 
         let start_time = Instant::now();
         let (cpu_y_0, cpu_y_2, cpu_y_4) = host_prover
-            .sum_as_poly_in_last_variable::<false>(
-                partial_lagrange_cpu,
-                None,
-                main_mle.clone(),
-                num_non_padded_terms,
-            )
+            .sum_as_poly_in_last_variable::<false>(partial_lagrange_cpu, None, main_mle.clone())
             .await;
         let cpu_time = start_time.elapsed();
         println!("CPU time: {:?}", cpu_time);
@@ -334,12 +388,7 @@ mod tests {
                 t.synchronize().await.unwrap();
                 let time = tokio::time::Instant::now();
                 let (gpu_y_0, gpu_y_2, gpu_y_4) = device_prover
-                    .sum_as_poly_in_last_variable::<false>(
-                        partial_lagrange,
-                        None,
-                        Arc::new(main_mle_device),
-                        num_non_padded_terms,
-                    )
+                    .sum_as_poly_in_last_variable::<false>(partial_lagrange, None, main_mle_device)
                     .await;
                 t.synchronize().await.unwrap();
                 let gpu_time = time.elapsed();

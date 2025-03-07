@@ -34,6 +34,18 @@ where
     }
 }
 
+impl<F: Field> CopyToBackend<CpuBackend, TaskScope> for Mle<F, TaskScope>
+where
+    TaskScope: TransposeBackend<F>,
+{
+    type Output = Mle<F, CpuBackend>;
+    async fn copy_to_backend(&self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let tensor = self.guts().transpose();
+        let guts = tensor.copy_into_backend(backend).await?;
+        Ok(Mle::new(guts))
+    }
+}
+
 impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Mle<F, CpuBackend>
 where
     TaskScope: TransposeBackend<F>,

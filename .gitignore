@@ -26,6 +26,10 @@ benchmark.csv
 *.ncu-rep
 *.sqlite
 
+# files from perf script
+program.bin
+stdin.bin
+
 # proof file from test
 prover/proof-with-pis.bin
 perf/proof-with-pis.bin
