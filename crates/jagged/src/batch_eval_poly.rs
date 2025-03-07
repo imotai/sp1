@@ -169,7 +169,6 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
                             .split_at(merged_prefix_sum.dimension() - self.round_num - 1);
                         let eq_prefix_sum_value = *eq_prefix_sum.values()[0];
                         let eq_val_0 = K::one() - eq_prefix_sum_value;
-                        let eq_val_half = K::two().inverse();
 
                         let func = |x: K, eq_val: K| -> K {
                             let eq_eval = *eq_adjustment * eq_val;
@@ -185,7 +184,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
                             *z_col_eq_val * h_eval * eq_eval
                         };
 
-                        (func(K::zero(), eq_val_0), func(K::two().inverse(), eq_val_half))
+                        (func(K::zero(), eq_val_0), func(self.half, self.half))
                     })
                     .fold((K::zero(), K::zero()), |(y_0, y_2), (y_0_i, y_2_i)| {
                         (y_0 + y_0_i, y_2 + y_2_i)
@@ -198,10 +197,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
 
         let y_1 = claim.unwrap() - y_0;
 
-        interpolate_univariate_polynomial(
-            &[K::zero(), K::one(), K::two().inverse()],
-            &[y_0, y_1, y_half],
-        )
+        interpolate_univariate_polynomial(&[K::zero(), K::one(), self.half], &[y_0, y_1, y_half])
     }
 }
 
