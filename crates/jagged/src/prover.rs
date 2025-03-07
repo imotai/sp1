@@ -11,8 +11,8 @@ use slop_multilinear::{
     Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsProver, PaddedMle, Point,
 };
 use slop_stacked::{
-    FixedRateInterleave, FixedRateInterleaveBackend, InterleaveMultilinears, StackedPcsProver,
-    StackedPcsProverData, StackedPcsProverError,
+    FixedRateInterleaveBackend, InterleaveMultilinears, StackedPcsProver, StackedPcsProverData,
+    StackedPcsProverError,
 };
 use slop_sumcheck::{
     reduce_sumcheck_to_evaluation, ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend,
@@ -21,8 +21,8 @@ use slop_sumcheck::{
 use thiserror::Error;
 
 use crate::{
-    HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams, JaggedMleGenerator,
-    JaggedPcsProof, JaggedPcsVerifier, LongMle,
+    HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams, JaggedPcsProof,
+    JaggedPcsVerifier, JaggedSumcheckProver, LongMle,
 };
 
 pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
@@ -82,7 +82,8 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
         + Clone
         + Debug;
 
-    type JaggedGenerator: JaggedMleGenerator<Self::EF, Self::A>;
+    // type JaggedGenerator: JaggedMleGenerator<Self::EF, Self::A>;
+    type JaggedSumcheckProver: JaggedSumcheckProver<Self::F, Self::EF, Self::A>;
 
     type BatchPcsProver: MultilinearPcsProver<
         F = Self::F,
@@ -99,7 +100,7 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
 #[derive(Debug, Clone)]
 pub struct JaggedProver<C: JaggedProverComponents> {
     stacked_pcs_prover: StackedPcsProver<C::BatchPcsProver, C::Stacker>,
-    jagged_generator: C::JaggedGenerator,
+    jagged_sumcheck_prover: C::JaggedSumcheckProver,
     pub max_log_row_count: usize,
 }
 
@@ -110,9 +111,9 @@ pub struct JaggedProver<C: JaggedProverComponents> {
     deserialize = "StackedPcsProverData<C::BatchPcsProver>: Deserialize<'de>"
 ))]
 pub struct JaggedProverData<C: JaggedProverComponents> {
-    stacked_pcs_prover_data: StackedPcsProverData<C::BatchPcsProver>,
-    row_counts: Arc<Vec<usize>>,
-    column_counts: Arc<Vec<usize>>,
+    pub stacked_pcs_prover_data: StackedPcsProverData<C::BatchPcsProver>,
+    pub row_counts: Arc<Vec<usize>>,
+    pub column_counts: Arc<Vec<usize>>,
 }
 
 #[derive(Debug, Error)]
@@ -131,9 +132,9 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
     pub const fn new(
         max_log_row_count: usize,
         stacked_pcs_prover: StackedPcsProver<C::BatchPcsProver, C::Stacker>,
-        jagged_generator: C::JaggedGenerator,
+        jagged_sumcheck_prover: C::JaggedSumcheckProver,
     ) -> Self {
-        Self { stacked_pcs_prover, jagged_generator, max_log_row_count }
+        Self { stacked_pcs_prover, jagged_sumcheck_prover, max_log_row_count }
     }
 
     pub fn from_verifier(verifier: &JaggedPcsVerifier<C::Config>) -> Self
@@ -280,34 +281,24 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         let z_row_backend = z_row.copy_into(&backend);
         let z_col_backend = z_col.copy_into(&backend);
-        // Generate the jagged mle.
-        let jaggled_mle = self
-            .jagged_generator
-            .partial_jagged_multilinear(
+
+        let all_mles = prover_data
+            .iter()
+            .flat_map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
+            .collect::<Message<Mle<C::F, C::A>>>();
+        let long_mle = LongMle::from_message(all_mles, self.log_stacking_height());
+
+        let sumcheck_poly = self
+            .jagged_sumcheck_prover
+            .jagged_sumcheck_poly(
+                long_mle,
                 &params,
                 row_data,
                 column_data,
                 &z_row_backend,
                 &z_col_backend,
-                1,
             )
             .await;
-
-        let total_num_variables = jaggled_mle.num_variables();
-
-        // Restack the mles into a single one to match the jagged polynomial.
-        // TODO: make the jagged match the multilinear.
-        let all_mles = prover_data
-            .iter()
-            .flat_map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
-            .collect::<Message<Mle<C::F, C::A>>>();
-        let stacker = FixedRateInterleave::<C::F, C::A>::new(1);
-        let restacked_mle = LongMle::from_message(
-            stacker.interleave_multilinears(all_mles, total_num_variables).await,
-            total_num_variables,
-        );
-
-        let sumcheck_poly = HadamardProduct { base: restacked_mle, ext: jaggled_mle };
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
         // table claims.
