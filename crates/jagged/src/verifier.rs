@@ -12,6 +12,8 @@ use crate::{JaggedConfig, JaggedLittlePolynomialVerifierParams};
 pub struct JaggedPcsProof<C: JaggedConfig> {
     pub stacked_pcs_proof: StackedPcsProof<C::BatchPcsProof, C::EF>,
     pub sumcheck_proof: PartialSumcheckProof<C::EF>,
+    pub branching_program_evals: Vec<C::EF>,
+    // pub branching_program_evals_proof: PartialSumcheckProof<C::EF>,
     pub params: JaggedLittlePolynomialVerifierParams<C::EF>,
 }
 
@@ -41,7 +43,8 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         insertion_points: &[usize],
         challenger: &mut C::Challenger,
     ) -> Result<(), JaggedPcsVerifierError<C>> {
-        let JaggedPcsProof { stacked_pcs_proof, sumcheck_proof, params } = proof;
+        let JaggedPcsProof { stacked_pcs_proof, sumcheck_proof, branching_program_evals, params } =
+            proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
             .map(|_| challenger.sample_ext_element::<C::EF>())
@@ -81,8 +84,8 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         // Compute the expected evaluation of the jagged little polynomial from its succinct
         // description.
-        let jagged_eval = tracing::debug_span!("full_jagged_little_polynomial_evaluation")
-            .in_scope(|| {
+        let (jagged_eval, branching_program_evals) =
+            tracing::debug_span!("full_jagged_little_polynomial_evaluation").in_scope(|| {
                 params.full_jagged_little_polynomial_evaluation(
                     &z_row,
                     &z_col,

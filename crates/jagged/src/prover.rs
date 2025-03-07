@@ -341,11 +341,8 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             BatchEvalPoly::new(z_row.clone(), z_col.clone(), final_eval_point.clone(), prefix_sums);
 
         let verifier_params = params.clone().into_verifier_params();
-        let expected_sum = verifier_params.full_jagged_little_polynomial_evaluation(
-            &z_row,
-            &z_col,
-            &final_eval_point,
-        );
+        let (expected_sum, branching_program_evals) = verifier_params
+            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &final_eval_point);
 
         reduce_sumcheck_to_evaluation(
             vec![batch_eval_poly],
@@ -386,6 +383,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         Ok(JaggedPcsProof {
             stacked_pcs_proof,
             sumcheck_proof,
+            branching_program_evals,
             params: params.into_verifier_params(),
         })
     }

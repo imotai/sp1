@@ -8,10 +8,10 @@ use slop_alloc::Buffer;
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound};
 
-use crate::poly::HPoly;
+use crate::poly::BranchingProgram;
 
 pub(crate) struct BatchEvalPoly<K: Field + 'static> {
-    h_poly: HPoly<K>,
+    h_poly: BranchingProgram<K>,
     rho: Point<K>,
     z_col: Point<K>,
     merged_prefix_sums: Vec<Point<K>>,
@@ -72,7 +72,7 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
         assert!(merged_prefix_sums_len == z_col_eq_vals.len());
 
         Self {
-            h_poly: HPoly::new(z_row, z_index),
+            h_poly: BranchingProgram::new(z_row, z_index),
             rho: Point::new(Buffer::default()),
             z_col,
             merged_prefix_sums,
@@ -258,12 +258,12 @@ mod tests {
             })
             .collect_vec();
 
-        let h_poly = HPoly::new(z_row.clone(), z_index.clone());
+        let h_poly = BranchingProgram::new(z_row.clone(), z_index.clone());
 
         let prover_params =
             JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
         let verifier_params = prover_params.clone().into_verifier_params();
-        let expected_sum =
+        let (expected_sum, branching_program_evals) =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 
         let batch_eval_poly =
