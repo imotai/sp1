@@ -7,6 +7,7 @@ use slop_algebra::{interpolate_univariate_polynomial, Field, UnivariatePolynomia
 use slop_alloc::Buffer;
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::{ComponentPoly, SumcheckPoly, SumcheckPolyBase, SumcheckPolyFirstRound};
+use slop_utils::log2_ceil_usize;
 
 use crate::poly::BranchingProgram;
 
@@ -29,11 +30,11 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
         z_index: Point<K>,
         prefix_sums: Vec<usize>,
     ) -> Self {
-        let log_m = z_index.dimension();
+        let log_m = log2_ceil_usize(*prefix_sums.last().unwrap());
         let col_prefix_sums: Vec<Point<K>> =
-            prefix_sums.iter().map(|&x| Point::from_usize(x, log_m)).collect();
+            prefix_sums.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
         let next_col_prefix_sums: Vec<Point<K>> =
-            prefix_sums.iter().skip(1).map(|&x| Point::from_usize(x, log_m)).collect();
+            prefix_sums.iter().skip(1).map(|&x| Point::from_usize(x, log_m + 1)).collect();
 
         let (merged_prefix_sums, is_empty_col): (Vec<Point<K>>, Vec<bool>) = col_prefix_sums
             .iter()
@@ -87,7 +88,7 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
 
 impl<K: Field + 'static> SumcheckPolyBase for BatchEvalPoly<K> {
     fn num_variables(&self) -> u32 {
-        self.h_poly.num_vars as u32 * 2
+        self.merged_prefix_sums.first().unwrap().dimension() as u32
     }
 }
 
@@ -263,7 +264,7 @@ mod tests {
         let prover_params =
             JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
         let verifier_params = prover_params.clone().into_verifier_params();
-        let (expected_sum, branching_program_evals) =
+        let (expected_sum, _) =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 
         let batch_eval_poly =

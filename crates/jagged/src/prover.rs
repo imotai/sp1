@@ -328,17 +328,12 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
-        let prefix_sums: Vec<usize> = prover_data
-            .iter()
-            .flat_map(|data| {
-                data.row_counts.iter().copied().zip(data.column_counts.iter().copied()).flat_map(
-                    |(row_count, column_count)| std::iter::repeat(row_count).take(column_count),
-                )
-            })
-            .collect();
-
-        let batch_eval_poly =
-            BatchEvalPoly::new(z_row.clone(), z_col.clone(), final_eval_point.clone(), prefix_sums);
+        let batch_eval_poly = BatchEvalPoly::new(
+            z_row.clone(),
+            z_col.clone(),
+            final_eval_point.clone(),
+            params.col_prefix_sums_usize.clone(),
+        );
 
         let verifier_params = params.clone().into_verifier_params();
         let (expected_sum, branching_program_evals) = verifier_params

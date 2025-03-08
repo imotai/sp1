@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::FieldChallenger;
@@ -7,7 +6,7 @@ use slop_stacked::{StackedPcsProof, StackedPcsVerifier};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use thiserror::Error;
 
-use crate::{JaggedConfig, JaggedLittlePolynomialVerifierParams};
+use crate::{BranchingProgram, JaggedConfig, JaggedLittlePolynomialVerifierParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JaggedPcsProof<C: JaggedConfig> {
@@ -88,7 +87,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
-        let col_eq_vals = (0..1 << num_col_variables as usize)
+        let col_eq_vals = (0..branching_program_evals.len())
             .map(|c| {
                 let point = Point::<C::EF>::from_usize(c, num_col_variables as usize);
                 Mle::full_lagrange_eval(&point, &z_col)
@@ -97,36 +96,44 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         // Compute the expected evaluation of the jagged little polynomial from its succinct
         // description.
-        println!("branching_program_eval: {:?}", branching_program_evals[0..10].to_vec());
         let jagged_eval = col_eq_vals
             .iter()
             .zip(branching_program_evals.iter())
             .map(|(z_col_eq_val, branching_program_eval)| *z_col_eq_val * *branching_program_eval)
             .sum::<C::EF>();
 
-        println!("z_row is {:?}", z_row.values().to_vec());
-        println!("z_col is {:?}", z_col.values().to_vec());
-        println!(
-            "sumcheck_proof.point_and_eval.0 is {:?}",
-            sumcheck_proof.point_and_eval.0.values().to_vec()
+        partially_verify_sumcheck_proof(branching_program_evals_proof, challenger)
+            .map_err(JaggedPcsVerifierError::SumcheckError)?;
+
+        let branching_program =
+            BranchingProgram::new(z_row.clone(), sumcheck_proof.point_and_eval.0.clone());
+        let (first_half_z_index, second_half_z_index) = branching_program_evals_proof
+            .point_and_eval
+            .0
+            .split_at(branching_program_evals_proof.point_and_eval.0.dimension() / 2);
+        assert!(first_half_z_index.len() == second_half_z_index.len());
+        let expected_branching_program_batched_eval = col_eq_vals
+            .iter()
+            .enumerate()
+            .map(|(i, z_col_eq_val)| {
+                let mut merged_prefix_sum = params.col_prefix_sums[i].clone();
+                let next_prefix_sum = params.col_prefix_sums[i + 1].clone();
+                merged_prefix_sum.extend(&next_prefix_sum);
+                *z_col_eq_val
+                    * Mle::full_lagrange_eval(
+                        &merged_prefix_sum,
+                        &branching_program_evals_proof.point_and_eval.0,
+                    )
+            })
+            .sum::<C::EF>()
+            * branching_program.eval(&first_half_z_index, &second_half_z_index);
+        assert!(
+            expected_branching_program_batched_eval
+                == branching_program_evals_proof.point_and_eval.1
         );
-        println!("verifer: params is {:?}", params.col_prefix_sums_usize);
-        let (expected_jagged_eval, expected_branching_program_evals) =
-            tracing::debug_span!("full_jagged_little_polynomial_evaluation").in_scope(|| {
-                params.full_jagged_little_polynomial_evaluation(
-                    &z_row,
-                    &z_col,
-                    &sumcheck_proof.point_and_eval.0,
-                )
-            });
-        assert!(expected_branching_program_evals == *branching_program_evals);
-        assert!(expected_jagged_eval == jagged_eval);
 
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;
-
-        partially_verify_sumcheck_proof(&branching_program_evals_proof, challenger)
-            .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
         // Verify the evaluation proof.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
