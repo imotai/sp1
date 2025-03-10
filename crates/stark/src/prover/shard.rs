@@ -27,7 +27,7 @@ use crate::{
     PROOF_MAX_NUM_PVS,
 };
 
-use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
+use super::{TraceGenerator, Traces, ZeroCheckBackend, ZerocheckProverData};
 
 /// The components of the machine prover.
 ///
@@ -50,7 +50,7 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
     type Air: ZerocheckAir<Self::F, Self::EF, Program = Self::Program, Record = Self::Record>;
     /// The backend used by the prover.
     type B: JaggedBackend<Self::F, Self::EF>
-        + ZercocheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>
+        + ZeroCheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>
         + PointBackend<Self::EF>
         + HostEvaluationBackend<Self::F, Self::EF>
         + HostEvaluationBackend<Self::F, Self::F>

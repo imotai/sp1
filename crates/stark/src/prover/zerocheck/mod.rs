@@ -21,7 +21,7 @@ use crate::{air::MachineAir, ConstraintSumcheckFolder};
 
 /// A zerocheck backend. This trait is automatically implemented for any backend satisfying the
 /// required bounds.
-pub trait ZercocheckBackend<
+pub trait ZeroCheckBackend<
     F: Field,
     EF: ExtensionField<F>,
     ProverData: ZerocheckProverData<F, EF, Self>,
@@ -94,7 +94,7 @@ impl<F: Field, EF: ExtensionField<F>, A> ZerocheckAir<F, EF> for A where
 }
 
 impl<F: Field, EF: ExtensionField<F>, ProverData: ZerocheckProverData<F, EF, B>, B>
-    ZercocheckBackend<F, EF, ProverData> for B
+    ZeroCheckBackend<F, EF, ProverData> for B
 where
     B: Backend
         + MleBaseBackend<EF>
