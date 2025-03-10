@@ -22,7 +22,7 @@ use slop_sumcheck::{
 use thiserror::Error;
 
 use crate::{
-    BatchEvalPoly, HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams,
+    HadamardProduct, JaggedConfig, JaggedEvalSumcheckPoly, JaggedLittlePolynomialProverParams,
     JaggedPcsProof, JaggedPcsVerifier, JaggedSumcheckProver, LongMle,
 };
 
@@ -319,7 +319,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
-        let batch_eval_poly = BatchEvalPoly::new(
+        let batch_eval_poly = JaggedEvalSumcheckPoly::new(
             z_row.clone(),
             z_col.clone(),
             final_eval_point.clone(),

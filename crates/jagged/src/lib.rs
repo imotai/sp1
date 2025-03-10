@@ -1,7 +1,7 @@
 mod basefold;
-mod batch_eval_poly;
 mod config;
 mod hadamard;
+mod jagged_eval;
 mod long;
 mod poly;
 mod populate;
@@ -10,9 +10,9 @@ mod sumcheck;
 mod verifier;
 
 pub use basefold::*;
-pub use batch_eval_poly::*;
 pub use config::*;
 pub use hadamard::*;
+pub(crate) use jagged_eval::*;
 pub use long::*;
 pub use poly::*;
 pub use populate::*;
