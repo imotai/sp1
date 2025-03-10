@@ -1289,6 +1289,7 @@ dependencies = [
  "slop-multilinear",
  "slop-poseidon2",
  "slop-tensor",
+ "thiserror",
  "tracing",
 ]
 
