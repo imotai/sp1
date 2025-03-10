@@ -5,7 +5,7 @@ use std::{
 
 use p3_field::PrimeField64;
 
-use crate::{air::Block, Address};
+use crate::{block::Block, Address};
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct MemoryEntry<F> {

@@ -1,8 +1,7 @@
 use crate::*;
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
-use shape::RecursionShape;
-use sp1_stark::air::{MachineAir, MachineProgram};
+use sp1_stark::air::MachineProgram;
 use sp1_stark::septic_digest::SepticDigest;
 use std::ops::Deref;
 
@@ -40,10 +39,6 @@ impl<F> RecursionProgram<F> {
     pub fn into_inner(self) -> RootProgram<F> {
         self.0
     }
-
-    pub fn shape_mut(&mut self) -> &mut Option<RecursionShape> {
-        &mut self.0.shape
-    }
 }
 
 impl<F> Default for RecursionProgram<F> {
@@ -68,22 +63,6 @@ impl<F: Field> MachineProgram<F> for RecursionProgram<F> {
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
         SepticDigest::<F>::zero()
-    }
-}
-
-impl<F: Field> RecursionProgram<F> {
-    #[inline]
-    pub fn fixed_log2_rows<A: MachineAir<F>>(&self, air: &A) -> Option<usize> {
-        self.0
-            .shape
-            .as_ref()
-            .map(|shape| {
-                shape
-                    .inner
-                    .get(&air.name())
-                    .unwrap_or_else(|| panic!("Chip {} not found in specified shape", air.name()))
-            })
-            .copied()
     }
 }
 
@@ -203,7 +182,6 @@ mod validation {
         RootProgram {
             inner: RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] },
             total_memory: 0, // Will be filled in.
-            shape: None,
         }
         .validate()
     }
@@ -213,17 +191,12 @@ mod validation {
 pub struct RootProgram<F> {
     pub inner: raw::RawProgram<Instruction<F>>,
     pub total_memory: usize,
-    pub shape: Option<RecursionShape>,
 }
 
 // `Default` without bounds on the type parameter.
 impl<F> Default for RootProgram<F> {
     fn default() -> Self {
-        Self {
-            inner: Default::default(),
-            total_memory: Default::default(),
-            shape: Default::default(),
-        }
+        Self { inner: Default::default(), total_memory: Default::default() }
     }
 }
 

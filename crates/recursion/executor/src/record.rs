@@ -1,12 +1,21 @@
-use std::{array, ops::Add, sync::Arc};
+use std::{
+    array,
+    ops::{Add, AddAssign},
+    sync::Arc,
+};
 
 use p3_field::{AbstractField, Field, PrimeField32};
-use sp1_stark::{air::MachineAir, MachineRecord, SP1CoreOpts, PROOF_MAX_NUM_PVS};
+use sp1_stark::{MachineRecord, SP1CoreOpts, PROOF_MAX_NUM_PVS};
+
+use crate::{
+    instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr},
+    public_values::RecursionPublicValues,
+    ExpReverseBitsInstr, Instruction,
+};
 
 use super::{
-    machine::RecursionAirEventCount, BaseAluEvent, BatchFRIEvent, CommitPublicValuesEvent,
-    ExpReverseBitsEvent, ExtAluEvent, FriFoldEvent, MemEvent, Poseidon2Event, RecursionProgram,
-    RecursionPublicValues, SelectEvent,
+    BaseAluEvent, BatchFRIEvent, CommitPublicValuesEvent, ExpReverseBitsEvent, ExtAluEvent,
+    FriFoldEvent, MemEvent, Poseidon2Event, RecursionProgram, SelectEvent,
 };
 
 #[derive(Clone, Default, Debug)]
@@ -96,11 +105,6 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
 }
 
 impl<F: Field> ExecutionRecord<F> {
-    #[inline]
-    pub fn fixed_log2_rows<A: MachineAir<F>>(&self, air: &A) -> Option<usize> {
-        self.program.fixed_log2_rows(air)
-    }
-
     pub fn preallocate(&mut self) {
         let event_counts =
             self.program.inner.iter().fold(RecursionAirEventCount::default(), Add::add);
@@ -110,5 +114,65 @@ impl<F: Field> ExecutionRecord<F> {
         self.ext_alu_events.reserve(event_counts.ext_alu_events);
         self.exp_reverse_bits_len_events.reserve(event_counts.exp_reverse_bits_len_events);
         self.select_events.reserve(event_counts.select_events);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RecursionAirEventCount {
+    pub mem_const_events: usize,
+    pub mem_var_events: usize,
+    pub base_alu_events: usize,
+    pub ext_alu_events: usize,
+    pub poseidon2_wide_events: usize,
+    pub fri_fold_events: usize,
+    pub batch_fri_events: usize,
+    pub select_events: usize,
+    pub exp_reverse_bits_len_events: usize,
+}
+
+impl<F> AddAssign<&Instruction<F>> for RecursionAirEventCount {
+    #[inline]
+    fn add_assign(&mut self, rhs: &Instruction<F>) {
+        match rhs {
+            Instruction::BaseAlu(_) => self.base_alu_events += 1,
+            Instruction::ExtAlu(_) => self.ext_alu_events += 1,
+            Instruction::Mem(_) => self.mem_const_events += 1,
+            Instruction::Poseidon2(_) => self.poseidon2_wide_events += 1,
+            Instruction::Select(_) => self.select_events += 1,
+            Instruction::ExpReverseBitsLen(ExpReverseBitsInstr { addrs, .. }) => {
+                self.exp_reverse_bits_len_events += addrs.exp.len()
+            }
+            Instruction::Hint(HintInstr { output_addrs_mults })
+            | Instruction::HintBits(HintBitsInstr {
+                output_addrs_mults,
+                input_addr: _, // No receive interaction for the hint operation
+            }) => self.mem_var_events += output_addrs_mults.len(),
+            Instruction::HintExt2Felts(HintExt2FeltsInstr {
+                output_addrs_mults,
+                input_addr: _, // No receive interaction for the hint operation
+            }) => self.mem_var_events += output_addrs_mults.len(),
+            Instruction::FriFold(_) => self.fri_fold_events += 1,
+            Instruction::BatchFRI(instr) => {
+                self.batch_fri_events += instr.base_vec_addrs.p_at_x.len()
+            }
+            Instruction::HintAddCurve(instr) => {
+                self.mem_var_events += instr.output_x_addrs_mults.len();
+                self.mem_var_events += instr.output_y_addrs_mults.len();
+            }
+            Instruction::CommitPublicValues(_) => {}
+            Instruction::Print(_) => {}
+            #[cfg(feature = "debug")]
+            Instruction::DebugBacktrace(_) => {}
+        }
+    }
+}
+
+impl<F> Add<&Instruction<F>> for RecursionAirEventCount {
+    type Output = Self;
+
+    #[inline]
+    fn add(mut self, rhs: &Instruction<F>) -> Self::Output {
+        self += rhs;
+        self
     }
 }

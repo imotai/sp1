@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{block::Block, public_values::RecursionPublicValues, *};
 #[cfg(feature = "debug")]
 use backtrace::Backtrace;
 use p3_field::{AbstractExtensionField, AbstractField};
@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(any(test, feature = "program_validation"))]
 use smallvec::SmallVec;
-
-use std::borrow::Borrow;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Instruction<F> {
@@ -261,9 +259,9 @@ pub fn mem_block<F: AbstractField>(
 }
 
 pub fn poseidon2<F: AbstractField>(
-    mults: [u32; WIDTH],
-    output: [u32; WIDTH],
-    input: [u32; WIDTH],
+    mults: [u32; PERMUTATION_WIDTH],
+    output: [u32; PERMUTATION_WIDTH],
+    input: [u32; PERMUTATION_WIDTH],
 ) -> Instruction<F> {
     Instruction::Poseidon2(Box::new(Poseidon2Instr {
         mults: mults.map(F::from_canonical_u32),

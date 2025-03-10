@@ -1,4 +1,3 @@
-use p3_air::AirBuilder;
 use p3_field::{AbstractField, ExtensionField, Field};
 use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
@@ -6,7 +5,7 @@ use sp1_stark::air::{BinomialExtension, ExtensionAirBuilder, SP1AirBuilder};
 
 use std::ops::{Index, IndexMut};
 
-use crate::runtime::D;
+use crate::D;
 
 /// The smallest unit of memory that can be read and written to.
 #[derive(
@@ -14,20 +13,6 @@ use crate::runtime::D;
 )]
 #[repr(C)]
 pub struct Block<T>(pub [T; D]);
-
-pub trait BlockBuilder: AirBuilder {
-    fn assert_block_eq<Lhs: Into<Self::Expr>, Rhs: Into<Self::Expr>>(
-        &mut self,
-        lhs: Block<Lhs>,
-        rhs: Block<Rhs>,
-    ) {
-        for (l, r) in lhs.0.into_iter().zip(rhs.0) {
-            self.assert_eq(l, r);
-        }
-    }
-}
-
-impl<AB: AirBuilder> BlockBuilder for AB {}
 
 impl<T> Block<T> {
     pub fn map<F, U>(self, f: F) -> Block<U>
