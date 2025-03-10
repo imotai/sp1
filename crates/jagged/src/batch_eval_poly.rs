@@ -11,15 +11,23 @@ use slop_utils::log2_ceil_usize;
 
 use crate::poly::BranchingProgram;
 
+/// A struct that represents the polynomial that is used to evaluate the sumcheck.
 pub(crate) struct BatchEvalPoly<K: Field + 'static> {
+    /// The branching program that has a constant z_row and z_index.
     h_poly: BranchingProgram<K>,
+    /// The random point generated during the sumcheck proving time.
     rho: Point<K>,
+    /// The z_col point.
     z_col: Point<K>,
+    /// This is a concatenation of the bitstring of t_c and t_{c+1} for every column c.
     merged_prefix_sums: Vec<Point<K>>,
-    is_empty_col: Vec<bool>,
+    /// The evaluations of the z_col at the merged prefix sums.
     z_col_eq_vals: Vec<K>,
+    /// The sumcheck round number that this poly is used in.
     round_num: usize,
-    eq_adjustments: Vec<K>,
+    /// The intermediate full evaluations of the eq polynomials.
+    intermediate_eq_full_evals: Vec<K>,
+    /// The half value.
     half: K,
 }
 
@@ -33,20 +41,18 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
         let log_m = log2_ceil_usize(*prefix_sums.last().unwrap());
         let col_prefix_sums: Vec<Point<K>> =
             prefix_sums.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
-        let next_col_prefix_sums: Vec<Point<K>> =
-            prefix_sums.iter().skip(1).map(|&x| Point::from_usize(x, log_m + 1)).collect();
 
-        let (merged_prefix_sums, is_empty_col): (Vec<Point<K>>, Vec<bool>) = col_prefix_sums
-            .iter()
-            .zip(next_col_prefix_sums.iter())
-            .map(|(a, b)| {
-                let mut a = a.clone();
-                let is_same = *a == **b;
-                a.extend(b);
-                (a, is_same)
+        // Generate all of the merged prefix sums.
+        let merged_prefix_sums = col_prefix_sums
+            .windows(2)
+            .map(|prefix_sums| {
+                let mut merged_prefix_sum = prefix_sums[0].clone();
+                merged_prefix_sum.extend(&prefix_sums[1]);
+                merged_prefix_sum
             })
-            .unzip();
+            .collect_vec();
 
+        // Generate all of the z_col_eq_vals.
         let num_polys = prefix_sums.len();
         let z_col_eq_vals = (0..num_polys - 1)
             .map(|c| {
@@ -78,9 +84,8 @@ impl<K: Field + 'static> BatchEvalPoly<K> {
             z_col,
             merged_prefix_sums,
             round_num: 0,
-            is_empty_col,
             z_col_eq_vals,
-            eq_adjustments: vec![K::one(); merged_prefix_sums_len],
+            intermediate_eq_full_evals: vec![K::one(); merged_prefix_sums_len],
             half: K::two().inverse(),
         }
     }
@@ -124,7 +129,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
         let new_eq_adjustments = self
             .merged_prefix_sums
             .iter()
-            .zip_eq(self.eq_adjustments.iter())
+            .zip_eq(self.intermediate_eq_full_evals.iter())
             .map(|(merged_prefix_sum, eq_adjustment)| {
                 let x_i = merged_prefix_sum
                     .values()
@@ -141,9 +146,8 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
             merged_prefix_sums: self.merged_prefix_sums,
             z_col: self.z_col,
             round_num: self.round_num + 1,
-            is_empty_col: self.is_empty_col,
             z_col_eq_vals: self.z_col_eq_vals,
-            eq_adjustments: new_eq_adjustments,
+            intermediate_eq_full_evals: new_eq_adjustments,
             half: self.half,
         }
     }
@@ -159,7 +163,7 @@ impl<K: Field + 'static> SumcheckPoly<K> for BatchEvalPoly<K> {
             .merged_prefix_sums
             .par_chunks(chunk_size)
             .zip_eq(self.z_col_eq_vals.par_chunks(chunk_size))
-            .zip_eq(self.eq_adjustments.par_chunks(chunk_size))
+            .zip_eq(self.intermediate_eq_full_evals.par_chunks(chunk_size))
             .map(|((merged_prefix_sum_chunk, z_col_eq_val_chunk), eq_adjustment_chunk)| {
                 merged_prefix_sum_chunk
                     .iter()
