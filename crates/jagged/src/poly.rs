@@ -159,7 +159,6 @@ pub struct JaggedLittlePolynomialProverParams {
 /// the prover as field elements. The verifier program thus depends only on the usize parameters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JaggedLittlePolynomialVerifierParams<K: AbstractField> {
-    pub(crate) col_prefix_sums_usize: Vec<usize>,
     pub(crate) col_prefix_sums: Vec<Point<K>>,
     pub(crate) next_col_prefix_sums: Vec<Point<K>>,
     pub(crate) max_log_row_count: usize,
@@ -313,7 +312,6 @@ impl JaggedLittlePolynomialProverParams {
             .map(|&x| Point::from_usize(x, log_m + 1))
             .collect();
         JaggedLittlePolynomialVerifierParams {
-            col_prefix_sums_usize: self.col_prefix_sums_usize,
             col_prefix_sums,
             next_col_prefix_sums,
             max_log_row_count: self.max_log_row_count,

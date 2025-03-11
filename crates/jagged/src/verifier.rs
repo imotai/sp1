@@ -85,7 +85,18 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
-        let jagged_eval = jagged_eval_proof.claimed_sum;
+        // Calculate the partial lagrange from z_col point.
+        let z_col_partial_lagrange = Mle::blocking_partial_lagrange(&z_col);
+        let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
+
+        // Calcuate the jagged eval from the branching program eval claims.
+        let jagged_eval = z_col_partial_lagrange
+            .iter()
+            .zip(branching_program_evals.iter())
+            .map(|(partial_lagrange, branching_program_eval)| {
+                *partial_lagrange * *branching_program_eval
+            })
+            .sum::<C::EF>();
 
         // Verify the jagged eval proof.
         partially_verify_sumcheck_proof(jagged_eval_proof, challenger)
@@ -112,10 +123,6 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             .collect::<Vec<_>>();
         let random_point_partial_lagranges =
             random_point_chunks.iter().map(Mle::blocking_partial_lagrange).collect::<Vec<_>>();
-
-        // Calculate the partial lagrange from z_col point.
-        let z_col_partial_lagrange = Mle::blocking_partial_lagrange(&z_col);
-        let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
         // Compute the jagged eval sc expected eval and assert it matches the proof's eval.
         let mut jagged_eval_sc_expected_eval = (0..branching_program_evals.len())
