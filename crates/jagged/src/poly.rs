@@ -53,10 +53,6 @@ impl MemoryState {
     fn success() -> Self {
         MemoryState { carry: false, comparison_so_far: true }
     }
-
-    fn initial_state() -> Self {
-        MemoryState { carry: false, comparison_so_far: false }
-    }
 }
 
 /// An enum to represent a potentially failed computation at a layer of the branching program.
@@ -172,7 +168,10 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
         z_row: &Point<K>,
         z_col: &Point<K>,
         z_index: &Point<K>,
-    ) -> (K, Vec<K>) {
+    ) -> K {
+        let memory_states = all_memory_states();
+        let bit_states = all_bit_states();
+
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
@@ -189,37 +188,86 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
             .map(|x| K::one() - x)
             .product();
 
-        let branching_program = BranchingProgram::new(z_row.clone(), z_index.clone());
+        let z_row_rev = z_row.reversed();
+        let z_index_rev = z_index.reversed();
 
         // Iterate over all column. For each column, we need to know the total length of all the columns
         // up to the current one, this number - 1, and the
         // number of rows in the current column.
-        let mut branching_program_evals = Vec::with_capacity(self.col_prefix_sums.len() - 1);
-        #[allow(clippy::uninit_vec)]
-        unsafe {
-            branching_program_evals.set_len(self.col_prefix_sums.len() - 1);
-        }
-        let res = self
-            .col_prefix_sums
+        self.col_prefix_sums
             .iter()
             .zip(self.next_col_prefix_sums.iter())
-            .zip(branching_program_evals.iter_mut())
             .enumerate()
             .par_bridge()
-            .map(|(col_num, ((prefix_sum, next_prefix_sum), branching_program_eval))| {
+            .map(|(col_num, (prefix_sum, next_prefix_sum))| {
+                let prefix_sum_rev = prefix_sum.reversed();
+                let next_prefix_sum_rev = next_prefix_sum.reversed();
+
                 // For `z_col` on the Boolean hypercube, this is the delta function to pick out
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
-                *branching_program_eval = branching_program.eval(prefix_sum, next_prefix_sum);
+                let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
+                state_by_state_results[MemoryState::success().get_index()] = K::one();
+
+                // The dynamic programming algorithm to output the result of the branching
+                // iterates over the layers of the branching program in reverse order.
+                for layer in (0..log_m + 1).rev() {
+                    let mut new_state_by_state_results: [K; 4] =
+                        [K::zero(), K::zero(), K::zero(), K::zero()];
+
+                    // We assume that bits are aligned in big-endian order. The algorithm,
+                    // in the ith layer, looks at the ith least significant bit, which is
+                    // the m - 1 - i th bit if the bits are in a bit array in big-endian.
+                    let point = [
+                        z_row_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        z_index_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                        next_prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                    ]
+                    .into_iter()
+                    .collect::<Point<K>>();
+
+                    let four_var_eq = Mle::blocking_partial_lagrange(&point);
+
+                    // For each memory state in the new layer, compute the result of the branching
+                    // program that starts at that memory state and in the current layer.
+
+                    for memory_state in &memory_states {
+                        // For each possible bit state, compute the result of the branching
+                        // program transition function and modify the accumulator accordingly.
+                        let mut accum_elems: [K; 4] = array::from_fn(|_| K::zero());
+
+                        for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
+                            let bit_state = &bit_states[i];
+
+                            let state_or_fail = transition_function(*bit_state, *memory_state);
+
+                            if let StateOrFail::State(output_state) = state_or_fail {
+                                accum_elems[output_state.get_index()] += elem.clone();
+                            }
+                            // If the state is a fail state, we don't need to add anything to the accumulator.
+                        }
+
+                        let accum = accum_elems.iter().zip(state_by_state_results.iter()).fold(
+                            K::zero(),
+                            |acc, (accum_elem, state_by_state_result)| {
+                                acc + accum_elem.clone() * state_by_state_result.clone()
+                            },
+                        );
+
+                        new_state_by_state_results[memory_state.get_index()] = accum;
+                    }
+                    state_by_state_results = new_state_by_state_results;
+                }
 
                 // Perform the multiplication outside of the main loop to avoid redundant
                 // multiplications.
-                z_row_correction.clone() * c_tab_correction.clone() * branching_program_eval.clone()
+                z_row_correction.clone()
+                    * c_tab_correction.clone()
+                    * state_by_state_results[MemoryState::success().get_index()].clone()
             })
-            .sum::<K>();
-
-        (res, branching_program_evals)
+            .sum()
     }
 }
 
@@ -309,7 +357,7 @@ impl JaggedLittlePolynomialProverParams {
             .col_prefix_sums_usize
             .iter()
             .skip(1)
-            .map(|&x| Point::from_usize(x, log_m + 1))
+            .map(|&x| Point::from_usize(x - 1, log_m + 1))
             .collect();
         JaggedLittlePolynomialVerifierParams {
             col_prefix_sums,
@@ -382,105 +430,19 @@ impl ColRanges {
     }
 }
 
-pub(crate) struct BranchingProgram<K: AbstractField> {
-    z_row_rev: Point<K>,
-    z_index_rev: Point<K>,
-    memory_states: Vec<MemoryState>,
-    bit_states: Vec<BitState<bool>>,
-    pub(crate) num_vars: usize,
-}
-
-impl<K: AbstractField + 'static> BranchingProgram<K> {
-    pub(crate) fn new(z_row: Point<K>, z_index: Point<K>) -> Self {
-        let log_m = z_index.dimension();
-
-        Self {
-            z_row_rev: z_row.reversed(),
-            z_index_rev: z_index.reversed(),
-            memory_states: all_memory_states(),
-            bit_states: all_bit_states(),
-            num_vars: log_m,
-        }
-    }
-
-    pub(crate) fn eval(&self, prefix_sum: &Point<K>, next_prefix_sum: &Point<K>) -> K {
-        let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
-        state_by_state_results[MemoryState::success().get_index()] = K::one();
-
-        let prefix_sum_rev = prefix_sum.reversed();
-        let next_prefix_sum_rev = next_prefix_sum.reversed();
-
-        // The dynamic programming algorithm to output the result of the branching
-        // iterates over the layers of the branching program in reverse order.
-        for layer in (0..self.num_vars + 1).rev() {
-            let mut new_state_by_state_results: [K; 4] =
-                [K::zero(), K::zero(), K::zero(), K::zero()];
-
-            // We assume that bits are aligned in big-endian order. The algorithm,
-            // in the ith layer, looks at the ith least significant bit, which is
-            // the m - 1 - i th bit if the bits are in a bit array in big-endian.
-            let point = [
-                self.z_row_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                self.z_index_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                next_prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
-            ]
-            .into_iter()
-            .collect::<Point<K>>();
-
-            let four_var_eq = Mle::blocking_partial_lagrange(&point);
-
-            // For each memory state in the new layer, compute the result of the branching
-            // program that starts at that memory state and in the current layer.
-
-            for memory_state in &self.memory_states {
-                // For each possible bit state, compute the result of the branching
-                // program transition function and modify the accumulator accordingly.
-                let mut accum_elems: [K; 4] = array::from_fn(|_| K::zero());
-
-                for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
-                    let bit_state = &self.bit_states[i];
-
-                    let state_or_fail = transition_function(*bit_state, *memory_state);
-
-                    if let StateOrFail::State(output_state) = state_or_fail {
-                        accum_elems[output_state.get_index()] += elem.clone();
-                    }
-                    // If the state is a fail state, we don't need to add anything to the accumulator.
-                }
-
-                let accum = accum_elems.iter().zip(state_by_state_results.iter()).fold(
-                    K::zero(),
-                    |acc, (accum_elem, state_by_state_result)| {
-                        acc + accum_elem.clone() * state_by_state_result.clone()
-                    },
-                );
-
-                new_state_by_state_results[memory_state.get_index()] = accum;
-            }
-            state_by_state_results = new_state_by_state_results;
-        }
-
-        state_by_state_results[MemoryState::initial_state().get_index()].clone()
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
     use std::iter::repeat;
 
     use rand::Rng;
-    use slop_algebra::{AbstractField, PrimeField32};
     use slop_baby_bear::BabyBear;
-    use slop_multilinear::Point;
     use slop_utils::log2_ceil_usize;
-
     type F = BabyBear;
+    use slop_algebra::AbstractField;
 
-    use super::{
-        all_bit_states, all_memory_states, JaggedLittlePolynomialProverParams,
-        JaggedLittlePolynomialVerifierParams,
-    };
+    use slop_multilinear::Point;
+
+    use super::{all_bit_states, all_memory_states};
 
     #[test]
     fn test_transition_function() {
@@ -513,15 +475,12 @@ pub mod tests {
 
                     let verifier_params = prover_params.clone().into_verifier_params();
 
-                    let (result, branching_program_evals) = verifier_params
-                        .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index.clone());
-                    assert_eq!(result, F::one());
-                    check_branching_program_evals(
-                        &branching_program_evals,
+                    let result = verifier_params.full_jagged_little_polynomial_evaluation(
                         &z_row,
-                        &z_index,
-                        prover_params.clone(),
+                        &z_col,
+                        &z_index.clone(),
                     );
+                    assert_eq!(result, F::one());
 
                     let prover_result = prover_params
                         .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
@@ -532,14 +491,11 @@ pub mod tests {
                     for other_index in 0..(1 << (log_num_cols + log_num_rows)) {
                         if other_index != index {
                             assert!(
-                                verifier_params
-                                    .full_jagged_little_polynomial_evaluation(
-                                        &z_row,
-                                        &z_col,
-                                        &Point::<F>::from_usize(other_index, log_m)
-                                    )
-                                    .0
-                                    == F::zero()
+                                verifier_params.full_jagged_little_polynomial_evaluation(
+                                    &z_row,
+                                    &z_col,
+                                    &Point::<F>::from_usize(other_index, log_m)
+                                ) == F::zero()
                             );
                             assert_eq!(
                                 prover_params
@@ -553,43 +509,27 @@ pub mod tests {
 
                     z_row = Point::<F>::from_usize(row ^ 1, log_num_rows + 1);
 
-                    let (wrong_result, branching_program_evals) = verifier_params
-                        .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index.clone());
-                    assert_eq!(wrong_result, F::zero());
-                    check_branching_program_evals(
-                        &branching_program_evals,
+                    let wrong_result = verifier_params.full_jagged_little_polynomial_evaluation(
                         &z_row,
-                        &z_index,
-                        prover_params.clone(),
+                        &z_col,
+                        &z_index.clone(),
                     );
+                    assert_eq!(wrong_result, F::zero());
 
                     z_row = Point::<F>::from_usize(row, log_num_rows + 1);
                     z_col = Point::<F>::from_usize(col ^ 1, log_num_cols + 1);
 
-                    let (wrong_result, branching_program_evals) = verifier_params
+                    let wrong_result = verifier_params
                         .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
                     assert_eq!(wrong_result, F::zero());
-                    check_branching_program_evals(
-                        &branching_program_evals,
-                        &z_row,
-                        &z_index,
-                        prover_params.clone(),
-                    );
 
                     z_col = Point::<F>::from_usize(col, log_num_cols + 1);
-                    let (wrong_result, branching_program_evals) = verifier_params
-                        .full_jagged_little_polynomial_evaluation(
-                            &z_row,
-                            &z_col,
-                            &Point::<F>::from_usize(index ^ 1, log_num_cols + 1),
-                        );
-                    assert_eq!(wrong_result, F::zero());
-                    check_branching_program_evals(
-                        &branching_program_evals,
+                    let wrong_result = verifier_params.full_jagged_little_polynomial_evaluation(
                         &z_row,
+                        &z_col,
                         &Point::<F>::from_usize(index ^ 1, log_num_cols + 1),
-                        prover_params.clone(),
                     );
+                    assert_eq!(wrong_result, F::zero());
 
                     let mut rng = rand::thread_rng();
 
@@ -597,8 +537,7 @@ pub mod tests {
                         let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
                         assert_eq!(
                             verifier_params
-                                .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index)
-                                .0,
+                                .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                             prover_params
                                 .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
                                 .blocking_eval_at(&z_index)
@@ -630,10 +569,9 @@ pub mod tests {
         let log_max_row_count = 7;
 
         let prover_params =
-            JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
+            super::JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
 
-        let verifier_params: JaggedLittlePolynomialVerifierParams<F> =
-            prover_params.clone().into_verifier_params();
+        let verifier_params = prover_params.clone().into_verifier_params();
 
         for index in 0..row_counts.iter().sum() {
             let col = prefix_sums.iter().rposition(|&x| index >= x).unwrap();
@@ -650,17 +588,10 @@ pub mod tests {
                         let new_z_col =
                             Point::from_usize(new_col, log2_ceil_usize(row_counts.len()));
 
-                        let (result, branching_program_evals) = verifier_params
-                            .full_jagged_little_polynomial_evaluation(
-                                &new_z_row, &new_z_col, &z_index,
-                            );
-                        assert_eq!(result, F::zero());
-                        check_branching_program_evals(
-                            &branching_program_evals,
-                            &new_z_row,
-                            &z_index,
-                            prover_params.clone(),
+                        let result = verifier_params.full_jagged_little_polynomial_evaluation(
+                            &new_z_row, &new_z_col, &z_index,
                         );
+                        assert_eq!(result, F::zero());
                         assert_eq!(
                             prover_params
                                 .partial_jagged_little_polynomial_evaluation(&new_z_row, &new_z_col)
@@ -673,27 +604,18 @@ pub mod tests {
             }
 
             let z_index = Point::from_usize(index, log_m + 1);
-            let (result, branching_program_evals) =
+            let result =
                 verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
             assert_eq!(result, F::one());
-            check_branching_program_evals(
-                &branching_program_evals,
-                &z_row,
-                &z_index,
-                prover_params.clone(),
-            );
 
             for other_index in 0..*prefix_sums.last().unwrap() {
                 if other_index != index {
                     assert!(
-                        verifier_params
-                            .full_jagged_little_polynomial_evaluation(
-                                &z_row,
-                                &z_col,
-                                &Point::from_usize(other_index, log_m)
-                            )
-                            .0
-                            == F::zero()
+                        verifier_params.full_jagged_little_polynomial_evaluation(
+                            &z_row,
+                            &z_col,
+                            &Point::from_usize(other_index, log_m)
+                        ) == F::zero()
                     );
 
                     assert_eq!(
@@ -718,11 +640,9 @@ pub mod tests {
         let verifier_params = params.clone().into_verifier_params();
 
         for _ in 0..100 {
-            let z_index: Point<F> = (0..log_m + 1).map(|_| rng.gen::<F>()).collect();
+            let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
             assert_eq!(
-                verifier_params
-                    .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index)
-                    .0,
+                verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                 params
                     .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
                     .blocking_eval_at(&z_index)
@@ -751,8 +671,7 @@ pub mod tests {
                     let z_index = Point::from_usize(index, log_m);
                     assert_eq!(
                         verifier_params
-                            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index)
-                            .0,
+                            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                         params
                             .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
                             .blocking_eval_at(&z_index)
@@ -762,42 +681,13 @@ pub mod tests {
                     let z_index = (0..log_m).map(|_| rng.gen::<F>()).collect();
                     assert_eq!(
                         verifier_params
-                            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index)
-                            .0,
+                            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index),
                         params
                             .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
                             .blocking_eval_at(&z_index)
                             .to_vec()[0]
                     );
                 }
-            }
-        }
-    }
-
-    fn check_branching_program_evals(
-        branching_program_evals: &[F],
-        z_row: &Point<F>,
-        z_index: &Point<F>,
-        params: JaggedLittlePolynomialProverParams,
-    ) {
-        for ((branching_program_eval, prefix_sum_lower_bound), prefix_sum_upper_bound) in
-            branching_program_evals
-                .iter()
-                .zip(params.col_prefix_sums_usize.iter())
-                .zip(params.col_prefix_sums_usize.iter().skip(1))
-        {
-            let index = z_index.bit_string_evaluation().as_canonical_u32();
-
-            let z_row_matches = index.wrapping_sub(*prefix_sum_lower_bound as u32)
-                == z_row.bit_string_evaluation().as_canonical_u32();
-
-            let within_prefix_sum_range =
-                *prefix_sum_lower_bound as u32 <= index && index < *prefix_sum_upper_bound as u32;
-
-            if z_row_matches && within_prefix_sum_range {
-                assert_eq!(branching_program_eval, &F::one());
-            } else {
-                assert_eq!(branching_program_eval, &F::zero());
             }
         }
     }
