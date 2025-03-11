@@ -1,6 +1,6 @@
 use std::ops::{Add, Mul};
 
-use p3_field::Field;
+use p3_field::{AbstractField, Field};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -8,7 +8,6 @@ pub struct UnivariatePolynomial<K> {
     pub coefficients: Vec<K>,
 }
 
-/// Basic univariate polynomial operations.
 impl<K: Field> UnivariatePolynomial<K> {
     pub fn new(mut coefficients: Vec<K>) -> Self {
         // Pop trailing zeros.
@@ -28,7 +27,10 @@ impl<K: Field> UnivariatePolynomial<K> {
         result.extend(&self.coefficients[..]);
         Self::new(result)
     }
+}
 
+/// Basic univariate polynomial operations.
+impl<K: AbstractField> UnivariatePolynomial<K> {
     pub fn zero() -> Self {
         Self { coefficients: vec![] }
     }
@@ -39,14 +41,14 @@ impl<K: Field> UnivariatePolynomial<K> {
 
     pub fn eval_at_point(&self, point: K) -> K {
         // Horner's method.
-        self.coefficients.iter().rev().fold(K::zero(), |acc, x| acc * point + *x)
+        self.coefficients.iter().rev().fold(K::zero(), |acc, x| acc * point.clone() + x.clone())
     }
 
     pub fn eval_one_plus_eval_zero(&self) -> K {
         if self.coefficients.is_empty() {
             K::zero()
         } else {
-            self.coefficients[0] + self.coefficients.iter().copied().sum::<K>()
+            self.coefficients[0].clone() + self.coefficients.iter().cloned().sum::<K>()
         }
     }
 }
