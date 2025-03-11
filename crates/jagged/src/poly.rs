@@ -470,12 +470,12 @@ pub mod tests {
     use std::iter::repeat;
 
     use rand::Rng;
+    use slop_algebra::{AbstractField, PrimeField32};
     use slop_baby_bear::BabyBear;
-    use slop_utils::log2_ceil_usize;
-    type F = BabyBear;
-    use slop_algebra::AbstractField;
-
     use slop_multilinear::Point;
+    use slop_utils::log2_ceil_usize;
+
+    type F = BabyBear;
 
     use super::{
         all_bit_states, all_memory_states, JaggedLittlePolynomialProverParams,
@@ -786,13 +786,13 @@ pub mod tests {
                 .zip(params.col_prefix_sums_usize.iter())
                 .zip(params.col_prefix_sums_usize.iter().skip(1))
         {
-            let index = z_index.bit_string_evaluation();
+            let index = z_index.bit_string_evaluation().as_canonical_u32();
 
-            let z_row_matches =
-                index.wrapping_sub(*prefix_sum_lower_bound) == z_row.bit_string_evaluation();
+            let z_row_matches = index.wrapping_sub(*prefix_sum_lower_bound as u32)
+                == z_row.bit_string_evaluation().as_canonical_u32();
 
             let within_prefix_sum_range =
-                *prefix_sum_lower_bound <= index && index < *prefix_sum_upper_bound;
+                *prefix_sum_lower_bound as u32 <= index && index < *prefix_sum_upper_bound as u32;
 
             if z_row_matches && within_prefix_sum_range {
                 assert_eq!(branching_program_eval, &F::one());

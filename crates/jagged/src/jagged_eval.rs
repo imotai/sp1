@@ -91,7 +91,7 @@ impl<K: Field + 'static> JaggedEvalSumcheckPoly<K> {
         z_col_eq_val: K,
         intermediate_eq_full_eval: K,
     ) -> K {
-        // We want to calculate eq(z_col, col_idx) * eq(x_i, (x, rho)) * h(x_2, x, rho) where
+        // We want to calculate eq(z_col, col_idx) * eq(x_1, (x, rho)) * h(x_2, x, rho) where
         // x_1 || x_2 = merged_prefix_sum and rho is the sumcheck random point.  Note that the
         // eq(x_col, col_idx) is already computed as `z_col_eq_val` and all but one term of eq(x_i, (x, rho))
         // is computed as `intermediate_eq_full_eval`.

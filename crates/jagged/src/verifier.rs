@@ -108,45 +108,32 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             .split_at(jagged_eval_proof.point_and_eval.0.dimension() / 2);
         assert!(first_half_z_index.len() == second_half_z_index.len());
 
-        // Calculate the partial lagrange from the chunks of the jagged eval proof's
-        // random point.
-        const NUM_PREFIX_SUM_CHUNKS: usize = 4;
-        let chunk_size = (jagged_eval_proof.point_and_eval.0.dimension() + NUM_PREFIX_SUM_CHUNKS
-            - 1)
-            / NUM_PREFIX_SUM_CHUNKS;
-        let random_point_chunks = jagged_eval_proof
-            .point_and_eval
-            .0
-            .values()
-            .chunks(chunk_size)
-            .map(|chunk| Point::from(chunk.to_vec()))
-            .collect::<Vec<_>>();
-        let random_point_partial_lagranges =
-            random_point_chunks.iter().map(Mle::blocking_partial_lagrange).collect::<Vec<_>>();
-
         // Compute the jagged eval sc expected eval and assert it matches the proof's eval.
-        let mut jagged_eval_sc_expected_eval = (0..branching_program_evals.len())
-            .map(|i| {
-                // Create the merged prefix sum bit string.
-                let mut merged_prefix_sum = params.col_prefix_sums[i].clone();
-                let next_prefix_sum = params.col_prefix_sums[i + 1].clone();
-                merged_prefix_sum.extend(&next_prefix_sum);
+        let current_column_prefix_sums = params.col_prefix_sums.iter();
+        let next_column_prefix_sums = params.col_prefix_sums.iter().skip(1);
+        let mut prev_merged_prefix_sum = Point::<C::EF>::default();
+        let mut prev_full_lagrange_eval = C::EF::zero();
+        let mut jagged_eval_sc_expected_eval = current_column_prefix_sums
+            .zip(next_column_prefix_sums)
+            .zip(z_col_partial_lagrange.iter())
+            .map(|((current_column_prefix_sum, next_column_prefix_sum), z_col_eq_val)| {
+                let mut merged_prefix_sum = current_column_prefix_sum.clone();
+                merged_prefix_sum.extend(next_column_prefix_sum);
 
-                let merged_prefix_indices = merged_prefix_sum
-                    .values()
-                    .chunks(chunk_size)
-                    .map(|chunk| Point::from(chunk.to_vec()).bit_string_evaluation());
+                let full_lagrange_eval = if prev_merged_prefix_sum == merged_prefix_sum {
+                    prev_full_lagrange_eval
+                } else {
+                    let full_lagrange_eval = Mle::full_lagrange_eval(
+                        &merged_prefix_sum,
+                        &jagged_eval_proof.point_and_eval.0,
+                    );
+                    prev_full_lagrange_eval = full_lagrange_eval;
+                    full_lagrange_eval
+                };
 
-                let full_lagrange_eval = random_point_partial_lagranges
-                    .iter()
-                    .zip(merged_prefix_indices)
-                    .map(|(partial_lagrange, merge_prefix_sum_idx)| {
-                        partial_lagrange.guts().as_slice()[merge_prefix_sum_idx]
-                    })
-                    .product::<C::EF>();
+                prev_merged_prefix_sum = merged_prefix_sum;
 
-                let z_col_eq_val = z_col_partial_lagrange[i];
-                z_col_eq_val * full_lagrange_eval
+                *z_col_eq_val * full_lagrange_eval
             })
             .sum::<C::EF>();
 
