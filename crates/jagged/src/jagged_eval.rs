@@ -112,7 +112,7 @@ impl<K: Field + 'static> JaggedEvalSumcheckPoly<K> {
         // Compute full eval of eq(x_i, (x, rho))
         let eq_eval = intermediate_eq_full_eval * eq_val;
 
-        // Compute the full eval of h(x_2, x, rho).
+        // Compute eval of h(x_2, x, rho).
         let mut h_prefix_sum = h_prefix_sum.clone();
         h_prefix_sum.add_dimension_back(x);
         h_prefix_sum.extend(&self.rho);

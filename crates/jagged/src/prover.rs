@@ -2,7 +2,6 @@ use derive_where::derive_where;
 use futures::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
-use tracing::Instrument;
 
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{HasBackend, ToHost};
@@ -306,38 +305,37 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         let column_claims = Mle::from(column_claims);
         let sumcheck_claim = column_claims.eval_at(&z_col).await[0];
 
-        let lambda: C::EF = challenger.sample_ext_element();
-
         let (sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
             vec![sumcheck_poly],
             challenger,
             vec![sumcheck_claim],
             1,
-            lambda,
+            C::EF::one(),
         )
         .await;
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
-        let batch_eval_poly = JaggedEvalSumcheckPoly::new(
+        // Create sumcheck proof for the jagged eval.
+        let jagged_eval_sc_poly = JaggedEvalSumcheckPoly::new(
             z_row.clone(),
             z_col.clone(),
             final_eval_point.clone(),
             params.col_prefix_sums_usize.clone(),
         );
 
+        // Compute the full eval of the jagged poly.
         let verifier_params = params.clone().into_verifier_params();
         let (expected_sum, branching_program_evals) = verifier_params
             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &final_eval_point);
 
-        let (branching_program_evals_proof, _) = reduce_sumcheck_to_evaluation(
-            vec![batch_eval_poly],
+        let (jagged_eval_proof, _) = reduce_sumcheck_to_evaluation(
+            vec![jagged_eval_sc_poly],
             challenger,
             vec![expected_sum],
             1,
             C::EF::one(),
         )
-        .instrument(tracing::debug_span!("batch eval poly sumcheck"))
         .await;
 
         let (_, stack_point) = final_eval_point
@@ -370,7 +368,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             stacked_pcs_proof,
             sumcheck_proof,
             branching_program_evals,
-            branching_program_evals_proof,
+            jagged_eval_proof,
             params: params.into_verifier_params(),
         })
     }

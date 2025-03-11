@@ -13,7 +13,7 @@ pub struct JaggedPcsProof<C: JaggedConfig> {
     pub stacked_pcs_proof: StackedPcsProof<C::BatchPcsProof, C::EF>,
     pub sumcheck_proof: PartialSumcheckProof<C::EF>,
     pub branching_program_evals: Vec<C::EF>,
-    pub branching_program_evals_proof: PartialSumcheckProof<C::EF>,
+    pub jagged_eval_proof: PartialSumcheckProof<C::EF>,
     pub params: JaggedLittlePolynomialVerifierParams<C::EF>,
 }
 
@@ -47,7 +47,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             stacked_pcs_proof,
             sumcheck_proof,
             branching_program_evals,
-            branching_program_evals_proof,
+            jagged_eval_proof: branching_program_evals_proof,
             params,
         } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
@@ -82,25 +82,10 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             ));
         }
 
-        let _lambda = challenger.sample_ext_element::<C::EF>();
-
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
         let jagged_eval = branching_program_evals_proof.claimed_sum;
-
-        // let expected_jagged_eval = tracing::debug_span!("full_jagged_little_polynomial_evaluation")
-        //     .in_scope(|| {
-        //         params
-        //             .full_jagged_little_polynomial_evaluation(
-        //                 &z_row,
-        //                 &z_col,
-        //                 &sumcheck_proof.point_and_eval.0,
-        //             )
-        //             .0
-        //     });
-
-        // assert_eq!(jagged_eval, expected_jagged_eval);
 
         tracing::debug_span!("verifying branching program evals proof").in_scope(|| {
             partially_verify_sumcheck_proof(branching_program_evals_proof, challenger)
