@@ -407,6 +407,8 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
                         self.emit_inner(constraints, block.ops);
                     }
                 }
+
+                #[cfg(feature = "debug")]
                 DslIr::DebugBacktrace(_) => {}
                 _ => panic!("unsupported {:?}", instruction),
             };

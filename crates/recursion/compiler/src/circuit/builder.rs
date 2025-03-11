@@ -6,8 +6,8 @@ use crate::prelude::*;
 use itertools::Itertools;
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractExtensionField, AbstractField};
-use sp1_recursion_core::air::RecursionPublicValues;
-use sp1_recursion_core::{chips::poseidon2_skinny::WIDTH, D, DIGEST_SIZE, HASH_RATE};
+use sp1_recursion_executor::RecursionPublicValues;
+use sp1_recursion_executor::{D, DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
 use sp1_stark::septic_curve::SepticCurve;
 use sp1_stark::septic_digest::SepticDigest;
 use sp1_stark::septic_extension::SepticExtension;
@@ -26,7 +26,10 @@ pub trait CircuitV2Builder<C: Config> {
         p_at_zs: Vec<Ext<C::F, C::EF>>,
         p_at_xs: Vec<Felt<C::F>>,
     ) -> Ext<C::F, C::EF>;
-    fn poseidon2_permute_v2(&mut self, state: [Felt<C::F>; WIDTH]) -> [Felt<C::F>; WIDTH];
+    fn poseidon2_permute_v2(
+        &mut self,
+        state: [Felt<C::F>; PERMUTATION_WIDTH],
+    ) -> [Felt<C::F>; PERMUTATION_WIDTH];
     fn poseidon2_hash_v2(&mut self, array: &[Felt<C::F>]) -> [Felt<C::F>; DIGEST_SIZE];
     fn poseidon2_compress_v2(
         &mut self,
@@ -141,8 +144,11 @@ impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
     }
 
     /// Applies the Poseidon2 permutation to the given array.
-    fn poseidon2_permute_v2(&mut self, array: [Felt<C::F>; WIDTH]) -> [Felt<C::F>; WIDTH] {
-        let output: [Felt<C::F>; WIDTH] = core::array::from_fn(|_| self.uninit());
+    fn poseidon2_permute_v2(
+        &mut self,
+        array: [Felt<C::F>; PERMUTATION_WIDTH],
+    ) -> [Felt<C::F>; PERMUTATION_WIDTH] {
+        let output: [Felt<C::F>; PERMUTATION_WIDTH] = core::array::from_fn(|_| self.uninit());
         self.push_op(DslIr::CircuitV2Poseidon2PermuteBabyBear(Box::new((output, array))));
         output
     }

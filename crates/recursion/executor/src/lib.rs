@@ -8,7 +8,7 @@ mod record;
 
 // Avoid triggering annoying branch of thiserror derive macro.
 use backtrace::Backtrace as Trace;
-use block::Block;
+pub use block::Block;
 use instruction::HintAddCurveInstr;
 pub use instruction::Instruction;
 use instruction::{FieldEltType, HintBitsInstr, HintExt2FeltsInstr, HintInstr, PrintInstr};
@@ -22,7 +22,7 @@ use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{CryptographicPermutation, Permutation};
 use p3_util::reverse_bits_len;
 pub use program::*;
-use public_values::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
+pub use public_values::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 pub use record::*;
 use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;

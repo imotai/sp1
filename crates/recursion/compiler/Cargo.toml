@@ -14,10 +14,11 @@ p3-bn254-fr = { workspace = true }
 p3-baby-bear = { workspace = true }
 p3-field = { workspace = true }
 p3-symmetric = { workspace = true }
+slop-merkle-tree = { workspace = true }
 
 sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }
-sp1-recursion-core = { workspace = true }
+sp1-recursion-executor = { workspace = true }
 sp1-recursion-derive = { workspace = true }
 sp1-stark = { workspace = true }
 
@@ -28,7 +29,7 @@ tracing = { workspace = true }
 vec_map = "0.8.2"
 
 [dev-dependencies]
-sp1-recursion-core = { workspace = true, features = ["program_validation"] }
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 p3-challenger = { workspace = true }
 p3-dft = { workspace = true }
 p3-merkle-tree = { workspace = true }
@@ -37,7 +38,7 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 
 [features]
 default = ["debug"]
-debug = ["sp1-recursion-core/debug", "dep:backtrace"]
+debug = ["sp1-recursion-executor/debug","dep:backtrace"]
 
 [lints]
 workspace = true

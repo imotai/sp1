@@ -5,7 +5,7 @@ use std::{
 
 #[cfg(feature = "debug")]
 use backtrace::Backtrace;
-use sp1_recursion_core::air::RecursionPublicValues;
+use sp1_recursion_executor::RecursionPublicValues;
 use sp1_stark::septic_curve::SepticCurve;
 
 use super::{
