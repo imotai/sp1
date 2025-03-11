@@ -38,13 +38,14 @@ extern "C" void *jagged_baby_bear_extension_populate()
 template <typename F, typename EF>
 __global__ void jaggedSumAsPoly(
     EF *result,
-    const F *base,
+    const F **base,
     const EF *eqzCol,
     const EF *eqzRow,
     size_t offset,
     size_t colOffset,
     size_t halfHeight,
-    size_t width)
+    size_t width,
+    size_t stackingWidth)
 {
     EF evalZero = EF::zero();
     EF evalHalf = EF::zero();
@@ -69,8 +70,11 @@ __global__ void jaggedSumAsPoly(
             size_t evenIdx = baseIdx << 1;
             size_t oddIdx = (baseIdx << 1) + 1;
 
-            F baseZero = F::load(base, evenIdx);
-            F baseOne = F::load(base, oddIdx);
+            size_t evenBatchIdx = evenIdx / stackingWidth;
+            size_t oddBatchIdx = oddIdx / stackingWidth;
+
+            F baseZero = F::load(base[evenBatchIdx], evenIdx % stackingWidth);
+            F baseOne = F::load(base[oddBatchIdx], oddIdx % stackingWidth);
 
             evalZero += jaggedValZero * baseZero;
             evalHalf += (jaggedValZero + jaggedValOne) * (baseZero + baseOne);
@@ -102,14 +106,15 @@ extern "C" void *jagged_baby_bear_base_ext_sum_as_poly()
 
 template <typename EF>
 __global__ void jaggedVirtualFixLastVariable(
-    EF *result,
+    EF **result,
     const EF *eqzCol,
     const EF *eqzRow,
     EF alpha,
     size_t offset,
     size_t colOffset,
     size_t halfHeight,
-    size_t width)
+    size_t width,
+    size_t stackingWidth)
 {
     // TODO: here we assume height is a power of 2
     size_t height = halfHeight << 1;
@@ -127,12 +132,15 @@ __global__ void jaggedVirtualFixLastVariable(
             EF jaggedValZero = eqzColVal * eqzRowZero;
             EF jaggedValOne = eqzColVal * eqzRowOne;
 
+            // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
+            EF value = alpha * (jaggedValOne - jaggedValZero) + jaggedValZero;
+
             size_t halfOffset = offset / 2;
             size_t baseIdx = colIdx * halfHeight + rowIdx + halfOffset;
 
-            // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
-            EF value = alpha * (jaggedValOne - jaggedValZero) + jaggedValZero;
-            EF::store(result, baseIdx, value);
+            size_t batchIdx = baseIdx / stackingWidth;
+            size_t baseIdxInBatch = baseIdx % stackingWidth;
+            EF::store(result[batchIdx], baseIdxInBatch, value);
         }
     }
 }

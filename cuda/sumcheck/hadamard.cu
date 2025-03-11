@@ -11,20 +11,27 @@ __global__ void hadamardUnivariatePolyEval(
     EF *__restrict__ result,
     const F *__restrict__ base_mle,
     const EF *__restrict__ ext_mle,
-    size_t numVariablesMinusOne)
+    size_t numVariablesMinusOne,
+    size_t numPolys)
 {
     size_t height = 1 << numVariablesMinusOne;
+    size_t inputHeight = height << 1;
     EF evalZero = EF::zero();
     EF evalHalf = EF::zero();
     for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < height; i += blockDim.x * gridDim.x)
     {
-        F zeroValBase = F::load(base_mle, i << 1);
-        F oneValBase = F::load(base_mle, (i << 1) + 1);
-        EF zeroValExt = EF::load(ext_mle, i << 1);
-        EF oneValExt = EF::load(ext_mle, (i << 1) + 1);
+        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < numPolys; j += blockDim.y * gridDim.y)
+        {
+            size_t evenIdx = j * inputHeight + (i << 1);
+            size_t oddIdx = evenIdx + 1;
+            F zeroValBase = F::load(base_mle, evenIdx);
+            F oneValBase = F::load(base_mle, oddIdx);
+            EF zeroValExt = EF::load(ext_mle, evenIdx);
+            EF oneValExt = EF::load(ext_mle, oddIdx);
 
-        evalZero += zeroValExt * zeroValBase;
-        evalHalf += (zeroValExt + oneValExt) * (zeroValBase + oneValBase);
+            evalZero += zeroValExt * zeroValBase;
+            evalHalf += (zeroValExt + oneValExt) * (zeroValBase + oneValBase);
+        }
     }
 
     // Allocate shared memory
@@ -38,8 +45,11 @@ __global__ void hadamardUnivariatePolyEval(
     EF evalZeroblockSum = partialBlockReduce(block, tile, evalZero, shared, op);
     EF evalHalfblockSum = partialBlockReduce(block, tile, evalHalf, shared, op);
 
-    EF::store(result, blockIdx.x, evalZeroblockSum);
-    EF::store(result, gridDim.x + blockIdx.x, evalHalfblockSum);
+    if (threadIdx.x == 0)
+    {
+        EF::store(result, gridDim.x * blockIdx.y + blockIdx.x, evalZeroblockSum);
+        EF::store(result, gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x, evalHalfblockSum);
+    }
 }
 
 extern "C" void *hadamard_univariate_poly_eval_baby_bear_base_ext_kernel()

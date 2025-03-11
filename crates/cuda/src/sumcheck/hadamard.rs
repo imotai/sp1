@@ -1,5 +1,5 @@
 use csl_sys::{
-    runtime::KernelPtr,
+    runtime::{Dim3, KernelPtr},
     sumcheck::{
         hadamard_univariate_poly_eval_baby_bear_base_ext_kernel,
         hadamard_univariate_poly_eval_baby_bear_ext_kernel,
@@ -9,7 +9,7 @@ use slop_algebra::{
     extension::BinomialExtensionField, interpolate_univariate_polynomial, ExtensionField, Field,
     UnivariatePolynomial,
 };
-use slop_alloc::IntoHost;
+use slop_alloc::{HasBackend, IntoHost};
 use slop_baby_bear::BabyBear;
 use slop_jagged::HadamardProduct;
 use slop_multilinear::{MleFixLastVariableBackend, MleFixLastVariableInPlaceBackend};
@@ -48,47 +48,56 @@ where
         + HadamardUnivariatePolyEvalKernel<F, EF>
         + ReduceSumBackend<EF>,
 {
-    assert!(poly.base.num_components() == 1);
-    assert!(poly.ext.num_components() == 1);
+    let mut eval_zero = EF::zero();
+    let mut eval_half = EF::zero();
 
-    let poly_base = poly.base.first_component_mle();
-    let poly_ext = poly.ext.first_component_mle();
+    for (poly_base, poly_ext) in poly.base.components().iter().zip(poly.ext.components().iter()) {
+        let num_variables = poly_base.num_variables();
+        let num_polys = poly_base.num_polynomials();
+        let scope = poly_base.backend();
 
-    let num_variables = poly_base.num_variables();
-    let num_polys = poly_base.num_polynomials();
-    assert_eq!(num_polys, 1);
-    let scope = poly_base.backend();
+        debug_assert!(num_variables >= 1);
+        const BLOCK_SIZE: usize = 256;
+        const STRIDE: usize = 8;
 
-    const BLOCK_SIZE: usize = 512;
-    const STRIDE: usize = 128;
-
-    let grid_dim = (1usize << (num_variables - 1)).div_ceil(BLOCK_SIZE).div_ceil(STRIDE);
-    let mut univariate_evals = Tensor::<EF, TaskScope>::with_sizes_in([2, grid_dim], scope.clone());
-    let num_tiles = BLOCK_SIZE.checked_div(32).unwrap_or(1);
-    let shared_mem = num_tiles * std::mem::size_of::<EF>();
-    unsafe {
-        let args = args!(
-            univariate_evals.as_mut_ptr(),
-            poly_base.guts().as_ptr(),
-            poly_ext.guts().as_ptr(),
-            num_variables - 1
+        let output_height = 1usize << (num_variables - 1);
+        let grid_dim: Dim3 =
+            (output_height.div_ceil(BLOCK_SIZE).div_ceil(STRIDE), num_polys, 1).into();
+        let mut univariate_evals = Tensor::<EF, TaskScope>::with_sizes_in(
+            [2, grid_dim.y as usize, grid_dim.x as usize],
+            scope.clone(),
         );
-        univariate_evals.assume_init();
-        scope
-            .launch_kernel(
-                TaskScope::hadamard_sum_as_poly_kernel(),
-                grid_dim,
-                BLOCK_SIZE,
-                &args,
-                shared_mem,
-            )
-            .unwrap();
+        // Tensor::<EF, TaskScope>::with_sizes_in([2, grid_dim], scope.clone());
+        let num_tiles = BLOCK_SIZE.checked_div(32).unwrap_or(1);
+        let shared_mem = num_tiles * std::mem::size_of::<EF>();
+        let num_variables_minus_one: usize = num_variables as usize - 1;
+        unsafe {
+            let args = args!(
+                univariate_evals.as_mut_ptr(),
+                poly_base.guts().as_ptr(),
+                poly_ext.guts().as_ptr(),
+                num_variables_minus_one,
+                num_polys
+            );
+            univariate_evals.assume_init();
+            scope
+                .launch_kernel(
+                    TaskScope::hadamard_sum_as_poly_kernel(),
+                    grid_dim,
+                    BLOCK_SIZE,
+                    &args,
+                    shared_mem,
+                )
+                .unwrap();
+        }
+
+        let univariate_evals = univariate_evals.sum(2).await.sum(1).await;
+        let host_evals = unsafe { univariate_evals.into_buffer().copy_into_host_vec() };
+
+        let [component_eval_zero, component_eval_half] = host_evals.try_into().unwrap();
+        eval_zero += component_eval_zero;
+        eval_half += component_eval_half;
     }
-
-    let univariate_evals = univariate_evals.sum(1).await;
-    let host_evals = unsafe { univariate_evals.into_buffer().copy_into_host_vec() };
-
-    let [eval_zero, eval_half] = host_evals.try_into().unwrap();
     let eval_one = claim - eval_zero;
 
     interpolate_univariate_polynomial(
@@ -145,9 +154,6 @@ where
     ) -> Self::NextRoundPoly {
         let base = poly.base.fix_last_variable(alpha).await;
         let ext = poly.ext.fix_last_variable(alpha).await;
-        // let HadamardProduct { base, ext } = poly;
-        // let base = base.fix_last_variable(alpha).await;
-        // let ext = ext.fix_last_variable_in_place(alpha).await;
         HadamardProduct { base, ext }
     }
 
@@ -183,9 +189,10 @@ unsafe impl
 
 #[cfg(test)]
 mod tests {
+    use futures::prelude::*;
+    use itertools::Itertools;
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_alloc::ToHost;
     use slop_baby_bear::BabyBear;
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_challenger::CanSample;
@@ -204,37 +211,56 @@ mod tests {
         type F = BabyBear;
         type EF = BinomialExtensionField<BabyBear, 4>;
 
-        for num_variables in [19, 21, 24, 27, 28] {
-            let base = Mle::<F>::rand(&mut rng, 1, num_variables);
-            let ext = Mle::<EF>::rand(&mut rng, 1, num_variables);
+        let log_batch_size = 5;
+        let batch_size = 1 << log_batch_size;
+
+        for (num_variables, log_stacking_height) in [(19, 10), (21, 11), (24, 18), (27, 21)] {
+            assert!(num_variables > log_stacking_height + log_batch_size);
+            let num_components = 1 << (num_variables - log_stacking_height - log_batch_size);
+            let base = (0..num_components)
+                .map(|_| Mle::<F>::rand(&mut rng, batch_size, log_stacking_height))
+                .collect::<Vec<_>>();
+            let ext = (0..num_components)
+                .map(|_| Mle::<EF>::rand(&mut rng, batch_size, log_stacking_height))
+                .collect::<Vec<_>>();
+
+            // Get the sumcheck claim, namely compute sum_i (base_i * ext_i)
+            let claim = base
+                .iter()
+                .zip_eq(ext.iter())
+                .map(|(p_b, p_e)| {
+                    p_e.guts()
+                        .as_slice()
+                        .iter()
+                        .zip_eq(p_b.guts().as_slice().iter())
+                        .map(|(e_i, b_i)| *e_i * *b_i)
+                        .sum::<EF>()
+                })
+                .sum::<EF>();
 
             crate::task()
                 .await
                 .unwrap()
                 .run(|t| async move {
-                    let base = t.into_device(base).await.unwrap();
-                    let ext = t.into_device(ext).await.unwrap();
-                    let base = LongMle::from_components(vec![base], num_variables);
-                    let ext = LongMle::from_components(vec![ext], num_variables);
+                    // let base = t.into_device(base).await.unwrap();
+                    // let ext = t.into_device(ext).await.unwrap();
+                    let base = stream::iter(base)
+                        .then(|mle| async { t.into_device(mle).await.unwrap() })
+                        .collect::<Vec<_>>()
+                        .await;
+                    let ext = stream::iter(ext)
+                        .then(|mle| async { t.into_device(mle).await.unwrap() })
+                        .collect::<Vec<_>>()
+                        .await;
+                    let base = LongMle::from_components(base, log_stacking_height);
+                    let ext = LongMle::from_components(ext, log_stacking_height);
 
                     let product = HadamardProduct { base, ext };
+                    println!("product num_variables: {}", num_variables);
 
                     let verifier = BasefoldVerifier::<C>::new(1);
 
                     let mut challenger = verifier.challenger();
-
-                    t.synchronize().await.unwrap();
-                    let time = tokio::time::Instant::now();
-                    let claim = product
-                        .base
-                        .first_component_mle()
-                        .guts()
-                        .dot(product.ext.first_component_mle().guts(), 1)
-                        .await;
-
-                    let claim = claim.into_host().await.unwrap().as_slice()[0];
-                    t.synchronize().await.unwrap();
-                    println!("time for getting claim for {num_variables}: {:?}", time.elapsed());
 
                     let lambda: EF = challenger.sample();
 
@@ -258,24 +284,8 @@ mod tests {
                     let [exp_eval_base, exp_eval_ext] =
                         eval_claims.pop().unwrap().try_into().unwrap();
 
-                    let point = t.to_device(point).await.unwrap();
-
-                    let eval_ext = product
-                        .ext
-                        .first_component_mle()
-                        .eval_at(&point)
-                        .await
-                        .to_host()
-                        .await
-                        .unwrap()[0];
-                    let eval_base = product
-                        .base
-                        .first_component_mle()
-                        .eval_at(&point)
-                        .await
-                        .to_host()
-                        .await
-                        .unwrap()[0];
+                    let eval_ext = product.ext.eval_at(point).await;
+                    let eval_base = product.base.eval_at(point).await;
 
                     assert_eq!(eval_ext, exp_eval_ext);
                     assert_eq!(eval_base, exp_eval_base);
