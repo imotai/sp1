@@ -15,7 +15,8 @@ use slop_algebra::{
 };
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
-    HostEvaluationBackend, Mle, MleBaseBackend, PaddedMle, PartialLagrangeBackend, PointBackend,
+    HostEvaluationBackend, Mle, MleBaseBackend, PaddedMle, Padding, PartialLagrangeBackend,
+    PointBackend,
 };
 use tokio::sync::oneshot;
 
@@ -308,7 +309,12 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
         let main_cols = if let Some(main_cols) = poly.main_columns.inner().as_ref() {
             main_cols.to_host().await.unwrap()
         } else {
-            let padded_values = poly.main_columns.padding_values().to_host().await.unwrap();
+            let padded_values = match poly.main_columns.padding_values() {
+                Padding::Generic(pad_vals) => pad_vals.to_host().await.unwrap(),
+                Padding::Constant((val, _, _)) => {
+                    vec![*val; poly.main_columns.num_polynomials()].into()
+                }
+            };
             let num_polys = poly.main_columns.num_polynomials();
             let guts = padded_values.into_evaluations().reshape([1, num_polys]);
             Mle::new(guts)

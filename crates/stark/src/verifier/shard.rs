@@ -16,11 +16,11 @@ use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir, septic_digest::SepticDigest, Chip, ChipOpenedValues, Machine,
-    VerifierConstraintFolder,
+    air::MachineAir, septic_digest::SepticDigest, verify_permutation_gkr_proof, Chip,
+    ChipOpenedValues, LogupGkrVerificationError, Machine, VerifierConstraintFolder,
 };
 
-use super::{MachineConfig, MachineVerifyingKey, ShardProof};
+use super::{MachineConfig, MachineVerifyingKey, ShardOpenedValues, ShardProof};
 
 /// A verifier for shard proofs.
 #[derive_where(Clone)]
@@ -55,6 +55,9 @@ pub enum ShardVerifierError<C: MachineConfig> {
     /// The shape of the openings does not match the expected shape.
     #[error("opening shape mismatch: {0}")]
     OpeningShapeMismatch(#[from] OpeningShapeError),
+    /// The GKR Proof Fails
+    #[error("GKR proof Failed: {0}")]
+    GkrProofFailed(LogupGkrVerificationError),
 }
 
 /// An error that occurs when the shape of the openings does not match the expected shape.
@@ -188,42 +191,15 @@ where
         Ok(())
     }
 
-    /// Verify a shard proof.
-    pub fn verify_shard(
+    fn verify_zerocheck_sumcheck_and_compute_rlc_eval(
         &self,
-        vk: &MachineVerifyingKey<C>,
+        opened_values: &ShardOpenedValues<C::F, C::EF>,
         proof: &ShardProof<C>,
-        challenger: &mut C::Challenger,
-    ) -> Result<(), ShardVerifierError<C>>
-    where
-        A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
-    {
-        let ShardProof {
-            main_commitment,
-            opened_values,
-            evaluation_proof,
-            zerocheck_proof,
-            public_values,
-        } = proof;
-        // Observe the public values.
-        challenger.observe_slice(&public_values[0..self.machine.num_pv_elts()]);
-        // Observe the main commitment.
-        challenger.observe(main_commitment.clone());
-
-        // Get the random challenge to merge the constraints.
-        let alpha = challenger.sample_ext_element::<C::EF>();
-
-        // Get the random point to evaluate the batched sumcheck polynomial.  It must evaluate to
-        // zero for the constraint check to pass.
-        let zeta = challenger.sample_point::<C::EF>(self.pcs_verifier.max_log_row_count as u32);
-
-        // Get the random lambda to RLC the zerocheck polynomials.
-        let lambda = challenger.sample_ext_element::<C::EF>();
-
-        // Get the value of eq(zeta, sumcheck's reduced point).
-        let zerocheck_eq_val =
-            Mle::full_lagrange_eval(&zeta, &proof.zerocheck_proof.point_and_eval.0);
-
+        alpha: C::EF,
+        lambda: C::EF,
+        zerocheck_eq_val: C::EF,
+        public_values: &[C::F],
+    ) -> Result<C::EF, ShardVerifierError<C>> {
         // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
         // proof is correct.
         let mut rlc_eval = C::EF::zero();
@@ -234,11 +210,14 @@ where
 
             let dimension = proof.zerocheck_proof.point_and_eval.0.dimension();
 
+            assert_eq!(dimension, max_log_row_count);
+
             assert!(dimension >= openings.log_degree.unwrap_or_default() as usize);
 
             let geq_val = match openings.log_degree {
                 None => C::EF::one(),
                 Some(log_d) if log_d < max_log_row_count as u32 => {
+                    // TODO: This will be available from the jagged parameters.
                     // Create the threshold point. This should be the big-endian bit representation
                     // of 2^openings.log_degree.
                     let mut threshold_point_vals = vec![C::EF::zero(); dimension];
@@ -258,6 +237,75 @@ where
             // Horner's method.
             rlc_eval = rlc_eval * lambda + zerocheck_eq_val * constraint_eval;
         }
+        Ok(rlc_eval)
+    }
+
+    /// Verify a shard proof.
+    #[allow(clippy::too_many_lines)]
+    pub fn verify_shard(
+        &self,
+        vk: &MachineVerifyingKey<C>,
+        proof: &ShardProof<C>,
+        challenger: &mut C::Challenger,
+    ) -> Result<(), ShardVerifierError<C>>
+    where
+        A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+    {
+        let ShardProof {
+            main_commitment,
+            opened_values,
+            gkr_proofs,
+            evaluation_proof,
+            zerocheck_proof,
+            public_values,
+        } = proof;
+        // Observe the public values.
+        challenger.observe_slice(&public_values[0..self.machine.num_pv_elts()]);
+        // Observe the main commitment.
+        challenger.observe(main_commitment.clone());
+
+        let alpha = challenger.sample_ext_element::<C::EF>();
+        let beta = challenger.sample_ext_element::<C::EF>();
+
+        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+
+        for ((chip, gkr_proof), openings) in
+            self.machine.chips().iter().zip_eq(gkr_proofs.iter()).zip_eq(opened_values.chips.iter())
+        {
+            verify_permutation_gkr_proof::<C>(
+                gkr_proof,
+                challenger,
+                chip.sends(),
+                chip.receives(),
+                (alpha, beta),
+                openings.log_degree,
+                max_log_row_count,
+            )
+            .map_err(ShardVerifierError::<C>::GkrProofFailed)?;
+        }
+
+        // Get the random challenge to merge the constraints.
+        let alpha = challenger.sample_ext_element::<C::EF>();
+
+        // Get the random point to evaluate the batched sumcheck polynomial.  It must evaluate to
+        // zero for the constraint check to pass.
+        let zeta = challenger.sample_point::<C::EF>(self.pcs_verifier.max_log_row_count as u32);
+
+        // Get the random lambda to RLC the zerocheck polynomials.
+        let lambda = challenger.sample_ext_element::<C::EF>();
+
+        // Get the value of eq(zeta, sumcheck's reduced point).
+        let zerocheck_eq_val =
+            Mle::full_lagrange_eval(&zeta, &proof.zerocheck_proof.point_and_eval.0);
+
+        let rlc_eval = self.verify_zerocheck_sumcheck_and_compute_rlc_eval(
+            opened_values,
+            proof,
+            alpha,
+            lambda,
+            zerocheck_eq_val,
+            public_values,
+        )?;
 
         if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
             return Err(ShardVerifierError::ConstraintsCheckFailed(

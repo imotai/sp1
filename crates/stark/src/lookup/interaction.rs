@@ -1,7 +1,8 @@
 use core::fmt::{Debug, Display};
 
-use slop_air::VirtualPairCol;
-use slop_algebra::Field;
+use slop_air::{PairCol, VirtualPairCol};
+use slop_algebra::{ExtensionField, Field, Powers};
+use slop_multilinear::MleEval;
 
 use crate::air::InteractionScope;
 
@@ -80,6 +81,37 @@ impl<F: Field> Interaction<F> {
     /// The index of the argument in the lookup table.
     pub const fn argument_index(&self) -> usize {
         self.kind as usize
+    }
+
+    /// Calculate the interaction's multiplicity and fingerprint values given a hashmap of column values.
+    pub fn values_from_pair_cols<EF: ExtensionField<F>>(
+        &self,
+        pair_cols: (&MleEval<EF>, &Option<MleEval<EF>>),
+        alpha: EF,
+        betas: &Powers<EF>,
+    ) -> (EF, EF) {
+        let mut mult_value = self.multiplicity.constant.into();
+        let mut betas = betas.clone();
+        for (column, weight) in self.multiplicity.column_weights.iter() {
+            match column {
+                PairCol::Preprocessed(i) => {
+                    mult_value += pair_cols.1.as_ref().unwrap()[*i] * *weight;
+                }
+                PairCol::Main(i) => mult_value += pair_cols.0[*i] * *weight,
+            };
+        }
+
+        let mut fingerprint_value =
+            alpha + betas.next().unwrap() * EF::from_canonical_usize(self.argument_index());
+        for (multiset_elm, beta_pow) in self.values.iter().zip(betas) {
+            let apply = multiset_elm.apply::<EF, EF>(
+                &pair_cols.1.as_ref().map(MleEval::to_vec).unwrap_or_default(),
+                &pair_cols.0.to_vec(),
+            );
+            fingerprint_value += apply * beta_pow;
+        }
+
+        (mult_value, fingerprint_value)
     }
 }
 

@@ -3,7 +3,7 @@ use slop_jagged::JaggedPcsProof;
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use slop_sumcheck::PartialSumcheckProof;
 
-use crate::septic_digest::SepticDigest;
+use crate::{septic_digest::SepticDigest, LogupGkrProof};
 
 use super::MachineConfig;
 
@@ -26,6 +26,8 @@ pub struct ShardProof<C: MachineConfig> {
     pub zerocheck_proof: PartialSumcheckProof<C::EF>,
     /// The public values
     pub public_values: Vec<C::F>,
+    /// The `LogUp+GKR` IOP proofs.
+    pub gkr_proofs: Vec<LogupGkrProof<C::EF>>,
 }
 
 /// The values of the chips in the shard at a random point.

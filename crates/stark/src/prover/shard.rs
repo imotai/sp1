@@ -5,7 +5,7 @@ use p3_uni_stark::get_symbolic_constraints;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_alloc::{Backend, CanCopyFromRef};
+use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
@@ -20,14 +20,15 @@ use tracing::Instrument;
 
 use crate::{
     air::{MachineAir, MachineProgram},
+    generate_gkr_logup_proof_and_data,
     prover::{ZeroCheckPoly, ZerocheckAir},
     septic_digest::SepticDigest,
-    AirOpenedValues, Chip, ChipDimensions, ChipOpenedValues, ConstraintSumcheckFolder, Machine,
-    MachineConfig, MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof,
-    PROOF_MAX_NUM_PVS,
+    AirOpenedValues, Chip, ChipDimensions, ChipOpenedValues, ConstraintSumcheckFolder, GkrBackend,
+    GkrProver, LogupGkrProof, Machine, MachineConfig, MachineRecord, MachineVerifyingKey,
+    ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
-use super::{TraceGenerator, Traces, ZeroCheckBackend, ZerocheckProverData};
+use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 
 /// The components of the machine prover.
 ///
@@ -50,11 +51,13 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
     type Air: ZerocheckAir<Self::F, Self::EF, Program = Self::Program, Record = Self::Record>;
     /// The backend used by the prover.
     type B: JaggedBackend<Self::F, Self::EF>
-        + ZeroCheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>
+        + ZercocheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>
+        + GkrBackend<Self::F, Self::EF>
         + PointBackend<Self::EF>
         + HostEvaluationBackend<Self::F, Self::EF>
         + HostEvaluationBackend<Self::F, Self::F>
-        + HostEvaluationBackend<Self::EF, Self::EF>;
+        + HostEvaluationBackend<Self::EF, Self::EF>
+        + CanCopyFrom<Buffer<Self::EF>, CpuBackend, Output = Buffer<Self::EF, Self::B>>;
 
     /// The commitment representing a batch of traces sent to the verifier.
     type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
@@ -88,6 +91,14 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
     /// constraints vanish into an evaluation claim at a random point for the traces, considered
     /// as multilinear polynomials.
     type ZerocheckProverData: ZerocheckProverData<Self::F, Self::EF, Self::B, Air = Self::Air>;
+
+    /// The necessary pieces to form a GKR proof for the `LogUp` permutation argument.
+    type GkrComponents: GkrProver<
+        F = Self::F,
+        EF = Self::EF,
+        B = Self::B,
+        Challenger = Self::Challenger,
+    >;
 
     /// The components of the jagged PCS prover.
     type PcsProverComponents: JaggedProverComponents<
@@ -377,6 +388,51 @@ impl<C: MachineProverComponents> ShardProver<C> {
         (shard_open_values, partial_sumcheck_proof)
     }
 
+    async fn gkr(
+        &self,
+        preprocessed_traces: Traces<C::F, C::B>,
+        traces: Traces<C::F, C::B>,
+        // batching_challenge: C::EF,
+        // public_values: Vec<C::F>,
+        challenger: &mut C::Challenger,
+    ) -> Vec<LogupGkrProof<C::EF>> {
+        // Sample the random point to make the zerocheck claims.
+        let permutation_challenges =
+            (0..2).map(|_| challenger.sample_ext_element::<C::EF>()).collect::<Vec<_>>();
+
+        let mut gkr_proofs = Vec::new();
+
+        for chip in self.chips() {
+            let name = chip.name();
+            let main_trace = traces.get(&name).unwrap().clone();
+            let prep_trace = preprocessed_traces.get(&name);
+            // let log_degree = main_trace.num_real_entries().next_power_of_two().checked_ilog2();
+            // log_degrees.insert(air.name(), log_degree);
+            let num_variables = main_trace.num_variables();
+            assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
+
+            gkr_proofs.push(
+                generate_gkr_logup_proof_and_data::<C::GkrComponents>(
+                    chip.sends(),
+                    chip.receives(),
+                    prep_trace,
+                    &main_trace,
+                    &permutation_challenges,
+                    challenger,
+                    self.pcs_prover.max_log_row_count,
+                )
+                .instrument(tracing::debug_span!(
+                    "gkr proof",
+                    chip = name,
+                    chip_fully_padded = main_trace.inner().is_none()
+                ))
+                .await
+                .0,
+            );
+        }
+        gkr_proofs
+    }
+
     /// Generate the shard data
     pub async fn generate_traces(
         &self,
@@ -406,6 +462,11 @@ impl<C: MachineProverComponents> ShardProver<C> {
             self.commit_traces(&traces).instrument(tracing::debug_span!("commit traces")).await;
         // Observe the commitments.
         challenger.observe(main_commit.clone());
+
+        let gkr_proofs = self
+            .gkr(pk.preprocessed_traces.clone(), traces.clone(), challenger)
+            .instrument(tracing::debug_span!("gkr"))
+            .await;
 
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();
@@ -476,6 +537,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         ShardProof {
             main_commitment: main_commit,
             opened_values: shard_open_values,
+            gkr_proofs,
             evaluation_proof,
             zerocheck_proof: zerocheck_partial_sumcheck_proof,
             public_values,
@@ -486,10 +548,10 @@ impl<C: MachineProverComponents> ShardProver<C> {
 /// A proving key for a STARK.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "Tensor<C::F, C::B>: Serialize, JaggedProverData<C::PcsProverComponents>: Serialize"
+    serialize = "Tensor<C::F, C::B>: Serialize, JaggedProverData<C::PcsProverComponents>: Serialize, C::F: Serialize, C::B: Serialize, "
 ))]
 #[serde(bound(
-    deserialize = "Tensor<C::F, C::B>: Deserialize<'de>, JaggedProverData<C::PcsProverComponents>: Deserialize<'de>"
+    deserialize = "Tensor<C::F, C::B>: Deserialize<'de>, JaggedProverData<C::PcsProverComponents>: Deserialize<'de>, C::F: Deserialize<'de>, C::B: Deserialize<'de>, "
 ))]
 pub struct MachineProvingKey<C: MachineProverComponents> {
     /// The start pc of the program.

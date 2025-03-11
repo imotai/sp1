@@ -21,8 +21,10 @@ use super::ShardData;
 
 /// A collection of traces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "Tensor<F, B>: Serialize,"))]
-#[serde(bound(deserialize = "Tensor<F, B>: Deserialize<'de>, "))]
+#[serde(bound(serialize = "Tensor<F, B>: Serialize, F: Serialize, B: Serialize, "))]
+#[serde(bound(
+    deserialize = "Tensor<F, B>: Deserialize<'de>, F: Deserialize<'de>, B: Deserialize<'de>, "
+))]
 pub struct Traces<F, B: Backend> {
     /// The traces for each chip.
     pub named_traces: BTreeMap<String, PaddedMle<F, B>>,

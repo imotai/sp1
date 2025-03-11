@@ -55,6 +55,8 @@ where
 
     type ZerocheckProverData = ZerocheckCpuProverData<A>;
 
+    type GkrComponents = PcsComponents;
+
     type PcsProverComponents = PcsComponents;
 }
 
