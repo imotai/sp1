@@ -71,24 +71,23 @@ impl<F, A: Backend> LongMle<F, A> {
         evaluations_mle.eval_at(&batch_point).await[0].clone()
     }
 
-    pub async fn fix_last_variable<EF>(&self, alpha: EF) -> LongMle<EF, A>
+    pub async fn fix_last_variable<EF>(self, alpha: EF) -> LongMle<EF, A>
     where
         F: Field,
         EF: ExtensionField<F> + Copy,
         A: MleFixLastVariableBackend<F, EF> + FixedRateInterleaveBackend<F>,
     {
-        if self.log_stacking_height == 0 {
+        if self.log_stacking_height <= 2 {
             let total_num_of_variables = self
                 .components
                 .iter()
-                .map(|mle| mle.num_polynomials())
+                .map(|mle| mle.num_polynomials() << mle.num_variables())
                 .sum::<usize>()
                 .next_power_of_two()
                 .ilog2();
             let stacker = FixedRateInterleave::<F, A>::new(1);
-            let new_components = stacker
-                .interleave_multilinears(self.components.clone(), total_num_of_variables)
-                .await;
+            let new_components =
+                stacker.interleave_multilinears(self.components, total_num_of_variables).await;
             let restacked_mle =
                 LongMle { components: new_components, log_stacking_height: total_num_of_variables };
             let components =
@@ -99,8 +98,12 @@ impl<F, A: Backend> LongMle<F, A> {
                 log_stacking_height: restacked_mle.log_stacking_height - 1,
             };
         }
-        let components =
-            join_all(self.components.iter().map(|mle| mle.fix_last_variable(alpha))).await;
+        let components = join_all(
+            self.components
+                .into_iter()
+                .map(|mle| async move { mle.fix_last_variable(alpha).await }),
+        )
+        .await;
         LongMle {
             components: Message::from(components),
             log_stacking_height: self.log_stacking_height - 1,

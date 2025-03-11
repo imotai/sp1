@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use crate::{
     HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams, JaggedPcsProof,
-    JaggedPcsVerifier, JaggedSumcheckProver, LongMle,
+    JaggedPcsVerifier, JaggedSumcheckProver,
 };
 
 pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
@@ -284,14 +284,13 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         let all_mles = prover_data
             .iter()
-            .flat_map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
-            .collect::<Message<Mle<C::F, C::A>>>();
-        let long_mle = LongMle::from_message(all_mles, self.log_stacking_height());
+            .map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
+            .collect::<Rounds<_>>();
 
         let sumcheck_poly = self
             .jagged_sumcheck_prover
             .jagged_sumcheck_poly(
-                long_mle,
+                all_mles,
                 &params,
                 row_data,
                 column_data,
