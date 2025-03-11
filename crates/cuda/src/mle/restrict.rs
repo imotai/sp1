@@ -1,10 +1,11 @@
 use csl_sys::{
     mle::{
-        mle_fix_last_variable_baby_bear_base_base,
+        mle_fix_last_variable_baby_bear_base_base_constant_padding,
         mle_fix_last_variable_baby_bear_base_base_padded,
-        mle_fix_last_variable_baby_bear_base_extension,
+        mle_fix_last_variable_baby_bear_base_extension_constant_padding,
         mle_fix_last_variable_baby_bear_base_extension_padded,
-        mle_fix_last_variable_baby_bear_ext_ext, mle_fix_last_variable_baby_bear_ext_ext_padded,
+        mle_fix_last_variable_baby_bear_ext_ext_constant_padding,
+        mle_fix_last_variable_baby_bear_ext_ext_padded,
         mle_fix_last_variable_in_place_baby_bear_base,
         mle_fix_last_variable_in_place_baby_bear_extension,
     },
@@ -21,7 +22,9 @@ use crate::{args, TaskScope};
 
 /// # Safety
 pub unsafe trait MleFixLastVariableKernel<F: Field, EF: ExtensionField<F>> {
-    fn mle_fix_last_variable_kernel(padded: bool) -> KernelPtr;
+    fn mle_fix_last_variable_kernel() -> KernelPtr;
+
+    fn mle_fix_last_variable_constant_padding_kernel() -> KernelPtr;
 }
 
 impl<F: Field, EF: ExtensionField<F>> MleFixLastVariableBackend<F, EF> for TaskScope
@@ -31,7 +34,7 @@ where
     async fn mle_fix_last_variable(
         mle: &Tensor<F, Self>,
         alpha: EF,
-        padding_values: Option<&MleEval<F, Self>>,
+        padding_values: MleEval<F, Self>,
     ) -> Tensor<EF, Self> {
         let num_polynomials = Self::num_polynomials(mle);
         let input_height = mle.sizes()[1];
@@ -45,57 +48,68 @@ where
         let grid_size_y = num_polynomials;
         let grid_size = (grid_size_x, grid_size_y, 1);
 
-        match padding_values {
-            Some(padding_values) => {
-                let args = args!(
-                    mle.as_ptr(),
-                    output.as_mut_ptr(),
-                    padding_values.evaluations().as_ptr(),
-                    alpha,
-                    input_height,
-                    num_polynomials
-                );
+        let args = args!(
+            mle.as_ptr(),
+            output.as_mut_ptr(),
+            padding_values.evaluations().as_ptr(),
+            alpha,
+            input_height,
+            num_polynomials
+        );
 
-                unsafe {
-                    output.assume_init();
-                    mle.backend()
-                        .launch_kernel(
-                            <Self as MleFixLastVariableKernel<F, EF>>::mle_fix_last_variable_kernel(
-                                true,
-                            ),
-                            grid_size,
-                            BLOCK_SIZE,
-                            &args,
-                            0,
-                        )
-                        .unwrap();
-                }
-            }
-            None => {
-                let args = args!(
-                    mle.as_ptr(),
-                    output.as_mut_ptr(),
-                    std::ptr::null::<F>(),
-                    alpha,
-                    input_height,
-                    num_polynomials
-                );
+        unsafe {
+            output.assume_init();
+            mle.backend()
+                .launch_kernel(
+                    <Self as MleFixLastVariableKernel<F, EF>>::mle_fix_last_variable_kernel(),
+                    grid_size,
+                    BLOCK_SIZE,
+                    &args,
+                    0,
+                )
+                .unwrap();
+        }
 
-                unsafe {
-                    output.assume_init();
-                    mle.backend()
-                        .launch_kernel(
-                            <Self as MleFixLastVariableKernel<F, EF>>::mle_fix_last_variable_kernel(
-                                false,
-                            ),
-                            grid_size,
-                            BLOCK_SIZE,
-                            &args,
-                            0,
-                        )
-                        .unwrap();
-                }
-            }
+        output
+    }
+
+    async fn mle_fix_last_variable_constant_padding(
+        mle: &Tensor<F, Self>,
+        alpha: EF,
+        padding_value: F,
+    ) -> Tensor<EF, Self> {
+        let num_polynomials = Self::num_polynomials(mle);
+        let input_height = mle.sizes()[1];
+        assert!(input_height > 0);
+        let output_height = input_height.div_ceil(2);
+        let mut output: Tensor<EF, Self> = mle.backend().uninit_mle(num_polynomials, output_height);
+
+        const BLOCK_SIZE: usize = 256;
+        const STRIDE: usize = 128;
+        let grid_size_x = output_height.div_ceil(BLOCK_SIZE * STRIDE);
+        let grid_size_y = num_polynomials;
+        let grid_size = (grid_size_x, grid_size_y, 1);
+
+        let args = args!(
+            mle.as_ptr(),
+            output.as_mut_ptr(),
+            padding_value,
+            alpha,
+            input_height,
+            num_polynomials
+        );
+
+        unsafe {
+            output.assume_init();
+            mle.backend()
+                .launch_kernel(
+                    <Self as MleFixLastVariableKernel<F, EF>>::mle_fix_last_variable_constant_padding_kernel(),
+                    grid_size,
+                    BLOCK_SIZE,
+                    &args,
+                    0,
+                )
+                .unwrap();
         }
 
         output
@@ -142,22 +156,22 @@ where
 }
 
 unsafe impl MleFixLastVariableKernel<BabyBear, BabyBear> for TaskScope {
-    fn mle_fix_last_variable_kernel(padded: bool) -> KernelPtr {
-        if !padded {
-            unsafe { mle_fix_last_variable_baby_bear_base_base() }
-        } else {
-            unsafe { mle_fix_last_variable_baby_bear_base_base_padded() }
-        }
+    fn mle_fix_last_variable_kernel() -> KernelPtr {
+        unsafe { mle_fix_last_variable_baby_bear_base_base_padded() }
+    }
+
+    fn mle_fix_last_variable_constant_padding_kernel() -> KernelPtr {
+        unsafe { mle_fix_last_variable_baby_bear_base_base_constant_padding() }
     }
 }
 
 unsafe impl MleFixLastVariableKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
-    fn mle_fix_last_variable_kernel(padded: bool) -> KernelPtr {
-        if !padded {
-            unsafe { mle_fix_last_variable_baby_bear_base_extension() }
-        } else {
-            unsafe { mle_fix_last_variable_baby_bear_base_extension_padded() }
-        }
+    fn mle_fix_last_variable_kernel() -> KernelPtr {
+        unsafe { mle_fix_last_variable_baby_bear_base_extension_padded() }
+    }
+
+    fn mle_fix_last_variable_constant_padding_kernel() -> KernelPtr {
+        unsafe { mle_fix_last_variable_baby_bear_base_extension_constant_padding() }
     }
 }
 
@@ -167,12 +181,12 @@ unsafe impl
         BinomialExtensionField<BabyBear, 4>,
     > for TaskScope
 {
-    fn mle_fix_last_variable_kernel(padded: bool) -> KernelPtr {
-        if !padded {
-            unsafe { mle_fix_last_variable_baby_bear_ext_ext() }
-        } else {
-            unsafe { mle_fix_last_variable_baby_bear_ext_ext_padded() }
-        }
+    fn mle_fix_last_variable_kernel() -> KernelPtr {
+        unsafe { mle_fix_last_variable_baby_bear_ext_ext_padded() }
+    }
+
+    fn mle_fix_last_variable_constant_padding_kernel() -> KernelPtr {
+        unsafe { mle_fix_last_variable_baby_bear_ext_ext_constant_padding() }
     }
 }
 
@@ -195,9 +209,9 @@ mod tests {
     use rand::Rng;
     use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::AbstractField;
-    use slop_alloc::{CanCopyFromRef, IntoHost, ToHost};
+    use slop_alloc::{CanCopyFromRef, CpuBackend, IntoHost, ToHost};
     use slop_baby_bear::BabyBear;
-    use slop_multilinear::{Mle, MleEval, PaddedMle, Point};
+    use slop_multilinear::{Mle, PaddedMle, Padding, Point};
     use slop_tensor::Tensor;
 
     #[tokio::test]
@@ -248,11 +262,14 @@ mod tests {
         type EF = BinomialExtensionField<F, 4>;
 
         let mle = Mle::<F>::new(Tensor::rand(&mut rng, [(1 << 16) - 5, 2]));
-        let padded_mle =
-            PaddedMle::padded(Arc::new(mle.clone()), 17, vec![F::one(), F::two()].into());
+        let padded_mle = PaddedMle::padded(
+            Arc::new(mle.clone()),
+            17,
+            Padding::Generic(vec![F::one(), F::two()].into()),
+        );
         let alpha = rng.gen::<EF>();
 
-        let mle_evals: MleEval<F> = vec![F::one(), F::two()].into();
+        let mle_evals: Padding<F, CpuBackend> = Padding::Generic(vec![F::one(), F::two()].into());
         let evals = crate::task()
             .await
             .unwrap()
@@ -292,12 +309,16 @@ mod tests {
         type EF = BinomialExtensionField<F, 4>;
 
         let mle = Mle::<F>::new(Tensor::rand(&mut rng, [(1 << 16) - 5, 2]));
-        let padded_mle =
-            PaddedMle::padded(Arc::new(mle.clone()), 17, vec![F::one(), F::two()].into());
+        let padded_mle = PaddedMle::padded(
+            Arc::new(mle.clone()),
+            17,
+            Padding::Generic(vec![F::one(), F::two()].into()),
+        );
         let point = (0..17).map(|_| rng.gen::<EF>()).collect::<Point<_>>();
         let point_clone = point.clone();
 
-        let padded_evals: MleEval<F> = vec![F::one(), F::two()].into();
+        let padded_evals: Padding<F, CpuBackend> =
+            Padding::Generic(vec![F::one(), F::two()].into());
         let device_evals = crate::task()
             .await
             .unwrap()

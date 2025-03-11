@@ -139,7 +139,7 @@ extern "C" void *partial_lagrange_baby_bear_extension()
     return (void *)partial_lagrange_naive<bb31_t, bb31_extension_t>;
 }
 
-template <typename F, typename EF, bool padded>
+template <typename F, typename EF >
 __global__ void fixLastVariable(
     const F *input,
     EF *__restrict__ output,
@@ -154,15 +154,46 @@ __global__ void fixLastVariable(
     {
         for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
         {
-            // j is polynomial index
-            // i is the row index
             F zeroValue = F::load(input, j * inputHeight + (i << 1));
             F oneValue;
             if (padding) {
                 if (i < outputHeight - 1) {
                     oneValue = F::load(input, j * inputHeight + (i << 1) + 1);
                 } else {
-                    oneValue = padded ? paddingValues[j] : F::zero();
+                    oneValue = paddingValues[j];
+                }
+            } else {
+                oneValue =  F::load(input, j * inputHeight + (i << 1) + 1);
+            }
+            // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
+            EF value = alpha * (oneValue - zeroValue) + zeroValue;
+            EF::store(output, j * outputHeight + i, value);
+        }
+    }
+}
+
+template <typename F, typename EF>
+__global__ void fixLastVariableConstantPadding(
+    const F *input,
+    EF *__restrict__ output,
+    F paddingValue,
+    EF alpha,
+    size_t inputHeight,
+    size_t width)
+{
+    size_t outputHeight = (inputHeight + 1) >> 1;
+    bool padding = inputHeight & 1;
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
+    {
+        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
+        {
+            F zeroValue = F::load(input, j * inputHeight + (i << 1));
+            F oneValue;
+            if (padding) {
+                if (i < outputHeight - 1) {
+                    oneValue = F::load(input, j * inputHeight + (i << 1) + 1);
+                } else {
+                    oneValue = paddingValue;
                 }
             } else {
                 oneValue =  F::load(input, j * inputHeight + (i << 1) + 1);
@@ -176,33 +207,35 @@ __global__ void fixLastVariable(
 
 extern "C" void *mle_fix_last_variable_baby_bear_base_base_padded()
 {
-        return (void *)fixLastVariable<bb31_t, bb31_t, true>;
-}
-
-extern "C" void *mle_fix_last_variable_baby_bear_base_base()
-{
-        return (void *)fixLastVariable<bb31_t, bb31_t, false>;
+        return (void *)fixLastVariable<bb31_t, bb31_t>;
 }
 
 extern "C" void *mle_fix_last_variable_baby_bear_base_extension_padded()
 {
-    return (void *)fixLastVariable<bb31_t, bb31_extension_t, true>;
+    return (void *)fixLastVariable<bb31_t, bb31_extension_t>;
 }
 
-extern "C" void *mle_fix_last_variable_baby_bear_base_extension()
-{
-    return (void *)fixLastVariable<bb31_t, bb31_extension_t, false>;
-}
 
 extern "C" void *mle_fix_last_variable_baby_bear_ext_ext_padded()
 {
-    return (void *)fixLastVariable<bb31_extension_t, bb31_extension_t, true>;
+    return (void *)fixLastVariable<bb31_extension_t, bb31_extension_t>;
 }
 
-extern "C" void *mle_fix_last_variable_baby_bear_ext_ext()
+extern "C" void *mle_fix_last_variable_baby_bear_base_base_constant_padding()
 {
-    return (void *)fixLastVariable<bb31_extension_t, bb31_extension_t, false>;
+    return (void *)fixLastVariableConstantPadding<bb31_t, bb31_t>;
 }
+
+extern "C" void *mle_fix_last_variable_baby_bear_base_extension_constant_padding()
+{
+    return (void *)fixLastVariableConstantPadding<bb31_t, bb31_extension_t>;
+}
+
+extern "C" void *mle_fix_last_variable_baby_bear_ext_ext_constant_padding()
+{
+    return (void *)fixLastVariableConstantPadding<bb31_extension_t, bb31_extension_t>;
+}
+
 
 template <typename F>
 __global__ void fixLastVariableInPlace(

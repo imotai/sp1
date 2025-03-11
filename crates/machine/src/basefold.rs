@@ -57,7 +57,7 @@ mod tests {
             .await;
         let challenger = verifier.pcs_verifier.challenger();
         let opts = gpu_prover_opts().core_opts;
-        println!("opts shard batch size: {}", opts.shard_batch_size);
+
         let (proof, _) = prove_core(
             Arc::new(prover),
             Arc::new(pk),

@@ -15,6 +15,8 @@ use sp1_stark::{
     BabyBearPoseidon2, ShardVerifier,
 };
 
+use crate::gkr::Poseidon2BabyBearGkrCudaProverComponents;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CudaProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
 
@@ -48,6 +50,8 @@ where
     type ZerocheckProverData = ZerocheckEvalProgramProverData<Self::F, Self::EF, A>;
 
     type PcsProverComponents = Poseidon2BabyBearJaggedCudaProverComponents;
+
+    type GkrComponents = Poseidon2BabyBearGkrCudaProverComponents;
 }
 
 pub fn new_cuda_prover<A>(

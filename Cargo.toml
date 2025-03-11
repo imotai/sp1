@@ -76,10 +76,11 @@ slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 slop-air = { git = "https://github.com/succinctlabs/slop" }
 
 # SP1
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
-sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/device-backend-clean" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+# for testing
 
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
@@ -107,12 +108,8 @@ sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch =
 # sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
 # sp1-stark = { path = "../sp1-wip/crates/stark" }
 # sp1-primitives = { path = "../sp1-wip/crates/primitives" }
-
-# for local development
-# sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
-# sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
-# sp1-stark = { path = "../sp1-wip/crates/stark" }
-# sp1-primitives = { path = "../sp1-wip/crates/primitives" }
+# # For testing.
+# test-artifacts = { path = "../sp1-wip/crates/test-artifacts" }
 
 # async
 tokio = { version = "1.42.0" }

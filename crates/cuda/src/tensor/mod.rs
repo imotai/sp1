@@ -1,7 +1,7 @@
 mod dot;
 pub mod reduce;
 mod sum;
-mod transpose;
+pub mod transpose;
 
 use slop_alloc::{mem::CopyError, Backend, CopyIntoBackend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;

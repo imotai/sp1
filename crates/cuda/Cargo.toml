@@ -30,7 +30,6 @@ slop-jagged = { workspace = true }
 slop-futures = { workspace = true }
 
 sp1-stark = { workspace = true }
-sp1-core-machine = { workspace = true }
 
 serde = { workspace = true }
 thiserror = { workspace = true }
@@ -42,6 +41,9 @@ itertools = { workspace = true }
 tracing = { workspace = true }
 [dev-dependencies]
 rand = "0.8"
+
+sp1-core-executor = { workspace = true }
+sp1-core-machine = { workspace = true }
 
 [lints]
 workspace = true

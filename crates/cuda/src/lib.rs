@@ -5,6 +5,7 @@ mod error;
 mod event;
 mod global;
 mod interleave;
+mod logup_gkr;
 mod long;
 mod mle;
 mod stream;
@@ -20,6 +21,7 @@ pub use stream::{CudaStream, StreamCallbackFuture};
 
 pub use buffer::*;
 pub use device::*;
+pub use logup_gkr::*;
 pub use mle::*;
 pub use sumcheck::*;
 pub use task::*;

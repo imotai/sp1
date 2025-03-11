@@ -2,6 +2,7 @@ pub mod algebra;
 pub mod basefold;
 pub mod dft;
 pub mod jagged;
+pub mod logup_gkr;
 pub mod mle;
 pub mod poseidon2;
 pub mod reduce;

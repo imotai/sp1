@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use slop_algebra::Field;
 use slop_alloc::{mem::CopyError, Buffer, CopyIntoBackend, CopyToBackend, CpuBackend, ToHost};
-use slop_multilinear::{Evaluations, Mle, MleEval, Point};
+use slop_multilinear::{Evaluations, Mle, MleEval, Padding, Point};
 use slop_tensor::{Tensor, TransposeBackend};
 use tokio::sync::oneshot;
 
@@ -92,12 +92,40 @@ impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for MleEval<F, TaskSc
     }
 }
 
+impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Padding<F, TaskScope> {
+    type Output = Padding<F, CpuBackend>;
+    async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        match self {
+            Padding::Generic(padding_values) => {
+                padding_values.copy_into_backend(backend).await.map(Padding::Generic)
+            }
+            Padding::Constant((value, num_polys, _)) => {
+                Ok(Padding::Constant((value, num_polys, *backend)))
+            }
+        }
+    }
+}
+
 impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for MleEval<F, CpuBackend> {
     type Output = MleEval<F, TaskScope>;
     async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         let tensor = self.into_evaluations();
         let evaluations = tensor.copy_into_backend(backend).await?;
         Ok(MleEval::new(evaluations))
+    }
+}
+
+impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Padding<F, CpuBackend> {
+    type Output = Padding<F, TaskScope>;
+    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        match self {
+            Padding::Generic(padding_values) => {
+                padding_values.copy_into_backend(backend).await.map(Padding::Generic)
+            }
+            Padding::Constant((value, num_polys, _)) => {
+                Ok(Padding::Constant((value, num_polys, backend.clone())))
+            }
+        }
     }
 }
 
@@ -110,6 +138,20 @@ impl<F: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for MleEval<F, TaskScop
     }
 }
 
+impl<F: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Padding<F, TaskScope> {
+    type Output = Padding<F, CpuBackend>;
+    async fn copy_to_backend(&self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        match self {
+            Padding::Generic(padding_values) => {
+                padding_values.copy_to_backend(backend).await.map(Padding::Generic)
+            }
+            Padding::Constant((value, num_polys, _)) => {
+                Ok(Padding::Constant((*value, *num_polys, *backend)))
+            }
+        }
+    }
+}
+
 impl<F: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for MleEval<F, CpuBackend> {
     type Output = MleEval<F, TaskScope>;
     async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
@@ -117,6 +159,20 @@ impl<F: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for MleEval<F, CpuBacke
         let tensor = unsafe { SmallTensor::new(self.evaluations()) };
         let evaluations = tensor.copy_into_backend(backend).await?;
         Ok(MleEval::new(evaluations))
+    }
+}
+
+impl<F: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Padding<F, CpuBackend> {
+    type Output = Padding<F, TaskScope>;
+    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        match self {
+            Padding::Generic(padding_values) => {
+                padding_values.copy_to_backend(backend).await.map(Padding::Generic)
+            }
+            Padding::Constant((value, num_polys, _)) => {
+                Ok(Padding::Constant((*value, *num_polys, backend.clone())))
+            }
+        }
     }
 }
 
