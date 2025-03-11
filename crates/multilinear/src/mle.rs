@@ -177,7 +177,7 @@ impl<F, A: Backend> Mle<F, A> {
         EF: AbstractExtensionField<F>,
         A: MleFixLastVariableBackend<F, EF>,
     {
-        let guts = A::mle_fix_last_variable(&self.guts, alpha, None).await;
+        let guts = A::mle_fix_last_variable_constant_padding(&self.guts, alpha, F::zero()).await;
         Mle::new(guts)
     }
 

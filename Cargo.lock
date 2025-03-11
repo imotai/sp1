@@ -1287,9 +1287,12 @@ dependencies = [
  "slop-basefold-prover",
  "slop-challenger",
  "slop-maybe-rayon",
+ "slop-merkle-tree",
  "slop-multilinear",
  "slop-poseidon2",
  "slop-tensor",
+ "thiserror",
+ "tokio",
  "tracing",
 ]
 

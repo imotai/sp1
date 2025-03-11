@@ -11,10 +11,16 @@ use crate::{MleBaseBackend, MleEval, MleEvaluationBackend, Point};
 pub trait MleFixLastVariableBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
     MleBaseBackend<F>
 {
+    fn mle_fix_last_variable_constant_padding(
+        mle: &Tensor<F, Self>,
+        alpha: EF,
+        padding_value: F,
+    ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
+
     fn mle_fix_last_variable(
         mle: &Tensor<F, Self>,
         alpha: EF,
-        padding_values: Option<&MleEval<F, Self>>,
+        padding_values: MleEval<F, Self>,
     ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
 }
 
@@ -33,17 +39,10 @@ where
     async fn mle_fix_last_variable(
         mle: &Tensor<F, Self>,
         alpha: EF,
-        padding_values: Option<&MleEval<F, Self>>,
+        padding_values: MleEval<F, Self>,
     ) -> Tensor<EF, Self> {
-        let width = CpuBackend::num_polynomials(mle);
         let mle = unsafe { mle.owned_unchecked() };
-        let padding_values = match padding_values {
-            Some(p) => unsafe { p.owned_unchecked() },
-            None => {
-                let zeros: MleEval<_> = vec![F::zero(); width].into();
-                unsafe { zeros.owned_unchecked() }
-            }
-        };
+        let padding_values = unsafe { padding_values.owned_unchecked() };
 
         let (tx, rx) = oneshot::channel();
         slop_futures::rayon::spawn(move || {
@@ -88,6 +87,16 @@ where
             tx.send(result).unwrap();
         });
         rx.await.unwrap()
+    }
+
+    fn mle_fix_last_variable_constant_padding(
+        mle: &Tensor<F, Self>,
+        alpha: EF,
+        padding_value: F,
+    ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync {
+        let padding_values: MleEval<_> =
+            vec![padding_value; CpuBackend::num_polynomials(mle)].into();
+        CpuBackend::mle_fix_last_variable(mle, alpha, padding_values)
     }
 }
 

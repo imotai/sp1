@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use thiserror::Error;
 
 use slop_algebra::{ExtensionField, Field};
 use slop_challenger::FieldChallenger;
@@ -6,19 +6,18 @@ use slop_multilinear::Point;
 
 use crate::PartialSumcheckProof;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum SumcheckError {
+    #[error("invalid proof shape")]
     InvalidProofShape,
+    #[error("sumcheck round inconsistency")]
     SumcheckRoundInconsistency,
+    #[error("inconsistency of prover message with claimed sum")]
     InconsistencyWithClaimedSum,
+    #[error("inconsistency of proof with evaluation claim")]
     InconsistencyWithEval,
 }
 
-impl Display for SumcheckError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 /// Verifies that a PartialSumcheckProof is correct up until the evaluation claim.
 pub fn partially_verify_sumcheck_proof<
     F: Field,

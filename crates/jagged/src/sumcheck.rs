@@ -2,8 +2,8 @@ use std::{future::Future, sync::Arc};
 
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::Backend;
-use slop_commit::Rounds;
-use slop_multilinear::Point;
+use slop_commit::{Message, Rounds};
+use slop_multilinear::{Mle, Point};
 use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
 use slop_sumcheck::SumcheckPolyFirstRound;
 
@@ -19,7 +19,7 @@ pub trait JaggedSumcheckProver<F: Field, EF: ExtensionField<F>, B: Backend>:
     #[allow(clippy::too_many_arguments)]
     fn jagged_sumcheck_poly(
         &self,
-        base: LongMle<F, B>,
+        base: Rounds<Message<Mle<F, B>>>,
         jagged_params: &JaggedLittlePolynomialProverParams,
         row_data: Rounds<Arc<Vec<usize>>>,
         column_data: Rounds<Arc<Vec<usize>>>,
@@ -44,13 +44,17 @@ where
 
     async fn jagged_sumcheck_poly(
         &self,
-        base: LongMle<F, B>,
+        base: Rounds<Message<Mle<F, B>>>,
         jagged_params: &JaggedLittlePolynomialProverParams,
         row_data: Rounds<Arc<Vec<usize>>>,
         column_data: Rounds<Arc<Vec<usize>>>,
         z_row: &Point<EF, B>,
         z_col: &Point<EF, B>,
     ) -> Self::Polynomial {
+        let base = base.into_iter().flatten().collect::<Message<Mle<_, _>>>();
+        let log_stacking_height = base.first().unwrap().num_variables();
+        let long_mle = LongMle::from_message(base, log_stacking_height);
+
         let jaggled_mle = self
             .jagged_generator
             .partial_jagged_multilinear(jagged_params, row_data, column_data, z_row, z_col, 1)
@@ -60,7 +64,9 @@ where
 
         let stacker = FixedRateInterleave::<F, B>::new(1);
         let restacked_mle = LongMle::from_message(
-            stacker.interleave_multilinears(base.components().clone(), total_num_variables).await,
+            stacker
+                .interleave_multilinears(long_mle.components().clone(), total_num_variables)
+                .await,
             total_num_variables,
         );
         HadamardProduct { base: restacked_mle, ext: jaggled_mle }

@@ -153,6 +153,22 @@ impl<T> Point<T, CpuBackend> {
     }
 
     #[inline]
+    pub fn mle_eval_zero(&self) -> T
+    where
+        T: AbstractField,
+    {
+        self.values.iter().map(|x| T::one() - x.clone()).product()
+    }
+
+    #[inline]
+    pub fn mle_eval_one(&self) -> T
+    where
+        T: AbstractField,
+    {
+        self.values.iter().cloned().product()
+    }
+
+    #[inline]
     pub fn to_vec(&self) -> Vec<T>
     where
         T: Clone,

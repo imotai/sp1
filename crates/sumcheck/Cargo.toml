@@ -21,8 +21,12 @@ serde = { workspace = true }
 itertools = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
 slop-poseidon2 = { workspace = true }
 slop-basefold-prover = { workspace = true }
+tokio = { workspace = true }
+
+slop-merkle-tree = { workspace = true }
