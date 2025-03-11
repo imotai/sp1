@@ -21,8 +21,8 @@ use slop_sumcheck::{
 use thiserror::Error;
 
 use crate::{
-    HadamardProduct, JaggedConfig, JaggedLittlePolynomialProverParams, JaggedPcsProof,
-    JaggedPcsVerifier, JaggedSumcheckProver,
+    HadamardProduct, JaggedConfig, JaggedEvalSumcheckPoly, JaggedLittlePolynomialProverParams,
+    JaggedPcsProof, JaggedPcsVerifier, JaggedSumcheckProver,
 };
 
 pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
@@ -304,18 +304,38 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         let column_claims = Mle::from(column_claims);
         let sumcheck_claim = column_claims.eval_at(&z_col).await[0];
 
-        let lambda: C::EF = challenger.sample_ext_element();
-
         let (sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
             vec![sumcheck_poly],
             challenger,
             vec![sumcheck_claim],
             1,
-            lambda,
+            C::EF::one(),
         )
         .await;
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
+
+        // Create sumcheck proof for the jagged eval.
+        let jagged_eval_sc_poly = JaggedEvalSumcheckPoly::new(
+            z_row.clone(),
+            z_col.clone(),
+            final_eval_point.clone(),
+            params.col_prefix_sums_usize.clone(),
+        );
+
+        // Compute the full eval of the jagged poly.
+        let verifier_params = params.clone().into_verifier_params();
+        let (expected_sum, branching_program_evals) = verifier_params
+            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &final_eval_point);
+
+        let (jagged_eval_proof, _) = reduce_sumcheck_to_evaluation(
+            vec![jagged_eval_sc_poly],
+            challenger,
+            vec![expected_sum],
+            1,
+            C::EF::one(),
+        )
+        .await;
 
         let (_, stack_point) = final_eval_point
             .split_at(final_eval_point.dimension() - self.log_stacking_height() as usize);
@@ -346,6 +366,8 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         Ok(JaggedPcsProof {
             stacked_pcs_proof,
             sumcheck_proof,
+            branching_program_evals,
+            jagged_eval_proof,
             params: params.into_verifier_params(),
         })
     }
