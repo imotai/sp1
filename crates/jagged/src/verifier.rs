@@ -111,6 +111,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         // Compute the jagged eval sc expected eval and assert it matches the proof's eval.
         let current_column_prefix_sums = params.col_prefix_sums.iter();
         let next_column_prefix_sums = params.col_prefix_sums.iter().skip(1);
+        let mut is_first_column = true;
         let mut prev_merged_prefix_sum = Point::<C::EF>::default();
         let mut prev_full_lagrange_eval = C::EF::zero();
         let mut jagged_eval_sc_expected_eval = current_column_prefix_sums
@@ -120,18 +121,20 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
                 let mut merged_prefix_sum = current_column_prefix_sum.clone();
                 merged_prefix_sum.extend(next_column_prefix_sum);
 
-                let full_lagrange_eval = if prev_merged_prefix_sum == merged_prefix_sum {
-                    prev_full_lagrange_eval
-                } else {
-                    let full_lagrange_eval = Mle::full_lagrange_eval(
-                        &merged_prefix_sum,
-                        &jagged_eval_proof.point_and_eval.0,
-                    );
-                    prev_full_lagrange_eval = full_lagrange_eval;
-                    full_lagrange_eval
-                };
+                let full_lagrange_eval =
+                    if prev_merged_prefix_sum == merged_prefix_sum && is_first_column {
+                        prev_full_lagrange_eval
+                    } else {
+                        let full_lagrange_eval = Mle::full_lagrange_eval(
+                            &merged_prefix_sum,
+                            &jagged_eval_proof.point_and_eval.0,
+                        );
+                        prev_full_lagrange_eval = full_lagrange_eval;
+                        full_lagrange_eval
+                    };
 
                 prev_merged_prefix_sum = merged_prefix_sum;
+                is_first_column = false;
 
                 *z_col_eq_val * full_lagrange_eval
             })
