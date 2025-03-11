@@ -6,14 +6,12 @@ use slop_stacked::{StackedPcsProof, StackedPcsVerifier};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use thiserror::Error;
 
-use crate::{BranchingProgram, JaggedConfig, JaggedLittlePolynomialVerifierParams};
+use crate::{JaggedConfig, JaggedLittlePolynomialVerifierParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JaggedPcsProof<C: JaggedConfig> {
     pub stacked_pcs_proof: StackedPcsProof<C::BatchPcsProof, C::EF>,
     pub sumcheck_proof: PartialSumcheckProof<C::EF>,
-    pub branching_program_evals: Vec<C::EF>,
-    pub jagged_eval_proof: PartialSumcheckProof<C::EF>,
     pub params: JaggedLittlePolynomialVerifierParams<C::EF>,
 }
 
@@ -43,13 +41,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         insertion_points: &[usize],
         challenger: &mut C::Challenger,
     ) -> Result<(), JaggedPcsVerifierError<C>> {
-        let JaggedPcsProof {
-            stacked_pcs_proof,
-            sumcheck_proof,
-            branching_program_evals,
-            jagged_eval_proof,
-            params,
-        } = proof;
+        let JaggedPcsProof { stacked_pcs_proof, sumcheck_proof, params } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
             .map(|_| challenger.sample_ext_element::<C::EF>())
@@ -82,70 +74,21 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             ));
         }
 
+        let _lambda = challenger.sample_ext_element::<C::EF>();
+
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
-        // Calculate the partial lagrange from z_col point.
-        let z_col_partial_lagrange = Mle::blocking_partial_lagrange(&z_col);
-        let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
-
-        // Calcuate the jagged eval from the branching program eval claims.
-        let jagged_eval = z_col_partial_lagrange
-            .iter()
-            .zip(branching_program_evals.iter())
-            .map(|(partial_lagrange, branching_program_eval)| {
-                *partial_lagrange * *branching_program_eval
-            })
-            .sum::<C::EF>();
-
-        // Verify the jagged eval proof.
-        partially_verify_sumcheck_proof(jagged_eval_proof, challenger)
-            .map_err(JaggedPcsVerifierError::SumcheckError)?;
-
-        let (first_half_z_index, second_half_z_index) = jagged_eval_proof
-            .point_and_eval
-            .0
-            .split_at(jagged_eval_proof.point_and_eval.0.dimension() / 2);
-        assert!(first_half_z_index.len() == second_half_z_index.len());
-
-        // Compute the jagged eval sc expected eval and assert it matches the proof's eval.
-        let current_column_prefix_sums = params.col_prefix_sums.iter();
-        let next_column_prefix_sums = params.col_prefix_sums.iter().skip(1);
-        let mut is_first_column = true;
-        let mut prev_merged_prefix_sum = Point::<C::EF>::default();
-        let mut prev_full_lagrange_eval = C::EF::zero();
-        let mut jagged_eval_sc_expected_eval = current_column_prefix_sums
-            .zip(next_column_prefix_sums)
-            .zip(z_col_partial_lagrange.iter())
-            .map(|((current_column_prefix_sum, next_column_prefix_sum), z_col_eq_val)| {
-                let mut merged_prefix_sum = current_column_prefix_sum.clone();
-                merged_prefix_sum.extend(next_column_prefix_sum);
-
-                let full_lagrange_eval =
-                    if prev_merged_prefix_sum == merged_prefix_sum && is_first_column {
-                        prev_full_lagrange_eval
-                    } else {
-                        let full_lagrange_eval = Mle::full_lagrange_eval(
-                            &merged_prefix_sum,
-                            &jagged_eval_proof.point_and_eval.0,
-                        );
-                        prev_full_lagrange_eval = full_lagrange_eval;
-                        full_lagrange_eval
-                    };
-
-                prev_merged_prefix_sum = merged_prefix_sum;
-                is_first_column = false;
-
-                *z_col_eq_val * full_lagrange_eval
-            })
-            .sum::<C::EF>();
-
-        let branching_program =
-            BranchingProgram::new(z_row.clone(), sumcheck_proof.point_and_eval.0.clone());
-        jagged_eval_sc_expected_eval *=
-            branching_program.eval(&first_half_z_index, &second_half_z_index);
-
-        assert!(jagged_eval_sc_expected_eval == jagged_eval_proof.point_and_eval.1);
+        // Compute the expected evaluation of the jagged little polynomial from its succinct
+        // description.
+        let jagged_eval = tracing::debug_span!("full_jagged_little_polynomial_evaluation")
+            .in_scope(|| {
+                params.full_jagged_little_polynomial_evaluation(
+                    &z_row,
+                    &z_col,
+                    &sumcheck_proof.point_and_eval.0,
+                )
+            });
 
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;

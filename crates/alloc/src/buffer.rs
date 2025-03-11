@@ -455,16 +455,6 @@ impl<T> Buffer<T, CpuBackend> {
 
     #[inline]
     pub fn extend_from_slice(&mut self, slice: &[T]) {
-        // Check to see if capacity needs to be increased.
-        if self.len() + slice.len() > self.capacity() {
-            let additional_capacity = self.len() + slice.len() - self.capacity();
-            let owned_self = std::mem::take(self);
-            let mut vec = Vec::from(owned_self);
-            vec.reserve(vec.capacity() + additional_capacity);
-            *self = Self::from(vec);
-            assert!(self.capacity() >= self.len() + slice.len());
-        }
-
         self.extend_from_host_slice(slice).unwrap()
     }
 
