@@ -58,7 +58,7 @@ impl<K: Field + 'static> JaggedEvalSumcheckPoly<K> {
         // Condense the merged_prefix_sums and z_col_eq_vals for empty tables.
         let (merged_prefix_sums, z_col_eq_vals): (Vec<Point<K>>, Vec<K>) = merged_prefix_sums
             .iter()
-            .zip_eq(z_col_partial_lagrange.guts().as_slice())
+            .zip(z_col_partial_lagrange.guts().as_slice())
             .group_by(|(merged_prefix_sum, _)| *merged_prefix_sum)
             .into_iter()
             .map(|(merged_prefix_sum, group)| {
@@ -261,7 +261,7 @@ mod tests {
     type EF = BinomialExtensionField<F, 4>;
 
     #[tokio::test]
-    async fn test_batch_eval_poly() {
+    async fn test_jagged_eval_sumcheck() {
         let row_counts = [12, 1, 0, 0, 17, 0];
 
         let mut rng = thread_rng();
