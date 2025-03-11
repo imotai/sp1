@@ -472,7 +472,6 @@ pub mod tests {
     use std::iter::repeat;
 
     use rand::Rng;
-    use slop_algebra::PrimeField32;
     use slop_baby_bear::BabyBear;
     use slop_utils::log2_ceil_usize;
     type F = BabyBear;
@@ -539,7 +538,7 @@ pub mod tests {
                                     .full_jagged_little_polynomial_evaluation(
                                         &z_row,
                                         &z_col,
-                                        &Point::<F>::from_usize(other_index, log_m + 1)
+                                        &Point::<F>::from_usize(other_index, log_m)
                                     )
                                     .0
                                     == F::zero()
@@ -547,10 +546,7 @@ pub mod tests {
                             assert_eq!(
                                 prover_params
                                     .partial_jagged_little_polynomial_evaluation(&z_row, &z_col)
-                                    .blocking_eval_at(&Point::<F>::from_usize(
-                                        other_index,
-                                        log_m + 1
-                                    ))
+                                    .blocking_eval_at(&Point::<F>::from_usize(other_index, log_m))
                                     .to_vec()[0],
                                 F::zero()
                             );
@@ -587,20 +583,20 @@ pub mod tests {
                         .full_jagged_little_polynomial_evaluation(
                             &z_row,
                             &z_col,
-                            &Point::<F>::from_usize(index ^ 1, log_m + 1),
+                            &Point::<F>::from_usize(index ^ 1, log_num_cols + 1),
                         );
                     assert_eq!(wrong_result, F::zero());
                     check_branching_program_evals(
                         &branching_program_evals,
                         &z_row,
-                        &Point::<F>::from_usize(index ^ 1, log_m + 1),
+                        &Point::<F>::from_usize(index ^ 1, log_num_cols + 1),
                         prover_params.clone(),
                     );
 
                     let mut rng = rand::thread_rng();
 
                     for _ in 0..3 {
-                        let z_index: Point<F> = (0..log_m + 1).map(|_| rng.gen::<F>()).collect();
+                        let z_index: Point<F> = (0..log_m).map(|_| rng.gen::<F>()).collect();
                         assert_eq!(
                             verifier_params
                                 .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index)
@@ -650,7 +646,7 @@ pub mod tests {
             for new_row in 0..(1 << log_max_row_count) {
                 for new_col in 0..row_counts.len() {
                     if !(new_col == col && new_row == row) {
-                        let z_index = Point::from_usize(index, log_m + 1);
+                        let z_index = Point::from_usize(index, log_m);
 
                         let new_z_row = Point::from_usize(new_row, log_max_row_count);
                         let new_z_col =
@@ -696,7 +692,7 @@ pub mod tests {
                             .full_jagged_little_polynomial_evaluation(
                                 &z_row,
                                 &z_col,
-                                &Point::from_usize(other_index, log_m + 1)
+                                &Point::from_usize(other_index, log_m)
                             )
                             .0
                             == F::zero()
@@ -754,7 +750,7 @@ pub mod tests {
 
                     let verifier_params = params.clone().into_verifier_params();
 
-                    let z_index = Point::from_usize(index, log_m + 1);
+                    let z_index = Point::from_usize(index, log_m);
                     assert_eq!(
                         verifier_params
                             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index)
@@ -765,7 +761,7 @@ pub mod tests {
                             .to_vec()[0]
                     );
 
-                    let z_index = (0..log_m + 1).map(|_| rng.gen::<F>()).collect();
+                    let z_index = (0..log_m).map(|_| rng.gen::<F>()).collect();
                     assert_eq!(
                         verifier_params
                             .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index)
@@ -792,13 +788,13 @@ pub mod tests {
                 .zip(params.col_prefix_sums_usize.iter())
                 .zip(params.col_prefix_sums_usize.iter().skip(1))
         {
-            let index = z_index.bit_string_evaluation().as_canonical_u32();
+            let index = z_index.bit_string_evaluation();
 
-            let z_row_matches = index.wrapping_sub(*prefix_sum_lower_bound as u32)
-                == z_row.bit_string_evaluation().as_canonical_u32();
+            let z_row_matches =
+                index.wrapping_sub(*prefix_sum_lower_bound) == z_row.bit_string_evaluation();
 
             let within_prefix_sum_range =
-                *prefix_sum_lower_bound as u32 <= index && index < *prefix_sum_upper_bound as u32;
+                *prefix_sum_lower_bound <= index && index < *prefix_sum_upper_bound;
 
             if z_row_matches && within_prefix_sum_range {
                 assert_eq!(branching_program_eval, &F::one());

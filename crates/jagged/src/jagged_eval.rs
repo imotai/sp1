@@ -12,7 +12,7 @@ use slop_utils::log2_ceil_usize;
 use crate::poly::BranchingProgram;
 
 /// A struct that represents the polynomial that is used to evaluate the sumcheck.
-pub(crate) struct JaggedEvalSumcheckPoly<K: Field + 'static> {
+pub(crate) struct JaggedEvalSumcheckPoly<K: Field> {
     /// The branching program that has a constant z_row and z_index.
     h_poly: BranchingProgram<K>,
     /// The random point generated during the sumcheck proving time.
@@ -124,19 +124,19 @@ impl<K: Field + 'static> JaggedEvalSumcheckPoly<K> {
     }
 }
 
-impl<K: Field + 'static> SumcheckPolyBase for JaggedEvalSumcheckPoly<K> {
+impl<K: Field> SumcheckPolyBase for JaggedEvalSumcheckPoly<K> {
     fn num_variables(&self) -> u32 {
         self.merged_prefix_sums.first().unwrap().dimension() as u32
     }
 }
 
-impl<K: Field + 'static> ComponentPoly<K> for JaggedEvalSumcheckPoly<K> {
+impl<K: Field> ComponentPoly<K> for JaggedEvalSumcheckPoly<K> {
     async fn get_component_poly_evals(&self) -> Vec<K> {
         Vec::new()
     }
 }
 
-impl<K: Field + 'static> SumcheckPolyFirstRound<K> for JaggedEvalSumcheckPoly<K> {
+impl<K: Field> SumcheckPolyFirstRound<K> for JaggedEvalSumcheckPoly<K> {
     type NextRoundPoly = JaggedEvalSumcheckPoly<K>;
 
     async fn fix_t_variables(self, alpha: K, _t: usize) -> Self::NextRoundPoly {
@@ -153,7 +153,7 @@ impl<K: Field + 'static> SumcheckPolyFirstRound<K> for JaggedEvalSumcheckPoly<K>
     }
 }
 
-impl<K: Field + 'static> SumcheckPoly<K> for JaggedEvalSumcheckPoly<K> {
+impl<K: Field> SumcheckPoly<K> for JaggedEvalSumcheckPoly<K> {
     async fn fix_last_variable(self, alpha: K) -> Self {
         // Add alpha to the rho point.
         let mut rho = self.rho.clone();

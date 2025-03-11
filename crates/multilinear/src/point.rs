@@ -6,7 +6,7 @@ use std::{
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution};
 use serde::{Deserialize, Serialize};
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, Field};
 use slop_alloc::{
     buffer, Backend, Buffer, CanCopyFromRef, CanCopyIntoRef, CpuBackend, HasBackend, Init, Slice,
 };
@@ -120,14 +120,14 @@ impl<T> Point<T, CpuBackend> {
         )
     }
 
-    pub fn bit_string_evaluation(&self) -> T
+    pub fn bit_string_evaluation(&self) -> usize
     where
-        T: AbstractField,
+        T: Field,
     {
         self.values
             .iter()
             .enumerate()
-            .map(|(i, x)| x.clone() * T::from_canonical_usize(1 << (self.values.len() - i - 1)))
+            .map(|(i, x)| if x.is_one() { 1 << (self.values.len() - i - 1) } else { 0 })
             .sum()
     }
 

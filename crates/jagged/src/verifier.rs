@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use slop_algebra::{AbstractField, Field};
+use slop_algebra::AbstractField;
 use slop_challenger::FieldChallenger;
 use slop_multilinear::{Evaluations, Mle, Point};
 use slop_stacked::{StackedPcsProof, StackedPcsVerifier};
@@ -47,7 +47,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             stacked_pcs_proof,
             sumcheck_proof,
             branching_program_evals,
-            jagged_eval_proof: branching_program_evals_proof,
+            jagged_eval_proof,
             params,
         } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
@@ -85,93 +85,70 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
-        let jagged_eval = branching_program_evals_proof.claimed_sum;
+        let jagged_eval = jagged_eval_proof.claimed_sum;
 
-        tracing::debug_span!("verifying branching program evals proof").in_scope(|| {
-            partially_verify_sumcheck_proof(branching_program_evals_proof, challenger)
-                .map_err(JaggedPcsVerifierError::SumcheckError)
-        })?;
+        // Verify the jagged eval proof.
+        partially_verify_sumcheck_proof(jagged_eval_proof, challenger)
+            .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
-        let branching_program =
-            BranchingProgram::new(z_row.clone(), sumcheck_proof.point_and_eval.0.clone());
-        let (first_half_z_index, second_half_z_index) = branching_program_evals_proof
+        let (first_half_z_index, second_half_z_index) = jagged_eval_proof
             .point_and_eval
             .0
-            .split_at(branching_program_evals_proof.point_and_eval.0.dimension() / 2);
+            .split_at(jagged_eval_proof.point_and_eval.0.dimension() / 2);
         assert!(first_half_z_index.len() == second_half_z_index.len());
 
-        let num_chunks = 4;
-        let chunk_size = (branching_program_evals_proof.point_and_eval.0.dimension() + num_chunks
+        // Calculate the partial lagrange from the chunks of the jagged eval proof's
+        // random point.
+        const NUM_PREFIX_SUM_CHUNKS: usize = 4;
+        let chunk_size = (jagged_eval_proof.point_and_eval.0.dimension() + NUM_PREFIX_SUM_CHUNKS
             - 1)
-            / num_chunks;
-
-        let point_chunks = branching_program_evals_proof
+            / NUM_PREFIX_SUM_CHUNKS;
+        let random_point_chunks = jagged_eval_proof
             .point_and_eval
             .0
             .values()
             .chunks(chunk_size)
             .map(|chunk| Point::from(chunk.to_vec()))
             .collect::<Vec<_>>();
+        let random_point_partial_lagranges =
+            random_point_chunks.iter().map(Mle::blocking_partial_lagrange).collect::<Vec<_>>();
 
-        let partial_lagranges = point_chunks
-            .iter()
-            .map(|point_chunk| {
-                tracing::debug_span!("computing partial lagrange mle")
-                    .in_scope(|| Mle::blocking_partial_lagrange(point_chunk))
-            })
-            .collect::<Vec<_>>();
+        // Calculate the partial lagrange from z_col point.
+        let z_col_partial_lagrange = Mle::blocking_partial_lagrange(&z_col);
+        let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
-        let partial_lagrange_z_col_eq =
-            tracing::debug_span!("computing partial lagrange z col eq vals")
-                .in_scope(|| Mle::blocking_partial_lagrange(&z_col));
-        let partial_lagrange_z_col_eq = partial_lagrange_z_col_eq.guts().as_slice();
+        // Compute the jagged eval sc expected eval and assert it matches the proof's eval.
+        let mut jagged_eval_sc_expected_eval = (0..branching_program_evals.len())
+            .map(|i| {
+                // Create the merged prefix sum bit string.
+                let mut merged_prefix_sum = params.col_prefix_sums[i].clone();
+                let next_prefix_sum = params.col_prefix_sums[i + 1].clone();
+                merged_prefix_sum.extend(&next_prefix_sum);
 
-        let mut expected_branching_program_batched_eval =
-            tracing::debug_span!("computing expected branching eval").in_scope(|| {
-                (0..branching_program_evals.len())
-                    .map(|i| {
-                        let z_col_eq_val = partial_lagrange_z_col_eq[i];
-                        let mut merged_prefix_sum = params.col_prefix_sums[i].clone();
-                        let next_prefix_sum = params.col_prefix_sums[i + 1].clone();
-                        merged_prefix_sum.extend(&next_prefix_sum);
+                let merged_prefix_indices = merged_prefix_sum
+                    .values()
+                    .chunks(chunk_size)
+                    .map(|chunk| Point::from(chunk.to_vec()).bit_string_evaluation());
 
-                        let merge_prefix_sum_chunks =
-                            merged_prefix_sum.values().chunks(chunk_size).map(|chunk| {
-                                chunk
-                                    .iter()
-                                    .enumerate()
-                                    .map(
-                                        |(i, val)| {
-                                            if val.is_one() {
-                                                1 << (chunk.len() - i - 1)
-                                            } else {
-                                                0
-                                            }
-                                        },
-                                    )
-                                    .sum::<usize>()
-                            });
-
-                        let full_lagrange_eval = partial_lagranges
-                            .iter()
-                            .zip(merge_prefix_sum_chunks)
-                            .map(|(partial_lagrange, merge_prefix_sum_chunk)| {
-                                partial_lagrange.guts().as_slice()[merge_prefix_sum_chunk]
-                            })
-                            .product::<C::EF>();
-
-                        z_col_eq_val * full_lagrange_eval
+                let full_lagrange_eval = random_point_partial_lagranges
+                    .iter()
+                    .zip(merged_prefix_indices)
+                    .map(|(partial_lagrange, merge_prefix_sum_idx)| {
+                        partial_lagrange.guts().as_slice()[merge_prefix_sum_idx]
                     })
-                    .sum::<C::EF>()
-            });
+                    .product::<C::EF>();
 
-        expected_branching_program_batched_eval *=
+                let z_col_eq_val = z_col_partial_lagrange[i];
+                z_col_eq_val * full_lagrange_eval
+            })
+            .sum::<C::EF>();
+
+        let branching_program =
+            BranchingProgram::new(z_row.clone(), sumcheck_proof.point_and_eval.0.clone());
+        jagged_eval_sc_expected_eval *=
             branching_program.eval(&first_half_z_index, &second_half_z_index);
 
-        assert!(
-            expected_branching_program_batched_eval
-                == branching_program_evals_proof.point_and_eval.1
-        );
+        assert!(jagged_eval_sc_expected_eval == jagged_eval_proof.point_and_eval.1);
 
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;
