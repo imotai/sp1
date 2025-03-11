@@ -27,3 +27,6 @@ thiserror = { workspace = true }
 rand = { workspace = true }
 slop-poseidon2 = { workspace = true }
 slop-basefold-prover = { workspace = true }
+tokio = { workspace = true }
+
+slop-merkle-tree = { workspace = true }

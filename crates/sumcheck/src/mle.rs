@@ -1,12 +1,14 @@
 use rayon::prelude::*;
 
-use slop_algebra::{AbstractField, Field, UnivariatePolynomial};
+use slop_algebra::{
+    interpolate_univariate_polynomial, AbstractField, ExtensionField, Field, UnivariatePolynomial,
+};
 use slop_alloc::CpuBackend;
 use slop_multilinear::{Mle, MleBaseBackend};
 
 use crate::{
-    backend::{ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend},
-    SumcheckPoly, SumcheckPolyBase,
+    backend::{ComponentPolyEvalBackend, SumcheckPolyBackend},
+    SumCheckPolyFirstRoundBackend, SumcheckPolyBase,
 };
 
 impl<F, A> SumcheckPolyBase for Mle<F, A>
@@ -20,59 +22,26 @@ where
     }
 }
 
-impl<'a, F, A> SumcheckPolyBase for &'a Mle<F, A>
+impl<F, EF> ComponentPolyEvalBackend<Mle<F, CpuBackend>, EF> for CpuBackend
 where
-    F: AbstractField,
-    A: MleBaseBackend<F>,
+    F: Field,
+    EF: ExtensionField<F>,
 {
-    #[inline]
-    fn num_variables(&self) -> u32 {
-        (*self).num_variables()
+    async fn get_component_poly_evals(poly: &Mle<F, CpuBackend>) -> Vec<EF> {
+        let eval: F = *poly.guts()[[0, 0]];
+        vec![EF::from_base(eval)]
     }
 }
 
-impl<EF> ComponentPolyEvalBackend<EF, Mle<EF, CpuBackend>> for CpuBackend
-where
-    EF: AbstractField,
-{
-    fn get_component_poly_evals(poly: &Mle<EF, CpuBackend>) -> Vec<EF> {
-        let eval: EF = (*poly.guts()[[0, 0]]).clone();
-        vec![eval]
-    }
-}
-
-impl<'a, EF> ComponentPolyEvalBackend<EF, &'a Mle<EF, CpuBackend>> for CpuBackend
-where
-    EF: AbstractField,
-{
-    fn get_component_poly_evals(poly: &&'a Mle<EF>) -> Vec<EF> {
-        let eval: EF = (*poly.guts()[[0, 0]]).clone();
-        vec![eval]
-    }
-}
-
-impl<F> SumcheckPolyBackend<F, Mle<F, CpuBackend>> for CpuBackend
+impl<F> SumcheckPolyBackend<Mle<F, CpuBackend>, F> for CpuBackend
 where
     F: Field,
 {
-    fn fix_last_variable(poly: Mle<F, CpuBackend>, alpha: F) -> Mle<F, CpuBackend> {
-        assert!(poly.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
-        let mut result = Vec::with_capacity((1 << poly.num_variables()) / 2);
-
-        poly.guts()
-            .as_buffer()
-            .par_iter()
-            .chunks(2)
-            .map(|chunk| {
-                let [x, y] = chunk.try_into().unwrap();
-                alpha * (*y - *x) + (*x)
-            })
-            .collect_into_vec(&mut result);
-
-        Mle::from(result)
+    async fn fix_last_variable(poly: Mle<F, CpuBackend>, alpha: F) -> Mle<F, CpuBackend> {
+        poly.fix_last_variable(alpha).await
     }
 
-    fn sum_as_poly_in_last_variable(
+    async fn sum_as_poly_in_last_variable(
         poly: &Mle<F, CpuBackend>,
         claim: Option<F>,
     ) -> UnivariatePolynomial<F> {
@@ -82,81 +51,87 @@ where
             return UnivariatePolynomial::new(vec![*poly.guts()[[0, 0]], F::zero()]);
         }
 
-        if let Some(claim) = claim {
-            let even_sum = poly.guts().as_slice().par_iter().step_by(2).copied().sum();
-            let odd_sum = claim - even_sum;
+        let claim = claim.expect("expected a claim for a non-zero-variate polynomial");
 
-            // In the formula for `fix_first_variable`,
-            UnivariatePolynomial::new(vec![even_sum, odd_sum - even_sum])
-        } else {
-            // let mut first_half_sum = F::zero();
-            // let mut second_half_sum = F::zero();
+        assert_eq!(poly.num_polynomials(), 1);
 
-            // poly.guts().as_slice().chunks(2).for_each(|chunk| {
-            //     let [x, y] = chunk.try_into().unwrap();
-            //     first_half_sum += x;
-            //     second_half_sum += y;
-            // });
+        let eval_zero = poly.guts().as_slice().par_iter().step_by(2).copied().sum::<F>();
+        let eval_one = claim - eval_zero;
 
-            let [first_half_sum, second_half_sum] = poly
-                .guts()
-                .as_slice()
-                .par_chunks_exact(2)
-                .fold(
-                    || [F::zero(); 2],
-                    |mut acc, chunk| {
-                        acc[0] += chunk[0];
-                        acc[1] += chunk[1];
-                        acc
-                    },
-                )
-                .reduce(
-                    || [F::zero(); 2],
-                    |mut acc, arr| {
-                        acc[0] += arr[0];
-                        acc[1] += arr[1];
-                        acc
-                    },
-                );
-
-            // In the formula for `fix_first_variable`,
-            UnivariatePolynomial::new(vec![first_half_sum, second_half_sum - first_half_sum])
-        }
+        interpolate_univariate_polynomial(&[F::zero(), F::one()], &[eval_zero, eval_one])
     }
 }
 
-impl<'a, F> SumCheckPolyFirstRoundBackend<F, &'a Mle<F, CpuBackend>> for CpuBackend
+impl<F, EF> SumCheckPolyFirstRoundBackend<Mle<F, CpuBackend>, EF> for CpuBackend
 where
     F: Field,
+    EF: ExtensionField<F>,
 {
-    fn fix_t_variables(
-        poly: &'a Mle<F, CpuBackend>,
-        alpha: F,
-        t: usize,
-    ) -> impl crate::SumcheckPoly<F> {
+    type NextRoundPoly = Mle<EF, CpuBackend>;
+
+    async fn fix_t_variables(poly: Mle<F, CpuBackend>, alpha: EF, t: usize) -> Self::NextRoundPoly {
         assert_eq!(t, 1);
-        assert!(poly.num_variables() > 0, "Cannot fix first variable of a 0-variate polynomial");
-        let mut result = Vec::with_capacity((1 << poly.num_variables()) / 2);
-
-        poly.guts()
-            .as_buffer()
-            .par_iter()
-            .chunks(2)
-            .map(|chunk| {
-                let [x, y] = chunk.try_into().unwrap();
-                alpha * (*y - *x) + (*x)
-            })
-            .collect_into_vec(&mut result);
-
-        Mle::from(result)
+        poly.fix_last_variable(alpha).await
     }
 
-    fn sum_as_poly_in_last_t_variables(
-        poly: &&'a Mle<F, CpuBackend>,
-        claim: Option<F>,
+    async fn sum_as_poly_in_last_t_variables(
+        poly: &Mle<F, CpuBackend>,
+        claim: Option<EF>,
         t: usize,
-    ) -> UnivariatePolynomial<F> {
+    ) -> UnivariatePolynomial<EF> {
         assert_eq!(t, 1);
-        (**poly).sum_as_poly_in_last_variable(claim)
+        assert!(poly.num_variables() > 0);
+        let claim = claim.expect("expected a claim for a non-zero-variate polynomial");
+
+        assert_eq!(poly.num_polynomials(), 1);
+
+        let eval_zero =
+            EF::from_base(poly.guts().as_slice().par_iter().step_by(2).copied().sum::<F>());
+        let eval_one = claim - eval_zero;
+
+        interpolate_univariate_polynomial(&[EF::zero(), EF::one()], &[eval_zero, eval_one])
+    }
+}
+#[cfg(test)]
+mod tests {
+    use rand::thread_rng;
+    use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField};
+    use slop_baby_bear::BabyBear;
+    use slop_challenger::DuplexChallenger;
+    use slop_merkle_tree::{my_bb_16_perm, Perm};
+
+    use crate::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_single_mle_sumcheck() {
+        let mut rng = thread_rng();
+
+        let mle = Mle::<BabyBear, CpuBackend>::rand(&mut rng, 1, 10);
+        type EF = BinomialExtensionField<BabyBear, 4>;
+
+        let default_perm = my_bb_16_perm();
+        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
+
+        let claim = EF::from_base(mle.guts().as_slice().par_iter().copied().sum::<BabyBear>());
+
+        let (sumcheck_proof, _) = reduce_sumcheck_to_evaluation::<BabyBear, EF, _>(
+            vec![mle.clone()],
+            &mut challenger,
+            vec![claim],
+            1,
+            EF::one(),
+        )
+        .await;
+
+        // Verify the evaluation claim.
+        let (point, eval_claim) = sumcheck_proof.point_and_eval.clone();
+        let evaluation = mle.eval_at(&point).await[0];
+        assert_eq!(evaluation, eval_claim);
+
+        // Verify the proof.
+        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
+        partially_verify_sumcheck_proof(&sumcheck_proof, &mut challenger).unwrap()
     }
 }
