@@ -2647,7 +2647,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#22a6e276b7b0573d43f08a8ced9a2e5f4ea39ef4"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -2685,7 +2685,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#22a6e276b7b0573d43f08a8ced9a2e5f4ea39ef4"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -2742,7 +2742,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#22a6e276b7b0573d43f08a8ced9a2e5f4ea39ef4"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -2762,7 +2762,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#22a6e276b7b0573d43f08a8ced9a2e5f4ea39ef4"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -2771,7 +2771,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#22a6e276b7b0573d43f08a8ced9a2e5f4ea39ef4"
 dependencies = [
  "bincode",
  "hex",
@@ -2789,7 +2789,7 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#22a6e276b7b0573d43f08a8ced9a2e5f4ea39ef4"
 dependencies = [
  "arrayref",
  "derive-where",
@@ -3084,7 +3084,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow 0.7.3",
+ "winnow 0.7.4",
 ]
 
 [[package]]
@@ -3503,9 +3503,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.7.3"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e7f4ea97f6f78012141bcdb6a216b2609f0979ada50b20ca5b52dde2eac2bb1"
+checksum = "0e97b544156e9bebe1a0ffbc03484fc1ffe3100cbce3ffb17eac35f7cdd7ab36"
 dependencies = [
  "memchr",
 ]
