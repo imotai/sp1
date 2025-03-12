@@ -76,19 +76,14 @@ impl<M: MerkleTreeConfig> TensorCs for MerkleTreeTcs<M> {
             let path = path.as_slice();
 
             // Iterate the path and compute the root.
-            let height = path.len();
-            let index_shift = (1 << height) - 1;
-
             let digest = self.hasher.hash_iter_slices(claimed_values_slices);
 
             let mut root = digest;
-            let mut index = index_shift + index;
+            let mut index = *index;
             for sibling in path.iter().cloned() {
-                let (left, right) =
-                    if (index - 1) & 1 == 0 { (root, sibling) } else { (sibling, root) };
-
+                let (left, right) = if index & 1 == 0 { (root, sibling) } else { (sibling, root) };
                 root = self.compressor.compress([left, right]);
-                index = (index - 1) >> 1;
+                index >>= 1;
             }
 
             if root != *commit {
