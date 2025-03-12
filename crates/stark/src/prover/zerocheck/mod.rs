@@ -174,6 +174,7 @@ impl<K: Field, F: Field, EF: ExtensionField<F>, AirData, B: Backend + MleBaseBac
 {
     /// Creates a new `ZeroCheckPoly`.
     #[allow(clippy::too_many_arguments)]
+    #[inline]
     pub fn new(
         air_data: AirData,
         zeta: Point<EF>,
@@ -183,22 +184,6 @@ impl<K: Field, F: Field, EF: ExtensionField<F>, AirData, B: Backend + MleBaseBac
         geq_value: EF,
         padded_row_adjustment: EF,
     ) -> Self {
-        // The zeta random point must have the same number of variables of the trace +
-        // num_padded_vars.
-        let num_main_vars = main_values.num_variables() as usize;
-        assert!(
-            zeta.dimension() == num_main_vars,
-            "point dimension must match main values height.  point dim: {:?}, main values height: {:?}",
-            zeta.dimension(),
-            num_main_vars
-        );
-        // The trace height for main and preprocessed must be the same.
-        if let Some(preprocessed_values) = preprocessed_values.as_ref() {
-            let num_preprocessed_vars: usize =
-                preprocessed_values.num_variables().try_into().unwrap();
-            assert!(num_preprocessed_vars == num_main_vars,);
-        }
-
         Self {
             air_data,
             zeta,
@@ -217,6 +202,7 @@ where
     K: Field,
     B: MleBaseBackend<K>,
 {
+    #[inline]
     fn num_variables(&self) -> u32 {
         self.main_columns.num_variables()
     }
@@ -261,22 +247,25 @@ where
     AirData: ZerocheckRoundProver<F, F, EF> + ZerocheckRoundProver<F, EF, EF>,
 {
     type NextRoundPoly = ZeroCheckPoly<EF, F, EF, AirData>;
+
+    #[inline]
     async fn fix_t_variables(
         poly: ZeroCheckPoly<F, F, EF, AirData>,
         alpha: EF,
         t: usize,
     ) -> Self::NextRoundPoly {
-        assert!(t == 1);
+        debug_assert!(t == 1);
         zerocheck_fix_last_variable(poly, alpha).await
     }
 
+    #[inline]
     async fn sum_as_poly_in_last_t_variables(
         poly: &ZeroCheckPoly<F, F, EF, AirData>,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {
-        assert!(t == 1);
-        assert!(poly.num_variables() > 0);
+        debug_assert!(t == 1);
+        debug_assert!(poly.num_variables() > 0);
         zerocheck_sum_as_poly_in_last_variable::<F, F, EF, AirData, CpuBackend, true>(poly, claim)
             .await
     }
@@ -288,6 +277,7 @@ where
     EF: ExtensionField<F>,
     AirData: ZerocheckRoundProver<F, F, EF> + ZerocheckRoundProver<F, EF, EF>,
 {
+    #[inline]
     async fn fix_last_variable(
         poly: ZeroCheckPoly<EF, F, EF, AirData>,
         alpha: EF,
@@ -295,11 +285,12 @@ where
         zerocheck_fix_last_variable(poly, alpha).await
     }
 
+    #[inline]
     async fn sum_as_poly_in_last_variable(
         poly: &ZeroCheckPoly<EF, F, EF, AirData>,
         claim: Option<EF>,
     ) -> UnivariatePolynomial<EF> {
-        assert!(poly.num_variables() > 0);
+        debug_assert!(poly.num_variables() > 0);
         zerocheck_sum_as_poly_in_last_variable::<EF, F, EF, AirData, CpuBackend, false>(poly, claim)
             .await
     }
@@ -308,6 +299,7 @@ where
 impl<K, F, EF, AirData, B: Backend> HasBackend for ZeroCheckPoly<K, F, EF, AirData, B> {
     type Backend = B;
 
+    #[inline]
     fn backend(&self) -> &Self::Backend {
         self.main_columns.backend()
     }

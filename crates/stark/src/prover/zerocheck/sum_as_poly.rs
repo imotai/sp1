@@ -253,6 +253,11 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     poly: &ZeroCheckPoly<K, F, EF, AirData, B>,
     claim: Option<EF>,
 ) -> UnivariatePolynomial<EF> {
+    let num_real_entries = poly.main_columns.num_real_entries();
+    if num_real_entries == 0 {
+        return UnivariatePolynomial::zero();
+    }
+
     let claim = claim.expect("claim must be provided");
 
     let (rest_point, last) = poly.zeta.split_at(poly.zeta.dimension() - 1);
@@ -280,7 +285,6 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     let mut y_2 = EF::zero();
     let mut y_4 = EF::zero();
 
-    let num_real_entries = poly.main_columns.num_real_entries();
     if num_real_entries > 1 {
         (y_0, y_2, y_4) = poly
             .air_data
