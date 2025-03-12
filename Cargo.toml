@@ -55,58 +55,58 @@ csl-machine = { path = "crates/machine" }
 csl-perf = { path = "crates/perf" }
 
 # slop 
-slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
-slop-basefold = { git = "https://github.com/succinctlabs/slop" }
-slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
-slop-dft = { git = "https://github.com/succinctlabs/slop" }
-slop-matrix = { git = "https://github.com/succinctlabs/slop" }
-slop-algebra = { git = "https://github.com/succinctlabs/slop" }
-slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
-slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
-slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
-slop-commit = { git = "https://github.com/succinctlabs/slop" }
-slop-challenger = { git = "https://github.com/succinctlabs/slop" }
-slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
-slop-tensor = { git = "https://github.com/succinctlabs/slop" }
-slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
-slop-alloc = { git = "https://github.com/succinctlabs/slop" }
-slop-futures = { git = "https://github.com/succinctlabs/slop" }
-slop-stacked = { git = "https://github.com/succinctlabs/slop" }
-slop-jagged = { git = "https://github.com/succinctlabs/slop" }
-slop-air = { git = "https://github.com/succinctlabs/slop" }
+# slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
+# slop-basefold = { git = "https://github.com/succinctlabs/slop" }
+# slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
+# slop-dft = { git = "https://github.com/succinctlabs/slop" }
+# slop-matrix = { git = "https://github.com/succinctlabs/slop" }
+# slop-algebra = { git = "https://github.com/succinctlabs/slop" }
+# slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
+# slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
+# slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
+# slop-commit = { git = "https://github.com/succinctlabs/slop" }
+# slop-challenger = { git = "https://github.com/succinctlabs/slop" }
+# slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
+# slop-tensor = { git = "https://github.com/succinctlabs/slop" }
+# slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
+# slop-alloc = { git = "https://github.com/succinctlabs/slop" }
+# slop-futures = { git = "https://github.com/succinctlabs/slop" }
+# slop-stacked = { git = "https://github.com/succinctlabs/slop" }
+# slop-jagged = { git = "https://github.com/succinctlabs/slop" }
+# slop-air = { git = "https://github.com/succinctlabs/slop" }
 
 # SP1
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+# sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+# sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+# sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+# sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 
 # slop local copy
-# slop-air = { path = "../slop/crates/air" }
-# slop-baby-bear = { path = "../slop/crates/baby-bear" }
-# slop-basefold = { path = "../slop/crates/basefold" }
-# slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
-# slop-dft = { path = "../slop/crates/dft" }
-# slop-matrix = { path = "../slop/crates/matrix" }
-# slop-algebra = { path = "../slop/crates/algebra" }
-# slop-symmetric = { path = "../slop/crates/symmetric" }
-# slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
-# slop-poseidon2 = { path = "../slop/crates/poseidon2" }
-# slop-commit = { path = "../slop/crates/commit" }
-# slop-challenger = { path = "../slop/crates/challenger" }
-# slop-multilinear = { path = "../slop/crates/multilinear" }
-# slop-alloc = { path = "../slop/crates/alloc" }
-# slop-tensor = { path = "../slop/crates/tensor" }
-# slop-sumcheck = { path = "../slop/crates/sumcheck" }
-# slop-futures = { path = "../slop/crates/futures" }
-# slop-stacked = { path = "../slop/crates/stacked" }
-# slop-jagged = { path = "../slop/crates/jagged" }
+slop-air = { path = "../slop/crates/air" }
+slop-baby-bear = { path = "../slop/crates/baby-bear" }
+slop-basefold = { path = "../slop/crates/basefold" }
+slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
+slop-dft = { path = "../slop/crates/dft" }
+slop-matrix = { path = "../slop/crates/matrix" }
+slop-algebra = { path = "../slop/crates/algebra" }
+slop-symmetric = { path = "../slop/crates/symmetric" }
+slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
+slop-poseidon2 = { path = "../slop/crates/poseidon2" }
+slop-commit = { path = "../slop/crates/commit" }
+slop-challenger = { path = "../slop/crates/challenger" }
+slop-multilinear = { path = "../slop/crates/multilinear" }
+slop-alloc = { path = "../slop/crates/alloc" }
+slop-tensor = { path = "../slop/crates/tensor" }
+slop-sumcheck = { path = "../slop/crates/sumcheck" }
+slop-futures = { path = "../slop/crates/futures" }
+slop-stacked = { path = "../slop/crates/stacked" }
+slop-jagged = { path = "../slop/crates/jagged" }
 
 # # for local development
-# sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
-# sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
-# sp1-stark = { path = "../sp1-wip/crates/stark" }
-# sp1-primitives = { path = "../sp1-wip/crates/primitives" }
+sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
+sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
+sp1-stark = { path = "../sp1-wip/crates/stark" }
+sp1-primitives = { path = "../sp1-wip/crates/primitives" }
 
 # async
 tokio = { version = "1.42.0" }

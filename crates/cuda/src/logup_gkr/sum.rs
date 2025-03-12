@@ -90,15 +90,7 @@ where
         * NumerType::from_canonical_u32(1 << rest.dimension())
         - host_sums_adjustment;
 
-    let powers_sum = poly
-        .batching_randomness_powers_device
-        .sum(0)
-        .await
-        .as_buffer()
-        .to_host()
-        .await
-        .unwrap()
-        .as_slice()[0];
+    let powers_sum = poly.batching_randomness_powers_sum;
 
     // Compute the sum over the padding via the "closed-form" formula instead of summing over
     // the padding values.
@@ -287,6 +279,7 @@ where
             poly.batching_randomness,
             poly.batching_randomness_powers,
             poly.batching_randomness_powers_device,
+            poly.batching_randomness_powers_sum,
         )
     }
 
@@ -343,6 +336,7 @@ where
             poly.batching_randomness,
             poly.batching_randomness_powers,
             poly.batching_randomness_powers_device,
+            poly.batching_randomness_powers_sum,
         )
     }
 
