@@ -2647,7 +2647,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#d53bc2294e377b104c380f69e0a8d63be1565410"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -2685,7 +2685,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#d53bc2294e377b104c380f69e0a8d63be1565410"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -2742,7 +2742,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#d53bc2294e377b104c380f69e0a8d63be1565410"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -2762,7 +2762,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#d53bc2294e377b104c380f69e0a8d63be1565410"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -2771,7 +2771,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#d53bc2294e377b104c380f69e0a8d63be1565410"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
 dependencies = [
  "bincode",
  "hex",
@@ -2789,7 +2789,7 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#d53bc2294e377b104c380f69e0a8d63be1565410"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov/gkr_improvements#c65d71ea9b18fc1e469ec3775ccc51392d87ed3e"
 dependencies = [
  "arrayref",
  "derive-where",
