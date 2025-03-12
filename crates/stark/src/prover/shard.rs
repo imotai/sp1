@@ -457,6 +457,18 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Observe the public values.
         challenger.observe_slice(&public_values[0..self.num_pv_elts()]);
 
+        for trace in traces.iter() {
+            tracing::debug!(
+                "Chip {} has log-height {}",
+                trace.0,
+                trace
+                    .1
+                    .inner()
+                    .as_ref()
+                    .map_or(0, |mle| mle.num_non_zero_entries().next_power_of_two().ilog2())
+            );
+        }
+
         // Commit to the traces.
         let (main_commit, main_data) =
             self.commit_traces(&traces).instrument(tracing::debug_span!("commit traces")).await;

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use slop_algebra::{ExtensionField, Field, Powers};
-use slop_alloc::{Backend, Buffer, CanCopyFromRef, CpuBackend};
+use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CanCopyInto, CpuBackend};
 use slop_challenger::FieldChallenger;
 use slop_jagged::JaggedProverComponents;
 use slop_matrix::dense::RowMajorMatrix;
@@ -20,7 +20,7 @@ use slop_sumcheck::{
     ComponentPolyEvalBackend, PartialSumcheckProof, SumCheckPolyFirstRoundBackend, SumcheckError,
     SumcheckPolyBackend,
 };
-use slop_tensor::AddAssignBackend;
+use slop_tensor::{AddAssignBackend, ReduceSumBackend, Tensor};
 
 use crate::Interaction;
 
@@ -55,6 +55,9 @@ pub trait GkrBackend<F: Field, EF: ExtensionField<F>>:
     > + PointBackend<F>
     + PointBackend<EF>
     + CanCopyFromRef<Buffer<EF>, CpuBackend, Output = Buffer<EF, Self>>
+    + CanCopyFrom<Tensor<EF>, CpuBackend, Output = Tensor<EF, Self>>
+    + CanCopyInto<Tensor<EF, Self>, CpuBackend, Output = Tensor<EF>>
+    + ReduceSumBackend<EF>
     + AddAssignBackend<EF>
 {
 }
@@ -88,6 +91,9 @@ impl<F: Field, EF: ExtensionField<F>, B> GkrBackend<F, EF> for B where
         + PointBackend<EF>
         + CanCopyFromRef<Buffer<EF>, CpuBackend, Output = Buffer<EF, Self>>
         + AddAssignBackend<EF>
+        + CanCopyFrom<Tensor<EF>, CpuBackend, Output = Tensor<EF, Self>>
+        + CanCopyInto<Tensor<EF, Self>, CpuBackend, Output = Tensor<EF>>
+        + ReduceSumBackend<EF>
 {
 }
 

@@ -65,7 +65,7 @@ pub fn generate_gkr_input_mles<F: Field, EF: ExtensionField<F>>(
     let mut numerator_evals = vec![F::zero(); height * num_interactions];
     let mut denom_evals = vec![EF::one(); height * num_interactions];
 
-    tracing::debug_span!("generate interaction guts").in_scope(|| match preprocessed {
+    match preprocessed {
         Some(prep) => {
             numerator_evals
                 .par_chunks_exact_mut(num_interactions)
@@ -136,7 +136,7 @@ pub fn generate_gkr_input_mles<F: Field, EF: ExtensionField<F>>(
                         });
                 });
         }
-    });
+    }
 
     (
         PaddedMle::new(

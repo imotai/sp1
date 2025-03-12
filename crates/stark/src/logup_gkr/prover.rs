@@ -13,7 +13,6 @@ use slop_sumcheck::{
     reduce_sumcheck_to_evaluation, ComponentPolyEvalBackend, PartialSumcheckProof,
     SumCheckPolyFirstRoundBackend,
 };
-use tracing::Instrument;
 
 use super::{
     generate_mles, GkrMles, GkrProofWithoutOpenings, GkrProver, LogupGkrPoly, LogupGkrProof,
@@ -73,9 +72,7 @@ where
 
     let k = main.num_variables();
 
-    let column_openings = generate_column_openings::<SC>(preprocessed, main, &last_challenge)
-        .instrument(tracing::debug_span!("generate column openings"))
-        .await;
+    let column_openings = generate_column_openings::<SC>(preprocessed, main, &last_challenge).await;
 
     (
         LogupGkrProof {
@@ -129,14 +126,16 @@ where
         Either::Left(prover_message) => (prover_message, None),
         Either::Right(logup_gkr_mles) => {
             let lambda = logup_gkr_mles.lambda;
-            let batching_challenge = logup_gkr_mles.batching_randomness;
-            let sumcheck_claim = numerator_claims
-                .iter()
-                .zip(denom_claims.iter())
-                .map(|(numerator_claim, denom_claim)| *numerator_claim + lambda * *denom_claim)
-                .zip(batching_challenge.powers())
-                .map(|(claim, challenge)| claim * challenge)
-                .sum::<SC::EF>();
+            let sumcheck_claim = match logup_gkr_mles.numerator_0.inner() {
+                Some(_) => numerator_claims
+                    .iter()
+                    .zip(denom_claims.iter())
+                    .map(|(numerator_claim, denom_claim)| *numerator_claim + lambda * *denom_claim)
+                    .zip(logup_gkr_mles.batching_randomness_powers.iter().copied())
+                    .map(|(claim, challenge)| claim * challenge)
+                    .sum::<SC::EF>(),
+                None => logup_gkr_mles.batching_randomness_powers_sum * lambda,
+            };
             let (sc_proof, last_poly) =
                 reduce_sumcheck_to_evaluation::<SC::F, SC::EF, SC::Challenger>(
                     vec![logup_gkr_mles],
@@ -258,8 +257,8 @@ where
 
         let logup_gkr_mles = LogupGkrPoly::<NumeratorType, SC::EF, SC::B>::new(
             challenge.clone(),
-            (numerator_mles_fixed_0.clone(), numerator_mles_fixed_1.clone()),
-            (denom_mles_fixed_0.clone(), denom_mles_fixed_1.clone()),
+            (numerator_mles_fixed_0, numerator_mles_fixed_1),
+            (denom_mles_fixed_0, denom_mles_fixed_1),
             lambda,
             SC::EF::one(),
             batch_randomness,

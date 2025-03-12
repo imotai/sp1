@@ -42,6 +42,8 @@ pub struct LogupGkrPoly<
     pub batching_randomness_powers: Vec<K>,
     /// Precomputed powers of the batching randomness, on device.
     pub batching_randomness_powers_device: Tensor<K, B>,
+    /// The sum of the `batching_randomness_powers`. Used for adjustments to the sums from padding.
+    pub batching_randomness_powers_sum: K,
 }
 
 impl<
@@ -79,6 +81,7 @@ impl<
         batching_randomness: K,
         batching_randomness_powers: Vec<K>,
         batching_randomness_powers_device: Tensor<K, B>,
+        batching_randomness_powers_sum: K,
     ) -> Self {
         assert_eq!(numerator_0.num_variables(), numerator_1.num_variables());
         assert_eq!(numerator_0.num_variables(), denom_0.num_variables());
@@ -99,6 +102,7 @@ impl<
             batching_randomness,
             batching_randomness_powers,
             batching_randomness_powers_device,
+            batching_randomness_powers_sum,
         }
     }
 
@@ -117,16 +121,43 @@ impl<
         let (denom_0, denom_1) = denoms;
 
         let num_interactions = numerator_0.num_polynomials();
-        let batching_randomness_powers: Vec<_> =
-            batching_randomness.powers().take(num_interactions).collect();
-        let batching_randomness_powers_device =
-            <B as CanCopyFrom<Buffer<K>, CpuBackend>>::copy_into(
-                numerator_0.backend(),
-                Buffer::from(batching_randomness_powers.clone()),
+        let (
+            batching_randomness_powers,
+            batching_randomness_powers_device,
+            batching_randomness_powers_sum,
+        ) = if numerator_0.inner().is_some() {
+            let batching_randomness_powers: Vec<_> =
+                batching_randomness.powers().take(num_interactions).collect();
+            let batching_randomness_powers_device: Tensor<K, B> =
+                <B as CanCopyFrom<Buffer<K>, CpuBackend>>::copy_into(
+                    numerator_0.backend(),
+                    Buffer::from(batching_randomness_powers.clone()),
+                )
+                .await
+                .unwrap()
+                .into();
+
+            let batching_randomness_powers_sum = batching_randomness_powers.iter().copied().sum();
+
+            (
+                batching_randomness_powers,
+                batching_randomness_powers_device,
+                batching_randomness_powers_sum,
             )
-            .await
-            .unwrap()
-            .into();
+        } else {
+            (
+                vec![],
+                <B as CanCopyFrom<Buffer<K>, CpuBackend>>::copy_into(
+                    numerator_0.backend(),
+                    Buffer::from(vec![]),
+                )
+                .await
+                .unwrap()
+                .into(),
+                (K::one() - batching_randomness.exp_u64(num_interactions as u64))
+                    / (K::one() - batching_randomness),
+            )
+        };
 
         Self::new_with_batching_randomness_powers(
             point,
@@ -139,6 +170,7 @@ impl<
             batching_randomness,
             batching_randomness_powers,
             batching_randomness_powers_device,
+            batching_randomness_powers_sum,
         )
     }
 }
@@ -283,33 +315,29 @@ impl<NumeratorType: Field, K: ExtensionField<NumeratorType>> LogupGkrPoly<Numera
         let denom_polynomials = self.denom_0.num_polynomials();
         assert!(num_polynomials == denom_polynomials);
 
-        let (pair_sums, eq_guts_sum) = match self.numerator_0.inner() {
+        let ((mut y_0, mut y_half), eq_guts_sum) = match self.numerator_0.inner() {
             Some(_) => {
                 // TODO: Don't compute such a large MLE, only need to compute the part corresponding
                 // to the "real variables".
                 let partial_lagrange: Mle<K> = Mle::partial_lagrange(&rest).await;
                 let eq_guts = partial_lagrange.guts().as_slice();
+                let pair_sums = self.pair_sums(eq_guts);
+                let (y_0, y_half) = pair_sums
+                    .iter()
+                    .copied()
+                    .zip(self.batching_randomness_powers.iter().copied())
+                    .fold((K::zero(), K::zero()), |(accum_0, accum_1), ((y_0, y_half), power)| {
+                        (accum_0 + power * y_0, accum_1 + power * y_half)
+                    });
 
-                (
-                    self.pair_sums(eq_guts),
-                    eq_guts.par_iter().copied().take(num_rows.div_ceil(2)).sum::<K>(),
-                )
+                ((y_0, y_half), eq_guts.par_iter().copied().take(num_rows.div_ceil(2)).sum::<K>())
             }
-            None => (vec![(K::zero(), K::zero()); num_polynomials], K::zero()),
+            None => ((K::zero(), K::zero()), K::zero()),
         };
-
-        let (mut y_0, mut y_half) = pair_sums
-            .iter()
-            .copied()
-            .zip(self.batching_randomness.powers())
-            .fold((K::zero(), K::zero()), |(accum_0, accum_1), ((y_0, y_half), power)| {
-                (accum_0 + power * y_0, accum_1 + power * y_half)
-            });
 
         // TODO: A lot of this logic is common to the GPU implementation, and should be refactored.
         let half_point = (0..rest.dimension()).map(|_| K::two().inverse()).collect::<Point<_>>();
-        let powers_sum =
-            self.batching_randomness_powers.iter().copied().take(num_polynomials).sum::<K>();
+        let powers_sum = self.batching_randomness_powers_sum;
         let rest_eq_guts_sum = Mle::full_lagrange_eval(&rest, &half_point)
             * NumeratorType::from_canonical_u32(1 << rest.dimension())
             - eq_guts_sum;
