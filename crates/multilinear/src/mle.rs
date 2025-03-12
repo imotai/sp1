@@ -351,12 +351,8 @@ pub fn partial_geq<F: Field>(threshold: usize, num_variables: usize) -> Vec<F> {
 ///
 /// # Panics
 /// If the dimensions of `threshold` and `eval_point` do not match.
-/// If any of the entries in `threshold` are not boolean-valued.
-pub fn full_geq<F: AbstractField + Eq>(threshold: &Point<F>, eval_point: &Point<F>) -> F {
+pub fn full_geq<F: AbstractField>(threshold: &Point<F>, eval_point: &Point<F>) -> F {
     assert_eq!(threshold.dimension(), eval_point.dimension());
-    for bit in threshold.iter() {
-        assert_eq!(bit.clone() * (F::one() - bit.clone()), F::zero());
-    }
     threshold.iter().rev().zip(eval_point.iter().rev()).fold(F::one(), |acc, (x, y)| {
         ((F::one() - x.clone()) * (F::one() - y.clone()) + x.clone() * y.clone()) * acc
             + (F::one() - x.clone()) * y.clone()
