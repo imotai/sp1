@@ -102,7 +102,7 @@ sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch =
 # slop-stacked = { path = "../slop/crates/stacked" }
 # slop-jagged = { path = "../slop/crates/jagged" }
 
-# # for local development
+# for local development
 # sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
 # sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
 # sp1-stark = { path = "../sp1-wip/crates/stark" }
