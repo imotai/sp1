@@ -269,6 +269,7 @@ where
         let beta = challenger.sample_ext_element::<C::EF>();
 
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
+        let mut cumulative_sum = C::EF::zero();
 
         for ((chip, gkr_proof), openings) in
             self.machine.chips().iter().zip_eq(gkr_proofs.iter()).zip_eq(opened_values.chips.iter())
@@ -283,6 +284,19 @@ where
                 max_log_row_count,
             )
             .map_err(ShardVerifierError::<C>::GkrProofFailed)?;
+            cumulative_sum += gkr_proof
+                .numerator_claims
+                .iter()
+                .copied()
+                .zip(gkr_proof.denom_claims.iter().copied())
+                .map(|(num, den)| num / den)
+                .sum::<C::EF>();
+        }
+
+        if cumulative_sum != C::EF::zero() {
+            return Err(ShardVerifierError::CumulativeSumsError(
+                "local cumulative sum is not zero",
+            ));
         }
 
         // Get the random challenge to merge the constraints.
