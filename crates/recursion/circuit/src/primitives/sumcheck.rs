@@ -74,7 +74,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::challenger::DuplexChallengerVariable;
+    use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
     use p3_baby_bear::DiffusionMatrixBabyBear;
     use p3_field::AbstractField;
     use rand::rngs::OsRng;
@@ -125,44 +125,19 @@ mod tests {
 
         let mut builder = Builder::<C>::default();
 
-        let proof_polys_variable: Vec<UnivariatePolynomial<Ext<F, EF>>> = sumcheck_proof
-            .univariate_polys
-            .iter()
-            .map(|poly| UnivariatePolynomial {
-                coefficients: poly
-                    .coefficients
-                    .iter()
-                    .map(|c| builder.constant(*c))
-                    .collect::<Vec<_>>(),
-            })
-            .collect::<Vec<_>>();
-        let claimed_sum_variable: Ext<F, EF> = builder.constant(sumcheck_proof.claimed_sum);
-        let point_and_eval_variable: (Point<Ext<F, EF>>, Ext<F, EF>) = (
-            Point::from(
-                sumcheck_proof
-                    .point_and_eval
-                    .0
-                    .iter()
-                    .copied()
-                    .map(|x| builder.constant(x))
-                    .collect::<Vec<_>>(),
-            ),
-            builder.constant(sumcheck_proof.point_and_eval.1),
-        );
-
-        let sumcheck_proof_variable = PartialSumcheckProof {
-            univariate_polys: proof_polys_variable,
-            claimed_sum: claimed_sum_variable,
-            point_and_eval: point_and_eval_variable,
-        };
+        let sumcheck_proof_variable = sumcheck_proof.read(&mut builder);
 
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
         verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, sumcheck_proof_variable);
+
+        let mut witness_stream = Vec::new();
+        Witnessable::<AsmConfig<F, EF>>::write(&sumcheck_proof, &mut witness_stream);
 
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+        runtime.witness_stream = witness_stream.into();
         runtime.run().unwrap();
     }
 
@@ -177,7 +152,7 @@ mod tests {
 
         let claim = EF::from_base(mle.guts().as_slice().iter().copied().sum::<BabyBear>());
 
-        let (sumcheck_proof, _) = reduce_sumcheck_to_evaluation::<BabyBear, EF, _>(
+        let (mut sumcheck_proof, _) = reduce_sumcheck_to_evaluation::<BabyBear, EF, _>(
             vec![mle.clone()],
             &mut challenger,
             vec![claim],
@@ -190,50 +165,24 @@ mod tests {
         let evaluation = mle.eval_at(&point).await[0];
         assert_eq!(evaluation, eval_claim);
 
+        // modify the first polynomial to make the sumcheck fail
+        sumcheck_proof.univariate_polys[0].coefficients[0] = EF::one();
+
         let mut builder = Builder::<C>::default();
 
-        let mut proof_polys_variable: Vec<UnivariatePolynomial<Ext<F, EF>>> = sumcheck_proof
-            .univariate_polys
-            .iter()
-            .map(|poly| UnivariatePolynomial {
-                coefficients: poly
-                    .coefficients
-                    .iter()
-                    .map(|c| builder.constant(*c))
-                    .collect::<Vec<_>>(),
-            })
-            .collect::<Vec<_>>();
-
-        // Modify the first polynomial to make the sumcheck fail
-        proof_polys_variable[0].coefficients[0] = builder.constant(EF::one());
-
-        let claimed_sum_variable: Ext<F, EF> = builder.constant(sumcheck_proof.claimed_sum);
-        let point_and_eval_variable: (Point<Ext<F, EF>>, Ext<F, EF>) = (
-            Point::from(
-                sumcheck_proof
-                    .point_and_eval
-                    .0
-                    .iter()
-                    .copied()
-                    .map(|x| builder.constant(x))
-                    .collect::<Vec<_>>(),
-            ),
-            builder.constant(sumcheck_proof.point_and_eval.1),
-        );
-
-        let sumcheck_proof_variable = PartialSumcheckProof {
-            univariate_polys: proof_polys_variable,
-            claimed_sum: claimed_sum_variable,
-            point_and_eval: point_and_eval_variable,
-        };
+        let sumcheck_proof_variable = sumcheck_proof.read(&mut builder);
 
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
         verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, sumcheck_proof_variable);
+
+        let mut witness_stream = Vec::new();
+        Witnessable::<AsmConfig<F, EF>>::write(&sumcheck_proof, &mut witness_stream);
 
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+        runtime.witness_stream = witness_stream.into();
         runtime.run().expect_err("Sumcheck should fail");
     }
 
