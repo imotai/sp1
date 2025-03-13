@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use slop_baby_bear::BabyBear;
 use slop_basefold::{
     BasefoldConfig, BasefoldProof, BasefoldVerifier, DefaultBasefoldConfig,
     Poseidon2BabyBear16BasefoldConfig,
@@ -7,27 +8,35 @@ use slop_basefold_prover::{
     BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver,
     Poseidon2BabyBear16BasefoldCpuProverComponents,
 };
-use slop_challenger::CanObserve;
+use slop_challenger::{CanObserve, FieldChallenger};
 use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
 
 use crate::{
     CpuJaggedMleGenerator, DfeaultJaggedProver, HadamardJaggedSumcheckProver, JaggedBackend,
-    JaggedConfig, JaggedPcsVerifier, JaggedProver, JaggedProverComponents, JaggedSumcheckProver,
+    JaggedConfig, JaggedEvalConfig, JaggedEvalProver, JaggedEvalSumcheckConfig,
+    JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
+    JaggedSumcheckProver, TrivialJaggedEvalConfig,
 };
 
-pub type BabyBearPoseidon2 = JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig>;
+pub type BabyBearPoseidon2 =
+    JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, JaggedEvalSumcheckConfig<BabyBear>>;
+
+pub type BabyBearPoseidon2TrivialEval =
+    JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, TrivialJaggedEvalConfig>;
 
 pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCpuProverComponents,
     HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
+    JaggedEvalSumcheckProver<BabyBear>,
 >;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct JaggedBasefoldConfig<BC>(BC);
+pub struct JaggedBasefoldConfig<BC, E>(BC, E);
 
-impl<BC> JaggedConfig for JaggedBasefoldConfig<BC>
+impl<BC, E> JaggedConfig for JaggedBasefoldConfig<BC, E>
 where
     BC: BasefoldConfig,
+    E: JaggedEvalConfig<BC::EF, BC::Challenger> + std::fmt::Debug + Clone,
 {
     type F = BC::F;
     type EF = BC::EF;
@@ -35,17 +44,26 @@ where
     type BatchPcsProof = BasefoldProof<BC>;
     type Challenger = BC::Challenger;
     type BatchPcsVerifier = BasefoldVerifier<BC>;
+    type JaggedEvaluator = E;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct JaggedBasefoldProverComponents<B, J>(B, J);
+pub struct JaggedBasefoldProverComponents<B, J, E>(B, J, E);
 
-impl<Bpc, JaggedProver> JaggedProverComponents for JaggedBasefoldProverComponents<Bpc, JaggedProver>
+impl<Bpc, JaggedProver, EvalProver> JaggedProverComponents
+    for JaggedBasefoldProverComponents<Bpc, JaggedProver, EvalProver>
 where
     Bpc: BasefoldProverComponents,
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
-    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>,
+    Bpc::Challenger:
+        CanObserve<<Bpc::Config as BasefoldConfig>::Commitment> + FieldChallenger<Bpc::F>,
     JaggedProver: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
+    EvalProver: JaggedEvalProver<Bpc::EF, Bpc::Challenger>
+        + 'static
+        + Send
+        + Sync
+        + Clone
+        + std::fmt::Debug,
 {
     type F = Bpc::F;
     type EF = Bpc::EF;
@@ -53,21 +71,23 @@ where
     type Challenger = Bpc::Challenger;
     type Commitment = <Bpc::Config as BasefoldConfig>::Commitment;
     type BatchPcsProof = BasefoldProof<Bpc::Config>;
-    type Config = JaggedBasefoldConfig<Bpc::Config>;
+    type Config = JaggedBasefoldConfig<Bpc::Config, EvalProver::EvalConfig>;
 
     type JaggedSumcheckProver = JaggedProver;
     type BatchPcsProver = BasefoldProver<Bpc>;
     type Stacker = FixedRateInterleave<Bpc::F, Bpc::A>;
+    type JaggedEvalProver = EvalProver;
 }
 
-impl<BC> JaggedPcsVerifier<JaggedBasefoldConfig<BC>>
+impl<BC, E> JaggedPcsVerifier<JaggedBasefoldConfig<BC, E>>
 where
     BC: DefaultBasefoldConfig,
+    E: JaggedEvalConfig<BC::EF, BC::Challenger> + Default,
 {
     pub fn new(log_blowup: usize, log_stacking_height: u32, max_log_row_count: usize) -> Self {
         let basefold_verifer = BasefoldVerifier::<BC>::new(log_blowup);
         let stacked_pcs_verifier = StackedPcsVerifier::new(basefold_verifer, log_stacking_height);
-        Self { stacked_pcs_verifier, max_log_row_count }
+        Self { stacked_pcs_verifier, max_log_row_count, jagged_evaluator: E::default() }
     }
 
     pub fn challenger(&self) -> BC::Challenger {
@@ -75,16 +95,17 @@ where
     }
 }
 
-impl<Bpc, JP> JaggedProver<JaggedBasefoldProverComponents<Bpc, JP>>
+impl<Bpc, JP, E> JaggedProver<JaggedBasefoldProverComponents<Bpc, JP, E>>
 where
     Bpc: BasefoldProverComponents + DefaultBasefoldProver,
     Bpc::Config: DefaultBasefoldConfig,
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
     Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>,
     JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
+    E: JaggedEvalProver<Bpc::EF, Bpc::Challenger> + Default,
 {
     pub fn from_basefold_components(
-        verifier: &JaggedPcsVerifier<JaggedBasefoldConfig<Bpc::Config>>,
+        verifier: &JaggedPcsVerifier<JaggedBasefoldConfig<Bpc::Config, E::EvalConfig>>,
         jagged_generator: JP,
         interleave_batch_size: usize,
     ) -> Self {
@@ -96,19 +117,20 @@ where
             verifier.stacked_pcs_verifier.log_stacking_height,
         );
 
-        Self::new(verifier.max_log_row_count, stacked_pcs_prover, jagged_generator)
+        Self::new(verifier.max_log_row_count, stacked_pcs_prover, jagged_generator, E::default())
     }
 }
 
 const DEFAULT_INTERLEAVE_BATCH_SIZE: usize = 128;
 
-impl<Bpc, JP> DfeaultJaggedProver for JaggedBasefoldProverComponents<Bpc, JP>
+impl<Bpc, JP, E> DfeaultJaggedProver for JaggedBasefoldProverComponents<Bpc, JP, E>
 where
     Bpc: BasefoldProverComponents + DefaultBasefoldProver,
     Bpc::Config: DefaultBasefoldConfig,
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
     Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>,
     JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A> + Default,
+    E: JaggedEvalProver<Bpc::EF, Bpc::Challenger> + Default,
 {
     fn prover_from_verifier(verifier: &JaggedPcsVerifier<Self::Config>) -> JaggedProver<Self> {
         JaggedProver::from_basefold_components(

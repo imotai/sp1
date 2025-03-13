@@ -5,6 +5,8 @@ use slop_multilinear::MultilinearPcsVerifier;
 
 use std::fmt::Debug;
 
+use crate::JaggedEvalConfig;
+
 pub trait JaggedConfig:
     'static + Clone + Debug + Send + Clone + Serialize + DeserializeOwned
 {
@@ -33,4 +35,12 @@ pub trait JaggedConfig:
         Proof = Self::BatchPcsProof,
         Commitment = Self::Commitment,
     >;
+
+    type JaggedEvaluator: JaggedEvalConfig<Self::EF, Self::Challenger>
+        + 'static
+        + Clone
+        + Send
+        + Sync
+        + Serialize
+        + DeserializeOwned;
 }

@@ -21,8 +21,8 @@ use slop_sumcheck::{
 use thiserror::Error;
 
 use crate::{
-    HadamardProduct, JaggedConfig, JaggedEvalSumcheckPoly, JaggedLittlePolynomialProverParams,
-    JaggedPcsProof, JaggedPcsVerifier, JaggedSumcheckProver,
+    HadamardProduct, JaggedConfig, JaggedEvalConfig, JaggedEvalProver,
+    JaggedLittlePolynomialProverParams, JaggedPcsProof, JaggedPcsVerifier, JaggedSumcheckProver,
 };
 
 pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
@@ -82,7 +82,6 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
         + Clone
         + Debug;
 
-    // type JaggedGenerator: JaggedMleGenerator<Self::EF, Self::A>;
     type JaggedSumcheckProver: JaggedSumcheckProver<Self::F, Self::EF, Self::A>;
 
     type BatchPcsProver: MultilinearPcsProver<
@@ -95,12 +94,26 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
         Proof = Self::BatchPcsProof,
     >;
     type Stacker: InterleaveMultilinears<Self::F, Self::A>;
+
+    type JaggedEvalProver: JaggedEvalProver<
+            Self::EF,
+            Self::Challenger,
+            EvalConfig = <Self::Config as JaggedConfig>::JaggedEvaluator,
+            EvalProof = <<Self::Config as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
+                Self::EF,
+                Self::Challenger,
+            >>::JaggedEvalProof,
+        >
+        + 'static
+        + Send
+        + Sync;
 }
 
 #[derive(Debug, Clone)]
 pub struct JaggedProver<C: JaggedProverComponents> {
     stacked_pcs_prover: StackedPcsProver<C::BatchPcsProver, C::Stacker>,
     jagged_sumcheck_prover: C::JaggedSumcheckProver,
+    jagged_eval_prover: C::JaggedEvalProver,
     pub max_log_row_count: usize,
 }
 
@@ -133,8 +146,9 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         max_log_row_count: usize,
         stacked_pcs_prover: StackedPcsProver<C::BatchPcsProver, C::Stacker>,
         jagged_sumcheck_prover: C::JaggedSumcheckProver,
+        jagged_eval_prover: C::JaggedEvalProver,
     ) -> Self {
-        Self { stacked_pcs_prover, jagged_sumcheck_prover, max_log_row_count }
+        Self { stacked_pcs_prover, jagged_sumcheck_prover, jagged_eval_prover, max_log_row_count }
     }
 
     pub fn from_verifier(verifier: &JaggedPcsVerifier<C::Config>) -> Self
@@ -315,27 +329,10 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
-        // Create sumcheck proof for the jagged eval.
-        let jagged_eval_sc_poly = JaggedEvalSumcheckPoly::new(
-            z_row.clone(),
-            z_col.clone(),
-            final_eval_point.clone(),
-            params.col_prefix_sums_usize.clone(),
-        );
-
-        // Compute the full eval of the jagged poly.
-        let verifier_params = params.clone().into_verifier_params();
-        let (expected_sum, branching_program_evals) = verifier_params
-            .full_jagged_little_polynomial_evaluation(&z_row, &z_col, &final_eval_point);
-
-        let (jagged_eval_proof, _) = reduce_sumcheck_to_evaluation(
-            vec![jagged_eval_sc_poly],
-            challenger,
-            vec![expected_sum],
-            1,
-            C::EF::one(),
-        )
-        .await;
+        let jagged_eval_proof = self
+            .jagged_eval_prover
+            .prove_jagged_evaluation(&params, &z_row, &z_col, &final_eval_point, challenger)
+            .await;
 
         let (_, stack_point) = final_eval_point
             .split_at(final_eval_point.dimension() - self.log_stacking_height() as usize);
@@ -366,7 +363,6 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         Ok(JaggedPcsProof {
             stacked_pcs_proof,
             sumcheck_proof,
-            branching_program_evals,
             jagged_eval_proof,
             params: params.into_verifier_params(),
         })
