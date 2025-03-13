@@ -3263,33 +3263,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp1-recursion-compiler"
-version = "4.0.1"
-dependencies = [
- "backtrace",
- "criterion",
- "itertools 0.13.0",
- "p3-baby-bear",
- "p3-bn254-fr",
- "p3-challenger",
- "p3-dft",
- "p3-field",
- "p3-merkle-tree",
- "p3-symmetric",
- "rand",
- "serde",
- "slop-merkle-tree",
- "sp1-core-machine",
- "sp1-primitives",
- "sp1-recursion-derive",
- "sp1-recursion-executor",
- "sp1-stark",
- "tracing",
- "vec_map",
-]
-
-[[package]]
-name = "sp1-recursion-config"
+name = "sp1-recursion-circuit"
 version = "4.0.1"
 dependencies = [
  "ff 0.13.1",
@@ -3313,10 +3287,16 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
+ "slop-algebra",
+ "slop-alloc",
  "slop-basefold",
+ "slop-challenger",
  "slop-commit",
  "slop-jagged",
  "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-sumcheck",
+ "slop-tensor",
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-derive",
@@ -3325,8 +3305,35 @@ dependencies = [
  "sp1-recursion-executor",
  "sp1-stark",
  "test-artifacts",
+ "tokio",
  "tracing",
  "zkhash",
+]
+
+[[package]]
+name = "sp1-recursion-compiler"
+version = "4.0.1"
+dependencies = [
+ "backtrace",
+ "criterion",
+ "itertools 0.13.0",
+ "p3-baby-bear",
+ "p3-bn254-fr",
+ "p3-challenger",
+ "p3-dft",
+ "p3-field",
+ "p3-merkle-tree",
+ "p3-symmetric",
+ "rand",
+ "serde",
+ "slop-merkle-tree",
+ "sp1-core-machine",
+ "sp1-primitives",
+ "sp1-recursion-derive",
+ "sp1-recursion-executor",
+ "sp1-stark",
+ "tracing",
+ "vec_map",
 ]
 
 [[package]]
@@ -3378,26 +3385,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "vec_map",
- "zkhash",
-]
-
-[[package]]
-name = "sp1-recursion-slop"
-version = "4.0.1"
-dependencies = [
- "p3-baby-bear",
- "p3-field",
- "rand",
- "slop-algebra",
- "slop-challenger",
- "slop-jagged",
- "slop-merkle-tree",
- "slop-multilinear",
- "slop-sumcheck",
- "sp1-recursion-compiler",
- "sp1-recursion-config",
- "sp1-recursion-executor",
- "tokio",
  "zkhash",
 ]
 

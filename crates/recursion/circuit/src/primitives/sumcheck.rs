@@ -1,3 +1,7 @@
+use crate::{
+    challenger::{CanObserveVariable, FieldChallengerVariable},
+    BabyBearFriConfigVariable, CircuitConfig,
+};
 use p3_baby_bear::BabyBear;
 use slop_algebra::UnivariatePolynomial;
 use slop_multilinear::Point;
@@ -5,10 +9,6 @@ use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
     ir::Felt,
     prelude::{Builder, Ext, SymbolicExt},
-};
-use sp1_recursion_config::{
-    challenger::{CanObserveVariable, FieldChallengerVariable},
-    BabyBearFriConfigVariable, CircuitConfig,
 };
 
 pub fn verify_sumcheck<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>(
@@ -74,6 +74,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::challenger::DuplexChallengerVariable;
     use p3_baby_bear::DiffusionMatrixBabyBear;
     use p3_field::AbstractField;
     use rand::rngs::OsRng;
@@ -90,7 +91,6 @@ mod tests {
         config::InnerConfig,
         ir::{Builder, Ext, SymbolicExt},
     };
-    use sp1_recursion_config::challenger::DuplexChallengerVariable;
     use sp1_recursion_executor::Runtime;
     use zkhash::ark_ff::UniformRand;
 

@@ -17,13 +17,12 @@ members = [
   "crates/recursion/executor",
   "crates/recursion/compiler",
   "crates/recursion/derive",
-  "crates/recursion/config",
+  "crates/recursion/circuit",
   "crates/curves",
   "crates/derive",
   "crates/helper",
   "crates/stark",
   "crates/test-artifacts",
-  "crates/recursion/slop",
   "crates/zkvm/*",
 ]
 exclude = [
@@ -33,7 +32,7 @@ exclude = [
   "crates/eval",
   "crates/perf",
   "crates/prover",
-  "crates/recursion/circuit",
+  "crates/recursion/circuit-old",
   "crates/recursion/core",
   "crates/recursion/gnark-cli",
   "crates/recursion/gnark-ffi",
@@ -66,13 +65,11 @@ sp1-helper = { path = "crates/helper", version = "4.0.1", default-features = fal
 sp1-primitives = { path = "crates/primitives", version = "4.0.1" }
 sp1-prover = { path = "crates/prover", version = "4.0.1" }
 sp1-recursion-compiler = { path = "crates/recursion/compiler", version = "4.0.1" }
-sp1-recursion-config = { path = "crates/recursion/config", version = "4.0.1" }
 sp1-recursion-core = { path = "crates/recursion/core", version = "4.0.1" }
 sp1-recursion-derive = { path = "crates/recursion/derive", version = "4.0.1", default-features = false }
 sp1-recursion-gnark-ffi = { path = "crates/recursion/gnark-ffi", version = "4.0.1", default-features = false }
 sp1-recursion-circuit = { path = "crates/recursion/circuit", version = "4.0.1", default-features = false }
 sp1-recursion-executor = { path = "crates/recursion/executor", version = "4.0.1", default-features = false }
-sp1-recursion-slop = { path = "crates/recursion/slop", version = "4.0.1" }
 sp1-sdk = { path = "crates/sdk", version = "4.0.1" }
 sp1-cuda = { path = "crates/cuda", version = "4.0.1" }
 sp1-stark = { path = "crates/stark", version = "4.0.1" }
