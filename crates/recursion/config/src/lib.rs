@@ -2,13 +2,10 @@
 
 use challenger::{
     CanCopyChallenger, CanObserveVariable, DuplexChallengerVariable, FieldChallengerVariable,
-    MultiField32ChallengerVariable, SpongeChallengerShape,
 };
 use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
 use itertools::izip;
-use p3_bn254_fr::Bn254Fr;
 use p3_field::AbstractField;
-use p3_matrix::dense::RowMajorMatrix;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},
@@ -16,77 +13,45 @@ use sp1_recursion_compiler::{
 };
 use std::iter::{repeat, zip};
 
-mod types;
-
+use slop_basefold::{
+    BasefoldConfig, BasefoldProof, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig,
+};
+use slop_commit::TensorCs;
+use slop_merkle_tree::{MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig};
+use sp1_stark::BabyBearPoseidon2;
 pub mod challenger;
-pub mod constraints;
-pub mod domain;
-pub mod fri;
 pub mod hash;
-pub mod machine;
-pub mod merkle_tree;
-pub mod stark;
-pub(crate) mod utils;
-pub mod witness;
-
-use sp1_stark::{
-    baby_bear_poseidon2::{BabyBearPoseidon2, ValMmcs},
-    StarkGenericConfig,
-};
-pub use types::*;
-
-use p3_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
-use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_dft::Radix2DitParallel;
-use p3_fri::{FriConfig, TwoAdicFriPcs};
-use sp1_recursion_core::{
-    air::RecursionPublicValues,
-    stark::{BabyBearPoseidon2Outer, OuterValMmcs},
-    D,
-};
-
+pub const D: usize = 4;
 use p3_baby_bear::BabyBear;
-use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
+use p3_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
+use slop_jagged::JaggedConfig;
 
-type EF = <BabyBearPoseidon2 as StarkGenericConfig>::Challenge;
-
-pub type PcsConfig<C> = FriConfig<
-    ExtensionMmcs<
-        <C as StarkGenericConfig>::Val,
-        <C as StarkGenericConfig>::Challenge,
-        <C as BabyBearFriConfig>::ValMmcs,
-    >,
->;
+type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
 
-pub type FriMmcs<C> = ExtensionMmcs<BabyBear, EF, <C as BabyBearFriConfig>::ValMmcs>;
-
 pub trait BabyBearFriConfig:
-    StarkGenericConfig<
-    Val = BabyBear,
-    Challenge = EF,
+    JaggedConfig<
+    F = BabyBear,
+    EF = EF,
+    Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
+    BatchPcsProof = BasefoldProof<Self::BasefoldConfig>,
     Challenger = Self::FriChallenger,
-    Pcs = TwoAdicFriPcs<
-        BabyBear,
-        Radix2DitParallel,
-        Self::ValMmcs,
-        ExtensionMmcs<BabyBear, EF, Self::ValMmcs>,
-    >,
+    BatchPcsVerifier = BasefoldVerifier<Self::BasefoldConfig>,
 >
 {
-    type ValMmcs: Mmcs<BabyBear, ProverData<RowMajorMatrix<BabyBear>> = Self::RowMajorProverData>
-        + Send
-        + Sync;
-    type RowMajorProverData: Clone + Send + Sync;
-    type FriChallenger: CanObserve<<Self::ValMmcs as Mmcs<BabyBear>>::Commitment>
+    type BasefoldConfig: BasefoldConfig<
+        F = BabyBear,
+        EF = EF,
+        Tcs = MerkleTreeTcs<Self::MerkleTreeConfig>,
+        Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
+        Challenger = Self::FriChallenger,
+    >;
+    type MerkleTreeConfig: MerkleTreeConfig<Data = BabyBear>;
+    type FriChallenger: CanObserve<<Self::BasefoldConfig as BasefoldConfig>::Commitment>
         + CanSample<EF>
         + GrindingChallenger<Witness = BabyBear>
         + FieldChallenger<BabyBear>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>>;
-
-    fn challenger_shape(challenger: &Self::FriChallenger) -> SpongeChallengerShape;
 }
 
 pub trait BabyBearFriConfigVariable<C: CircuitConfig<F = BabyBear>>:
@@ -98,11 +63,6 @@ pub trait BabyBearFriConfigVariable<C: CircuitConfig<F = BabyBear>>:
 
     /// Get a new challenger corresponding to the given config.
     fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable;
-
-    fn commit_recursion_public_values(
-        builder: &mut Builder<C>,
-        public_values: RecursionPublicValues<Felt<C::F>>,
-    );
 }
 
 pub trait CircuitConfig: Config {
@@ -578,36 +538,9 @@ impl CircuitConfig for OuterConfig {
 }
 
 impl BabyBearFriConfig for BabyBearPoseidon2 {
-    type ValMmcs = ValMmcs;
-    type FriChallenger = <Self as StarkGenericConfig>::Challenger;
-    type RowMajorProverData = <ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>> {
-        self.pcs().fri_config()
-    }
-
-    fn challenger_shape(challenger: &Self::FriChallenger) -> SpongeChallengerShape {
-        SpongeChallengerShape {
-            input_buffer_len: challenger.input_buffer.len(),
-            output_buffer_len: challenger.output_buffer.len(),
-        }
-    }
-}
-
-impl BabyBearFriConfig for BabyBearPoseidon2Outer {
-    type ValMmcs = OuterValMmcs;
-    type FriChallenger = <Self as StarkGenericConfig>::Challenger;
-
-    type RowMajorProverData =
-        <OuterValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>> {
-        self.pcs().fri_config()
-    }
-
-    fn challenger_shape(_challenger: &Self::FriChallenger) -> SpongeChallengerShape {
-        unimplemented!("Shape not supported for outer fri challenger");
-    }
+    type BasefoldConfig = Poseidon2BabyBear16BasefoldConfig;
+    type MerkleTreeConfig = Poseidon2BabyBearConfig;
+    type FriChallenger = <Self as JaggedConfig>::Challenger;
 }
 
 impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVariable<C>
@@ -617,36 +550,5 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
 
     fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable {
         DuplexChallengerVariable::new(builder)
-    }
-
-    fn commit_recursion_public_values(
-        builder: &mut Builder<C>,
-        public_values: RecursionPublicValues<Felt<<C>::F>>,
-    ) {
-        builder.commit_public_values_v2(public_values);
-    }
-}
-
-impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFriConfigVariable<C>
-    for BabyBearPoseidon2Outer
-{
-    type FriChallengerVariable = MultiField32ChallengerVariable<C>;
-
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable {
-        MultiField32ChallengerVariable::new(builder)
-    }
-
-    fn commit_recursion_public_values(
-        builder: &mut Builder<C>,
-        public_values: RecursionPublicValues<Felt<<C>::F>>,
-    ) {
-        let committed_values_digest_bytes_felts: [Felt<_>; 32] =
-            words_to_bytes(&public_values.committed_value_digest).try_into().unwrap();
-        let committed_values_digest_bytes: Var<_> =
-            felt_bytes_to_bn254_var(builder, &committed_values_digest_bytes_felts);
-        builder.commit_committed_values_digest_circuit(committed_values_digest_bytes);
-
-        let vkey_hash = felts_to_bn254_var(builder, &public_values.sp1_vk_digest);
-        builder.commit_vkey_hash_circuit(vkey_hash);
     }
 }
