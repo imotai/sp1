@@ -8,7 +8,7 @@ use tokio::sync::{
 };
 use tracing::Instrument;
 
-use crate::ShardProof;
+use crate::{SP1ProverOpts, ShardProof};
 
 use super::{MachineProverComponents, MachineProvingKey, ShardData, ShardProver};
 
@@ -20,6 +20,17 @@ pub struct MachineProverOpts {
     pub num_trace_workers: usize,
     /// The capacity of the shard data channel.
     pub shard_data_channel_capacity: usize,
+}
+
+impl Default for MachineProverOpts {
+    fn default() -> Self {
+        let default_opts = SP1ProverOpts::default();
+        Self {
+            num_prover_workers: default_opts.core_opts.trace_gen_workers,
+            num_trace_workers: default_opts.core_opts.trace_gen_workers,
+            shard_data_channel_capacity: default_opts.core_opts.records_and_traces_channel_capacity,
+        }
+    }
 }
 
 /// A prover for a machine.

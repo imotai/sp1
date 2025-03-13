@@ -175,7 +175,6 @@ mod validation {
         }
     }
 
-    #[cfg(test)]
     pub fn linear_program<F: PrimeField32>(
         instrs: Vec<Instruction<F>>,
     ) -> Result<RecursionProgram<F>, Box<StructureError<F>>> {

@@ -1,14 +1,77 @@
-use std::{borrow::BorrowMut, mem::MaybeUninit};
-
+use core::fmt::Debug;
+use p3_challenger::DuplexChallenger;
+use p3_field::PrimeField32;
+use p3_symmetric::CryptographicPermutation;
 use serde::{Deserialize, Serialize};
+use sp1_core_machine::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, Word};
+use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, Word, PROOF_MAX_NUM_PVS};
+use static_assertions::const_assert_eq;
+use std::{
+    borrow::BorrowMut,
+    mem::{size_of, transmute, MaybeUninit},
+};
 
-use crate::DIGEST_SIZE;
+use crate::{DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
+
+pub const PV_DIGEST_NUM_WORDS: usize = 8;
+
+pub const CHALLENGER_STATE_NUM_ELTS: usize = size_of::<ChallengerPublicValues<u8>>();
 
 pub const RECURSIVE_PROOF_NUM_PV_ELTS: usize = size_of::<RecursionPublicValues<u8>>();
 
-pub const PV_DIGEST_NUM_WORDS: usize = 8;
+const fn make_col_map() -> RecursionPublicValues<usize> {
+    let indices_arr = indices_arr::<RECURSIVE_PROOF_NUM_PV_ELTS>();
+    unsafe {
+        transmute::<[usize; RECURSIVE_PROOF_NUM_PV_ELTS], RecursionPublicValues<usize>>(indices_arr)
+    }
+}
+
+pub const RECURSION_PUBLIC_VALUES_COL_MAP: RecursionPublicValues<usize> = make_col_map();
+
+// All the fields before `digest` are hashed to produce the digest.
+pub const NUM_PV_ELMS_TO_HASH: usize = RECURSION_PUBLIC_VALUES_COL_MAP.digest[0];
+
+// Recursive proof has more public values than core proof, so the max number constant defined in
+// sp1_core should be set to `RECURSIVE_PROOF_NUM_PV_ELTS`.
+const_assert_eq!(RECURSIVE_PROOF_NUM_PV_ELTS, PROOF_MAX_NUM_PVS);
+
+#[derive(AlignedBorrow, Serialize, Deserialize, Clone, Copy, Default, Debug)]
+#[repr(C)]
+pub struct ChallengerPublicValues<T> {
+    pub sponge_state: [T; PERMUTATION_WIDTH],
+    pub num_inputs: T,
+    pub input_buffer: [T; PERMUTATION_WIDTH],
+    pub num_outputs: T,
+    pub output_buffer: [T; PERMUTATION_WIDTH],
+}
+
+impl<T: Clone> ChallengerPublicValues<T> {
+    pub fn set_challenger<P: CryptographicPermutation<[T; PERMUTATION_WIDTH]>>(
+        &self,
+        challenger: &mut DuplexChallenger<T, P, PERMUTATION_WIDTH, HASH_RATE>,
+    ) where
+        T: PrimeField32,
+    {
+        challenger.sponge_state = self.sponge_state;
+        let num_inputs = self.num_inputs.as_canonical_u32() as usize;
+        challenger.input_buffer = self.input_buffer[..num_inputs].to_vec();
+        let num_outputs = self.num_outputs.as_canonical_u32() as usize;
+        challenger.output_buffer = self.output_buffer[..num_outputs].to_vec();
+    }
+
+    pub fn as_array(&self) -> [T; CHALLENGER_STATE_NUM_ELTS]
+    where
+        T: Copy,
+    {
+        unsafe {
+            let mut ret = [MaybeUninit::<T>::zeroed().assume_init(); CHALLENGER_STATE_NUM_ELTS];
+            let pv: &mut ChallengerPublicValues<T> = ret.as_mut_slice().borrow_mut();
+            *pv = *self;
+            ret
+        }
+    }
+}
 
 /// The PublicValues struct is used to store all of a reduce proof's public values.
 #[derive(AlignedBorrow, Serialize, Deserialize, Clone, Copy, Default, Debug)]
@@ -95,6 +158,15 @@ impl<F: Copy> RecursionPublicValues<F> {
 impl<T: Copy> IntoIterator for RecursionPublicValues<T> {
     type Item = T;
     type IntoIter = std::array::IntoIter<T, RECURSIVE_PROOF_NUM_PV_ELTS>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_array().into_iter()
+    }
+}
+
+impl<T: Copy> IntoIterator for ChallengerPublicValues<T> {
+    type Item = T;
+    type IntoIter = std::array::IntoIter<T, CHALLENGER_STATE_NUM_ELTS>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.as_array().into_iter()

@@ -22,7 +22,7 @@ use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{CryptographicPermutation, Permutation};
 use p3_util::reverse_bits_len;
 pub use program::*;
-pub use public_values::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
+pub use public_values::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS};
 pub use record::*;
 use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
@@ -486,7 +486,7 @@ type Perm<F, Diffusion> = Poseidon2<
 >;
 
 /// TODO fully document.
-/// Taken from [`sp1_recursion_core::runtime::Runtime`].
+/// Taken from [`sp1_recursion_executor::runtime::Runtime`].
 /// Many missing things (compared to the old `Runtime`) will need to be implemented.
 pub struct Runtime<'a, F: PrimeField32, EF: ExtensionField<F>, Diffusion> {
     pub timestamp: usize,
@@ -1124,126 +1124,5 @@ impl<F, Diffusion> Clone for ExecEnv<'_, '_, F, Diffusion> {
         memory.clone_from(&source.memory);
         perm.clone_from(&source.perm);
         debug_stdout.clone_from(&source.debug_stdout);
-    }
-}
-
-#[cfg(test)]
-pub mod tests {
-
-    use std::{iter::once, sync::Arc};
-
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_field::{
-        extension::{BinomialExtensionField, HasFrobenius},
-        AbstractExtensionField, AbstractField, Field,
-    };
-    use rand::prelude::*;
-    use slop_merkle_tree::my_bb_16_perm;
-
-    use crate::{
-        instruction as instr, linear_program, BaseAluOpcode, ExtAluOpcode, Instruction,
-        MemAccessKind, RecursionProgram, Runtime,
-    };
-
-    type F = BabyBear;
-    const D: usize = 4;
-    type EF = BinomialExtensionField<F, D>;
-
-    /// Runs the given program on machines that use the wide and skinny Poseidon2 chips.
-    pub fn run_recursion_test_machines(program: RecursionProgram<F>) {
-        let program = Arc::new(program);
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
-        runtime.run().unwrap();
-
-        // // Run with the poseidon2 wide chip.
-        // let machine = A::machine_wide_with_all_chips(BabyBearPoseidon2::default());
-        // let (pk, vk) = machine.setup(&program);
-        // run_test_machine(vec![runtime.record.clone()], machine, pk, vk)
-        //     .expect("Verification failed");
-
-        // // Run with the poseidon2 skinny chip.
-        // let skinny_machine =
-        //     B::machine_skinny_with_all_chips(BabyBearPoseidon2::ultra_compressed());
-        // let (pk, vk) = skinny_machine.setup(&program);
-        // run_test_machine(vec![runtime.record], skinny_machine, pk, vk)
-        //     .expect("Verification failed");
-    }
-
-    /// Constructs a linear program and runs it on machines that use the wide and skinny Poseidon2 chips.
-    pub fn test_recursion_linear_program(instrs: Vec<Instruction<F>>) {
-        run_recursion_test_machines(linear_program(instrs).unwrap());
-    }
-
-    #[test]
-    pub fn fibonacci() {
-        let n = 10;
-
-        let instructions = once(instr::mem(MemAccessKind::Write, 1, 0, 0))
-            .chain(once(instr::mem(MemAccessKind::Write, 2, 1, 1)))
-            .chain((2..=n).map(|i| instr::base_alu(BaseAluOpcode::AddF, 2, i, i - 2, i - 1)))
-            .chain(once(instr::mem(MemAccessKind::Read, 1, n - 1, 34)))
-            .chain(once(instr::mem(MemAccessKind::Read, 2, n, 55)))
-            .collect::<Vec<_>>();
-
-        test_recursion_linear_program(instructions);
-    }
-
-    #[test]
-    #[should_panic]
-    pub fn div_nonzero_by_zero() {
-        let instructions = vec![
-            instr::mem(MemAccessKind::Write, 1, 0, 0),
-            instr::mem(MemAccessKind::Write, 1, 1, 1),
-            instr::base_alu(BaseAluOpcode::DivF, 1, 2, 1, 0),
-            instr::mem(MemAccessKind::Read, 1, 2, 1),
-        ];
-
-        test_recursion_linear_program(instructions);
-    }
-
-    #[test]
-    pub fn div_zero_by_zero() {
-        let instructions = vec![
-            instr::mem(MemAccessKind::Write, 1, 0, 0),
-            instr::mem(MemAccessKind::Write, 1, 1, 0),
-            instr::base_alu(BaseAluOpcode::DivF, 1, 2, 1, 0),
-            instr::mem(MemAccessKind::Read, 1, 2, 1),
-        ];
-
-        test_recursion_linear_program(instructions);
-    }
-
-    #[test]
-    pub fn field_norm() {
-        let mut instructions = Vec::new();
-
-        let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
-        let mut addr = 0;
-        for _ in 0..100 {
-            let inner: [F; 4] = std::iter::repeat_with(|| {
-                core::array::from_fn(|_| rng.sample(rand::distributions::Standard))
-            })
-            .find(|xs| !xs.iter().all(F::is_zero))
-            .unwrap();
-            let x = BinomialExtensionField::<F, D>::from_base_slice(&inner);
-            let gal = x.galois_group();
-
-            let mut acc = BinomialExtensionField::one();
-
-            instructions.push(instr::mem_ext(MemAccessKind::Write, 1, addr, acc));
-            for conj in gal {
-                instructions.push(instr::mem_ext(MemAccessKind::Write, 1, addr + 1, conj));
-                instructions.push(instr::ext_alu(ExtAluOpcode::MulE, 1, addr + 2, addr, addr + 1));
-
-                addr += 2;
-                acc *= conj;
-            }
-            let base_cmp: F = acc.as_base_slice()[0];
-            instructions.push(instr::mem_single(MemAccessKind::Read, 1, addr, base_cmp));
-            addr += 1;
-        }
-
-        test_recursion_linear_program(instructions);
     }
 }

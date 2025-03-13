@@ -1,0 +1,66 @@
+[package]
+name = "sp1-recursion-machine"
+description = "SP1 is a performant, 100% open-source, contributor-friendly zkVM."
+readme = "../../../README.md"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+links = "sp1-recursion-machine-sys"
+
+[dependencies]
+sp1-core-machine = { workspace = true }
+sp1-derive = { workspace = true }
+sp1-primitives = { workspace = true }
+sp1-recursion-executor = { workspace = true }
+sp1-stark = { workspace = true }
+
+p3-air = { workspace = true }
+p3-util = { workspace = true }
+p3-matrix = { workspace = true }
+
+slop-algebra = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-jagged = { workspace = true }
+slop-maybe-rayon = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-poseidon2 = { workspace = true }
+slop-symmetric = { workspace = true }
+
+hashbrown = { workspace = true, features = ["serde"] }
+itertools = { workspace = true }
+serde = { workspace = true, features = ["derive", "rc"] }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+rand = "0.8.5"
+zkhash = "0.2.0"
+
+
+[build-dependencies]
+rand = "0.8.5"
+sp1-stark = { workspace = true }
+sp1-primitives = { workspace = true }
+p3-baby-bear = { workspace = true }
+cbindgen = "0.27.0"
+cc = "1.1"
+pathdiff = "0.2.1"
+glob = "0.3.1"
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
+
+
+[dev-dependencies]
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
+
+
+[features]
+default = ["sys"]
+debug = []
+sys = ["sp1-core-machine/sys"]
+
+
+[lints]
+workspace = true

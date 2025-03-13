@@ -1,4 +1,6 @@
-use crate::{block::Block, public_values::RecursionPublicValues, *};
+use std::borrow::Borrow;
+
+use crate::{block::Block, *};
 #[cfg(feature = "debug")]
 use backtrace::Backtrace;
 use p3_field::{AbstractExtensionField, AbstractField};
