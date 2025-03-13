@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
-use slop_jagged::{JaggedProver, JaggedProverComponents};
+use slop_jagged::{BabyBearPoseidon2TrivialEval, JaggedProver, JaggedProverComponents};
 use sp1_stark::{
     air::MachineAir,
     prover::{DefaultTraceGenerator, MachineProverComponents, ShardProver, ZerocheckAir},
-    BabyBearPoseidon2, ShardVerifier,
+    ShardVerifier,
 };
 
 use crate::gkr::Poseidon2BabyBearGkrCudaProverComponents;
@@ -55,7 +55,7 @@ where
 }
 
 pub fn new_cuda_prover<A>(
-    verifier: ShardVerifier<BabyBearPoseidon2, A>,
+    verifier: ShardVerifier<BabyBearPoseidon2TrivialEval, A>,
     scope: TaskScope,
 ) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponents, A>
 where

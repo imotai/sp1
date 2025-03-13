@@ -4,12 +4,12 @@ mod tests {
 
     use csl_cuda::TaskScope;
     use csl_tracing::init_tracer;
+    use slop_jagged::BabyBearPoseidon2TrivialEval;
     use sp1_core_executor::{Executor, Program, SP1Context, Trace};
     use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir, utils::prove_core};
     use sp1_primitives::io::SP1PublicValues;
     use sp1_stark::{
-        BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError, SP1CoreOpts,
-        ShardVerifier,
+        MachineProof, MachineVerifier, MachineVerifierError, SP1CoreOpts, ShardVerifier,
     };
 
     const FIBONACCI_LONG_ELF: &[u8] =
@@ -23,7 +23,7 @@ mod tests {
         program: Program,
         inputs: SP1Stdin,
         scope: TaskScope,
-    ) -> Result<SP1PublicValues, MachineVerifierError<BabyBearPoseidon2>> {
+    ) -> Result<SP1PublicValues, MachineVerifierError<BabyBearPoseidon2TrivialEval>> {
         let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
         runtime.write_vecs(&inputs.buffer);
         runtime.run::<Trace>().unwrap();
@@ -38,7 +38,10 @@ mod tests {
         runtime: Executor<'static>,
         inputs: SP1Stdin,
         scope: TaskScope,
-    ) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierError<BabyBearPoseidon2>> {
+    ) -> Result<
+        MachineProof<BabyBearPoseidon2TrivialEval>,
+        MachineVerifierError<BabyBearPoseidon2TrivialEval>,
+    > {
         let log_blowup = 1;
         let log_stacking_height = 21;
         let max_log_row_count = 21;

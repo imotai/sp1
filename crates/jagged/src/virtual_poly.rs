@@ -390,7 +390,7 @@ mod tests {
     use slop_challenger::{CanObserve, FieldChallenger};
     use slop_commit::Rounds;
     use slop_jagged::{
-        BabyBearPoseidon2, HadamardJaggedSumcheckProver, JaggedConfig,
+        BabyBearPoseidon2TrivialEval, HadamardJaggedSumcheckProver, JaggedConfig,
         JaggedLittlePolynomialProverParams, JaggedPcsVerifier, JaggedProver, JaggedSumcheckProver,
     };
     use slop_multilinear::{Mle, MultilinearPcsChallenger, PaddedMle};
@@ -406,7 +406,7 @@ mod tests {
     async fn test_virtual_jagged_sumcheck_poly() {
         let log_blowup = 1;
 
-        type JC = BabyBearPoseidon2;
+        type JC = BabyBearPoseidon2TrivialEval;
         type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;

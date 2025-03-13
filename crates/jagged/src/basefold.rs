@@ -1,11 +1,12 @@
 use csl_basefold::Poseidon2BabyBear16BasefoldCudaProverComponents;
-use slop_jagged::JaggedBasefoldProverComponents;
+use slop_jagged::{JaggedBasefoldProverComponents, TrivialJaggedEvalConfig};
 
 use crate::VirtualJaggedSumcheckProver;
 
 pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCudaProverComponents,
     VirtualJaggedSumcheckProver,
+    TrivialJaggedEvalConfig,
 >;
 
 #[cfg(test)]
@@ -21,7 +22,8 @@ mod tests {
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
     use slop_jagged::{
-        BabyBearPoseidon2, JaggedConfig, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier,
+        BabyBearPoseidon2TrivialEval, JaggedConfig, JaggedPcsVerifier, JaggedProver,
+        MachineJaggedPcsVerifier,
     };
 
     use crate::Poseidon2BabyBearJaggedCudaProverComponents;
@@ -31,7 +33,7 @@ mod tests {
     async fn test_jagged_basefold() {
         let log_blowup = 1;
 
-        type JC = BabyBearPoseidon2;
+        type JC = BabyBearPoseidon2TrivialEval;
         type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
