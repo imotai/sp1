@@ -18,11 +18,8 @@ mod tests {
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
     use slop_baby_bear::BabyBear;
-    use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
-    use slop_basefold_prover::Poseidon2BabyBear16BasefoldCpuProverComponents;
     use slop_jagged::{
-        BabyBearPoseidon2, CpuJaggedMleGenerator, HadamardJaggedSumcheckProver,
-        JaggedBasefoldConfig, JaggedBasefoldProverComponents, JaggedPcsVerifier,
+        BabyBearPoseidon2, JaggedPcsVerifier, Poseidon2BabyBearJaggedCpuProverComponents,
     };
     use slop_matrix::dense::RowMajorMatrix;
     use slop_multilinear::{Mle, PaddedMle, Padding};
@@ -103,17 +100,16 @@ mod tests {
             numerator_claims: perm_numerator_claim,
             denom_claims: perm_denom_claim,
             challenge: _challenge_point,
-        } = generate_gkr_proof::<
-            JaggedBasefoldProverComponents<
-                Poseidon2BabyBear16BasefoldCpuProverComponents,
-                HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
-            >,
-        >(numerator_mles.clone(), denom_mles.clone(), &mut challenger)
+        } = generate_gkr_proof::<Poseidon2BabyBearJaggedCpuProverComponents>(
+            numerator_mles.clone(),
+            denom_mles.clone(),
+            &mut challenger,
+        )
         .await;
 
         let mut challenger = verifier.challenger();
         let GkrPointAndEvals { point, numerator_evals, denom_evals } =
-            verify_gkr_rounds::<JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig>>(
+            verify_gkr_rounds::<BabyBearPoseidon2>(
                 prover_messages.as_slice(),
                 sc_proofs.as_slice(),
                 perm_numerator_claim.as_slice(),
@@ -148,12 +144,10 @@ mod tests {
         );
 
         let start_time = Instant::now();
-        let _ = generate_mles::<
-            JaggedBasefoldProverComponents<
-                Poseidon2BabyBear16BasefoldCpuProverComponents,
-                HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
-            >,
-        >(numerator_mles.clone(), denom_mles.clone())
+        let _ = generate_mles::<Poseidon2BabyBearJaggedCpuProverComponents>(
+            numerator_mles.clone(),
+            denom_mles.clone(),
+        )
         .await;
 
         let duration = start_time.elapsed();

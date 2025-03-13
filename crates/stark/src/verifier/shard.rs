@@ -8,7 +8,8 @@ use slop_basefold::DefaultBasefoldConfig;
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{
-    JaggedBasefoldConfig, JaggedPcsVerifier, JaggedPcsVerifierError, MachineJaggedPcsVerifier,
+    JaggedBasefoldConfig, JaggedEvalConfig, JaggedPcsVerifier, JaggedPcsVerifierError,
+    MachineJaggedPcsVerifier,
 };
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsChallenger, Point};
@@ -388,10 +389,11 @@ where
     }
 }
 
-impl<BC, A> ShardVerifier<JaggedBasefoldConfig<BC>, A>
+impl<BC, EC, A> ShardVerifier<JaggedBasefoldConfig<BC, EC>, A>
 where
     A: MachineAir<BC::F>,
     BC: DefaultBasefoldConfig,
+    EC: JaggedEvalConfig<BC::EF, BC::Challenger> + std::fmt::Debug + Default,
 {
     /// Create a shard verifier from basefold parameters.
     #[must_use]
