@@ -66,7 +66,7 @@ pub trait ZerocheckProverData<F: Field, EF: ExtensionField<F>, B: Backend = CpuB
         air: Arc<Self::Air>,
         public_values: Arc<Vec<F>>,
         powers_of_alpha: Arc<Vec<EF>>,
-    ) -> Self::RoundProver;
+    ) -> impl Future<Output = Self::RoundProver> + Send;
 }
 
 /// Zerocheck data for the CPU backend.
@@ -444,7 +444,7 @@ where
     type Air = A;
     type RoundProver = ZerocheckCpuProver<F, EF, A>;
 
-    fn round_prover(
+    async fn round_prover(
         &self,
         air: Arc<A>,
         public_values: Arc<Vec<F>>,

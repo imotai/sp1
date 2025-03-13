@@ -323,11 +323,10 @@ impl<C: MachineProverComponents> ShardProver<C> {
             let padded_row_adjustment = folder.accumulator;
 
             let alpha_powers = Arc::new(chip_powers_of_alpha);
-            let air_data = self.zerocheck_prover_data.round_prover(
-                air.air.clone(),
-                public_values.clone(),
-                alpha_powers,
-            );
+            let air_data = self
+                .zerocheck_prover_data
+                .round_prover(air.air.clone(), public_values.clone(), alpha_powers)
+                .await;
             let preprocessed_trace = preprocessed_traces.get(&name).cloned();
 
             let initial_geq_value =
