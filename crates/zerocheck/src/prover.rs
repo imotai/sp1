@@ -15,14 +15,18 @@ use sp1_stark::{
 use std::{
     collections::BTreeMap,
     marker::PhantomData,
-    ops::{Add, Mul, Sub},
+    ops::{Add, Mul, Range, Sub},
     sync::Arc,
 };
 
 use crate::{EvalProgram, InterpolateRowKernel};
-use csl_cuda::{args, TaskScope};
+use csl_cuda::{args, TaskScope, ToDevice};
 
 use super::ConstraintPolyEvalKernel;
+
+const EVAL_BLOCK_SIZE: usize = 256;
+const EVAL_STRIDE: usize = 1;
+const MAX_EVAL_INTERPOLATED_ROWS: usize = 1024 * EVAL_BLOCK_SIZE * EVAL_STRIDE;
 
 pub struct ZerocheckEvalProgramProverData<F, EF, A> {
     pub eval_programs: BTreeMap<String, Arc<EvalProgram<F, EF>>>,
@@ -65,7 +69,7 @@ where
     type Air = A;
     type RoundProver = ZerocheckEvalProgramProver<F, EF, A>;
 
-    fn round_prover(
+    async fn round_prover(
         &self,
         air: Arc<A>,
         public_values: Arc<Vec<F>>,
@@ -74,29 +78,56 @@ where
         let eval_program = self.eval_programs.get(&air.name()).unwrap().clone();
         let public_values = Arc::new(Buffer::from(public_values.to_vec()));
         let powers_of_alpha = Arc::new(Buffer::from(powers_of_alpha.to_vec()));
-        ZerocheckEvalProgramProver::new(eval_program, air, public_values, powers_of_alpha)
+
+        let (eval_program, public_values_device, powers_of_alpha_device) = tokio::join!(
+            async { Arc::new(eval_program.to_device_in(&self.allocator).await.unwrap()) },
+            async { Arc::new(public_values.to_device_in(&self.allocator).await.unwrap()) },
+            async { Arc::new(powers_of_alpha.to_device_in(&self.allocator).await.unwrap()) },
+        );
+
+        ZerocheckEvalProgramProver::new(
+            eval_program,
+            air,
+            public_values,
+            public_values_device,
+            powers_of_alpha,
+            powers_of_alpha_device,
+        )
     }
 }
 
 /// A prover that uses the eval program to evaluate the constraint polynomial.
 pub struct ZerocheckEvalProgramProver<F, EF, A> {
-    eval_program: Arc<EvalProgram<F, EF>>,
+    eval_program: Arc<EvalProgram<F, EF, TaskScope>>,
     /// The public values.
     public_values: Arc<Buffer<F>>,
+    /// The public values on the device.
+    public_values_device: Arc<Buffer<F, TaskScope>>,
     /// The powers of alpha.
     powers_of_alpha: Arc<Buffer<EF>>,
+    /// The powers of alpha on the device.
+    powers_of_alpha_device: Arc<Buffer<EF, TaskScope>>,
     /// The AIR that contains the constraint polynomial.
     air: Arc<A>,
 }
 
 impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
     pub fn new(
-        eval_program: Arc<EvalProgram<F, EF>>,
+        eval_program: Arc<EvalProgram<F, EF, TaskScope>>,
         air: Arc<A>,
         public_values: Arc<Buffer<F>>,
+        public_values_device: Arc<Buffer<F, TaskScope>>,
         powers_of_alpha: Arc<Buffer<EF>>,
+        powers_of_alpha_device: Arc<Buffer<EF, TaskScope>>,
     ) -> Self {
-        Self { eval_program, public_values, powers_of_alpha, air }
+        Self {
+            eval_program,
+            public_values,
+            public_values_device,
+            powers_of_alpha,
+            powers_of_alpha_device,
+            air,
+        }
     }
 
     async fn constraint_poly_eval<
@@ -106,6 +137,7 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         partial_lagrange: &Mle<EF, TaskScope>,
         interpolated_preprocessed_rows: &Option<Tensor<K, TaskScope>>,
         interpolated_main_rows: &Tensor<K, TaskScope>,
+        offset: usize,
     ) -> Tensor<EF, TaskScope>
     where
         TaskScope: ConstraintPolyEvalKernel<K>,
@@ -121,12 +153,6 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         let main_width = interpolated_main_rows.sizes()[1];
         let interpolated_main_rows_height = interpolated_main_rows.sizes()[2];
 
-        let operations_device = backend.to_device(operations).await.unwrap();
-        let f_constants_device = backend.to_device(f_constants).await.unwrap();
-        let ef_constants_device = backend.to_device(ef_constants).await.unwrap();
-        let powers_of_alpha_device =
-            backend.to_device(self.powers_of_alpha.as_ref()).await.unwrap();
-        let public_values_device = backend.to_device(self.public_values.as_ref()).await.unwrap();
         let mut output: Tensor<EF, TaskScope> =
             Tensor::with_sizes_in([3, interpolated_main_rows_height], backend.clone());
 
@@ -140,19 +166,20 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         // Evalulate the constraint polynomial on the interpolated rows.
         unsafe {
             // Run the interpolate row kernel.
+            let partial_lagrange_ptr = partial_lagrange.guts().as_ptr().add(offset);
             let args = args!(
-                operations_device.as_ptr(),
+                operations.as_ptr(),
                 operations_len,
-                f_constants_device.as_ptr(),
-                ef_constants_device.as_ptr(),
-                partial_lagrange.guts().as_ptr(),
+                f_constants.as_ptr(),
+                ef_constants.as_ptr(),
+                partial_lagrange_ptr,
                 preprocessed_ptr,
                 preprocessed_width,
                 interpolated_main_rows.as_ptr(),
                 main_width,
                 interpolated_main_rows_height,
-                powers_of_alpha_device.as_ptr(),
-                public_values_device.as_ptr(),
+                self.powers_of_alpha_device.as_ptr(),
+                self.public_values_device.as_ptr(),
                 output.as_mut_ptr()
             );
 
@@ -210,24 +237,41 @@ where
         preprocessed_values: Option<PaddedMle<K, TaskScope>>,
         main_values: PaddedMle<K, TaskScope>,
     ) -> (EF, EF, EF) {
-        let interpolated_main_rows = interpolate_rows(main_values.inner().as_ref().unwrap());
-        let interpolated_preprocessed_rows =
-            preprocessed_values.map(|values| interpolate_rows(values.inner().as_ref().unwrap()));
-        let output = self
-            .constraint_poly_eval(
-                &partial_lagrange,
-                &interpolated_preprocessed_rows,
-                &interpolated_main_rows,
-            )
-            .await;
-        let y_s_device = Tensor::sum(&output, 1).await;
-        let y_s_host = y_s_device.into_host().await.unwrap().into_buffer().into_vec();
+        let height = main_values.inner().as_ref().unwrap().num_non_zero_entries();
+        let mut y_s = [EF::zero(); 3];
+        for start in (0..height).step_by(MAX_EVAL_INTERPOLATED_ROWS) {
+            let end = (start + MAX_EVAL_INTERPOLATED_ROWS).min(height);
 
-        (y_s_host[0], y_s_host[1], y_s_host[2])
+            let start = start >> 1;
+            let end = end.div_ceil(2);
+
+            let interpolated_main_rows =
+                interpolate_rows(main_values.inner().as_ref().unwrap(), start..end);
+            let interpolated_preprocessed_rows = preprocessed_values
+                .as_ref()
+                .map(|values| interpolate_rows(values.inner().as_ref().unwrap(), start..end));
+            let output = self
+                .constraint_poly_eval(
+                    &partial_lagrange,
+                    &interpolated_preprocessed_rows,
+                    &interpolated_main_rows,
+                    start,
+                )
+                .await;
+            let y_s_device = Tensor::sum(&output, 1).await;
+            let y_s_host = y_s_device.into_host().await.unwrap().into_buffer().into_vec();
+            for (acc, val) in y_s.iter_mut().zip(y_s_host.iter()) {
+                *acc += *val;
+            }
+        }
+        (y_s[0], y_s[1], y_s[2])
     }
 }
 
-fn interpolate_rows<K: Field>(values: &Mle<K, TaskScope>) -> Tensor<K, TaskScope>
+fn interpolate_rows<K: Field>(
+    values: &Mle<K, TaskScope>,
+    range: Range<usize>,
+) -> Tensor<K, TaskScope>
 where
     TaskScope: InterpolateRowKernel<K>,
 {
@@ -235,7 +279,8 @@ where
 
     let height = values.num_non_zero_entries();
     let width = values.num_polynomials();
-    let interpolated_rows_height = height.div_ceil(2);
+    let offset = range.start;
+    let interpolated_rows_height = range.len();
 
     let mut interpolated_rows: Tensor<K, TaskScope> =
         Tensor::with_sizes_in([3, width, interpolated_rows_height], backend.clone());
@@ -248,8 +293,10 @@ where
     let args = args!(
         values.guts().as_ptr(),
         interpolated_rows.as_mut_ptr(),
+        height,
+        width,
         interpolated_rows_height,
-        width
+        offset
     );
     unsafe {
         interpolated_rows.assume_init();
@@ -313,7 +360,8 @@ mod tests {
             .unwrap()
             .run(|t| async move {
                 let main_mle_device = t.into_device(main_mle).await.unwrap();
-                let interpolated_rows = interpolate_rows::<EF>(&main_mle_device);
+                let interpolated_rows =
+                    interpolate_rows::<EF>(&main_mle_device, 0..main_height / 2);
                 let interpolated_rows_host = interpolated_rows.storage.into_host().await.unwrap();
                 Tensor::from(interpolated_rows_host).reshape([3, main_width, main_height / 2])
             })
@@ -369,17 +417,27 @@ mod tests {
         // Get the eval program.
         let eval_program = Arc::new(EvalProgram::compile(cpu_chip.air.as_ref()));
 
-        let device_prover = ZerocheckEvalProgramProver::new(
-            eval_program,
-            cpu_chip.air.clone(),
-            Arc::new(Buffer::from(public_values.to_vec())),
-            Arc::new(Buffer::from(powers_of_alpha)),
-        );
+        let public_values = Buffer::from(public_values.to_vec());
+        let powers_of_alpha = Buffer::from(powers_of_alpha.to_vec());
 
         let (gpu_y_0, gpu_y_2, gpu_y_4) = csl_cuda::task()
             .await
             .unwrap()
             .run(|t| async move {
+                let eval_program = Arc::new(eval_program.to_device_in(&t).await.unwrap());
+                let public_values_device = Arc::new(public_values.to_device_in(&t).await.unwrap());
+                let powers_of_alpha_device =
+                    Arc::new(powers_of_alpha.to_device_in(&t).await.unwrap());
+
+                let device_prover = ZerocheckEvalProgramProver::new(
+                    eval_program,
+                    cpu_chip.air.clone(),
+                    Arc::new(public_values),
+                    public_values_device,
+                    Arc::new(powers_of_alpha),
+                    powers_of_alpha_device,
+                );
+
                 let main_mle_device = t.into_device(main_mle).await.unwrap();
                 let point = t.to_device(&random_point).await.unwrap();
                 let partial_lagrange =

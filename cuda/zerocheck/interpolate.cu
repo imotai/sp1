@@ -6,16 +6,18 @@ template <typename K>
 __global__ void interpolate_row(
     const K *input,
     K *__restrict__ output,
+    size_t inputHeight,
+    size_t width,
     size_t outputHeight,
-    size_t width)
+    size_t offset)
 {
-    size_t inputHeight = outputHeight << 1;
     for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
     {
         for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
         {
-            K zeroValue = K::load(input, j * inputHeight + (i << 1));
-            K oneValue = K::load(input, j * inputHeight + (i << 1) + 1);
+            size_t rowIdx = i + offset;
+            K zeroValue = K::load(input, j * inputHeight + (rowIdx << 1));
+            K oneValue = K::load(input, j * inputHeight + (rowIdx << 1) + 1);
 
             // Calculate slope.
             K slope = oneValue - zeroValue;

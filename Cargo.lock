@@ -144,9 +144,9 @@ checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
 
 [[package]]
 name = "base64ct"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb97d56060ee67d285efb8001fec9d2a4c710c32efd2e14b5cbb5ba71930fc2d"
+checksum = "8faa168b8c4ffca39c2699e772943af41ec2b75fb1683dda07b28a6d285c53dc"
 
 [[package]]
 name = "bincode"
@@ -2648,7 +2648,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#e82a78086b1499e543fb10c533f2186a7c804b96"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#8e676d3e2b1b48109d939cf13f3f337fbfd16a7a"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -2686,7 +2686,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#e82a78086b1499e543fb10c533f2186a7c804b96"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#8e676d3e2b1b48109d939cf13f3f337fbfd16a7a"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -2743,7 +2743,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#e82a78086b1499e543fb10c533f2186a7c804b96"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#8e676d3e2b1b48109d939cf13f3f337fbfd16a7a"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -2763,7 +2763,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#e82a78086b1499e543fb10c533f2186a7c804b96"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#8e676d3e2b1b48109d939cf13f3f337fbfd16a7a"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -2772,7 +2772,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#e82a78086b1499e543fb10c533f2186a7c804b96"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#8e676d3e2b1b48109d939cf13f3f337fbfd16a7a"
 dependencies = [
  "bincode",
  "hex",
@@ -2790,7 +2790,7 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#e82a78086b1499e543fb10c533f2186a7c804b96"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#8e676d3e2b1b48109d939cf13f3f337fbfd16a7a"
 dependencies = [
  "arrayref",
  "derive-where",
@@ -3016,9 +3016,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.44.0"
+version = "1.44.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9975ea0f48b5aa3972bf2d888c238182458437cc2a19374b81b25cdf1023fb3a"
+checksum = "f382da615b842244d4b8738c82ed1275e6c5dd90c459a30941cd07080b06c91a"
 dependencies = [
  "backtrace",
  "bytes",

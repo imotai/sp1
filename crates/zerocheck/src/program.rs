@@ -21,8 +21,8 @@ use csl_cuda::{
     TaskScope,
 };
 use slop_air::Air;
-use slop_algebra::{extension::BinomialExtensionField, Field};
-use slop_alloc::Buffer;
+use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
+use slop_alloc::{mem::CopyError, Backend, Buffer, CopyToBackend, CpuBackend, HasBackend};
 use slop_baby_bear::BabyBear;
 use sp1_stark::air::MachineAir;
 
@@ -74,12 +74,12 @@ impl ConstraintPolyEvalKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct EvalProgram<F, EF> {
-    pub operations: Buffer<Instruction16>,
+#[derive(Debug)]
+pub struct EvalProgram<F, EF, B: Backend = CpuBackend> {
+    pub operations: Buffer<Instruction16, B>,
     pub f_ctr: u32,
-    pub f_constants: Buffer<F>,
-    pub ef_constants: Buffer<EF>,
+    pub f_constants: Buffer<F, B>,
+    pub ef_constants: Buffer<EF, B>,
 }
 
 impl EvalProgram<BabyBear, BinomialExtensionField<BabyBear, 4>> {
@@ -92,5 +92,31 @@ impl EvalProgram<BabyBear, BinomialExtensionField<BabyBear, 4>> {
         let f_constants = Buffer::from(f_constants);
         let ef_constants = Buffer::from(ef_constants);
         Self { operations, f_ctr, f_constants, ef_constants }
+    }
+}
+
+impl<F, EF, B: Backend> HasBackend for EvalProgram<F, EF, B> {
+    type Backend = B;
+
+    #[inline]
+    fn backend(&self) -> &Self::Backend {
+        self.operations.backend()
+    }
+}
+
+impl<F, EF> CopyToBackend<TaskScope, CpuBackend> for EvalProgram<F, EF, CpuBackend>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+{
+    type Output = EvalProgram<F, EF, TaskScope>;
+
+    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        Ok(EvalProgram {
+            operations: self.operations.copy_to_backend(backend).await?,
+            f_ctr: self.f_ctr,
+            f_constants: self.f_constants.copy_to_backend(backend).await?,
+            ef_constants: self.ef_constants.copy_to_backend(backend).await?,
+        })
     }
 }
