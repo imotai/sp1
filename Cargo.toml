@@ -93,10 +93,10 @@ slop-air = { git = "https://github.com/succinctlabs/slop" }
 slop-matrix = { git = "https://github.com/succinctlabs/slop" }
 slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
 slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
-slop-merkle-tree = { git = "https://github.com/succinctlabs/slop"}
-slop-futures = { git = "https://github.com/succinctlabs/slop"}
-slop-poseidon2 = { git = "https://github.com/succinctlabs/slop"}
-slop-maybe-rayon = { git = "https://github.com/succinctlabs/slop"}
+slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
+slop-futures = { git = "https://github.com/succinctlabs/slop" }
+slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
+slop-maybe-rayon = { git = "https://github.com/succinctlabs/slop" }
 
 # For local development.
 # slop-algebra = { path = "../slop/crates/algebra" }
@@ -115,6 +115,8 @@ slop-maybe-rayon = { git = "https://github.com/succinctlabs/slop"}
 # slop-symmetric = { path = "../slop/crates/symmetric" }
 # slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
 # slop-futures = { path = "../slop/crates/futures" }
+# slop-poseidon2 = { path = "../slop/crates/poseidon2" }
+# slop-maybe-rayon = { path = "../slop/crates/maybe-rayon" }
 
 # For testing.
 test-artifacts = { path = "crates/test-artifacts" }

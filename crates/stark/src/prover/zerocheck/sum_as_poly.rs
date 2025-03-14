@@ -457,7 +457,8 @@ where
 /// This function will calculate the column values where the last variable is set to 0, 2, and 4
 /// and it's a padded variable.  The `row_0` values are taken from the values matrix (which should
 /// have a height of 1).  The `row_1` values are all zero.
-fn interpolate_last_var_padded_values<K: Field>(values: &Mle<K>) -> (Vec<K>, Vec<K>, Vec<K>) {
+#[must_use]
+pub fn interpolate_last_var_padded_values<K: Field>(values: &Mle<K>) -> (Vec<K>, Vec<K>, Vec<K>) {
     let row_0 = values.guts().as_slice().iter();
     let vals_0 = row_0.clone().copied().collect::<Vec<_>>();
     let vals_2 = row_0.clone().map(|val| -(*val)).collect::<Vec<_>>();
@@ -466,8 +467,10 @@ fn interpolate_last_var_padded_values<K: Field>(values: &Mle<K>) -> (Vec<K>, Vec
     (vals_0, vals_2, vals_4)
 }
 
+/// This function will increment the y0, y2, and y4 accumulators by the eval of the constraint
+/// polynomial at the points 0, 2, and 4.
 #[allow(clippy::too_many_arguments)]
-fn increment_y_values<
+pub fn increment_y_values<
     'a,
     K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     F: Field,
