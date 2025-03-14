@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use std::{cmp::max, future::Future};
+use std::{cmp::max, future::Future, sync::Arc};
 use tokio::sync::oneshot;
 
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
@@ -20,7 +20,7 @@ pub trait MleFixLastVariableBackend<F: AbstractField, EF: AbstractExtensionField
     fn mle_fix_last_variable(
         mle: &Tensor<F, Self>,
         alpha: EF,
-        padding_values: MleEval<F, Self>,
+        padding_values: Arc<MleEval<F, Self>>,
     ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
 }
 
@@ -39,7 +39,7 @@ where
     async fn mle_fix_last_variable(
         mle: &Tensor<F, Self>,
         alpha: EF,
-        padding_values: MleEval<F, Self>,
+        padding_values: Arc<MleEval<F, Self>>,
     ) -> Tensor<EF, Self> {
         let mle = unsafe { mle.owned_unchecked() };
         let padding_values = unsafe { padding_values.owned_unchecked() };
@@ -96,7 +96,7 @@ where
     ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync {
         let padding_values: MleEval<_> =
             vec![padding_value; CpuBackend::num_polynomials(mle)].into();
-        CpuBackend::mle_fix_last_variable(mle, alpha, padding_values)
+        CpuBackend::mle_fix_last_variable(mle, alpha, Arc::new(padding_values))
     }
 }
 

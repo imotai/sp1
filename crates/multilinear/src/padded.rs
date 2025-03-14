@@ -1,14 +1,14 @@
-use std::sync::Arc;
+use std::{mem::ManuallyDrop, ops::Deref, sync::Arc};
 
 use futures::future::OptionFuture;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField};
-use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost, GLOBAL_CPU_BACKEND};
+use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, ToHost, GLOBAL_CPU_BACKEND};
 use slop_tensor::{AddAssignBackend, Tensor};
 
 use crate::{
     full_geq, HostEvaluationBackend, Mle, MleBaseBackend, MleEval, MleEvaluationBackend,
-    MleFixLastVariableBackend, Point, PointBackend, ZeroEvalBackend,
+    MleFixLastVariableBackend, Point, PointBackend,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,7 +18,7 @@ use crate::{
 ))]
 pub enum Padding<F, A: Backend> {
     Constant((F, usize, A)),
-    Generic(MleEval<F, A>),
+    Generic(Arc<MleEval<F, A>>),
 }
 
 impl<F, A: Backend> HasBackend for Padding<F, A> {
@@ -43,7 +43,7 @@ impl<F, A: Backend> Padding<F, A> {
 
 impl<F, A: Backend> From<MleEval<F, A>> for Padding<F, A> {
     fn from(eval: MleEval<F, A>) -> Self {
-        Padding::Generic(eval)
+        Padding::Generic(Arc::new(eval))
     }
 }
 
@@ -68,6 +68,7 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
     ) -> Self {
         Self { inner, num_variables, padding_values }
     }
+
     pub fn padded(inner: Arc<Mle<T, A>>, num_variables: u32, padding_values: Padding<T, A>) -> Self
     where
         A: MleBaseBackend<T>,
@@ -96,7 +97,7 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
 
     pub fn padded_with_zeros(inner: Arc<Mle<T, A>>, num_variables: u32) -> Self
     where
-        A: MleBaseBackend<T> + ZeroEvalBackend<T>,
+        A: MleBaseBackend<T>,
     {
         let num_polys = inner.num_polynomials();
         let backend = inner.backend().clone();
@@ -105,7 +106,7 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
 
     pub fn zeros_in(num_polynomials: usize, num_variables: u32, backend: &A) -> Self
     where
-        A: MleBaseBackend<T> + ZeroEvalBackend<T>,
+        A: MleBaseBackend<T>,
     {
         Self::dummy(num_variables, Padding::Constant((T::zero(), num_polynomials, backend.clone())))
     }
@@ -177,7 +178,7 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
                 let inner = inner.map(Arc::new);
                 PaddedMle {
                     inner,
-                    padding_values: Padding::Generic(padding_values),
+                    padding_values: Padding::Generic(Arc::new(padding_values)),
                     num_variables: self.num_variables - 1,
                 }
             }
@@ -276,6 +277,56 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
             }
         }
     }
+
+    /// # Safety
+    ///
+    /// The caller must ensure that the lifetime bounds are being respected, as this function
+    /// completely breaks the lifetime bound of the padded mle.
+    #[inline]
+    pub unsafe fn owned_unchecked_in(
+        &self,
+        storage_allocator: A,
+    ) -> ManuallyDroppedPaddedMle<T, A> {
+        let inner = self.inner.as_ref().map(|mle| {
+            let dimensions = mle.guts().dimensions.clone();
+            let storage_ptr = mle.guts().storage.as_ptr() as *mut T;
+            let storage_len = mle.guts().storage.len();
+            let storage_cap = mle.guts().storage.capacity();
+            let storage = Buffer::from_raw_parts(
+                storage_ptr,
+                storage_len,
+                storage_cap,
+                storage_allocator.clone(),
+            );
+            let guts = Tensor { storage, dimensions };
+            Arc::new(Mle::new(guts))
+        });
+
+        let padding_values = match &self.padding_values {
+            Padding::Constant((value, num_polynomials, _)) => {
+                Padding::Constant((value.clone(), *num_polynomials, storage_allocator))
+            }
+            Padding::Generic(eval) => {
+                let dimensions = eval.evaluations.dimensions.clone();
+                let storage_ptr = eval.evaluations.storage.as_ptr() as *mut T;
+                let storage_len = eval.evaluations.storage.len();
+                let storage_cap = eval.evaluations.storage.capacity();
+                let storage_allocator = eval.evaluations.storage.allocator().clone();
+                let storage = Buffer::from_raw_parts(
+                    storage_ptr,
+                    storage_len,
+                    storage_cap,
+                    storage_allocator,
+                );
+                let evaluations = Tensor { storage, dimensions };
+                let evaluations = MleEval::new(evaluations);
+                Padding::Generic(Arc::new(evaluations))
+            }
+        };
+
+        let padded_mle = PaddedMle { inner, padding_values, num_variables: self.num_variables };
+        ManuallyDroppedPaddedMle::new(padded_mle)
+    }
 }
 
 impl<T> PaddedMle<T, CpuBackend> {
@@ -295,6 +346,41 @@ impl<T, A: Backend> HasBackend for PaddedMle<T, A> {
             Padding::Generic(eval) => eval.backend(),
             Padding::Constant((_, _, backend)) => backend,
         }
+    }
+}
+
+pub struct ManuallyDroppedPaddedMle<T: AbstractField, A: MleBaseBackend<T>> {
+    inner: ManuallyDrop<PaddedMle<T, A>>,
+}
+
+impl<T: AbstractField, A: MleBaseBackend<T>> ManuallyDroppedPaddedMle<T, A> {
+    #[inline]
+    pub fn new(inner: PaddedMle<T, A>) -> Self {
+        Self { inner: ManuallyDrop::new(inner) }
+    }
+
+    #[inline]
+    pub fn into_inner(mut this: Self) -> PaddedMle<T, A> {
+        // Safety: the inner field is not used again after calling [ManuallyDrop::take].
+        unsafe { ManuallyDrop::take(&mut this.inner) }
+    }
+}
+
+impl<T: AbstractField, A: MleBaseBackend<T>> Deref for ManuallyDroppedPaddedMle<T, A> {
+    type Target = PaddedMle<T, A>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T: AbstractField, A: MleBaseBackend<T>> Drop for ManuallyDroppedPaddedMle<T, A> {
+    fn drop(&mut self) {
+        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
+        // Leak the internal mle and padding values.
+        let PaddedMle { inner, padding_values, num_variables: _ } = inner;
+        std::mem::forget(inner);
+        std::mem::forget(padding_values);
     }
 }
 
@@ -325,7 +411,7 @@ mod tests {
             let other_virtually_padded_mle = PaddedMle::padded(
                 Arc::new(padded_guts[..i].to_vec().into()),
                 3,
-                Padding::Generic(vec![BabyBear::one()].into()),
+                Padding::Generic(Arc::new(vec![BabyBear::one()].into())),
             );
             assert_eq!(
                 Into::<Mle<_>>::into(padded_guts.clone()).eval_at(&point).await.to_vec()[0],
@@ -342,7 +428,7 @@ mod tests {
     async fn test_pure_padded_mle() {
         let mut rng = rand::thread_rng();
         let padded_values = (0..1000).map(|_| rng.gen::<BabyBear>()).collect::<Vec<_>>();
-        let padded_values = MleEval::<BabyBear, CpuBackend>::from(padded_values);
+        let padded_values = Arc::new(MleEval::<BabyBear, CpuBackend>::from(padded_values));
         let num_variables = 16;
         let padded_mle = PaddedMle::dummy(num_variables, Padding::Generic(padded_values.clone()));
         let point =
@@ -367,7 +453,7 @@ mod tests {
             let other_virtually_padded_mle = PaddedMle::padded(
                 Arc::new(padded_guts[..i].to_vec().into()),
                 4,
-                Padding::Generic(vec![BabyBear::one()].into()),
+                Padding::Generic(Arc::new(vec![BabyBear::one()].into())),
             );
             let mut virtual_cursor = virtually_padded_mle.clone();
             let mut other_virtual_cursor = other_virtually_padded_mle.clone();

@@ -68,11 +68,19 @@ where
     /// # Safety
     ///
     /// This function is unsafe because it enables bypassing the lifetime of the buffer.
+    #[inline]
     pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
+        self.owned_unchecked_in(self.allocator().clone())
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it enables bypassing the lifetime of the buffer.
+    #[inline]
+    pub unsafe fn owned_unchecked_in(&self, allocator: A) -> ManuallyDrop<Self> {
         let ptr = self.as_ptr() as *mut T;
         let len = self.len();
         let cap = self.capacity();
-        let allocator = self.allocator().clone();
         ManuallyDrop::new(Self::from_raw_parts(ptr, len, cap, allocator))
     }
 

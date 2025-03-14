@@ -59,6 +59,13 @@ impl<T> WorkerQueue<T> {
     }
 }
 
+impl<T> Worker<T> {
+    #[inline]
+    pub fn owner(&self) -> &Arc<WorkerQueue<T>> {
+        &self.owner
+    }
+}
+
 impl<T> Drop for Worker<T> {
     fn drop(&mut self) {
         unsafe {

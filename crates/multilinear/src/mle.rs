@@ -207,11 +207,18 @@ impl<F, A: Backend> Mle<F, A> {
     /// This function is unsafe because it enables bypassing the lifetime of the mle.
     #[inline]
     pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
+        self.owned_unchecked_in(self.guts.storage.allocator().clone())
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it enables bypassing the lifetime of the mle.
+    #[inline]
+    pub unsafe fn owned_unchecked_in(&self, storage_allocator: A) -> ManuallyDrop<Self> {
         let dimensions = self.guts.dimensions.clone();
         let storage_ptr = self.guts.storage.as_ptr() as *mut F;
         let storage_len = self.guts.storage.len();
         let storage_cap = self.guts.storage.capacity();
-        let storage_allocator = self.guts.storage.allocator().clone();
         let storage =
             Buffer::from_raw_parts(storage_ptr, storage_len, storage_cap, storage_allocator);
         let guts = Tensor { storage, dimensions };

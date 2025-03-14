@@ -151,11 +151,18 @@ impl<T, A: Backend> Tensor<T, A> {
     /// This function is unsafe because it enables bypassing the lifetime of the tensor.
     #[inline]
     pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
+        self.owned_unchecked_in(self.storage.allocator().clone())
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it enables bypassing the lifetime of the tensor.
+    #[inline]
+    pub unsafe fn owned_unchecked_in(&self, storage_allocator: A) -> ManuallyDrop<Self> {
         let dimensions = self.dimensions.clone();
         let storage_ptr = self.storage.as_ptr() as *mut T;
         let storage_len = self.storage.len();
         let storage_cap = self.storage.capacity();
-        let storage_allocator = self.storage.allocator().clone();
         let storage =
             Buffer::from_raw_parts(storage_ptr, storage_len, storage_cap, storage_allocator);
         ManuallyDrop::new(Self { storage, dimensions })
