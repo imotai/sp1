@@ -46,6 +46,7 @@ impl<T, A: Backend> Tensor<T, A> {
         })
     }
 
+    #[track_caller]
     pub fn reshape_in_place(&mut self, sizes: impl AsRef<[usize]>) {
         #[cold]
         #[track_caller]
@@ -65,6 +66,7 @@ impl<T, A: Backend> Tensor<T, A> {
     }
 
     #[inline]
+    #[track_caller]
     pub fn reshape(mut self, sizes: impl AsRef<[usize]>) -> Self {
         #[cold]
         #[track_caller]
@@ -214,6 +216,7 @@ impl<T, A: Backend> Tensor<T, A> {
 impl<T, A: Backend, I: AsRef<[usize]>> Index<I> for Tensor<T, A> {
     type Output = Init<T, A>;
 
+    #[track_caller]
     fn index(&self, index: I) -> &Self::Output {
         #[cold]
         #[track_caller]
@@ -360,6 +363,7 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
     }
 
     #[inline]
+    #[track_caller]
     pub fn reshape(self, sizes: impl AsRef<[usize]>) -> TensorView<'a, T, A> {
         #[cold]
         #[track_caller]

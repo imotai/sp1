@@ -120,6 +120,7 @@ where
     /// # Safety
     /// This operation is potentially asynchronous. The caller must insure the memory of the source
     /// is valid for the duration of the operation.
+    #[track_caller]
     pub unsafe fn copy_from_host_slice(&mut self, src: &[T]) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
@@ -170,6 +171,7 @@ where
     ///  # Safety
     /// This operation is potentially asynchronous. The caller must insure the memory of the source
     /// is valid for the duration of the operation.
+    #[track_caller]
     pub fn extend_from_device_slice(&mut self, src: &Slice<T, A>) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
@@ -214,6 +216,7 @@ where
     ///  # Safety
     /// This operation is potentially asynchronous. The caller must insure the memory of the source
     /// is valid for the duration of the operation.
+    #[track_caller]
     pub fn extend_from_host_slice(&mut self, src: &[T]) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
@@ -258,6 +261,7 @@ where
     ///
     /// This operation is potentially asynchronous. The caller must insure the memory of the
     /// destination is valid for the duration of the operation.
+    #[track_caller]
     pub unsafe fn copy_into_host(&self, dst: &mut [MaybeUninit<T>]) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.
@@ -309,6 +313,7 @@ where
         Buffer::from(vec)
     }
 
+    #[track_caller]
     pub fn write_bytes(&mut self, value: u8, len: usize) -> Result<(), CopyError> {
         // The panic code path was put into a cold function to not bloat the
         // call site.

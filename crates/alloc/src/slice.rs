@@ -86,6 +86,7 @@ impl<T, A: Allocator> Slice<T, A> {
     /// This operation is potentially asynchronous. The caller must insure the memory of the source
     /// is valid for the duration of the operation.
     #[inline]
+    #[track_caller]
     pub unsafe fn copy_from_slice(
         &mut self,
         src: &Slice<T, A>,
