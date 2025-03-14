@@ -25,7 +25,7 @@ impl<F: AbstractField + 'static> PartialLagrangeBackend<F> for CpuBackend {
     }
 }
 
-pub(crate) fn partial_lagrange_blocking<F: AbstractField>(
+pub fn partial_lagrange_blocking<F: AbstractField>(
     point: &Point<F, CpuBackend>,
 ) -> Tensor<F, CpuBackend> {
     let one = F::one();
