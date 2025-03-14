@@ -191,7 +191,7 @@ impl<C: BasefoldProverComponents> BasefoldProver<C> {
 
     #[inline]
     #[allow(clippy::type_complexity)]
-    async fn commit_mles<M>(
+    pub async fn commit_mles<M>(
         &self,
         mles: Message<M>,
     ) -> Result<
@@ -216,7 +216,7 @@ impl<C: BasefoldProverComponents> BasefoldProver<C> {
     }
 
     #[inline]
-    async fn prove_trusted_mle_evaluations(
+    pub async fn prove_trusted_mle_evaluations(
         &self,
         mut eval_point: Point<C::EF>,
         mle_rounds: Rounds<Message<Mle<C::F, C::A>>>,
