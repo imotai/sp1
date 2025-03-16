@@ -471,9 +471,10 @@ pub mod tests {
             .unwrap()
             .run(|t| async move {
                 let main_trace_device = t.into_device(Mle::from(main_trace.clone())).await.unwrap();
-                let padding_values_device = t.into_device(padding_values.clone()).await.unwrap();
+                let padding_values_device =
+                    Arc::new(t.into_device(padding_values.clone()).await.unwrap());
                 let prep_padding_values_device =
-                    t.into_device(prep_padding_values.clone()).await.unwrap();
+                    Arc::new(t.into_device(prep_padding_values.clone()).await.unwrap());
                 let padded_main = PaddedMle::new(
                     if real_main_trace { Some(Arc::new(main_trace_device)) } else { None },
                     log_num_padded_rows,
@@ -525,14 +526,14 @@ pub mod tests {
         let padded_main = PaddedMle::new(
             if real_main_trace { Some(Arc::new(main_trace_clone.into())) } else { None },
             log_num_padded_rows,
-            Padding::Generic(padding_values_clone.clone()),
+            Padding::Generic(Arc::new(padding_values_clone)),
         );
 
         let padded_prep = preprocessed_trace_clone.map(|prep| {
             PaddedMle::new(
                 if real_main_trace { Some(Arc::new(prep.into())) } else { None },
                 log_num_padded_rows,
-                Padding::Generic(prep_padding_values_clone.clone()),
+                Padding::Generic(Arc::new(prep_padding_values_clone)),
             )
         });
 

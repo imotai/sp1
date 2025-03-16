@@ -251,29 +251,29 @@ impl<'chan, T: CudaSend> Receiver<'chan, T> {
     #[inline]
     fn process_message(
         &self,
-        message: &mut T,
+        message: T,
         event: CudaEvent,
         sem_permit: SemaphorePermit<'chan>,
         scope: &TaskScope,
-    ) -> Result<(), CudaError> {
+    ) -> Result<T, CudaError> {
         // Wait for the event to be completed and transfer the message to the new stream
         // Safety: we know that the event is valid and the stream is valid, and the transfer
         // is safe.
-        unsafe {
+        let message = unsafe {
             scope.stream.wait_unchecked(&event)?;
-            message.change_scope(scope);
-        }
+            message.send_to_scope(scope)
+        };
         // Return the event to the queue
         self.chan.events.push(event).unwrap();
         // release the semaphore permit
         drop(sem_permit);
-        Ok(())
+        Ok(message)
     }
 
     pub async fn recv(&mut self, scope: &TaskScope) -> Result<T, RecvError> {
-        let (mut message, sem_permit, event) = self.rx.recv().await.ok_or(RecvError::Closed)?;
+        let (message, sem_permit, event) = self.rx.recv().await.ok_or(RecvError::Closed)?;
         // TODO: this doesn't work because now the channel think there is a permit available.
-        self.process_message(&mut message, event, sem_permit, scope)?;
+        let message = self.process_message(message, event, sem_permit, scope)?;
         Ok(message)
     }
 
@@ -282,9 +282,9 @@ impl<'chan, T: CudaSend> Receiver<'chan, T> {
     }
 
     pub fn try_recv(&mut self, scope: &TaskScope) -> Result<T, TryRecvError> {
-        let (mut message, sem_permit, event) =
+        let (message, sem_permit, event) =
             self.rx.try_recv().map_err(TryRecvError::MessageError)?;
-        self.process_message(&mut message, event, sem_permit, scope)?;
+        let message = self.process_message(message, event, sem_permit, scope)?;
         Ok(message)
     }
 }
@@ -293,36 +293,36 @@ impl<T: CudaSend> OwnedReceiver<T> {
     #[inline]
     fn process_message(
         &self,
-        message: &mut T,
+        message: T,
         event: CudaEvent,
         sem_permit: OwnedSemaphorePermit,
         scope: &TaskScope,
-    ) -> Result<(), CudaError> {
+    ) -> Result<T, CudaError> {
         // Wait for the event to be completed and transfer the message to the new stream
         // Safety: we know that the event is valid and the stream is valid, and the transfer
         // is safe.
-        unsafe {
+        let message = unsafe {
             scope.stream.wait_unchecked(&event)?;
-            message.change_scope(scope);
-        }
+            message.send_to_scope(scope)
+        };
         // Return the event to the queue
         self.chan.events.push(event).unwrap();
         // release the semaphore permit
         drop(sem_permit);
-        Ok(())
+        Ok(message)
     }
 
     pub async fn recv(&mut self, scope: &TaskScope) -> Result<T, RecvError> {
-        let (mut message, sem_permit, event) = self.rx.recv().await.ok_or(RecvError::Closed)?;
+        let (message, sem_permit, event) = self.rx.recv().await.ok_or(RecvError::Closed)?;
         // TODO: this doesn't work because now the channel think there is a permit available.
-        self.process_message(&mut message, event, sem_permit, scope)?;
+        let message = self.process_message(message, event, sem_permit, scope)?;
         Ok(message)
     }
 
     pub fn try_recv(&mut self, scope: &TaskScope) -> Result<T, TryRecvError> {
-        let (mut message, sem_permit, event) =
+        let (message, sem_permit, event) =
             self.rx.try_recv().map_err(TryRecvError::MessageError)?;
-        self.process_message(&mut message, event, sem_permit, scope)?;
+        let message = self.process_message(message, event, sem_permit, scope)?;
         Ok(message)
     }
 

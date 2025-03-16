@@ -2,13 +2,13 @@ use std::{
     alloc::Layout,
     ffi::c_void,
     future::{Future, IntoFuture},
-    mem::{ManuallyDrop, MaybeUninit},
+    mem::MaybeUninit,
     ops::Deref,
     pin::Pin,
     ptr::{self, NonNull},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, OnceLock,
+        Arc, OnceLock, Weak,
     },
     task::{Context, Poll},
     time::Duration,
@@ -58,7 +58,7 @@ pub async fn task() -> Result<OwnedTask, SpawnError> {
     Ok(task)
 }
 
-pub fn spawn<F, Fut>(f: F) -> JoinHandle<OwnedTaskHandle<Fut::Output>>
+pub fn spawn<F, Fut>(f: F) -> JoinHandle<TaskHandle<Fut::Output>>
 where
     F: FnOnce(TaskScope) -> Fut + Send + 'static,
     Fut: Future + Send + 'static,
@@ -182,6 +182,12 @@ pub struct OwnedTask {
     inner: Worker<Task>,
 }
 
+impl std::fmt::Debug for OwnedTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OwnedTask {{ inner: {:?} }}", self.inner.deref())
+    }
+}
+
 #[derive(Debug, Error)]
 #[error("failed to acquire a task from the pool")]
 pub enum SpawnError {
@@ -210,15 +216,21 @@ impl TaskPool {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TaskScope(Arc<ManuallyDrop<Task>>);
+#[derive(Debug)]
+pub struct TaskScope(Weak<OwnedTask>);
+
+impl Clone for TaskScope {
+    fn clone(&self) -> Self {
+        TaskScope(self.0.clone())
+    }
+}
 
 impl Deref for TaskScope {
     type Target = Task;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.0
+        unsafe { &(*self.0.as_ptr()).inner }
     }
 }
 
@@ -353,6 +365,14 @@ impl TaskScope {
         Ok(())
     }
 
+    /// Joins this task into another task.
+    ///
+    /// The other task will wait for the current task to finish.
+    #[inline]
+    unsafe fn join(self, parent: &TaskScope) -> Result<(), CudaError> {
+        parent.stream.wait_unchecked(&self.end_event)
+    }
+
     /// Copies data from the host to the device.
     #[inline]
     pub async fn into_device<T: IntoDevice>(&self, data: T) -> Result<T::Output, CopyError> {
@@ -376,14 +396,39 @@ impl TaskScope {
 
     /// # Safety
     pub unsafe fn handle(&self) -> CudaStreamHandle {
-        self.0.stream.0
+        self.stream.0
+    }
+
+    pub fn owner(&self) -> TaskPool {
+        TaskPool { inner: self.0.upgrade().unwrap().inner.owner().clone() }
+    }
+
+    pub fn spawn<F, Fut>(&self, f: F) -> JoinHandle<Result<Fut::Output, CudaError>>
+    where
+        F: FnOnce(TaskScope) -> Fut + Send + 'static,
+        Fut: Future + Send + 'static,
+        Fut::Output: CudaSend + 'static,
+    {
+        let parent = self.clone();
+        tokio::spawn(async move {
+            let task = parent.owner().task().await.unwrap();
+            unsafe {
+                // Use the task's end event to synchronize the parent task.
+                // This is safe because this is the first time this task is being run so we know
+                // there are no other copies that record anything on this event at the same time.
+                parent.stream.record_unchecked(&task.inner.end_event)?;
+                task.inner.stream.wait_unchecked(&task.inner.end_event)?
+            };
+            let handle = task.run(f).await;
+            handle.join(&parent)
+        })
     }
 }
 
 impl StreamRef for TaskScope {
     #[inline]
     unsafe fn stream(&self) -> &CudaStream {
-        &self.0.stream
+        &self.stream
     }
 }
 
@@ -393,17 +438,6 @@ pub struct Task {
     pub(crate) id: usize,
     pub(crate) stream: CudaStream,
     end_event: CudaEvent,
-}
-
-impl Task {
-    #[inline]
-    unsafe fn scope(&self) -> TaskScope {
-        let stream = CudaStream(self.stream.0);
-        let end_event = CudaEvent(self.end_event.0);
-        let task =
-            ManuallyDrop::new(Task { owner_id: self.owner_id, id: self.id, stream, end_event });
-        TaskScope(Arc::new(task))
-    }
 }
 
 impl PartialEq for Task {
@@ -478,34 +512,21 @@ impl OwnedTask {
         })
     }
 
-    /// Joins this task into another task.
-    ///
-    /// The other task will wait for the current task to finish.
-    #[inline]
-    unsafe fn join(self, parent: &TaskScope) -> Result<(), CudaError> {
-        parent.stream.wait_unchecked(&self.inner.end_event)
-    }
-
-    pub async fn run<F, Fut, R>(self, f: F) -> OwnedTaskHandle<R>
+    pub async fn run<F, Fut, R>(self, f: F) -> TaskHandle<R>
     where
         F: FnOnce(TaskScope) -> Fut,
         Fut: Future<Output = R>,
         R: Send,
     {
-        let scope = unsafe { self.inner.scope() };
-        let value = f(scope).await;
-        unsafe { self.inner.stream.record_unchecked(&self.inner.end_event).unwrap() };
-        OwnedTaskHandle { task: self, value }
+        let strong_ptr = Arc::new(self);
+        let scope = TaskScope(Arc::downgrade(&strong_ptr));
+        let value = f(scope.clone()).await;
+        unsafe { scope.stream.record_unchecked(&scope.end_event).unwrap() };
+        TaskHandle { _task: strong_ptr, scope, value }
     }
 }
 
-impl StreamRef for OwnedTask {
-    unsafe fn stream(&self) -> &CudaStream {
-        &self.inner.stream
-    }
-}
-
-impl IntoFuture for OwnedTask {
+impl IntoFuture for TaskScope {
     type Output = Result<(), CudaError>;
     type IntoFuture = StreamCallbackFuture<Self>;
 
@@ -514,31 +535,32 @@ impl IntoFuture for OwnedTask {
     }
 }
 
-pub struct OwnedTaskHandle<T> {
-    task: OwnedTask,
+pub struct TaskHandle<T> {
+    _task: Arc<OwnedTask>,
+    scope: TaskScope,
     value: T,
 }
 
-impl<T> OwnedTaskHandle<T> {
-    pub fn join(mut self, parent: &TaskScope) -> Result<T, CudaError>
+impl<T> TaskHandle<T> {
+    pub fn join(self, parent: &TaskScope) -> Result<T, CudaError>
     where
         T: CudaSend,
     {
         // See [TaskHandle::join] for the explanation of safety. Here this is a bit more complex,
         // but the eventual panic still applies. This is enough in most cases.
         unsafe {
-            self.task.join(parent)?;
-            self.value.change_scope(parent)
+            self.scope.join(parent)?;
+            let value = self.value.send_to_scope(parent);
+            // Return the value to the caller.
+            Ok(value)
         }
-        // Return the value to the caller.
-        Ok(self.value)
     }
 }
 
 #[pin_project]
 pub struct StreamHandleFuture<T> {
     #[pin]
-    callback: StreamCallbackFuture<OwnedTask>,
+    callback: StreamCallbackFuture<TaskScope>,
     value: MaybeUninit<T>,
 }
 
@@ -559,14 +581,14 @@ impl<T> Future for StreamHandleFuture<T> {
     }
 }
 
-impl<T> IntoFuture for OwnedTaskHandle<T> {
+impl<T> IntoFuture for TaskHandle<T> {
     type Output = Result<T, CudaError>;
     type IntoFuture = StreamHandleFuture<T>;
 
     #[inline]
     fn into_future(self) -> Self::IntoFuture {
         StreamHandleFuture {
-            callback: self.task.into_future(),
+            callback: self.scope.into_future(),
             value: MaybeUninit::new(self.value),
         }
     }

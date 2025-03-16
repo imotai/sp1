@@ -1,3 +1,7 @@
+mod fix_last_variable;
+mod sum_as_poly;
+
+use fix_last_variable::zerocheck_fix_last_variable_device;
 use futures::future::OptionFuture;
 use slop_algebra::{ExtensionField, Field, UnivariatePolynomial};
 use slop_alloc::{CanCopyIntoRef, CpuBackend, ToHost};
@@ -9,10 +13,8 @@ use slop_sumcheck::{
     ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend, SumcheckPolyBase,
 };
 use slop_tensor::TransposeBackend;
-use sp1_stark::prover::{
-    zerocheck_fix_last_variable, zerocheck_sum_as_poly_in_last_variable, ZeroCheckPoly,
-    ZerocheckRoundProver,
-};
+use sp1_stark::prover::{ZeroCheckPoly, ZerocheckRoundProver};
+use sum_as_poly::zerocheck_sum_as_poly_in_last_variable_device;
 
 use crate::TaskScope;
 
@@ -60,7 +62,9 @@ impl<F, EF, AirData> SumCheckPolyFirstRoundBackend<ZeroCheckPoly<F, F, EF, AirDa
 where
     F: Field,
     EF: ExtensionField<F>,
-    AirData: ZerocheckRoundProver<F, F, EF, TaskScope> + ZerocheckRoundProver<F, EF, EF, TaskScope>,
+    AirData: ZerocheckRoundProver<F, F, EF, TaskScope>
+        + ZerocheckRoundProver<F, EF, EF, TaskScope>
+        + Clone,
     TaskScope: MleFixLastVariableBackend<F, EF>
         + MleBaseBackend<EF>
         + HostEvaluationBackend<F, F>
@@ -95,7 +99,7 @@ where
         t: usize,
     ) -> Self::NextRoundPoly {
         assert!(t == 1);
-        zerocheck_fix_last_variable(poly, alpha).await
+        zerocheck_fix_last_variable_device(poly, alpha).await
     }
 
     async fn sum_as_poly_in_last_t_variables(
@@ -105,8 +109,7 @@ where
     ) -> UnivariatePolynomial<EF> {
         assert!(t == 1);
         assert!(poly.num_variables() > 0);
-        zerocheck_sum_as_poly_in_last_variable::<F, F, EF, AirData, TaskScope, true>(poly, claim)
-            .await
+        zerocheck_sum_as_poly_in_last_variable_device::<F, F, EF, AirData, true>(poly, claim).await
     }
 }
 
@@ -115,7 +118,9 @@ impl<F, EF, AirData> SumcheckPolyBackend<ZeroCheckPoly<EF, F, EF, AirData, TaskS
 where
     F: Field,
     EF: ExtensionField<F>,
-    AirData: ZerocheckRoundProver<F, F, EF, TaskScope> + ZerocheckRoundProver<F, EF, EF, TaskScope>,
+    AirData: ZerocheckRoundProver<F, F, EF, TaskScope>
+        + ZerocheckRoundProver<F, EF, EF, TaskScope>
+        + Clone,
     TaskScope: MleFixLastVariableBackend<EF, EF>
         + MleBaseBackend<EF>
         + HostEvaluationBackend<F, EF>
@@ -138,7 +143,7 @@ where
         poly: ZeroCheckPoly<EF, F, EF, AirData, TaskScope>,
         alpha: EF,
     ) -> ZeroCheckPoly<EF, F, EF, AirData, TaskScope> {
-        zerocheck_fix_last_variable(poly, alpha).await
+        zerocheck_fix_last_variable_device(poly, alpha).await
     }
 
     async fn sum_as_poly_in_last_variable(
@@ -146,7 +151,7 @@ where
         claim: Option<EF>,
     ) -> UnivariatePolynomial<EF> {
         assert!(poly.num_variables() > 0);
-        zerocheck_sum_as_poly_in_last_variable::<EF, F, EF, AirData, TaskScope, false>(poly, claim)
+        zerocheck_sum_as_poly_in_last_variable_device::<EF, F, EF, AirData, false>(poly, claim)
             .await
     }
 }

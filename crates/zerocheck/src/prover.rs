@@ -111,6 +111,19 @@ pub struct ZerocheckEvalProgramProver<F, EF, A> {
     air: Arc<A>,
 }
 
+impl<F, EF, A> Clone for ZerocheckEvalProgramProver<F, EF, A> {
+    fn clone(&self) -> Self {
+        Self {
+            eval_program: self.eval_program.clone(),
+            public_values: self.public_values.clone(),
+            public_values_device: self.public_values_device.clone(),
+            powers_of_alpha: self.powers_of_alpha.clone(),
+            powers_of_alpha_device: self.powers_of_alpha_device.clone(),
+            air: self.air.clone(),
+        }
+    }
+}
+
 impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
     pub fn new(
         eval_program: Arc<EvalProgram<F, EF, TaskScope>>,

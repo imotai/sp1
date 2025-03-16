@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use csl_sys::{
     mle::{
         mle_fix_last_variable_baby_bear_base_base_constant_padding,
@@ -34,7 +36,7 @@ where
     async fn mle_fix_last_variable(
         mle: &Tensor<F, Self>,
         alpha: EF,
-        padding_values: MleEval<F, Self>,
+        padding_values: Arc<MleEval<F, Self>>,
     ) -> Tensor<EF, Self> {
         let num_polynomials = Self::num_polynomials(mle);
         let input_height = mle.sizes()[1];
@@ -204,15 +206,18 @@ unsafe impl MleFixLastVariableInPlaceKernel<BinomialExtensionField<BabyBear, 4>>
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{iter::once, sync::Arc};
 
     use rand::Rng;
     use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::AbstractField;
     use slop_alloc::{CanCopyFromRef, CpuBackend, IntoHost, ToHost};
     use slop_baby_bear::BabyBear;
+    use slop_commit::Message;
     use slop_multilinear::{Mle, PaddedMle, Padding, Point};
     use slop_tensor::Tensor;
+
+    use crate::{sync::CudaSend, IntoDevice, ToDevice};
 
     #[tokio::test]
     async fn test_mle_fix_last_variable() {
@@ -255,6 +260,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_spawned_mle_fix_last_variable() {
+        let mut rng = rand::thread_rng();
+
+        type F = BabyBear;
+        type EF = BinomialExtensionField<F, 4>;
+
+        let num_variables = 16;
+        let num_tasks = 10;
+
+        let mles = (0..num_tasks)
+            .map(|_| Mle::<F>::new(Tensor::rand(&mut rng, [1 << num_variables, 1])))
+            .collect::<Message<_>>();
+        let random_point = Point::<EF>::rand(&mut rng, num_variables - 1);
+        let alpha = rng.gen::<EF>();
+
+        let complete_point = random_point.iter().copied().chain(once(alpha)).collect::<Point<_>>();
+
+        // Do all the fix last variables in parallel.
+
+        // let random_point_ref = &random_point;
+        crate::task()
+            .await
+            .unwrap()
+            .run(|t| async move {
+                // let random_point = random_point.to_device_in(&t).await.unwrap();
+                let random_point = random_point.clone();
+                let mut handles = Vec::new();
+                for mle in mles.iter().cloned() {
+                    let random_point = random_point.clone();
+                    let mle = mle.into_device_in(&t).await.unwrap();
+                    let handle = t.spawn(move |s| async move {
+                        let mle = unsafe { mle.send_to_scope(&s) };
+                        let restriction = mle.fix_last_variable(alpha).await;
+                        let random_point = random_point.to_device_in(&s).await.unwrap();
+                        let evals = restriction.eval_at(&random_point).await;
+                        evals.into_evaluations().into_host().await.unwrap()
+                    });
+                    handles.push(handle);
+                }
+                let mut evals = Vec::new();
+                for handle in handles {
+                    // Get the evals
+                    let eval = handle.await.unwrap().unwrap();
+                    evals.push(eval);
+                }
+                let complete_point = complete_point.to_device_in(&t).await.unwrap();
+                for (eval, mle) in evals.iter().zip(mles) {
+                    let d_mle = mle.into_device_in(&t).await.unwrap();
+                    let d_eval = d_mle.eval_at(&complete_point).await;
+                    let h_eval = d_eval.into_evaluations().into_host().await.unwrap();
+                    for (e, h_e) in eval.as_slice().iter().zip(h_eval.as_slice().iter()) {
+                        assert_eq!(e, h_e);
+                    }
+                }
+            })
+            .await
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn test_padded_mle_fix_last_variable() {
         let mut rng = rand::thread_rng();
 
@@ -265,11 +331,12 @@ mod tests {
         let padded_mle = PaddedMle::padded(
             Arc::new(mle.clone()),
             17,
-            Padding::Generic(vec![F::one(), F::two()].into()),
+            Padding::Generic(Arc::new(vec![F::one(), F::two()].into())),
         );
         let alpha = rng.gen::<EF>();
 
-        let mle_evals: Padding<F, CpuBackend> = Padding::Generic(vec![F::one(), F::two()].into());
+        let mle_evals: Padding<F, CpuBackend> =
+            Padding::Generic(Arc::new(vec![F::one(), F::two()].into()));
         let evals = crate::task()
             .await
             .unwrap()
@@ -297,8 +364,6 @@ mod tests {
         {
             assert_eq!(eval, host_eval, "Incorrect values at index {}", i);
         }
-
-        // assert_eq!(evals, restriction);
     }
 
     #[tokio::test]
@@ -312,13 +377,13 @@ mod tests {
         let padded_mle = PaddedMle::padded(
             Arc::new(mle.clone()),
             17,
-            Padding::Generic(vec![F::one(), F::two()].into()),
+            Padding::Generic(Arc::new(vec![F::one(), F::two()].into())),
         );
         let point = (0..17).map(|_| rng.gen::<EF>()).collect::<Point<_>>();
         let point_clone = point.clone();
 
         let padded_evals: Padding<F, CpuBackend> =
-            Padding::Generic(vec![F::one(), F::two()].into());
+            Padding::Generic(Arc::new(vec![F::one(), F::two()].into()));
         let device_evals = crate::task()
             .await
             .unwrap()

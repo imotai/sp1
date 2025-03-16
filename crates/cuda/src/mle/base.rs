@@ -7,7 +7,7 @@ use slop_multilinear::{Evaluations, Mle, MleEval, Padding, Point};
 use slop_tensor::{Tensor, TransposeBackend};
 use tokio::sync::oneshot;
 
-use crate::{DeviceCopy, SmallBuffer, SmallTensor, TaskScope};
+use crate::{sync::CudaSend, DeviceCopy, SmallBuffer, SmallTensor, TaskScope};
 
 impl<F: Field> CopyIntoBackend<CpuBackend, TaskScope> for Mle<F, TaskScope>
 where
@@ -96,9 +96,12 @@ impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Padding<F, TaskSc
     type Output = Padding<F, CpuBackend>;
     async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
         match self {
-            Padding::Generic(padding_values) => {
-                padding_values.copy_into_backend(backend).await.map(Padding::Generic)
-            }
+            Padding::Generic(padding_values) => padding_values
+                .as_ref()
+                .copy_to_backend(backend)
+                .await
+                .map(Arc::new)
+                .map(Padding::Generic),
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((value, num_polys, *backend)))
             }
@@ -119,9 +122,12 @@ impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Padding<F, CpuBac
     type Output = Padding<F, TaskScope>;
     async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         match self {
-            Padding::Generic(padding_values) => {
-                padding_values.copy_into_backend(backend).await.map(Padding::Generic)
-            }
+            Padding::Generic(padding_values) => padding_values
+                .as_ref()
+                .copy_to_backend(backend)
+                .await
+                .map(Arc::new)
+                .map(Padding::Generic),
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((value, num_polys, backend.clone())))
             }
@@ -143,7 +149,9 @@ impl<F: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Padding<F, TaskScop
     async fn copy_to_backend(&self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
         match self {
             Padding::Generic(padding_values) => {
-                padding_values.copy_to_backend(backend).await.map(Padding::Generic)
+                let padding_values = padding_values.as_ref().copy_to_backend(backend).await?;
+                let padding_values = Arc::new(padding_values);
+                Ok(Padding::Generic(padding_values))
             }
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((*value, *num_polys, *backend)))
@@ -167,7 +175,9 @@ impl<F: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Padding<F, CpuBacke
     async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         match self {
             Padding::Generic(padding_values) => {
-                padding_values.copy_to_backend(backend).await.map(Padding::Generic)
+                let padding_values = padding_values.as_ref().copy_to_backend(backend).await?;
+                let padding_values = Arc::new(padding_values);
+                Ok(Padding::Generic(padding_values))
             }
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((*value, *num_polys, backend.clone())))
@@ -232,5 +242,29 @@ impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Evaluations<F, Ta
             .collect::<Vec<_>>()
             .await;
         Ok(Evaluations::new(evaluations))
+    }
+}
+
+impl<T> CudaSend for Mle<T, TaskScope> {
+    #[inline]
+    unsafe fn send_to_scope(self, scope: &TaskScope) -> Self {
+        let guts = self.into_guts().send_to_scope(scope);
+        Mle::new(guts)
+    }
+}
+
+impl<T> CudaSend for MleEval<T, TaskScope> {
+    #[inline]
+    unsafe fn send_to_scope(self, scope: &TaskScope) -> Self {
+        let evaluations = self.into_evaluations().send_to_scope(scope);
+        MleEval::new(evaluations)
+    }
+}
+
+impl<T> CudaSend for Point<T, TaskScope> {
+    #[inline]
+    unsafe fn send_to_scope(self, scope: &TaskScope) -> Self {
+        let values = self.into_values().send_to_scope(scope);
+        Point::new(values)
     }
 }
