@@ -11,7 +11,7 @@ use slop_alloc::{Backend, Buffer, CopyToBackend, CpuBackend, HasBackend};
 use slop_baby_bear::BabyBear;
 use slop_multilinear::{Mle, PaddedMle, Padding};
 use slop_tensor::Tensor;
-use sp1_stark::Interaction;
+use sp1_stark::{GkrMle, Interaction};
 
 impl<F: Field> From<PairCol> for PairColDevice<F> {
     fn from(value: PairCol) -> Self {
@@ -236,7 +236,7 @@ pub async fn generate_gkr_input_mles<F: PrimeField, EF: ExtensionField<F>>(
     alpha: EF,
     betas: &Powers<EF>,
     log_max_row_height: usize,
-) -> (PaddedMle<F, TaskScope>, PaddedMle<EF, TaskScope>)
+) -> GkrMle<F, EF, TaskScope>
 where
     TaskScope: GKRTracegenKernel<F, EF>,
 {
@@ -246,18 +246,19 @@ where
     let width = sends.len() + receives.len();
 
     if main.num_real_entries() == 0 {
-        return (
-            PaddedMle::new(
-                None,
-                log_max_row_height as u32,
-                Padding::Constant((F::zero(), width, backend.clone())),
-            ),
-            PaddedMle::new(
-                None,
-                log_max_row_height as u32,
-                Padding::Constant((EF::one(), width, backend.clone())),
-            ),
+        let numerator_0 = PaddedMle::new(
+            None,
+            (log_max_row_height - 1) as u32,
+            Padding::Constant((F::zero(), width, backend.clone())),
         );
+        let numerator_1 = numerator_0.clone();
+        let denom_0 = PaddedMle::new(
+            None,
+            (log_max_row_height - 1) as u32,
+            Padding::Constant((EF::one(), width, backend.clone())),
+        );
+        let denom_1 = denom_0.clone();
+        return GkrMle { numerator_0, numerator_1, denom_0, denom_1 };
     }
 
     let host_interactions = DeviceInteractions::new(sends, receives);
@@ -266,9 +267,14 @@ where
 
     // backend.synchronize().await.unwrap();
 
-    let mut numer: Tensor<F, TaskScope> = Tensor::with_sizes_in([width, height], backend.clone());
-
-    let mut denom: Tensor<EF, TaskScope> = Tensor::with_sizes_in([width, height], backend.clone());
+    let mut numer_0: Tensor<F, TaskScope> =
+        Tensor::with_sizes_in([width, height / 2], backend.clone());
+    let mut numer_1: Tensor<F, TaskScope> =
+        Tensor::with_sizes_in([width, height / 2], backend.clone());
+    let mut denom_0: Tensor<EF, TaskScope> =
+        Tensor::with_sizes_in([width, height / 2], backend.clone());
+    let mut denom_1: Tensor<EF, TaskScope> =
+        Tensor::with_sizes_in([width, height / 2], backend.clone());
 
     const BLOCK_SIZE: usize = 256;
     const STRIDE: usize = 1;
@@ -278,15 +284,16 @@ where
 
     // backend.synchronize().await.unwrap();
     let backend = backend.clone();
-    let backend = backend.clone();
     match preprocessed {
         Some(preprocessed) => unsafe {
             let device_interactions_ptr = device_interactions.as_ptr();
 
             let args = args!(
                 device_interactions_ptr,
-                numer.as_mut_ptr(),
-                denom.as_mut_ptr(),
+                numer_0.as_mut_ptr(),
+                denom_0.as_mut_ptr(),
+                numer_1.as_mut_ptr(),
+                denom_1.as_mut_ptr(),
                 preprocessed.inner().as_ref().unwrap().guts().as_ptr(),
                 main.inner().as_ref().unwrap().guts().as_ptr(),
                 alpha,
@@ -294,8 +301,10 @@ where
                 height
             );
 
-            numer.assume_init();
-            denom.assume_init();
+            numer_0.assume_init();
+            denom_0.assume_init();
+            numer_1.assume_init();
+            denom_1.assume_init();
 
             backend
                 .launch_kernel(
@@ -313,16 +322,20 @@ where
 
             let args = args!(
                 device_interactions_ptr,
-                numer.as_mut_ptr(),
-                denom.as_mut_ptr(),
+                numer_0.as_mut_ptr(),
+                denom_0.as_mut_ptr(),
+                numer_1.as_mut_ptr(),
+                denom_1.as_mut_ptr(),
                 null_ptr,
                 main.inner().as_ref().unwrap().guts().as_ptr(),
                 alpha,
                 betas.clone().take(2).collect::<Vec<_>>()[1],
                 height
             );
-            numer.assume_init();
-            denom.assume_init();
+            numer_0.assume_init();
+            denom_0.assume_init();
+            numer_1.assume_init();
+            denom_1.assume_init();
 
             backend
                 .launch_kernel(
@@ -336,18 +349,27 @@ where
         },
     }
 
-    (
-        PaddedMle::new(
-            Some(Arc::new(Mle::new(numer))),
-            log_max_row_height as u32,
-            Padding::Constant((F::zero(), width, backend.clone())),
-        ),
-        PaddedMle::new(
-            Some(Arc::new(Mle::new(denom))),
-            log_max_row_height as u32,
-            Padding::Constant((EF::one(), width, backend.clone())),
-        ),
-    )
+    let numerator_0 = PaddedMle::new(
+        Some(Arc::new(Mle::new(numer_0))),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((F::zero(), width, backend.clone())),
+    );
+    let numerator_1 = PaddedMle::new(
+        Some(Arc::new(Mle::new(numer_1))),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((F::zero(), width, backend.clone())),
+    );
+    let denom_0 = PaddedMle::new(
+        Some(Arc::new(Mle::new(denom_0))),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((EF::one(), width, backend.clone())),
+    );
+    let denom_1 = PaddedMle::new(
+        Some(Arc::new(Mle::new(denom_1))),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((EF::one(), width, backend.clone())),
+    );
+    GkrMle { numerator_0, numerator_1, denom_0, denom_1 }
 }
 
 #[cfg(test)]
@@ -466,7 +488,7 @@ pub mod tests {
         let beta = rng.gen::<EF>();
         // Transfer perm and main traces to the device.
 
-        let (numerator_d, denom_d) = crate::task()
+        let mles_d = crate::task()
             .await
             .unwrap()
             .run(|t| async move {
@@ -520,8 +542,10 @@ pub mod tests {
             .await
             .unwrap();
 
-        let numerator_h = numerator_d.into_host().await.unwrap();
-        let denom_h = denom_d.into_host().await.unwrap();
+        let numerator_0_h = mles_d.numerator_0.into_host().await.unwrap();
+        let numerator_1_h = mles_d.numerator_1.into_host().await.unwrap();
+        let denom_0_h = mles_d.denom_0.into_host().await.unwrap();
+        let denom_1_h = mles_d.denom_1.into_host().await.unwrap();
 
         let padded_main = PaddedMle::new(
             if real_main_trace { Some(Arc::new(main_trace_clone.into())) } else { None },
@@ -537,7 +561,7 @@ pub mod tests {
             )
         });
 
-        let (expected_numer, expected_denom) = sp1_stark::generate_gkr_input_mles(
+        let gkr_mle = sp1_stark::generate_gkr_input_mles(
             padded_prep.as_ref(),
             &padded_main,
             chip_clone
@@ -551,64 +575,133 @@ pub mod tests {
             &beta.powers(),
             log_num_padded_rows as usize,
         );
-        assert_eq!(numerator_h.num_real_entries(), expected_numer.num_real_entries());
-        assert_eq!(denom_h.num_real_entries(), expected_denom.num_real_entries());
-        assert_eq!(numerator_h.num_polynomials(), expected_numer.num_polynomials());
-        assert_eq!(denom_h.num_polynomials(), expected_denom.num_polynomials());
+        assert_eq!(numerator_0_h.num_real_entries(), gkr_mle.numerator_0.num_real_entries());
+        assert_eq!(numerator_1_h.num_real_entries(), gkr_mle.numerator_1.num_real_entries());
+        assert_eq!(denom_0_h.num_real_entries(), gkr_mle.denom_0.num_real_entries());
+        assert_eq!(denom_1_h.num_real_entries(), gkr_mle.denom_1.num_real_entries());
 
-        assert_eq!(numerator_h.num_variables(), expected_numer.num_variables());
-        assert_eq!(denom_h.num_variables(), expected_denom.num_variables());
+        assert_eq!(numerator_0_h.num_polynomials(), gkr_mle.numerator_0.num_polynomials());
+        assert_eq!(numerator_1_h.num_polynomials(), gkr_mle.numerator_1.num_polynomials());
+        assert_eq!(denom_0_h.num_polynomials(), gkr_mle.denom_0.num_polynomials());
+        assert_eq!(denom_1_h.num_polynomials(), gkr_mle.denom_1.num_polynomials());
+
+        assert_eq!(numerator_0_h.num_variables(), gkr_mle.numerator_0.num_variables());
+        assert_eq!(numerator_1_h.num_variables(), gkr_mle.numerator_1.num_variables());
+        assert_eq!(denom_0_h.num_variables(), gkr_mle.denom_0.num_variables());
+        assert_eq!(denom_1_h.num_variables(), gkr_mle.denom_1.num_variables());
 
         // Compare the values to the host values.
-        for (i, (exp, res)) in expected_numer
+        for (i, (exp, res)) in gkr_mle
+            .numerator_0
             .inner()
             .as_ref()
             .map(|x| x.guts().as_slice())
             .unwrap_or(&[])
             .iter()
-            .zip_eq(numerator_h.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter())
+            .zip_eq(
+                numerator_0_h.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter(),
+            )
             .enumerate()
         {
             assert_eq!(exp, res, "numer values failed at index {}", i);
         }
 
-        for (i, (exp, res)) in expected_denom
+        for (i, (exp, res)) in gkr_mle
+            .numerator_1
             .inner()
             .as_ref()
             .map(|x| x.guts().as_slice())
             .unwrap_or(&[])
             .iter()
-            .zip_eq(denom_h.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter())
+            .zip_eq(
+                numerator_1_h.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter(),
+            )
+            .enumerate()
+        {
+            assert_eq!(exp, res, "numer values failed at index {}", i);
+        }
+
+        for (i, (exp, res)) in gkr_mle
+            .denom_0
+            .inner()
+            .as_ref()
+            .map(|x| x.guts().as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .zip_eq(denom_0_h.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter())
             .enumerate()
         {
             assert_eq!(exp, res, "denom values failed at index {}", i);
         }
 
-        // for (i, (exp, res)) in expected_numer
-        //     .padding_values()
-        //     .to_host()
-        //     .await
-        //     .unwrap()
-        //     .to_vec()
-        //     .iter()
-        //     .zip_eq(numerator_h.padding_values().to_host().await.unwrap().to_vec().iter())
-        //     .enumerate()
-        // {
-        //     assert_eq!(exp, res, "numer padding values failed at index {}", i);
-        // }
+        for (i, (exp, res)) in gkr_mle
+            .denom_1
+            .inner()
+            .as_ref()
+            .map(|x| x.guts().as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .zip_eq(denom_1_h.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter())
+            .enumerate()
+        {
+            assert_eq!(exp, res, "denom values failed at index {}", i);
+        }
 
-        // for (i, (exp, res)) in expected_denom
-        //     .padding_values()
-        //     .to_host()
-        //     .await
-        //     .unwrap()
-        //     .to_vec()
-        //     .iter()
-        //     .zip_eq(denom_h.padding_values().to_host().await.unwrap().to_vec().iter())
-        //     .enumerate()
-        // {
-        //     assert_eq!(exp, res, "denom padding values failed at index {}", i);
-        // }
+        match gkr_mle.denom_1.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, EF::one());
+            }
+            _ => panic!("Padding values not constant"),
+        }
+
+        match gkr_mle.denom_0.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, EF::one());
+            }
+            _ => panic!("Padding values not constant"),
+        }
+
+        match gkr_mle.numerator_1.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, F::zero());
+            }
+            _ => panic!("Padding values not constant"),
+        }
+
+        match gkr_mle.numerator_0.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, F::zero());
+            }
+            _ => panic!("Padding values not constant"),
+        }
+
+        match denom_0_h.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, EF::one());
+            }
+            _ => panic!("Padding values not constant"),
+        }
+
+        match denom_1_h.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, EF::one());
+            }
+            _ => panic!("Padding values not constant"),
+        }
+
+        match numerator_0_h.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, F::zero());
+            }
+            _ => panic!("Padding values not constant"),
+        }
+
+        match numerator_1_h.padding_values() {
+            Padding::Constant((val, _, _)) => {
+                assert_eq!(*val, F::zero());
+            }
+            _ => panic!("Padding values not constant"),
+        }
     }
 
     #[tokio::test]

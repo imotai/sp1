@@ -17,6 +17,7 @@ use slop_alloc::HasBackend;
 use slop_baby_bear::BabyBear;
 use slop_multilinear::{Mle, PaddedMle, Padding};
 use slop_tensor::Tensor;
+use sp1_stark::GkrMle;
 
 pub trait GKRCircuitKernel<K, EK> {
     fn gkr_circuit_transition() -> KernelPtr;
@@ -37,43 +38,56 @@ impl GKRCircuitKernel<BinomialExtensionField<BabyBear, 4>, BinomialExtensionFiel
 }
 
 pub async fn gkr_circuit_transition<K: Field, EK: ExtensionField<K>>(
-    p: &PaddedMle<K, TaskScope>,
-    q: &PaddedMle<EK, TaskScope>,
-) -> (PaddedMle<EK, TaskScope>, PaddedMle<EK, TaskScope>)
+    input_mle: &GkrMle<K, EK, TaskScope>,
+) -> GkrMle<EK, EK, TaskScope>
 where
     TaskScope: GKRCircuitKernel<K, EK>,
 {
-    let backend = p.padding_values().backend();
+    let GkrMle { numerator_0: p_0, numerator_1: p_1, denom_0: q_0, denom_1: q_1 } = input_mle;
+    let backend = p_0.padding_values().backend();
 
-    let height = p.num_real_entries();
-    let width = p.num_polynomials();
+    let height = p_0.num_real_entries();
+    let width = p_0.num_polynomials();
 
-    assert_eq!(q.num_real_entries(), height);
-    assert_eq!(q.num_polynomials(), width);
+    assert_eq!(q_0.num_real_entries(), height);
+    assert_eq!(q_0.num_polynomials(), width);
+    assert_eq!(q_1.num_real_entries(), height);
+    assert_eq!(q_1.num_polynomials(), width);
+    assert_eq!(p_1.num_real_entries(), height);
+    assert_eq!(p_1.num_polynomials(), width);
 
-    if p.inner().is_none() {
-        assert!(q.inner().is_none());
+    if p_0.inner().is_none() {
+        assert!(q_0.inner().is_none());
+        assert!(p_1.inner().is_none());
+        assert!(q_1.inner().is_none());
 
-        return (
-            PaddedMle::new(
-                None,
-                p.num_variables() - 1,
-                Padding::Constant((EK::zero(), p.num_polynomials(), backend.clone())),
-            ),
-            PaddedMle::new(
-                None,
-                q.num_variables() - 1,
-                Padding::Constant((EK::one(), p.num_polynomials(), backend.clone())),
-            ),
+        let numerator_0 = PaddedMle::new(
+            None,
+            p_0.num_variables() - 1,
+            Padding::Constant((EK::zero(), p_0.num_polynomials(), backend.clone())),
         );
+        let numerator_1 = numerator_0.clone();
+        let denom_0 = PaddedMle::new(
+            None,
+            q_0.num_variables() - 1,
+            Padding::Constant((EK::one(), p_0.num_polynomials(), backend.clone())),
+        );
+        let denom_1 = denom_0.clone();
+        return GkrMle { numerator_0, numerator_1, denom_0, denom_1 };
     }
 
     let output_height = height.div_ceil(2);
 
-    let mut new_p: Tensor<EK, TaskScope> =
+    let mut new_p_0: Tensor<EK, TaskScope> =
         Tensor::with_sizes_in([width, output_height], backend.clone());
 
-    let mut new_q: Tensor<EK, TaskScope> =
+    let mut new_p_1: Tensor<EK, TaskScope> =
+        Tensor::with_sizes_in([width, output_height], backend.clone());
+
+    let mut new_q_0: Tensor<EK, TaskScope> =
+        Tensor::with_sizes_in([width, output_height], backend.clone());
+
+    let mut new_q_1: Tensor<EK, TaskScope> =
         Tensor::with_sizes_in([width, output_height], backend.clone());
 
     const BLOCK_SIZE: usize = 256;
@@ -83,14 +97,20 @@ where
     let grid_size = (grid_size_x, grid_size_y, 1);
 
     unsafe {
-        new_p.assume_init();
-        new_q.assume_init();
+        new_p_0.assume_init();
+        new_p_1.assume_init();
+        new_q_0.assume_init();
+        new_q_1.assume_init();
 
         let args = args!(
-            p.inner().as_ref().unwrap().guts().as_ptr(),
-            q.inner().as_ref().unwrap().guts().as_ptr(),
-            new_p.as_mut_ptr(),
-            new_q.as_mut_ptr(),
+            p_0.inner().as_ref().unwrap().guts().as_ptr(),
+            p_1.inner().as_ref().unwrap().guts().as_ptr(),
+            q_0.inner().as_ref().unwrap().guts().as_ptr(),
+            q_1.inner().as_ref().unwrap().guts().as_ptr(),
+            new_p_0.as_mut_ptr(),
+            new_p_1.as_mut_ptr(),
+            new_q_0.as_mut_ptr(),
+            new_q_1.as_mut_ptr(),
             height,
             width
         );
@@ -106,18 +126,28 @@ where
             .unwrap();
     }
 
-    (
-        PaddedMle::new(
-            Some(Arc::new(Mle::new(new_p))),
-            p.num_variables() - 1,
-            Padding::Constant((EK::zero(), p.num_polynomials(), backend.clone())),
-        ),
-        PaddedMle::new(
-            Some(Arc::new(Mle::new(new_q))),
-            q.num_variables() - 1,
-            Padding::Constant((EK::one(), p.num_polynomials(), backend.clone())),
-        ),
-    )
+    let numerator_0 = PaddedMle::new(
+        Some(Arc::new(Mle::new(new_p_0))),
+        p_0.num_variables() - 1,
+        Padding::Constant((EK::zero(), p_0.num_polynomials(), backend.clone())),
+    );
+    let numerator_1 = PaddedMle::new(
+        Some(Arc::new(Mle::new(new_p_1))),
+        p_1.num_variables() - 1,
+        Padding::Constant((EK::zero(), p_1.num_polynomials(), backend.clone())),
+    );
+    let denom_0 = PaddedMle::new(
+        Some(Arc::new(Mle::new(new_q_0))),
+        q_0.num_variables() - 1,
+        Padding::Constant((EK::one(), q_0.num_polynomials(), backend.clone())),
+    );
+    let denom_1 = PaddedMle::new(
+        Some(Arc::new(Mle::new(new_q_1))),
+        q_1.num_variables() - 1,
+        Padding::Constant((EK::one(), q_1.num_polynomials(), backend.clone())),
+    );
+
+    GkrMle { numerator_0, numerator_1, denom_0, denom_1 }
 }
 
 pub trait GKRPolyKernel<K, EK> {
@@ -154,8 +184,12 @@ mod tests {
     use slop_multilinear::{Mle, Padding};
     use sp1_stark::circuit_layer;
 
-    pub async fn test_gkr_circuit<F, EF>(p_vals: PaddedMle<F>, q_vals: PaddedMle<EF>)
-    where
+    pub async fn test_gkr_circuit<F, EF>(
+        p_0_vals: PaddedMle<F>,
+        p_1_vals: PaddedMle<F>,
+        q_0_vals: PaddedMle<EF>,
+        q_1_vals: PaddedMle<EF>,
+    ) where
         F: Field,
         EF: ExtensionField<F>,
         Standard: Distribution<F> + Distribution<EF>,
@@ -165,42 +199,77 @@ mod tests {
         Mle<F>: IntoDevice<Output = Mle<F, TaskScope>>,
         Mle<EF>: IntoDevice<Output = Mle<EF, TaskScope>>,
     {
-        let (expected_ps, expected_qs) = circuit_layer(&p_vals, &q_vals);
+        let mle = GkrMle {
+            numerator_0: p_0_vals,
+            numerator_1: p_1_vals,
+            denom_0: q_0_vals,
+            denom_1: q_1_vals,
+        };
+        let GkrMle {
+            numerator_0: new_numerator_0,
+            numerator_1: new_numerator_1,
+            denom_0: new_denom_0,
+            denom_1: new_denom_1,
+        } = circuit_layer(&mle);
 
-        let (new_p_host, new_q_host) = crate::task()
+        let new_mle_host = crate::task()
             .await
             .unwrap()
             .run(|t| async move {
-                let p_mle_device = t.into_device(p_vals).await.unwrap();
-                let q_mle_device = t.into_device(q_vals).await.unwrap();
+                let p_0_mle_device = t.into_device(mle.numerator_0).await.unwrap();
+                let p_1_mle_device = t.into_device(mle.numerator_1).await.unwrap();
+                let q_0_mle_device = t.into_device(mle.denom_0).await.unwrap();
+                let q_1_mle_device = t.into_device(mle.denom_1).await.unwrap();
 
-                let (new_p, new_q) =
-                    gkr_circuit_transition::<F, EF>(&p_mle_device, &q_mle_device).await;
-                let new_p_host = new_p.into_host().await.unwrap();
-                let new_q_host = new_q.into_host().await.unwrap();
+                let mle_device = GkrMle {
+                    numerator_0: p_0_mle_device,
+                    numerator_1: p_1_mle_device,
+                    denom_0: q_0_mle_device,
+                    denom_1: q_1_mle_device,
+                };
 
-                (new_p_host, new_q_host)
+                let new_mle = gkr_circuit_transition::<F, EF>(&mle_device).await;
+                let new_p_0_host = new_mle.numerator_0.into_host().await.unwrap();
+                let new_p_1_host = new_mle.numerator_1.into_host().await.unwrap();
+                let new_q_0_host = new_mle.denom_0.into_host().await.unwrap();
+                let new_q_1_host = new_mle.denom_1.into_host().await.unwrap();
+
+                GkrMle {
+                    numerator_0: new_p_0_host,
+                    numerator_1: new_p_1_host,
+                    denom_0: new_q_0_host,
+                    denom_1: new_q_1_host,
+                }
             })
             .await
             .await
             .unwrap();
 
-        for (i, ((new_p, new_q), (expected_p, expected_q))) in new_p_host
+        for (i, ((new_p, new_q), (expected_p, expected_q))) in new_mle_host
+            .numerator_0
             .inner()
             .as_ref()
             .map(|x| x.guts().as_slice())
             .unwrap_or(&[])
             .iter()
-            .zip_eq(new_q_host.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter())
             .zip_eq(
-                expected_ps
+                new_mle_host
+                    .denom_0
+                    .inner()
+                    .as_ref()
+                    .map(|x| x.guts().as_slice())
+                    .unwrap_or(&[])
+                    .iter(),
+            )
+            .zip_eq(
+                new_numerator_0
                     .inner()
                     .as_ref()
                     .map(|x| x.guts().as_slice())
                     .unwrap_or(&[])
                     .iter()
                     .zip_eq(
-                        expected_qs
+                        new_denom_0
                             .inner()
                             .as_ref()
                             .map(|x| x.guts().as_slice())
@@ -214,8 +283,58 @@ mod tests {
             assert_eq!(new_q, expected_q, "Mismatch in entry {}", i);
         }
 
-        assert_eq!(new_p_host.num_variables(), expected_ps.num_variables());
-        assert_eq!(new_q_host.num_variables(), expected_qs.num_variables());
+        for (i, ((new_p, new_q), (expected_p, expected_q))) in new_mle_host
+            .numerator_1
+            .inner()
+            .as_ref()
+            .map(|x| x.guts().as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .zip_eq(
+                new_mle_host
+                    .denom_1
+                    .inner()
+                    .as_ref()
+                    .map(|x| x.guts().as_slice())
+                    .unwrap_or(&[])
+                    .iter(),
+            )
+            .zip_eq(
+                new_numerator_1
+                    .inner()
+                    .as_ref()
+                    .map(|x| x.guts().as_slice())
+                    .unwrap_or(&[])
+                    .iter()
+                    .zip_eq(
+                        new_denom_1
+                            .inner()
+                            .as_ref()
+                            .map(|x| x.guts().as_slice())
+                            .unwrap_or(&[])
+                            .iter(),
+                    ),
+            )
+            .enumerate()
+        {
+            assert_eq!(new_p, expected_p, "Mismatch in entry {}", i);
+            assert_eq!(new_q, expected_q, "Mismatch in entry {}", i);
+        }
+
+        assert_eq!(new_mle_host.numerator_0.num_variables(), new_numerator_0.num_variables());
+        assert_eq!(new_mle_host.numerator_1.num_variables(), new_numerator_1.num_variables());
+        assert_eq!(new_mle_host.denom_0.num_variables(), new_denom_0.num_variables());
+        assert_eq!(new_mle_host.denom_1.num_variables(), new_denom_1.num_variables());
+
+        assert_eq!(new_mle_host.numerator_0.num_polynomials(), new_numerator_0.num_polynomials());
+        assert_eq!(new_mle_host.numerator_1.num_polynomials(), new_numerator_1.num_polynomials());
+        assert_eq!(new_mle_host.denom_0.num_polynomials(), new_denom_0.num_polynomials());
+        assert_eq!(new_mle_host.denom_1.num_polynomials(), new_denom_1.num_polynomials());
+
+        assert_eq!(new_mle_host.numerator_0.num_real_entries(), new_numerator_0.num_real_entries());
+        assert_eq!(new_mle_host.numerator_1.num_real_entries(), new_numerator_1.num_real_entries());
+        assert_eq!(new_mle_host.denom_0.num_real_entries(), new_denom_0.num_real_entries());
+        assert_eq!(new_mle_host.denom_1.num_real_entries(), new_denom_1.num_real_entries());
     }
 
     #[tokio::test]
@@ -223,35 +342,53 @@ mod tests {
         type EF = BinomialExtensionField<BabyBear, 4>;
         let mut rng = rand::thread_rng();
 
-        let height = (1 << 10) + 7;
+        let height = 1 << 10;
         let width = 2;
 
-        let p_vals =
+        let p_0_vals =
             RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<EF>()).collect(), width);
-        let q_vals =
+        let q_0_vals =
             RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<EF>()).collect(), width);
 
-        let p = Mle::<EF>::new(p_vals.into());
+        let p_1_vals =
+            RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<EF>()).collect(), width);
+        let q_1_vals =
+            RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<EF>()).collect(), width);
 
-        let q = Mle::<EF>::new(q_vals.into());
+        let p_0 = Mle::<EF>::new(p_0_vals.into());
+        let q_0 = Mle::<EF>::new(q_0_vals.into());
+        let p_1 = Mle::<EF>::new(p_1_vals.into());
+        let q_1 = Mle::<EF>::new(q_1_vals.into());
 
-        let p_vals = PaddedMle::new(
-            Some(Arc::new(p)),
-            11,
+        let p_0_vals = PaddedMle::new(
+            Some(Arc::new(p_0)),
+            10,
             Padding::Constant((EF::zero(), width, CpuBackend)),
         );
-        let q_vals = PaddedMle::new(
-            Some(Arc::new(q)),
-            11,
+        let q_0_vals = PaddedMle::new(
+            Some(Arc::new(q_0)),
+            10,
+            Padding::Constant((EF::one(), width, CpuBackend)),
+        );
+        let p_1_vals = PaddedMle::new(
+            Some(Arc::new(p_1)),
+            10,
+            Padding::Constant((EF::zero(), width, CpuBackend)),
+        );
+        let q_1_vals = PaddedMle::new(
+            Some(Arc::new(q_1)),
+            10,
             Padding::Constant((EF::one(), width, CpuBackend)),
         );
 
-        test_gkr_circuit::<BinomialExtensionField<BabyBear, 4>, BinomialExtensionField<BabyBear, 4>>(p_vals, q_vals).await;
+        test_gkr_circuit::<BinomialExtensionField<BabyBear, 4>, BinomialExtensionField<BabyBear, 4>>(p_0_vals, p_1_vals, q_0_vals, q_1_vals).await;
 
-        let p_vals = PaddedMle::new(None, 11, Padding::Constant((EF::zero(), width, CpuBackend)));
-        let q_vals = PaddedMle::new(None, 11, Padding::Constant((EF::one(), width, CpuBackend)));
+        let p_0_vals = PaddedMle::new(None, 11, Padding::Constant((EF::zero(), width, CpuBackend)));
+        let p_1_vals = PaddedMle::new(None, 11, Padding::Constant((EF::zero(), width, CpuBackend)));
+        let q_0_vals = PaddedMle::new(None, 11, Padding::Constant((EF::one(), width, CpuBackend)));
+        let q_1_vals = PaddedMle::new(None, 11, Padding::Constant((EF::one(), width, CpuBackend)));
 
-        test_gkr_circuit::<BinomialExtensionField<BabyBear, 4>, BinomialExtensionField<BabyBear, 4>>(p_vals, q_vals).await;
+        test_gkr_circuit::<BinomialExtensionField<BabyBear, 4>, BinomialExtensionField<BabyBear, 4>>(p_0_vals, p_1_vals, q_0_vals, q_1_vals).await;
     }
 
     #[tokio::test]
@@ -260,32 +397,56 @@ mod tests {
         type EF = BinomialExtensionField<BabyBear, 4>;
         let mut rng = rand::thread_rng();
 
-        let height = (1 << 10) + 7;
+        let height = 1 << 10;
         let width = 2;
 
-        let p_vals =
+        let p_0_vals =
             RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<F>()).collect(), width);
-        let q_vals =
+        let p_1_vals =
+            RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<F>()).collect(), width);
+        let q_0_vals =
             RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<EF>()).collect(), width);
 
-        let p = Mle::<F>::new(p_vals.into());
+        let q_1_vals =
+            RowMajorMatrix::new((0..height * width).map(|_| rng.gen::<EF>()).collect(), width);
 
-        let q = Mle::<EF>::new(q_vals.into());
+        let p_0 = Mle::<F>::new(p_0_vals.into());
+        let p_1 = Mle::<F>::new(p_1_vals.into());
+        let q_0 = Mle::<EF>::new(q_0_vals.into());
+        let q_1 = Mle::<EF>::new(q_1_vals.into());
 
-        let p_vals = PaddedMle::new(
-            Some(Arc::new(p)),
-            11,
+        let p_0_vals = PaddedMle::new(
+            Some(Arc::new(p_0)),
+            10,
             Padding::Constant((F::zero(), width, CpuBackend)),
         );
-        let q_vals = PaddedMle::new(
-            Some(Arc::new(q)),
-            11,
+        let p_1_vals = PaddedMle::new(
+            Some(Arc::new(p_1)),
+            10,
+            Padding::Constant((F::zero(), width, CpuBackend)),
+        );
+        let q_0_vals = PaddedMle::new(
+            Some(Arc::new(q_0)),
+            10,
             Padding::Constant((EF::one(), width, CpuBackend)),
         );
-        test_gkr_circuit::<BabyBear, BinomialExtensionField<BabyBear, 4>>(p_vals, q_vals).await;
+        let q_1_vals = PaddedMle::new(
+            Some(Arc::new(q_1)),
+            10,
+            Padding::Constant((EF::one(), width, CpuBackend)),
+        );
+        test_gkr_circuit::<BabyBear, BinomialExtensionField<BabyBear, 4>>(
+            p_0_vals, p_1_vals, q_0_vals, q_1_vals,
+        )
+        .await;
 
-        let p_vals = PaddedMle::new(None, 11, Padding::Constant((F::zero(), width, CpuBackend)));
-        let q_vals = PaddedMle::new(None, 11, Padding::Constant((EF::one(), width, CpuBackend)));
-        test_gkr_circuit::<BabyBear, BinomialExtensionField<BabyBear, 4>>(p_vals, q_vals).await;
+        let p_0_vals = PaddedMle::new(None, 11, Padding::Constant((F::zero(), width, CpuBackend)));
+        let p_1_vals = PaddedMle::new(None, 11, Padding::Constant((F::zero(), width, CpuBackend)));
+        let q_0_vals = PaddedMle::new(None, 11, Padding::Constant((EF::one(), width, CpuBackend)));
+        let q_1_vals = PaddedMle::new(None, 11, Padding::Constant((EF::one(), width, CpuBackend)));
+        test_gkr_circuit::<BabyBear, BinomialExtensionField<BabyBear, 4>>(
+            p_0_vals, p_1_vals, q_0_vals, q_1_vals,
+        )
+        .await;
     }
 }

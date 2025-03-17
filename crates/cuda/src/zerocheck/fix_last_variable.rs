@@ -28,12 +28,6 @@ where
         + HostEvaluationBackend<K, K>,
 {
     let num_real_entries = poly.main_columns.num_real_entries();
-    // let preprocessed_columns = OptionFuture::from(
-    //     poly.preprocessed_columns.as_ref().map(|mle| mle.fix_last_variable(alpha)),
-    // )
-    // .await;
-    // let main_columns = poly.main_columns.fix_last_variable(alpha).await;
-
     let main_columns = poly.main_columns.clone();
     let preprocessed_columns = poly.preprocessed_columns.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -64,9 +58,6 @@ where
         .unwrap()
         .unwrap();
     let (preprocessed_columns, main_columns) = rx.await.unwrap();
-
-    // let (preprocessed_columns, main_columns) =
-    // scope.spawn(move |s| async move {}).await.unwrap().unwrap();
 
     if num_real_entries == 0 {
         // If the chip is pure padding, it's contribution to sumcheck is just zero, we don't need

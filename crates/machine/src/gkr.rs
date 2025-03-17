@@ -3,7 +3,7 @@ use std::future::Future;
 use csl_cuda::{gkr_circuit_transition, TaskScope};
 use csl_jagged::Poseidon2BabyBearJaggedCudaProverComponents;
 use slop_jagged::JaggedProverComponents;
-use sp1_stark::{GkrBackend, GkrProver};
+use sp1_stark::{GkrBackend, GkrMle, GkrProver};
 
 #[derive(Clone, Debug)]
 pub struct Poseidon2BabyBearGkrCudaProverComponents(
@@ -34,10 +34,7 @@ where
         alpha: Self::EF,
         betas: &slop_algebra::Powers<Self::EF>,
         log_max_row_height: usize,
-    ) -> (
-        slop_multilinear::PaddedMle<Self::F, Self::B>,
-        slop_multilinear::PaddedMle<Self::EF, Self::B>,
-    ) {
+    ) -> GkrMle<Self::F, Self::EF, Self::B> {
         csl_cuda::generate_gkr_input_mles(
             preprocessed,
             main,
@@ -51,26 +48,14 @@ where
     }
 
     fn first_circuit_layer_execution(
-        numerator_input_mle: &slop_multilinear::PaddedMle<Self::F, Self::B>,
-        denom_input_mle: &slop_multilinear::PaddedMle<Self::EF, Self::B>,
-    ) -> impl Future<
-        Output = (
-            slop_multilinear::PaddedMle<Self::EF, Self::B>,
-            slop_multilinear::PaddedMle<Self::EF, Self::B>,
-        ),
-    > + Send {
-        gkr_circuit_transition(numerator_input_mle, denom_input_mle)
+        input_mle: &GkrMle<Self::F, Self::EF, Self::B>,
+    ) -> impl Future<Output = GkrMle<Self::EF, Self::EF, Self::B>> + Send {
+        gkr_circuit_transition(input_mle)
     }
 
     fn circuit_layer_execution(
-        current_numerator_mle: &slop_multilinear::PaddedMle<Self::EF, Self::B>,
-        current_denom_mle: &slop_multilinear::PaddedMle<Self::EF, Self::B>,
-    ) -> impl Future<
-        Output = (
-            slop_multilinear::PaddedMle<Self::EF, Self::B>,
-            slop_multilinear::PaddedMle<Self::EF, Self::B>,
-        ),
-    > + Send {
-        gkr_circuit_transition(current_numerator_mle, current_denom_mle)
+        current_mle: &GkrMle<Self::EF, Self::EF, Self::B>,
+    ) -> impl Future<Output = GkrMle<Self::EF, Self::EF, Self::B>> + Send {
+        gkr_circuit_transition(current_mle)
     }
 }

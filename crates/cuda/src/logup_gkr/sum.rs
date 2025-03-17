@@ -13,7 +13,6 @@ use slop_sumcheck::{
 };
 use slop_tensor::{DotBackend, ReduceSumBackend, Tensor};
 
-// use rayon::prelude::*;
 use sp1_stark::{log2_ceil_usize, LogupGkrPoly};
 
 use super::GKRPolyKernel;
@@ -195,6 +194,7 @@ impl<NumerType: Field, K: ExtensionField<NumerType>>
 {
     async fn get_component_poly_evals(poly: &LogupGkrPoly<NumerType, K, TaskScope>) -> Vec<K> {
         assert!(poly.num_variables() == 0);
+        let width = poly.numerator_0.num_polynomials();
         let numerator_0 = OptionFuture::from(
             poly.numerator_0
                 .inner()
@@ -202,7 +202,7 @@ impl<NumerType: Field, K: ExtensionField<NumerType>>
                 .map(|x| async move { x.guts().as_buffer().to_host().await.unwrap() }),
         )
         .await
-        .unwrap_or(vec![NumerType::zero(); poly.numerator_0.num_polynomials()].into());
+        .unwrap_or(vec![NumerType::zero(); width].into());
         // .unwrap_or(vec![NumerType::zero(); poly.numerator_0.num_polynomials()]);
         let numerator_1 = OptionFuture::from(
             poly.numerator_1
@@ -211,7 +211,7 @@ impl<NumerType: Field, K: ExtensionField<NumerType>>
                 .map(|x| async move { x.guts().as_buffer().to_host().await.unwrap() }),
         )
         .await
-        .unwrap_or(vec![NumerType::zero(); poly.numerator_1.num_polynomials()].into());
+        .unwrap_or(vec![NumerType::zero(); width].into());
 
         let denom_0 = OptionFuture::from(
             poly.denom_0
@@ -408,8 +408,6 @@ pub mod sum_tests {
             + CanCopyFrom<Buffer<EF>, CpuBackend, Output = Buffer<EF, TaskScope>>
             + PartialLagrangeKernel<F>,
 
-        // Tensor<EF>: IntoDevice<Output = Tensor<EF, TaskScope>>
-        // + CopyToBackend<TaskScope, CpuBackend, Output = Tensor<EF, TaskScope>>,
         Mle<F, TaskScope>: IntoHost,
         Mle<EF, TaskScope>: IntoHost,
         Mle<F>: IntoDevice<Output = Mle<F, TaskScope>>,
@@ -454,29 +452,6 @@ pub mod sum_tests {
             println!("CPU Coefficient: {}, CUDA Coefficient: {}", cpu, cuda);
             assert_eq!(cpu, cuda);
         }
-
-        // let cuda_numerator_0: PaddedMle<EF> =
-        //     cuda_logup_poly.clone().numerator_0.into_host().await.unwrap();
-
-        // let cuda_numerator_1 = cuda_logup_poly.clone().numerator_1.into_host().await.unwrap();
-
-        // let cuda_denom_0 = cuda_logup_poly.denom_0.into_host().await.unwrap();
-        // let cuda_denom_1 = cuda_logup_poly.denom_1.into_host().await.unwrap();
-
-        // for (cpu_val, cuda_val) in cpu_logup_poly
-        //     .numerator_0
-        //     .inner()
-        //     .as_ref()
-        //     .map(|x| x.guts().as_slice())
-        //     .unwrap_or(&[])
-        //     .iter()
-        //     .zip_eq(
-        //         cuda_numerator_0.inner().as_ref().map(|x| x.guts().as_slice()).unwrap_or(&[]).iter(),
-        //     )
-        // {
-        //     println!("CPU Val: {}, CUDA Val: {}", cpu_val, cuda_val);
-        //     assert_eq!(cpu_val, cuda_val);
-        // }
     }
 
     #[tokio::test]

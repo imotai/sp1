@@ -207,24 +207,5 @@ where
         tx.send(interpolate_univariate_polynomial(&xs, &ys)).unwrap();
     });
 
-    // let rest_point = backend.copy_to(&rest_point).await.unwrap();
-    // let partial_lagrange: Mle<EF, TaskScope> = Mle::partial_lagrange(&rest_point).await;
-    // let partial_lagrange = Arc::new(partial_lagrange);
-
-    // // For the first round, we know that at point 0 and 1, the zerocheck polynomial will evaluate to
-    // // 0. For all rounds, we can find a root of the zerocheck polynomial by finding a root of
-    // // the eq term in the last coord.
-    // // So for the first round, we need to find an additional 2 points (since the constraint
-    // // polynomial is degree 3). We calculate the eval at points 2 and 4 (since we don't need to
-    // // do any multiplications when interpolating the column evals).
-    // // For the other rounds, we need to find an additional 1 point since we don't know the zercheck
-    // // poly eval at point 0 and 1.
-    // // We calculate the eval at point 0 and then infer the eval at point 1 by the passed in claim.
-    // let mut xs = Vec::new();
-    // let mut ys = Vec::new();
-
-    // let mut y_0 = EF::zero();
-    // let mut y_2 = EF::zero();
-    // let mut y_4 = EF::zero();
     rx.await.unwrap()
 }

@@ -43,8 +43,8 @@ InteractionValue(size_t i, size_t RowIdx, Interactions<F> const interactions,
 
   for (size_t k = interactions.multiplicities_ptr[index];
        k < interactions.multiplicities_ptr[index + 1]; k++) {
-    mult += interactions.mult_col_weights[k].get(preprocessed, main,
-                                                        RowIdx, height);
+    mult += interactions.mult_col_weights[k].get(preprocessed, main, RowIdx,
+                                                 height);
   }
 
   if (!is_send) {
@@ -58,27 +58,31 @@ InteractionValue(size_t i, size_t RowIdx, Interactions<F> const interactions,
 
 template <typename F, typename EF>
 __global__ void
-PopulatePermutationRowsFlattened(Interactions<F> const interactions, F *numer,
-                                 EF *denom, F *const preprocessed,
-                                 F *const main, EF alpha, EF beta,
-                                 size_t height) {
+PopulatePermutationRowsFlattened(Interactions<F> const interactions, F *numer_0,
+                                 EF *denom_0, F *numer_1, EF *denom_1,
+                                 F *const preprocessed, F *const main, EF alpha,
+                                 EF beta, size_t height) {
   size_t RowIdx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-  if (RowIdx >= height) {
+  if (2 * RowIdx >= height) {
     return;
   }
 
   size_t num_interactions = interactions.num_interactions;
   for (size_t i = 0; i < num_interactions; i++) {
-    GKRInput result =InteractionValue(i, RowIdx, interactions, preprocessed,
-                                        main, alpha, beta, height);
+    GKRInput even_result = InteractionValue(
+        i, 2 * RowIdx, interactions, preprocessed, main, alpha, beta, height);
+    GKRInput odd_result =
+        InteractionValue(i, 2 * RowIdx + 1, interactions, preprocessed, main,
+                         alpha, beta, height);
     // Assign the value to the extension field slot in the permutation trace.
-    numer[i * height + RowIdx] = result.numer;
-    denom[i * height + RowIdx] = result.denom;
+    numer_0[i * (height / 2) + RowIdx] = even_result.numer;
+    denom_0[i * (height / 2) + RowIdx] = even_result.denom;
+    numer_1[i * (height / 2) + RowIdx] = odd_result.numer;
+    denom_1[i * (height / 2) + RowIdx] = odd_result.denom;
   }
 }
 
-extern "C" void *gkr_tracegen_kernel()
-{
-    return (void *)PopulatePermutationRowsFlattened<bb31_t, bb31_extension_t>;
+extern "C" void *gkr_tracegen_kernel() {
+  return (void *)PopulatePermutationRowsFlattened<bb31_t, bb31_extension_t>;
 }
