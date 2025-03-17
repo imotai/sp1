@@ -32,11 +32,20 @@ impl<F, A: Backend> HasBackend for Padding<F, A> {
     }
 }
 
-impl<F, A: Backend> Padding<F, A> {
+impl<F: Clone, A: Backend> Padding<F, A> {
     pub fn num_polynomials(&self) -> usize {
         match self {
             Padding::Constant((_, num_polynomials, _)) => *num_polynomials,
             Padding::Generic(ref eval) => eval.num_polynomials(),
+        }
+    }
+}
+
+impl<F: AbstractField> From<Padding<F, CpuBackend>> for Vec<F> {
+    fn from(padding: Padding<F, CpuBackend>) -> Self {
+        match padding {
+            Padding::Constant((value, num_polynomials, _)) => vec![value; num_polynomials],
+            Padding::Generic(eval) => eval.evaluations().as_buffer().to_vec(),
         }
     }
 }

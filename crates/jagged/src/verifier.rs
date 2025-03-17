@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::FieldChallenger;
-use slop_multilinear::{Evaluations, Mle, Point};
+use slop_multilinear::{full_geq, Evaluations, Mle, Point};
 use slop_stacked::{StackedPcsProof, StackedPcsVerifier};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use thiserror::Error;
@@ -34,6 +34,10 @@ pub enum JaggedPcsVerifierError<C: JaggedConfig> {
     JaggedEvalProofVerificationFailed,
     #[error("dense pcs verification failed")]
     DensePcsVerificationFailed,
+    #[error("booleanity check failed")]
+    BooleanityCheckFailed,
+    #[error("montonicity check failed")]
+    MonotonicityCheckFailed,
 }
 
 impl<C: JaggedConfig> JaggedPcsVerifier<C> {
@@ -81,6 +85,22 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
+
+        for t_col in params.col_prefix_sums.iter() {
+            for &elem in t_col.iter() {
+                if elem * (C::EF::one() - elem) != C::EF::zero() {
+                    return Err(JaggedPcsVerifierError::BooleanityCheckFailed);
+                }
+            }
+        }
+
+        for (t_col, next_t_col) in
+            params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))
+        {
+            if full_geq(t_col, next_t_col) != C::EF::one() {
+                return Err(JaggedPcsVerifierError::MonotonicityCheckFailed);
+            }
+        }
 
         let jagged_eval = self
             .jagged_evaluator
