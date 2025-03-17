@@ -160,11 +160,8 @@ impl<T, A: Backend> Tensor<T, A> {
     #[inline]
     pub unsafe fn owned_unchecked_in(&self, storage_allocator: A) -> ManuallyDrop<Self> {
         let dimensions = self.dimensions.clone();
-        let storage_ptr = self.storage.as_ptr() as *mut T;
-        let storage_len = self.storage.len();
-        let storage_cap = self.storage.capacity();
-        let storage =
-            Buffer::from_raw_parts(storage_ptr, storage_len, storage_cap, storage_allocator);
+        let storage = self.storage.owned_unchecked_in(storage_allocator);
+        let storage = ManuallyDrop::into_inner(storage);
         ManuallyDrop::new(Self { storage, dimensions })
     }
 

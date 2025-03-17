@@ -1,9 +1,9 @@
-use std::{mem::ManuallyDrop, ops::Deref, sync::Arc};
+use std::{mem::ManuallyDrop, sync::Arc};
 
 use futures::future::OptionFuture;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField};
-use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, ToHost, GLOBAL_CPU_BACKEND};
+use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost, GLOBAL_CPU_BACKEND};
 use slop_tensor::{AddAssignBackend, Tensor};
 
 use crate::{
@@ -283,23 +283,11 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
     /// The caller must ensure that the lifetime bounds are being respected, as this function
     /// completely breaks the lifetime bound of the padded mle.
     #[inline]
-    pub unsafe fn owned_unchecked_in(
-        &self,
-        storage_allocator: A,
-    ) -> ManuallyDroppedPaddedMle<T, A> {
+    pub unsafe fn owned_unchecked_in(&self, storage_allocator: A) -> ManuallyDrop<Self> {
         let inner = self.inner.as_ref().map(|mle| {
-            let dimensions = mle.guts().dimensions.clone();
-            let storage_ptr = mle.guts().storage.as_ptr() as *mut T;
-            let storage_len = mle.guts().storage.len();
-            let storage_cap = mle.guts().storage.capacity();
-            let storage = Buffer::from_raw_parts(
-                storage_ptr,
-                storage_len,
-                storage_cap,
-                storage_allocator.clone(),
-            );
-            let guts = Tensor { storage, dimensions };
-            Arc::new(Mle::new(guts))
+            let mle = mle.owned_unchecked_in(storage_allocator.clone());
+            let mle = ManuallyDrop::into_inner(mle);
+            Arc::new(mle)
         });
 
         let padding_values = match &self.padding_values {
@@ -307,25 +295,14 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
                 Padding::Constant((value.clone(), *num_polynomials, storage_allocator))
             }
             Padding::Generic(eval) => {
-                let dimensions = eval.evaluations.dimensions.clone();
-                let storage_ptr = eval.evaluations.storage.as_ptr() as *mut T;
-                let storage_len = eval.evaluations.storage.len();
-                let storage_cap = eval.evaluations.storage.capacity();
-                let storage_allocator = eval.evaluations.storage.allocator().clone();
-                let storage = Buffer::from_raw_parts(
-                    storage_ptr,
-                    storage_len,
-                    storage_cap,
-                    storage_allocator,
-                );
-                let evaluations = Tensor { storage, dimensions };
-                let evaluations = MleEval::new(evaluations);
+                let evaluations = eval.owned_unchecked_in(storage_allocator);
+                let evaluations = ManuallyDrop::into_inner(evaluations);
                 Padding::Generic(Arc::new(evaluations))
             }
         };
 
         let padded_mle = PaddedMle { inner, padding_values, num_variables: self.num_variables };
-        ManuallyDroppedPaddedMle::new(padded_mle)
+        ManuallyDrop::new(padded_mle)
     }
 }
 
@@ -346,41 +323,6 @@ impl<T, A: Backend> HasBackend for PaddedMle<T, A> {
             Padding::Generic(eval) => eval.backend(),
             Padding::Constant((_, _, backend)) => backend,
         }
-    }
-}
-
-pub struct ManuallyDroppedPaddedMle<T: AbstractField, A: MleBaseBackend<T>> {
-    inner: ManuallyDrop<PaddedMle<T, A>>,
-}
-
-impl<T: AbstractField, A: MleBaseBackend<T>> ManuallyDroppedPaddedMle<T, A> {
-    #[inline]
-    pub fn new(inner: PaddedMle<T, A>) -> Self {
-        Self { inner: ManuallyDrop::new(inner) }
-    }
-
-    #[inline]
-    pub fn into_inner(mut this: Self) -> PaddedMle<T, A> {
-        // Safety: the inner field is not used again after calling [ManuallyDrop::take].
-        unsafe { ManuallyDrop::take(&mut this.inner) }
-    }
-}
-
-impl<T: AbstractField, A: MleBaseBackend<T>> Deref for ManuallyDroppedPaddedMle<T, A> {
-    type Target = PaddedMle<T, A>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<T: AbstractField, A: MleBaseBackend<T>> Drop for ManuallyDroppedPaddedMle<T, A> {
-    fn drop(&mut self) {
-        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
-        // Leak the internal mle and padding values.
-        let PaddedMle { inner, padding_values, num_variables: _ } = inner;
-        std::mem::forget(inner);
-        std::mem::forget(padding_values);
     }
 }
 

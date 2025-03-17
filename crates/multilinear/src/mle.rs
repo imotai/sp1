@@ -215,13 +215,8 @@ impl<F, A: Backend> Mle<F, A> {
     /// This function is unsafe because it enables bypassing the lifetime of the mle.
     #[inline]
     pub unsafe fn owned_unchecked_in(&self, storage_allocator: A) -> ManuallyDrop<Self> {
-        let dimensions = self.guts.dimensions.clone();
-        let storage_ptr = self.guts.storage.as_ptr() as *mut F;
-        let storage_len = self.guts.storage.len();
-        let storage_cap = self.guts.storage.capacity();
-        let storage =
-            Buffer::from_raw_parts(storage_ptr, storage_len, storage_cap, storage_allocator);
-        let guts = Tensor { storage, dimensions };
+        let guts = self.guts.owned_unchecked_in(storage_allocator);
+        let guts = ManuallyDrop::into_inner(guts);
         ManuallyDrop::new(Self { guts })
     }
 }
@@ -420,16 +415,18 @@ impl<T, A: Backend> MleEval<T, A> {
     ///
     /// This function is unsafe because it enables bypassing the lifetime of the mle.
     #[inline]
-    pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
-        let dimensions = self.evaluations.dimensions.clone();
-        let storage_ptr = self.evaluations.storage.as_ptr() as *mut T;
-        let storage_len = self.evaluations.storage.len();
-        let storage_cap = self.evaluations.storage.capacity();
-        let storage_allocator = self.evaluations.storage.allocator().clone();
-        let storage =
-            Buffer::from_raw_parts(storage_ptr, storage_len, storage_cap, storage_allocator);
-        let evaluations = Tensor { storage, dimensions };
+    pub unsafe fn owned_unchecked_in(&self, storage_allocator: A) -> ManuallyDrop<Self> {
+        let evaluations = self.evaluations.owned_unchecked_in(storage_allocator);
+        let evaluations = ManuallyDrop::into_inner(evaluations);
         ManuallyDrop::new(Self { evaluations })
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it enables bypassing the lifetime of the mle.
+    #[inline]
+    pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
+        self.owned_unchecked_in(self.evaluations.backend().clone())
     }
 }
 
