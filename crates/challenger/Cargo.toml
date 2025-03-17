@@ -9,3 +9,5 @@ categories.workspace = true
 
 [dependencies]
 p3-challenger = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-algebra = { workspace = true }

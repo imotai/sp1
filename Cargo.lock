@@ -1101,6 +1101,8 @@ name = "slop-challenger"
 version = "1.2.0"
 dependencies = [
  "p3-challenger",
+ "slop-algebra",
+ "slop-symmetric",
 ]
 
 [[package]]

@@ -5,7 +5,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{HasBackend, ToHost};
-use slop_challenger::{CanObserve, FieldChallenger};
+use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_commit::{Message, Rounds};
 use slop_multilinear::{
     Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsProver, PaddedMle, Point,
@@ -63,7 +63,8 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
         + 'static
         + Send
         + Sync
-        + Clone;
+        + Clone
+        + Synchronizable;
 
     type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
 
