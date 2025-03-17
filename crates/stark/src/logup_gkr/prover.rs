@@ -1,5 +1,5 @@
 use crate::Interaction;
-use futures::future::join4;
+use itertools::izip;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_algebra::{ExtensionField, Field};
@@ -15,8 +15,8 @@ use slop_sumcheck::{
 };
 
 use super::{
-    generate_mles, GkrMles, GkrProofWithoutOpenings, GkrProver, LogupGkrPoly, LogupGkrProof,
-    ProverMessage,
+    generate_mles, GkrMle, GkrMles, GkrProofWithoutOpenings, GkrProver, LogupGkrPoly,
+    LogupGkrProof, ProverMessage,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -33,9 +33,9 @@ pub(crate) async fn generate_gkr_logup_proof_and_data<SC: GkrProver>(
     preprocessed: Option<&PaddedMle<SC::F, SC::B>>,
     main: &PaddedMle<SC::F, SC::B>,
     random_elements: &[SC::EF],
-    challenger: &mut SC::Challenger,
+    mut challenger: SC::Challenger,
     log_max_row_height: usize,
-) -> (LogupGkrProof<SC::EF>, Point<SC::EF>)
+) -> (LogupGkrProof<SC::EF>, Point<SC::EF>, SC::Challenger)
 where
     SC::EF: Clone,
     SC::B: CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
@@ -46,7 +46,7 @@ where
     // Generate the RLC elements to uniquely identify each item in the looked up tuple.
     let betas = random_elements[1].powers();
 
-    let (numerator_input_mles, denom_input_mles) = SC::generate_gkr_input_mles(
+    let input_mles = SC::generate_gkr_input_mles(
         preprocessed,
         main,
         sends,
@@ -64,9 +64,14 @@ where
         denom_claims: perm_denom_claims,
         challenge: last_challenge,
     } = generate_gkr_proof::<SC>(
-        numerator_input_mles.clone(),
-        denom_input_mles.clone(),
-        challenger,
+        input_mles,
+        &mut challenger,
+        sends,
+        receives,
+        preprocessed,
+        main,
+        random_elements,
+        log_max_row_height,
     )
     .await;
 
@@ -84,13 +89,13 @@ where
             column_openings,
         },
         last_challenge,
+        challenger,
     )
 }
 
 async fn run_gkr_round<SC: GkrProver, NumeratorType>(
     round_num: usize,
-    numerator_mle: &PaddedMle<NumeratorType, SC::B>,
-    denom_mle: &PaddedMle<SC::EF, SC::B>,
+    mles: GkrMle<NumeratorType, SC::EF, SC::B>,
     numerator_claims: &[SC::EF],
     denom_claims: &[SC::EF],
     challenge: &Point<SC::EF>,
@@ -113,14 +118,8 @@ where
     // For the first round, we don't need to generate a sumcheck proof, since the the verifier will
     // do the sum itself (it's only summing two elements for each claim).
 
-    let logup_gkr_mle_or_prover_message = reduce_gkr_to_sumcheck::<SC, NumeratorType>(
-        round_num,
-        numerator_mle,
-        denom_mle,
-        challenge,
-        challenger,
-    )
-    .await;
+    let logup_gkr_mle_or_prover_message =
+        reduce_gkr_to_sumcheck::<SC, NumeratorType>(round_num, mles, challenge, challenger).await;
 
     match logup_gkr_mle_or_prover_message {
         Either::Left(prover_message) => (prover_message, None),
@@ -212,8 +211,7 @@ async fn mle_to_host<
 /// in the first round, the prover will simply send the evaluations.
 async fn reduce_gkr_to_sumcheck<SC: GkrProver, NumeratorType>(
     round_num: usize,
-    numerator_mles: &PaddedMle<NumeratorType, SC::B>,
-    denom_mles: &PaddedMle<SC::EF, SC::B>,
+    mles: GkrMle<NumeratorType, SC::EF, SC::B>,
     challenge: &Point<SC::EF>,
     challenger: &mut SC::Challenger,
 ) -> MessageOrLogupPoly<NumeratorType, SC>
@@ -227,14 +225,12 @@ where
         + CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
 {
     // TODO: Traitify this.
-    let (numerator_mles_fixed_0, numerator_mles_fixed_1, denom_mles_fixed_0, denom_mles_fixed_1) =
-        join4(
-            numerator_mles.fix_last_variable(NumeratorType::zero()),
-            numerator_mles.fix_last_variable(NumeratorType::one()),
-            denom_mles.fix_last_variable::<SC::EF>(SC::EF::zero()),
-            denom_mles.fix_last_variable::<SC::EF>(SC::EF::one()),
-        )
-        .await;
+    let GkrMle {
+        numerator_0: numerator_mles_fixed_0,
+        numerator_1: numerator_mles_fixed_1,
+        denom_0: denom_mles_fixed_0,
+        denom_1: denom_mles_fixed_1,
+    } = mles;
 
     // For the first round, we don't need to generate a sumcheck proof, since the the verifier will
     // do the sum itself (it's only summing two elements for each claim).
@@ -243,6 +239,11 @@ where
         assert!(numerator_mles_fixed_1.num_variables() == 0);
         assert!(denom_mles_fixed_0.num_variables() == 0);
         assert!(denom_mles_fixed_1.num_variables() == 0);
+
+        assert!(numerator_mles_fixed_0.num_real_entries() <= 1);
+        assert!(numerator_mles_fixed_1.num_real_entries() <= 1);
+        assert!(denom_mles_fixed_0.num_real_entries() <= 1);
+        assert!(denom_mles_fixed_1.num_real_entries() <= 1);
 
         Either::Left(ProverMessage {
             numerator_0: mle_to_host::<NumeratorType, SC::EF, SC::B>(&numerator_mles_fixed_0).await,
@@ -269,40 +270,49 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn generate_gkr_proof<SC: GkrProver>(
-    numerator_input_mles: PaddedMle<SC::F, SC::B>,
-    denom_input_mles: PaddedMle<SC::EF, SC::B>,
+    input_mles: GkrMle<SC::F, SC::EF, SC::B>,
     challenger: &mut SC::Challenger,
+    sends: &[Interaction<SC::F>],
+    receives: &[Interaction<SC::F>],
+    preprocessed: Option<&PaddedMle<SC::F, SC::B>>,
+    main: &PaddedMle<SC::F, SC::B>,
+    random_elements: &[SC::EF],
+    log_max_row_height: usize,
 ) -> GkrProofWithoutOpenings<SC::EF>
 where
     SC::B: CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
 {
-    let gkr_mles: GkrMles<SC> = generate_mles(numerator_input_mles, denom_input_mles).await;
+    let mut gkr_mles: GkrMles<SC> = generate_mles(input_mles).await;
 
-    let final_numerator_claims = gkr_mles
-        .numerator_mles
-        .first()
-        .expect("numerator_mles must be non-empty")
-        .eval_at::<SC::EF>(&vec![].into())
-        .await
-        .to_host()
-        .await
-        .unwrap()
-        .evaluations()
-        .as_slice()
-        .to_vec();
-    let final_denom_claims = gkr_mles
-        .denom_mles
-        .first()
-        .expect("denom_mles must be non-empty")
-        .eval_at::<SC::EF>(&vec![].into())
-        .await
-        .to_host()
-        .await
-        .unwrap()
-        .evaluations()
-        .as_slice()
-        .to_vec();
+    let num_rounds = gkr_mles.mles.len();
+
+    let final_mle = gkr_mles.mles.last().unwrap();
+
+    assert!(final_mle.numerator_0.num_variables() == 0);
+    assert!(final_mle.numerator_1.num_variables() == 0);
+    assert!(final_mle.denom_0.num_variables() == 0);
+    assert!(final_mle.denom_1.num_variables() == 0);
+
+    let final_numerator_0_claims =
+        final_mle.numerator_0.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
+
+    let final_numerator_1_claims =
+        final_mle.numerator_1.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
+    let final_denominator_0_claims =
+        final_mle.denom_0.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
+    let final_denominator_1_claims =
+        final_mle.denom_1.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
+
+    let (final_numerator_claims, final_denom_claims): (Vec<SC::EF>, Vec<SC::EF>) = izip!(
+        final_numerator_0_claims.evaluations().as_slice().iter().copied(),
+        final_numerator_1_claims.evaluations().as_slice().iter().copied(),
+        final_denominator_0_claims.evaluations().as_slice().iter().copied(),
+        final_denominator_1_claims.evaluations().as_slice().iter().copied(),
+    )
+    .map(|(num_0, num_1, denom_0, denom_1)| (num_0 * denom_1 + num_1 * denom_0, denom_0 * denom_1))
+    .unzip();
 
     let mut challenge: Point<SC::EF> = vec![].into();
     let mut prover_messages = Vec::new();
@@ -311,14 +321,12 @@ where
     let mut numerator_claims = final_numerator_claims.clone();
     let mut denom_claims = final_denom_claims.clone();
 
-    for round_num in 0..gkr_mles.numerator_mles.len() - 1 {
-        let next_numerator_mles = &gkr_mles.numerator_mles[round_num + 1];
-        let next_denom_mles = &gkr_mles.denom_mles[round_num + 1];
+    for round_num in 0..num_rounds {
+        let mle = gkr_mles.mles.pop().unwrap();
 
         let (prover_message, sc_proof) = run_gkr_round::<SC, SC::EF>(
             round_num,
-            next_numerator_mles,
-            next_denom_mles,
+            mle,
             &numerator_claims,
             &denom_claims,
             &challenge,
@@ -355,11 +363,21 @@ where
         challenge.add_dimension_back(gkr_round_challenge);
     }
 
+    let input_mles = SC::generate_gkr_input_mles(
+        preprocessed,
+        main,
+        sends,
+        receives,
+        random_elements[0],
+        &random_elements[1].powers(),
+        log_max_row_height,
+    )
+    .await;
+
     // Run for the final round, reducing the GKR to a sumcheck, but not running the sumcheck.
     let (prover_message, maybe_sc_proof) = run_gkr_round::<SC, SC::F>(
-        gkr_mles.numerator_mles.len() - 1,
-        &gkr_mles.input_numerators,
-        &gkr_mles.input_denoms,
+        num_rounds,
+        input_mles,
         &numerator_claims,
         &denom_claims,
         &challenge,

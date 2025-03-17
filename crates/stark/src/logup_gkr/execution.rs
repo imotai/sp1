@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use rayon::prelude::IndexedParallelIterator;
+use itertools::izip;
 use rayon::prelude::*;
 use slop_algebra::{ExtensionField, Field, Powers};
-use slop_alloc::CpuBackend;
+use slop_alloc::{Backend, CpuBackend};
 use slop_matrix::dense::RowMajorMatrix;
 use slop_multilinear::{PaddedMle, Padding};
 
@@ -33,6 +33,19 @@ pub(crate) fn generate_interaction_evals<F: Field, EF: ExtensionField<F>>(
     (mult, denominator)
 }
 
+/// A collection of multilinear polynomials produced from running the `LogUp` circuit and passed in
+/// to the GKR sumcheck instances.
+pub struct GkrMle<F, EF, B: Backend = CpuBackend> {
+    /// The zero evaluations of the numerator multilinear polynomial.
+    pub numerator_0: PaddedMle<F, B>,
+    /// The one evaluations of the numerator multilinear polynomial.
+    pub numerator_1: PaddedMle<F, B>,
+    /// The zero evaluations of the denominator multilinear polynomial.
+    pub denom_0: PaddedMle<EF, B>,
+    /// The one evaluations of the denominator multilinear polynomial.
+    pub denom_1: PaddedMle<EF, B>,
+}
+
 /// Given the preprocessed and main traces of the protocol, generate the numerator and denominator
 /// multilinear polynomials that are inputs into the GKR protocol.
 #[allow(clippy::too_many_lines)]
@@ -43,111 +56,201 @@ pub fn generate_gkr_input_mles<F: Field, EF: ExtensionField<F>>(
     alpha: EF,
     betas: &Powers<EF>,
     log_max_row_height: usize,
-) -> (PaddedMle<F>, PaddedMle<EF>) {
+) -> GkrMle<F, EF> {
     let height: usize = main.num_real_entries();
     let num_interactions = interactions.len();
 
     if height == 0 {
-        return (
-            PaddedMle::new(
-                None,
-                log_max_row_height as u32,
-                slop_multilinear::Padding::Constant((F::zero(), num_interactions, CpuBackend)),
-            ),
-            PaddedMle::new(
-                None,
-                log_max_row_height as u32,
-                Padding::Constant((EF::one(), num_interactions, CpuBackend)),
-            ),
+        let numerator_0 = PaddedMle::new(
+            None,
+            (log_max_row_height - 1) as u32,
+            slop_multilinear::Padding::Constant((F::zero(), num_interactions, CpuBackend)),
         );
+        let numerator_1 = PaddedMle::new(
+            None,
+            (log_max_row_height - 1) as u32,
+            slop_multilinear::Padding::Constant((F::zero(), num_interactions, CpuBackend)),
+        );
+        let denom_0 = PaddedMle::new(
+            None,
+            (log_max_row_height - 1) as u32,
+            slop_multilinear::Padding::Constant((EF::one(), num_interactions, CpuBackend)),
+        );
+        let denom_1 = PaddedMle::new(
+            None,
+            (log_max_row_height - 1) as u32,
+            slop_multilinear::Padding::Constant((EF::one(), num_interactions, CpuBackend)),
+        );
+        return GkrMle { numerator_0, numerator_1, denom_0, denom_1 };
     }
 
-    let mut numerator_evals = vec![F::zero(); height * num_interactions];
-    let mut denom_evals = vec![EF::one(); height * num_interactions];
+    assert!(height != 1);
+
+    let mut numerator_0_evals = vec![F::zero(); height / 2 * num_interactions];
+    let mut numerator_1_evals = vec![F::zero(); height / 2 * num_interactions];
+    let mut denom_0_evals = vec![EF::one(); height / 2 * num_interactions];
+    let mut denom_1_evals = vec![EF::one(); height / 2 * num_interactions];
 
     match preprocessed {
         Some(prep) => {
-            numerator_evals
-                .par_chunks_exact_mut(num_interactions)
-                .zip_eq(denom_evals.par_chunks_exact_mut(num_interactions))
-                .zip_eq(
-                    prep.inner()
-                        .as_ref()
-                        .unwrap()
-                        .guts()
-                        .as_slice()
-                        .par_chunks(prep.num_polynomials())
-                        .zip(
-                            main.inner()
-                                .as_ref()
-                                .unwrap()
-                                .guts()
-                                .as_slice()
-                                .par_chunks(main.num_polynomials()),
-                        ),
-                )
-                .for_each(|((numerator_chunk, denom_chunk), (prep_row, main_row))| {
-                    interactions
-                        .iter()
-                        .zip(numerator_chunk.iter_mut())
-                        .zip(denom_chunk.iter_mut())
-                        .for_each(|(((interaction, is_send), numerator_val), denom_val)| {
-                            let (numerator_input, denom_input) = generate_interaction_evals(
-                                prep_row,
-                                main_row,
-                                interaction,
-                                *is_send,
-                                alpha,
-                                betas,
-                            );
-                            *numerator_val = numerator_input;
-                            *denom_val = denom_input;
-                        });
-                });
+            (
+                numerator_0_evals.par_chunks_exact_mut(num_interactions),
+                numerator_1_evals.par_chunks_exact_mut(num_interactions),
+                denom_0_evals.par_chunks_exact_mut(num_interactions),
+                denom_1_evals.par_chunks_exact_mut(num_interactions),
+                prep.inner()
+                    .as_ref()
+                    .unwrap()
+                    .guts()
+                    .as_slice()
+                    .par_chunks(2 * prep.num_polynomials()),
+                main.inner()
+                    .as_ref()
+                    .unwrap()
+                    .guts()
+                    .as_slice()
+                    .par_chunks(2 * main.num_polynomials()),
+            )
+                .into_par_iter()
+                .for_each(
+                    |(
+                        numerator_0_chunk,
+                        numerator_1_chunk,
+                        denom_0_chunk,
+                        denom_1_chunk,
+                        prep_rows,
+                        main_rows,
+                    )| {
+                        let (prep_row_0, prep_row_1) = prep_rows.split_at(prep.num_polynomials());
+                        let (main_row_0, main_row_1) = main_rows.split_at(main.num_polynomials());
+
+                        izip!(
+                            interactions.iter(),
+                            numerator_0_chunk.iter_mut(),
+                            denom_0_chunk.iter_mut(),
+                            numerator_1_chunk.iter_mut(),
+                            denom_1_chunk.iter_mut()
+                        )
+                        .for_each(
+                            |(
+                                (interaction, is_send),
+                                numerator_0_val,
+                                denom_0_val,
+                                numerator_1_val,
+                                denom_1_val,
+                            ): (_, &mut _, &mut _, &mut _, &mut _)| {
+                                let (numerator_input, denom_input) = generate_interaction_evals(
+                                    prep_row_0,
+                                    main_row_0,
+                                    interaction,
+                                    *is_send,
+                                    alpha,
+                                    betas,
+                                );
+                                *numerator_0_val = numerator_input;
+                                *denom_0_val = denom_input;
+
+                                let (numerator_input, denom_input) = generate_interaction_evals(
+                                    prep_row_1,
+                                    main_row_1,
+                                    interaction,
+                                    *is_send,
+                                    alpha,
+                                    betas,
+                                );
+                                *numerator_1_val = numerator_input;
+                                *denom_1_val = denom_input;
+                            },
+                        );
+                    },
+                );
         }
         None => {
-            numerator_evals
-                .par_chunks_exact_mut(num_interactions)
-                .zip_eq(denom_evals.par_chunks_exact_mut(num_interactions))
-                .zip(
-                    main.inner()
-                        .as_ref()
-                        .unwrap()
-                        .guts()
-                        .as_slice()
-                        .par_chunks(main.num_polynomials()),
-                )
-                .for_each(|((numerator_chunk, denom_chunk), main_row)| {
-                    interactions
-                        .iter()
-                        .zip(numerator_chunk.iter_mut())
-                        .zip(denom_chunk.iter_mut())
-                        .for_each(|(((interaction, is_send), numerator_val), denom_val)| {
-                            let (numerator_input, denom_input) = generate_interaction_evals(
-                                &[],
-                                main_row,
-                                interaction,
-                                *is_send,
-                                alpha,
-                                betas,
-                            );
-                            *numerator_val = numerator_input;
-                            *denom_val = denom_input;
-                        });
-                });
+            (
+                numerator_0_evals.par_chunks_exact_mut(num_interactions),
+                numerator_1_evals.par_chunks_exact_mut(num_interactions),
+                denom_0_evals.par_chunks_exact_mut(num_interactions),
+                denom_1_evals.par_chunks_exact_mut(num_interactions),
+                main.inner()
+                    .as_ref()
+                    .unwrap()
+                    .guts()
+                    .as_slice()
+                    .par_chunks_exact(2 * main.num_polynomials()),
+            )
+                .into_par_iter()
+                .for_each(
+                    |(
+                        numerator_0_chunk,
+                        numerator_1_chunk,
+                        denom_0_chunk,
+                        denom_1_chunk,
+                        main_rows,
+                    )| {
+                        let (main_row_0, main_row_1) = main_rows.split_at(main.num_polynomials());
+                        izip!(
+                            interactions.iter(),
+                            numerator_0_chunk.iter_mut(),
+                            denom_0_chunk.iter_mut(),
+                            numerator_1_chunk.iter_mut(),
+                            denom_1_chunk.iter_mut()
+                        )
+                        .for_each(
+                            |(
+                                (interaction, is_send),
+                                numerator_0_val,
+                                denom_0_val,
+                                numerator_1_val,
+                                denom_1_val,
+                            ): (_, &mut _, &mut _, &mut _, &mut _)| {
+                                let (numerator_input, denom_input) = generate_interaction_evals(
+                                    &[],
+                                    main_row_0,
+                                    interaction,
+                                    *is_send,
+                                    alpha,
+                                    betas,
+                                );
+                                *numerator_0_val = numerator_input;
+                                *denom_0_val = denom_input;
+
+                                let (numerator_input, denom_input) = generate_interaction_evals(
+                                    &[],
+                                    main_row_1,
+                                    interaction,
+                                    *is_send,
+                                    alpha,
+                                    betas,
+                                );
+                                *numerator_1_val = numerator_input;
+                                *denom_1_val = denom_input;
+                            },
+                        );
+                    },
+                );
         }
     }
 
-    (
-        PaddedMle::new(
-            Some(Arc::new(RowMajorMatrix::new(numerator_evals, num_interactions).into())),
-            log_max_row_height as u32,
-            Padding::Constant((F::zero(), num_interactions, CpuBackend)),
-        ),
-        PaddedMle::new(
-            Some(Arc::new(RowMajorMatrix::new(denom_evals, num_interactions).into())),
-            log_max_row_height as u32,
-            Padding::Constant((EF::one(), num_interactions, CpuBackend)),
-        ),
-    )
+    let numerator_0 = PaddedMle::new(
+        Some(Arc::new(RowMajorMatrix::new(numerator_0_evals, num_interactions).into())),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((F::zero(), num_interactions, CpuBackend)),
+    );
+    let numerator_1 = PaddedMle::new(
+        Some(Arc::new(RowMajorMatrix::new(numerator_1_evals, num_interactions).into())),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((F::zero(), num_interactions, CpuBackend)),
+    );
+    let denom_0 = PaddedMle::new(
+        Some(Arc::new(RowMajorMatrix::new(denom_0_evals, num_interactions).into())),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((EF::one(), num_interactions, CpuBackend)),
+    );
+    let denom_1 = PaddedMle::new(
+        Some(Arc::new(RowMajorMatrix::new(denom_1_evals, num_interactions).into())),
+        (log_max_row_height - 1) as u32,
+        Padding::Constant((EF::one(), num_interactions, CpuBackend)),
+    );
+
+    GkrMle { numerator_0, numerator_1, denom_0, denom_1 }
 }

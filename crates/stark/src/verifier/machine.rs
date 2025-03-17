@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
+use slop_challenger::Synchronizable;
 use thiserror::Error;
 
 use crate::{air::MachineAir, VerifierConstraintFolder};
@@ -43,6 +44,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
     ) -> Result<(), MachineVerifierError<C>>
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+        C::Challenger: Synchronizable,
     {
         // Observe the verifying key.
         vk.observe_into(challenger);

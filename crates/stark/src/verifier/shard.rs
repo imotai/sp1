@@ -5,7 +5,7 @@ use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::AbstractField;
 use slop_basefold::DefaultBasefoldConfig;
-use slop_challenger::{CanObserve, FieldChallenger};
+use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_commit::Rounds;
 use slop_jagged::{
     JaggedBasefoldConfig, JaggedEvalConfig, JaggedPcsVerifier, JaggedPcsVerifierError,
@@ -251,6 +251,7 @@ where
     ) -> Result<(), ShardVerifierError<C>>
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+        C::Challenger: Synchronizable,
     {
         let ShardProof {
             main_commitment,
@@ -271,12 +272,15 @@ where
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
         let mut cumulative_sum = C::EF::zero();
 
+        let mut challengers = Vec::new();
+
         for ((chip, gkr_proof), openings) in
             self.machine.chips().iter().zip_eq(gkr_proofs.iter()).zip_eq(opened_values.chips.iter())
         {
-            verify_permutation_gkr_proof::<C>(
+            let mut challenger_clone = challenger.clone();
+            let (_, new_challenger) = verify_permutation_gkr_proof::<C>(
                 gkr_proof,
-                challenger,
+                &mut challenger_clone,
                 chip.sends(),
                 chip.receives(),
                 (alpha, beta),
@@ -284,6 +288,7 @@ where
                 max_log_row_count,
             )
             .map_err(ShardVerifierError::<C>::GkrProofFailed)?;
+
             cumulative_sum += gkr_proof
                 .numerator_claims
                 .iter()
@@ -291,6 +296,8 @@ where
                 .zip(gkr_proof.denom_claims.iter().copied())
                 .map(|(num, den)| num / den)
                 .sum::<C::EF>();
+
+            challengers.push(new_challenger);
         }
 
         if cumulative_sum != C::EF::zero() {
@@ -298,6 +305,10 @@ where
                 "local cumulative sum is not zero",
             ));
         }
+
+        let mut synchronized_challenger = C::Challenger::synchronize_challengers(challengers);
+
+        let challenger = &mut synchronized_challenger;
 
         // Get the random challenge to merge the constraints.
         let alpha = challenger.sample_ext_element::<C::EF>();

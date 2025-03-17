@@ -95,7 +95,7 @@ pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
             .fold(SC::EF::zero(), |acc, x| acc * batch_challenge + (lambda * x.1 + x.0));
 
             if expected_eval != sc_proof.point_and_eval.1 {
-                return Err(LogupGkrVerificationError::InconsistentEvaluation);
+                return Err(LogupGkrVerificationError::InconsistentEvaluation(round_num));
             }
             round_challenge = sc_proof.point_and_eval.0.clone();
         }
@@ -136,7 +136,7 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
     permutation_challenges: (SC::EF, SC::EF),
     log_degree: Option<u32>,
     max_log_row_count: usize,
-) -> Result<Point<SC::EF>, LogupGkrVerificationError> {
+) -> Result<(Point<SC::EF>, SC::Challenger), LogupGkrVerificationError> {
     let (alpha, beta) = permutation_challenges;
     let LogupGkrProof {
         prover_messages,
@@ -225,5 +225,5 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
         return Err(LogupGkrVerificationError::InconsistentIndividualEvals);
     }
 
-    Ok(eval_point)
+    Ok((eval_point, challenger.clone()))
 }

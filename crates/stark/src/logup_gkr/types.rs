@@ -1,6 +1,6 @@
 use itertools::izip;
 use rayon::{
-    iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
     slice::ParallelSlice,
 };
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,7 @@ use slop_tensor::{AddAssignBackend, ReduceSumBackend, Tensor};
 
 use crate::Interaction;
 
-use super::LogupGkrPoly;
+use super::{GkrMle, LogupGkrPoly};
 
 /// A backend capable of implementing `SumcheckPoly` for `LogupGkrPoly`.
 pub trait GkrBackend<F: Field, EF: ExtensionField<F>>:
@@ -110,15 +110,13 @@ pub trait GkrProver: Clone + Send + Sync + 'static + std::fmt::Debug {
 
     /// The first layer of the GKR circuit.
     fn first_circuit_layer_execution(
-        numerator_input_mle: &PaddedMle<Self::F, Self::B>,
-        denom_input_mle: &PaddedMle<Self::EF, Self::B>,
-    ) -> impl futures::Future<Output = (PaddedMle<Self::EF, Self::B>, PaddedMle<Self::EF, Self::B>)> + Send;
+        input_mles: &GkrMle<Self::F, Self::EF, Self::B>,
+    ) -> impl futures::Future<Output = GkrMle<Self::EF, Self::EF, Self::B>> + Send;
 
     /// The subsequent layers of the GKR circuit.
     fn circuit_layer_execution(
-        current_numerator_mle: &PaddedMle<Self::EF, Self::B>,
-        current_denom_mle: &PaddedMle<Self::EF, Self::B>,
-    ) -> impl futures::Future<Output = (PaddedMle<Self::EF, Self::B>, PaddedMle<Self::EF, Self::B>)> + Send;
+        current_mle: &GkrMle<Self::EF, Self::EF, Self::B>,
+    ) -> impl futures::Future<Output = GkrMle<Self::EF, Self::EF, Self::B>> + Send;
 
     /// Generate the input MLEs for the GKR circuit. This involves computing the numerator and
     /// denominator MLEs for each interaction in the chip.
@@ -130,46 +128,30 @@ pub trait GkrProver: Clone + Send + Sync + 'static + std::fmt::Debug {
         alpha: Self::EF,
         betas: &Powers<Self::EF>,
         log_max_row_height: usize,
-    ) -> impl futures::Future<Output = (PaddedMle<Self::F, Self::B>, PaddedMle<Self::EF, Self::B>)> + Send;
+    ) -> impl futures::Future<Output = GkrMle<Self::F, Self::EF, Self::B>> + Send;
 }
 
 /// Run the GKR circuit to generate the MLEs for each layer.
-pub async fn generate_mles<SC: GkrProver>(
-    numerator_input_mle: PaddedMle<SC::F, SC::B>,
-    denom_input_mle: PaddedMle<SC::EF, SC::B>,
-) -> GkrMles<SC> {
+pub async fn generate_mles<SC: GkrProver>(input_mles: GkrMle<SC::F, SC::EF, SC::B>) -> GkrMles<SC> {
     // First handle the input MLEs.
-    let (next_numerator_mle, next_denom_mle) =
-        SC::first_circuit_layer_execution(&numerator_input_mle, &denom_input_mle).await;
+    let next_mle = SC::first_circuit_layer_execution(&input_mles).await;
+    // println!("NExt mle num vars: {}", next_mle.numerator_0.num_variables());
 
-    let mut numerator_mles = vec![next_numerator_mle];
-    let mut denom_mles = vec![next_denom_mle];
+    let mut mles = vec![next_mle];
 
-    let mut current_numerator_mle =
-        numerator_mles.last().expect("numerator_mle_s must be non-empty");
-    let mut current_denom_mle = denom_mles.last().expect("denom_mle_s must be non-empty");
+    let mut current_mle = mles.last().expect("mles must be non-empty");
 
-    while current_denom_mle.num_variables() > 0 {
-        let (next_numerator_mle, next_denom_mle) =
-            SC::circuit_layer_execution(current_numerator_mle, current_denom_mle).await;
+    while current_mle.numerator_0.num_variables() > 0 {
+        let next_mle = SC::circuit_layer_execution(current_mle).await;
 
-        numerator_mles.push(next_numerator_mle);
-        denom_mles.push(next_denom_mle);
+        mles.push(next_mle);
 
-        current_numerator_mle = numerator_mles.last().expect("numerator_mle_s must be non-empty");
-        current_denom_mle = denom_mles.last().expect("denom_mle_s must be non-empty");
+        current_mle = mles.last().expect("mles must be non-empty");
     }
 
     // Reverse the MLEs so that the first round is the first element in the vec.
-    numerator_mles.reverse();
-    denom_mles.reverse();
 
-    GkrMles {
-        input_numerators: numerator_input_mle,
-        input_denoms: denom_input_mle,
-        numerator_mles,
-        denom_mles,
-    }
+    GkrMles { mles }
 }
 
 /// Execute one layer of the GKR circuit.
@@ -177,93 +159,113 @@ pub async fn generate_mles<SC: GkrProver>(
 /// This is essentially the grade-school algorithm for adding fractions:
 /// `a/b + c/d = (ad + bc) / bd`: for adjacent `(p_0, p_1)` in `numerator_input_mle` and adjacent
 /// `(q_0, q_1)` in `denom_input_mle`, compute  `(new_p, new_q) = (q_1 * p_0 + q_0 * p_1, q_0 * q_1)`.
+#[allow(clippy::too_many_lines)]
 pub fn circuit_layer<F: Field, EF: ExtensionField<F>>(
-    numerator_input_mle: &PaddedMle<F>,
-    denom_input_mle: &PaddedMle<EF>,
-) -> (PaddedMle<EF>, PaddedMle<EF>) {
-    assert!(numerator_input_mle.num_polynomials() == denom_input_mle.num_polynomials());
-    let num_interactions = numerator_input_mle.num_polynomials();
-    let (numerator_guts, denom_guts): (Option<Arc<Mle<_>>>, Option<Arc<Mle<_>>>) =
-        match numerator_input_mle.inner() {
-            Some(numerator_input_mle_inner) => {
-                let (numerator_guts, denom_guts) = numerator_input_mle_inner
+    input_mle: &GkrMle<F, EF, CpuBackend>,
+) -> GkrMle<EF, EF, CpuBackend> {
+    let num_interactions = input_mle.numerator_0.num_polynomials();
+
+    #[allow(clippy::type_complexity)]
+    let (numerator_0_guts, denom_0_guts, numerator_1_guts, denom_1_guts): (
+        Option<Arc<Mle<_>>>,
+        Option<Arc<Mle<_>>>,
+        Option<Arc<Mle<_>>>,
+        Option<Arc<Mle<_>>>,
+    ) = match input_mle.numerator_0.inner() {
+        Some(numerator_input_mle_0_inner) => {
+            let numer_denom_guts = (
+                numerator_input_mle_0_inner.guts().as_buffer().par_chunks(num_interactions),
+                input_mle
+                    .numerator_1
+                    .inner()
+                    .as_ref()
+                    .unwrap()
                     .guts()
                     .as_buffer()
-                    .par_chunks(2 * num_interactions)
-                    .zip(
-                        denom_input_mle
-                            .inner()
-                            .as_ref()
-                            .unwrap()
-                            .guts()
-                            .as_buffer()
-                            .par_chunks(2 * num_interactions),
-                    )
-                    .flat_map_iter(|(numerator_chunk, denom_chunk)| {
-                        let (numerator_chunk_0, numerator_chunk_1, denom_chunk_0, denom_chunk_1) =
-                            if numerator_chunk.len() == 2 * num_interactions {
-                                (
-                                    numerator_chunk
-                                        .par_iter()
-                                        .copied()
-                                        .take(num_interactions)
-                                        .collect::<Vec<_>>(),
-                                    numerator_chunk
-                                        .par_iter()
-                                        .copied()
-                                        .skip(num_interactions)
-                                        .collect::<Vec<_>>(),
-                                    denom_chunk
-                                        .par_iter()
-                                        .copied()
-                                        .take(num_interactions)
-                                        .collect::<Vec<_>>(),
-                                    denom_chunk
-                                        .par_iter()
-                                        .copied()
-                                        .skip(num_interactions)
-                                        .collect::<Vec<_>>(),
-                                )
-                            } else {
-                                (
-                                    numerator_chunk
-                                        .iter()
-                                        .copied()
-                                        .take(num_interactions)
-                                        .collect::<Vec<_>>(),
-                                    vec![F::zero(); num_interactions],
-                                    denom_chunk
-                                        .par_iter()
-                                        .copied()
-                                        .take(num_interactions)
-                                        .collect::<Vec<_>>(),
-                                    vec![EF::one(); num_interactions],
-                                )
-                            };
-                        izip!(numerator_chunk_0, numerator_chunk_1, denom_chunk_0, denom_chunk_1)
-                            .map(|(n0, n1, d0, d1)| (d1 * n0 + d0 * n1, d0 * d1))
-                    })
-                    .unzip();
-                (
-                    Some(Arc::new(RowMajorMatrix::new(numerator_guts, num_interactions).into())),
-                    Some(Arc::new(RowMajorMatrix::new(denom_guts, num_interactions).into())),
+                    .as_slice()
+                    .par_chunks(num_interactions),
+                input_mle
+                    .denom_0
+                    .inner()
+                    .as_ref()
+                    .unwrap()
+                    .guts()
+                    .as_buffer()
+                    .par_chunks(num_interactions),
+                input_mle
+                    .denom_1
+                    .inner()
+                    .as_ref()
+                    .unwrap()
+                    .guts()
+                    .as_buffer()
+                    .as_slice()
+                    .par_chunks(num_interactions),
+            )
+                .into_par_iter()
+                .flat_map_iter(
+                    |(numerator_0_chunk, numerator_1_chunk, denom_0_chunk, denom_1_chunk)| {
+                        izip!(numerator_0_chunk, numerator_1_chunk, denom_0_chunk, denom_1_chunk)
+                            .map(|(n0, n1, d0, d1)| (*d1 * *n0 + *d0 * *n1, *d0 * *d1))
+                    },
                 )
-            }
-            None => (None, None),
-        };
+                .collect::<Vec<_>>();
 
-    (
-        PaddedMle::new(
-            numerator_guts,
-            numerator_input_mle.num_variables() - 1,
-            Padding::Constant((EF::zero(), num_interactions, CpuBackend)),
-        ),
-        PaddedMle::new(
-            denom_guts,
-            denom_input_mle.num_variables() - 1,
-            Padding::Constant((EF::one(), num_interactions, CpuBackend)),
-        ),
-    )
+            let (numerator_0_guts, denom_0_guts): (Vec<EF>, Vec<EF>) = numer_denom_guts
+                .par_chunks(num_interactions)
+                .step_by(2)
+                .flat_map(|chunk| chunk)
+                .copied()
+                .unzip();
+            let (numerator_1_guts, denom_1_guts): (Vec<_>, Vec<_>) = numer_denom_guts
+                .par_chunks(num_interactions)
+                .skip(1)
+                .step_by(2)
+                .flat_map(|chunk| chunk)
+                .copied()
+                .unzip();
+
+            let (numerator_1_guts, denom_1_guts) = if numerator_1_guts.is_empty() {
+                assert!(denom_1_guts.is_empty());
+                assert!(numerator_0_guts.len() == num_interactions);
+                (vec![EF::zero(); num_interactions], vec![EF::one(); num_interactions])
+            } else {
+                (numerator_1_guts, denom_1_guts)
+            };
+
+            (
+                Some(Arc::new(RowMajorMatrix::new(numerator_0_guts, num_interactions).into())),
+                Some(Arc::new(RowMajorMatrix::new(denom_0_guts, num_interactions).into())),
+                Some(Arc::new(RowMajorMatrix::new(numerator_1_guts, num_interactions).into())),
+                Some(Arc::new(RowMajorMatrix::new(denom_1_guts, num_interactions).into())),
+            )
+        }
+        None => (None, None, None, None),
+    };
+
+    // println!("Numerator_0_num_variables");
+
+    let numerator_0 = PaddedMle::new(
+        numerator_0_guts,
+        input_mle.numerator_0.num_variables() - 1,
+        Padding::Constant((EF::zero(), num_interactions, CpuBackend)),
+    );
+    let denom_0 = PaddedMle::new(
+        denom_0_guts,
+        input_mle.denom_0.num_variables() - 1,
+        Padding::Constant((EF::one(), num_interactions, CpuBackend)),
+    );
+    let numerator_1 = PaddedMle::new(
+        numerator_1_guts,
+        input_mle.numerator_1.num_variables() - 1,
+        Padding::Constant((EF::zero(), num_interactions, CpuBackend)),
+    );
+    let denom_1 = PaddedMle::new(
+        denom_1_guts,
+        input_mle.denom_1.num_variables() - 1,
+        Padding::Constant((EF::one(), num_interactions, CpuBackend)),
+    );
+    GkrMle { numerator_0, numerator_1, denom_0, denom_1 }
 }
 
 impl<PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug> GkrProver
@@ -275,19 +277,15 @@ impl<PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug> Gk
     type B = CpuBackend;
 
     fn first_circuit_layer_execution(
-        numerator_input_mle: &PaddedMle<Self::F, Self::B>,
-        denom_input_mle: &PaddedMle<Self::EF, Self::B>,
-    ) -> impl futures::Future<Output = (PaddedMle<Self::EF, Self::B>, PaddedMle<Self::EF, Self::B>)> + Send
-    {
-        std::future::ready(circuit_layer(numerator_input_mle, denom_input_mle))
+        input_mles: &GkrMle<Self::F, Self::EF, Self::B>,
+    ) -> impl futures::Future<Output = GkrMle<Self::EF, Self::EF, Self::B>> + Send {
+        std::future::ready(circuit_layer(input_mles))
     }
 
     fn circuit_layer_execution(
-        current_numerator_mle: &PaddedMle<Self::EF, Self::B>,
-        current_denom_mle: &PaddedMle<Self::EF, Self::B>,
-    ) -> impl futures::Future<Output = (PaddedMle<Self::EF, Self::B>, PaddedMle<Self::EF, Self::B>)> + Send
-    {
-        std::future::ready(circuit_layer(current_numerator_mle, current_denom_mle))
+        current_mle: &GkrMle<Self::EF, Self::EF, Self::B>,
+    ) -> impl futures::Future<Output = GkrMle<Self::EF, Self::EF, Self::B>> + Send {
+        std::future::ready(circuit_layer(current_mle))
     }
 
     async fn generate_gkr_input_mles(
@@ -298,7 +296,7 @@ impl<PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug> Gk
         alpha: Self::EF,
         betas: &Powers<Self::EF>,
         log_max_row_height: usize,
-    ) -> (PaddedMle<Self::F, Self::B>, PaddedMle<Self::EF, Self::B>) {
+    ) -> GkrMle<Self::F, Self::EF> {
         super::generate_gkr_input_mles(
             preprocessed,
             main,
@@ -317,10 +315,7 @@ impl<PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug> Gk
 
 /// The MLEs for each layer of the GKR circuit.
 pub struct GkrMles<SC: GkrProver> {
-    pub(crate) input_numerators: PaddedMle<SC::F, SC::B>,
-    pub(crate) input_denoms: PaddedMle<SC::EF, SC::B>,
-    pub(crate) numerator_mles: Vec<PaddedMle<SC::EF, SC::B>>,
-    pub(crate) denom_mles: Vec<PaddedMle<SC::EF, SC::B>>,
+    pub(crate) mles: Vec<GkrMle<SC::EF, SC::EF, SC::B>>,
 }
 
 /// The GKR messages that the prover will send to the verifier.  It will send one message per round.
@@ -375,7 +370,7 @@ pub enum LogupGkrVerificationError {
     InconsistentSumcheckClaim,
     /// Inconsistency between the calculated evaluation and the sumcheck evaluation.
     #[error("inconsistent evaluation")]
-    InconsistentEvaluation,
+    InconsistentEvaluation(usize),
     /// Inconsistency between the individual evaluations per interaction, and the final eval claim
     /// from the last round of GKR.
     #[error("inconsistent individual evaluations")]

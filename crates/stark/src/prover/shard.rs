@@ -1,12 +1,13 @@
 use std::{collections::BTreeMap, fmt::Debug, iter::once, sync::Arc};
 
+use futures::future::join_all;
 use itertools::Itertools;
 use p3_uni_stark::get_symbolic_constraints;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
-use slop_challenger::{CanObserve, FieldChallenger};
+use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
@@ -71,7 +72,8 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
         + Send
         + Sync
         + 'static
-        + Clone;
+        + Clone
+        + Synchronizable;
 
     /// The machine configuration for which this prover can make proofs for.
     type Config: MachineConfig<
@@ -389,47 +391,44 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
     async fn gkr(
         &self,
-        preprocessed_traces: Traces<C::F, C::B>,
-        traces: Traces<C::F, C::B>,
-        // batching_challenge: C::EF,
-        // public_values: Vec<C::F>,
+        preprocessed_traces: &Traces<C::F, C::B>,
+        traces: &Traces<C::F, C::B>,
         challenger: &mut C::Challenger,
-    ) -> Vec<LogupGkrProof<C::EF>> {
+    ) -> Vec<(LogupGkrProof<C::EF>, C::Challenger)> {
         // Sample the random point to make the zerocheck claims.
         let permutation_challenges =
             (0..2).map(|_| challenger.sample_ext_element::<C::EF>()).collect::<Vec<_>>();
 
-        let mut gkr_proofs = Vec::new();
+        let gkr_proofs: Vec<_> = join_all(
+            self.chips()
+                .iter()
+                .map(|chip| {
+                    let name = chip.name();
+                    let main_trace = traces.get(&name).unwrap();
+                    let prep_trace = preprocessed_traces.get(&name);
+                    let num_variables = main_trace.num_variables();
+                    assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
+                    let challenger_clone = challenger.clone();
 
-        for chip in self.chips() {
-            let name = chip.name();
-            let main_trace = traces.get(&name).unwrap().clone();
-            let prep_trace = preprocessed_traces.get(&name);
-            // let log_degree = main_trace.num_real_entries().next_power_of_two().checked_ilog2();
-            // log_degrees.insert(air.name(), log_degree);
-            let num_variables = main_trace.num_variables();
-            assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
-
-            gkr_proofs.push(
-                generate_gkr_logup_proof_and_data::<C::GkrComponents>(
-                    chip.sends(),
-                    chip.receives(),
-                    prep_trace,
-                    &main_trace,
-                    &permutation_challenges,
-                    challenger,
-                    self.pcs_prover.max_log_row_count,
-                )
-                .instrument(tracing::debug_span!(
-                    "gkr proof",
-                    chip = name,
-                    chip_fully_padded = main_trace.inner().is_none()
-                ))
-                .await
-                .0,
-            );
-        }
-        gkr_proofs
+                    generate_gkr_logup_proof_and_data::<C::GkrComponents>(
+                        chip.sends(),
+                        chip.receives(),
+                        prep_trace,
+                        main_trace,
+                        &permutation_challenges,
+                        challenger_clone,
+                        self.pcs_prover.max_log_row_count,
+                    )
+                    .instrument(tracing::debug_span!(
+                        "gkr proof",
+                        chip = name,
+                        chip_fully_padded = main_trace.inner().is_none()
+                    ))
+                })
+                .collect::<Vec<_>>(),
+        )
+        .await;
+        gkr_proofs.into_iter().map(|(proof, _, challenger)| (proof, challenger)).collect()
     }
 
     /// Generate the shard data
@@ -458,13 +457,13 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
         for trace in traces.iter() {
             tracing::debug!(
-                "Chip {} has log-height {}",
+                "Chip {} has log-height {:?}",
                 trace.0,
                 trace
                     .1
                     .inner()
                     .as_ref()
-                    .map_or(0, |mle| mle.num_non_zero_entries().next_power_of_two().ilog2())
+                    .map(|mle| mle.num_non_zero_entries().next_power_of_two().ilog2())
             );
         }
 
@@ -474,10 +473,17 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Observe the commitments.
         challenger.observe(main_commit.clone());
 
-        let gkr_proofs = self
-            .gkr(pk.preprocessed_traces.clone(), traces.clone(), challenger)
+        let gkr_proofs_and_challengers = self
+            .gkr(&pk.preprocessed_traces, &traces, challenger)
             .instrument(tracing::debug_span!("gkr"))
             .await;
+
+        let (gkr_proofs, challengers): (Vec<_>, Vec<_>) =
+            gkr_proofs_and_challengers.into_iter().unzip();
+
+        let mut challenger_owned = C::Challenger::synchronize_challengers(challengers);
+
+        let challenger = &mut challenger_owned;
 
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();

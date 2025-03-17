@@ -193,6 +193,7 @@ impl<NumeratorType: Field, K: ExtensionField<NumeratorType>> LogupGkrPoly<Numera
         assert!(self.numerator_1.inner().is_some());
         assert!(self.denom_0.inner().is_some());
         assert!(self.denom_1.inner().is_some());
+
         let num_polynomials = self.numerator_0.num_polynomials();
         let num_rows = self.numerator_0.num_real_entries();
         let eq_guts_iter = eq_guts.par_iter().take(num_rows.div_ceil(2));
@@ -415,17 +416,18 @@ where
 {
     async fn get_component_poly_evals(poly: &LogupGkrPoly<N, K>) -> Vec<K> {
         assert!(poly.num_variables() == 0);
+        let width = poly.numerator_0.num_polynomials();
         izip!(
             poly.numerator_0
                 .inner()
                 .as_ref()
-                .map(|x| x.guts().as_slice().iter())
-                .unwrap_or(vec![N::zero(); poly.numerator_0.num_polynomials()].as_slice().iter()),
+                .map_or(vec![N::zero(); width], |x| x.guts().as_slice().to_vec())
+                .iter(),
             poly.numerator_1
                 .inner()
                 .as_ref()
-                .map(|x| x.guts().as_slice().iter())
-                .unwrap_or(vec![N::zero(); poly.numerator_1.num_polynomials()].as_slice().iter()),
+                .map_or(vec![N::zero(); width], |x| x.guts().as_slice().to_vec())
+                .iter(),
             poly.denom_0
                 .inner()
                 .as_ref()
