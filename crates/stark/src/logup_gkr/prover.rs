@@ -1,5 +1,5 @@
 use crate::Interaction;
-use itertools::izip;
+use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_algebra::{ExtensionField, Field};
@@ -128,9 +128,9 @@ where
             let sumcheck_claim = match logup_gkr_mles.numerator_0.inner() {
                 Some(_) => numerator_claims
                     .iter()
-                    .zip(denom_claims.iter())
+                    .zip_eq(denom_claims.iter())
                     .map(|(numerator_claim, denom_claim)| *numerator_claim + lambda * *denom_claim)
-                    .zip(logup_gkr_mles.batching_randomness_powers.iter().copied())
+                    .zip_eq(logup_gkr_mles.batching_randomness_powers.iter().copied())
                     .map(|(claim, challenge)| claim * challenge)
                     .sum::<SC::EF>(),
                 None => logup_gkr_mles.batching_randomness_powers_sum * lambda,
@@ -149,15 +149,21 @@ where
 
             let last_poly = &last_poly[0];
 
-            (
-                ProverMessage {
-                    numerator_0: last_poly.iter().copied().step_by(4).collect(),
-                    numerator_1: last_poly.iter().copied().skip(1).step_by(4).collect(),
-                    denom_0: last_poly.iter().copied().skip(2).step_by(4).collect(),
-                    denom_1: last_poly.iter().copied().skip(3).step_by(4).collect(),
-                },
-                Some(sc_proof),
-            )
+            let numerator_0: Vec<_> = last_poly.iter().copied().step_by(4).collect();
+            let numerator_1: Vec<_> = last_poly.iter().copied().skip(1).step_by(4).collect();
+            let denom_0: Vec<_> = last_poly.iter().copied().skip(2).step_by(4).collect();
+            let denom_1: Vec<_> = last_poly.iter().copied().skip(3).step_by(4).collect();
+
+            for (numerator_0_elem, numerator_1_elem, denom_0_elem, denom_1_elem) in
+                izip!(numerator_0.iter(), numerator_1.iter(), denom_0.iter(), denom_1.iter())
+            {
+                challenger.observe_ext_element(*numerator_0_elem);
+                challenger.observe_ext_element(*numerator_1_elem);
+                challenger.observe_ext_element(*denom_0_elem);
+                challenger.observe_ext_element(*denom_1_elem);
+            }
+
+            (ProverMessage { numerator_0, numerator_1, denom_0, denom_1 }, Some(sc_proof))
         }
     }
 }
@@ -245,12 +251,27 @@ where
         assert!(denom_mles_fixed_0.num_real_entries() <= 1);
         assert!(denom_mles_fixed_1.num_real_entries() <= 1);
 
-        Either::Left(ProverMessage {
-            numerator_0: mle_to_host::<NumeratorType, SC::EF, SC::B>(&numerator_mles_fixed_0).await,
-            numerator_1: mle_to_host(&numerator_mles_fixed_1).await,
-            denom_0: mle_to_host(&denom_mles_fixed_0).await,
-            denom_1: mle_to_host(&denom_mles_fixed_1).await,
-        })
+        assert!(numerator_mles_fixed_0.num_real_entries() <= 1);
+        assert!(numerator_mles_fixed_1.num_real_entries() <= 1);
+        assert!(denom_mles_fixed_0.num_real_entries() <= 1);
+        assert!(denom_mles_fixed_1.num_real_entries() <= 1);
+
+        let numerator_0 =
+            mle_to_host::<NumeratorType, SC::EF, SC::B>(&numerator_mles_fixed_0).await;
+        let numerator_1 = mle_to_host(&numerator_mles_fixed_1).await;
+        let denom_0 = mle_to_host(&denom_mles_fixed_0).await;
+        let denom_1 = mle_to_host(&denom_mles_fixed_1).await;
+
+        for (numerator_0_elem, numerator_1_elem, denom_0_elem, denom_1_elem) in
+            izip!(numerator_0.iter(), numerator_1.iter(), denom_0.iter(), denom_1.iter())
+        {
+            challenger.observe_ext_element(*numerator_0_elem);
+            challenger.observe_ext_element(*numerator_1_elem);
+            challenger.observe_ext_element(*denom_0_elem);
+            challenger.observe_ext_element(*denom_1_elem);
+        }
+
+        Either::Left(ProverMessage { numerator_0, numerator_1, denom_0, denom_1 })
     } else {
         // Get the sumcheck challenges.  It will reduce the summation of the MLE polynomial to an evaluation of a single random point.
         let lambda: SC::EF = challenger.sample_ext_element();
@@ -271,6 +292,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn generate_gkr_proof<SC: GkrProver>(
     input_mles: GkrMle<SC::F, SC::EF, SC::B>,
     challenger: &mut SC::Challenger,
@@ -313,6 +335,13 @@ where
     )
     .map(|(num_0, num_1, denom_0, denom_1)| (num_0 * denom_1 + num_1 * denom_0, denom_0 * denom_1))
     .unzip();
+
+    for (numerator_claim, denom_claim) in
+        final_numerator_claims.iter().zip(final_denom_claims.iter())
+    {
+        challenger.observe_ext_element(*numerator_claim);
+        challenger.observe_ext_element(*denom_claim);
+    }
 
     let mut challenge: Point<SC::EF> = vec![].into();
     let mut prover_messages = Vec::new();

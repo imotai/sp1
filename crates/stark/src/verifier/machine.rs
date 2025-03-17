@@ -1,9 +1,11 @@
+use std::iter::once;
+
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_challenger::Synchronizable;
 use thiserror::Error;
 
-use crate::{air::MachineAir, VerifierConstraintFolder};
+use crate::{air::MachineAir, septic_digest::SepticDigest, VerifierConstraintFolder};
 
 use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
 
@@ -21,6 +23,9 @@ pub enum MachineVerifierError<C: MachineConfig> {
     /// An error that occurs during the verification of a shard proof.
     #[error("invalid shard proof: {0}")]
     InvalidShardProof(ShardVerifierError<C>),
+    /// The global cumulative sum check fails.
+    #[error("non-zero global cumulative sum")]
+    NonZeroCumulativeSum,
 }
 
 /// A verifier for a machine proof.
@@ -59,6 +64,18 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
             tracing::info!("shard proof verified");
         }
 
-        Ok(())
+        // Verify the cumulative sum is 0.
+        let sum = proof
+            .shard_proofs
+            .iter()
+            .flat_map(|sp| sp.opened_values.chips.iter().map(|c| c.global_cumulative_sum))
+            .chain(once(vk.initial_global_cumulative_sum))
+            .sum::<SepticDigest<C::F>>();
+
+        if !sum.is_zero() {
+            Err(MachineVerifierError::NonZeroCumulativeSum)
+        } else {
+            Ok(())
+        }
     }
 }

@@ -378,4 +378,7 @@ pub enum LogupGkrVerificationError {
     /// Error when verifying sumcheck proof.
     #[error("sumcheck error: {0}")]
     SumcheckError(#[from] SumcheckError),
+    /// The proof shape does not match the expected one for the given number of interactions.
+    #[error("invalid shape")]
+    InvalidShape,
 }

@@ -15,12 +15,14 @@ pub struct GkrPointAndEvals<EF> {
     pub denom_evals: Vec<EF>,
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
     prover_messages: &[ProverMessage<SC::EF>],
     sc_proofs: &[PartialSumcheckProof<SC::EF>],
     numerator_claims: &[SC::EF],
     denom_claims: &[SC::EF],
     challenger: &mut SC::Challenger,
+    num_polys: usize,
 ) -> Result<GkrPointAndEvals<SC::EF>, LogupGkrVerificationError> {
     let num_rounds = prover_messages.len();
 
@@ -28,6 +30,10 @@ pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
 
     let mut numerator_claims = numerator_claims.to_vec();
     let mut denom_claims = denom_claims.to_vec();
+
+    if !(numerator_claims.len() == num_polys && denom_claims.len() == num_polys) {
+        return Err(LogupGkrVerificationError::InvalidShape);
+    }
 
     for round_num in 0..num_rounds {
         // For the first round, we don't have a sumcheck proof, since the verifier can check the claimed
@@ -47,6 +53,19 @@ pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
                 .zip(&prover_messages[round_num].denom_1)
                 .map(|(d0, d1)| *d0 * *d1)
                 .collect::<Vec<_>>();
+
+            for (numer_claim, denom_claim) in numerator_claims.iter().zip(&denom_claims) {
+                challenger.observe_ext_element(*numer_claim);
+                challenger.observe_ext_element(*denom_claim);
+            }
+
+            if !(prover_messages[round_num].numerator_0.len() == num_polys
+                && prover_messages[round_num].numerator_1.len() == num_polys
+                && prover_messages[round_num].denom_0.len() == num_polys
+                && prover_messages[round_num].denom_1.len() == num_polys)
+            {
+                return Err(LogupGkrVerificationError::InvalidShape);
+            }
 
             if (expected_final_numerator_claims != numerator_claims)
                 || (expected_final_denom_claims != denom_claims)
@@ -100,6 +119,18 @@ pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
             round_challenge = sc_proof.point_and_eval.0.clone();
         }
 
+        for (numerator_0, numerator_1, denom_0, denom_1) in izip!(
+            prover_messages[round_num].numerator_0.iter(),
+            prover_messages[round_num].numerator_1.iter(),
+            prover_messages[round_num].denom_0.iter(),
+            prover_messages[round_num].denom_1.iter()
+        ) {
+            challenger.observe_ext_element(*numerator_0);
+            challenger.observe_ext_element(*numerator_1);
+            challenger.observe_ext_element(*denom_0);
+            challenger.observe_ext_element(*denom_1);
+        }
+
         let gkr_round_challenge: SC::EF = challenger.sample_ext_element();
 
         // Do the 2-to-1 trick.  Calculate a random linear combination of the next round's 0 and 1 points.
@@ -138,6 +169,14 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
     max_log_row_count: usize,
 ) -> Result<(Point<SC::EF>, SC::Challenger), LogupGkrVerificationError> {
     let (alpha, beta) = permutation_challenges;
+
+    let interactions = &sends
+        .iter()
+        .map(|int| (int, true))
+        .chain(receives.iter().map(|int| (int, false)))
+        .collect::<Vec<_>>();
+
+    let num_interactions = interactions.len();
     let LogupGkrProof {
         prover_messages,
         sc_proofs,
@@ -146,6 +185,14 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
         column_openings,
         ..
     } = proof;
+
+    if prover_messages.len() != sc_proofs.len() + 1 {
+        return Err(LogupGkrVerificationError::InvalidShape);
+    }
+
+    if !(numerator_claims.len() == num_interactions && denom_claims.len() == num_interactions) {
+        return Err(LogupGkrVerificationError::InvalidShape);
+    }
 
     let GkrPointAndEvals {
         point: eval_point,
@@ -157,6 +204,7 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
         numerator_claims,
         denom_claims,
         challenger,
+        num_interactions,
     )?;
 
     let geq_val = match log_degree {
@@ -172,12 +220,6 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
         }
         _ => SC::EF::zero(),
     };
-
-    let interactions = &sends
-        .iter()
-        .map(|int| (int, true))
-        .chain(receives.iter().map(|int| (int, false)))
-        .collect::<Vec<_>>();
 
     let (mut numerator_guts, mut denom_guts): (Vec<_>, Vec<_>) = interactions
         .iter()

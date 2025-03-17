@@ -5,14 +5,14 @@ use itertools::Itertools;
 use p3_uni_stark::get_symbolic_constraints;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_air::Air;
-use slop_algebra::{AbstractField, ExtensionField, Field};
+use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
-    Evaluations, HostEvaluationBackend, MleEval, MultilinearPcsChallenger, PointBackend,
+    Evaluations, HostEvaluationBackend, MleEval, MultilinearPcsChallenger, PaddedMle, PointBackend,
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
@@ -20,16 +20,34 @@ use tokio::sync::{mpsc::Sender, OwnedSemaphorePermit, Semaphore};
 use tracing::Instrument;
 
 use crate::{
-    air::{MachineAir, MachineProgram},
+    air::{InteractionScope, MachineAir, MachineProgram},
     generate_gkr_logup_proof_and_data,
     prover::{ZeroCheckPoly, ZerocheckAir},
+    septic_curve::SepticCurve,
     septic_digest::SepticDigest,
+    septic_extension::SepticExtension,
     AirOpenedValues, Chip, ChipDimensions, ChipOpenedValues, ConstraintSumcheckFolder, GkrBackend,
     GkrProver, LogupGkrProof, Machine, MachineConfig, MachineRecord, MachineVerifyingKey,
     ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
+
+/// A trait to extract the global cumulative sum from a chip.
+pub trait LastRowExtractor<F, B: Backend> {
+    /// Get the last row of a `PaddedMle`.
+    fn get_last_row(poly: &PaddedMle<F, B>) -> Vec<F>;
+}
+
+impl<F: Field> LastRowExtractor<F, CpuBackend> for CpuBackend {
+    fn get_last_row(poly: &PaddedMle<F, CpuBackend>) -> Vec<F> {
+        poly.inner().as_ref().map_or(poly.padding_values().clone().into(), |mle| {
+            mle.guts().as_slice()[mle.num_non_zero_entries() * mle.num_polynomials() - 14
+                ..mle.num_non_zero_entries() * mle.num_polynomials()]
+                .to_vec()
+        })
+    }
+}
 
 /// The components of the machine prover.
 ///
@@ -113,6 +131,9 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
         > + Send
         + Sync
         + 'static;
+
+    /// An API to extract the global cumulative sums from the global chip.
+    type Extractor: LastRowExtractor<Self::F, Self::B>;
 }
 
 /// A collection of traces.
@@ -374,10 +395,21 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
                 let main = AirOpenedValues { local: main_evals.to_vec(), next: vec![] };
 
+                let global_sum = if air.commit_scope() == InteractionScope::Local {
+                    SepticDigest::<C::F>::zero()
+                } else {
+                    let main_trace = traces.get(&air.name()).unwrap();
+                    let last_row = C::Extractor::get_last_row(main_trace);
+                    SepticDigest(SepticCurve {
+                        x: SepticExtension::<C::F>::from_base_fn(|i| last_row[i]),
+                        y: SepticExtension::<C::F>::from_base_fn(|i| last_row[i + 7]),
+                    })
+                };
+
                 ChipOpenedValues {
                     preprocessed,
                     main,
-                    global_cumulative_sum: SepticDigest::zero(),
+                    global_cumulative_sum: global_sum,
                     local_cumulative_sum: C::EF::zero(),
                     log_degree: log_degrees[&air.name()],
                 }

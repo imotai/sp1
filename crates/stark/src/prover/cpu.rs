@@ -58,6 +58,8 @@ where
     type GkrComponents = PcsComponents;
 
     type PcsProverComponents = PcsComponents;
+
+    type Extractor = CpuBackend;
 }
 
 impl<A> CpuProver<Poseidon2BabyBearJaggedCpuProverComponents, A>
