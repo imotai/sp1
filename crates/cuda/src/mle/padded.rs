@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::{mem::ManuallyDrop, sync::Arc};
 
 use futures::future::OptionFuture;
 use slop_algebra::Field;
 use slop_alloc::{mem::CopyError, Buffer, CopyIntoBackend, CopyToBackend, CpuBackend, ToHost};
-use slop_multilinear::{ManuallyDroppedPaddedMle, Mle, PaddedMle, Padding};
+use slop_multilinear::{Mle, PaddedMle, Padding};
 use slop_tensor::{Tensor, TransposeBackend};
 use tokio::sync::oneshot;
 
@@ -85,7 +85,7 @@ where
     }
 }
 
-impl<F> CudaSend for ManuallyDroppedPaddedMle<F, TaskScope>
+impl<F> CudaSend for ManuallyDrop<PaddedMle<F, TaskScope>>
 where
     F: Field,
 {

@@ -1,11 +1,13 @@
-use std::ops::{Add, Mul};
+use std::{
+    mem::ManuallyDrop,
+    ops::{Add, Mul},
+};
 
 use futures::future::OptionFuture;
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::HasBackend;
 use slop_multilinear::{
-    HostEvaluationBackend, ManuallyDroppedPaddedMle, MleBaseBackend, MleEvaluationBackend,
-    MleFixLastVariableBackend,
+    HostEvaluationBackend, MleBaseBackend, MleEvaluationBackend, MleFixLastVariableBackend,
 };
 use sp1_stark::prover::{ZeroCheckPoly, ZerocheckRoundProver};
 
@@ -40,18 +42,17 @@ where
             let main_columns = unsafe { main_columns.owned_unchecked_in(s.clone()) };
             let preprocessed_columns =
                 unsafe { preprocessed_columns.map(|m| m.owned_unchecked_in(s.clone())) };
-            let main_columns =
-                ManuallyDroppedPaddedMle::new(main_columns.fix_last_variable(alpha).await);
+            let main_columns = ManuallyDrop::new(main_columns.fix_last_variable(alpha).await);
             let preprocessed_columns =
                 OptionFuture::from(preprocessed_columns.as_ref().map(|mle| async {
-                    let mle = ManuallyDroppedPaddedMle::new(mle.fix_last_variable(alpha).await);
+                    let mle = ManuallyDrop::new(mle.fix_last_variable(alpha).await);
                     let mle = unsafe { mle.send_to_scope(&t) };
-                    ManuallyDroppedPaddedMle::into_inner(mle)
+                    ManuallyDrop::into_inner(mle)
                 }))
                 .await;
 
             let main_columns = unsafe { main_columns.send_to_scope(&t) };
-            let main_columns = ManuallyDroppedPaddedMle::into_inner(main_columns);
+            let main_columns = ManuallyDrop::into_inner(main_columns);
             tx.send((preprocessed_columns, main_columns)).unwrap();
         })
         .await

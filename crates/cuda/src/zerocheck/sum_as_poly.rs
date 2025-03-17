@@ -1,4 +1,5 @@
 use std::{
+    mem::ManuallyDrop,
     ops::{Add, Mul, Sub},
     sync::Arc,
 };
@@ -9,8 +10,7 @@ use slop_algebra::{
 };
 use slop_alloc::{CanCopyFromRef, CanCopyIntoRef, CpuBackend, HasBackend, ToHost};
 use slop_multilinear::{
-    HostEvaluationBackend, ManuallyDroppedPaddedMle, Mle, MleBaseBackend, Padding,
-    PartialLagrangeBackend, PointBackend,
+    HostEvaluationBackend, Mle, MleBaseBackend, Padding, PartialLagrangeBackend, PointBackend,
 };
 use sp1_stark::prover::{
     increment_y_values, interpolate_last_var_padded_values, ZeroCheckPoly, ZerocheckRoundProver,
@@ -63,10 +63,10 @@ where
 
         // Get an owned copy of the main and preprocessed columns in this new scope.
         let main_columns = unsafe { poly_main_columns.owned_unchecked_in(s.clone()) };
-        let main_columns = ManuallyDroppedPaddedMle::into_inner(main_columns);
+        let main_columns = ManuallyDrop::into_inner(main_columns);
         let preprocessed_columns = poly_preprocessed_columns.as_ref().map(|mle| unsafe {
             let mle = mle.owned_unchecked_in(s.clone());
-            ManuallyDroppedPaddedMle::into_inner(mle)
+            ManuallyDrop::into_inner(mle)
         });
 
         // For the first round, we know that at point 0 and 1, the zerocheck polynomial will evaluate to
@@ -160,9 +160,9 @@ where
             y_4 -= geq_last_term_value * padded_row_adjustment * eq_guts_0;
         }
 
-        // Put the main and preprocessed columns back into ManuallyDroppedPaddedMle.
-        let _ = ManuallyDroppedPaddedMle::new(main_columns);
-        let _ = preprocessed_columns.map(ManuallyDroppedPaddedMle::new);
+        // Put the main and preprocessed columns back into ManuallyDrop.
+        let _ = ManuallyDrop::new(main_columns);
+        let _ = preprocessed_columns.map(ManuallyDrop::new);
 
         // Add the point 0 and it's eval to the xs and ys.
         xs.push(EF::zero());
