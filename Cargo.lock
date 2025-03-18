@@ -3323,6 +3323,7 @@ name = "sp1-recursion-compiler"
 version = "4.0.1"
 dependencies = [
  "backtrace",
+ "cfg-if",
  "criterion",
  "itertools 0.13.0",
  "p3-baby-bear",

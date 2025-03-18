@@ -28,6 +28,7 @@ serde = { workspace = true, features = ["derive"] }
 backtrace = "0.3.71"
 tracing = { workspace = true }
 vec_map = "0.8.2"
+cfg-if = "1.0.0"
 
 [dev-dependencies]
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
@@ -38,7 +39,7 @@ rand = "0.8.5"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 
 [features]
-# Enables cycle tracking and adds backtraces for IR assertions.
+# Enables cycle tracking and adds backtraces for circuit IR assertions.
 debug = ["sp1-recursion-executor/debug"]
 
 [lints]

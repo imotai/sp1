@@ -1,10 +1,13 @@
 // use chips::poseidon2_skinny::WIDTH;
+use cfg_if::cfg_if;
 use core::fmt::Debug;
 use instruction::{
     FieldEltType, HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr, PrintInstr,
 };
 use itertools::Itertools;
 use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField64, TwoAdicField};
+#[cfg(feature = "debug")]
+use sp1_core_machine::utils::SpanBuilder;
 use sp1_recursion_executor::{
     BaseAluInstr, BaseAluOpcode, Block, RecursionPublicValues, PERMUTATION_WIDTH,
     RECURSIVE_PROOF_NUM_PV_ELTS,
@@ -24,13 +27,13 @@ use crate::prelude::*;
 /// The backend for the circuit compiler.
 #[derive(Debug, Clone, Default)]
 pub struct AsmCompiler<C: Config> {
-    pub next_addr: C::F,
+    next_addr: C::F,
     /// Map the frame pointers of the variables to the "physical" addresses.
-    pub virtual_to_physical: VecMap<Address<C::F>>,
+    virtual_to_physical: VecMap<Address<C::F>>,
     /// Map base or extension field constants to "physical" addresses and mults.
-    pub consts: HashMap<Imm<C::F, C::EF>, (Address<C::F>, C::F)>,
+    consts: HashMap<Imm<C::F, C::EF>, (Address<C::F>, C::F)>,
     /// Map each "physical" address to its read count.
-    pub addr_to_mult: VecMap<C::F>,
+    addr_to_mult: VecMap<C::F>,
 }
 
 impl<C: Config> AsmCompiler<C>
@@ -567,10 +570,14 @@ where
     }
 
     /// A raw program (algebraic data type of instructions), not yet backfilled.
+    /// The parameter `cycle_tracker` is enabled with the `debug` feature.
+    /// The cycle tracker cannot be a field of `self` because of the consumer
+    /// passed to `compile_one`, which exclusively borrows `self`.
     fn compile_raw_program(
         &mut self,
         block: DslIrBlock<C>,
         instrs_prefix: Vec<SeqBlock<Instruction<C::F>>>,
+        #[cfg(feature = "debug")] cycle_tracker: &mut SpanBuilder<Cow<'static, str>, &'static str>,
     ) -> RawProgram<Instruction<C::F>> {
         // Consider refactoring the builder to use an AST instead of a list of operations.
         // Possible to remove address translation at this step.
@@ -584,17 +591,40 @@ where
                     seq_blocks.push(SeqBlock::Parallel(
                         par_blocks
                             .into_iter()
-                            .map(|b| self.compile_raw_program(b, vec![]))
+                            .map(|b| {
+                                cfg_if! {
+                                    if #[cfg(feature = "debug")] {
+                                        self.compile_raw_program(b, vec![], cycle_tracker)
+                                    } else {
+                                        self.compile_raw_program(b, vec![])
+                                    }
+                                }
+                            })
                             .collect(),
                     ))
                 }
                 op => {
                     let bb = maybe_bb.get_or_insert_with(Default::default);
                     self.compile_one(op, |item| match item {
-                        Ok(instr) => bb.instrs.push(instr),
+                        Ok(instr) => {
+                            #[cfg(feature = "debug")]
+                            {
+                                cycle_tracker.item(instr_name(&instr));
+                            }
+                            bb.instrs.push(instr)
+                        }
+                        #[cfg(not(feature = "debug"))]
                         Err(
                             CompileOneErr::CycleTrackerEnter(_) | CompileOneErr::CycleTrackerExit,
                         ) => (),
+                        #[cfg(feature = "debug")]
+                        Err(CompileOneErr::CycleTrackerEnter(name)) => {
+                            cycle_tracker.enter(name);
+                        }
+                        #[cfg(feature = "debug")]
+                        Err(CompileOneErr::CycleTrackerExit) => {
+                            cycle_tracker.exit().unwrap();
+                        }
                         Err(CompileOneErr::Unsupported(instr)) => {
                             panic!("unsupported instruction: {instr:?}")
                         }
@@ -710,9 +740,30 @@ where
     ///
     /// Returns a program that may be ill-formed.
     pub fn compile_inner(&mut self, root_block: DslIrBlock<C>) -> RootProgram<C::F> {
-        // Prefix an empty basic block to be later filled in by constants.
         let mut program = tracing::debug_span!("compile raw program").in_scope(|| {
-            self.compile_raw_program(root_block, vec![SeqBlock::Basic(BasicBlock::default())])
+            // Prefix an empty basic block in the argument to `compile_raw_program`.
+            // Later, we will fill it with constants.
+            // When the debug feature is enabled, perform cycle tracking.
+            cfg_if! {
+                if #[cfg(feature = "debug")] {
+                    let mut cycle_tracker = SpanBuilder::new(Cow::Borrowed("cycle_tracker"));
+                    let program = self.compile_raw_program(
+                        root_block,
+                        vec![SeqBlock::Basic(BasicBlock::default())],
+                        &mut cycle_tracker,
+                    );
+                    let cycle_tracker_root_span = cycle_tracker.finish().unwrap();
+                    for line in cycle_tracker_root_span.lines() {
+                        tracing::info!("{}", line);
+                    }
+                    program
+                } else {
+                    self.compile_raw_program(
+                        root_block,
+                        vec![SeqBlock::Basic(BasicBlock::default())],
+                    )
+                }
+            }
         });
         let total_memory = self.addr_to_mult.len() + self.consts.len();
         tracing::debug_span!("backfill mult").in_scope(|| self.backfill_all(program.iter_mut()));
@@ -737,6 +788,28 @@ where
         });
 
         RootProgram { inner: program, total_memory }
+    }
+}
+
+/// Used for cycle tracking.
+#[cfg(feature = "debug")]
+const fn instr_name<F>(instr: &Instruction<F>) -> &'static str {
+    match instr {
+        Instruction::BaseAlu(_) => "BaseAlu",
+        Instruction::ExtAlu(_) => "ExtAlu",
+        Instruction::Mem(_) => "Mem",
+        Instruction::Poseidon2(_) => "Poseidon2",
+        Instruction::Select(_) => "Select",
+        Instruction::ExpReverseBitsLen(_) => "ExpReverseBitsLen",
+        Instruction::HintBits(_) => "HintBits",
+        Instruction::FriFold(_) => "FriFold",
+        Instruction::BatchFRI(_) => "BatchFRI",
+        Instruction::Print(_) => "Print",
+        Instruction::HintExt2Felts(_) => "HintExt2Felts",
+        Instruction::Hint(_) => "Hint",
+        Instruction::HintAddCurve(_) => "HintAddCurve",
+        Instruction::CommitPublicValues(_) => "CommitPublicValues",
+        Instruction::DebugBacktrace(_) => "DebugBacktrace",
     }
 }
 
