@@ -193,7 +193,7 @@ pub mod tests {
     use slop_jagged::JaggedConfig;
     use slop_merkle_tree::my_bb_16_perm;
     use sp1_recursion_executor::{
-        instruction as instr, linear_program, BaseAluOpcode, ExtAluOpcode, Instruction,
+        instruction as instr, linear_program, BaseAluOpcode, Block, ExtAluOpcode, Instruction,
         MemAccessKind, RecursionProgram, Runtime, D,
     };
     use sp1_stark::BabyBearPoseidon2;
@@ -209,11 +209,12 @@ pub mod tests {
     // type B = RecursionAir<F, 9>;
 
     /// Runs the given program on machines that use the wide and skinny Poseidon2 chips.
-    pub async fn run_recursion_test_machines(program: RecursionProgram<F>) {
+    pub async fn run_recursion_test_machines(program: RecursionProgram<F>, witness: Vec<Block<F>>) {
         let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(
             Arc::new(program.clone()),
             my_bb_16_perm(),
         );
+        runtime.witness_stream = witness.into();
         runtime.run().unwrap();
 
         // Run with the poseidon2 wide chip.
@@ -228,7 +229,7 @@ pub mod tests {
 
     /// Constructs a linear program and runs it on machines that use the wide and skinny Poseidon2 chips.
     pub async fn test_recursion_linear_program(instrs: Vec<Instruction<F>>) {
-        run_recursion_test_machines(linear_program(instrs).unwrap()).await;
+        run_recursion_test_machines(linear_program(instrs).unwrap(), Vec::new()).await;
     }
 
     #[tokio::test]

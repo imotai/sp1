@@ -1,10 +1,10 @@
 use std::{borrow::BorrowMut, mem::MaybeUninit};
 
-use p3_baby_bear::BabyBear;
 use p3_challenger::DuplexChallenger;
-use p3_field::{AbstractField, PrimeField32};
 use p3_symmetric::CryptographicPermutation;
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_baby_bear::BabyBear;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,

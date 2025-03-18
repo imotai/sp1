@@ -4,10 +4,10 @@ use std::{
 };
 
 // use itertools::Itertools;
-use p3_baby_bear::BabyBear;
-use p3_field::{AbstractField, Field};
 
 use p3_symmetric::Permutation;
+use slop_algebra::{AbstractField, Field};
+use slop_baby_bear::BabyBear;
 use slop_merkle_tree::my_bb_16_perm;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,

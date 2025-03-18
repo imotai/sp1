@@ -2,13 +2,12 @@ use crate::{
     witness::{WitnessWriter, Witnessable},
     CircuitConfig,
 };
-use p3_baby_bear::BabyBear;
 use slop_algebra::UnivariatePolynomial;
 use slop_multilinear::Point;
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::ir::Builder;
 
-impl<C: CircuitConfig<F = BabyBear>, T: Witnessable<C>> Witnessable<C> for PartialSumcheckProof<T> {
+impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for PartialSumcheckProof<T> {
     type WitnessVariable = PartialSumcheckProof<T::WitnessVariable>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
@@ -30,7 +29,7 @@ impl<C: CircuitConfig<F = BabyBear>, T: Witnessable<C>> Witnessable<C> for Parti
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear>, T: Witnessable<C>> Witnessable<C> for UnivariatePolynomial<T> {
+impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for UnivariatePolynomial<T> {
     type WitnessVariable = UnivariatePolynomial<T::WitnessVariable>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
@@ -42,7 +41,7 @@ impl<C: CircuitConfig<F = BabyBear>, T: Witnessable<C>> Witnessable<C> for Univa
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear>, T: Witnessable<C>> Witnessable<C> for Point<T> {
+impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Point<T> {
     type WitnessVariable = Point<T::WitnessVariable>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
@@ -54,4 +53,12 @@ impl<C: CircuitConfig<F = BabyBear>, T: Witnessable<C>> Witnessable<C> for Point
             x.write(witness);
         }
     }
+}
+
+impl<C: CircuitConfig> Witnessable<C> for () {
+    type WitnessVariable = ();
+
+    fn read(&self, _builder: &mut Builder<C>) -> Self::WitnessVariable {}
+
+    fn write(&self, _witness: &mut impl WitnessWriter<C>) {}
 }

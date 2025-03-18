@@ -87,8 +87,8 @@ mod tests {
     use sp1_recursion_compiler::circuit::AsmConfig;
     use std::sync::Arc;
 
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_field::extension::BinomialExtensionField;
+    use slop_algebra::extension::BinomialExtensionField;
+    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 
     use crate::witness::Witnessable;
 

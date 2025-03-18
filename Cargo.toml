@@ -115,8 +115,8 @@ slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
 # slop-symmetric = { path = "../slop/crates/symmetric" }
 # slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
 # slop-futures = { path = "../slop/crates/futures" }
-# slop-poseidon2 = { path = "../slop/crates/poseidon2" }
 # slop-maybe-rayon = { path = "../slop/crates/maybe-rayon" }
+# slop-poseidon2 = { path = "../slop/crates/poseidon2" }
 
 # For testing.
 test-artifacts = { path = "crates/test-artifacts" }

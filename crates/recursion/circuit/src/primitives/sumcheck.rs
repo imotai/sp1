@@ -2,8 +2,8 @@ use crate::{
     challenger::{CanObserveVariable, FieldChallengerVariable},
     BabyBearFriConfigVariable, CircuitConfig,
 };
-use p3_baby_bear::BabyBear;
 use slop_algebra::UnivariatePolynomial;
+use slop_baby_bear::BabyBear;
 use slop_multilinear::Point;
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
@@ -14,7 +14,7 @@ use sp1_recursion_compiler::{
 pub fn verify_sumcheck<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>(
     builder: &mut Builder<C>,
     challenger: &mut SC::FriChallengerVariable,
-    proof: PartialSumcheckProof<Ext<C::F, C::EF>>,
+    proof: &PartialSumcheckProof<Ext<C::F, C::EF>>,
 ) {
     let num_variables = proof.univariate_polys.len();
     let mut alpha_point: Point<SymbolicExt<C::F, C::EF>> = Point::default();
@@ -75,12 +75,11 @@ mod tests {
 
     use super::*;
     use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
-    use p3_baby_bear::DiffusionMatrixBabyBear;
-    use p3_field::AbstractField;
     use rand::rngs::OsRng;
     use rand::thread_rng;
-    use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::AbstractExtensionField;
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_baby_bear::DiffusionMatrixBabyBear;
     use slop_challenger::DuplexChallenger;
     use slop_jagged::BabyBearPoseidon2;
     use slop_merkle_tree::{my_bb_16_perm, Perm};
@@ -128,7 +127,7 @@ mod tests {
         let sumcheck_proof_variable = sumcheck_proof.read(&mut builder);
 
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
-        verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, sumcheck_proof_variable);
+        verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, &sumcheck_proof_variable);
 
         let mut witness_stream = Vec::new();
         Witnessable::<AsmConfig<F, EF>>::write(&sumcheck_proof, &mut witness_stream);
@@ -173,7 +172,7 @@ mod tests {
         let sumcheck_proof_variable = sumcheck_proof.read(&mut builder);
 
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
-        verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, sumcheck_proof_variable);
+        verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, &sumcheck_proof_variable);
 
         let mut witness_stream = Vec::new();
         Witnessable::<AsmConfig<F, EF>>::write(&sumcheck_proof, &mut witness_stream);

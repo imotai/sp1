@@ -5,7 +5,7 @@ use challenger::{
 };
 use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
 use itertools::izip;
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},
@@ -22,11 +22,12 @@ use sp1_stark::BabyBearPoseidon2;
 pub mod basefold;
 pub mod challenger;
 pub mod hash;
+pub mod jagged;
 pub mod primitives;
 pub mod witness;
 pub const D: usize = 4;
-use p3_baby_bear::BabyBear;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
+use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
 
 type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;

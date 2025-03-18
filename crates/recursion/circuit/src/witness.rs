@@ -1,8 +1,6 @@
 use crate::CircuitConfig;
-use p3_baby_bear::BabyBear;
-use p3_field::extension::BinomialExtensionField;
-use p3_field::AbstractExtensionField;
-use p3_field::AbstractField;
+use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
+use slop_baby_bear::BabyBear;
 use sp1_recursion_compiler::ir::{Builder, Config, Ext, Felt};
 use sp1_recursion_executor::Block;
 
