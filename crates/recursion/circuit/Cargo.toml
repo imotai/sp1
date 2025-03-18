@@ -62,6 +62,7 @@ rand = "0.8.5"
 test-artifacts = { workspace = true }
 
 [features]
+# Enables debug features in dependencies.
 debug = ["sp1-core-machine/debug", "sp1-recursion-compiler/debug"]
 
 [lints]

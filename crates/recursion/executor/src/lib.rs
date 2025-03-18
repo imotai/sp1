@@ -9,6 +9,7 @@ mod record;
 // Avoid triggering annoying branch of thiserror derive macro.
 use backtrace::Backtrace as Trace;
 pub use block::Block;
+use cfg_if::cfg_if;
 use instruction::HintAddCurveInstr;
 pub use instruction::Instruction;
 use instruction::{FieldEltType, HintBitsInstr, HintExt2FeltsInstr, HintInstr, PrintInstr};
@@ -967,9 +968,15 @@ where
                     record.mem_var_events.push(MemEvent { inner: val });
                 }
             }
-            #[cfg(feature = "debug")]
             Instruction::DebugBacktrace(backtrace) => {
-                state.last_trace = Some(backtrace);
+                cfg_if! {
+                    if #[cfg(feature = "debug")] {
+                        state.last_trace = Some(backtrace);
+                    } else {
+                        // Ignore.
+                        drop(backtrace);
+                    }
+                }
             }
         }
 

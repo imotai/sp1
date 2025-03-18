@@ -553,7 +553,6 @@ where
             DslIr::PrintV(dst) => f(self.print_f(dst)),
             DslIr::PrintF(dst) => f(self.print_f(dst)),
             DslIr::PrintE(dst) => f(self.print_e(dst)),
-            #[cfg(feature = "debug")]
             DslIr::DebugBacktrace(trace) => f(Instruction::DebugBacktrace(trace)),
             DslIr::CircuitV2HintFelts(output, len) => f(self.hint(output, len)),
             DslIr::CircuitV2HintExts(output, len) => f(self.hint(output, len)),
@@ -690,9 +689,8 @@ where
                 // Instructions that do not write to memory.
                 Instruction::Mem(MemInstr { kind: MemAccessKind::Read, .. })
                 | Instruction::CommitPublicValues(_)
-                | Instruction::Print(_) => (),
-                #[cfg(feature = "debug")]
-                Instruction::DebugBacktrace(_) => (),
+                | Instruction::Print(_)
+                | Instruction::DebugBacktrace(_) => (),
             }
         }
 

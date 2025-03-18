@@ -159,10 +159,9 @@ impl<F> AddAssign<&Instruction<F>> for RecursionAirEventCount {
                 self.mem_var_events += instr.output_x_addrs_mults.len();
                 self.mem_var_events += instr.output_y_addrs_mults.len();
             }
-            Instruction::CommitPublicValues(_) => {}
-            Instruction::Print(_) => {}
-            #[cfg(feature = "debug")]
-            Instruction::DebugBacktrace(_) => {}
+            Instruction::CommitPublicValues(_)
+            | Instruction::Print(_)
+            | Instruction::DebugBacktrace(_) => {}
         }
     }
 }

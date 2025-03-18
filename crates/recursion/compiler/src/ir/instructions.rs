@@ -3,7 +3,6 @@ use std::{
     ops::{Deref, Range},
 };
 
-#[cfg(feature = "debug")]
 use backtrace::Backtrace;
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_stark::septic_curve::SepticCurve;
@@ -336,7 +335,6 @@ pub enum DslIr<C: Config> {
     Parallel(Vec<DslIrBlock<C>>),
 
     /// Pass a backtrace for debugging.
-    #[cfg(feature = "debug")]
     DebugBacktrace(Backtrace),
 }
 

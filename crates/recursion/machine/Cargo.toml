@@ -58,7 +58,6 @@ sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 
 [features]
 default = ["sys"]
-debug = []
 sys = ["sp1-core-machine/sys"]
 
 

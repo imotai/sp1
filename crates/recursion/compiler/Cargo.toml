@@ -25,7 +25,7 @@ sp1-stark = { workspace = true }
 
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-backtrace = { version = "0.3.71", optional = true }
+backtrace = "0.3.71"
 tracing = { workspace = true }
 vec_map = "0.8.2"
 
@@ -38,8 +38,8 @@ rand = "0.8.5"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 
 [features]
-default = ["debug"]
-debug = ["sp1-recursion-executor/debug","dep:backtrace"]
+# Enables cycle tracking and adds backtraces for IR assertions.
+debug = ["sp1-recursion-executor/debug"]
 
 [lints]
 workspace = true
