@@ -158,10 +158,10 @@ pub struct JaggedLittlePolynomialProverParams {
 /// the proving context, while the `Vec<Point<K>>` fields are intended to be recieved directly from
 /// the prover as field elements. The verifier program thus depends only on the usize parameters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct JaggedLittlePolynomialVerifierParams<K: AbstractField> {
-    pub(crate) col_prefix_sums: Vec<Point<K>>,
-    pub(crate) next_col_prefix_sums: Vec<Point<K>>,
-    pub(crate) max_log_row_count: usize,
+pub struct JaggedLittlePolynomialVerifierParams<K> {
+    pub col_prefix_sums: Vec<Point<K>>,
+    pub next_col_prefix_sums: Vec<Point<K>>,
+    pub max_log_row_count: usize,
 }
 
 impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierParams<K> {
@@ -382,7 +382,7 @@ impl ColRanges {
     }
 }
 
-pub(crate) struct BranchingProgram<K: AbstractField> {
+pub struct BranchingProgram<K: AbstractField> {
     z_row_rev: Point<K>,
     z_index_rev: Point<K>,
     memory_states: Vec<MemoryState>,
@@ -391,7 +391,7 @@ pub(crate) struct BranchingProgram<K: AbstractField> {
 }
 
 impl<K: AbstractField + 'static> BranchingProgram<K> {
-    pub(crate) fn new(z_row: Point<K>, z_index: Point<K>) -> Self {
+    pub fn new(z_row: Point<K>, z_index: Point<K>) -> Self {
         let log_m = z_index.dimension();
 
         Self {
@@ -403,7 +403,7 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
         }
     }
 
-    pub(crate) fn eval(&self, prefix_sum: &Point<K>, next_prefix_sum: &Point<K>) -> K {
+    pub fn eval(&self, prefix_sum: &Point<K>, next_prefix_sum: &Point<K>) -> K {
         let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
         state_by_state_results[MemoryState::success().get_index()] = K::one();
 

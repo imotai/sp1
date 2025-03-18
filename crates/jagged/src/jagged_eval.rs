@@ -166,7 +166,7 @@ where
                 merged_prefix_sum.extend(next_column_prefix_sum);
 
                 let full_lagrange_eval =
-                    if prev_merged_prefix_sum == merged_prefix_sum && is_first_column {
+                    if prev_merged_prefix_sum == merged_prefix_sum && !is_first_column {
                         prev_full_lagrange_eval
                     } else {
                         let full_lagrange_eval = Mle::full_lagrange_eval(
@@ -200,7 +200,7 @@ where
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub struct JaggedEvalSumcheckProver<F>(PhantomData<F>);
+pub struct JaggedEvalSumcheckProver<F>(pub PhantomData<F>);
 
 impl<F, EF, Challenger> JaggedEvalProver<EF, Challenger> for JaggedEvalSumcheckProver<F>
 where
@@ -245,7 +245,7 @@ where
 }
 
 /// A struct that represents the polynomial that is used to evaluate the sumcheck.
-pub(crate) struct JaggedEvalSumcheckPoly<K: Field> {
+pub struct JaggedEvalSumcheckPoly<K: Field> {
     /// The branching program that has a constant z_row and z_index.
     h_poly: BranchingProgram<K>,
     /// The random point generated during the sumcheck proving time.
