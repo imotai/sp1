@@ -1,6 +1,7 @@
 use crate::CircuitConfig;
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
 use slop_baby_bear::BabyBear;
+use slop_commit::Rounds;
 use sp1_recursion_compiler::ir::{Builder, Config, Ext, Felt};
 use sp1_recursion_executor::Block;
 
@@ -129,6 +130,20 @@ impl<C: CircuitConfig, T: Witnessable<C>, const N: usize> Witnessable<C> for [T;
 
 impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Vec<T> {
     type WitnessVariable = Vec<T::WitnessVariable>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        self.iter().map(|x| x.read(builder)).collect()
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        for x in self.iter() {
+            x.write(witness);
+        }
+    }
+}
+
+impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Rounds<T> {
+    type WitnessVariable = Rounds<T::WitnessVariable>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         self.iter().map(|x| x.read(builder)).collect()

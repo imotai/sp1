@@ -86,6 +86,7 @@ slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
 slop-commit = { git = "https://github.com/succinctlabs/slop" }
 slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
+slop-stacked = { git = "https://github.com/succinctlabs/slop"}
 slop-tensor = { git = "https://github.com/succinctlabs/slop" }
 slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
 slop-challenger = { git = "https://github.com/succinctlabs/slop" }
@@ -106,6 +107,7 @@ slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
 # slop-commit = { path = "../slop/crates/commit" }
 # slop-jagged = { path = "../slop/crates/jagged" }
 # slop-sumcheck = { path = "../slop/crates/sumcheck" }
+# slop-stacked = { path = "../slop/crates/stacked" }
 # slop-tensor = { path = "../slop/crates/tensor" }
 # slop-multilinear = { path = "../slop/crates/multilinear" }
 # slop-challenger = { path = "../slop/crates/challenger" }

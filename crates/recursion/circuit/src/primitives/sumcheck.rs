@@ -1,15 +1,53 @@
+use crate::primitives::IntoSymbolic;
 use crate::{
     challenger::{CanObserveVariable, FieldChallengerVariable},
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use slop_algebra::UnivariatePolynomial;
+use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+use slop_alloc::{buffer, Buffer};
 use slop_baby_bear::BabyBear;
-use slop_multilinear::Point;
+use slop_multilinear::{partial_lagrange_blocking, MleEval};
+use slop_multilinear::{Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
+use slop_tensor::Dimensions;
+use slop_tensor::Tensor;
 use sp1_recursion_compiler::{
     ir::Felt,
     prelude::{Builder, Ext, SymbolicExt},
 };
+
+pub fn evaluate_mle_ext<
+    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+>(
+    builder: &mut Builder<C>,
+    mle: Mle<Ext<C::F, C::EF>>,
+    point: Point<Ext<C::F, C::EF>>,
+) -> MleEval<Ext<C::F, C::EF>> {
+    let point_symbolic = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&point);
+    let partial_lagrange = partial_lagrange_blocking(&point_symbolic);
+    let mle = mle.guts();
+    let mut sizes = mle.sizes().to_vec();
+    sizes.remove(0);
+    let dimensions = Dimensions::try_from(sizes).unwrap();
+    let mut dst = Tensor { storage: buffer![], dimensions };
+    let total_len = dst.total_len();
+    let dot_products = mle
+        .as_buffer()
+        .chunks_exact(mle.strides()[0])
+        .zip(partial_lagrange.as_buffer().iter())
+        .map(|(chunk, scalar)| chunk.iter().map(|a| *scalar * *a).collect())
+        .fold(
+            vec![SymbolicExt::<C::F, C::EF>::zero(); total_len],
+            |mut a, b: Vec<SymbolicExt<_, _>>| {
+                a.iter_mut().zip(b.iter()).for_each(|(a, b)| *a += *b);
+                a
+            },
+        );
+    let dot_products = dot_products.into_iter().map(|x| builder.eval(x)).collect::<Buffer<_>>();
+    dst.storage = dot_products;
+    MleEval::new(dst)
+}
 
 pub fn verify_sumcheck<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>(
     builder: &mut Builder<C>,

@@ -26,9 +26,11 @@ slop-jagged = { workspace = true }
 slop-commit = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-basefold = { workspace = true }
+slop-basefold-prover = { workspace = true }
 slop-algebra = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-sumcheck = { workspace = true }
+slop-stacked = { workspace = true }
 slop-challenger = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-core-executor = { workspace = true }
@@ -60,6 +62,7 @@ p3-merkle-tree = { workspace = true }
 p3-poseidon2 = { workspace = true }
 zkhash = "0.2.0"
 rand = "0.8.5"
+futures = "0.3.31"
 test-artifacts = { workspace = true }
 
 [features]

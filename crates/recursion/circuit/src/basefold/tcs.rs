@@ -34,7 +34,7 @@ pub struct RecursiveTensorCsOpening<C: RecursiveTcs> {
 }
 
 #[derive(Debug, Copy, PartialEq, Eq)]
-pub struct RecursiveMerkleTreeTcs<C, M>(PhantomData<(C, M)>);
+pub struct RecursiveMerkleTreeTcs<C, M>(pub PhantomData<(C, M)>);
 
 impl<C, M> Clone for RecursiveMerkleTreeTcs<C, M> {
     fn clone(&self) -> Self {

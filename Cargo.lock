@@ -3275,6 +3275,7 @@ name = "sp1-recursion-circuit"
 version = "4.0.1"
 dependencies = [
  "ff 0.13.1",
+ "futures",
  "hashbrown 0.14.5",
  "itertools 0.13.0",
  "num-traits",
@@ -3297,11 +3298,13 @@ dependencies = [
  "slop-alloc",
  "slop-baby-bear",
  "slop-basefold",
+ "slop-basefold-prover",
  "slop-challenger",
  "slop-commit",
  "slop-jagged",
  "slop-merkle-tree",
  "slop-multilinear",
+ "slop-stacked",
  "slop-sumcheck",
  "slop-tensor",
  "sp1-core-executor",
