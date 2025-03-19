@@ -122,7 +122,7 @@ where
     }
 }
 
-const DEFAULT_INTERLEAVE_BATCH_SIZE: usize = 128;
+const DEFAULT_INTERLEAVE_BATCH_SIZE: usize = 32;
 
 impl<Bpc, JP, E> DfeaultJaggedProver for JaggedBasefoldProverComponents<Bpc, JP, E>
 where
