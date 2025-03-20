@@ -15,7 +15,6 @@ pub struct GkrPointAndEvals<EF> {
     pub denom_evals: Vec<EF>,
 }
 
-#[allow(clippy::too_many_lines)]
 pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
     prover_messages: &[ProverMessage<SC::EF>],
     sc_proofs: &[PartialSumcheckProof<SC::EF>],
@@ -158,6 +157,11 @@ pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
     })
 }
 
+pub struct GkrVerificationResult<EF, Challenger> {
+    pub eval_point: Point<EF>,
+    pub challenger: Challenger,
+}
+
 // Verifies the GKR proof for the interactions logup permutation argument.
 pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
     proof: &LogupGkrProof<SC::EF>,
@@ -167,7 +171,7 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
     permutation_challenges: (SC::EF, SC::EF),
     log_degree: Option<u32>,
     max_log_row_count: usize,
-) -> Result<(Point<SC::EF>, SC::Challenger), LogupGkrVerificationError> {
+) -> Result<GkrVerificationResult<SC::EF, SC::Challenger>, LogupGkrVerificationError> {
     let (alpha, beta) = permutation_challenges;
 
     let interactions = &sends
@@ -267,5 +271,5 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
         return Err(LogupGkrVerificationError::InconsistentIndividualEvals);
     }
 
-    Ok((eval_point, challenger.clone()))
+    Ok(GkrVerificationResult { eval_point, challenger: challenger.clone() })
 }

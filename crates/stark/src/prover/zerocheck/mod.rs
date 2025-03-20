@@ -166,6 +166,7 @@ pub struct ZeroCheckPoly<K, F, EF, AirData, B: Backend = CpuBackend> {
     // pub num_padded_vars: usize,
     /// The padded row adjustment.
     pub padded_row_adjustment: EF,
+
     _marker: PhantomData<F>,
 }
 

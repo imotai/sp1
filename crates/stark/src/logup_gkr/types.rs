@@ -159,7 +159,6 @@ pub async fn generate_mles<SC: GkrProver>(input_mles: GkrMle<SC::F, SC::EF, SC::
 /// This is essentially the grade-school algorithm for adding fractions:
 /// `a/b + c/d = (ad + bc) / bd`: for adjacent `(p_0, p_1)` in `numerator_input_mle` and adjacent
 /// `(q_0, q_1)` in `denom_input_mle`, compute  `(new_p, new_q) = (q_1 * p_0 + q_0 * p_1, q_0 * q_1)`.
-#[allow(clippy::too_many_lines)]
 pub fn circuit_layer<F: Field, EF: ExtensionField<F>>(
     input_mle: &GkrMle<F, EF, CpuBackend>,
 ) -> GkrMle<EF, EF, CpuBackend> {

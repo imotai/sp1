@@ -2516,9 +2516,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7178faa4b75a30e269c71e61c353ce2748cf3d76f0c44c393f4e60abf49b825"
+checksum = "e56a18552996ac8d29ecc3b190b4fdbb2d91ca4ec396de7bbffaf43f3d637e96"
 dependencies = [
  "bitflags",
  "errno",
@@ -2735,7 +2735,7 @@ dependencies = [
 [[package]]
 name = "slop-air"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-air",
 ]
@@ -2743,7 +2743,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-field",
  "serde",
@@ -2752,7 +2752,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "itertools 0.14.0",
  "serde",
@@ -2764,7 +2764,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-baby-bear",
 ]
@@ -2772,7 +2772,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -2799,7 +2799,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "clap",
  "derive-where",
@@ -2833,7 +2833,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-challenger",
  "slop-algebra",
@@ -2843,7 +2843,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-commit",
  "serde",
@@ -2855,7 +2855,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-dft",
  "serde",
@@ -2868,7 +2868,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-fri",
 ]
@@ -2876,7 +2876,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "crossbeam",
  "futures",
@@ -2889,7 +2889,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "derive-where",
  "futures",
@@ -2920,7 +2920,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-matrix",
 ]
@@ -2928,7 +2928,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-maybe-rayon",
 ]
@@ -2936,7 +2936,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "derive-where",
  "itertools 0.14.0",
@@ -2959,7 +2959,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "derive-where",
  "futures",
@@ -2983,7 +2983,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -2991,7 +2991,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "derive-where",
  "futures",
@@ -3010,7 +3010,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "futures",
  "itertools 0.14.0",
@@ -3030,7 +3030,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-symmetric",
 ]
@@ -3038,7 +3038,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -3058,7 +3058,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3a2628ac62e221a2fe8a2fa5ccb8dafd3aae5534"
+source = "git+https://github.com/succinctlabs/slop#30d694e6fc5a03d633e9aafb741d21261ed8d4bf"
 dependencies = [
  "p3-util",
  "tracing-forest",
@@ -3631,9 +3631,9 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tempfile"
-version = "3.19.0"
+version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488960f40a3fd53d72c2a29a58722561dee8afdd175bd88e3db4677d7b2ba600"
+checksum = "7437ac7763b9b123ccf33c338a5cc1bac6f69b45a136c19bdd8a65e3916435bf"
 dependencies = [
  "fastrand",
  "getrandom 0.3.2",
@@ -4074,9 +4074,9 @@ dependencies = [
 
 [[package]]
 name = "windows-link"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dccfd733ce2b1753b03b6d3c65edf020262ea35e20ccdf3e288043e6dd620e3"
+checksum = "76840935b766e1b0a05c0066835fb9ec80071d4c09a16f6bd5f7e655e3c14c38"
 
 [[package]]
 name = "windows-sys"

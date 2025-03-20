@@ -187,7 +187,6 @@ impl<NumeratorType: Field, K: ExtensionField<NumeratorType>> LogupGkrPoly<Numera
             .skip(num_entries)
             .chain(std::iter::repeat(default_value).take(num_entries))
     }
-    #[allow(clippy::too_many_lines)]
     fn pair_sums(&self, eq_guts: &[K]) -> Vec<(K, K)> {
         assert!(self.numerator_0.inner().is_some());
         assert!(self.numerator_1.inner().is_some());
@@ -337,11 +336,8 @@ impl<NumeratorType: Field, K: ExtensionField<NumeratorType>> LogupGkrPoly<Numera
         };
 
         // TODO: A lot of this logic is common to the GPU implementation, and should be refactored.
-        let half_point = (0..rest.dimension()).map(|_| K::two().inverse()).collect::<Point<_>>();
         let powers_sum = self.batching_randomness_powers_sum;
-        let rest_eq_guts_sum = Mle::full_lagrange_eval(&rest, &half_point)
-            * NumeratorType::from_canonical_u32(1 << rest.dimension())
-            - eq_guts_sum;
+        let rest_eq_guts_sum = K::one() - eq_guts_sum;
         y_0 += rest_eq_guts_sum * powers_sum * self.lambda;
 
         y_half += rest_eq_guts_sum * K::from_canonical_u32(4) * powers_sum * self.lambda;

@@ -5,49 +5,29 @@ use itertools::Itertools;
 use p3_uni_stark::get_symbolic_constraints;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_air::Air;
-use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
+use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
-use slop_multilinear::{
-    Evaluations, HostEvaluationBackend, MleEval, MultilinearPcsChallenger, PaddedMle, PointBackend,
-};
+use slop_multilinear::{Evaluations, HostEvaluationBackend, MleEval, Point, PointBackend};
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
 use tokio::sync::{mpsc::Sender, OwnedSemaphorePermit, Semaphore};
 use tracing::Instrument;
 
 use crate::{
-    air::{InteractionScope, MachineAir, MachineProgram},
+    air::{MachineAir, MachineProgram},
     generate_gkr_logup_proof_and_data,
     prover::{ZeroCheckPoly, ZerocheckAir},
-    septic_curve::SepticCurve,
     septic_digest::SepticDigest,
-    septic_extension::SepticExtension,
     AirOpenedValues, Chip, ChipDimensions, ChipOpenedValues, ConstraintSumcheckFolder, GkrBackend,
-    GkrProver, LogupGkrProof, Machine, MachineConfig, MachineRecord, MachineVerifyingKey,
+    GkrProver, LogUpProverData, Machine, MachineConfig, MachineRecord, MachineVerifyingKey,
     ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
-
-/// A trait to extract the global cumulative sum from a chip.
-pub trait LastRowExtractor<F, B: Backend> {
-    /// Get the last row of a `PaddedMle`.
-    fn get_last_row(poly: &PaddedMle<F, B>) -> Vec<F>;
-}
-
-impl<F: Field> LastRowExtractor<F, CpuBackend> for CpuBackend {
-    fn get_last_row(poly: &PaddedMle<F, CpuBackend>) -> Vec<F> {
-        poly.inner().as_ref().map_or(poly.padding_values().clone().into(), |mle| {
-            mle.guts().as_slice()[mle.num_non_zero_entries() * mle.num_polynomials() - 14
-                ..mle.num_non_zero_entries() * mle.num_polynomials()]
-                .to_vec()
-        })
-    }
-}
 
 /// The components of the machine prover.
 ///
@@ -131,9 +111,6 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
         > + Send
         + Sync
         + 'static;
-
-    /// An API to extract the global cumulative sums from the global chip.
-    type Extractor: LastRowExtractor<Self::F, Self::B>;
 }
 
 /// A collection of traces.
@@ -157,6 +134,12 @@ pub struct ShardProver<C: MachineProverComponents> {
     pub zerocheck_prover_data: C::ZerocheckProverData,
     /// The trace generator.
     pub trace_generator: C::TraceGenerator,
+}
+
+/// The data passed from the GKR prover to the zerocheck prover.
+pub struct GkrPointAndOpening<EF> {
+    point: Point<EF>,
+    opening: (MleEval<EF>, Option<MleEval<EF>>),
 }
 
 impl<C: MachineProverComponents> ShardProver<C> {
@@ -286,17 +269,19 @@ impl<C: MachineProverComponents> ShardProver<C> {
         self.pcs_prover.commit_multilinears(message).await.unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
     async fn zerocheck(
         &self,
         preprocessed_traces: Traces<C::F, C::B>,
         traces: Traces<C::F, C::B>,
         constraints_map: &BTreeMap<String, usize>,
         batching_challenge: C::EF,
+        gkr_opening_batch_randomness: C::EF,
+        gkr_points_and_openings: Vec<GkrPointAndOpening<C::EF>>,
         public_values: Vec<C::F>,
         challenger: &mut C::Challenger,
     ) -> (ShardOpenedValues<C::F, C::EF>, PartialSumcheckProof<C::EF>) {
-        // Sample the random point to make the zerocheck claims.
-        let zeta = challenger.sample_point::<C::EF>(self.max_log_row_count() as u32);
         let max_num_constraints = itertools::max(constraints_map.values()).unwrap();
         let powers_of_challenge =
             batching_challenge.powers().take(*max_num_constraints).collect::<Vec<_>>();
@@ -305,9 +290,12 @@ impl<C: MachineProverComponents> ShardProver<C> {
         let public_values = Arc::new(public_values);
 
         let mut zerocheck_polys = Vec::new();
+        let mut chip_sumcheck_claims = Vec::new();
 
         let mut log_degrees = BTreeMap::new();
-        for air in self.chips().iter() {
+        for (air, GkrPointAndOpening { point: gkr_point, opening: (main_opening, prep_opening) }) in
+            self.chips().iter().zip(gkr_points_and_openings)
+        {
             let main_trace = traces.get(&air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
             let log_degree = num_real_entries.checked_ilog2();
@@ -345,18 +333,49 @@ impl<C: MachineProverComponents> ShardProver<C> {
             air.eval(&mut folder);
             let padded_row_adjustment = folder.accumulator;
 
+            // TODO: This could be computed once for the maximally wide chip and stored for later
+            // use, but since it's a computation that's done once per chip, we have chosen not to
+            // perform this optimization for now.
+            let gkr_opening_batch_randomness_powers = gkr_opening_batch_randomness
+                .powers()
+                .take(
+                    main_opening.num_polynomials()
+                        + prep_opening.as_ref().map_or(0, MleEval::num_polynomials),
+                )
+                .collect::<Vec<_>>();
+            let gkr_powers = Arc::new(gkr_opening_batch_randomness_powers);
+
             let alpha_powers = Arc::new(chip_powers_of_alpha);
             let air_data = self
                 .zerocheck_prover_data
-                .round_prover(air.air.clone(), public_values.clone(), alpha_powers)
+                .round_prover(
+                    air.air.clone(),
+                    public_values.clone(),
+                    alpha_powers,
+                    gkr_powers.clone(),
+                )
                 .await;
             let preprocessed_trace = preprocessed_traces.get(&name).cloned();
+
+            let chip_sumcheck_claim = main_opening
+                .evaluations()
+                .as_slice()
+                .iter()
+                .chain(
+                    prep_opening
+                        .as_ref()
+                        .map_or_else(Vec::new, |mle| mle.evaluations().as_slice().to_vec())
+                        .iter(),
+                )
+                .zip(gkr_powers.iter())
+                .map(|(opening, power)| *opening * *power)
+                .sum::<C::EF>();
 
             let initial_geq_value =
                 if main_trace.num_real_entries() > 0 { C::EF::zero() } else { C::EF::one() };
             let zerocheck_poly = ZeroCheckPoly::new(
                 air_data,
-                zeta.clone(),
+                gkr_point,
                 preprocessed_trace,
                 main_trace,
                 C::EF::one(),
@@ -364,17 +383,17 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 padded_row_adjustment,
             );
             zerocheck_polys.push(zerocheck_poly);
+            chip_sumcheck_claims.push(chip_sumcheck_claim);
         }
 
         // Same lambda for the RLC of the zerocheck polynomials.
         let lambda = challenger.sample_ext_element::<C::EF>();
 
-        let num_zerocheck_polys = zerocheck_polys.len();
         // Compute the sumcheck proof for the zerocheck polynomials.
         let (partial_sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
             zerocheck_polys,
             challenger,
-            vec![C::EF::zero(); num_zerocheck_polys],
+            chip_sumcheck_claims,
             1,
             lambda,
         )
@@ -395,21 +414,21 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
                 let main = AirOpenedValues { local: main_evals.to_vec(), next: vec![] };
 
-                let global_sum = if air.commit_scope() == InteractionScope::Local {
-                    SepticDigest::<C::F>::zero()
-                } else {
-                    let main_trace = traces.get(&air.name()).unwrap();
-                    let last_row = C::Extractor::get_last_row(main_trace);
-                    SepticDigest(SepticCurve {
-                        x: SepticExtension::<C::F>::from_base_fn(|i| last_row[i]),
-                        y: SepticExtension::<C::F>::from_base_fn(|i| last_row[i + 7]),
-                    })
-                };
+                // let global_sum = if air.commit_scope() == InteractionScope::Local {
+                //     SepticDigest::<C::F>::zero()
+                // } else {
+                //     let main_trace = traces.get(&air.name()).unwrap();
+                //     let last_row = C::Extractor::get_last_row(main_trace);
+                //     SepticDigest(SepticCurve {
+                //         x: SepticExtension::<C::F>::from_base_fn(|i| last_row[i]),
+                //         y: SepticExtension::<C::F>::from_base_fn(|i| last_row[i + 7]),
+                //     })
+                // };
 
                 ChipOpenedValues {
                     preprocessed,
                     main,
-                    global_cumulative_sum: global_sum,
+                    global_cumulative_sum: SepticDigest::<C::F>::zero(), //global_sum,
                     local_cumulative_sum: C::EF::zero(),
                     log_degree: log_degrees[&air.name()],
                 }
@@ -426,7 +445,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         preprocessed_traces: &Traces<C::F, C::B>,
         traces: &Traces<C::F, C::B>,
         challenger: &mut C::Challenger,
-    ) -> Vec<(LogupGkrProof<C::EF>, C::Challenger)> {
+    ) -> Vec<LogUpProverData<C::GkrComponents>> {
         // Sample the random point to make the zerocheck claims.
         let permutation_challenges =
             (0..2).map(|_| challenger.sample_ext_element::<C::EF>()).collect::<Vec<_>>();
@@ -460,7 +479,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 .collect::<Vec<_>>(),
         )
         .await;
-        gkr_proofs.into_iter().map(|(proof, _, challenger)| (proof, challenger)).collect()
+        gkr_proofs
     }
 
     /// Generate the shard data
@@ -505,13 +524,24 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Observe the commitments.
         challenger.observe(main_commit.clone());
 
-        let gkr_proofs_and_challengers = self
+        let gkr_prover_data = self
             .gkr(&pk.preprocessed_traces, &traces, challenger)
             .instrument(tracing::debug_span!("gkr"))
             .await;
 
-        let (gkr_proofs, challengers): (Vec<_>, Vec<_>) =
-            gkr_proofs_and_challengers.into_iter().unzip();
+        let (gkr_proofs, points_and_openings, challengers): (Vec<_>, Vec<_>, Vec<_>) =
+            gkr_prover_data
+                .into_iter()
+                .map(|data| {
+                    let LogUpProverData { proof, final_point, challenger } = data;
+                    let column_openings = proof.column_openings.clone();
+                    (
+                        proof,
+                        GkrPointAndOpening { point: final_point, opening: column_openings },
+                        challenger,
+                    )
+                })
+                .multiunzip();
 
         let mut challenger_owned = C::Challenger::synchronize_challengers(challengers);
 
@@ -520,6 +550,8 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();
 
+        let gkr_opening_batch_challenge = challenger.sample_ext_element::<C::EF>();
+
         // Generate the zerocheck proof.
         let (shard_open_values, zerocheck_partial_sumcheck_proof) = self
             .zerocheck(
@@ -527,6 +559,8 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 traces,
                 &pk.constraints_map,
                 batching_challenge,
+                gkr_opening_batch_challenge,
+                points_and_openings,
                 // TODO: remove the need for this clone
                 public_values.clone(),
                 challenger,
@@ -536,7 +570,6 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
         // Get the evaluation point for the trace polynomials.
         let evaluation_point = zerocheck_partial_sumcheck_proof.point_and_eval.0.clone();
-        // Get the evaluation claims of the trace polynomials.
         let mut preprocessed_evaluation_claims: Option<Evaluations<C::EF, C::B>> = None;
         let mut main_evaluation_claims = Evaluations::new(vec![]);
 

@@ -25,6 +25,12 @@ pub enum Either<L, R> {
     Right(R),
 }
 
+pub struct LogUpProverData<SC: GkrProver> {
+    pub proof: LogupGkrProof<SC::EF>,
+    pub final_point: Point<SC::EF>,
+    pub challenger: SC::Challenger,
+}
+
 /// Generates the GKR proof for the interactions logup permutation argument.  Specifically, it will
 /// generate a proof of the numerator and denominator of the argument's cumulative sum.
 pub(crate) async fn generate_gkr_logup_proof_and_data<SC: GkrProver>(
@@ -35,7 +41,7 @@ pub(crate) async fn generate_gkr_logup_proof_and_data<SC: GkrProver>(
     random_elements: &[SC::EF],
     mut challenger: SC::Challenger,
     log_max_row_height: usize,
-) -> (LogupGkrProof<SC::EF>, Point<SC::EF>, SC::Challenger)
+) -> LogUpProverData<SC>
 where
     SC::EF: Clone,
     SC::B: CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
@@ -79,8 +85,8 @@ where
 
     let column_openings = generate_column_openings::<SC>(preprocessed, main, &last_challenge).await;
 
-    (
-        LogupGkrProof {
+    LogUpProverData {
+        proof: LogupGkrProof {
             main_log_height: k as usize,
             prover_messages,
             sc_proofs,
@@ -88,9 +94,9 @@ where
             denom_claims: perm_denom_claims,
             column_openings,
         },
-        last_challenge,
+        final_point: last_challenge,
         challenger,
-    )
+    }
 }
 
 async fn run_gkr_round<SC: GkrProver, NumeratorType>(
@@ -162,7 +168,6 @@ where
                 challenger.observe_ext_element(*denom_0_elem);
                 challenger.observe_ext_element(*denom_1_elem);
             }
-
             (ProverMessage { numerator_0, numerator_1, denom_0, denom_1 }, Some(sc_proof))
         }
     }
@@ -292,7 +297,6 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_lines)]
 pub(crate) async fn generate_gkr_proof<SC: GkrProver>(
     input_mles: GkrMle<SC::F, SC::EF, SC::B>,
     challenger: &mut SC::Challenger,
@@ -403,7 +407,6 @@ where
     )
     .await;
 
-    // Run for the final round, reducing the GKR to a sumcheck, but not running the sumcheck.
     let (prover_message, maybe_sc_proof) = run_gkr_round::<SC, SC::F>(
         num_rounds,
         input_mles,

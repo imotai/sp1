@@ -41,6 +41,10 @@ pub trait ZerocheckRoundProver<F: Field, K, EF, B: Backend = CpuBackend>:
     /// Get the powers of alpha.
     fn powers_of_alpha(&self) -> &[EF];
 
+    /// The powers of the randomness for batching the GKR opening claims for the columns into the
+    /// sumcheck.
+    fn gkr_powers(&self) -> &[EF];
+
     /// Sum the zerocheck polynomial in the last variable.
     fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
         &self,
@@ -66,6 +70,7 @@ pub trait ZerocheckProverData<F: Field, EF: ExtensionField<F>, B: Backend = CpuB
         air: Arc<Self::Air>,
         public_values: Arc<Vec<F>>,
         powers_of_alpha: Arc<Vec<EF>>,
+        gkr_powers: Arc<Vec<EF>>,
     ) -> impl Future<Output = Self::RoundProver> + Send;
 }
 
@@ -77,12 +82,18 @@ pub struct ZerocheckCpuProver<F, EF, A> {
     public_values: Arc<Vec<F>>,
     /// The powers of alpha.
     powers_of_alpha: Arc<Vec<EF>>,
+    gkr_powers: Arc<Vec<EF>>,
 }
 
 impl<F, EF, A> ZerocheckCpuProver<F, EF, A> {
     /// Creates a new `ZerocheckAirData`.
-    pub fn new(air: Arc<A>, public_values: Arc<Vec<F>>, powers_of_alpha: Arc<Vec<EF>>) -> Self {
-        Self { air, public_values, powers_of_alpha }
+    pub fn new(
+        air: Arc<A>,
+        public_values: Arc<Vec<F>>,
+        powers_of_alpha: Arc<Vec<EF>>,
+        gkr_powers: Arc<Vec<EF>>,
+    ) -> Self {
+        Self { air, public_values, powers_of_alpha, gkr_powers }
     }
 }
 
@@ -110,6 +121,11 @@ where
         &self.powers_of_alpha
     }
 
+    #[inline]
+    fn gkr_powers(&self) -> &[EF] {
+        &self.gkr_powers
+    }
+
     async fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
         &self,
         partial_lagrange: Arc<Mle<EF>>,
@@ -119,6 +135,7 @@ where
         let air = self.air.clone();
         let public_values = self.public_values.clone();
         let powers_of_alpha = self.powers_of_alpha.clone();
+        let gkr_powers = self.gkr_powers.clone();
         let (tx, rx) = oneshot::channel();
         slop_futures::rayon::spawn(move || {
             let num_non_padded_vars =
@@ -215,6 +232,7 @@ where
                             &main_values_2,
                             &preprocessed_values_4,
                             &main_values_4,
+                            &gkr_powers,
                             *eq,
                         );
                     }
@@ -237,7 +255,6 @@ where
 /// This function will calculate the univariate polynomial where all variables other than the last
 /// are summed on the boolean hypercube and the last variable is left as a free variable.
 /// TODO:  Add flexibility to support degree 2 and degree 3 constraint polynomials.
-#[allow(clippy::too_many_lines)]
 pub async fn zerocheck_sum_as_poly_in_last_variable<
     K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     F: Field,
@@ -341,6 +358,7 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
             &main_column_vals_2,
             &preprocessed_column_vals_4,
             &main_column_vals_4,
+            poly.air_data.gkr_powers(),
             eq_guts_0,
         );
 
@@ -360,22 +378,16 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
 
     // Add the point 0 and it's eval to the xs and ys.
     xs.push(EF::zero());
-    if IS_FIRST_ROUND {
-        ys.push(EF::zero());
-    } else {
-        let eq_last_term_factor = EF::one() - last;
-        y_0 *= eq_last_term_factor;
-        ys.push(y_0);
-    }
+
+    let eq_last_term_factor = EF::one() - last;
+    y_0 *= eq_last_term_factor;
+    ys.push(y_0);
 
     // Add the point 1 and it's eval to the xs and ys.
     xs.push(EF::one());
-    if IS_FIRST_ROUND {
-        ys.push(EF::zero());
-    } else {
-        let y_1 = (claim / poly.eq_adjustment) - y_0;
-        ys.push(y_1);
-    }
+
+    let y_1 = (claim / poly.eq_adjustment) - y_0;
+    ys.push(y_1);
 
     // Add the point 2 and it's eval to the xs and ys.
     xs.push(EF::from_canonical_usize(2));
@@ -415,9 +427,8 @@ fn interpolate_last_var_non_padded_values<K: Field, const IS_FIRST_ROUND: bool>(
         let slope_times_2 = slope + slope;
         let slope_times_4 = slope_times_2 + slope_times_2;
 
-        if !IS_FIRST_ROUND {
-            vals_0[i] = *row_0_val;
-        }
+        vals_0[i] = *row_0_val;
+
         vals_2[i] = slope_times_2 + *row_0_val;
         vals_4[i] = slope_times_4 + *row_0_val;
     }
@@ -449,8 +460,9 @@ where
         air: Arc<A>,
         public_values: Arc<Vec<F>>,
         powers_of_alpha: Arc<Vec<EF>>,
+        gkr_powers: Arc<Vec<EF>>,
     ) -> Self::RoundProver {
-        ZerocheckCpuProver::new(air, public_values, powers_of_alpha)
+        ZerocheckCpuProver::new(air, public_values, powers_of_alpha, gkr_powers)
     }
 }
 
@@ -490,8 +502,10 @@ pub fn increment_y_values<
     main_column_vals_2: &[K],
     preprocessed_column_vals_4: &[K],
     main_column_vals_4: &[K],
+    interaction_batching_powers: &[EF],
     eq: EF,
 ) {
+    let mut y_0_adjustment = EF::zero();
     // Add to the y_0 accumulator.
     if !IS_FIRST_ROUND {
         let mut folder = ConstraintSumcheckFolder {
@@ -503,8 +517,21 @@ pub fn increment_y_values<
             powers_of_alpha,
         };
         air.eval(&mut folder);
-        *y_0 += folder.accumulator * eq;
+        y_0_adjustment += folder.accumulator;
     }
+
+    let gkr_adjustment_0 = main_column_vals_0
+        .iter()
+        .copied()
+        .chain(preprocessed_column_vals_0.iter().copied())
+        .zip(interaction_batching_powers.iter().copied())
+        .map(|(val, power)| power * val)
+        .sum::<EF>();
+
+    y_0_adjustment += gkr_adjustment_0;
+    *y_0 += y_0_adjustment * eq;
+
+    let mut y_2_adjustment = EF::zero();
 
     // Add to the y_2 accumulator.
     let mut folder = ConstraintSumcheckFolder {
@@ -516,7 +543,17 @@ pub fn increment_y_values<
         powers_of_alpha,
     };
     air.eval(&mut folder);
-    *y_2 += folder.accumulator * eq;
+
+    y_2_adjustment += folder.accumulator;
+    let gkr_adjustment_2 = main_column_vals_2
+        .iter()
+        .copied()
+        .chain(preprocessed_column_vals_2.iter().copied())
+        .zip(interaction_batching_powers.iter().copied())
+        .map(|(val, power)| power * val)
+        .sum::<EF>();
+    y_2_adjustment += gkr_adjustment_2;
+    *y_2 += y_2_adjustment * eq;
 
     // Add to the y_4 accumulator.
     let mut folder = ConstraintSumcheckFolder {
@@ -527,6 +564,7 @@ pub fn increment_y_values<
         constraint_index: 0,
         powers_of_alpha,
     };
+    let gkr_adjustment_4 = gkr_adjustment_2 + gkr_adjustment_2 - gkr_adjustment_0;
     air.eval(&mut folder);
-    *y_4 += folder.accumulator * eq;
+    *y_4 += (folder.accumulator + gkr_adjustment_4) * eq;
 }
