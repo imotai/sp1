@@ -74,15 +74,18 @@ where
         air: Arc<A>,
         public_values: Arc<Vec<F>>,
         powers_of_alpha: Arc<Vec<EF>>,
+        gkr_powers: Arc<Vec<EF>>,
     ) -> Self::RoundProver {
         let eval_program = self.eval_programs.get(&air.name()).unwrap().clone();
         let public_values = Arc::new(Buffer::from(public_values.to_vec()));
         let powers_of_alpha = Arc::new(Buffer::from(powers_of_alpha.to_vec()));
+        let gkr_powers = Arc::new(Buffer::from(gkr_powers.to_vec()));
 
-        let (eval_program, public_values_device, powers_of_alpha_device) = tokio::join!(
+        let (eval_program, public_values_device, powers_of_alpha_device, gkr_powers_device) = tokio::join!(
             async { Arc::new(eval_program.to_device_in(&self.allocator).await.unwrap()) },
             async { Arc::new(public_values.to_device_in(&self.allocator).await.unwrap()) },
             async { Arc::new(powers_of_alpha.to_device_in(&self.allocator).await.unwrap()) },
+            async { Arc::new(gkr_powers.to_device_in(&self.allocator).await.unwrap()) },
         );
 
         ZerocheckEvalProgramProver::new(
@@ -92,6 +95,8 @@ where
             public_values_device,
             powers_of_alpha,
             powers_of_alpha_device,
+            gkr_powers,
+            gkr_powers_device,
         )
     }
 }
@@ -107,6 +112,9 @@ pub struct ZerocheckEvalProgramProver<F, EF, A> {
     powers_of_alpha: Arc<Buffer<EF>>,
     /// The powers of alpha on the device.
     powers_of_alpha_device: Arc<Buffer<EF, TaskScope>>,
+
+    gkr_powers: Arc<Buffer<EF>>,
+    gkr_powers_device: Arc<Buffer<EF, TaskScope>>,
     /// The AIR that contains the constraint polynomial.
     air: Arc<A>,
 }
@@ -120,10 +128,13 @@ impl<F, EF, A> Clone for ZerocheckEvalProgramProver<F, EF, A> {
             powers_of_alpha: self.powers_of_alpha.clone(),
             powers_of_alpha_device: self.powers_of_alpha_device.clone(),
             air: self.air.clone(),
+            gkr_powers: self.gkr_powers.clone(),
+            gkr_powers_device: self.gkr_powers_device.clone(),
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
     pub fn new(
         eval_program: Arc<EvalProgram<F, EF, TaskScope>>,
@@ -132,6 +143,8 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         public_values_device: Arc<Buffer<F, TaskScope>>,
         powers_of_alpha: Arc<Buffer<EF>>,
         powers_of_alpha_device: Arc<Buffer<EF, TaskScope>>,
+        gkr_powers: Arc<Buffer<EF>>,
+        gkr_powers_device: Arc<Buffer<EF, TaskScope>>,
     ) -> Self {
         Self {
             eval_program,
@@ -140,6 +153,8 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
             powers_of_alpha,
             powers_of_alpha_device,
             air,
+            gkr_powers,
+            gkr_powers_device,
         }
     }
 
@@ -193,6 +208,7 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
                 interpolated_main_rows_height,
                 self.powers_of_alpha_device.as_ptr(),
                 self.public_values_device.as_ptr(),
+                self.gkr_powers_device.as_ptr(),
                 output.as_mut_ptr()
             );
 
@@ -242,6 +258,11 @@ where
     #[inline]
     fn powers_of_alpha(&self) -> &[EF] {
         &self.powers_of_alpha
+    }
+
+    #[inline]
+    fn gkr_powers(&self) -> &[EF] {
+        &self.gkr_powers
     }
 
     async fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
@@ -413,11 +434,13 @@ mod tests {
 
         let random_point = Point::<EF>::rand(&mut rng, 20);
         let partial_lagrange_cpu = Arc::new(Mle::<EF>::partial_lagrange(&random_point).await);
+        let gkr_powers: Vec<EF> = (0..cpu_width).map(|_| rng.gen::<EF>()).collect();
 
         let host_prover = ZerocheckCpuProver::new(
             cpu_chip.air.clone(),
             Arc::new(public_values.to_vec()),
             Arc::new(powers_of_alpha.clone()),
+            Arc::new(gkr_powers.clone()),
         );
 
         let start_time = Instant::now();
@@ -441,6 +464,8 @@ mod tests {
                 let public_values_device = Arc::new(public_values.to_device_in(&t).await.unwrap());
                 let powers_of_alpha_device =
                     Arc::new(powers_of_alpha.to_device_in(&t).await.unwrap());
+                let gkr_powers_device =
+                    Arc::new(Buffer::from(gkr_powers.to_vec()).to_device_in(&t).await.unwrap());
 
                 let device_prover = ZerocheckEvalProgramProver::new(
                     eval_program,
@@ -449,6 +474,8 @@ mod tests {
                     public_values_device,
                     Arc::new(powers_of_alpha),
                     powers_of_alpha_device,
+                    Arc::new(gkr_powers.into()),
+                    gkr_powers_device,
                 );
 
                 let main_mle_device = t.into_device(main_mle).await.unwrap();

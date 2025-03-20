@@ -143,6 +143,7 @@ where
                 &main_column_vals_2,
                 &preprocessed_column_vals_4,
                 &main_column_vals_4,
+                poly_air_data.gkr_powers(),
                 eq_guts_0,
             );
 
@@ -166,22 +167,15 @@ where
 
         // Add the point 0 and it's eval to the xs and ys.
         xs.push(EF::zero());
-        if IS_FIRST_ROUND {
-            ys.push(EF::zero());
-        } else {
-            let eq_last_term_factor = EF::one() - last;
-            y_0 *= eq_last_term_factor;
-            ys.push(y_0);
-        }
+        let eq_last_term_factor = EF::one() - last;
+        y_0 *= eq_last_term_factor;
+        ys.push(y_0);
 
         // Add the point 1 and it's eval to the xs and ys.
         xs.push(EF::one());
-        if IS_FIRST_ROUND {
-            ys.push(EF::zero());
-        } else {
-            let y_1 = (claim / eq_adjustment) - y_0;
-            ys.push(y_1);
-        }
+
+        let y_1 = (claim / eq_adjustment) - y_0;
+        ys.push(y_1);
 
         // Add the point 2 and it's eval to the xs and ys.
         xs.push(EF::from_canonical_usize(2));

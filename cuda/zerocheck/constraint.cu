@@ -29,6 +29,7 @@ __global__ void constraintPolyEval(
     size_t height,
     const bb31_extension_t *powersOfAlpha,
     const bb31_t *publicValues,
+    const bb31_extension_t *batchingPowers,
     bb31_extension_t *__restrict__ constraintValues)
 {
     K expr_f[MEMORY_SIZE];
@@ -548,8 +549,18 @@ __global__ void constraintPolyEval(
                 }
             }
 
+            bb31_extension_t gkr_correction = bb31_extension_t::zero();
+            
+            for (size_t i = 0; i < mainWidth; i++) {
+                gkr_correction += batchingPowers[i]*folder.var_f(4, i);
+            }
+
+            for (size_t i = 0; i < preprocessedWidth; i++) {
+                gkr_correction += batchingPowers[mainWidth + i]*folder.var_f(2,i);
+            }
+
             bb31_extension_t eq = bb31_extension_t::load(partialLagrange, rowIdx);
-            bb31_extension_t::store(constraintValues, xValueIdx * height + rowIdx, folder.accumulator * eq);
+            bb31_extension_t::store(constraintValues, xValueIdx * height + rowIdx, (folder.accumulator+gkr_correction) * eq);
         }
     }
 }
