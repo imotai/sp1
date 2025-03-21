@@ -184,7 +184,15 @@ where
             })
             .collect();
 
-        let gkr_batch_open_challenge_powers = gkr_batch_open_challenge.powers();
+        let max_elements = machine
+            .chips()
+            .iter()
+            .map(|chip| chip.width() + chip.preprocessed_width())
+            .max()
+            .unwrap_or(0);
+
+        let gkr_batch_open_challenge_powers =
+            gkr_batch_open_challenge.powers().take(max_elements).collect::<Vec<_>>();
 
         for ((chip, openings), zerocheck_eq_val) in
             machine.chips().iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
@@ -218,7 +226,12 @@ where
                 .iter()
                 .chain(openings.preprocessed.local.iter())
                 .copied()
-                .zip(gkr_batch_open_challenge_powers.clone())
+                .zip(
+                    gkr_batch_open_challenge_powers
+                        .iter()
+                        .take(openings.main.local.len() + openings.preprocessed.local.len())
+                        .copied(),
+                )
                 .map(|(opening, power)| opening * power)
                 .sum::<SymbolicExt<C::F, C::EF>>();
 
@@ -235,7 +248,12 @@ where
                     .to_vec()
                     .iter()
                     .chain(preprocessed_openings.to_vec().iter())
-                    .zip(gkr_batch_open_challenge_powers.clone())
+                    .zip(
+                        gkr_batch_open_challenge_powers
+                            .iter()
+                            .take(main_openings.len() + preprocessed_openings.len())
+                            .copied(),
+                    )
                     .map(|(opening, power)| *opening * power)
                     .sum::<SymbolicExt<C::F, C::EF>>()
             })
