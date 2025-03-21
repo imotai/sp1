@@ -9,7 +9,10 @@ use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, Shard
 
 /// A complete proof of program execution.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "C: MachineConfig", deserialize = "C: MachineConfig"))]
+#[serde(bound(
+    serialize = "C: MachineConfig, C::Challenger: Serialize",
+    deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
+))]
 pub struct MachineProof<C: MachineConfig> {
     /// The shard proofs.
     pub shard_proofs: Vec<ShardProof<C>>,

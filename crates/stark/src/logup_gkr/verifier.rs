@@ -169,8 +169,7 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
     sends: &[Interaction<SC::F>],
     receives: &[Interaction<SC::F>],
     permutation_challenges: (SC::EF, SC::EF),
-    log_degree: Option<u32>,
-    max_log_row_count: usize,
+    degree: &Point<SC::EF>,
 ) -> Result<GkrVerificationResult<SC::EF, SC::Challenger>, LogupGkrVerificationError> {
     let (alpha, beta) = permutation_challenges;
 
@@ -211,19 +210,9 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
         num_interactions,
     )?;
 
-    let geq_val = match log_degree {
-        None => SC::EF::one(),
-        Some(log_d) if log_d < max_log_row_count as u32 => {
-            // TODO: This will be available from the jagged parameters.
-            // Create the threshold point. This should be the big-endian bit representation
-            // of 2^openings.log_degree.
-            let mut threshold_point_vals = vec![SC::EF::zero(); max_log_row_count];
-            threshold_point_vals[max_log_row_count - (log_d as usize) - 1] = SC::EF::one();
-            let threshold_point = Point::new(threshold_point_vals.into());
-            full_geq(&threshold_point, &eval_point)
-        }
-        _ => SC::EF::zero(),
-    };
+    let mut eval_point_extended = eval_point.clone();
+    eval_point_extended.add_dimension(SC::EF::zero());
+    let geq_val = full_geq(degree, &eval_point_extended);
 
     let (mut numerator_guts, mut denom_guts): (Vec<_>, Vec<_>) = interactions
         .iter()

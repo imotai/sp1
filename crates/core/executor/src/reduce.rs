@@ -2,7 +2,10 @@ use serde::{Deserialize, Serialize};
 use sp1_stark::{MachineConfig, MachineVerifyingKey, ShardProof};
 /// An intermediate proof which proves the execution.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound(serialize = "C: MachineConfig", deserialize = "C: MachineConfig"))]
+#[serde(bound(
+    serialize = "C: MachineConfig, C::Challenger: Serialize",
+    deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
+))]
 pub struct SP1ReduceProof<C: MachineConfig> {
     /// The compress verifying key associated with the proof.
     pub vk: MachineVerifyingKey<C>,

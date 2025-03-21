@@ -345,7 +345,8 @@ pub struct LogupGkrProof<EF> {
     // The data to pass to the multivariate PCS, namely the per-interaction multilinear evaluation
     // claims.
     pub(crate) main_log_height: usize,
-    pub(crate) column_openings: (MleEval<EF>, Option<MleEval<EF>>),
+    /// The column openings.
+    pub column_openings: (MleEval<EF>, Option<MleEval<EF>>),
 }
 
 #[derive(Serialize, Deserialize, Clone)]

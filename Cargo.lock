@@ -3274,6 +3274,7 @@ dependencies = [
 name = "sp1-recursion-circuit"
 version = "4.0.1"
 dependencies = [
+ "derive-where",
  "ff 0.13.1",
  "futures",
  "hashbrown 0.14.5",
@@ -3294,6 +3295,7 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
+ "slop-air",
  "slop-algebra",
  "slop-alloc",
  "slop-baby-bear",
@@ -3302,6 +3304,7 @@ dependencies = [
  "slop-challenger",
  "slop-commit",
  "slop-jagged",
+ "slop-matrix",
  "slop-merkle-tree",
  "slop-multilinear",
  "slop-stacked",

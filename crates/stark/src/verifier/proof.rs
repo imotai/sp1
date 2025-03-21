@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use slop_jagged::JaggedPcsProof;
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_multilinear::Point;
 use slop_sumcheck::PartialSumcheckProof;
 
 use crate::{septic_digest::SepticDigest, LogupGkrProof};
@@ -12,9 +13,26 @@ use super::MachineConfig;
 /// recursion verification program expects the public values vec to be fixed length.
 pub const PROOF_MAX_NUM_PVS: usize = 231;
 
+/// Data required for testing.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C: MachineConfig, C::Challenger: Serialize",
+    deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
+))]
+#[cfg(any(test, feature = "test-proof"))]
+pub struct TestingData<C: MachineConfig> {
+    /// The gkr points.
+    pub gkr_points: Vec<Point<C::EF>>,
+    /// The challenger state just before the zerocheck.
+    pub challenger_state: C::Challenger,
+}
+
 /// A proof for a shard.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "C: MachineConfig", deserialize = "C: MachineConfig"))]
+#[serde(bound(
+    serialize = "C: MachineConfig, C::Challenger: Serialize",
+    deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
+))]
 pub struct ShardProof<C: MachineConfig> {
     /// The commitments to main traces.
     pub main_commitment: C::Commitment,
@@ -28,6 +46,9 @@ pub struct ShardProof<C: MachineConfig> {
     pub public_values: Vec<C::F>,
     /// The `LogUp+GKR` IOP proofs.
     pub gkr_proofs: Vec<LogupGkrProof<C::EF>>,
+    /// The challenges for testing.
+    #[cfg(any(test, feature = "test-proof"))]
+    pub testing_data: TestingData<C>,
 }
 
 /// The values of the chips in the shard at a random point.
@@ -51,8 +72,8 @@ pub struct ChipOpenedValues<F, EF> {
     pub global_cumulative_sum: SepticDigest<F>,
     /// The local cumulative sum.
     pub local_cumulative_sum: EF,
-    /// The log degree of the chip.
-    pub log_degree: Option<u32>,
+    /// The big-endian bit representation of the degree of the chip.
+    pub degree: Point<EF>,
 }
 
 /// The opening values for a given table section at a random point.

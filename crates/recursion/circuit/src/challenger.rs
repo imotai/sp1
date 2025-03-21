@@ -75,6 +75,17 @@ impl<C: Config<F = BabyBear>> DuplexChallengerVariable<C> {
         }
     }
 
+    /// Creates a new challenger variable with the same state as an existing challenger.
+    pub fn from_challenger<P: CryptographicPermutation<[BabyBear; PERMUTATION_WIDTH]>>(
+        builder: &mut Builder<C>,
+        challenger: &DuplexChallenger<BabyBear, P, PERMUTATION_WIDTH, HASH_RATE>,
+    ) -> Self {
+        let sponge_state = challenger.sponge_state.map(|x| builder.eval(x));
+        let input_buffer = challenger.input_buffer.iter().map(|x| builder.eval(*x)).collect();
+        let output_buffer = challenger.output_buffer.iter().map(|x| builder.eval(*x)).collect();
+        DuplexChallengerVariable::<C> { sponge_state, input_buffer, output_buffer }
+    }
+
     /// Creates a new challenger with the same state as an existing challenger.
     pub fn copy(&self, builder: &mut Builder<C>) -> Self {
         let DuplexChallengerVariable { sponge_state, input_buffer, output_buffer } = self;

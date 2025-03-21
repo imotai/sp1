@@ -27,6 +27,9 @@ use crate::{
     ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
+#[cfg(any(test, feature = "test-proof"))]
+use crate::TestingData;
+
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 
 /// The components of the machine prover.
@@ -292,19 +295,24 @@ impl<C: MachineProverComponents> ShardProver<C> {
         let mut zerocheck_polys = Vec::new();
         let mut chip_sumcheck_claims = Vec::new();
 
-        let mut log_degrees = BTreeMap::new();
+        let mut degrees = BTreeMap::new();
         for (air, GkrPointAndOpening { point: gkr_point, opening: (main_opening, prep_opening) }) in
             self.chips().iter().zip(gkr_points_and_openings)
         {
             let main_trace = traces.get(&air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
             let log_degree = num_real_entries.checked_ilog2();
+            let mut threshold_point_vals =
+                vec![C::EF::zero(); self.pcs_prover.max_log_row_count + 1];
             if let Some(log_degree) = log_degree {
                 assert_eq!(1 << log_degree, num_real_entries);
+                threshold_point_vals[self.pcs_prover.max_log_row_count - (log_degree as usize)] =
+                    C::EF::one();
             } else {
                 assert_eq!(num_real_entries, 0);
             }
-            log_degrees.insert(air.name(), log_degree);
+            let threshold_point = Point::new(threshold_point_vals.into());
+            degrees.insert(air.name(), threshold_point);
             let name = air.name();
             let num_variables = main_trace.num_variables();
             assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
@@ -430,7 +438,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                     main,
                     global_cumulative_sum: SepticDigest::<C::F>::zero(), //global_sum,
                     local_cumulative_sum: C::EF::zero(),
-                    log_degree: log_degrees[&air.name()],
+                    degree: degrees[&air.name()].clone(),
                 }
             })
             .collect::<Vec<_>>();
@@ -547,6 +555,13 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
         let challenger = &mut challenger_owned;
 
+        // Store the gkr points and challenger state for testing zerocheck.
+        #[cfg(any(test, feature = "test-proof"))]
+        let (gkr_points, challenger_state) = (
+            points_and_openings.iter().map(|p| p.point.clone()).collect::<Vec<_>>(),
+            challenger.clone(),
+        );
+
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();
 
@@ -623,6 +638,8 @@ impl<C: MachineProverComponents> ShardProver<C> {
             evaluation_proof,
             zerocheck_proof: zerocheck_partial_sumcheck_proof,
             public_values,
+            #[cfg(any(test, feature = "test-proof"))]
+            testing_data: TestingData { gkr_points, challenger_state },
         }
     }
 }

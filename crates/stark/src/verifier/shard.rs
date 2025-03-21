@@ -193,15 +193,32 @@ where
         Ok(())
     }
 
-    fn verify_zerocheck_sumcheck_and_compute_rlc_eval(
+    /// Verify the zerocheck proof.
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
+    pub fn verify_zerocheck(
         &self,
+        challenger: &mut C::Challenger,
         opened_values: &ShardOpenedValues<C::F, C::EF>,
+        gkr_points: &[Point<C::EF>],
         proof: &ShardProof<C>,
-        randomnesses: (C::EF, C::EF, C::EF),
-        zerocheck_eq_vals: Vec<C::EF>,
+        gkr_column_openings: &[(MleEval<C::EF>, Option<MleEval<C::EF>>)],
         public_values: &[C::F],
-    ) -> Result<C::EF, ShardVerifierError<C>> {
-        let (alpha, gkr_batch_open_challenge, lambda) = randomnesses;
+    ) -> Result<(), ShardVerifierError<C>> {
+        // Get the random challenge to merge the constraints.
+        let alpha = challenger.sample_ext_element::<C::EF>();
+
+        let gkr_batch_open_challenge = challenger.sample_ext_element::<C::EF>();
+
+        // Get the random lambda to RLC the zerocheck polynomials.
+        let lambda = challenger.sample_ext_element::<C::EF>();
+
+        // Get the value of eq(zeta, sumcheck's reduced point).
+        let zerocheck_eq_vals: Vec<C::EF> = gkr_points
+            .iter()
+            .map(|zeta| Mle::full_lagrange_eval(zeta, &proof.zerocheck_proof.point_and_eval.0))
+            .collect();
+
         // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
         // proof is correct.
         let mut rlc_eval = C::EF::zero();
@@ -216,21 +233,12 @@ where
 
             assert_eq!(dimension, max_log_row_count);
 
-            assert!(dimension >= openings.log_degree.unwrap_or_default() as usize);
-
-            let geq_val = match openings.log_degree {
-                None => C::EF::one(),
-                Some(log_d) if log_d < max_log_row_count as u32 => {
-                    // TODO: This will be available from the jagged parameters.
-                    // Create the threshold point. This should be the big-endian bit representation
-                    // of 2^openings.log_degree.
-                    let mut threshold_point_vals = vec![C::EF::zero(); dimension];
-                    threshold_point_vals[max_log_row_count - (log_d as usize) - 1] = C::EF::one();
-                    let threshold_point = Point::new(threshold_point_vals.into());
-                    full_geq(&threshold_point, &proof.zerocheck_proof.point_and_eval.0)
-                }
-                _ => C::EF::zero(),
-            };
+            let mut point_extended = proof.zerocheck_proof.point_and_eval.0.clone();
+            point_extended.add_dimension(C::EF::zero());
+            openings.degree.iter().for_each(|x| {
+                assert_eq!(*x * (*x - C::EF::one()), C::EF::zero());
+            });
+            let geq_val = full_geq(&openings.degree, &point_extended);
 
             let padded_row_adjustment =
                 Self::compute_padded_row_adjustment(chip, alpha, public_values);
@@ -251,7 +259,49 @@ where
             // Horner's method.
             rlc_eval = rlc_eval * lambda + zerocheck_eq_val * (constraint_eval + openings_batch);
         }
-        Ok(rlc_eval)
+
+        if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
+            return Err(ShardVerifierError::ConstraintsCheckFailed(
+                SumcheckError::InconsistencyWithEval,
+            ));
+        }
+
+        let zerocheck_sum_modifications_from_gkr = gkr_column_openings
+            .iter()
+            .map(|(main_openings, preprocessed_openings)| {
+                main_openings
+                    .to_vec()
+                    .iter()
+                    .chain(
+                        preprocessed_openings
+                            .as_ref()
+                            .map(MleEval::to_vec)
+                            .unwrap_or_default()
+                            .iter(),
+                    )
+                    .zip(gkr_batch_open_challenge.powers())
+                    .map(|(opening, power)| *opening * power)
+                    .sum::<C::EF>()
+            })
+            .collect::<Vec<_>>();
+
+        let zerocheck_sum_modification = zerocheck_sum_modifications_from_gkr
+            .iter()
+            .fold(C::EF::zero(), |acc, modification| lambda * acc + *modification);
+
+        // Verify that the rlc claim matches the random linear combination of evaluation claims from
+        // gkr.
+        if proof.zerocheck_proof.claimed_sum != zerocheck_sum_modification {
+            return Err(ShardVerifierError::ConstraintsCheckFailed(
+                SumcheckError::InconsistencyWithClaimedSum,
+            ));
+        }
+
+        // Verify the zerocheck proof.
+        partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger)
+            .map_err(|e| ShardVerifierError::ConstraintsCheckFailed(e))?;
+
+        Ok(())
     }
 
     /// Verify a shard proof.
@@ -273,6 +323,7 @@ where
             evaluation_proof,
             zerocheck_proof,
             public_values,
+            ..
         } = proof;
         // Observe the public values.
         challenger.observe_slice(&public_values[0..self.machine.num_pv_elts()]);
@@ -282,7 +333,6 @@ where
         let alpha = challenger.sample_ext_element::<C::EF>();
         let beta = challenger.sample_ext_element::<C::EF>();
 
-        let max_log_row_count = self.pcs_verifier.max_log_row_count;
         let mut cumulative_sum = C::EF::zero();
 
         let mut challengers = Vec::new();
@@ -299,8 +349,7 @@ where
                     chip.sends(),
                     chip.receives(),
                     (alpha, beta),
-                    openings.log_degree,
-                    max_log_row_count,
+                    &openings.degree,
                 )
                 .map_err(ShardVerifierError::<C>::GkrProofFailed)?;
 
@@ -326,77 +375,18 @@ where
 
         let challenger = &mut synchronized_challenger;
 
-        // Get the random challenge to merge the constraints.
-        let alpha = challenger.sample_ext_element::<C::EF>();
-
-        let gkr_batch_open_challenge = challenger.sample_ext_element::<C::EF>();
-
-        // Get the random lambda to RLC the zerocheck polynomials.
-        let lambda = challenger.sample_ext_element::<C::EF>();
-
-        // Get the value of eq(zeta, sumcheck's reduced point).
-        let zerocheck_eq_vals = gkr_points
-            .iter()
-            .map(|zeta| Mle::full_lagrange_eval(zeta, &proof.zerocheck_proof.point_and_eval.0))
-            .collect();
-
-        let rlc_eval = self.verify_zerocheck_sumcheck_and_compute_rlc_eval(
+        // Verify the zerocheck proof.
+        self.verify_zerocheck(
+            challenger,
             opened_values,
+            &gkr_points,
             proof,
-            (alpha, gkr_batch_open_challenge, lambda),
-            zerocheck_eq_vals,
+            &gkr_proofs
+                .iter()
+                .map(|gkr_proof| gkr_proof.column_openings.clone())
+                .collect::<Vec<_>>(),
             public_values,
         )?;
-
-        if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
-            return Err(ShardVerifierError::ConstraintsCheckFailed(
-                SumcheckError::InconsistencyWithEval,
-            ));
-        }
-
-        let zerocheck_sum_modifications_from_gkr = gkr_proofs
-            .iter()
-            .map(|gkr_proof| {
-                gkr_proof
-                    .column_openings
-                    .0
-                    .to_vec()
-                    .iter()
-                    .chain(
-                        gkr_proof
-                            .column_openings
-                            .1
-                            .as_ref()
-                            .map(MleEval::to_vec)
-                            .unwrap_or_default()
-                            .iter(),
-                    )
-                    .zip(gkr_batch_open_challenge.powers())
-                    .map(|(opening, power)| {
-                        // let column_eval = Mle::full_lagrange_eval(zeta, column_opening);
-                        // let column_modification = column_eval * column_challenge;
-                        // column_modification
-                        *opening * power
-                    })
-                    .sum::<C::EF>()
-            })
-            .collect::<Vec<_>>();
-
-        let zerocheck_sum_modification = zerocheck_sum_modifications_from_gkr
-            .iter()
-            .fold(C::EF::zero(), |acc, modification| lambda * acc + *modification);
-
-        // Verify that the rlc claim matches the random linear combination of evaluation claims from
-        // gkr.
-        if proof.zerocheck_proof.claimed_sum != zerocheck_sum_modification {
-            return Err(ShardVerifierError::ConstraintsCheckFailed(
-                SumcheckError::InconsistencyWithClaimedSum,
-            ));
-        }
-
-        // Verify the zerocheck proof.
-        partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger)
-            .map_err(|e| ShardVerifierError::ConstraintsCheckFailed(e))?;
 
         // Verify the opening proof.
         let (preprocessed_openings_for_proof, main_openings_for_proof): (Vec<_>, Vec<_>) = proof

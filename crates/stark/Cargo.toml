@@ -76,5 +76,8 @@ tokio = { workspace = true }
 sp1-zkvm = { workspace = true }
 rand = "0.8.4"
 
+[features]
+test-proof = []
+
 [lints]
 workspace = true

@@ -1,9 +1,15 @@
-use crate::CircuitConfig;
+use crate::{
+    hash::FieldHasherVariable, stark::ShardProofVariable, BabyBearFriConfigVariable, CircuitConfig,
+};
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
 use sp1_recursion_compiler::ir::{Builder, Config, Ext, Felt};
 use sp1_recursion_executor::Block;
+use sp1_stark::{
+    septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
+    AirOpenedValues, ChipOpenedValues, MachineConfig, ShardOpenedValues, ShardProof,
+};
 
 pub trait WitnessWriter<C: CircuitConfig>: Sized {
     fn write_bit(&mut self, value: bool);
@@ -153,5 +159,107 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Rounds<T> {
         for x in self.iter() {
             x.write(witness);
         }
+    }
+}
+
+impl<C: CircuitConfig<F = BabyBear>> Witnessable<C> for SepticDigest<C::F> {
+    type WitnessVariable = SepticDigest<Felt<C::F>>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let x = self.0.x.0.read(builder);
+        let y = self.0.y.0.read(builder);
+        SepticDigest(SepticCurve { x: SepticExtension(x), y: SepticExtension(y) })
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.0.x.0.write(witness);
+        self.0.y.0.write(witness);
+    }
+}
+
+impl<
+        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+        SC: BabyBearFriConfigVariable<C> + MachineConfig,
+    > Witnessable<C> for ShardProof<SC>
+where
+    SC::Commitment:
+        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+{
+    type WitnessVariable = ShardProofVariable<C, SC>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let main_commitment = self.main_commitment.read(builder);
+        let zerocheck_proof = self.zerocheck_proof.read(builder);
+        let opened_values = self.opened_values.read(builder);
+        let public_values = self.public_values.read(builder);
+        Self::WitnessVariable { main_commitment, zerocheck_proof, opened_values, public_values }
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.main_commitment.write(witness);
+        self.zerocheck_proof.write(witness);
+        self.opened_values.write(witness);
+        self.public_values.write(witness);
+    }
+}
+
+impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
+    for ShardOpenedValues<C::F, C::EF>
+{
+    type WitnessVariable = ShardOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let chips = self.chips.read(builder);
+        Self::WitnessVariable { chips }
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.chips.write(witness);
+    }
+}
+
+impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
+    for ChipOpenedValues<C::F, C::EF>
+{
+    type WitnessVariable = ChipOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let preprocessed = self.preprocessed.read(builder);
+        let main = self.main.read(builder);
+        let global_cumulative_sum = self.global_cumulative_sum.read(builder);
+        let local_cumulative_sum = self.local_cumulative_sum.read(builder);
+        let degree = self.degree.read(builder);
+        Self::WitnessVariable {
+            preprocessed,
+            main,
+            global_cumulative_sum,
+            local_cumulative_sum,
+            degree,
+        }
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.preprocessed.write(witness);
+        self.main.write(witness);
+        self.global_cumulative_sum.write(witness);
+        self.local_cumulative_sum.write(witness);
+        self.degree.write(witness);
+    }
+}
+
+impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
+    for AirOpenedValues<C::EF>
+{
+    type WitnessVariable = AirOpenedValues<Ext<C::F, C::EF>>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let local = self.local.read(builder);
+        let next = self.next.read(builder);
+        Self::WitnessVariable { local, next }
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.local.write(witness);
+        self.next.write(witness);
     }
 }
