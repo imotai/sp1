@@ -4,7 +4,7 @@ use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, Mle, Point};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
-    ir::{Builder, Ext},
+    ir::{Builder, Ext, SymbolicExt},
 };
 
 use crate::primitives::sumcheck::evaluate_mle_ext;
@@ -35,7 +35,7 @@ impl<
         commitments: &[P::Commitment],
         point: &Point<Ext<P::F, P::EF>>,
         proof: &RecursiveStackedPcsProof<P::Proof, P::F, P::EF>,
-        evaluation_claim: Ext<P::F, P::EF>,
+        evaluation_claim: SymbolicExt<P::F, P::EF>,
         challenger: &mut P::Challenger,
     ) {
         let (batch_point, stack_point) =
@@ -43,12 +43,12 @@ impl<
         let batch_evaluations =
             proof.batch_evaluations.iter().flatten().flatten().cloned().collect::<Mle<_>>();
 
-        builder.cycle_tracker_v2_enter("evaluate_mle_ext");
+        builder.cycle_tracker_v2_enter("rizz - evaluate_mle_ext");
         let expected_evaluation = evaluate_mle_ext(builder, batch_evaluations, batch_point)[0];
         builder.assert_ext_eq(evaluation_claim, expected_evaluation);
         builder.cycle_tracker_v2_exit();
 
-        builder.cycle_tracker_v2_enter("verify_untrusted_evaluations");
+        builder.cycle_tracker_v2_enter("rizz - verify_untrusted_evaluations");
         self.recursive_pcs_verifier.verify_untrusted_evaluations(
             builder,
             commitments,
@@ -200,7 +200,7 @@ mod tests {
             &commitments,
             &point,
             &proof,
-            eval_claim,
+            eval_claim.into(),
             &mut challenger_variable,
         );
 

@@ -6,66 +6,15 @@ use slop_jagged::{
     BranchingProgram, JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof,
 };
 use slop_multilinear::{Mle, Point};
-use sp1_recursion_compiler::ir::{Builder, Ext, SymbolicExt};
+use sp1_recursion_compiler::{
+    circuit::CircuitV2Builder,
+    ir::{Builder, Ext, SymbolicExt},
+};
 
 use crate::{
     primitives::{sumcheck::verify_sumcheck, IntoSymbolic},
-    witness::{WitnessWriter, Witnessable},
     BabyBearFriConfigVariable, CircuitConfig,
 };
-
-impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for JaggedSumcheckEvalProof<T> {
-    type WitnessVariable = JaggedSumcheckEvalProof<T::WitnessVariable>;
-
-    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        JaggedSumcheckEvalProof {
-            branching_program_evals: self
-                .branching_program_evals
-                .iter()
-                .map(|x| x.read(builder))
-                .collect(),
-            partial_sumcheck_proof: self.partial_sumcheck_proof.read(builder),
-        }
-    }
-
-    fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        for x in &self.branching_program_evals {
-            x.write(witness);
-        }
-        self.partial_sumcheck_proof.write(witness);
-    }
-}
-
-impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
-    for JaggedLittlePolynomialVerifierParams<T>
-{
-    type WitnessVariable = JaggedLittlePolynomialVerifierParams<T::WitnessVariable>;
-
-    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        JaggedLittlePolynomialVerifierParams {
-            col_prefix_sums: self
-                .col_prefix_sums
-                .iter()
-                .map(|x| (*x).read(builder))
-                .collect::<Vec<_>>(),
-            next_col_prefix_sums: self
-                .next_col_prefix_sums
-                .iter()
-                .map(|x| (*x).read(builder))
-                .collect::<Vec<_>>(),
-            max_log_row_count: self.max_log_row_count,
-        }
-    }
-
-    fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        for x in &self.col_prefix_sums {
-            x.write(witness);
-        }
-        for x in &self.next_col_prefix_sums {
-            x.write(witness);
-        }
-    }
-}
 
 impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>> {
     type Output = JaggedLittlePolynomialVerifierParams<SymbolicExt<C::F, C::EF>>;
@@ -131,7 +80,7 @@ impl<C: CircuitConfig> RecursiveJaggedEvalConfig<C, ()> for RecursiveTrivialJagg
     }
 }
 
-pub struct RecursiveJaggedEvalSumcheckConfig<SC>(PhantomData<SC>);
+pub struct RecursiveJaggedEvalSumcheckConfig<SC>(pub PhantomData<SC>);
 
 impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
     RecursiveJaggedEvalConfig<C, SC::FriChallengerVariable>
@@ -169,8 +118,9 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
             .sum::<SymbolicExt<C::F, C::EF>>();
 
         // Verify the jagged eval proof.
+        builder.cycle_tracker_v2_enter("jagged eval - verify sumcheck");
         verify_sumcheck::<C, SC>(builder, challenger, partial_sumcheck_proof);
-
+        builder.cycle_tracker_v2_exit();
         let proof_point = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(
             &partial_sumcheck_proof.point_and_eval.0,
         );
@@ -184,6 +134,7 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
         let proof_point = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(
             &partial_sumcheck_proof.point_and_eval.0,
         );
+        builder.cycle_tracker_v2_enter("jagged eval - calculate expected eval");
         let mut jagged_eval_sc_expected_eval = current_column_prefix_sums
             .zip(next_column_prefix_sums)
             .zip(z_col_partial_lagrange.iter())
@@ -196,7 +147,7 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
                 *z_col_eq_val * full_lagrange_eval
             })
             .sum::<SymbolicExt<C::F, C::EF>>();
-
+        builder.cycle_tracker_v2_exit();
         let branching_program = BranchingProgram::new(z_row.clone(), z_trace.clone());
         jagged_eval_sc_expected_eval *=
             branching_program.eval(&first_half_z_index, &second_half_z_index);

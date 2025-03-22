@@ -3274,6 +3274,7 @@ dependencies = [
 name = "sp1-recursion-circuit"
 version = "4.0.1"
 dependencies = [
+ "bincode",
  "derive-where",
  "ff 0.13.1",
  "futures",
