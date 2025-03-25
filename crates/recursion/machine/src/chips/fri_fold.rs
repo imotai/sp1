@@ -344,7 +344,7 @@ mod tests {
 
     use crate::{
         chips::{fri_fold::FriFoldChip, mem::MemoryAccessCols, test_fixtures},
-        machine::tests::test_recursion_linear_program,
+        test::test_recursion_linear_program,
     };
     use p3_matrix::dense::RowMajorMatrix;
     use rand::{rngs::StdRng, Rng, SeedableRng};

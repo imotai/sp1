@@ -12,8 +12,7 @@ use sp1_recursion_compiler::{
 };
 
 use crate::{
-    primitives::{sumcheck::verify_sumcheck, IntoSymbolic},
-    BabyBearFriConfigVariable, CircuitConfig,
+    sumcheck::verify_sumcheck, symbolic::IntoSymbolic, BabyBearFriConfigVariable, CircuitConfig,
 };
 
 impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>> {
@@ -23,11 +22,6 @@ impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<
         JaggedLittlePolynomialVerifierParams {
             col_prefix_sums: self
                 .col_prefix_sums
-                .iter()
-                .map(|x| <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(x))
-                .collect::<Vec<_>>(),
-            next_col_prefix_sums: self
-                .next_col_prefix_sums
                 .iter()
                 .map(|x| <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(x))
                 .collect::<Vec<_>>(),

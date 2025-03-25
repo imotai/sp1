@@ -54,11 +54,3 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Point<T> {
         }
     }
 }
-
-impl<C: CircuitConfig> Witnessable<C> for () {
-    type WitnessVariable = ();
-
-    fn read(&self, _builder: &mut Builder<C>) -> Self::WitnessVariable {}
-
-    fn write(&self, _witness: &mut impl WitnessWriter<C>) {}
-}

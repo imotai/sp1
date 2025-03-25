@@ -221,7 +221,7 @@ mod tests {
             },
             test_fixtures,
         },
-        machine::tests::test_recursion_linear_program,
+        test::test_recursion_linear_program,
     };
     use p3_matrix::{dense::RowMajorMatrix, Matrix};
     use rand::{rngs::StdRng, Rng, SeedableRng};

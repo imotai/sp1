@@ -313,7 +313,7 @@ mod tests {
 
     use crate::{
         chips::{exp_reverse_bits::ExpReverseBitsLenChip, test_fixtures},
-        machine::tests::test_recursion_linear_program,
+        test::test_recursion_linear_program,
     };
     use itertools::Itertools;
     use p3_matrix::dense::RowMajorMatrix;

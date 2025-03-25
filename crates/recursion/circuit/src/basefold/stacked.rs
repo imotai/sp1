@@ -7,7 +7,7 @@ use sp1_recursion_compiler::{
     ir::{Builder, Ext, SymbolicExt},
 };
 
-use crate::primitives::sumcheck::evaluate_mle_ext;
+use crate::sumcheck::evaluate_mle_ext;
 
 use super::RecursiveMultilinearPcsVerifier;
 

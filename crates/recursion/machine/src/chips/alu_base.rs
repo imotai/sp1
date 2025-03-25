@@ -212,7 +212,7 @@ mod tests {
     use rand::prelude::*;
     use sp1_recursion_executor::{instruction as instr, BaseAluOpcode, MemAccessKind};
 
-    use crate::{chips::test_fixtures, machine::tests::test_recursion_linear_program};
+    use crate::{chips::test_fixtures, test::test_recursion_linear_program};
 
     use super::*;
 

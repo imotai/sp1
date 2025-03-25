@@ -71,8 +71,6 @@ pub(crate) mod tests {
 
     use std::iter::once;
 
-    use crate::machine::tests::test_recursion_linear_program;
-
     use slop_algebra::{AbstractField, PrimeField32};
     use slop_baby_bear::BabyBear;
     use slop_symmetric::Permutation;
@@ -80,6 +78,8 @@ pub(crate) mod tests {
     use sp1_primitives::poseidon2_init;
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};
     use zkhash::ark_ff::UniformRand;
+
+    use crate::test::test_recursion_linear_program;
 
     use super::WIDTH;
 

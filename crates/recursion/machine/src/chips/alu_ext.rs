@@ -214,7 +214,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{chips::test_fixtures, machine::tests::test_recursion_linear_program};
+    use crate::{chips::test_fixtures, test::test_recursion_linear_program};
     use p3_matrix::dense::RowMajorMatrix;
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField};

@@ -3,9 +3,6 @@ use sp1_recursion_compiler::ir::{Ext, Felt, SymbolicExt, SymbolicFelt};
 
 use crate::CircuitConfig;
 
-pub mod sumcheck;
-pub mod witness;
-
 pub(crate) trait IntoSymbolic<C: CircuitConfig> {
     type Output;
 

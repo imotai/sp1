@@ -1,3 +1,5 @@
+use slop_algebra::extension::BinomialExtensionField;
+use slop_baby_bear::BabyBear;
 use slop_jagged::{
     JaggedConfig, JaggedEvalConfig, JaggedLittlePolynomialVerifierParams, JaggedPcsProof,
     JaggedSumcheckEvalProof,
@@ -45,11 +47,6 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
                 .iter()
                 .map(|x| (*x).read(builder))
                 .collect::<Vec<_>>(),
-            next_col_prefix_sums: self
-                .next_col_prefix_sums
-                .iter()
-                .map(|x| (*x).read(builder))
-                .collect::<Vec<_>>(),
             max_log_row_count: self.max_log_row_count,
         }
     }
@@ -58,26 +55,23 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
         for x in &self.col_prefix_sums {
             x.write(witness);
         }
-        for x in &self.next_col_prefix_sums {
-            x.write(witness);
-        }
     }
 }
 
-impl<C, JC, RecursiveStackedPcsProof, RecursiveJaggedEvalProof> Witnessable<C>
-    for JaggedPcsProof<JC>
+impl<C, SC, RecursiveStackedPcsProof, RecursiveJaggedEvalProof> Witnessable<C>
+    for JaggedPcsProof<SC>
 where
-    C: CircuitConfig,
-    JC: JaggedConfig<
+    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    SC: JaggedConfig<
             F = C::F,
             EF = C::EF,
             BatchPcsProof: Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
         > + AsRecursive<C>,
-    <<JC as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
+    <<SC as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
         C::EF,
-        <JC as JaggedConfig>::Challenger,
+        <SC as JaggedConfig>::Challenger,
     >>::JaggedEvalProof: Witnessable<C, WitnessVariable = RecursiveJaggedEvalProof>,
-    JC::Recursive: RecursiveJaggedConfig<
+    SC::Recursive: RecursiveJaggedConfig<
         F = C::F,
         EF = C::EF,
         Circuit = C,
@@ -86,15 +80,15 @@ where
     >,
     C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
 {
-    type WitnessVariable = JaggedPcsProofVariable<JC::Recursive>;
+    type WitnessVariable = JaggedPcsProofVariable<SC::Recursive>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        JaggedPcsProofVariable {
-            stacked_pcs_proof: self.stacked_pcs_proof.read(builder),
-            sumcheck_proof: self.sumcheck_proof.read(builder),
-            jagged_eval_proof: self.jagged_eval_proof.read(builder),
-            params: self.params.read(builder),
-        }
+        let stacked_pcs_proof = self.stacked_pcs_proof.read(builder);
+        let sumcheck_proof = self.sumcheck_proof.read(builder);
+        let jagged_eval_proof = self.jagged_eval_proof.read(builder);
+        let params = self.params.read(builder);
+
+        JaggedPcsProofVariable { stacked_pcs_proof, sumcheck_proof, jagged_eval_proof, params }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {

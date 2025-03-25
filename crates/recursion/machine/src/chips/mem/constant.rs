@@ -144,8 +144,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::machine::tests::test_recursion_linear_program;
     use sp1_recursion_executor::instruction as instr;
+
+    use crate::test::test_recursion_linear_program;
 
     use super::*;
 

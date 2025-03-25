@@ -1,14 +1,20 @@
 use crate::{
-    hash::FieldHasherVariable, stark::ShardProofVariable, BabyBearFriConfigVariable, CircuitConfig,
+    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
+    hash::FieldHasherVariable,
+    jagged::RecursiveJaggedConfig,
+    shard::{MachineVerifyingKeyVariable, ShardProofVariable},
+    AsRecursive, BabyBearFriConfigVariable, CircuitConfig,
 };
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
+use slop_jagged::{JaggedConfig, JaggedEvalConfig};
 use sp1_recursion_compiler::ir::{Builder, Config, Ext, Felt};
 use sp1_recursion_executor::Block;
 use sp1_stark::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
-    AirOpenedValues, ChipOpenedValues, MachineConfig, ShardOpenedValues, ShardProof,
+    AirOpenedValues, ChipOpenedValues, MachineConfig, MachineVerifyingKey, ShardOpenedValues,
+    ShardProof,
 };
 
 pub trait WitnessWriter<C: CircuitConfig>: Sized {
@@ -50,6 +56,14 @@ pub trait Witnessable<C: CircuitConfig> {
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable;
 
     fn write(&self, witness: &mut impl WitnessWriter<C>);
+}
+
+impl<C: CircuitConfig> Witnessable<C> for () {
+    type WitnessVariable = ();
+
+    fn read(&self, _builder: &mut Builder<C>) -> Self::WitnessVariable {}
+
+    fn write(&self, _witness: &mut impl WitnessWriter<C>) {}
 }
 
 impl<C: CircuitConfig> Witnessable<C> for bool {
@@ -177,32 +191,6 @@ impl<C: CircuitConfig<F = BabyBear>> Witnessable<C> for SepticDigest<C::F> {
     }
 }
 
-impl<
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-        SC: BabyBearFriConfigVariable<C> + MachineConfig,
-    > Witnessable<C> for ShardProof<SC>
-where
-    SC::Commitment:
-        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
-{
-    type WitnessVariable = ShardProofVariable<C, SC>;
-
-    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let main_commitment = self.main_commitment.read(builder);
-        let zerocheck_proof = self.zerocheck_proof.read(builder);
-        let opened_values = self.opened_values.read(builder);
-        let public_values = self.public_values.read(builder);
-        Self::WitnessVariable { main_commitment, zerocheck_proof, opened_values, public_values }
-    }
-
-    fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        self.main_commitment.write(witness);
-        self.zerocheck_proof.write(witness);
-        self.opened_values.write(witness);
-        self.public_values.write(witness);
-    }
-}
-
 impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
     for ShardOpenedValues<C::F, C::EF>
 {
@@ -261,5 +249,82 @@ impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> W
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
         self.local.write(witness);
         self.next.write(witness);
+    }
+}
+
+impl<C, SC, RecursiveStackedPcsProof, RecursiveJaggedEvalProof> Witnessable<C> for ShardProof<SC>
+where
+    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    SC: BabyBearFriConfigVariable<C>
+        + MachineConfig
+        + JaggedConfig<
+            F = C::F,
+            EF = C::EF,
+            BatchPcsProof: Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
+        > + AsRecursive<C>,
+    <<SC as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
+        C::EF,
+        <SC as JaggedConfig>::Challenger,
+    >>::JaggedEvalProof: Witnessable<C, WitnessVariable = RecursiveJaggedEvalProof>,
+    SC::Recursive: RecursiveJaggedConfig<
+        F = C::F,
+        EF = C::EF,
+        Circuit = C,
+        BatchPcsProof = RecursiveStackedPcsProof,
+        JaggedEvalProof = RecursiveJaggedEvalProof,
+        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+    >,
+    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
+    SC::Commitment:
+        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+{
+    type WitnessVariable = ShardProofVariable<C, SC, SC::Recursive>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let main_commitment = self.main_commitment.read(builder);
+        let zerocheck_proof = self.zerocheck_proof.read(builder);
+        let evaluation_proof = self.evaluation_proof.read(builder);
+        let opened_values = self.opened_values.read(builder);
+        let public_values = self.public_values.read(builder);
+        Self::WitnessVariable {
+            main_commitment,
+            zerocheck_proof,
+            evaluation_proof,
+            opened_values,
+            public_values,
+        }
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.main_commitment.write(witness);
+        self.zerocheck_proof.write(witness);
+        self.evaluation_proof.write(witness);
+        self.opened_values.write(witness);
+        self.public_values.write(witness);
+    }
+}
+
+impl<C, MC> Witnessable<C> for MachineVerifyingKey<MC>
+where
+    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    MC: MachineConfig + BabyBearFriConfigVariable<C> + MachineConfig + JaggedConfig,
+    MC::Commitment:
+        Witnessable<C, WitnessVariable = <MC as FieldHasherVariable<C>>::DigestVariable>,
+{
+    type WitnessVariable = MachineVerifyingKeyVariable<C, MC>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let pc_start = self.pc_start.read(builder);
+        let initial_global_cumulative_sum = self.initial_global_cumulative_sum.read(builder);
+        let preprocessed_commit = self.preprocessed_commit.as_ref().map(|x| x.read(builder));
+        Self::WitnessVariable { pc_start, initial_global_cumulative_sum, preprocessed_commit }
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.pc_start.write(witness);
+        self.initial_global_cumulative_sum.write(witness);
+        if let Some(x) = self.preprocessed_commit.as_ref() {
+            x.write(witness);
+        }
     }
 }

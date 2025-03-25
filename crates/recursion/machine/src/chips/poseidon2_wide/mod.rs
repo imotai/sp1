@@ -45,7 +45,7 @@ pub(crate) mod tests {
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};
     use zkhash::ark_ff::UniformRand;
 
-    use crate::machine::tests::test_recursion_linear_program;
+    use crate::test::test_recursion_linear_program;
 
     #[tokio::test]
     async fn test_poseidon2() {

@@ -1,6 +1,8 @@
-use crate::primitives::IntoSymbolic;
+pub mod witness;
+
 use crate::{
     challenger::{CanObserveVariable, FieldChallengerVariable},
+    symbolic::IntoSymbolic,
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use slop_algebra::UnivariatePolynomial;

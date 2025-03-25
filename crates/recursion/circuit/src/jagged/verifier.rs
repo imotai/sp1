@@ -20,10 +20,8 @@ use crate::{
         RecursiveMultilinearPcsVerifier,
     },
     challenger::FieldChallengerVariable,
-    primitives::{
-        sumcheck::{evaluate_mle_ext, verify_sumcheck},
-        IntoSymbolic,
-    },
+    sumcheck::{evaluate_mle_ext, verify_sumcheck},
+    symbolic::IntoSymbolic,
     AsRecursive, BabyBearFriConfigVariable, CircuitConfig,
 };
 
@@ -97,6 +95,7 @@ pub struct RecursiveJaggedPcsVerifier<
     >,
 > {
     pub stacked_pcs_verifier: RecursiveStackedPcsVerifier<JC::BatchPcsVerifier>,
+    pub max_log_row_count: usize,
     pub jagged_evaluator: JC::JaggedEvaluator,
 }
 
@@ -480,6 +479,7 @@ mod tests {
             >,
         > {
             stacked_pcs_verifier: recursive_verifier,
+            max_log_row_count: max_log_row_count as usize,
             jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
         };
 

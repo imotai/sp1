@@ -182,55 +182,19 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
 #[cfg(test)]
 pub mod tests {
 
-    use std::{iter::once, sync::Arc};
+    use std::iter::once;
 
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::{
         extension::{BinomialExtensionField, HasFrobenius},
         AbstractExtensionField, AbstractField, Field,
     };
-    use slop_baby_bear::DiffusionMatrixBabyBear;
-    use slop_jagged::JaggedConfig;
-    use slop_merkle_tree::my_bb_16_perm;
+    use slop_baby_bear::BabyBear;
     use sp1_recursion_executor::{
-        instruction as instr, linear_program, BaseAluOpcode, Block, ExtAluOpcode, Instruction,
-        MemAccessKind, RecursionProgram, Runtime, D,
+        instruction as instr, BaseAluOpcode, ExtAluOpcode, MemAccessKind, D,
     };
-    use sp1_stark::BabyBearPoseidon2;
 
-    use crate::test::tests::run_test_recursion;
-
-    use super::RecursionAir;
-
-    type SC = BabyBearPoseidon2;
-    type F = <SC as JaggedConfig>::F;
-    type EF = <SC as JaggedConfig>::EF;
-    type A = RecursionAir<F, 3>;
-    // type B = RecursionAir<F, 9>;
-
-    /// Runs the given program on machines that use the wide and skinny Poseidon2 chips.
-    pub async fn run_recursion_test_machines(program: RecursionProgram<F>, witness: Vec<Block<F>>) {
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(
-            Arc::new(program.clone()),
-            my_bb_16_perm(),
-        );
-        runtime.witness_stream = witness.into();
-        runtime.run().unwrap();
-
-        // Run with the poseidon2 wide chip.
-        let machine = A::machine_wide_with_all_chips();
-        run_test_recursion(vec![runtime.record.clone()], machine, program.clone()).await.unwrap();
-
-        // // Run with the poseidon2 skinny chip.
-        // let skinny_machine = B::machine_skinny_with_all_chips();
-        // run_test_recursion(vec![runtime.record], skinny_machine, program).await.unwrap();
-        // println!("ran proof gen with machine skinny");
-    }
-
-    /// Constructs a linear program and runs it on machines that use the wide and skinny Poseidon2 chips.
-    pub async fn test_recursion_linear_program(instrs: Vec<Instruction<F>>) {
-        run_recursion_test_machines(linear_program(instrs).unwrap(), Vec::new()).await;
-    }
+    use crate::test::test_recursion_linear_program;
 
     #[tokio::test]
     pub async fn fibonacci() {
@@ -273,6 +237,8 @@ pub mod tests {
 
     #[tokio::test]
     pub async fn field_norm() {
+        type F = BabyBear;
+
         let mut instructions = Vec::new();
 
         let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
