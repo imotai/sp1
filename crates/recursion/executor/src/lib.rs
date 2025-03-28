@@ -667,12 +667,12 @@ where
     unsafe fn execute_one(
         state: &mut ExecState<F, Diffusion>,
         witness_stream: Option<&mut VecDeque<Block<F>>>,
-        instruction: Instruction<F>,
+        instruction: &Instruction<F>,
     ) -> Result<(), RuntimeError<F, EF>> {
         let ExecEnv { memory, perm, debug_stdout } = state.env;
         let record = &mut state.record;
-        match instruction {
-            Instruction::BaseAlu(instr @ BaseAluInstr { opcode, mult: _, addrs }) => {
+        match *instruction {
+            Instruction::BaseAlu(ref instr @ BaseAluInstr { opcode, mult: _, addrs }) => {
                 let in1 = memory.mr_unchecked(addrs.in1).val[0];
                 let in2 = memory.mr_unchecked(addrs.in2).val[0];
                 // Do the computation.
@@ -691,7 +691,7 @@ where
                                 return Err(RuntimeError::DivFOutOfDomain {
                                     in1,
                                     in2,
-                                    instr,
+                                    instr: *instr,
                                     trace: state.resolve_trace().cloned(),
                                 });
                             }
@@ -701,7 +701,7 @@ where
                 memory.mw_unchecked(addrs.out, Block::from(out));
                 record.base_alu_events.push(BaseAluEvent { out, in1, in2 });
             }
-            Instruction::ExtAlu(instr @ ExtAluInstr { opcode, mult: _, addrs }) => {
+            Instruction::ExtAlu(ref instr @ ExtAluInstr { opcode, mult: _, addrs }) => {
                 let in1 = memory.mr_unchecked(addrs.in1).val;
                 let in2 = memory.mr_unchecked(addrs.in2).val;
                 // Do the computation.
@@ -722,7 +722,7 @@ where
                                 return Err(RuntimeError::DivEOutOfDomain {
                                     in1: in1_ef,
                                     in2: in2_ef,
-                                    instr,
+                                    instr: *instr,
                                     trace: state.resolve_trace().cloned(),
                                 });
                             }
@@ -751,13 +751,14 @@ where
                 }
                 record.mem_const_count += 1;
             }
-            Instruction::Poseidon2(instr) => {
-                let Poseidon2Instr { addrs: Poseidon2Io { input, output }, mults: _ } = *instr;
+            Instruction::Poseidon2(ref instr) => {
+                let Poseidon2Instr { addrs: Poseidon2Io { input, output }, mults: _ } =
+                    instr.as_ref();
                 let in_vals = std::array::from_fn(|i| memory.mr_unchecked(input[i]).val[0]);
                 let perm_output = perm.permute(in_vals);
 
                 perm_output.iter().zip(output).for_each(|(&val, addr)| {
-                    memory.mw_unchecked(addr, Block::from(val));
+                    memory.mw_unchecked(*addr, Block::from(val));
                 });
                 record
                     .poseidon2_events
@@ -784,7 +785,7 @@ where
                 })
             }
             Instruction::ExpReverseBitsLen(ExpReverseBitsInstr {
-                addrs: ExpReverseBitsIo { base, exp, result },
+                addrs: ExpReverseBitsIo { base, ref exp, result },
                 mult: _,
             }) => {
                 let base_val = memory.mr_unchecked(base).val[0];
@@ -803,19 +804,19 @@ where
                     exp: exp_bits,
                 });
             }
-            Instruction::HintBits(HintBitsInstr { output_addrs_mults, input_addr }) => {
+            Instruction::HintBits(HintBitsInstr { ref output_addrs_mults, input_addr }) => {
                 let num = memory.mr_unchecked(input_addr).val[0].as_canonical_u32();
                 // Decompose the num into LE bits.
                 let bits = (0..output_addrs_mults.len())
                     .map(|i| Block::from(F::from_canonical_u32((num >> i) & 1)))
                     .collect::<Vec<_>>();
                 // Write the bits to the array at dst.
-                for (bit, (addr, _mult)) in bits.into_iter().zip(output_addrs_mults) {
+                for (bit, &(addr, _mult)) in bits.into_iter().zip(output_addrs_mults) {
                     memory.mw_unchecked(addr, bit);
                     record.mem_var_events.push(MemEvent { inner: bit });
                 }
             }
-            Instruction::HintAddCurve(instr) => {
+            Instruction::HintAddCurve(ref instr) => {
                 let HintAddCurveInstr {
                     output_x_addrs_mults,
                     output_y_addrs_mults,
@@ -823,7 +824,7 @@ where
                     input1_y_addrs,
                     input2_x_addrs,
                     input2_y_addrs,
-                } = *instr;
+                } = instr.as_ref();
                 let input1_x = SepticExtension::<F>::from_base_fn(|i| {
                     memory.mr_unchecked(input1_x_addrs[i]).val[0]
                 });
@@ -840,27 +841,25 @@ where
                 let point2 = SepticCurve { x: input2_x, y: input2_y };
                 let output = point1.add_incomplete(point2);
 
-                for (val, (addr, _mult)) in
-                    output.x.0.into_iter().zip(output_x_addrs_mults.into_iter())
+                for (val, &(addr, _mult)) in output.x.0.into_iter().zip(output_x_addrs_mults.iter())
                 {
                     memory.mw_unchecked(addr, Block::from(val));
                     record.mem_var_events.push(MemEvent { inner: Block::from(val) });
                 }
-                for (val, (addr, _mult)) in
-                    output.y.0.into_iter().zip(output_y_addrs_mults.into_iter())
+                for (val, &(addr, _mult)) in output.y.0.into_iter().zip(output_y_addrs_mults.iter())
                 {
                     memory.mw_unchecked(addr, Block::from(val));
                     record.mem_var_events.push(MemEvent { inner: Block::from(val) });
                 }
             }
-            Instruction::FriFold(instr) => {
+            Instruction::FriFold(ref instr) => {
                 let FriFoldInstr {
                     base_single_addrs,
                     ext_single_addrs,
                     ext_vec_addrs,
                     alpha_pow_mults: _,
                     ro_mults: _,
-                } = *instr;
+                } = instr.as_ref();
                 let x = memory.mr_unchecked(base_single_addrs.x).val[0];
                 let z = memory.mr_unchecked(ext_single_addrs.z).val;
                 let z: EF = z.ext();
@@ -924,9 +923,9 @@ where
                     });
                 }
             }
-            Instruction::BatchFRI(instr) => {
+            Instruction::BatchFRI(ref instr) => {
                 let BatchFRIInstr { base_vec_addrs, ext_single_addrs, ext_vec_addrs, acc_mult: _ } =
-                    *instr;
+                    instr.as_ref();
 
                 let mut acc = EF::zero();
                 let p_at_xs = base_vec_addrs
@@ -959,14 +958,14 @@ where
 
                 memory.mw_unchecked(ext_single_addrs.acc, Block::from(acc.as_base_slice()));
             }
-            Instruction::PrefixSumChecks(instr) => {
+            Instruction::PrefixSumChecks(ref instr) => {
                 let PrefixSumChecksInstr {
                     addrs: PrefixSumChecksIo { zero, one, x1, x2, accs, field_accs },
                     acc_mults: _,
                     field_acc_mults: _,
-                } = *instr;
-                let zero = memory.mr_unchecked(zero).val[0];
-                let one = memory.mr_unchecked(one).val.ext::<EF>();
+                } = instr.as_ref();
+                let zero = memory.mr_unchecked(*zero).val[0];
+                let one = memory.mr_unchecked(*one).val.ext::<EF>();
                 let x1_f = x1.iter().map(|addr| memory.mr_unchecked(*addr).val[0]).collect_vec();
                 let x2_ef =
                     x2.iter().map(|addr| memory.mr_unchecked(*addr).val.ext::<EF>()).collect_vec();
@@ -995,7 +994,7 @@ where
                     memory.mw_unchecked(field_accs[m], Block::from(field_acc));
                 }
             }
-            Instruction::CommitPublicValues(instr) => {
+            Instruction::CommitPublicValues(ref instr) => {
                 let pv_addrs = instr.pv_addrs.as_array();
                 let pv_values: [F; RECURSIVE_PROOF_NUM_PV_ELTS] =
                     array::from_fn(|i| memory.mr_unchecked(pv_addrs[i]).val[0]);
@@ -1005,7 +1004,7 @@ where
                     .push(CommitPublicValuesEvent { public_values: record.public_values });
             }
 
-            Instruction::Print(PrintInstr { field_elt_type, addr }) => match field_elt_type {
+            Instruction::Print(PrintInstr { ref field_elt_type, addr }) => match field_elt_type {
                 FieldEltType::Base => {
                     let f = memory.mr_unchecked(addr).val[0];
                     writeln!(debug_stdout.lock().unwrap(), "PRINTF={f}")
@@ -1025,7 +1024,7 @@ where
                     record.mem_var_events.push(MemEvent { inner: felt });
                 }
             }
-            Instruction::Hint(HintInstr { output_addrs_mults }) => {
+            Instruction::Hint(HintInstr { ref output_addrs_mults }) => {
                 let witness_stream =
                     witness_stream.expect("hint should be called outside parallel contexts");
                 // Check that enough Blocks can be read, so `drain` does not panic.
@@ -1033,19 +1032,19 @@ where
                     return Err(RuntimeError::EmptyWitnessStream);
                 }
                 let witness = witness_stream.drain(0..output_addrs_mults.len());
-                for ((addr, _mult), val) in zip(output_addrs_mults, witness) {
+                for (&(addr, _mult), val) in zip(output_addrs_mults, witness) {
                     // Inline [`Self::mw`] to mutably borrow multiple fields of `self`.
                     memory.mw_unchecked(addr, val);
                     record.mem_var_events.push(MemEvent { inner: val });
                 }
             }
-            Instruction::DebugBacktrace(backtrace) => {
+            Instruction::DebugBacktrace(ref backtrace) => {
                 cfg_if! {
                     if #[cfg(feature = "debug")] {
-                        state.last_trace = Some(backtrace);
+                        state.last_trace = Some(backtrace.clone());
                     } else {
                         // Ignore.
-                        drop(backtrace);
+                        let _ = backtrace;
                     }
                 }
             }
@@ -1081,7 +1080,7 @@ where
                             Self::execute_one(
                                 &mut state,
                                 witness_stream.as_deref_mut(),
-                                instruction.clone(),
+                                instruction,
                             )
                         }?;
                     }
