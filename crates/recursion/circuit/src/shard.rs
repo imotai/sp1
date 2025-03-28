@@ -9,7 +9,7 @@ use crate::{
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use p3_air::Air;
-use slop_algebra::extension::BinomialExtensionField;
+use slop_algebra::{extension::BinomialExtensionField, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, MleEval};
@@ -19,6 +19,7 @@ use sp1_recursion_compiler::{
     ir::{Builder, Felt},
     prelude::Ext,
 };
+use sp1_recursion_executor::DIGEST_SIZE;
 use sp1_stark::{
     air::MachineAir, septic_digest::SepticDigest, Machine, MachineConfig, ShardOpenedValues,
     ShardProof,
@@ -27,7 +28,7 @@ use sp1_stark::{
 #[allow(clippy::type_complexity)]
 pub struct ShardProofVariable<
     C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-    SC: BabyBearFriConfigVariable<C>,
+    SC: BabyBearFriConfigVariable<C> + Send + Sync,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -44,6 +45,7 @@ pub struct ShardProofVariable<
     pub public_values: Vec<Felt<C::F>>,
     // TODO: The `LogUp+GKR` IOP proofs.
     // pub gkr_proofs: Vec<LogupGkrProof<Ext<C::F, C::EF>>>,
+    pub shard_proof: ShardProof<SC>,
 }
 
 pub struct MachineVerifyingKeyVariable<
@@ -55,6 +57,39 @@ pub struct MachineVerifyingKeyVariable<
     pub initial_global_cumulative_sum: SepticDigest<Felt<C::F>>,
     /// The preprocessed commitments.
     pub preprocessed_commit: Option<SC::DigestVariable>,
+}
+impl<C, SC> MachineVerifyingKeyVariable<C, SC>
+where
+    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    SC: BabyBearFriConfigVariable<C>,
+{
+    /// Hash the verifying key + prep domains into a single digest.
+    /// poseidon2( commit[0..8] || pc_start || initial_global_cumulative_sum || prep_domains[N].{log_n, .size, .shift, .g})
+    pub fn hash(&self, builder: &mut Builder<C>) -> SC::DigestVariable
+    where
+        C::F: TwoAdicField,
+        SC::DigestVariable: IntoIterator<Item = Felt<C::F>>,
+    {
+        // let prep_domains = self.chip_information.iter().map(|(_, domain, _)| domain);
+        let num_inputs = DIGEST_SIZE + 1 + 14; //(4 * prep_domains.len());
+        let mut inputs = Vec::with_capacity(num_inputs);
+        if let Some(commit) = self.preprocessed_commit {
+            inputs.extend(commit)
+        }
+        inputs.push(self.pc_start);
+        inputs.extend(self.initial_global_cumulative_sum.0.x.0);
+        inputs.extend(self.initial_global_cumulative_sum.0.y.0);
+        // for domain in prep_domains {
+        //     inputs.push(builder.eval(C::F::from_canonical_usize(domain.log_n)));
+        //     let size = 1 << domain.log_n;
+        //     inputs.push(builder.eval(C::F::from_canonical_usize(size)));
+        //     let g = C::F::two_adic_generator(domain.log_n);
+        //     inputs.push(builder.eval(domain.shift));
+        //     inputs.push(builder.eval(g));
+        // }
+
+        SC::hash(builder, &inputs)
+    }
 }
 
 /// A verifier for shard proofs.
@@ -94,7 +129,6 @@ where
         vk: &MachineVerifyingKeyVariable<C, SC>,
         proof: &ShardProofVariable<C, SC, JC>,
         challenger: &mut SC::FriChallengerVariable,
-        shard_proof: &ShardProof<SC>,
     ) where
         A: for<'b> Air<RecursiveVerifierConstraintFolder<'b, C>>,
     {
@@ -104,6 +138,7 @@ where
             evaluation_proof,
             zerocheck_proof,
             public_values,
+            shard_proof,
         } = proof;
 
         //// Uncomment this when the GKR verification is finalized.
@@ -114,7 +149,7 @@ where
         // // Observe the main commitment.
         // challenger.observe(builder, *main_commitment);
 
-        /////// This is a hack until the GKR verification is finalized.
+        //// This is a hack until the GKR verification is finalized.
         let gkr_points_variable = shard_proof.testing_data.gkr_points.read(builder);
         let gkr_column_openings_variable = shard_proof
             .gkr_proofs
@@ -328,7 +363,6 @@ mod tests {
             &vk_variable,
             &shard_proof_variable,
             &mut challenger_variable,
-            &shard_proof,
         );
         builder.cycle_tracker_v2_exit();
 

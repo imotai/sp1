@@ -87,6 +87,7 @@ impl<
 }
 
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct RecursiveJaggedPcsVerifier<
     SC: BabyBearFriConfigVariable<C>,
     C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,

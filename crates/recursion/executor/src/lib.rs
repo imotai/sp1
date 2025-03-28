@@ -6,6 +6,8 @@ mod program;
 mod public_values;
 mod record;
 
+pub use public_values::PV_DIGEST_NUM_WORDS;
+
 // Avoid triggering annoying branch of thiserror derive macro.
 use backtrace::Backtrace as Trace;
 pub use block::Block;

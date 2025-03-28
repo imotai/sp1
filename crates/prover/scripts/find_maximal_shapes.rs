@@ -1,7 +1,13 @@
-use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::mpsc};
+use std::{
+    cmp::Ordering,
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{mpsc, Arc},
+};
 
 use clap::Parser;
-use p3_baby_bear::BabyBear;
+use slop_baby_bear::BabyBear;
+use slop_futures;
 use sp1_core_executor::{Executor, Program, RiscvAirId, SP1Context};
 use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir, utils::setup_logger};
 use sp1_stark::{shape::Shape, SP1CoreOpts};
@@ -27,7 +33,7 @@ fn collect_maximal_shapes(
 ) -> Vec<Shape<RiscvAirId>> {
     // Setup the executor.
     let program = Program::from(elf).unwrap();
-    let mut executor = Executor::with_context(program, opts, context);
+    let mut executor = Executor::with_context(Arc::new(program), opts, context);
     executor.write_vecs(&stdin.buffer);
     for (proof, vkey) in stdin.proofs.iter() {
         executor.write_proof(proof.clone(), vkey.clone());

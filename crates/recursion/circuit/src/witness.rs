@@ -292,6 +292,7 @@ where
             evaluation_proof,
             opened_values,
             public_values,
+            shard_proof: self.clone(),
         }
     }
 

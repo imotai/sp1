@@ -19,7 +19,7 @@ pub const PROOF_MAX_NUM_PVS: usize = 231;
     serialize = "C: MachineConfig, C::Challenger: Serialize",
     deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
 ))]
-#[cfg(any(test, feature = "test-proof"))]
+// #[cfg(any(test, feature = "test-proof"))]
 pub struct TestingData<C: MachineConfig> {
     /// The gkr points.
     pub gkr_points: Vec<Point<C::EF>>,
@@ -47,7 +47,7 @@ pub struct ShardProof<C: MachineConfig> {
     /// The `LogUp+GKR` IOP proofs.
     pub gkr_proofs: Vec<LogupGkrProof<C::EF>>,
     /// The challenges for testing.
-    #[cfg(any(test, feature = "test-proof"))]
+    // #[cfg(any(test, feature = "test-proof"))]
     pub testing_data: TestingData<C>,
 }
 

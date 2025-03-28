@@ -5,6 +5,7 @@ use challenger::{
 };
 use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
 use itertools::izip;
+// use jagged::RecursiveJaggedConfig;
 use slop_algebra::AbstractField;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -18,11 +19,12 @@ use slop_basefold::{
 };
 use slop_commit::TensorCs;
 use slop_merkle_tree::{MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig};
-use sp1_stark::BabyBearPoseidon2;
+use sp1_stark::{shape::OrderedShape, BabyBearPoseidon2};
 pub mod basefold;
 pub mod challenger;
 pub mod hash;
 pub mod jagged;
+pub mod machine;
 pub mod shard;
 pub mod sumcheck;
 mod symbolic;
@@ -36,6 +38,8 @@ use slop_jagged::JaggedConfig;
 type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
+
+pub type InnerSC = BabyBearPoseidon2;
 
 pub trait AsRecursive<C: CircuitConfig> {
     type Recursive;
@@ -66,14 +70,14 @@ pub trait BabyBearFriConfig:
 }
 
 pub trait BabyBearFriConfigVariable<C: CircuitConfig<F = BabyBear>>:
-    BabyBearFriConfig + FieldHasherVariable<C> + Posedion2BabyBearHasherVariable<C>
+    BabyBearFriConfig + FieldHasherVariable<C> + Posedion2BabyBearHasherVariable<C> + Send + Sync
 {
     type FriChallengerVariable: FieldChallengerVariable<C, <C as CircuitConfig>::Bit>
         + CanObserveVariable<C, <Self as FieldHasherVariable<C>>::DigestVariable>
         + CanCopyChallenger<C>;
 
     /// Get a new challenger corresponding to the given config.
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable;
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable;
 }
 
 pub trait CircuitConfig: Config {
@@ -559,7 +563,32 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
 {
     type FriChallengerVariable = DuplexChallengerVariable<C>;
 
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable {
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
         DuplexChallengerVariable::new(builder)
     }
+}
+
+// TODO: FIND A BETTER PLACE FOR THIS.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SP1RecursionShape {
+    pub proof_shapes: Vec<OrderedShape>,
+    pub is_complete: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SP1CompressShape {
+    proof_shapes: Vec<OrderedShape>,
+}
+
+/// The shape of the compress proof with vk validation proofs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SP1CompressWithVkeyShape {
+    pub compress_shape: SP1CompressShape,
+    pub merkle_tree_height: usize,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct SP1DeferredShape {
+    inner: SP1CompressShape,
+    height: usize,
 }

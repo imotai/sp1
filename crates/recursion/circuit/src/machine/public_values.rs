@@ -1,9 +1,8 @@
 use itertools::Itertools;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::ir::{Builder, Felt};
-use sp1_recursion_core::{
-    air::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH},
-    DIGEST_SIZE,
+use sp1_recursion_executor::{
+    DIGEST_SIZE, {RecursionPublicValues, NUM_PV_ELMS_TO_HASH},
 };
 use sp1_stark::{air::PV_DIGEST_NUM_WORDS, Word};
 
@@ -43,6 +42,7 @@ where
 }
 
 /// Assert that the digest of the root public values is correct.
+#[allow(dead_code)]
 pub(crate) fn assert_root_public_values_valid<C, H>(
     builder: &mut Builder<C>,
     public_values: &RootPublicValues<Felt<C::F>>,

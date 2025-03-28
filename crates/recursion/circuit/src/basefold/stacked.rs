@@ -11,6 +11,7 @@ use crate::sumcheck::evaluate_mle_ext;
 
 use super::RecursiveMultilinearPcsVerifier;
 
+#[derive(Clone)]
 pub struct RecursiveStackedPcsVerifier<P> {
     pub recursive_pcs_verifier: P,
     pub log_stacking_height: u32,

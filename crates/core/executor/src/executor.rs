@@ -142,7 +142,7 @@ pub struct Executor<'a> {
     pub unconstrained_state: Box<ForkState>,
 
     /// Verifier used to sanity check `verify_sp1_proof` during runtime.
-    pub subproof_verifier: Option<&'a dyn SubproofVerifier>,
+    pub subproof_verifier: Option<Arc<dyn SubproofVerifier>>,
 
     /// Registry of hooks, to be invoked by writing to certain file descriptors.
     pub hook_registry: HookRegistry<'a>,

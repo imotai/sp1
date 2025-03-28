@@ -2,9 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use sp1_core_machine::utils::setup_logger;
-use sp1_prover::{
-    components::CpuProverComponents, shapes::build_vk_map_to_file, REDUCE_BATCH_SIZE,
-};
+use sp1_prover::{components::CpuSP1ProverComponents, REDUCE_BATCH_SIZE};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -34,14 +32,14 @@ fn main() {
     let num_compiler_workers = 1;
     let num_setup_workers = 1;
 
-    build_vk_map_to_file::<CpuProverComponents>(
-        build_dir,
-        reduce_batch_size,
-        false,
-        num_compiler_workers,
-        num_setup_workers,
-        None,
-        None,
-    )
-    .unwrap();
+    // build_vk_map_to_file::<CpuProverComponents>(
+    //     build_dir,
+    //     reduce_batch_size,
+    //     false,
+    //     num_compiler_workers,
+    //     num_setup_workers,
+    //     None,
+    //     None,
+    // )
+    // .unwrap();
 }

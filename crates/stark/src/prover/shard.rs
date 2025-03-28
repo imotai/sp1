@@ -27,7 +27,7 @@ use crate::{
     ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
-#[cfg(any(test, feature = "test-proof"))]
+// #[cfg(any(test, feature = "test-proof"))]
 use crate::TestingData;
 
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
@@ -556,7 +556,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         let challenger = &mut challenger_owned;
 
         // Store the gkr points and challenger state for testing zerocheck.
-        #[cfg(any(test, feature = "test-proof"))]
+        // #[cfg(any(test, feature = "test-proof"))]
         let (gkr_points, challenger_state) = (
             points_and_openings.iter().map(|p| p.point.clone()).collect::<Vec<_>>(),
             challenger.clone(),
@@ -638,7 +638,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
             evaluation_proof,
             zerocheck_proof: zerocheck_partial_sumcheck_proof,
             public_values,
-            #[cfg(any(test, feature = "test-proof"))]
+            // #[cfg(any(test, feature = "test-proof"))]
             testing_data: TestingData { gkr_points, challenger_state },
         }
     }

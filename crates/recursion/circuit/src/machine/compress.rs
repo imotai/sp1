@@ -8,40 +8,42 @@ use std::{
 use itertools::{izip, Itertools};
 
 use p3_air::Air;
-use p3_baby_bear::BabyBear;
+use slop_baby_bear::BabyBear;
 
-use p3_commit::Mmcs;
-use p3_field::AbstractField;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_algebra::AbstractField;
+use slop_jagged::JaggedConfig;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use sp1_recursion_compiler::ir::{Builder, Felt, SymbolicFelt};
 
-use sp1_recursion_core::air::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
+use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    baby_bear_poseidon2::BabyBearPoseidon2,
     shape::OrderedShape,
-    Dom, ShardProof, StarkGenericConfig, StarkMachine, StarkVerifyingKey, Word, DIGEST_SIZE,
+    MachineConfig, MachineVerifyingKey, ShardProof, Word, DIGEST_SIZE,
 };
 
 use crate::{
+    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::CanObserveVariable,
-    constraints::RecursiveVerifierConstraintFolder,
+    jagged::RecursiveJaggedConfig,
     machine::{
         assert_complete, assert_recursion_public_values_valid, recursion_public_values_digest,
         root_public_values_digest,
     },
-    stark::{dummy_vk_and_shard_proof, ShardProofVariable, StarkVerifier},
-    BabyBearFriConfig, BabyBearFriConfigVariable, CircuitConfig, VerifyingKeyVariable,
+    shard::{MachineVerifyingKeyVariable, ShardProofVariable, StarkVerifier},
+    zerocheck::RecursiveVerifierConstraintFolder,
+    BabyBearFriConfigVariable, CircuitConfig, EF,
 };
 
 use sp1_recursion_compiler::circuit::CircuitV2Builder;
+
+use super::InnerVal;
 /// A program to verify a batch of recursive proofs and aggregate their public values.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1CompressVerifier<C, SC, A> {
-    _phantom: PhantomData<(C, SC, A)>,
+pub struct SP1CompressVerifier<C, SC, A, JC> {
+    _phantom: PhantomData<(C, SC, A, JC)>,
 }
 
 pub enum PublicValuesOutputDigest {
@@ -50,21 +52,25 @@ pub enum PublicValuesOutputDigest {
 }
 
 /// Witness layout for the compress stage verifier.
+#[allow(clippy::type_complexity)]
 pub struct SP1CompressWitnessVariable<
-    C: CircuitConfig<F = BabyBear>,
-    SC: BabyBearFriConfigVariable<C>,
+    C: CircuitConfig<F = BabyBear, EF = EF>,
+    SC: BabyBearFriConfigVariable<C> + Send + Sync,
+    JC: RecursiveJaggedConfig<
+        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+    >,
 > {
     /// The shard proofs to verify.
-    pub vks_and_proofs: Vec<(VerifyingKeyVariable<C, SC>, ShardProofVariable<C, SC>)>,
+    pub vks_and_proofs: Vec<(MachineVerifyingKeyVariable<C, SC>, ShardProofVariable<C, SC, JC>)>,
     pub is_complete: Felt<C::F>,
 }
 
 /// An input layout for the reduce verifier.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "ShardProof<SC>: Serialize, Dom<SC>: Serialize"))]
-#[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>, Dom<SC>: DeserializeOwned"))]
-pub struct SP1CompressWitnessValues<SC: StarkGenericConfig> {
-    pub vks_and_proofs: Vec<(StarkVerifyingKey<SC>, ShardProof<SC>)>,
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound(serialize = "ShardProof<SC>: Serialize"))]
+#[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>"))]
+pub struct SP1CompressWitnessValues<SC: MachineConfig> {
+    pub vks_and_proofs: Vec<(MachineVerifyingKey<SC>, ShardProof<SC>)>,
     pub is_complete: bool,
 }
 
@@ -73,12 +79,21 @@ pub struct SP1CompressShape {
     proof_shapes: Vec<OrderedShape>,
 }
 
-impl<C, SC, A> SP1CompressVerifier<C, SC, A>
+impl<C, SC, A, JC> SP1CompressVerifier<C, SC, A, JC>
 where
-    SC: BabyBearFriConfigVariable<C>,
-    C: CircuitConfig<F = SC::Val, EF = SC::Challenge>,
-    <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
-    A: MachineAir<SC::Val> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    SC: BabyBearFriConfigVariable<C> + Send + Sync,
+    C: CircuitConfig<F = BabyBear, EF = <SC as JaggedConfig>::EF>,
+    // <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
+    A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    JC: RecursiveJaggedConfig<
+        F = BabyBear,
+        EF = C::EF,
+        Circuit = C,
+        Commitment = SC::DigestVariable,
+        Challenger = SC::FriChallengerVariable,
+        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
+        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+    >,
 {
     /// Verify a batch of recursive proofs and aggregate their public values.
     ///
@@ -94,10 +109,11 @@ where
     ///   checked against itself as in [sp1_prover::Prover] or as in [super::SP1RootVerifier].
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &StarkMachine<SC, A>,
-        input: SP1CompressWitnessVariable<C, SC>,
-        vk_root: [Felt<C::F>; DIGEST_SIZE],
+        machine: &StarkVerifier<A, SC, C, JC>,
+        input: SP1CompressWitnessVariable<C, SC, JC>,
+        //vk_root: [Felt<C::F>; DIGEST_SIZE],
         kind: PublicValuesOutputDigest,
+        challenger: &mut SC::FriChallengerVariable,
     ) {
         // Read input.
         let SP1CompressWitnessVariable { vks_and_proofs, is_complete } = input;
@@ -145,10 +161,12 @@ where
             // Verify the shard proof.
 
             // Prepare a challenger.
-            let mut challenger = machine.config().challenger_variable(builder);
+            // let mut challenger = machine.pcs_verifier.challenger_variable(builder);
 
             // Observe the vk and start pc.
-            challenger.observe(builder, vk.commitment);
+            if let Some(vk) = vk.preprocessed_commit.as_ref() {
+                challenger.observe(builder, *vk)
+            }
             challenger.observe(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
@@ -159,10 +177,10 @@ where
             // Observe the public values.
             challenger.observe_slice(
                 builder,
-                shard_proof.public_values[0..machine.num_pv_elts()].iter().copied(),
+                shard_proof.public_values[0..machine.machine.num_pv_elts()].iter().copied(),
             );
 
-            StarkVerifier::verify_shard(builder, &vk, machine, &mut challenger, &shard_proof);
+            machine.verify_shard(builder, &vk, &shard_proof, challenger);
 
             // Get the current public values.
             let current_public_values: &RecursionPublicValues<Felt<C::F>> =
@@ -170,9 +188,9 @@ where
             // Assert that the public values are valid.
             assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
             // Assert that the vk root is the same as the witnessed one.
-            for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
-                builder.assert_felt_eq(*expected, *actual);
-            }
+            // for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
+            //     builder.assert_felt_eq(*expected, *actual);
+            // }
 
             // Set the exit code, it is already constrained to be zero in the previous proof.
             exit_code = current_public_values.exit_code;
@@ -482,7 +500,7 @@ where
         // Set the exit code.
         compress_public_values.exit_code = exit_code;
         // Reflect the vk root.
-        compress_public_values.vk_root = vk_root;
+        // compress_public_values.vk_root = vk_root;
         // Set the digest according to the previous values.
         compress_public_values.digest = match kind {
             PublicValuesOutputDigest::Reduce => {
@@ -496,34 +514,34 @@ where
         // If the proof is complete, make completeness assertions.
         assert_complete(builder, compress_public_values, is_complete);
 
-        SC::commit_recursion_public_values(builder, *compress_public_values);
+        // SC::commit_recursion_public_values(builder, *compress_public_values);
     }
 }
 
-impl<SC: BabyBearFriConfig> SP1CompressWitnessValues<SC> {
-    pub fn shape(&self) -> SP1CompressShape {
-        let proof_shapes = self.vks_and_proofs.iter().map(|(_, proof)| proof.shape()).collect();
-        SP1CompressShape { proof_shapes }
-    }
-}
+// impl<SC: BabyBearFriConfig> SP1CompressWitnessValues<SC> {
+//     pub fn shape(&self) -> SP1CompressShape {
+//         let proof_shapes = self.vks_and_proofs.iter().map(|(_, proof)| proof.shape()).collect();
+//         SP1CompressShape { proof_shapes }
+//     }
+// }
 
-impl SP1CompressWitnessValues<BabyBearPoseidon2> {
-    pub fn dummy<A: MachineAir<BabyBear>>(
-        machine: &StarkMachine<BabyBearPoseidon2, A>,
-        shape: &SP1CompressShape,
-    ) -> Self {
-        let vks_and_proofs = shape
-            .proof_shapes
-            .iter()
-            .map(|proof_shape| {
-                let (vk, proof) = dummy_vk_and_shard_proof(machine, proof_shape);
-                (vk, proof)
-            })
-            .collect();
+// impl SP1CompressWitnessValues<BabyBearPoseidon2> {
+//     pub fn dummy<A: MachineAir<BabyBear>>(
+//         machine: &StarkMachine<BabyBearPoseidon2, A>,
+//         shape: &SP1CompressShape,
+//     ) -> Self {
+//         let vks_and_proofs = shape
+//             .proof_shapes
+//             .iter()
+//             .map(|proof_shape| {
+//                 let (vk, proof) = dummy_vk_and_shard_proof(machine, proof_shape);
+//                 (vk, proof)
+//             })
+//             .collect();
 
-        Self { vks_and_proofs, is_complete: false }
-    }
-}
+//         Self { vks_and_proofs, is_complete: false }
+//     }
+// }
 
 impl From<Vec<OrderedShape>> for SP1CompressShape {
     fn from(proof_shapes: Vec<OrderedShape>) -> Self {

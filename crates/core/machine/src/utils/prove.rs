@@ -156,9 +156,10 @@ where
 {
     let (proof_tx, mut proof_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    let cycles = prove_core_stream(prover, pk, program, stdin, opts, context, proof_tx, challenger)
-        .await
-        .unwrap();
+    let (_, cycles) =
+        prove_core_stream(prover, pk, program, stdin, opts, context, proof_tx, challenger)
+            .await
+            .unwrap();
 
     let mut shard_proofs = BTreeMap::new();
     while let Some(proof) = proof_rx.recv().await {
@@ -182,7 +183,7 @@ pub async fn prove_core_stream<F, PC>(
     context: SP1Context<'static>,
     proof_tx: UnboundedSender<ShardProof<PC::Config>>,
     challenger: PC::Challenger,
-) -> Result<u64, SP1CoreProverError>
+) -> Result<(Vec<u8>, u64), SP1CoreProverError>
 where
     PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
     F: PrimeField32,
@@ -206,7 +207,7 @@ where
     // Spawn the checkpoint generator task.
     let (checkpoints_tx, checkpoints_rx) =
         mpsc::channel::<(usize, File, bool, u64)>(opts.checkpoints_channel_capacity);
-    let _checkpoint_generator_handle =
+    let checkpoint_generator_handle =
         tokio::task::spawn_blocking(move || generate_checkpoints(runtime, checkpoints_tx));
 
     // Spawn the record generator workers.
@@ -242,6 +243,9 @@ where
         });
         record_gen_handles.push(handle);
     }
+
+    let pv_stream: Vec<u8> = checkpoint_generator_handle.await.unwrap()?;
+
     drop(records_tx);
     drop(deferred);
 
@@ -250,7 +254,7 @@ where
     // Get the cycles from the aggregate report.
     let report_aggregate = report_aggregate.lock().unwrap();
     let cycles = report_aggregate.total_instruction_count();
-    Ok(cycles)
+    Ok((pv_stream, cycles))
 }
 
 pub fn trace_checkpoint(
@@ -267,7 +271,7 @@ pub fn trace_checkpoint(
 
     // We already passed the deferred proof verifier when creating checkpoints, so the proofs were
     // already verified. So here we use a noop verifier to not print any warnings.
-    runtime.subproof_verifier = Some(&noop);
+    runtime.subproof_verifier = Some(Arc::new(noop));
 
     // Execute from the checkpoint.
     let (records, _) = runtime.execute_record(true).unwrap();

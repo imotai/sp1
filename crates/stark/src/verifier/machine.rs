@@ -27,6 +27,12 @@ pub enum MachineVerifierError<C: MachineConfig> {
     /// The global cumulative sum check fails.
     #[error("non-zero global cumulative sum")]
     NonZeroCumulativeSum,
+    /// The public values are invalid
+    #[error("invalid public values")]
+    InvalidPublicValues(&'static str),
+    /// There are too many shards.
+    #[error("too many shards")]
+    TooManyShards,
 }
 
 /// A verifier for a machine proof.

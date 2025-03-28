@@ -22,9 +22,11 @@ members = [
   "crates/curves",
   "crates/derive",
   "crates/helper",
+  "crates/prover",
   "crates/stark",
   "crates/test-artifacts",
   "crates/zkvm/*",
+  "crates/primitives"
 ]
 exclude = [
   "examples/target",
@@ -32,9 +34,7 @@ exclude = [
   "crates/cuda",
   "crates/eval",
   "crates/perf",
-  "crates/prover",
   "crates/recursion/circuit-old",
-  "crates/recursion/core",
   "crates/recursion/gnark-cli",
   "crates/recursion/gnark-ffi",
   "crates/sdk",
@@ -66,7 +66,6 @@ sp1-helper = { path = "crates/helper", version = "4.0.1", default-features = fal
 sp1-primitives = { path = "crates/primitives", version = "4.0.1" }
 sp1-prover = { path = "crates/prover", version = "4.0.1" }
 sp1-recursion-compiler = { path = "crates/recursion/compiler", version = "4.0.1" }
-sp1-recursion-core = { path = "crates/recursion/core", version = "4.0.1" }
 sp1-recursion-derive = { path = "crates/recursion/derive", version = "4.0.1", default-features = false }
 sp1-recursion-gnark-ffi = { path = "crates/recursion/gnark-ffi", version = "4.0.1", default-features = false }
 sp1-recursion-circuit = { path = "crates/recursion/circuit", version = "4.0.1", default-features = false }

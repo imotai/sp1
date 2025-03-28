@@ -28,6 +28,7 @@ slop-commit = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-basefold = { workspace = true }
 slop-basefold-prover = { workspace = true }
+slop-symmetric = { workspace = true }
 slop-algebra = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-sumcheck = { workspace = true }

@@ -1,5 +1,8 @@
 use slop_algebra::Field;
 
+/// The digest size.
+pub const DIGEST_SIZE: usize = 8;
+
 /// An implementation of `batch_multiplicative_inverse` that operates in place.
 #[allow(dead_code)]
 pub fn batch_multiplicative_inverse_inplace<F: Field>(values: &mut [F]) {
