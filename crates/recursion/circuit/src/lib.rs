@@ -10,7 +10,7 @@ use slop_algebra::AbstractField;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},
-    ir::{Builder, Config, DslIr, Ext, Felt, SymbolicFelt, Var, Variable},
+    ir::{Builder, Config, DslIr, Ext, Felt, SymbolicExt, SymbolicFelt, Var, Variable},
 };
 use std::iter::{repeat, zip};
 
@@ -119,6 +119,13 @@ pub trait CircuitConfig: Config {
         p_at_xs: Vec<Felt<Self::F>>,
     ) -> Ext<Self::F, Self::EF>;
 
+    #[allow(clippy::type_complexity)]
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        x1: Vec<Felt<Self::F>>,
+        x2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>);
+
     fn num2bits(
         builder: &mut Builder<Self>,
         num: Felt<<Self as Config>::F>,
@@ -199,6 +206,14 @@ impl CircuitConfig for InnerConfig {
         p_at_xs: Vec<Felt<<Self as Config>::F>>,
     ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
         builder.batch_fri_v2(alpha_pows, p_at_zs, p_at_xs)
+    }
+
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        x1: Vec<Felt<Self::F>>,
+        x2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
+        builder.prefix_sum_checks_v2(x1, x2)
     }
 
     fn num2bits(
@@ -345,6 +360,29 @@ impl CircuitConfig for WrapConfig {
         acc
     }
 
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        point_1: Vec<Felt<Self::F>>,
+        point_2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
+        // builder.lagrange_eval_v2(x1, x2)
+        let mut acc: Ext<_, _> = builder.uninit();
+        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
+        let mut acc_felt: Felt<_> = builder.uninit();
+        builder.push_op(DslIr::ImmF(acc_felt, Self::F::zero()));
+        for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
+            let prod = builder.uninit();
+            builder.push_op(DslIr::MulEF(prod, x2, x1));
+            let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
+            acc = builder.eval(acc * lagrange_term);
+            // Only need felt of first half of point_1 (current prefix sum).
+            if i < point_1.len() / 2 {
+                acc_felt = builder.eval(x1 + acc_felt * SymbolicFelt::from_canonical_u32(2));
+            }
+        }
+        (acc, acc_felt)
+    }
+
     fn num2bits(
         builder: &mut Builder<Self>,
         num: Felt<<Self as Config>::F>,
@@ -478,6 +516,28 @@ impl CircuitConfig for OuterConfig {
             acc = temp_3;
         }
         acc
+    }
+
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        point_1: Vec<Felt<Self::F>>,
+        point_2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
+        let mut acc: Ext<_, _> = builder.uninit();
+        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
+        let mut acc_felt: Felt<_> = builder.uninit();
+        builder.push_op(DslIr::ImmF(acc_felt, Self::F::zero()));
+        for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
+            let prod = builder.uninit();
+            builder.push_op(DslIr::MulEF(prod, x2, x1));
+            let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
+            acc = builder.eval(acc * lagrange_term);
+            // Only need felt of first half of point_1 (current prefix sum).
+            if i < point_1.len() / 2 {
+                acc_felt = builder.eval(x1 + acc_felt * SymbolicFelt::from_canonical_u32(2));
+            }
+        }
+        (acc, acc_felt)
     }
 
     fn num2bits(

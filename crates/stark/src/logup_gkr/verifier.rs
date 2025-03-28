@@ -25,7 +25,7 @@ pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
 ) -> Result<GkrPointAndEvals<SC::EF>, LogupGkrVerificationError> {
     let num_rounds = prover_messages.len();
 
-    let mut round_challenge: Point<_> = Vec::new().into();
+    let mut round_challenge: Point<SC::EF> = Vec::new().into();
 
     let mut numerator_claims = numerator_claims.to_vec();
     let mut denom_claims = denom_claims.to_vec();
@@ -169,7 +169,7 @@ pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
     sends: &[Interaction<SC::F>],
     receives: &[Interaction<SC::F>],
     permutation_challenges: (SC::EF, SC::EF),
-    degree: &Point<SC::EF>,
+    degree: &Point<SC::F>,
 ) -> Result<GkrVerificationResult<SC::EF, SC::Challenger>, LogupGkrVerificationError> {
     let (alpha, beta) = permutation_challenges;
 

@@ -236,7 +236,7 @@ where
             let mut point_extended = proof.zerocheck_proof.point_and_eval.0.clone();
             point_extended.add_dimension(C::EF::zero());
             openings.degree.iter().for_each(|x| {
-                assert_eq!(*x * (*x - C::EF::one()), C::EF::zero());
+                assert_eq!(*x * (*x - C::F::one()), C::F::zero());
             });
             let geq_val = full_geq(&openings.degree, &point_extended);
 
@@ -456,7 +456,7 @@ impl<BC, EC, A> ShardVerifier<JaggedBasefoldConfig<BC, EC>, A>
 where
     A: MachineAir<BC::F>,
     BC: DefaultBasefoldConfig,
-    EC: JaggedEvalConfig<BC::EF, BC::Challenger> + std::fmt::Debug + Default,
+    EC: JaggedEvalConfig<BC::F, BC::EF, BC::Challenger> + std::fmt::Debug + Default,
 {
     /// Create a shard verifier from basefold parameters.
     #[must_use]

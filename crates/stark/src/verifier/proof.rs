@@ -73,7 +73,7 @@ pub struct ChipOpenedValues<F, EF> {
     /// The local cumulative sum.
     pub local_cumulative_sum: EF,
     /// The big-endian bit representation of the degree of the chip.
-    pub degree: Point<EF>,
+    pub degree: Point<F>,
 }
 
 /// The opening values for a given table section at a random point.

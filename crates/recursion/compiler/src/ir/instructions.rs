@@ -301,6 +301,17 @@ pub enum DslIr<C: Config> {
     CircuitV2BatchFRI(
         Box<(Ext<C::F, C::EF>, Vec<Ext<C::F, C::EF>>, Vec<Ext<C::F, C::EF>>, Vec<Felt<C::F>>)>,
     ),
+    /// Executes full lagrange eval as well as computes field element that corresponds to input bit representation.
+    CircuitV2PrefixSumChecks(
+        Box<(
+            Felt<C::F>,
+            Ext<C::F, C::EF>,
+            Vec<Ext<C::F, C::EF>>,
+            Vec<Felt<C::F>>,
+            Vec<Felt<C::F>>,
+            Vec<Ext<C::F, C::EF>>,
+        )>,
+    ),
     /// Select's a variable based on a condition. (select(cond, true_val, false_val) => output).
     /// Should only be used when target is a gnark circuit.
     CircuitSelectV(Var<C::N>, Var<C::N>, Var<C::N>, Var<C::N>),

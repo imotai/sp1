@@ -211,12 +211,12 @@ where
 
             let mut proof_point_extended = point_symbolic.clone();
             proof_point_extended.add_dimension(zero.into());
-            let degree_symbolic =
-                <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&openings.degree);
-            degree_symbolic.iter().for_each(|x| {
+            let degree_symbolic_ext: Point<SymbolicExt<C::F, C::EF>> =
+                openings.degree.iter().map(|x| SymbolicExt::from(*x)).collect::<Point<_>>();
+            degree_symbolic_ext.iter().for_each(|x| {
                 builder.assert_ext_eq(*x * (*x - one), zero);
             });
-            let geq_val = full_geq(&degree_symbolic, &proof_point_extended);
+            let geq_val = full_geq(&degree_symbolic_ext, &proof_point_extended);
 
             let padded_row_adjustment =
                 compute_padded_row_adjustment(builder, chip, alpha, public_values);

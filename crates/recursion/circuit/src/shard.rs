@@ -9,7 +9,7 @@ use crate::{
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use p3_air::Air;
-use slop_algebra::{extension::BinomialExtensionField, TwoAdicField};
+use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, MleEval};
@@ -17,7 +17,7 @@ use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Felt},
-    prelude::Ext,
+    prelude::{Ext, SymbolicFelt},
 };
 use sp1_recursion_executor::DIGEST_SIZE;
 use sp1_stark::{
@@ -141,6 +141,20 @@ where
             shard_proof,
         } = proof;
 
+        // Convert height bits to felts.
+        let heights = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
+        let mut height_felts = Vec::new();
+        let two = SymbolicFelt::from_canonical_u32(2);
+        for height in heights {
+            let mut acc = SymbolicFelt::zero();
+            // Assert max height to avoid overflow during prefix-sum-checks.
+            assert!(height.len() <= 29);
+            height.iter().for_each(|x| {
+                acc = *x + two * acc;
+            });
+            height_felts.push(acc);
+        }
+
         //// Uncomment this when the GKR verification is finalized.
         // // Observe the public values.
         // for value in public_values[0..self.machine.num_pv_elts()].iter() {
@@ -199,6 +213,7 @@ where
             .collect::<Evaluations<_>>();
 
         let filtered_preprocessed_openings = preprocessed_openings
+            .clone()
             .into_iter()
             .filter(|x| !x.is_empty())
             .map(|x| x.iter().copied().collect::<MleEval<_>>())
@@ -209,30 +224,38 @@ where
             .map(|table_openings| table_openings.len())
             .collect::<Vec<_>>();
 
+        let unfiltered_preprocessed_column_count = preprocessed_openings
+            .iter()
+            .map(|table_openings| table_openings.len())
+            .collect::<Vec<_>>();
+
         let main_column_count =
             main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
 
         let only_has_main_commitment = vk.preprocessed_commit.is_none();
 
-        let (commitments, column_counts, openings) = if only_has_main_commitment {
-            (
-                vec![*main_commitment],
-                vec![main_column_count],
-                Rounds { rounds: vec![main_openings] },
-            )
-        } else {
-            (
-                vec![vk.preprocessed_commit.unwrap(), *main_commitment],
-                vec![preprocessed_column_count, main_column_count],
-                Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
-            )
-        };
+        let (commitments, column_counts, unfiltered_column_counts, openings) =
+            if only_has_main_commitment {
+                (
+                    vec![*main_commitment],
+                    vec![main_column_count.clone()],
+                    vec![main_column_count],
+                    Rounds { rounds: vec![main_openings] },
+                )
+            } else {
+                (
+                    vec![vk.preprocessed_commit.unwrap(), *main_commitment],
+                    vec![preprocessed_column_count, main_column_count.clone()],
+                    vec![unfiltered_preprocessed_column_count, main_column_count],
+                    Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
+                )
+            };
 
         let machine_jagged_verifier =
-            RecursiveMachineJaggedPcsVerifier::new(&self.pcs_verifier, column_counts);
+            RecursiveMachineJaggedPcsVerifier::new(&self.pcs_verifier, column_counts.clone());
 
         builder.cycle_tracker_v2_enter("jagged-verifier");
-        machine_jagged_verifier.verify_trusted_evaluations(
+        let prefix_sum_felts = machine_jagged_verifier.verify_trusted_evaluations(
             builder,
             &commitments,
             zerocheck_proof.point_and_eval.0.clone(),
@@ -240,6 +263,39 @@ where
             evaluation_proof,
             challenger,
         );
+        builder.cycle_tracker_v2_exit();
+
+        let params: Vec<Vec<SymbolicFelt<C::F>>> = unfiltered_column_counts
+            .iter()
+            .map(|round| {
+                round
+                    .iter()
+                    .copied()
+                    .zip(height_felts.iter().copied())
+                    .flat_map(|(column_count, height)| {
+                        std::iter::repeat(height).take(column_count).collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        let preprocessed_count = params[0].len();
+        let params = params.into_iter().flatten().collect::<Vec<_>>();
+
+        // Verify the prefix sums (TODO: skips the padding indices for now).
+        builder.cycle_tracker_v2_enter("jagged - prefix-sum-checks");
+        let mut param_index = 0;
+        let skip_indices = [preprocessed_count, prefix_sum_felts.len() - 1];
+        prefix_sum_felts
+            .iter()
+            .zip(prefix_sum_felts.iter().skip(1))
+            .enumerate()
+            .filter(|(i, _)| !skip_indices.contains(i))
+            .for_each(|(_, (x, y))| {
+                let sum = *x + params[param_index];
+                builder.assert_felt_eq(sum, *y);
+                param_index += 1;
+            });
         builder.cycle_tracker_v2_exit();
     }
 }

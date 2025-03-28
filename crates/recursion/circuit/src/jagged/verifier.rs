@@ -5,7 +5,7 @@ use slop_baby_bear::BabyBear;
 use slop_jagged::{
     JaggedBasefoldConfig, JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof,
 };
-use slop_multilinear::{full_geq, Evaluations, Mle, Point};
+use slop_multilinear::{Evaluations, Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -21,7 +21,6 @@ use crate::{
     },
     challenger::FieldChallengerVariable,
     sumcheck::{evaluate_mle_ext, verify_sumcheck},
-    symbolic::IntoSymbolic,
     AsRecursive, BabyBearFriConfigVariable, CircuitConfig,
 };
 
@@ -70,7 +69,7 @@ pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
     pub stacked_pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
     pub sumcheck_proof: PartialSumcheckProof<Ext<JC::F, JC::EF>>,
     pub jagged_eval_proof: JC::JaggedEvalProof,
-    pub params: JaggedLittlePolynomialVerifierParams<Ext<JC::F, JC::EF>>,
+    pub params: JaggedLittlePolynomialVerifierParams<Felt<JC::F>>,
 }
 
 impl<
@@ -125,7 +124,7 @@ impl<
         proof: &JaggedPcsProofVariable<JC>,
         insertion_points: &[usize],
         challenger: &mut JC::Challenger,
-    ) {
+    ) -> Vec<Felt<JC::F>> {
         let JaggedPcsProofVariable { stacked_pcs_proof, sumcheck_proof, jagged_eval_proof, params } =
             proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
@@ -143,7 +142,6 @@ impl<
         // as the last matrix of the commitment. We insert these "artificial" zeroes into the evaluation
         // claims.
         let zero_ext: Ext<JC::F, JC::EF> = builder.constant(JC::EF::zero());
-        let one_ext: Ext<JC::F, JC::EF> = builder.constant(JC::EF::one());
         for insertion_point in insertion_points.iter().rev() {
             column_claims.insert(*insertion_point, zero_ext);
         }
@@ -161,35 +159,8 @@ impl<
         verify_sumcheck::<C, SC>(builder, challenger, sumcheck_proof);
         builder.cycle_tracker_v2_exit();
 
-        builder.cycle_tracker_v2_enter("jagged - prefix-sum-checks");
-        builder.cycle_tracker_v2_enter("jagged - prefix-sum-checks - check bool");
-        for t_col in params.col_prefix_sums.iter() {
-            for &elem in t_col.iter() {
-                let bool_expr = elem * (one_ext - elem);
-                builder.assert_ext_eq(bool_expr, zero_ext);
-            }
-        }
-        builder.cycle_tracker_v2_exit();
-
-        builder.cycle_tracker_v2_enter("jagged - prefix-sum-checks - check monotonic");
-        for (t_col, next_t_col) in
-            params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))
-        {
-            let t_col: Point<Ext<JC::F, JC::EF>> = t_col.clone();
-            let next_t_col: Point<Ext<JC::F, JC::EF>> = next_t_col.clone();
-            let t_col_symbolic: Point<SymbolicExt<JC::F, JC::EF>> =
-                <Point<Ext<JC::F, JC::EF>> as IntoSymbolic<JC::Circuit>>::as_symbolic(&t_col);
-            let next_t_col_symbolic: Point<SymbolicExt<JC::F, JC::EF>> =
-                <Point<Ext<JC::F, JC::EF>> as IntoSymbolic<JC::Circuit>>::as_symbolic(&next_t_col);
-            let full_geq = full_geq(&t_col_symbolic, &next_t_col_symbolic);
-            let full_geq: Ext<JC::F, JC::EF> = builder.eval(full_geq);
-            builder.assert_ext_eq(full_geq, one_ext);
-        }
-        builder.cycle_tracker_v2_exit();
-        builder.cycle_tracker_v2_exit();
-
         builder.cycle_tracker_v2_enter("jagged - jagged-eval");
-        let jagged_eval = self.jagged_evaluator.jagged_evaluation(
+        let (jagged_eval, prefix_sum_felts) = self.jagged_evaluator.jagged_evaluation(
             builder,
             params,
             z_row,
@@ -214,6 +185,7 @@ impl<
             expected_eval,
             challenger,
         );
+        prefix_sum_felts
     }
 }
 
@@ -262,7 +234,7 @@ impl<
         evaluation_claims: &[Evaluations<Ext<JC::F, JC::EF>>],
         proof: &JaggedPcsProofVariable<JC>,
         challenger: &mut JC::Challenger,
-    ) {
+    ) -> Vec<Felt<JC::F>> {
         let insertion_points = self
             .column_counts_by_round
             .iter()

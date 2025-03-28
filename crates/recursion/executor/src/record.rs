@@ -10,7 +10,7 @@ use sp1_stark::{MachineRecord, SP1CoreOpts, PROOF_MAX_NUM_PVS};
 use crate::{
     instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr},
     public_values::RecursionPublicValues,
-    ExpReverseBitsInstr, Instruction,
+    ExpReverseBitsInstr, Instruction, PrefixSumChecksEvent,
 };
 
 use super::{
@@ -36,6 +36,7 @@ pub struct ExecutionRecord<F> {
     pub exp_reverse_bits_len_events: Vec<ExpReverseBitsEvent<F>>,
     pub fri_fold_events: Vec<FriFoldEvent<F>>,
     pub batch_fri_events: Vec<BatchFRIEvent<F>>,
+    pub prefix_sum_checks_events: Vec<PrefixSumChecksEvent<F>>,
     pub commit_pv_hash_events: Vec<CommitPublicValuesEvent<F>>,
 }
 
@@ -53,6 +54,7 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
             ("exp_reverse_bits_len_events", self.exp_reverse_bits_len_events.len()),
             ("fri_fold_events", self.fri_fold_events.len()),
             ("batch_fri_events", self.batch_fri_events.len()),
+            ("prefix_sum_checks_events", self.prefix_sum_checks_events.len()),
             ("commit_pv_hash_events", self.commit_pv_hash_events.len()),
         ]
         .into_iter()
@@ -75,6 +77,7 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
             exp_reverse_bits_len_events,
             fri_fold_events,
             batch_fri_events,
+            prefix_sum_checks_events,
             commit_pv_hash_events,
         } = self;
         base_alu_events.append(&mut other.base_alu_events);
@@ -86,6 +89,7 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
         exp_reverse_bits_len_events.append(&mut other.exp_reverse_bits_len_events);
         fri_fold_events.append(&mut other.fri_fold_events);
         batch_fri_events.append(&mut other.batch_fri_events);
+        prefix_sum_checks_events.append(&mut other.prefix_sum_checks_events);
         commit_pv_hash_events.append(&mut other.commit_pv_hash_events);
     }
 
@@ -114,6 +118,7 @@ impl<F: Field> ExecutionRecord<F> {
         self.ext_alu_events.reserve(event_counts.ext_alu_events);
         self.exp_reverse_bits_len_events.reserve(event_counts.exp_reverse_bits_len_events);
         self.select_events.reserve(event_counts.select_events);
+        self.prefix_sum_checks_events.reserve(event_counts.prefix_sum_checks_events);
     }
 }
 
@@ -128,6 +133,7 @@ pub struct RecursionAirEventCount {
     pub batch_fri_events: usize,
     pub select_events: usize,
     pub exp_reverse_bits_len_events: usize,
+    pub prefix_sum_checks_events: usize,
 }
 
 impl<F> AddAssign<&Instruction<F>> for RecursionAirEventCount {
@@ -154,6 +160,9 @@ impl<F> AddAssign<&Instruction<F>> for RecursionAirEventCount {
             Instruction::FriFold(_) => self.fri_fold_events += 1,
             Instruction::BatchFRI(instr) => {
                 self.batch_fri_events += instr.base_vec_addrs.p_at_x.len()
+            }
+            Instruction::PrefixSumChecks(instr) => {
+                self.prefix_sum_checks_events += instr.addrs.x1.len()
             }
             Instruction::HintAddCurve(instr) => {
                 self.mem_var_events += instr.output_x_addrs_mults.len();

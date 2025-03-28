@@ -187,6 +187,39 @@ pub struct SelectInstr<F> {
 /// The event encoding the inputs and outputs of a select operation.
 pub type SelectEvent<F> = SelectIo<F>;
 
+/// The inputs and outputs to the operations for prefix sum checks.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefixSumChecksIo<V> {
+    pub zero: V,
+    pub one: V,
+    pub x1: Vec<V>,
+    pub x2: Vec<V>,
+    pub accs: Vec<V>,
+    pub field_accs: Vec<V>,
+}
+
+/// An instruction invoking the PrefixSumChecks operation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PrefixSumChecksInstr<F> {
+    pub addrs: PrefixSumChecksIo<Address<F>>,
+    pub acc_mults: Vec<F>,
+    pub field_acc_mults: Vec<F>,
+}
+
+/// The event encoding the inputs and outputs of an PrefixSumChecks operation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefixSumChecksEvent<F> {
+    pub x1: F,
+    pub x2: Block<F>,
+    pub zero: F,
+    pub one: Block<F>,
+    pub prod: Block<F>,
+    pub acc: Block<F>,
+    pub new_acc: Block<F>,
+    pub field_acc: F,
+    pub new_field_acc: F,
+}
+
 /// The inputs and outputs to an exp-reverse-bits operation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExpReverseBitsIo<V> {
@@ -925,6 +958,42 @@ where
                 }
 
                 memory.mw_unchecked(ext_single_addrs.acc, Block::from(acc.as_base_slice()));
+            }
+            Instruction::PrefixSumChecks(instr) => {
+                let PrefixSumChecksInstr {
+                    addrs: PrefixSumChecksIo { zero, one, x1, x2, accs, field_accs },
+                    acc_mults: _,
+                    field_acc_mults: _,
+                } = *instr;
+                let zero = memory.mr_unchecked(zero).val[0];
+                let one = memory.mr_unchecked(one).val.ext::<EF>();
+                let x1_f = x1.iter().map(|addr| memory.mr_unchecked(*addr).val[0]).collect_vec();
+                let x2_ef =
+                    x2.iter().map(|addr| memory.mr_unchecked(*addr).val.ext::<EF>()).collect_vec();
+
+                let mut acc = EF::one();
+                let mut field_acc = F::zero();
+                for m in 0..x1_f.len() {
+                    let product = EF::from_base(x1_f[m]) * x2_ef[m];
+                    let lagrange_term = EF::one() - x1_f[m] - x2_ef[m] + product + product;
+                    let new_field_acc = x1_f[m] + field_acc * F::from_canonical_u32(2);
+                    let new_acc = acc * lagrange_term;
+                    record.prefix_sum_checks_events.push(PrefixSumChecksEvent {
+                        zero,
+                        one: Block::from(one.as_base_slice()),
+                        x1: x1_f[m],
+                        x2: Block::from(x2_ef[m].as_base_slice()),
+                        prod: Block::from(product.as_base_slice()),
+                        acc: Block::from(acc.as_base_slice()),
+                        new_acc: Block::from(new_acc.as_base_slice()),
+                        field_acc,
+                        new_field_acc,
+                    });
+                    acc = new_acc;
+                    field_acc = new_field_acc;
+                    memory.mw_unchecked(accs[m], Block::from(acc.as_base_slice()));
+                    memory.mw_unchecked(field_accs[m], Block::from(field_acc));
+                }
             }
             Instruction::CommitPublicValues(instr) => {
                 let pv_addrs = instr.pv_addrs.as_array();

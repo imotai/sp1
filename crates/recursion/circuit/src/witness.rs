@@ -263,6 +263,7 @@ where
             BatchPcsProof: Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
         > + AsRecursive<C>,
     <<SC as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
+        C::F,
         C::EF,
         <SC as JaggedConfig>::Challenger,
     >>::JaggedEvalProof: Witnessable<C, WitnessVariable = RecursiveJaggedEvalProof>,

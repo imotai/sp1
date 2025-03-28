@@ -303,11 +303,11 @@ impl<C: MachineProverComponents> ShardProver<C> {
             let num_real_entries = main_trace.num_real_entries();
             let log_degree = num_real_entries.checked_ilog2();
             let mut threshold_point_vals =
-                vec![C::EF::zero(); self.pcs_prover.max_log_row_count + 1];
+                vec![C::F::zero(); self.pcs_prover.max_log_row_count + 1];
             if let Some(log_degree) = log_degree {
                 assert_eq!(1 << log_degree, num_real_entries);
                 threshold_point_vals[self.pcs_prover.max_log_row_count - (log_degree as usize)] =
-                    C::EF::one();
+                    C::F::one();
             } else {
                 assert_eq!(num_real_entries, 0);
             }

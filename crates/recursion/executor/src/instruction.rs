@@ -20,6 +20,7 @@ pub enum Instruction<F> {
     HintAddCurve(Box<HintAddCurveInstr<F>>),
     FriFold(Box<FriFoldInstr<F>>),
     BatchFRI(Box<BatchFRIInstr<F>>),
+    PrefixSumChecks(Box<PrefixSumChecksInstr<F>>),
     Print(PrintInstr<F>),
     HintExt2Felts(HintExt2FeltsInstr<F>),
     CommitPublicValues(Box<CommitPublicValuesInstr<F>>),
@@ -119,6 +120,16 @@ impl<F: Copy> Instruction<F> {
                     .to_vec()
                     .into(),
                     svec![ext_single_addrs.acc],
+                )
+            }
+            Instruction::PrefixSumChecks(ref instr) => {
+                let PrefixSumChecksInstr {
+                    addrs: PrefixSumChecksIo { zero, one, x1, x2, accs, field_accs },
+                    ..
+                } = instr.as_ref();
+                (
+                    [x1.as_slice(), x2.as_slice(), &[*one], &[*zero]].concat().to_vec().into(),
+                    accs.iter().copied().chain(field_accs.iter().copied()).collect(),
                 )
             }
             Instruction::Print(_) | Instruction::DebugBacktrace(_) => Default::default(),
@@ -307,6 +318,31 @@ pub fn exp_reverse_bits_len<F: AbstractField>(
             result: Address(result),
         },
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn prefix_sum_checks<F: AbstractField>(
+    mults: Vec<u32>,
+    field_mults: Vec<u32>,
+    x1: Vec<F>,
+    x2: Vec<F>,
+    zero: F,
+    one: F,
+    accs: Vec<F>,
+    field_accs: Vec<F>,
+) -> Instruction<F> {
+    Instruction::PrefixSumChecks(Box::new(PrefixSumChecksInstr {
+        acc_mults: mults.iter().map(|mult| F::from_canonical_u32(*mult)).collect(),
+        field_acc_mults: field_mults.iter().map(|mult| F::from_canonical_u32(*mult)).collect(),
+        addrs: PrefixSumChecksIo {
+            zero: Address(zero),
+            one: Address(one),
+            x1: x1.into_iter().map(Address).collect(),
+            x2: x2.into_iter().map(Address).collect(),
+            accs: accs.into_iter().map(Address).collect(),
+            field_accs: field_accs.into_iter().map(Address).collect(),
+        },
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]

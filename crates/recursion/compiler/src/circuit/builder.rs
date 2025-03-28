@@ -26,6 +26,11 @@ pub trait CircuitV2Builder<C: Config> {
         p_at_zs: Vec<Ext<C::F, C::EF>>,
         p_at_xs: Vec<Felt<C::F>>,
     ) -> Ext<C::F, C::EF>;
+    fn prefix_sum_checks_v2(
+        &mut self,
+        point_1: Vec<Felt<C::F>>,
+        point_2: Vec<Ext<C::F, C::EF>>,
+    ) -> (Ext<C::F, C::EF>, Felt<C::F>);
     fn poseidon2_permute_v2(
         &mut self,
         state: [Felt<C::F>; PERMUTATION_WIDTH],
@@ -141,6 +146,34 @@ impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
         let output: Ext<_, _> = self.uninit();
         self.push_op(DslIr::CircuitV2BatchFRI(Box::new((output, alpha_pows, p_at_zs, p_at_xs))));
         output
+    }
+
+    /// A version of the `prefix_sum_checks` that uses the LagrangeEval precompile.
+    fn prefix_sum_checks_v2(
+        &mut self,
+        point_1: Vec<Felt<C::F>>,
+        point_2: Vec<Ext<C::F, C::EF>>,
+    ) -> (Ext<C::F, C::EF>, Felt<C::F>) {
+        let len = point_1.len();
+        assert_eq!(point_1.len(), point_2.len());
+        // point_1 is current and next prefix sum merged
+        assert_eq!(len % 2, 0);
+        let output: Vec<Ext<_, _>> = std::iter::from_fn(|| Some(self.uninit())).take(len).collect();
+        let field_accs: Vec<Felt<_>> =
+            std::iter::from_fn(|| Some(self.uninit())).take(len).collect();
+        let one: Ext<_, _> = self.uninit();
+        let zero: Felt<_> = self.uninit();
+        self.push_op(DslIr::ImmE(one, C::EF::one()));
+        self.push_op(DslIr::ImmF(zero, C::F::zero()));
+        self.push_op(DslIr::CircuitV2PrefixSumChecks(Box::new((
+            zero,
+            one,
+            output.clone(),
+            field_accs.clone(),
+            point_1,
+            point_2,
+        ))));
+        (output[len - 1], field_accs[len / 2 - 1])
     }
 
     /// Applies the Poseidon2 permutation to the given array.

@@ -8,22 +8,22 @@ use slop_jagged::{
 use slop_multilinear::{Mle, Point};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
-    ir::{Builder, Ext, SymbolicExt},
+    ir::{Builder, Ext, Felt, SymbolicExt, SymbolicFelt},
 };
 
 use crate::{
     sumcheck::verify_sumcheck, symbolic::IntoSymbolic, BabyBearFriConfigVariable, CircuitConfig,
 };
 
-impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>> {
-    type Output = JaggedLittlePolynomialVerifierParams<SymbolicExt<C::F, C::EF>>;
+impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<Felt<C::F>> {
+    type Output = JaggedLittlePolynomialVerifierParams<SymbolicFelt<C::F>>;
 
     fn as_symbolic(&self) -> Self::Output {
         JaggedLittlePolynomialVerifierParams {
             col_prefix_sums: self
                 .col_prefix_sums
                 .iter()
-                .map(|x| <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(x))
+                .map(|x| <Point<Felt<C::F>> as IntoSymbolic<C>>::as_symbolic(x))
                 .collect::<Vec<_>>(),
             max_log_row_count: self.max_log_row_count,
         }
@@ -35,16 +35,17 @@ pub trait RecursiveJaggedEvalConfig<C: CircuitConfig, Chal>: Sized {
 
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
+    #[allow(clippy::type_complexity)]
     fn jagged_evaluation(
         &self,
         builder: &mut Builder<C>,
-        params: &JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>>,
+        params: &JaggedLittlePolynomialVerifierParams<Felt<C::F>>,
         z_row: Point<Ext<C::F, C::EF>>,
         z_col: Point<Ext<C::F, C::EF>>,
         z_trace: Point<Ext<C::F, C::EF>>,
         proof: &Self::JaggedEvalProof,
         challenger: &mut Chal,
-    ) -> SymbolicExt<C::F, C::EF>;
+    ) -> (SymbolicExt<C::F, C::EF>, Vec<Felt<C::F>>);
 }
 
 pub struct RecursiveTrivialJaggedEvalConfig;
@@ -55,25 +56,32 @@ impl<C: CircuitConfig> RecursiveJaggedEvalConfig<C, ()> for RecursiveTrivialJagg
     fn jagged_evaluation(
         &self,
         _builder: &mut Builder<C>,
-        params: &JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>>,
+        params: &JaggedLittlePolynomialVerifierParams<Felt<C::F>>,
         z_row: Point<Ext<C::F, C::EF>>,
         z_col: Point<Ext<C::F, C::EF>>,
         z_trace: Point<Ext<C::F, C::EF>>,
         _proof: &Self::JaggedEvalProof,
         _challenger: &mut (),
-    ) -> SymbolicExt<C::F, C::EF> {
-        let params = <JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(params);
+    ) -> (SymbolicExt<C::F, C::EF>, Vec<Felt<C::F>>) {
+        let params_ef = JaggedLittlePolynomialVerifierParams {
+            col_prefix_sums: params
+                .col_prefix_sums
+                .iter()
+                .map(|x| x.iter().map(|y| SymbolicExt::from(*y)).collect())
+                .collect::<Vec<_>>(),
+            max_log_row_count: params.max_log_row_count,
+        };
         let z_row = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&z_row);
         let z_col = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&z_col);
         let z_trace = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&z_trace);
         // Need to use a single threaded rayon pool.
         let pool = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
-        let (result, _) = pool
-            .install(|| params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_trace));
-        result
+        let (result, _) = pool.install(|| {
+            params_ef.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_trace)
+        });
+        (result, vec![])
     }
 }
-
 pub struct RecursiveJaggedEvalSumcheckConfig<SC>(pub PhantomData<SC>);
 
 impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
@@ -85,17 +93,16 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
     fn jagged_evaluation(
         &self,
         builder: &mut Builder<C>,
-        params: &JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>>,
+        params: &JaggedLittlePolynomialVerifierParams<Felt<C::F>>,
         z_row: Point<Ext<C::F, C::EF>>,
         z_col: Point<Ext<C::F, C::EF>>,
         z_trace: Point<Ext<C::F, C::EF>>,
         proof: &Self::JaggedEvalProof,
         challenger: &mut SC::FriChallengerVariable,
-    ) -> SymbolicExt<C::F, C::EF> {
+    ) -> (SymbolicExt<C::F, C::EF>, Vec<Felt<C::F>>) {
         let z_row = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&z_row);
         let z_col = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&z_col);
         let z_trace = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&z_trace);
-        let params = <JaggedLittlePolynomialVerifierParams<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(params);
 
         let JaggedSumcheckEvalProof { branching_program_evals, partial_sumcheck_proof } = proof;
         // Calculate the partial lagrange from z_col point.
@@ -125,9 +132,7 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
         // Compute the jagged eval sc expected eval and assert it matches the proof's eval.
         let current_column_prefix_sums = params.col_prefix_sums.iter();
         let next_column_prefix_sums = params.col_prefix_sums.iter().skip(1);
-        let proof_point = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(
-            &partial_sumcheck_proof.point_and_eval.0,
-        );
+        let mut prefix_sum_felts = Vec::new();
         builder.cycle_tracker_v2_enter("jagged eval - calculate expected eval");
         let mut jagged_eval_sc_expected_eval = current_column_prefix_sums
             .zip(next_column_prefix_sums)
@@ -136,8 +141,12 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
                 let mut merged_prefix_sum = current_column_prefix_sum.clone();
                 merged_prefix_sum.extend(next_column_prefix_sum);
 
-                let full_lagrange_eval = Mle::full_lagrange_eval(&merged_prefix_sum, &proof_point);
-
+                let (full_lagrange_eval, felt) = C::prefix_sum_checks(
+                    builder,
+                    merged_prefix_sum.to_vec(),
+                    partial_sumcheck_proof.point_and_eval.0.to_vec(),
+                );
+                prefix_sum_felts.push(felt);
                 *z_col_eq_val * full_lagrange_eval
             })
             .sum::<SymbolicExt<C::F, C::EF>>();
@@ -149,7 +158,7 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
         builder
             .assert_ext_eq(jagged_eval_sc_expected_eval, partial_sumcheck_proof.point_and_eval.1);
 
-        jagged_eval
+        (jagged_eval, prefix_sum_felts)
     }
 }
 
@@ -170,7 +179,7 @@ mod tests {
     use sp1_core_machine::utils::setup_logger;
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder},
-        ir::Ext,
+        ir::{Ext, Felt},
     };
     use sp1_recursion_executor::Runtime;
     use sp1_stark::{log2_ceil_usize, BabyBearPoseidon2};
@@ -191,7 +200,7 @@ mod tests {
     type SC = BabyBearPoseidon2;
 
     fn trivial_jagged_eval(
-        verifier_params: &JaggedLittlePolynomialVerifierParams<EF>,
+        verifier_params: &JaggedLittlePolynomialVerifierParams<F>,
         z_row: &Point<EF>,
         z_col: &Point<EF>,
         z_trace: &Point<EF>,
@@ -205,7 +214,7 @@ mod tests {
         let z_col_variable = z_col.read(&mut builder);
         let z_trace_variable = z_trace.read(&mut builder);
         let recursive_jagged_evaluator = RecursiveTrivialJaggedEvalConfig {};
-        let recursive_jagged_evaluation = <RecursiveTrivialJaggedEvalConfig as RecursiveJaggedEvalConfig<C, ()>>::jagged_evaluation(
+        let (recursive_jagged_evaluation, _) = <RecursiveTrivialJaggedEvalConfig as RecursiveJaggedEvalConfig<C, ()>>::jagged_evaluation(
             &recursive_jagged_evaluator,
             &mut builder,
             &verifier_params_variable,
@@ -242,13 +251,13 @@ mod tests {
 
     async fn sumcheck_jagged_eval(
         prover_params: &JaggedLittlePolynomialProverParams,
-        verifier_params: &JaggedLittlePolynomialVerifierParams<EF>,
+        verifier_params: &JaggedLittlePolynomialVerifierParams<F>,
         z_row: &Point<EF>,
         z_col: &Point<EF>,
         z_trace: &Point<EF>,
         expected_result: EF,
         should_succeed: bool,
-    ) {
+    ) -> Vec<Felt<F>> {
         let prover = JaggedEvalSumcheckProver(PhantomData);
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
@@ -265,7 +274,7 @@ mod tests {
         let jagged_eval_proof_variable = jagged_eval_proof.read(&mut builder);
         let recursive_jagged_evaluator = RecursiveJaggedEvalSumcheckConfig::<SC>(PhantomData);
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
-        let recursive_jagged_evaluation =
+        let (recursive_jagged_evaluation, prefix_sum_felts) =
             <RecursiveJaggedEvalSumcheckConfig<SC> as RecursiveJaggedEvalConfig<
                 C,
                 <SC as BabyBearFriConfigVariable<C>>::FriChallengerVariable,
@@ -302,6 +311,7 @@ mod tests {
         } else {
             runtime.run().expect_err("invalid proof should not be verified");
         }
+        prefix_sum_felts
     }
 
     #[tokio::test]
@@ -328,7 +338,7 @@ mod tests {
         let prover_params =
             JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
 
-        let verifier_params: JaggedLittlePolynomialVerifierParams<EF> =
+        let verifier_params: JaggedLittlePolynomialVerifierParams<F> =
             prover_params.clone().into_verifier_params();
 
         let z_row: Point<EF> = (0..log_max_row_count).map(|_| rng.gen::<EF>()).collect();
