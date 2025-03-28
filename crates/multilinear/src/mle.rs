@@ -288,9 +288,10 @@ impl<T> Mle<T, CpuBackend> {
     ///
     /// The polynomial f(X,Y) is an important building block in zerocheck and other protocols which use
     /// sumcheck.
-    pub fn full_lagrange_eval(point_1: &Point<T>, point_2: &Point<T>) -> T
+    pub fn full_lagrange_eval<EF>(point_1: &Point<T>, point_2: &Point<EF>) -> EF
     where
         T: AbstractField,
+        EF: AbstractExtensionField<T>,
     {
         assert_eq!(point_1.dimension(), point_2.dimension());
 
@@ -300,8 +301,8 @@ impl<T> Mle<T, CpuBackend> {
             .zip(point_2.iter())
             .map(|(x, y)| {
                 // Multiply by (x_i * y_i + (1-x_i) * (1-y_i)).
-                let prod = x.clone() * y.clone();
-                prod.clone() + prod + T::one() - x.clone() - y.clone()
+                let prod = y.clone() * x.clone();
+                prod.clone() + prod + EF::one() - x.clone() - y.clone()
             })
             .product()
     }
@@ -353,11 +354,14 @@ pub fn partial_geq<F: Field>(threshold: usize, num_variables: usize) -> Vec<F> {
 ///
 /// # Panics
 /// If the dimensions of `threshold` and `eval_point` do not match.
-pub fn full_geq<F: AbstractField>(threshold: &Point<F>, eval_point: &Point<F>) -> F {
+pub fn full_geq<F: AbstractField, EF: AbstractExtensionField<F>>(
+    threshold: &Point<F>,
+    eval_point: &Point<EF>,
+) -> EF {
     assert_eq!(threshold.dimension(), eval_point.dimension());
-    threshold.iter().rev().zip(eval_point.iter().rev()).fold(F::one(), |acc, (x, y)| {
-        ((F::one() - x.clone()) * (F::one() - y.clone()) + x.clone() * y.clone()) * acc
-            + (F::one() - x.clone()) * y.clone()
+    threshold.iter().rev().zip(eval_point.iter().rev()).fold(EF::one(), |acc, (x, y)| {
+        ((EF::one() - y.clone()) * (F::one() - x.clone()) + y.clone() * x.clone()) * acc
+            + y.clone() * (F::one() - x.clone())
     })
 }
 

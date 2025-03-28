@@ -13,8 +13,8 @@ pub struct JaggedPcsProof<C: JaggedConfig> {
     pub stacked_pcs_proof: StackedPcsProof<C::BatchPcsProof, C::EF>,
     pub sumcheck_proof: PartialSumcheckProof<C::EF>,
     pub jagged_eval_proof:
-        <C::JaggedEvaluator as JaggedEvalConfig<C::EF, C::Challenger>>::JaggedEvalProof,
-    pub params: JaggedLittlePolynomialVerifierParams<C::EF>,
+        <C::JaggedEvaluator as JaggedEvalConfig<C::F, C::EF, C::Challenger>>::JaggedEvalProof,
+    pub params: JaggedLittlePolynomialVerifierParams<C::F>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         for t_col in params.col_prefix_sums.iter() {
             for &elem in t_col.iter() {
-                if elem * (C::EF::one() - elem) != C::EF::zero() {
+                if elem * (C::F::one() - elem) != C::F::zero() {
                     return Err(JaggedPcsVerifierError::BooleanityCheckFailed);
                 }
             }
@@ -97,7 +97,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         for (t_col, next_t_col) in
             params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))
         {
-            if full_geq(t_col, next_t_col) != C::EF::one() {
+            if full_geq(t_col, next_t_col) != C::F::one() {
                 return Err(JaggedPcsVerifierError::MonotonicityCheckFailed);
             }
         }

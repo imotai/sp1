@@ -24,7 +24,7 @@ use crate::{
     JaggedLittlePolynomialVerifierParams,
 };
 
-pub trait JaggedEvalConfig<F: Field, Challenger>:
+pub trait JaggedEvalConfig<F: Field, EF: ExtensionField<F>, Challenger>:
     'static + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + Clone
 {
     type JaggedEvalProof: 'static + Debug + Clone + Send + Sync + Serialize + DeserializeOwned;
@@ -34,26 +34,26 @@ pub trait JaggedEvalConfig<F: Field, Challenger>:
     fn jagged_evaluation(
         &self,
         params: &JaggedLittlePolynomialVerifierParams<F>,
-        z_row: &Point<F>,
-        z_col: &Point<F>,
-        z_trace: &Point<F>,
+        z_row: &Point<EF>,
+        z_col: &Point<EF>,
+        z_trace: &Point<EF>,
         proof: &Self::JaggedEvalProof,
         challenger: &mut Challenger,
-    ) -> Result<F, Self::JaggedEvalError>;
+    ) -> Result<EF, Self::JaggedEvalError>;
 }
 
-pub trait JaggedEvalProver<F: Field, Challenger>:
+pub trait JaggedEvalProver<F: Field, EF: ExtensionField<F>, Challenger>:
     'static + Send + Sync + std::fmt::Debug + Clone
 {
     type EvalProof: 'static + Debug + Clone + Send + Sync + Serialize + DeserializeOwned;
-    type EvalConfig: JaggedEvalConfig<F, Challenger, JaggedEvalProof = Self::EvalProof>;
+    type EvalConfig: JaggedEvalConfig<F, EF, Challenger, JaggedEvalProof = Self::EvalProof>;
 
     fn prove_jagged_evaluation(
         &self,
         params: &JaggedLittlePolynomialProverParams,
-        z_row: &Point<F>,
-        z_col: &Point<F>,
-        z_trace: &Point<F>,
+        z_row: &Point<EF>,
+        z_col: &Point<EF>,
+        z_trace: &Point<EF>,
         challenger: &mut Challenger,
     ) -> impl Future<Output = Self::EvalProof> + Send;
 }
@@ -61,33 +61,37 @@ pub trait JaggedEvalProver<F: Field, Challenger>:
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TrivialJaggedEvalConfig;
 
-impl<F: Field, C> JaggedEvalConfig<F, C> for TrivialJaggedEvalConfig {
+impl<F: Field, EF: ExtensionField<F>, C: Send + Sync> JaggedEvalConfig<F, EF, C>
+    for TrivialJaggedEvalConfig
+{
     type JaggedEvalProof = ();
     type JaggedEvalError = Infallible;
 
     fn jagged_evaluation(
         &self,
         params: &JaggedLittlePolynomialVerifierParams<F>,
-        z_row: &Point<F>,
-        z_col: &Point<F>,
-        z_trace: &Point<F>,
+        z_row: &Point<EF>,
+        z_col: &Point<EF>,
+        z_trace: &Point<EF>,
         _proof: &Self::JaggedEvalProof,
         _challenger: &mut C,
-    ) -> Result<F, Self::JaggedEvalError> {
+    ) -> Result<EF, Self::JaggedEvalError> {
         let (result, _) = params.full_jagged_little_polynomial_evaluation(z_row, z_col, z_trace);
         Ok(result)
     }
 }
 
-impl<F: Field, C: Send + Sync> JaggedEvalProver<F, C> for TrivialJaggedEvalConfig {
+impl<F: Field, EF: ExtensionField<F>, C: Send + Sync> JaggedEvalProver<F, EF, C>
+    for TrivialJaggedEvalConfig
+{
     type EvalProof = ();
     type EvalConfig = TrivialJaggedEvalConfig;
     async fn prove_jagged_evaluation(
         &self,
         _params: &JaggedLittlePolynomialProverParams,
-        _z_row: &Point<F>,
-        _z_col: &Point<F>,
-        _z_trace: &Point<F>,
+        _z_row: &Point<EF>,
+        _z_col: &Point<EF>,
+        _z_trace: &Point<EF>,
         _challenger: &mut C,
     ) -> Self::EvalProof {
     }
@@ -110,7 +114,7 @@ pub enum JaggedEvalSumcheckError<F: Field> {
     JaggedEvaluationFailed(F, F),
 }
 
-impl<F, EF, Challenger> JaggedEvalConfig<EF, Challenger> for JaggedEvalSumcheckConfig<F>
+impl<F, EF, Challenger> JaggedEvalConfig<F, EF, Challenger> for JaggedEvalSumcheckConfig<F>
 where
     F: Field,
     EF: ExtensionField<F>,
@@ -121,7 +125,7 @@ where
 
     fn jagged_evaluation(
         &self,
-        params: &JaggedLittlePolynomialVerifierParams<EF>,
+        params: &JaggedLittlePolynomialVerifierParams<F>,
         z_row: &Point<EF>,
         z_col: &Point<EF>,
         z_trace: &Point<EF>,
@@ -156,7 +160,7 @@ where
         let current_column_prefix_sums = params.col_prefix_sums.iter();
         let next_column_prefix_sums = params.col_prefix_sums.iter().skip(1);
         let mut is_first_column = true;
-        let mut prev_merged_prefix_sum = Point::<EF>::default();
+        let mut prev_merged_prefix_sum = Point::<F>::default();
         let mut prev_full_lagrange_eval = EF::zero();
         let mut jagged_eval_sc_expected_eval = current_column_prefix_sums
             .zip(next_column_prefix_sums)
@@ -202,7 +206,7 @@ where
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JaggedEvalSumcheckProver<F>(pub PhantomData<F>);
 
-impl<F, EF, Challenger> JaggedEvalProver<EF, Challenger> for JaggedEvalSumcheckProver<F>
+impl<F, EF, Challenger> JaggedEvalProver<F, EF, Challenger> for JaggedEvalSumcheckProver<F>
 where
     F: Field,
     EF: ExtensionField<F>,
@@ -513,7 +517,7 @@ mod tests {
         let merged_prefix_sums = prefix_sums
             .windows(2)
             .map(|x| {
-                let mut merged_prefix_sum = Point::from_usize(x[0], log_m + 1);
+                let mut merged_prefix_sum: Point<F> = Point::from_usize(x[0], log_m + 1);
                 merged_prefix_sum.extend(&Point::from_usize(x[1], log_m + 1));
                 merged_prefix_sum
             })
@@ -528,7 +532,7 @@ mod tests {
 
         let z_col_eq_vals = (0..row_counts.len())
             .map(|c| {
-                let c_point = Point::from_usize(c, z_col.dimension());
+                let c_point: Point<EF> = Point::from_usize(c, z_col.dimension());
                 Mle::full_lagrange_eval(&c_point, &z_col)
             })
             .collect_vec();
@@ -537,7 +541,8 @@ mod tests {
 
         let prover_params =
             JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
-        let verifier_params = prover_params.clone().into_verifier_params();
+        let verifier_params: JaggedLittlePolynomialVerifierParams<F> =
+            prover_params.clone().into_verifier_params();
         let (expected_sum, _) =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 

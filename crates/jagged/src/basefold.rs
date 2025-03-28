@@ -36,7 +36,7 @@ pub struct JaggedBasefoldConfig<BC, E>(BC, E);
 impl<BC, E> JaggedConfig for JaggedBasefoldConfig<BC, E>
 where
     BC: BasefoldConfig,
-    E: JaggedEvalConfig<BC::EF, BC::Challenger> + std::fmt::Debug + Clone,
+    E: JaggedEvalConfig<BC::F, BC::EF, BC::Challenger> + std::fmt::Debug + Clone,
 {
     type F = BC::F;
     type EF = BC::EF;
@@ -59,7 +59,7 @@ where
         + FieldChallenger<Bpc::F>
         + Synchronizable,
     JaggedProver: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
-    EvalProver: JaggedEvalProver<Bpc::EF, Bpc::Challenger>
+    EvalProver: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger>
         + 'static
         + Send
         + Sync
@@ -83,7 +83,7 @@ where
 impl<BC, E> JaggedPcsVerifier<JaggedBasefoldConfig<BC, E>>
 where
     BC: DefaultBasefoldConfig,
-    E: JaggedEvalConfig<BC::EF, BC::Challenger> + Default,
+    E: JaggedEvalConfig<BC::F, BC::EF, BC::Challenger> + Default,
 {
     pub fn new(log_blowup: usize, log_stacking_height: u32, max_log_row_count: usize) -> Self {
         let basefold_verifer = BasefoldVerifier::<BC>::new(log_blowup);
@@ -103,7 +103,7 @@ where
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
     Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment> + Synchronizable,
     JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
-    E: JaggedEvalProver<Bpc::EF, Bpc::Challenger> + Default,
+    E: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger> + Default,
 {
     pub fn from_basefold_components(
         verifier: &JaggedPcsVerifier<JaggedBasefoldConfig<Bpc::Config, E::EvalConfig>>,
@@ -131,7 +131,7 @@ where
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
     Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment> + Synchronizable,
     JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A> + Default,
-    E: JaggedEvalProver<Bpc::EF, Bpc::Challenger> + Default,
+    E: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger> + Default,
 {
     fn prover_from_verifier(verifier: &JaggedPcsVerifier<Self::Config>) -> JaggedProver<Self> {
         JaggedProver::from_basefold_components(

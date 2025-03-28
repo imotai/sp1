@@ -36,7 +36,7 @@ pub trait JaggedConfig:
         Commitment = Self::Commitment,
     >;
 
-    type JaggedEvaluator: JaggedEvalConfig<Self::EF, Self::Challenger>
+    type JaggedEvaluator: JaggedEvalConfig<Self::F, Self::EF, Self::Challenger>
         + 'static
         + Clone
         + Send

@@ -97,10 +97,12 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
     type Stacker: InterleaveMultilinears<Self::F, Self::A>;
 
     type JaggedEvalProver: JaggedEvalProver<
+            Self::F,
             Self::EF,
             Self::Challenger,
             EvalConfig = <Self::Config as JaggedConfig>::JaggedEvaluator,
             EvalProof = <<Self::Config as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
+                Self::F,
                 Self::EF,
                 Self::Challenger,
             >>::JaggedEvalProof,

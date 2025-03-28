@@ -27,7 +27,7 @@ use rayon::prelude::*;
 
 use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
-use slop_algebra::{AbstractField, Field};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 use slop_utils::log2_ceil_usize;
 
 use slop_multilinear::{Mle, Point};
@@ -163,15 +163,17 @@ pub struct JaggedLittlePolynomialVerifierParams<K> {
     pub max_log_row_count: usize,
 }
 
-impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierParams<K> {
+impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierParams<F> {
     /// Given `z_index`, evaluate the special multilinear polynomial appearing in the jagged sumcheck
     /// protocol.
-    pub fn full_jagged_little_polynomial_evaluation(
+    pub fn full_jagged_little_polynomial_evaluation<
+        EF: AbstractExtensionField<F> + 'static + Send + Sync,
+    >(
         &self,
-        z_row: &Point<K>,
-        z_col: &Point<K>,
-        z_index: &Point<K>,
-    ) -> (K, Vec<K>) {
+        z_row: &Point<EF>,
+        z_col: &Point<EF>,
+        z_index: &Point<EF>,
+    ) -> (EF, Vec<EF>) {
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
@@ -179,13 +181,13 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
         // be longer than that if the total trace area is less than the padded height. This
         // correction ensures that the higher bits are zero.
         let log_m = z_index.dimension();
-        let z_row_correction: K = z_row
+        let z_row_correction: EF = z_row
             .reversed()
             .to_vec()
             .iter()
             .skip(log_m + 1)
             .cloned()
-            .map(|x| K::one() - x)
+            .map(|x| EF::one() - x)
             .product();
 
         let branching_program = BranchingProgram::new(z_row.clone(), z_index.clone());
@@ -211,13 +213,18 @@ impl<K: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                 // the right column count for the current table.
                 let c_tab_correction = z_col_partial_lagrange[col_num].clone();
 
-                *branching_program_eval = branching_program.eval(prefix_sum, next_prefix_sum);
+                let prefix_sum_ef =
+                    prefix_sum.iter().map(|x| EF::from(x.clone())).collect::<Point<EF>>();
+                let next_prefix_sum_ef =
+                    next_prefix_sum.iter().map(|x| EF::from(x.clone())).collect::<Point<EF>>();
+                *branching_program_eval =
+                    branching_program.eval(&prefix_sum_ef, &next_prefix_sum_ef);
 
                 // Perform the multiplication outside of the main loop to avoid redundant
                 // multiplications.
                 z_row_correction.clone() * c_tab_correction.clone() * branching_program_eval.clone()
             })
-            .sum::<K>();
+            .sum::<EF>();
 
         (res, branching_program_evals)
     }
@@ -421,7 +428,7 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
             .into_iter()
             .collect::<Point<K>>();
 
-            let four_var_eq = Mle::blocking_partial_lagrange(&point);
+            let four_var_eq: Mle<K> = Mle::blocking_partial_lagrange(&point);
 
             // For each memory state in the new layer, compute the result of the branching
             // program that starts at that memory state and in the current layer.
