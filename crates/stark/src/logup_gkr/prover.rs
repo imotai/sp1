@@ -1,457 +1,256 @@
-use crate::Interaction;
-use itertools::{izip, Itertools};
-use serde::{Deserialize, Serialize};
-use slop_algebra::AbstractField;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+};
+
+use futures::future::OptionFuture;
+use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};
-use slop_alloc::{Buffer, CanCopyFrom, CpuBackend, HasBackend, ToHost};
+use slop_alloc::{Backend, ToHost};
 use slop_challenger::FieldChallenger;
 use slop_multilinear::{
-    HostEvaluationBackend, MleBaseBackend, MleEval, MleEvaluationBackend,
-    MleFixLastVariableBackend, PaddedMle, Padding, Point,
+    MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, Point, PointBackend,
 };
-use slop_sumcheck::{
-    reduce_sumcheck_to_evaluation, ComponentPolyEvalBackend, PartialSumcheckProof,
-    SumCheckPolyFirstRoundBackend,
-};
+use slop_tensor::AddAssignBackend;
+
+use crate::{air::MachineAir, prover::Traces, Chip, ChipEvaluation};
 
 use super::{
-    generate_mles, GkrMle, GkrMles, GkrProofWithoutOpenings, GkrProver, LogupGkrPoly,
-    LogupGkrProof, ProverMessage,
+    LogUpEvaluations, LogUpGkrCircuit, LogUpGkrOutput, LogUpGkrTraceGenerator, LogupGkrProof,
+    LogupGkrRoundProof,
 };
 
-#[derive(Serialize, Deserialize, Clone)]
-pub enum Either<L, R> {
-    Left(L),
-    Right(R),
+/// TODO
+pub trait LogUpGkrProver: 'static + Send + Sync {
+    /// TODO
+    type F: Field;
+    /// TODO
+    type EF: ExtensionField<Self::F>;
+    /// TODO
+    type A: MachineAir<Self::F>;
+    /// TODO
+    type B: Backend;
+
+    /// TODO
+    type Challenger: FieldChallenger<Self::F>;
+
+    /// TODO
+    fn prove_logup_gkr(
+        &self,
+        chips: &BTreeSet<Chip<Self::F, Self::A>>,
+        preprocessed_traces: Traces<Self::F, Self::B>,
+        traces: Traces<Self::F, Self::B>,
+        alpha: Self::EF,
+        beta: Self::EF,
+        challenger: &mut Self::Challenger,
+    ) -> impl Future<Output = LogupGkrProof<Self::EF>> + Send;
 }
 
-pub struct LogUpProverData<SC: GkrProver> {
-    pub proof: LogupGkrProof<SC::EF>,
-    pub final_point: Point<SC::EF>,
-    pub challenger: SC::Challenger,
-}
-
-/// Generates the GKR proof for the interactions logup permutation argument.  Specifically, it will
-/// generate a proof of the numerator and denominator of the argument's cumulative sum.
-pub(crate) async fn generate_gkr_logup_proof_and_data<SC: GkrProver>(
-    sends: &[Interaction<SC::F>],
-    receives: &[Interaction<SC::F>],
-    preprocessed: Option<&PaddedMle<SC::F, SC::B>>,
-    main: &PaddedMle<SC::F, SC::B>,
-    random_elements: &[SC::EF],
-    mut challenger: SC::Challenger,
-    log_max_row_height: usize,
-) -> LogUpProverData<SC>
-where
-    SC::EF: Clone,
-    SC::B: CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
+/// TODO
+pub trait LogUpGkrRoundProver<F: Field, EF: ExtensionField<F>, Challenger, B: Backend>:
+    'static + Send + Sync
 {
-    // Generate the RLC elements to uniquely identify each interaction.
-    let alpha = random_elements[0];
+    /// TODO
+    type CircuitLayer;
 
-    // Generate the RLC elements to uniquely identify each item in the looked up tuple.
-    let betas = random_elements[1].powers();
+    /// TODO
+    fn prove_round(
+        &self,
+        circuit: Self::CircuitLayer,
+        eval_point: &Point<EF>,
+        numerator_eval: EF,
+        denominator_eval: EF,
+        challenger: &mut Challenger,
+    ) -> impl Future<Output = LogupGkrRoundProof<EF>> + Send;
+}
 
-    let input_mles = SC::generate_gkr_input_mles(
-        preprocessed,
-        main,
-        sends,
-        receives,
-        alpha,
-        &betas.clone(),
-        log_max_row_height,
-    )
-    .await;
+/// TODO
+pub trait LogUpGkrProverComponents: 'static + Send + Sync {
+    /// TODO
+    type F: Field;
+    /// TODO
+    type EF: ExtensionField<Self::F>;
+    /// TODO
+    type A: MachineAir<Self::F>;
+    /// TODO
+    type B: MleBaseBackend<Self::F>
+        + MleBaseBackend<Self::EF>
+        + MleEvaluationBackend<Self::F, Self::EF>
+        + MleEvaluationBackend<Self::F, Self::F>
+        + PointBackend<Self::EF>
+        + AddAssignBackend<Self::EF>;
+    /// TODO
+    type Challenger: FieldChallenger<Self::F> + 'static + Send + Sync;
 
-    let GkrProofWithoutOpenings {
-        prover_messages,
-        sc_proofs,
-        numerator_claims: perm_numerator_claims,
-        denom_claims: perm_denom_claims,
-        challenge: last_challenge,
-    } = generate_gkr_proof::<SC>(
-        input_mles,
-        &mut challenger,
-        sends,
-        receives,
-        preprocessed,
-        main,
-        random_elements,
-        log_max_row_height,
-    )
-    .await;
+    /// TODO
+    type CircuitLayer: 'static + Send + Sync;
+    /// TODO
+    type Circuit: LogUpGkrCircuit<CircuitLayer = Self::CircuitLayer> + 'static + Send + Sync;
 
-    let k = main.num_variables();
+    /// TODO
+    type TraceGenerator: LogUpGkrTraceGenerator<
+        Self::F,
+        Self::EF,
+        Self::A,
+        Self::B,
+        Circuit = Self::Circuit,
+    >;
 
-    let column_openings = generate_column_openings::<SC>(preprocessed, main, &last_challenge).await;
+    /// TODO
+    type RoundProver: LogUpGkrRoundProver<
+        Self::F,
+        Self::EF,
+        Self::Challenger,
+        Self::B,
+        CircuitLayer = Self::CircuitLayer,
+    >;
+}
 
-    LogUpProverData {
-        proof: LogupGkrProof {
-            main_log_height: k as usize,
-            prover_messages,
-            sc_proofs,
-            numerator_claims: perm_numerator_claims,
-            denom_claims: perm_denom_claims,
-            column_openings,
-        },
-        final_point: last_challenge,
-        challenger,
+/// TODO
+pub struct GkrProverImpl<GkrComponents: LogUpGkrProverComponents> {
+    /// TODO
+    trace_generator: GkrComponents::TraceGenerator,
+    /// TODO
+    round_prover: GkrComponents::RoundProver,
+}
+
+/// TODO
+impl<GkrComponents: LogUpGkrProverComponents> GkrProverImpl<GkrComponents> {
+    /// TODO
+    pub fn new(
+        trace_generator: GkrComponents::TraceGenerator,
+        round_prover: GkrComponents::RoundProver,
+    ) -> Self {
+        Self { trace_generator, round_prover }
     }
-}
 
-async fn run_gkr_round<SC: GkrProver, NumeratorType>(
-    round_num: usize,
-    mles: GkrMle<NumeratorType, SC::EF, SC::B>,
-    numerator_claims: &[SC::EF],
-    denom_claims: &[SC::EF],
-    challenge: &Point<SC::EF>,
-    challenger: &mut SC::Challenger,
-) -> (ProverMessage<SC::EF>, Option<PartialSumcheckProof<SC::EF>>)
-where
-    SC::EF: ExtensionField<NumeratorType>,
-    NumeratorType: Field,
-
-    SC::B: MleFixLastVariableBackend<NumeratorType, NumeratorType>
-        + MleEvaluationBackend<NumeratorType, NumeratorType>
-        + HostEvaluationBackend<NumeratorType, NumeratorType>
-        + MleBaseBackend<NumeratorType>
-+ SumCheckPolyFirstRoundBackend<LogupGkrPoly<NumeratorType, SC::EF, SC::B>, SC::EF>
-        + ComponentPolyEvalBackend<LogupGkrPoly<NumeratorType, SC::EF, SC::B>, SC::EF>
-        +   CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
-
-    <SC::B as SumCheckPolyFirstRoundBackend<LogupGkrPoly<NumeratorType, SC::EF, SC::B>, SC::EF>>::NextRoundPoly: Send+Sync,
-{
-    // For the first round, we don't need to generate a sumcheck proof, since the the verifier will
-    // do the sum itself (it's only summing two elements for each claim).
-
-    let logup_gkr_mle_or_prover_message =
-        reduce_gkr_to_sumcheck::<SC, NumeratorType>(round_num, mles, challenge, challenger).await;
-
-    match logup_gkr_mle_or_prover_message {
-        Either::Left(prover_message) => (prover_message, None),
-        Either::Right(logup_gkr_mles) => {
-            let lambda = logup_gkr_mles.lambda;
-            let sumcheck_claim = match logup_gkr_mles.numerator_0.inner() {
-                Some(_) => numerator_claims
-                    .iter()
-                    .zip_eq(denom_claims.iter())
-                    .map(|(numerator_claim, denom_claim)| *numerator_claim + lambda * *denom_claim)
-                    .zip_eq(logup_gkr_mles.batching_randomness_powers.iter().copied())
-                    .map(|(claim, challenge)| claim * challenge)
-                    .sum::<SC::EF>(),
-                None => logup_gkr_mles.batching_randomness_powers_sum * lambda,
-            };
-            let (sc_proof, last_poly) =
-                reduce_sumcheck_to_evaluation::<SC::F, SC::EF, SC::Challenger>(
-                    vec![logup_gkr_mles],
-                    challenger,
-                    vec![sumcheck_claim],
-                    1,
-                    SC::EF::one(),
-                )
+    /// TODO
+    pub async fn prove_gkr_circuit(
+        &self,
+        numerator_value: GkrComponents::EF,
+        denominator_value: GkrComponents::EF,
+        eval_point: Point<GkrComponents::EF>,
+        mut circuit: GkrComponents::Circuit,
+        challenger: &mut GkrComponents::Challenger,
+    ) -> (Point<GkrComponents::EF>, Vec<LogupGkrRoundProof<GkrComponents::EF>>) {
+        let mut round_proofs = Vec::new();
+        // Follow the GKR protocol layer by layer.
+        let mut numerator_eval = numerator_value;
+        let mut denominator_eval = denominator_value;
+        let mut eval_point = eval_point;
+        while let Some(layer) = circuit.next().await {
+            let round_proof = self
+                .round_prover
+                .prove_round(layer, &eval_point, numerator_eval, denominator_eval, challenger)
                 .await;
-
-            assert!(last_poly.len() == 1);
-
-            let last_poly = &last_poly[0];
-
-            let numerator_0: Vec<_> = last_poly.iter().copied().step_by(4).collect();
-            let numerator_1: Vec<_> = last_poly.iter().copied().skip(1).step_by(4).collect();
-            let denom_0: Vec<_> = last_poly.iter().copied().skip(2).step_by(4).collect();
-            let denom_1: Vec<_> = last_poly.iter().copied().skip(3).step_by(4).collect();
-
-            for (numerator_0_elem, numerator_1_elem, denom_0_elem, denom_1_elem) in
-                izip!(numerator_0.iter(), numerator_1.iter(), denom_0.iter(), denom_1.iter())
-            {
-                challenger.observe_ext_element(*numerator_0_elem);
-                challenger.observe_ext_element(*numerator_1_elem);
-                challenger.observe_ext_element(*denom_0_elem);
-                challenger.observe_ext_element(*denom_1_elem);
-            }
-            (ProverMessage { numerator_0, numerator_1, denom_0, denom_1 }, Some(sc_proof))
+            // Observe the prover message.
+            challenger.observe_ext_element(round_proof.numerator_0);
+            challenger.observe_ext_element(round_proof.numerator_1);
+            challenger.observe_ext_element(round_proof.denominator_0);
+            challenger.observe_ext_element(round_proof.denominator_1);
+            // Get the evaluation point for the claims of the next round.
+            eval_point = round_proof.sumcheck_proof.point_and_eval.0.clone();
+            // Sample the last coordinate.
+            let last_coordinate = challenger.sample_ext_element::<GkrComponents::EF>();
+            // Compute the evaluation of the numerator and denominator at the last coordinate.
+            numerator_eval = round_proof.numerator_0
+                + (round_proof.numerator_1 - round_proof.numerator_0) * last_coordinate;
+            denominator_eval = round_proof.denominator_0
+                + (round_proof.denominator_1 - round_proof.denominator_0) * last_coordinate;
+            eval_point.add_dimension_back(last_coordinate);
+            // Add the round proof to the total
+            round_proofs.push(round_proof);
         }
-    }
-}
-pub type MessageOrLogupPoly<NumeratorType, SC> = Either<
-    ProverMessage<<SC as GkrProver>::EF>,
-    LogupGkrPoly<NumeratorType, <SC as GkrProver>::EF, <SC as GkrProver>::B>,
->;
-
-async fn mle_to_host<
-    F: Field,
-    EF: ExtensionField<F>,
-    B: MleEvaluationBackend<F, F> + HostEvaluationBackend<F, F> + MleBaseBackend<F>,
->(
-    mle: &PaddedMle<F, B>,
-) -> Vec<EF> {
-    match mle.inner() {
-        Some(inner) => (*inner)
-            .eval_at(&Point::new(Buffer::with_capacity_in(
-                0,
-                mle.padding_values().backend().clone(),
-            )))
-            .await
-            .to_host()
-            .await
-            .unwrap()
-            .evaluations()
-            .as_slice()
-            .iter()
-            .copied()
-            .map(EF::from_base)
-            .collect(),
-        None => match mle.padding_values() {
-            Padding::Generic(padding_values) => padding_values
-                .to_host()
-                .await
-                .unwrap()
-                .evaluations()
-                .as_slice()
-                .iter()
-                .copied()
-                .map(EF::from_base)
-                .collect(),
-            Padding::Constant((value, num_polynomials, _)) => {
-                vec![EF::from_base(*value); *num_polynomials]
-            }
-        },
+        (eval_point, round_proofs)
     }
 }
 
-/// Reduce the circuit evaluation claim to a sumcheck proof. Returns an `Either` type because the
-/// in the first round, the prover will simply send the evaluations.
-async fn reduce_gkr_to_sumcheck<SC: GkrProver, NumeratorType>(
-    round_num: usize,
-    mles: GkrMle<NumeratorType, SC::EF, SC::B>,
-    challenge: &Point<SC::EF>,
-    challenger: &mut SC::Challenger,
-) -> MessageOrLogupPoly<NumeratorType, SC>
-where
-    NumeratorType: Field,
-    SC::EF: ExtensionField<NumeratorType>,
-    SC::B: MleFixLastVariableBackend<NumeratorType, NumeratorType>
-        + MleEvaluationBackend<NumeratorType, NumeratorType>
-        + HostEvaluationBackend<NumeratorType, NumeratorType>
-        + MleBaseBackend<NumeratorType>
-        + CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
-{
-    // TODO: Traitify this.
-    let GkrMle {
-        numerator_0: numerator_mles_fixed_0,
-        numerator_1: numerator_mles_fixed_1,
-        denom_0: denom_mles_fixed_0,
-        denom_1: denom_mles_fixed_1,
-    } = mles;
+impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<GkrComponents> {
+    type F = GkrComponents::F;
+    type EF = GkrComponents::EF;
+    type A = GkrComponents::A;
+    type B = GkrComponents::B;
 
-    // For the first round, we don't need to generate a sumcheck proof, since the the verifier will
-    // do the sum itself (it's only summing two elements for each claim).
-    if round_num == 0 {
-        assert!(numerator_mles_fixed_0.num_variables() == 0);
-        assert!(numerator_mles_fixed_1.num_variables() == 0);
-        assert!(denom_mles_fixed_0.num_variables() == 0);
-        assert!(denom_mles_fixed_1.num_variables() == 0);
+    type Challenger = GkrComponents::Challenger;
 
-        assert!(numerator_mles_fixed_0.num_real_entries() <= 1);
-        assert!(numerator_mles_fixed_1.num_real_entries() <= 1);
-        assert!(denom_mles_fixed_0.num_real_entries() <= 1);
-        assert!(denom_mles_fixed_1.num_real_entries() <= 1);
+    async fn prove_logup_gkr(
+        &self,
+        chips: &BTreeSet<Chip<Self::F, Self::A>>,
+        preprocessed_traces: Traces<Self::F, Self::B>,
+        traces: Traces<Self::F, Self::B>,
+        alpha: Self::EF,
+        beta: Self::EF,
+        challenger: &mut Self::Challenger,
+    ) -> LogupGkrProof<Self::EF> {
+        // Run the GKR circuit and get the output.
+        let (output, circuit) = self
+            .trace_generator
+            .generate_gkr_circuit(chips, preprocessed_traces.clone(), traces.clone(), alpha, beta)
+            .await;
 
-        assert!(numerator_mles_fixed_0.num_real_entries() <= 1);
-        assert!(numerator_mles_fixed_1.num_real_entries() <= 1);
-        assert!(denom_mles_fixed_0.num_real_entries() <= 1);
-        assert!(denom_mles_fixed_1.num_real_entries() <= 1);
+        let LogUpGkrOutput { numerator, denominator } = &output;
 
-        let numerator_0 =
-            mle_to_host::<NumeratorType, SC::EF, SC::B>(&numerator_mles_fixed_0).await;
-        let numerator_1 = mle_to_host(&numerator_mles_fixed_1).await;
-        let denom_0 = mle_to_host(&denom_mles_fixed_0).await;
-        let denom_1 = mle_to_host(&denom_mles_fixed_1).await;
+        let num_interactions =
+            chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
+        let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
 
-        for (numerator_0_elem, numerator_1_elem, denom_0_elem, denom_1_elem) in
-            izip!(numerator_0.iter(), numerator_1.iter(), denom_0.iter(), denom_1.iter())
+        // Observe the output claims.
+        for (n, d) in
+            numerator.guts().as_slice().iter().zip_eq(denominator.guts().as_slice().iter())
         {
-            challenger.observe_ext_element(*numerator_0_elem);
-            challenger.observe_ext_element(*numerator_1_elem);
-            challenger.observe_ext_element(*denom_0_elem);
-            challenger.observe_ext_element(*denom_1_elem);
+            challenger.observe_ext_element(*n);
+            challenger.observe_ext_element(*d);
         }
 
-        Either::Left(ProverMessage { numerator_0, numerator_1, denom_0, denom_1 })
-    } else {
-        // Get the sumcheck challenges.  It will reduce the summation of the MLE polynomial to an evaluation of a single random point.
-        let lambda: SC::EF = challenger.sample_ext_element();
-        let batch_randomness = challenger.sample_ext_element();
+        // TODO: instead calculate from number of interactions.
+        let initial_number_of_variables = numerator.num_variables();
+        assert_eq!(initial_number_of_variables, num_interaction_variables + 1);
+        let first_eval_point = challenger.sample_point::<Self::EF>(initial_number_of_variables);
 
-        let logup_gkr_mles = LogupGkrPoly::<NumeratorType, SC::EF, SC::B>::new(
-            challenge.clone(),
-            (numerator_mles_fixed_0, numerator_mles_fixed_1),
-            (denom_mles_fixed_0, denom_mles_fixed_1),
-            lambda,
-            SC::EF::one(),
-            batch_randomness,
-        )
-        .await;
+        // Follow the GKR protocol layer by layer.
+        let first_numerator_eval = numerator.eval_at(&first_eval_point).await[0];
+        let first_denominator_eval = denominator.eval_at(&first_eval_point).await[0];
 
-        Either::Right(logup_gkr_mles)
-    }
-}
+        let (eval_point, round_proofs) = self
+            .prove_gkr_circuit(
+                first_numerator_eval,
+                first_denominator_eval,
+                first_eval_point,
+                circuit,
+                challenger,
+            )
+            .await;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn generate_gkr_proof<SC: GkrProver>(
-    input_mles: GkrMle<SC::F, SC::EF, SC::B>,
-    challenger: &mut SC::Challenger,
-    sends: &[Interaction<SC::F>],
-    receives: &[Interaction<SC::F>],
-    preprocessed: Option<&PaddedMle<SC::F, SC::B>>,
-    main: &PaddedMle<SC::F, SC::B>,
-    random_elements: &[SC::EF],
-    log_max_row_height: usize,
-) -> GkrProofWithoutOpenings<SC::EF>
-where
-    SC::B: CanCopyFrom<Buffer<SC::EF>, CpuBackend, Output = Buffer<SC::EF, SC::B>>,
-{
-    let mut gkr_mles: GkrMles<SC> = generate_mles(input_mles).await;
+        // Get the evaluations for each chip at the evaluation point of the last round.
+        let mut chip_evaluations = BTreeMap::new();
 
-    let num_rounds = gkr_mles.mles.len();
+        let trace_dimension = traces.values().next().unwrap().num_variables();
+        let eval_point = eval_point.last_k(trace_dimension as usize);
 
-    let final_mle = gkr_mles.mles.last().unwrap();
+        for chip in chips.iter() {
+            let name = chip.name();
+            let main_trace = traces.get(&name).unwrap();
+            let preprocessed_trace = preprocessed_traces.get(&name);
 
-    assert!(final_mle.numerator_0.num_variables() == 0);
-    assert!(final_mle.numerator_1.num_variables() == 0);
-    assert!(final_mle.denom_0.num_variables() == 0);
-    assert!(final_mle.denom_1.num_variables() == 0);
-
-    let final_numerator_0_claims =
-        final_mle.numerator_0.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
-
-    let final_numerator_1_claims =
-        final_mle.numerator_1.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
-    let final_denominator_0_claims =
-        final_mle.denom_0.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
-    let final_denominator_1_claims =
-        final_mle.denom_1.eval_at::<SC::EF>(&vec![].into()).await.to_host().await.unwrap();
-
-    let (final_numerator_claims, final_denom_claims): (Vec<SC::EF>, Vec<SC::EF>) = izip!(
-        final_numerator_0_claims.evaluations().as_slice().iter().copied(),
-        final_numerator_1_claims.evaluations().as_slice().iter().copied(),
-        final_denominator_0_claims.evaluations().as_slice().iter().copied(),
-        final_denominator_1_claims.evaluations().as_slice().iter().copied(),
-    )
-    .map(|(num_0, num_1, denom_0, denom_1)| (num_0 * denom_1 + num_1 * denom_0, denom_0 * denom_1))
-    .unzip();
-
-    for (numerator_claim, denom_claim) in
-        final_numerator_claims.iter().zip(final_denom_claims.iter())
-    {
-        challenger.observe_ext_element(*numerator_claim);
-        challenger.observe_ext_element(*denom_claim);
-    }
-
-    let mut challenge: Point<SC::EF> = vec![].into();
-    let mut prover_messages = Vec::new();
-    let mut sc_proofs = Vec::new();
-
-    let mut numerator_claims = final_numerator_claims.clone();
-    let mut denom_claims = final_denom_claims.clone();
-
-    for round_num in 0..num_rounds {
-        let mle = gkr_mles.mles.pop().unwrap();
-
-        let (prover_message, sc_proof) = run_gkr_round::<SC, SC::EF>(
-            round_num,
-            mle,
-            &numerator_claims,
-            &denom_claims,
-            &challenge,
-            challenger,
-        )
-        .await;
-
-        if let Some(sc_proof) = sc_proof {
-            sc_proofs.push(sc_proof.clone());
-            challenge = sc_proof.point_and_eval.0;
+            let main_evaluation = main_trace.eval_at(&eval_point).await;
+            let preprocessed_evaluation =
+                OptionFuture::from(preprocessed_trace.as_ref().map(|t| t.eval_at(&eval_point)))
+                    .await;
+            let main_evaluation = main_evaluation.to_host().await.unwrap();
+            let preprocessed_evaluation = OptionFuture::from(
+                preprocessed_evaluation.as_ref().map(|e| async { e.to_host().await.unwrap() }),
+            )
+            .await;
+            let openings = ChipEvaluation {
+                main_trace_evaluations: main_evaluation,
+                preprocessed_trace_evaluations: preprocessed_evaluation,
+            };
+            chip_evaluations.insert(name, openings);
         }
 
-        let gkr_round_challenge: SC::EF = challenger.sample_ext_element();
+        let logup_evaluations =
+            LogUpEvaluations { point: eval_point, chip_openings: chip_evaluations };
 
-        // Do the 2-to-1 trick.  Calculate a random linear combination of the next round's 0 and 1 points.
-        numerator_claims = prover_message
-            .numerator_0
-            .iter()
-            .zip(prover_message.numerator_1.iter())
-            .map(|(numerator_0, numerator_1)| {
-                *numerator_0 + gkr_round_challenge * (*numerator_1 - *numerator_0)
-            })
-            .collect();
-
-        denom_claims = prover_message
-            .denom_0
-            .iter()
-            .zip(prover_message.denom_1.iter())
-            .map(|(denom_0, denom_1)| *denom_0 + gkr_round_challenge * (*denom_1 - *denom_0))
-            .collect();
-
-        prover_messages.push(prover_message);
-
-        challenge.add_dimension_back(gkr_round_challenge);
+        LogupGkrProof { circuit_output: output, round_proofs, logup_evaluations }
     }
-
-    let input_mles = SC::generate_gkr_input_mles(
-        preprocessed,
-        main,
-        sends,
-        receives,
-        random_elements[0],
-        &random_elements[1].powers(),
-        log_max_row_height,
-    )
-    .await;
-
-    let (prover_message, maybe_sc_proof) = run_gkr_round::<SC, SC::F>(
-        num_rounds,
-        input_mles,
-        &numerator_claims,
-        &denom_claims,
-        &challenge,
-        challenger,
-    )
-    .await;
-
-    prover_messages.push(prover_message);
-    if let Some(sc_proof) = maybe_sc_proof {
-        sc_proofs.push(sc_proof.clone());
-        challenge = sc_proof.point_and_eval.0;
-    }
-
-    let gkr_round_challenge: SC::EF = challenger.sample_ext_element();
-    challenge.add_dimension_back(gkr_round_challenge);
-
-    GkrProofWithoutOpenings {
-        prover_messages,
-        sc_proofs,
-        numerator_claims: final_numerator_claims,
-        denom_claims: final_denom_claims,
-        challenge,
-    }
-}
-
-async fn generate_column_openings<SC: GkrProver>(
-    preprocessed: Option<&PaddedMle<SC::F, SC::B>>,
-    main: &PaddedMle<SC::F, SC::B>,
-    challenge: &Point<SC::EF>,
-) -> (MleEval<SC::EF>, Option<MleEval<SC::EF>>) {
-    let main_evals = main.eval_at(challenge).await;
-
-    let prep_evals = match preprocessed {
-        Some(prep) => Some(prep.eval_at(challenge).await),
-        None => None,
-    };
-
-    (
-        main_evals.to_host().await.unwrap(),
-        match prep_evals {
-            Some(prep_evals) => Some(prep_evals.to_host().await.unwrap()),
-            None => None,
-        },
-    )
 }

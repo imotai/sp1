@@ -1,264 +1,247 @@
-use crate::MachineConfig;
-use itertools::izip;
-use slop_algebra::AbstractField;
+use std::{collections::BTreeSet, marker::PhantomData};
+
+use itertools::Itertools;
+use slop_algebra::{ExtensionField, Field};
 use slop_challenger::FieldChallenger;
-use slop_multilinear::{full_geq, Mle, Point};
-use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof};
+use slop_multilinear::{full_geq, Mle, MleEval, MultilinearPcsChallenger, Point};
+use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
+use thiserror::Error;
 
-use crate::Interaction;
+use crate::{air::MachineAir, Chip};
 
-use super::{LogupGkrProof, LogupGkrVerificationError, ProverMessage};
+use super::{ChipEvaluation, LogUpEvaluations, LogUpGkrOutput, LogupGkrProof};
 
-pub struct GkrPointAndEvals<EF> {
-    pub point: Point<EF>,
-    pub numerator_evals: Vec<EF>,
-    pub denom_evals: Vec<EF>,
+/// An error type for `LogUp` GKR.
+#[derive(Debug, Error)]
+pub enum LogupGkrVerificationError<EF> {
+    /// The sumcheck claim is not consistent with the calculated one from the prover messages.
+    #[error("inconsistent sumcheck claim at round {0}")]
+    InconsistentSumcheckClaim(usize),
+    /// Inconsistency between the calculated evaluation and the sumcheck evaluation.
+    #[error("inconsistent evaluation at round {0}")]
+    InconsistentEvaluation(usize),
+    /// Error when verifying sumcheck proof.
+    #[error("sumcheck error: {0}")]
+    SumcheckError(#[from] SumcheckError),
+    /// The proof shape does not match the expected one for the given number of interactions.
+    #[error("invalid shape")]
+    InvalidShape,
+    /// The size of the first layer does not match the expected one.
+    #[error("invalid first layer dimension: {0} != {1}")]
+    InvalidFirstLayerDimension(u32, u32),
+    /// The dimension of the last layer does not match the expected one.
+    #[error("invalid last layer dimension: {0} != {1}")]
+    InvalidLastLayerDimension(usize, usize),
+    /// The trace point does not match the claimed opening point.
+    #[error("trace point mismatch")]
+    TracePointMismatch,
+    /// The cumulative sum does not match the claimed one.
+    #[error("cumulative sum mismatch: {0} != {1}")]
+    CumulativeSumMismatch(EF, EF),
+    /// The numerator evaluation does not match the expected one.
+    #[error("numerator evaluation mismatch: {0} != {1}")]
+    NumeratorEvaluationMismatch(EF, EF),
+    /// The denominator evaluation does not match the expected one.
+    #[error("denominator evaluation mismatch: {0} != {1}")]
+    DenominatorEvaluationMismatch(EF, EF),
 }
 
-pub(crate) fn verify_gkr_rounds<SC: MachineConfig>(
-    prover_messages: &[ProverMessage<SC::EF>],
-    sc_proofs: &[PartialSumcheckProof<SC::EF>],
-    numerator_claims: &[SC::EF],
-    denom_claims: &[SC::EF],
-    challenger: &mut SC::Challenger,
-    num_polys: usize,
-) -> Result<GkrPointAndEvals<SC::EF>, LogupGkrVerificationError> {
-    let num_rounds = prover_messages.len();
+/// Verifier for `LogUp` GKR.
+#[derive(Clone, Debug, Copy, Default, PartialEq, Eq, Hash)]
+pub struct LogUpGkrVerifier<F, EF, A>(PhantomData<(F, EF, A)>);
 
-    let mut round_challenge: Point<SC::EF> = Vec::new().into();
+impl<F, EF, A> LogUpGkrVerifier<F, EF, A>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    A: MachineAir<F>,
+{
+    /// Verify the `LogUp` GKR proof.
+    ///
+    /// # Errors
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
+    pub fn verify_logup_gkr(
+        shard_chips: &BTreeSet<Chip<F, A>>,
+        degrees: &[Point<F>],
+        alpha: EF,
+        beta: EF,
+        cumulative_sum: EF,
+        max_log_row_count: usize,
+        proof: &LogupGkrProof<EF>,
+        challenger: &mut impl FieldChallenger<F>,
+    ) -> Result<(), LogupGkrVerificationError<EF>> {
+        let LogupGkrProof { circuit_output, round_proofs, logup_evaluations } = proof;
 
-    let mut numerator_claims = numerator_claims.to_vec();
-    let mut denom_claims = denom_claims.to_vec();
+        //  TODO: compare the number of variables to total number of itneractions as read from chips.
+        let LogUpGkrOutput { numerator, denominator } = circuit_output;
 
-    if !(numerator_claims.len() == num_polys && denom_claims.len() == num_polys) {
-        return Err(LogupGkrVerificationError::InvalidShape);
-    }
-
-    for round_num in 0..num_rounds {
-        // For the first round, we don't have a sumcheck proof, since the verifier can check the claimed
-        // value directly from the next round's 0 and 1 points.
-        if round_num == 0 {
-            let expected_final_numerator_claims = izip!(
-                prover_messages[round_num].numerator_0.iter().copied(),
-                prover_messages[round_num].numerator_1.iter().copied(),
-                prover_messages[round_num].denom_0.iter().copied(),
-                prover_messages[round_num].denom_1.iter().copied()
-            )
-            .map(|(n0, n1, d0, d1)| n0 * d1 + n1 * d0)
-            .collect::<Vec<_>>();
-            let expected_final_denom_claims = prover_messages[round_num]
-                .denom_0
-                .iter()
-                .zip(&prover_messages[round_num].denom_1)
-                .map(|(d0, d1)| *d0 * *d1)
-                .collect::<Vec<_>>();
-
-            for (numer_claim, denom_claim) in numerator_claims.iter().zip(&denom_claims) {
-                challenger.observe_ext_element(*numer_claim);
-                challenger.observe_ext_element(*denom_claim);
-            }
-
-            if !(prover_messages[round_num].numerator_0.len() == num_polys
-                && prover_messages[round_num].numerator_1.len() == num_polys
-                && prover_messages[round_num].denom_0.len() == num_polys
-                && prover_messages[round_num].denom_1.len() == num_polys)
-            {
-                return Err(LogupGkrVerificationError::InvalidShape);
-            }
-
-            if (expected_final_numerator_claims != numerator_claims)
-                || (expected_final_denom_claims != denom_claims)
-            {
-                return Err(LogupGkrVerificationError::InconsistentFinalClaim);
-            }
-        } else {
-            // Reduce the sumcheck to an evaluation of the sumcheck'ed polynomial at a random point.
-
-            let sc_proof = &sc_proofs[round_num - 1];
-
-            let lambda: SC::EF = challenger.sample_ext_element();
-            let batch_challenge: SC::EF = challenger.sample_ext_element();
-
-            if numerator_claims
-                .iter()
-                .zip(denom_claims.iter())
-                .rev()
-                .fold(SC::EF::zero(), |acc, x| acc * batch_challenge + (lambda * *x.1 + *x.0))
-                != sc_proof.claimed_sum
-            {
-                return Err(LogupGkrVerificationError::InconsistentSumcheckClaim);
-            }
-
-            if let Err(sc_error) = partially_verify_sumcheck_proof(sc_proof, challenger) {
-                return Err(LogupGkrVerificationError::SumcheckError(sc_error));
-            }
-
-            let expected_eval = izip!(
-                prover_messages[round_num].numerator_0.iter().copied(),
-                prover_messages[round_num].numerator_1.iter().copied(),
-                prover_messages[round_num].denom_0.iter().copied(),
-                prover_messages[round_num].denom_1.iter().copied()
-            )
-            .map(|(n0, n1, d0, d1)| {
-                let expected_numerator_eval =
-                    Mle::full_lagrange_eval(&round_challenge, &sc_proof.point_and_eval.0)
-                        * (n1 * d0 + n0 * d1);
-
-                let expected_denom_eval =
-                    Mle::full_lagrange_eval(&round_challenge, &sc_proof.point_and_eval.0) * d0 * d1;
-
-                (expected_numerator_eval, expected_denom_eval)
-            })
-            .rev()
-            .fold(SC::EF::zero(), |acc, x| acc * batch_challenge + (lambda * x.1 + x.0));
-
-            if expected_eval != sc_proof.point_and_eval.1 {
-                return Err(LogupGkrVerificationError::InconsistentEvaluation(round_num));
-            }
-            round_challenge = sc_proof.point_and_eval.0.clone();
+        // Observe the output claims.
+        for (n, d) in
+            numerator.guts().as_slice().iter().zip_eq(denominator.guts().as_slice().iter())
+        {
+            challenger.observe_ext_element(*n);
+            challenger.observe_ext_element(*d);
         }
 
-        for (numerator_0, numerator_1, denom_0, denom_1) in izip!(
-            prover_messages[round_num].numerator_0.iter(),
-            prover_messages[round_num].numerator_1.iter(),
-            prover_messages[round_num].denom_0.iter(),
-            prover_messages[round_num].denom_1.iter()
-        ) {
-            challenger.observe_ext_element(*numerator_0);
-            challenger.observe_ext_element(*numerator_1);
-            challenger.observe_ext_element(*denom_0);
-            challenger.observe_ext_element(*denom_1);
+        // Verify that the cumulative sum matches the claimed one.
+        let output_cumulative_sum = numerator
+            .guts()
+            .as_slice()
+            .iter()
+            .zip_eq(denominator.guts().as_slice().iter())
+            .map(|(n, d)| *n / *d)
+            .sum::<EF>();
+        if output_cumulative_sum != cumulative_sum {
+            return Err(LogupGkrVerificationError::CumulativeSumMismatch(
+                output_cumulative_sum,
+                cumulative_sum,
+            ));
         }
 
-        let gkr_round_challenge: SC::EF = challenger.sample_ext_element();
+        // Calculate the interaction number.
+        let num_of_interactions =
+            shard_chips.iter().map(|c| c.sends().len() + c.receives().len()).sum::<usize>();
+        let number_of_interaction_variables = num_of_interactions.next_power_of_two().ilog2();
+        // Assert that the size of the first layer matches the expected one.
+        let initial_number_of_variables = numerator.num_variables();
+        if initial_number_of_variables != number_of_interaction_variables + 1 {
+            return Err(LogupGkrVerificationError::InvalidFirstLayerDimension(
+                initial_number_of_variables,
+                number_of_interaction_variables + 1,
+            ));
+        }
+        // Sample the first evaluation point.
+        let first_eval_point = challenger.sample_point::<EF>(initial_number_of_variables);
 
-        // Do the 2-to-1 trick.  Calculate a random linear combination of the next round's 0 and 1 points.
-        numerator_claims = prover_messages[round_num]
-            .numerator_0
-            .iter()
-            .zip(&prover_messages[round_num].numerator_1)
-            .map(|(&n0, &n1)| n0 + gkr_round_challenge * (n1 - n0))
-            .collect::<Vec<_>>();
+        // Follow the GKR protocol layer by layer.
+        let mut numerator_eval = numerator.blocking_eval_at(&first_eval_point)[0];
+        let mut denominator_eval = denominator.blocking_eval_at(&first_eval_point)[0];
+        let mut eval_point = first_eval_point;
+        for (i, round_proof) in round_proofs.iter().enumerate() {
+            // Get the batching challenge for combining the claims.
+            let lambda = challenger.sample_ext_element::<EF>();
+            // Check that the claimed sum is consitent with the previous round values.
+            let expected_claim = numerator_eval * lambda + denominator_eval;
+            if round_proof.sumcheck_proof.claimed_sum != expected_claim {
+                return Err(LogupGkrVerificationError::InconsistentSumcheckClaim(i));
+            }
+            // Verify the sumcheck proof.
+            partially_verify_sumcheck_proof(&round_proof.sumcheck_proof, challenger)?;
+            // Verify that the evaluation claim is consistent with the prover messages.
+            let (point, final_eval) = round_proof.sumcheck_proof.point_and_eval.clone();
+            let eq_eval = Mle::full_lagrange_eval(&point, &eval_point);
+            let numerator_sumcheck_eval = round_proof.numerator_0 * round_proof.denominator_1
+                + round_proof.numerator_1 * round_proof.denominator_0;
+            let denominator_sumcheck_eval = round_proof.denominator_0 * round_proof.denominator_1;
+            let expected_final_eval =
+                eq_eval * (numerator_sumcheck_eval * lambda + denominator_sumcheck_eval);
+            if final_eval != expected_final_eval {
+                return Err(LogupGkrVerificationError::InconsistentEvaluation(i));
+            }
 
-        denom_claims = prover_messages[round_num]
-            .denom_0
-            .iter()
-            .zip(&prover_messages[round_num].denom_1)
-            .map(|(&d0, &d1)| d0 + gkr_round_challenge * (d1 - d0))
-            .collect::<Vec<_>>();
+            // Observe the prover message.
+            challenger.observe_ext_element(round_proof.numerator_0);
+            challenger.observe_ext_element(round_proof.numerator_1);
+            challenger.observe_ext_element(round_proof.denominator_0);
+            challenger.observe_ext_element(round_proof.denominator_1);
 
-        round_challenge.add_dimension_back(gkr_round_challenge);
+            // Get the evaluation point for the claims of the next round.
+            eval_point = round_proof.sumcheck_proof.point_and_eval.0.clone();
+            // Sample the last coordinate and add to the point.
+            let last_coordinate = challenger.sample_ext_element::<EF>();
+            eval_point.add_dimension_back(last_coordinate);
+            // Update the evaluation of the numerator and denominator at the last coordinate.
+            numerator_eval = round_proof.numerator_0
+                + (round_proof.numerator_1 - round_proof.numerator_0) * last_coordinate;
+            denominator_eval = round_proof.denominator_0
+                + (round_proof.denominator_1 - round_proof.denominator_0) * last_coordinate;
+        }
+
+        // Verify that the last layer evaluations are consistent with the evaluations of the traces.
+        let (interaction_point, trace_point) =
+            eval_point.split_at(number_of_interaction_variables as usize);
+        // Assert that the mumber of trace variables matches the expected one.
+        let trace_variables = trace_point.dimension();
+        if trace_variables != max_log_row_count {
+            return Err(LogupGkrVerificationError::InvalidLastLayerDimension(
+                trace_variables,
+                max_log_row_count,
+            ));
+        }
+
+        // Assert that the trace point is the same as the claimed opening point
+        let LogUpEvaluations { point, chip_openings } = logup_evaluations;
+        if point != &trace_point {
+            return Err(LogupGkrVerificationError::TracePointMismatch);
+        }
+
+        // Compute the expected opening of the last layer numerator and denominator values from the
+        // trace openings.
+        let mut numerator_values = Vec::with_capacity(num_of_interactions);
+        let mut denominator_values = Vec::with_capacity(num_of_interactions);
+        let mut point_extended = point.clone();
+        point_extended.add_dimension(EF::zero());
+        for ((chip, openings), threshold) in
+            shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees)
+        {
+            let geq_eval = full_geq(threshold, &point_extended);
+            let ChipEvaluation { main_trace_evaluations, preprocessed_trace_evaluations } =
+                openings;
+            for (interaction, is_send) in chip
+                .sends()
+                .iter()
+                .map(|s| (s, true))
+                .chain(chip.receives().iter().map(|r| (r, false)))
+            {
+                let (real_numerator, real_denominator) = interaction.eval(
+                    preprocessed_trace_evaluations.as_ref(),
+                    main_trace_evaluations,
+                    alpha,
+                    &beta,
+                );
+                let padding_trace_opening =
+                    MleEval::from(vec![EF::zero(); main_trace_evaluations.num_polynomials()]);
+                let padding_preprocessed_opening = preprocessed_trace_evaluations
+                    .as_ref()
+                    .map(|eval| MleEval::from(vec![EF::zero(); eval.num_polynomials()]));
+                let (padding_numerator, padding_denominator) = interaction.eval(
+                    padding_preprocessed_opening.as_ref(),
+                    &padding_trace_opening,
+                    alpha,
+                    &beta,
+                );
+
+                let numerator_eval = real_numerator - padding_numerator * geq_eval;
+                let denominator_eval =
+                    real_denominator + (EF::one() - padding_denominator) * geq_eval;
+                let numerator_eval = if is_send { numerator_eval } else { -numerator_eval };
+                numerator_values.push(numerator_eval);
+                denominator_values.push(denominator_eval);
+            }
+        }
+        // Convert the values to a multilinear polynomials.
+        // Pad the numerator values with zeros.
+        numerator_values.resize(1 << interaction_point.dimension(), EF::zero());
+        let numerator = Mle::from(numerator_values);
+        // Pad the denominator values with ones.
+        denominator_values.resize(1 << interaction_point.dimension(), EF::one());
+        let denominator = Mle::from(denominator_values);
+
+        let expected_numerator_eval = numerator.blocking_eval_at(&interaction_point)[0];
+        let expected_denominator_eval = denominator.blocking_eval_at(&interaction_point)[0];
+        if numerator_eval != expected_numerator_eval {
+            return Err(LogupGkrVerificationError::NumeratorEvaluationMismatch(
+                numerator_eval,
+                expected_numerator_eval,
+            ));
+        }
+        if denominator_eval != expected_denominator_eval {
+            return Err(LogupGkrVerificationError::DenominatorEvaluationMismatch(
+                denominator_eval,
+                expected_denominator_eval,
+            ));
+        }
+        Ok(())
     }
-
-    Ok(GkrPointAndEvals {
-        point: round_challenge,
-        numerator_evals: numerator_claims,
-        denom_evals: denom_claims,
-    })
-}
-
-pub struct GkrVerificationResult<EF, Challenger> {
-    pub eval_point: Point<EF>,
-    pub challenger: Challenger,
-}
-
-// Verifies the GKR proof for the interactions logup permutation argument.
-pub(crate) fn verify_permutation_gkr_proof<SC: MachineConfig>(
-    proof: &LogupGkrProof<SC::EF>,
-    challenger: &mut SC::Challenger,
-    sends: &[Interaction<SC::F>],
-    receives: &[Interaction<SC::F>],
-    permutation_challenges: (SC::EF, SC::EF),
-    degree: &Point<SC::F>,
-) -> Result<GkrVerificationResult<SC::EF, SC::Challenger>, LogupGkrVerificationError> {
-    let (alpha, beta) = permutation_challenges;
-
-    let interactions = &sends
-        .iter()
-        .map(|int| (int, true))
-        .chain(receives.iter().map(|int| (int, false)))
-        .collect::<Vec<_>>();
-
-    let num_interactions = interactions.len();
-    let LogupGkrProof {
-        prover_messages,
-        sc_proofs,
-        numerator_claims,
-        denom_claims,
-        column_openings,
-        ..
-    } = proof;
-
-    if prover_messages.len() != sc_proofs.len() + 1 {
-        return Err(LogupGkrVerificationError::InvalidShape);
-    }
-
-    if !(numerator_claims.len() == num_interactions && denom_claims.len() == num_interactions) {
-        return Err(LogupGkrVerificationError::InvalidShape);
-    }
-
-    let GkrPointAndEvals {
-        point: eval_point,
-        numerator_evals: numerator_claims,
-        denom_evals: denom_claims,
-    } = verify_gkr_rounds::<SC>(
-        prover_messages,
-        sc_proofs.as_slice(),
-        numerator_claims,
-        denom_claims,
-        challenger,
-        num_interactions,
-    )?;
-
-    let mut eval_point_extended = eval_point.clone();
-    eval_point_extended.add_dimension(SC::EF::zero());
-    let geq_val = full_geq(degree, &eval_point_extended);
-
-    let (mut numerator_guts, mut denom_guts): (Vec<_>, Vec<_>) = interactions
-        .iter()
-        .map(|(interaction, is_send)| {
-            let (mult_value, fingerprint_value) = interaction.values_from_pair_cols::<SC::EF>(
-                (&column_openings.0, &column_openings.1),
-                alpha,
-                &beta.powers(),
-            );
-
-            (if *is_send { mult_value } else { -mult_value }, fingerprint_value)
-        })
-        .unzip();
-
-    let (numerator_dummy_evals, denom_dummy_evals): (Vec<_>, Vec<_>) = interactions
-        .iter()
-        .map(|(interaction, is_send)| {
-            let (mult_value, fingerprint_value) = interaction.values_from_pair_cols::<SC::EF>(
-                (
-                    &column_openings.0.to_vec().iter().map(|_| SC::EF::zero()).collect(),
-                    &column_openings
-                        .1
-                        .as_ref()
-                        .map(|mle| mle.to_vec().iter().map(|_| SC::EF::zero()).collect()),
-                ),
-                alpha,
-                &beta.powers(),
-            );
-
-            (if *is_send { mult_value } else { -mult_value }, fingerprint_value)
-        })
-        .unzip();
-
-    numerator_guts
-        .iter_mut()
-        .zip(numerator_dummy_evals.iter())
-        .for_each(|(gut, eval)| *gut -= *eval * geq_val);
-
-    denom_guts
-        .iter_mut()
-        .zip(denom_dummy_evals.iter())
-        .for_each(|(gut, eval)| *gut += (SC::EF::one() - *eval) * geq_val);
-
-    if numerator_claims != numerator_guts || denom_claims != denom_guts {
-        return Err(LogupGkrVerificationError::InconsistentIndividualEvals);
-    }
-
-    Ok(GkrVerificationResult { eval_point, challenger: challenger.clone() })
 }

@@ -1,4 +1,6 @@
-//! Utilities for working with shapes.
+//! Utilities for working with shapes
+
+// TODO: Depracate the rest of this module.
 
 mod cluster;
 mod ordered;

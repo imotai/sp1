@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 use slop_jagged::JaggedPcsProof;
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
@@ -34,21 +36,20 @@ pub struct TestingData<C: MachineConfig> {
     deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
 ))]
 pub struct ShardProof<C: MachineConfig> {
+    /// The public values
+    pub public_values: Vec<C::F>,
     /// The commitments to main traces.
     pub main_commitment: C::Commitment,
+    /// The Logup GKR IOP proof.
+    pub logup_gkr_proof: LogupGkrProof<C::EF>,
+    /// TH zerocheck IOP proof.
+    pub zerocheck_proof: PartialSumcheckProof<C::EF>,
     /// The values of the traces at the final random point.
     pub opened_values: ShardOpenedValues<C::F, C::EF>,
     /// The evaluation proof.
     pub evaluation_proof: JaggedPcsProof<C>,
-    /// TH zerocheck IOP proof.
-    pub zerocheck_proof: PartialSumcheckProof<C::EF>,
-    /// The public values
-    pub public_values: Vec<C::F>,
-    /// The `LogUp+GKR` IOP proofs.
-    pub gkr_proofs: Vec<LogupGkrProof<C::EF>>,
-    /// The challenges for testing.
-    // #[cfg(any(test, feature = "test-proof"))]
-    pub testing_data: TestingData<C>,
+    /// The chips participating in the shard.
+    pub shard_chips: BTreeSet<String>,
 }
 
 /// The values of the chips in the shard at a random point.

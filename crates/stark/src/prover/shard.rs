@@ -1,6 +1,10 @@
-use std::{collections::BTreeMap, fmt::Debug, iter::once, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+    iter::once,
+    sync::Arc,
+};
 
-use futures::future::join_all;
 use itertools::Itertools;
 use p3_uni_stark::get_symbolic_constraints;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -19,12 +23,11 @@ use tracing::Instrument;
 
 use crate::{
     air::{MachineAir, MachineProgram},
-    generate_gkr_logup_proof_and_data,
     prover::{ZeroCheckPoly, ZerocheckAir},
     septic_digest::SepticDigest,
-    AirOpenedValues, Chip, ChipDimensions, ChipOpenedValues, ConstraintSumcheckFolder, GkrBackend,
-    GkrProver, LogUpProverData, Machine, MachineConfig, MachineRecord, MachineVerifyingKey,
-    ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
+    AirOpenedValues, Chip, ChipDimensions, ChipEvaluation, ChipOpenedValues,
+    ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineConfig,
+    MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
 // #[cfg(any(test, feature = "test-proof"))]
@@ -54,7 +57,6 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
     /// The backend used by the prover.
     type B: JaggedBackend<Self::F, Self::EF>
         + ZercocheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>
-        + GkrBackend<Self::F, Self::EF>
         + PointBackend<Self::EF>
         + HostEvaluationBackend<Self::F, Self::EF>
         + HostEvaluationBackend<Self::F, Self::F>
@@ -96,9 +98,10 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
     type ZerocheckProverData: ZerocheckProverData<Self::F, Self::EF, Self::B, Air = Self::Air>;
 
     /// The necessary pieces to form a GKR proof for the `LogUp` permutation argument.
-    type GkrComponents: GkrProver<
+    type GkrProver: LogUpGkrProver<
         F = Self::F,
         EF = Self::EF,
+        A = Self::Air,
         B = Self::B,
         Challenger = Self::Challenger,
     >;
@@ -118,36 +121,38 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
 
 /// A collection of traces.
 #[derive(Debug)]
-// #[serde(bound(serialize = "F: Serialize, Tensor<F, B>: Serialize,"))]
-// #[serde(bound(deserialize = "F: Deserialize<'de>, Tensor<F, B>: Deserialize<'de>, "))]
-pub struct ShardData<F, B: Backend> {
+pub struct ShardData<F: Field, A, B: Backend> {
     /// The traces.
     pub traces: Traces<F, B>,
     /// The public values.
     pub public_values: Vec<F>,
     /// A permit for a prover resource.
     pub permit: OwnedSemaphorePermit,
+    /// The shape cluster corresponding to the traces.
+    pub shard_chips: BTreeSet<Chip<F, A>>,
 }
 
 /// A prover for the hypercube STARK, given a configuration.
 pub struct ShardProver<C: MachineProverComponents> {
-    /// A prover for the PCS.
-    pub pcs_prover: JaggedProver<C::PcsProverComponents>,
-    /// A prover for the zerocheck IOP.
-    pub zerocheck_prover_data: C::ZerocheckProverData,
     /// The trace generator.
     pub trace_generator: C::TraceGenerator,
+    /// The logup GKR prover.
+    pub logup_gkr_prover: C::GkrProver,
+    /// A prover for the zerocheck IOP.
+    pub zerocheck_prover_data: C::ZerocheckProverData,
+    /// A prover for the PCS.
+    pub pcs_prover: JaggedProver<C::PcsProverComponents>,
 }
 
-/// The data passed from the GKR prover to the zerocheck prover.
-pub struct GkrPointAndOpening<EF> {
-    point: Point<EF>,
-    opening: (MleEval<EF>, Option<MleEval<EF>>),
-}
+// /// The data passed from the GKR prover to the zerocheck prover.
+// pub struct GkrPointAndOpening<EF> {
+//     point: Point<EF>,
+//     opening: (MleEval<EF>, Option<MleEval<EF>>),
+// }
 
 impl<C: MachineProverComponents> ShardProver<C> {
     /// Get all the chips in the machine.
-    pub fn chips(&self) -> &[Chip<C::F, C::Air>] {
+    pub fn all_chips(&self) -> &[Chip<C::F, C::Air>] {
         self.trace_generator.machine().chips()
     }
 
@@ -199,7 +204,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         let preprocessed_traces = rx.recv().await.unwrap();
 
         let constraints_map = self
-            .chips()
+            .all_chips()
             .iter()
             .map(|chip| {
                 // Count the number of constraints.
@@ -215,12 +220,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
         // Commit to the preprocessed traces, if there are any.
         let (preprocessed_commit, preprocessed_data) = if preprocessed_traces.len() > 0 {
-            let message = self
-                .chips()
-                .iter()
-                .filter_map(|air| preprocessed_traces.get(&air.name()))
-                .cloned()
-                .collect::<Vec<_>>();
+            let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
             let (commit, data) = self.pcs_prover.commit_multilinears(message).await.unwrap();
 
             (Some(commit), Some(data))
@@ -264,11 +264,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         &self,
         traces: &Traces<C::F, C::B>,
     ) -> (C::Commitment, JaggedProverData<C::PcsProverComponents>) {
-        let message = self
-            .chips()
-            .iter()
-            .map(|air| traces.get(&air.name()).unwrap().clone())
-            .collect::<Vec<_>>();
+        let message = traces.values().cloned().collect::<Vec<_>>();
         self.pcs_prover.commit_multilinears(message).await.unwrap()
     }
 
@@ -276,29 +272,34 @@ impl<C: MachineProverComponents> ShardProver<C> {
     #[allow(clippy::too_many_lines)]
     async fn zerocheck(
         &self,
+        chips: &BTreeSet<Chip<C::F, C::Air>>,
         preprocessed_traces: Traces<C::F, C::B>,
         traces: Traces<C::F, C::B>,
         constraints_map: &BTreeMap<String, usize>,
         batching_challenge: C::EF,
         gkr_opening_batch_randomness: C::EF,
-        gkr_points_and_openings: Vec<GkrPointAndOpening<C::EF>>,
+        logup_evaluations: &LogUpEvaluations<C::EF>,
         public_values: Vec<C::F>,
         challenger: &mut C::Challenger,
     ) -> (ShardOpenedValues<C::F, C::EF>, PartialSumcheckProof<C::EF>) {
         let max_num_constraints = itertools::max(constraints_map.values()).unwrap();
         let powers_of_challenge =
             batching_challenge.powers().take(*max_num_constraints).collect::<Vec<_>>();
-        let airs = self.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
+        let airs = chips.iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
 
         let public_values = Arc::new(public_values);
 
         let mut zerocheck_polys = Vec::new();
         let mut chip_sumcheck_claims = Vec::new();
 
-        let mut degrees = BTreeMap::new();
-        for (air, GkrPointAndOpening { point: gkr_point, opening: (main_opening, prep_opening) }) in
-            self.chips().iter().zip(gkr_points_and_openings)
-        {
+        let LogUpEvaluations { point: gkr_point, chip_openings } = logup_evaluations;
+
+        let mut log_degrees = BTreeMap::new();
+        for air in airs.iter().cloned() {
+            let ChipEvaluation {
+                main_trace_evaluations: main_opening,
+                preprocessed_trace_evaluations: prep_opening,
+            } = chip_openings.get(&air.name()).unwrap();
             let main_trace = traces.get(&air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
             let log_degree = num_real_entries.checked_ilog2();
@@ -312,7 +313,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 assert_eq!(num_real_entries, 0);
             }
             let threshold_point = Point::new(threshold_point_vals.into());
-            degrees.insert(air.name(), threshold_point);
+            log_degrees.insert(air.name(), threshold_point);
             let name = air.name();
             let num_variables = main_trace.num_variables();
             assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
@@ -356,12 +357,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
             let alpha_powers = Arc::new(chip_powers_of_alpha);
             let air_data = self
                 .zerocheck_prover_data
-                .round_prover(
-                    air.air.clone(),
-                    public_values.clone(),
-                    alpha_powers,
-                    gkr_powers.clone(),
-                )
+                .round_prover(air, public_values.clone(), alpha_powers, gkr_powers.clone())
                 .await;
             let preprocessed_trace = preprocessed_traces.get(&name).cloned();
 
@@ -383,7 +379,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 if main_trace.num_real_entries() > 0 { C::EF::zero() } else { C::EF::one() };
             let zerocheck_poly = ZeroCheckPoly::new(
                 air_data,
-                gkr_point,
+                gkr_point.clone(),
                 preprocessed_trace,
                 main_trace,
                 C::EF::one(),
@@ -410,7 +406,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
         // Compute the chip openings from the component poly evaluations.
 
-        assert_eq!(component_poly_evals.len(), airs.len());
+        debug_assert_eq!(component_poly_evals.len(), airs.len());
         let shard_open_values = airs
             .into_iter()
             .zip_eq(component_poly_evals)
@@ -422,23 +418,12 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
                 let main = AirOpenedValues { local: main_evals.to_vec(), next: vec![] };
 
-                // let global_sum = if air.commit_scope() == InteractionScope::Local {
-                //     SepticDigest::<C::F>::zero()
-                // } else {
-                //     let main_trace = traces.get(&air.name()).unwrap();
-                //     let last_row = C::Extractor::get_last_row(main_trace);
-                //     SepticDigest(SepticCurve {
-                //         x: SepticExtension::<C::F>::from_base_fn(|i| last_row[i]),
-                //         y: SepticExtension::<C::F>::from_base_fn(|i| last_row[i + 7]),
-                //     })
-                // };
-
                 ChipOpenedValues {
                     preprocessed,
                     main,
                     global_cumulative_sum: SepticDigest::<C::F>::zero(), //global_sum,
                     local_cumulative_sum: C::EF::zero(),
-                    degree: degrees[&air.name()].clone(),
+                    degree: log_degrees[&air.name()].clone(),
                 }
             })
             .collect::<Vec<_>>();
@@ -448,53 +433,11 @@ impl<C: MachineProverComponents> ShardProver<C> {
         (shard_open_values, partial_sumcheck_proof)
     }
 
-    async fn gkr(
-        &self,
-        preprocessed_traces: &Traces<C::F, C::B>,
-        traces: &Traces<C::F, C::B>,
-        challenger: &mut C::Challenger,
-    ) -> Vec<LogUpProverData<C::GkrComponents>> {
-        // Sample the random point to make the zerocheck claims.
-        let permutation_challenges =
-            (0..2).map(|_| challenger.sample_ext_element::<C::EF>()).collect::<Vec<_>>();
-
-        let gkr_proofs: Vec<_> = join_all(
-            self.chips()
-                .iter()
-                .map(|chip| {
-                    let name = chip.name();
-                    let main_trace = traces.get(&name).unwrap();
-                    let prep_trace = preprocessed_traces.get(&name);
-                    let num_variables = main_trace.num_variables();
-                    assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
-                    let challenger_clone = challenger.clone();
-
-                    generate_gkr_logup_proof_and_data::<C::GkrComponents>(
-                        chip.sends(),
-                        chip.receives(),
-                        prep_trace,
-                        main_trace,
-                        &permutation_challenges,
-                        challenger_clone,
-                        self.pcs_prover.max_log_row_count,
-                    )
-                    .instrument(tracing::debug_span!(
-                        "gkr proof",
-                        chip = name,
-                        chip_fully_padded = main_trace.inner().is_none()
-                    ))
-                })
-                .collect::<Vec<_>>(),
-        )
-        .await;
-        gkr_proofs
-    }
-
     /// Generate the shard data
     pub async fn generate_traces(
         &self,
         record: C::Record,
-        tx: &Sender<ShardData<C::F, C::B>>,
+        tx: &Sender<ShardData<C::F, C::Air, C::B>>,
         prover_permits: Arc<Semaphore>,
     ) {
         // Generate the traces.
@@ -507,24 +450,12 @@ impl<C: MachineProverComponents> ShardProver<C> {
     pub async fn prove_shard(
         &self,
         pk: &MachineProvingKey<C>,
-        data: ShardData<C::F, C::B>,
+        data: ShardData<C::F, C::Air, C::B>,
         challenger: &mut C::Challenger,
     ) -> ShardProof<C::Config> {
-        let ShardData { traces, public_values, permit } = data;
+        let ShardData { traces, public_values, permit, shard_chips } = data;
         // Observe the public values.
         challenger.observe_slice(&public_values[0..self.num_pv_elts()]);
-
-        for trace in traces.iter() {
-            tracing::debug!(
-                "Chip {} has log-height {:?}",
-                trace.0,
-                trace
-                    .1
-                    .inner()
-                    .as_ref()
-                    .map(|mle| mle.num_non_zero_entries().next_power_of_two().ilog2())
-            );
-        }
 
         // Commit to the traces.
         let (main_commit, main_data) =
@@ -532,51 +463,37 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Observe the commitments.
         challenger.observe(main_commit.clone());
 
-        let gkr_prover_data = self
-            .gkr(&pk.preprocessed_traces, &traces, challenger)
-            .instrument(tracing::debug_span!("gkr"))
+        // Sample the logup challenges.
+        let alpha = challenger.sample_ext_element::<C::EF>();
+        let beta = challenger.sample_ext_element::<C::EF>();
+        let logup_gkr_proof = self
+            .logup_gkr_prover
+            .prove_logup_gkr(
+                &shard_chips,
+                pk.preprocessed_traces.clone(),
+                traces.clone(),
+                alpha,
+                beta,
+                challenger,
+            )
+            .instrument(tracing::debug_span!("logup gkr proof"))
             .await;
-
-        let (gkr_proofs, points_and_openings, challengers): (Vec<_>, Vec<_>, Vec<_>) =
-            gkr_prover_data
-                .into_iter()
-                .map(|data| {
-                    let LogUpProverData { proof, final_point, challenger } = data;
-                    let column_openings = proof.column_openings.clone();
-                    (
-                        proof,
-                        GkrPointAndOpening { point: final_point, opening: column_openings },
-                        challenger,
-                    )
-                })
-                .multiunzip();
-
-        let mut challenger_owned = C::Challenger::synchronize_challengers(challengers);
-
-        let challenger = &mut challenger_owned;
-
-        // Store the gkr points and challenger state for testing zerocheck.
-        // #[cfg(any(test, feature = "test-proof"))]
-        let (gkr_points, challenger_state) = (
-            points_and_openings.iter().map(|p| p.point.clone()).collect::<Vec<_>>(),
-            challenger.clone(),
-        );
 
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();
-
+        // Get the challenge for batching the evaluations from the GKR proof.
         let gkr_opening_batch_challenge = challenger.sample_ext_element::<C::EF>();
 
         // Generate the zerocheck proof.
         let (shard_open_values, zerocheck_partial_sumcheck_proof) = self
             .zerocheck(
+                &shard_chips,
                 pk.preprocessed_traces.clone(),
                 traces,
                 &pk.constraints_map,
                 batching_challenge,
                 gkr_opening_batch_challenge,
-                points_and_openings,
-                // TODO: remove the need for this clone
+                &logup_gkr_proof.logup_evaluations,
                 public_values.clone(),
                 challenger,
             )
@@ -631,15 +548,16 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Allow the permit to be used again.
         drop(permit);
 
+        let shard_chips = shard_chips.iter().map(MachineAir::name).collect::<BTreeSet<_>>();
+
         ShardProof {
             main_commitment: main_commit,
             opened_values: shard_open_values,
-            gkr_proofs,
+            logup_gkr_proof,
             evaluation_proof,
             zerocheck_proof: zerocheck_partial_sumcheck_proof,
             public_values,
-            // #[cfg(any(test, feature = "test-proof"))]
-            testing_data: TestingData { gkr_points, challenger_state },
+            shard_chips,
         }
     }
 }

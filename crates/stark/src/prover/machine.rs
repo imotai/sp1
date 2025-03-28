@@ -81,7 +81,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
         let trace_workers = self.trace_workers.clone();
         // Set up a channel for the shard data.
         let (data_tx, mut data_rx) =
-            mpsc::channel::<ShardData<C::F, C::B>>(self.opts.shard_data_channel_capacity);
+            mpsc::channel::<ShardData<C::F, C::Air, C::B>>(self.opts.shard_data_channel_capacity);
 
         let prover_permits = Arc::new(Semaphore::new(self.opts.num_prover_workers));
         let _records_handle = tokio::spawn(async move {

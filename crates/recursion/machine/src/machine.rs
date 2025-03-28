@@ -4,7 +4,7 @@ use slop_algebra::{extension::BinomiallyExtendable, PrimeField32};
 use sp1_recursion_executor::{ExecutionRecord, RecursionAirEventCount, RecursionProgram, D};
 use sp1_stark::{
     air::{InteractionScope, MachineAir},
-    Chip, Machine, PROOF_MAX_NUM_PVS,
+    Chip, Machine, MachineShape, PROOF_MAX_NUM_PVS,
 };
 
 use strum::EnumIter;
@@ -78,7 +78,9 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
         .map(Chip::new)
         .into_iter()
         .collect::<Vec<_>>();
-        Machine::new(chips, PROOF_MAX_NUM_PVS, false)
+
+        let shape = MachineShape::all(&chips);
+        Machine::new(chips, PROOF_MAX_NUM_PVS, shape)
     }
 
     /// Get a machine with all chips, except the dummy chip.
@@ -99,7 +101,8 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
         .map(Chip::new)
         .into_iter()
         .collect::<Vec<_>>();
-        Machine::new(chips, PROOF_MAX_NUM_PVS, false)
+        let shape = MachineShape::all(&chips);
+        Machine::new(chips, PROOF_MAX_NUM_PVS, shape)
     }
 
     /// A machine with dyunamic chip sizes that includes the wide variant of the Poseidon2 chip.
@@ -119,7 +122,8 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
         .map(Chip::new)
         .into_iter()
         .collect::<Vec<_>>();
-        Machine::new(chips, PROOF_MAX_NUM_PVS, false)
+        let shape = MachineShape::all(&chips);
+        Machine::new(chips, PROOF_MAX_NUM_PVS, shape)
     }
 
     pub fn shrink_machine() -> Machine<F, Self> {
@@ -145,7 +149,8 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
         .map(Chip::new)
         .into_iter()
         .collect::<Vec<_>>();
-        Machine::new(chips, PROOF_MAX_NUM_PVS, false)
+        let shape = MachineShape::all(&chips);
+        Machine::new(chips, PROOF_MAX_NUM_PVS, shape)
     }
 
     pub fn heights(program: &RecursionProgram<F>) -> Vec<(String, usize)> {

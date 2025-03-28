@@ -1,6 +1,6 @@
-use std::marker::PhantomData;
-
 use derive_where::derive_where;
+use std::{collections::BTreeSet, marker::PhantomData, ops::Deref};
+
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::AbstractField;
@@ -12,14 +12,13 @@ use slop_jagged::{
     MachineJaggedPcsVerifier,
 };
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
-use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, Point};
+use slop_multilinear::{full_geq, Evaluations, Mle, MleEval};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir, septic_digest::SepticDigest, verify_permutation_gkr_proof, Chip,
-    ChipOpenedValues, GkrVerificationResult, LogupGkrVerificationError, Machine,
-    VerifierConstraintFolder,
+    air::MachineAir, septic_digest::SepticDigest, Chip, ChipOpenedValues, LogUpEvaluations,
+    LogUpGkrVerifier, LogupGkrVerificationError, Machine, VerifierConstraintFolder,
 };
 
 use super::{MachineConfig, MachineVerifyingKey, ShardOpenedValues, ShardProof};
@@ -57,9 +56,9 @@ pub enum ShardVerifierError<C: MachineConfig> {
     /// The shape of the openings does not match the expected shape.
     #[error("opening shape mismatch: {0}")]
     OpeningShapeMismatch(#[from] OpeningShapeError),
-    /// The GKR Proof Fails
-    #[error("GKR proof Failed: {0}")]
-    GkrProofFailed(LogupGkrVerificationError),
+    /// The GKR verification failed.
+    #[error("GKR verification failed: {0}")]
+    GkrVerificationFailed(LogupGkrVerificationError<C::EF>),
 }
 
 /// An error that occurs when the shape of the openings does not match the expected shape.
@@ -198,12 +197,12 @@ where
     #[allow(clippy::type_complexity)]
     pub fn verify_zerocheck(
         &self,
-        challenger: &mut C::Challenger,
+        shard_chips: &BTreeSet<Chip<C::F, A>>,
         opened_values: &ShardOpenedValues<C::F, C::EF>,
-        gkr_points: &[Point<C::EF>],
+        gkr_evaluations: &LogUpEvaluations<C::EF>,
         proof: &ShardProof<C>,
-        gkr_column_openings: &[(MleEval<C::EF>, Option<MleEval<C::EF>>)],
         public_values: &[C::F],
+        challenger: &mut C::Challenger,
     ) -> Result<(), ShardVerifierError<C>> {
         // Get the random challenge to merge the constraints.
         let alpha = challenger.sample_ext_element::<C::EF>();
@@ -214,17 +213,18 @@ where
         let lambda = challenger.sample_ext_element::<C::EF>();
 
         // Get the value of eq(zeta, sumcheck's reduced point).
-        let zerocheck_eq_vals: Vec<C::EF> = gkr_points
-            .iter()
-            .map(|zeta| Mle::full_lagrange_eval(zeta, &proof.zerocheck_proof.point_and_eval.0))
-            .collect();
+        let zerocheck_eq_val = Mle::full_lagrange_eval(
+            &gkr_evaluations.point,
+            &proof.zerocheck_proof.point_and_eval.0,
+        );
+        let zerocheck_eq_vals = vec![zerocheck_eq_val; shard_chips.len()];
 
         // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
         // proof is correct.
         let mut rlc_eval = C::EF::zero();
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
         for ((chip, openings), zerocheck_eq_val) in
-            self.machine.chips().iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
+            shard_chips.iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
         {
             // Verify the shape of the opening arguments matches the expected values.
             Self::verify_opening_shape(chip, openings)?;
@@ -266,21 +266,24 @@ where
             ));
         }
 
-        let zerocheck_sum_modifications_from_gkr = gkr_column_openings
-            .iter()
-            .map(|(main_openings, preprocessed_openings)| {
-                main_openings
-                    .to_vec()
+        let zerocheck_sum_modifications_from_gkr = gkr_evaluations
+            .chip_openings
+            .values()
+            .map(|chip_evaluation| {
+                chip_evaluation
+                    .main_trace_evaluations
+                    .deref()
                     .iter()
+                    .copied()
                     .chain(
-                        preprocessed_openings
+                        chip_evaluation
+                            .preprocessed_trace_evaluations
                             .as_ref()
-                            .map(MleEval::to_vec)
-                            .unwrap_or_default()
-                            .iter(),
+                            .iter()
+                            .flat_map(|&evals| evals.deref().iter().copied()),
                     )
                     .zip(gkr_batch_open_challenge.powers())
-                    .map(|(opening, power)| *opening * power)
+                    .map(|(opening, power)| opening * power)
                     .sum::<C::EF>()
             })
             .collect::<Vec<_>>();
@@ -317,13 +320,13 @@ where
         C::Challenger: Synchronizable,
     {
         let ShardProof {
+            shard_chips,
             main_commitment,
             opened_values,
-            gkr_proofs,
             evaluation_proof,
             zerocheck_proof,
             public_values,
-            ..
+            logup_gkr_proof,
         } = proof;
         // Observe the public values.
         challenger.observe_slice(&public_values[0..self.machine.num_pv_elts()]);
@@ -333,59 +336,40 @@ where
         let alpha = challenger.sample_ext_element::<C::EF>();
         let beta = challenger.sample_ext_element::<C::EF>();
 
-        let mut cumulative_sum = C::EF::zero();
+        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+        let cumulative_sum = C::EF::zero();
 
-        let mut challengers = Vec::new();
-        let mut gkr_points = Vec::new();
+        let shard_chips = self
+            .machine
+            .chips()
+            .iter()
+            .filter(|chip| shard_chips.contains(&chip.name()))
+            .cloned()
+            .collect::<BTreeSet<_>>();
 
-        for ((chip, gkr_proof), openings) in
-            self.machine.chips().iter().zip_eq(gkr_proofs.iter()).zip_eq(opened_values.chips.iter())
-        {
-            let mut challenger_clone = challenger.clone();
-            let GkrVerificationResult { eval_point: point, challenger: new_challenger } =
-                verify_permutation_gkr_proof::<C>(
-                    gkr_proof,
-                    &mut challenger_clone,
-                    chip.sends(),
-                    chip.receives(),
-                    (alpha, beta),
-                    &openings.degree,
-                )
-                .map_err(ShardVerifierError::<C>::GkrProofFailed)?;
+        let degrees = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
 
-            cumulative_sum += gkr_proof
-                .numerator_claims
-                .iter()
-                .copied()
-                .zip(gkr_proof.denom_claims.iter().copied())
-                .map(|(num, den)| num / den)
-                .sum::<C::EF>();
-
-            challengers.push(new_challenger);
-            gkr_points.push(point);
-        }
-
-        if cumulative_sum != C::EF::zero() {
-            return Err(ShardVerifierError::CumulativeSumsError(
-                "local cumulative sum is not zero",
-            ));
-        }
-
-        let mut synchronized_challenger = C::Challenger::synchronize_challengers(challengers);
-
-        let challenger = &mut synchronized_challenger;
+        // Verify the logup GKR proof.
+        LogUpGkrVerifier::<_, _, A>::verify_logup_gkr(
+            &shard_chips,
+            &degrees,
+            alpha,
+            beta,
+            cumulative_sum,
+            max_log_row_count,
+            logup_gkr_proof,
+            challenger,
+        )
+        .map_err(ShardVerifierError::GkrVerificationFailed)?;
 
         // Verify the zerocheck proof.
         self.verify_zerocheck(
-            challenger,
+            &shard_chips,
             opened_values,
-            &gkr_points,
+            &logup_gkr_proof.logup_evaluations,
             proof,
-            &gkr_proofs
-                .iter()
-                .map(|gkr_proof| gkr_proof.column_openings.clone())
-                .collect::<Vec<_>>(),
             public_values,
+            challenger,
         )?;
 
         // Verify the opening proof.

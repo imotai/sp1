@@ -1,7 +1,8 @@
 use core::fmt::{Debug, Display};
+use std::ops::Mul;
 
 use slop_air::{PairCol, VirtualPairCol};
-use slop_algebra::{ExtensionField, Field, Powers};
+use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_multilinear::MleEval;
 
 use crate::air::InteractionScope;
@@ -83,35 +84,44 @@ impl<F: Field> Interaction<F> {
         self.kind as usize
     }
 
-    /// Calculate the interaction's multiplicity and fingerprint values given a hashmap of column values.
-    pub fn values_from_pair_cols<EF: ExtensionField<F>>(
+    /// Calculate the interactions evaluation.
+    pub fn eval<Expr, Var>(
         &self,
-        pair_cols: (&MleEval<EF>, &Option<MleEval<EF>>),
-        alpha: EF,
-        betas: &Powers<EF>,
-    ) -> (EF, EF) {
-        let mut mult_value = self.multiplicity.constant.into();
-        let mut betas = betas.clone();
+        preprocessed: Option<&MleEval<Var>>,
+        main: &MleEval<Var>,
+        alpha: Expr,
+        beta: &Expr,
+    ) -> (Expr, Expr)
+    where
+        F: Into<Expr>,
+        Expr: AbstractField<F: ExtensionField<F>> + Mul<F, Output = Expr>,
+        Var: Into<Expr> + Copy,
+    {
+        let mut multiplicity_eval = self.multiplicity.constant.into();
+        // let mut mult_value = self.multiplicity.constant.into();
+        let mut betas = beta.powers();
         for (column, weight) in self.multiplicity.column_weights.iter() {
+            let weight: Expr = (*weight).into();
             match column {
                 PairCol::Preprocessed(i) => {
-                    mult_value += pair_cols.1.as_ref().unwrap()[*i] * *weight;
+                    multiplicity_eval += preprocessed.as_ref().unwrap()[*i].into() * weight;
                 }
-                PairCol::Main(i) => mult_value += pair_cols.0[*i] * *weight,
+                PairCol::Main(i) => multiplicity_eval += main[*i].into() * weight,
             };
         }
 
-        let mut fingerprint_value =
-            alpha + betas.next().unwrap() * EF::from_canonical_usize(self.argument_index());
-        for (multiset_elm, beta_pow) in self.values.iter().zip(betas) {
-            let apply = multiset_elm.apply::<EF, EF>(
-                &pair_cols.1.as_ref().map(MleEval::to_vec).unwrap_or_default(),
-                &pair_cols.0.to_vec(),
-            );
-            fingerprint_value += apply * beta_pow;
+        let mut fingerprint_eval =
+            alpha + betas.next().unwrap() * Expr::from_canonical_usize(self.argument_index());
+        for (element, beta_pow) in self.values.iter().zip(betas) {
+            let evaluation = if let Some(preprocessed) = preprocessed {
+                element.apply::<Expr, Var>(preprocessed, main)
+            } else {
+                element.apply::<Expr, Var>(&[], main)
+            };
+            fingerprint_eval += evaluation * beta_pow;
         }
 
-        (mult_value, fingerprint_value)
+        (multiplicity_eval, fingerprint_eval)
     }
 }
 

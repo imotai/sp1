@@ -10,7 +10,10 @@ use slop_jagged::{
     JaggedProver, JaggedProverComponents, Poseidon2BabyBearJaggedCpuProverComponents,
 };
 
-use crate::{air::MachineAir, BabyBearPoseidon2, ConstraintSumcheckFolder, ShardVerifier};
+use crate::{
+    air::MachineAir, BabyBearPoseidon2, ConstraintSumcheckFolder, GkrProverImpl,
+    LogupGkrCpuProverComponents, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator, ShardVerifier,
+};
 
 use super::{
     DefaultTraceGenerator, MachineProverComponents, ShardProver, ZerocheckAir,
@@ -26,8 +29,6 @@ pub type CpuProver<PcsComponents, A> = ShardProver<CpuProverComponents<PcsCompon
 
 impl<A, PcsComponents> MachineProverComponents for CpuProverComponents<PcsComponents, A>
 where
-    // F: Field,
-    // EF: ExtensionField<F>,
     PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug,
     A: std::fmt::Debug
         + MachineAir<PcsComponents::F>
@@ -55,7 +56,14 @@ where
 
     type ZerocheckProverData = ZerocheckCpuProverData<A>;
 
-    type GkrComponents = PcsComponents;
+    type GkrProver = GkrProverImpl<
+        LogupGkrCpuProverComponents<
+            PcsComponents::F,
+            PcsComponents::EF,
+            A,
+            <PcsComponents as JaggedProverComponents>::Challenger,
+        >,
+    >;
 
     type PcsProverComponents = PcsComponents;
 }
@@ -71,6 +79,13 @@ where
         let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
         let trace_generator = DefaultTraceGenerator::new(machine);
         let zerocheck_data = ZerocheckCpuProverData::default();
-        Self { pcs_prover, zerocheck_prover_data: zerocheck_data, trace_generator }
+        let logup_gkr_prover =
+            GkrProverImpl::new(LogupGkrCpuTraceGenerator, LogupGkrCpuRoundProver);
+        Self {
+            trace_generator,
+            logup_gkr_prover,
+            zerocheck_prover_data: zerocheck_data,
+            pcs_prover,
+        }
     }
 }

@@ -62,13 +62,13 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
         vk.observe_into(challenger);
 
         // Verify the shard proofs.
-        for shard_proof in proof.shard_proofs.iter() {
+        for (i, shard_proof) in proof.shard_proofs.iter().enumerate() {
             let mut challenger = challenger.clone();
-            tracing::info!("verifying shard proof");
+            let span = tracing::debug_span!("verify shard", i).entered();
             self.shard_verifier
                 .verify_shard(vk, shard_proof, &mut challenger)
                 .map_err(MachineVerifierError::InvalidShardProof)?;
-            tracing::info!("shard proof verified");
+            span.exit();
         }
 
         Ok(())

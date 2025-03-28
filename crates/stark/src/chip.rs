@@ -19,9 +19,9 @@ pub struct Chip<F: Field, A> {
     /// The underlying AIR of the chip for constraint evaluation.
     pub air: Arc<A>,
     /// The interactions that the chip sends.
-    pub sends: Vec<Interaction<F>>,
+    pub sends: Arc<Vec<Interaction<F>>>,
     /// The interactions that the chip receives.
-    pub receives: Vec<Interaction<F>>,
+    pub receives: Arc<Vec<Interaction<F>>>,
     /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
     pub log_quotient_degree: usize,
 }
@@ -96,9 +96,12 @@ where
             get_max_constraint_degree(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS);
 
         if !sends.is_empty() || !receives.is_empty() {
-            max_constraint_degree = max_constraint_degree.max(3);
+            max_constraint_degree = std::cmp::max(max_constraint_degree, 3);
         }
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
+
+        let sends = Arc::new(sends);
+        let receives = Arc::new(receives);
 
         let air = Arc::new(air);
         Self { air, sends, receives, log_quotient_degree }
@@ -276,21 +279,45 @@ where
 impl<F, A> PartialEq for Chip<F, A>
 where
     F: Field,
-    A: PartialEq,
+    A: MachineAir<F>,
 {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.air == other.air
+        self.air.name() == other.air.name()
     }
 }
 
-impl<F: Field, A: Eq> Eq for Chip<F, A> where F: Field + Eq {}
+impl<F: Field, A: MachineAir<F>> Eq for Chip<F, A> where F: Field + Eq {}
 
 impl<F, A> Hash for Chip<F, A>
 where
     F: Field,
-    A: Hash,
+    A: MachineAir<F>,
 {
+    #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.air.hash(state);
+        self.air.name().hash(state);
+    }
+}
+
+impl<F: Field, A: MachineAir<F>> PartialOrd for Chip<F, A>
+where
+    F: Field,
+    A: MachineAir<F>,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<F: Field, A: MachineAir<F>> Ord for Chip<F, A>
+where
+    F: Field,
+    A: MachineAir<F>,
+{
+    #[inline]
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name().cmp(&other.name())
     }
 }

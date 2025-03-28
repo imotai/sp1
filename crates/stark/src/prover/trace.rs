@@ -1,9 +1,9 @@
-use future::OptionFuture;
-use futures::{future::join_all, prelude::*};
+use futures::future::join_all;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use slop_air::BaseAir;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     future::Future,
     ops::{Deref, DerefMut},
     sync::Arc,
@@ -77,7 +77,7 @@ pub trait TraceGenerator<F: Field, A: MachineAir<F>, B: Backend>: 'static + Send
         &self,
         record: A::Record,
         max_log_row_count: usize,
-        output: &Sender<ShardData<F, B>>,
+        output: &Sender<ShardData<F, A, B>>,
         prover_permits: Arc<Semaphore>,
     ) -> impl Future<Output = ()> + Send;
 }
@@ -121,63 +121,73 @@ where
         &self,
         record: A::Record,
         max_log_row_count: usize,
-        output: &Sender<ShardData<F, B>>,
+        output: &Sender<ShardData<F, A, B>>,
         prover_permits: Arc<Semaphore>,
     ) {
         // Get the public values from the record.
         let public_values = record.public_values::<F>();
-        let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
+        let airs = self.machine.chips().to_vec();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
         slop_futures::rayon::spawn(move || {
-            let named_traces = airs
-                .par_iter()
+            let chips_and_traces = airs
+                .into_par_iter()
+                .filter(|air| air.included(&record))
                 .map(|air| {
-                    let name = air.name();
-                    if !air.included(&record) {
-                        let num_polynomials = air.width();
-                        (name, (None, num_polynomials))
-                    } else {
-                        let trace = air.generate_trace(&record, &mut A::Record::default());
-                        let trace = Mle::from(trace);
-                        let num_polynomials = air.width();
-                        (name, (Some(trace), num_polynomials))
-                    }
+                    let trace = air.generate_trace(&record, &mut A::Record::default());
+                    let trace = Mle::from(trace);
+                    (air, trace)
                 })
                 .collect::<BTreeMap<_, _>>();
-            tx.send(named_traces).ok().unwrap();
+
+            tx.send(chips_and_traces).ok().unwrap();
             // Emphasize that we are dropping the record after sending the traces.
             drop(record);
         });
         // Wait for the traces to be generated and copy them to the target backend.
-        let named_traces = rx.await.unwrap();
+        let chips_and_traces = rx.await.unwrap();
+
+        let chip_set = chips_and_traces.keys().cloned().collect::<BTreeSet<_>>();
+        let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();
+
         // Wait for a prover to be available.
         let permit = prover_permits.acquire_owned().await.unwrap();
         // Copy the traces to the target backend.
-        let named_traces =
-            join_all(named_traces.into_iter().map(|(name, (trace, num_polynomials))| async move {
-                let trace = OptionFuture::from(trace.map(|tr| self.trace_allocator.copy_into(tr)))
-                    .await
-                    .transpose()
-                    .unwrap()
-                    .map(Arc::new);
-                #[allow(clippy::map_unwrap_or)]
-                let padded_mle = trace
-                    .map(|tr| PaddedMle::padded_with_zeros(tr, max_log_row_count as u32))
-                    .unwrap_or_else(|| {
-                        PaddedMle::zeros_in(
-                            num_polynomials,
-                            max_log_row_count as u32,
-                            &self.trace_allocator,
-                        )
-                    });
-                (name, padded_mle)
-            }))
-            .await
-            .into_iter()
+
+        // Make the padded traces.
+        let padded_traces = shard_chips
+            .iter()
+            .filter(|chip| !chips_and_traces.contains_key(chip))
+            .map(|chip| {
+                let num_polynomials = chip.width();
+                (
+                    chip.name(),
+                    PaddedMle::zeros_in(
+                        num_polynomials,
+                        max_log_row_count as u32,
+                        &self.trace_allocator,
+                    ),
+                )
+            })
             .collect::<BTreeMap<_, _>>();
-        let traces = Traces { named_traces };
-        let data = ShardData { traces, public_values, permit };
+
+        // Copy the real traces to the target backend.
+        let real_traces = join_all(chips_and_traces.into_iter().map(|(chip, trace)| async move {
+            let trace = self.trace_allocator.copy_into(trace).await.unwrap();
+            let mle = Arc::new(trace);
+            (chip.name(), PaddedMle::padded_with_zeros(mle, max_log_row_count as u32))
+        }))
+        .await;
+
+        let mut traces = padded_traces;
+
+        for (name, trace) in real_traces {
+            traces.insert(name, trace);
+        }
+
+        let traces = Traces { named_traces: traces };
+
+        let data = ShardData { traces, public_values, permit, shard_chips };
         output.send(data).await.unwrap();
     }
 
