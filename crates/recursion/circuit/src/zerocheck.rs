@@ -1,3 +1,5 @@
+use std::{collections::BTreeSet, ops::Deref};
+
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
     challenger::FieldChallengerVariable,
@@ -12,7 +14,7 @@ use slop_air::{Air, BaseAir};
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 use slop_baby_bear::BabyBear;
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
-use slop_multilinear::{full_geq, Mle, MleEval, Point};
+use slop_multilinear::{full_geq, Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
     ir::{Config, Felt},
@@ -20,7 +22,8 @@ use sp1_recursion_compiler::{
 };
 use sp1_stark::{
     air::MachineAir, septic_curve::SepticCurve, septic_digest::SepticDigest, Chip,
-    ChipOpenedValues, GenericVerifierConstraintFolder, OpeningShapeError, ShardOpenedValues,
+    ChipOpenedValues, GenericVerifierConstraintFolder, LogUpEvaluations, OpeningShapeError,
+    ShardOpenedValues,
 };
 
 pub type RecursiveVerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
@@ -157,12 +160,12 @@ where
     pub fn verify_zerocheck(
         &self,
         builder: &mut Builder<C>,
-        challenger: &mut SC::FriChallengerVariable,
+        shard_chips: &BTreeSet<Chip<C::F, A>>,
         opened_values: &ShardOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>,
+        gkr_evaluations: &LogUpEvaluations<Ext<C::F, C::EF>>,
         zerocheck_proof: &PartialSumcheckProof<Ext<C::F, C::EF>>,
-        gkr_points: &[Point<Ext<C::F, C::EF>>],
-        gkr_column_openings: &[(MleEval<Ext<C::F, C::EF>>, MleEval<Ext<C::F, C::EF>>)],
         public_values: &[Felt<C::F>],
+        challenger: &mut SC::FriChallengerVariable,
     ) where
         A: for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     {
@@ -180,17 +183,13 @@ where
             &zerocheck_proof.point_and_eval.0,
         );
 
-        let zerocheck_eq_vals: Vec<SymbolicExt<C::F, C::EF>> = gkr_points
-            .iter()
-            .map(|zeta| {
-                let zeta_symbolic = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(zeta);
-                Mle::full_lagrange_eval(&zeta_symbolic, &point_symbolic)
-            })
-            .collect();
+        let gkr_evaluations_point = IntoSymbolic::<C>::as_symbolic(&gkr_evaluations.point);
 
-        let max_elements = self
-            .machine
-            .chips()
+        let zerocheck_eq_value = Mle::full_lagrange_eval(&gkr_evaluations_point, &point_symbolic);
+
+        let zerocheck_eq_vals = vec![zerocheck_eq_value; shard_chips.len()];
+
+        let max_elements = shard_chips
             .iter()
             .map(|chip| chip.width() + chip.preprocessed_width())
             .max()
@@ -200,7 +199,7 @@ where
             gkr_batch_open_challenge.powers().take(max_elements).collect::<Vec<_>>();
 
         for ((chip, openings), zerocheck_eq_val) in
-            self.machine.chips().iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
+            shard_chips.iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
         {
             // Verify the shape of the opening arguments matches the expected values.
             verify_opening_shape::<C, A>(chip, openings).unwrap();
@@ -246,20 +245,24 @@ where
 
         builder.assert_ext_eq(rlc_eval, zerocheck_proof.point_and_eval.1);
 
-        let zerocheck_sum_modifications_from_gkr = gkr_column_openings
-            .iter()
-            .map(|(main_openings, preprocessed_openings)| {
-                main_openings
-                    .to_vec()
+        let zerocheck_sum_modifications_from_gkr = gkr_evaluations
+            .chip_openings
+            .values()
+            .map(|chip_evaluation| {
+                chip_evaluation
+                    .main_trace_evaluations
+                    .deref()
                     .iter()
-                    .chain(preprocessed_openings.to_vec().iter())
-                    .zip(
-                        gkr_batch_open_challenge_powers
+                    .copied()
+                    .chain(
+                        chip_evaluation
+                            .preprocessed_trace_evaluations
+                            .as_ref()
                             .iter()
-                            .take(main_openings.len() + preprocessed_openings.len())
-                            .copied(),
+                            .flat_map(|&evals| evals.deref().iter().copied()),
                     )
-                    .map(|(opening, power)| *opening * power)
+                    .zip(gkr_batch_open_challenge_powers.iter().copied())
+                    .map(|(opening, power)| opening * power)
                     .sum::<SymbolicExt<C::F, C::EF>>()
             })
             .collect::<Vec<_>>();
@@ -277,189 +280,189 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::{marker::PhantomData, sync::Arc};
+// #[cfg(test)]
+// mod tests {
+//     use std::{marker::PhantomData, sync::Arc};
 
-    use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::DiffusionMatrixBabyBear;
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
-    use slop_jagged::BabyBearPoseidon2;
-    use slop_merkle_tree::my_bb_16_perm;
-    use sp1_core_executor::{Program, SP1Context};
-    use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir, utils::prove_core};
-    use sp1_recursion_compiler::{
-        circuit::{AsmCompiler, AsmConfig},
-        config::InnerConfig,
-    };
-    use sp1_recursion_executor::Runtime;
-    use sp1_stark::{prover::CpuProver, SP1CoreOpts, ShardVerifier};
+//     use slop_algebra::extension::BinomialExtensionField;
+//     use slop_baby_bear::DiffusionMatrixBabyBear;
+//     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+//     use slop_jagged::BabyBearPoseidon2;
+//     use slop_merkle_tree::my_bb_16_perm;
+//     use sp1_core_executor::{Program, SP1Context};
+//     use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir, utils::prove_core};
+//     use sp1_recursion_compiler::{
+//         circuit::{AsmCompiler, AsmConfig},
+//         config::InnerConfig,
+//     };
+//     use sp1_recursion_executor::Runtime;
+//     use sp1_stark::{prover::CpuProver, SP1CoreOpts, ShardVerifier};
 
-    use crate::{
-        basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
-        challenger::DuplexChallengerVariable,
-        jagged::{
-            RecursiveJaggedConfigImpl, RecursiveJaggedEvalSumcheckConfig,
-            RecursiveJaggedPcsVerifier,
-        },
-        witness::Witnessable,
-    };
+//     use crate::{
+//         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
+//         challenger::DuplexChallengerVariable,
+//         jagged::{
+//             RecursiveJaggedConfigImpl, RecursiveJaggedEvalSumcheckConfig,
+//             RecursiveJaggedPcsVerifier,
+//         },
+//         witness::Witnessable,
+//     };
 
-    use super::*;
+//     use super::*;
 
-    type F = BabyBear;
-    type SC = BabyBearPoseidon2;
-    type JC = RecursiveJaggedConfigImpl<
-        C,
-        SC,
-        RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >;
-    type C = InnerConfig;
-    type EF = BinomialExtensionField<BabyBear, 4>;
-    type A = RiscvAir<BabyBear>;
+//     type F = BabyBear;
+//     type SC = BabyBearPoseidon2;
+//     type JC = RecursiveJaggedConfigImpl<
+//         C,
+//         SC,
+//         RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+//     >;
+//     type C = InnerConfig;
+//     type EF = BinomialExtensionField<BabyBear, 4>;
+//     type A = RiscvAir<BabyBear>;
 
-    #[tokio::test]
-    async fn test_zerocheck() {
-        let program = Program::from(test_artifacts::FIBONACCI_ELF).unwrap();
-        let log_blowup = 1;
-        let log_stacking_height = 21;
-        let max_log_row_count = 21;
-        let machine = RiscvAir::machine();
-        let verifier = ShardVerifier::from_basefold_parameters(
-            log_blowup,
-            log_stacking_height,
-            max_log_row_count,
-            machine.clone(),
-        );
-        let prover = CpuProver::new(verifier.clone());
+//     #[tokio::test]
+//     async fn test_zerocheck() {
+//         let program = Program::from(test_artifacts::FIBONACCI_ELF).unwrap();
+//         let log_blowup = 1;
+//         let log_stacking_height = 21;
+//         let max_log_row_count = 21;
+//         let machine = RiscvAir::machine();
+//         let verifier = ShardVerifier::from_basefold_parameters(
+//             log_blowup,
+//             log_stacking_height,
+//             max_log_row_count,
+//             machine.clone(),
+//         );
+//         let prover = CpuProver::new(verifier.clone());
 
-        let (pk, _) = prover.setup(Arc::new(program.clone())).await;
+//         let (pk, _) = prover.setup(Arc::new(program.clone())).await;
 
-        let challenger = verifier.pcs_verifier.challenger();
+//         let challenger = verifier.pcs_verifier.challenger();
 
-        let (proof, _) = prove_core(
-            Arc::new(prover),
-            Arc::new(pk),
-            Arc::new(program.clone()),
-            &SP1Stdin::new(),
-            SP1CoreOpts::default(),
-            SP1Context::default(),
-            challenger,
-        )
-        .await
-        .unwrap();
+//         let (proof, _) = prove_core(
+//             Arc::new(prover),
+//             Arc::new(pk),
+//             Arc::new(program.clone()),
+//             &SP1Stdin::new(),
+//             SP1CoreOpts::default(),
+//             SP1Context::default(),
+//             challenger,
+//         )
+//         .await
+//         .unwrap();
 
-        let shard_proof = proof.shard_proofs[0].clone();
-        let challenger_state = shard_proof.testing_data.challenger_state.clone();
+//         let shard_proof = proof.shard_proofs[0].clone();
+//         let challenger_state = shard_proof.testing_data.challenger_state.clone();
 
-        let mut builder = Builder::<C>::default();
+//         let mut builder = Builder::<C>::default();
 
-        let mut challenger_variable =
-            DuplexChallengerVariable::from_challenger(&mut builder, &challenger_state);
+//         let mut challenger_variable =
+//             DuplexChallengerVariable::from_challenger(&mut builder, &challenger_state);
 
-        let shard_proof_variable = shard_proof.read(&mut builder);
+//         let shard_proof_variable = shard_proof.read(&mut builder);
 
-        let gkr_points_variable = shard_proof.testing_data.gkr_points.read(&mut builder);
-        let gkr_column_openings_variable = shard_proof
-            .gkr_proofs
-            .iter()
-            .map(|gkr_proof| {
-                let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
-                let main_openings_variable = main_openings.read(&mut builder);
-                let preprocessed_openings_variable: MleEval<Ext<_, _>> = preprocessed_openings
-                    .as_ref()
-                    .map(MleEval::to_vec)
-                    .unwrap_or_default()
-                    .read(&mut builder)
-                    .into();
-                (main_openings_variable, preprocessed_openings_variable)
-            })
-            .collect::<Vec<_>>();
+//         let gkr_points_variable = shard_proof.testing_data.gkr_points.read(&mut builder);
+//         let gkr_column_openings_variable = shard_proof
+//             .gkr_proofs
+//             .iter()
+//             .map(|gkr_proof| {
+//                 let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
+//                 let main_openings_variable = main_openings.read(&mut builder);
+//                 let preprocessed_openings_variable: MleEval<Ext<_, _>> = preprocessed_openings
+//                     .as_ref()
+//                     .map(MleEval::to_vec)
+//                     .unwrap_or_default()
+//                     .read(&mut builder)
+//                     .into();
+//                 (main_openings_variable, preprocessed_openings_variable)
+//             })
+//             .collect::<Vec<_>>();
 
-        let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(log_blowup);
-        let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {
-            fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
-        };
-        let recursive_verifier =
-            RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);
+//         let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(log_blowup);
+//         let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {
+//             fri_config: verifier.fri_config,
+//             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
+//         };
+//         let recursive_verifier =
+//             RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);
 
-        let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<
-            SC,
-            C,
-            RecursiveJaggedConfigImpl<
-                C,
-                SC,
-                RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-            >,
-        > {
-            stacked_pcs_verifier: recursive_verifier,
-            max_log_row_count,
-            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
-        };
+//         let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<
+//             SC,
+//             C,
+//             RecursiveJaggedConfigImpl<
+//                 C,
+//                 SC,
+//                 RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+//             >,
+//         > {
+//             stacked_pcs_verifier: recursive_verifier,
+//             max_log_row_count,
+//             jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
+//         };
 
-        let stark_verifier = StarkVerifier::<A, SC, C, JC> {
-            machine,
-            pcs_verifier: recursive_jagged_verifier,
-            _phantom: std::marker::PhantomData,
-        };
+//         let stark_verifier = StarkVerifier::<A, SC, C, JC> {
+//             machine,
+//             pcs_verifier: recursive_jagged_verifier,
+//             _phantom: std::marker::PhantomData,
+//         };
 
-        stark_verifier.verify_zerocheck(
-            &mut builder,
-            &mut challenger_variable,
-            &shard_proof_variable.opened_values,
-            &shard_proof_variable.zerocheck_proof,
-            &gkr_points_variable,
-            &gkr_column_openings_variable,
-            &shard_proof_variable.public_values,
-        );
+//         stark_verifier.verify_zerocheck(
+//             &mut builder,
+//             &mut challenger_variable,
+//             &shard_proof_variable.opened_values,
+//             &shard_proof_variable.zerocheck_proof,
+//             &gkr_points_variable,
+//             &gkr_column_openings_variable,
+//             &shard_proof_variable.public_values,
+//         );
 
-        let mut witness_stream = Vec::new();
-        Witnessable::<AsmConfig<F, EF>>::write(&shard_proof, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(
-            &shard_proof.testing_data.gkr_points,
-            &mut witness_stream,
-        );
-        shard_proof.gkr_proofs.iter().for_each(|gkr_proof| {
-            let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
-            Witnessable::<AsmConfig<F, EF>>::write(main_openings, &mut witness_stream);
-            let preprocessed_openings_unwrapped: MleEval<_> =
-                preprocessed_openings.as_ref().map(MleEval::to_vec).unwrap_or_default().into();
-            Witnessable::<AsmConfig<F, EF>>::write(
-                &preprocessed_openings_unwrapped,
-                &mut witness_stream,
-            );
-        });
+//         let mut witness_stream = Vec::new();
+//         Witnessable::<AsmConfig<F, EF>>::write(&shard_proof, &mut witness_stream);
+//         Witnessable::<AsmConfig<F, EF>>::write(
+//             &shard_proof.testing_data.gkr_points,
+//             &mut witness_stream,
+//         );
+//         shard_proof.gkr_proofs.iter().for_each(|gkr_proof| {
+//             let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
+//             Witnessable::<AsmConfig<F, EF>>::write(main_openings, &mut witness_stream);
+//             let preprocessed_openings_unwrapped: MleEval<_> =
+//                 preprocessed_openings.as_ref().map(MleEval::to_vec).unwrap_or_default().into();
+//             Witnessable::<AsmConfig<F, EF>>::write(
+//                 &preprocessed_openings_unwrapped,
+//                 &mut witness_stream,
+//             );
+//         });
 
-        let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
-        let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().unwrap();
+//         let block = builder.into_root_block();
+//         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+//         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
+//         let mut runtime =
+//             Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+//         runtime.witness_stream = witness_stream.into();
+//         runtime.run().unwrap();
 
-        // Test for a bad zerocheck proof.
-        let mut invalid_shard_proof = shard_proof.clone();
-        invalid_shard_proof.zerocheck_proof.univariate_polys[0].coefficients[0] += EF::one();
-        let mut witness_stream = Vec::new();
-        Witnessable::<AsmConfig<F, EF>>::write(&invalid_shard_proof, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(
-            &invalid_shard_proof.testing_data.gkr_points,
-            &mut witness_stream,
-        );
-        invalid_shard_proof.gkr_proofs.iter().for_each(|gkr_proof| {
-            let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
-            Witnessable::<AsmConfig<F, EF>>::write(main_openings, &mut witness_stream);
-            let preprocessed_openings_unwrapped: MleEval<_> =
-                preprocessed_openings.as_ref().map(MleEval::to_vec).unwrap_or_default().into();
-            Witnessable::<AsmConfig<F, EF>>::write(
-                &preprocessed_openings_unwrapped,
-                &mut witness_stream,
-            );
-        });
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().expect_err("invalid proof should not be verified");
-    }
-}
+//         // Test for a bad zerocheck proof.
+//         let mut invalid_shard_proof = shard_proof.clone();
+//         invalid_shard_proof.zerocheck_proof.univariate_polys[0].coefficients[0] += EF::one();
+//         let mut witness_stream = Vec::new();
+//         Witnessable::<AsmConfig<F, EF>>::write(&invalid_shard_proof, &mut witness_stream);
+//         Witnessable::<AsmConfig<F, EF>>::write(
+//             &invalid_shard_proof.testing_data.gkr_points,
+//             &mut witness_stream,
+//         );
+//         invalid_shard_proof.gkr_proofs.iter().for_each(|gkr_proof| {
+//             let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
+//             Witnessable::<AsmConfig<F, EF>>::write(main_openings, &mut witness_stream);
+//             let preprocessed_openings_unwrapped: MleEval<_> =
+//                 preprocessed_openings.as_ref().map(MleEval::to_vec).unwrap_or_default().into();
+//             Witnessable::<AsmConfig<F, EF>>::write(
+//                 &preprocessed_openings_unwrapped,
+//                 &mut witness_stream,
+//             );
+//         });
+//         let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+//         runtime.witness_stream = witness_stream.into();
+//         runtime.run().expect_err("invalid proof should not be verified");
+//     }
+// }

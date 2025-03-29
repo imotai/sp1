@@ -30,9 +30,6 @@ use crate::{
     MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
-// #[cfg(any(test, feature = "test-proof"))]
-use crate::TestingData;
-
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 
 /// The components of the machine prover.

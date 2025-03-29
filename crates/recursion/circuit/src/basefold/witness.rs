@@ -8,7 +8,7 @@ use slop_basefold::{BasefoldConfig, BasefoldProof};
 use slop_challenger::GrindingChallenger;
 use slop_commit::{TensorCs, TensorCsOpening};
 use slop_merkle_tree::MerkleTreeTcsProof;
-use slop_multilinear::{Evaluations, MleEval};
+use slop_multilinear::{Evaluations, Mle, MleEval};
 use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
 use sp1_recursion_compiler::ir::{Builder, Ext, Felt};
@@ -32,6 +32,19 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Tensor<T> {
         for x in self.as_slice() {
             x.write(witness);
         }
+    }
+}
+
+impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Mle<T> {
+    type WitnessVariable = Mle<T::WitnessVariable>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        let guts = self.guts().read(builder);
+        Mle::new(guts)
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.guts().write(witness);
     }
 }
 

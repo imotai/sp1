@@ -24,6 +24,7 @@ pub mod basefold;
 pub mod challenger;
 pub mod hash;
 pub mod jagged;
+pub mod logup_gkr;
 pub mod machine;
 pub mod shard;
 pub mod sumcheck;

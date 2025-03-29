@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
     hash::FieldHasherVariable,
@@ -162,6 +164,20 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Vec<T> {
     }
 }
 
+impl<C: CircuitConfig, K: Clone + Ord, V: Witnessable<C>> Witnessable<C> for BTreeMap<K, V> {
+    type WitnessVariable = BTreeMap<K, V::WitnessVariable>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        self.iter().map(|(k, v)| (k.clone(), v.read(builder))).collect()
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        for v in self.values() {
+            v.write(witness);
+        }
+    }
+}
+
 impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Rounds<T> {
     type WitnessVariable = Rounds<T::WitnessVariable>;
 
@@ -287,13 +303,15 @@ where
         let evaluation_proof = self.evaluation_proof.read(builder);
         let opened_values = self.opened_values.read(builder);
         let public_values = self.public_values.read(builder);
+        let logup_gkr_proof = self.logup_gkr_proof.read(builder);
         Self::WitnessVariable {
             main_commitment,
             zerocheck_proof,
             evaluation_proof,
             opened_values,
             public_values,
-            shard_proof: self.clone(),
+            logup_gkr_proof,
+            shard_chips: self.shard_chips.clone(),
         }
     }
 
@@ -303,6 +321,7 @@ where
         self.evaluation_proof.write(witness);
         self.opened_values.write(witness);
         self.public_values.write(witness);
+        self.logup_gkr_proof.write(witness);
     }
 }
 

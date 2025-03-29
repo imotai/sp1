@@ -1,10 +1,13 @@
+use std::collections::BTreeSet;
+
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
+    challenger::{CanObserveVariable, FieldChallengerVariable},
     jagged::{
         JaggedPcsProofVariable, RecursiveJaggedConfig, RecursiveJaggedPcsVerifier,
         RecursiveMachineJaggedPcsVerifier,
     },
-    witness::Witnessable,
+    logup_gkr::RecursiveLogUpGkrVerifier,
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfigVariable, CircuitConfig,
 };
@@ -16,13 +19,13 @@ use slop_multilinear::{Evaluations, MleEval};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
-    ir::{Builder, Felt},
+    ir::{Builder, Felt, SymbolicExt},
     prelude::{Ext, SymbolicFelt},
 };
 use sp1_recursion_executor::DIGEST_SIZE;
 use sp1_stark::{
-    air::MachineAir, septic_digest::SepticDigest, Machine, MachineConfig, ShardOpenedValues,
-    ShardProof,
+    air::MachineAir, septic_digest::SepticDigest, LogupGkrProof, Machine, MachineConfig,
+    ShardOpenedValues,
 };
 
 #[allow(clippy::type_complexity)]
@@ -44,8 +47,9 @@ pub struct ShardProofVariable<
     /// The public values
     pub public_values: Vec<Felt<C::F>>,
     // TODO: The `LogUp+GKR` IOP proofs.
-    // pub gkr_proofs: Vec<LogupGkrProof<Ext<C::F, C::EF>>>,
-    pub shard_proof: ShardProof<SC>,
+    pub logup_gkr_proof: LogupGkrProof<Ext<C::F, C::EF>>,
+    /// The chips participating in the shard.
+    pub shard_chips: BTreeSet<String>,
 }
 
 pub struct MachineVerifyingKeyVariable<
@@ -70,7 +74,6 @@ where
         C::F: TwoAdicField,
         SC::DigestVariable: IntoIterator<Item = Felt<C::F>>,
     {
-        // let prep_domains = self.chip_information.iter().map(|(_, domain, _)| domain);
         let num_inputs = DIGEST_SIZE + 1 + 14; //(4 * prep_domains.len());
         let mut inputs = Vec::with_capacity(num_inputs);
         if let Some(commit) = self.preprocessed_commit {
@@ -138,7 +141,8 @@ where
             evaluation_proof,
             zerocheck_proof,
             public_values,
-            shard_proof,
+            shard_chips,
+            logup_gkr_proof,
         } = proof;
 
         // Convert height bits to felts.
@@ -155,42 +159,53 @@ where
             height_felts.push(acc);
         }
 
-        //// Uncomment this when the GKR verification is finalized.
-        // // Observe the public values.
-        // for value in public_values[0..self.machine.num_pv_elts()].iter() {
-        //     challenger.observe(builder, *value);
-        // }
-        // // Observe the main commitment.
-        // challenger.observe(builder, *main_commitment);
+        // Observe the public values.
+        for value in public_values[0..self.machine.num_pv_elts()].iter() {
+            challenger.observe(builder, *value);
+        }
+        // Observe the main commitment.
+        challenger.observe(builder, *main_commitment);
 
-        //// This is a hack until the GKR verification is finalized.
-        let gkr_points_variable = shard_proof.testing_data.gkr_points.read(builder);
-        let gkr_column_openings_variable = shard_proof
-            .gkr_proofs
+        // Sample the permutation challenges.
+        let alpha = challenger.sample_ext(builder);
+        let beta = challenger.sample_ext(builder);
+
+        let shard_chips = self
+            .machine
+            .chips()
             .iter()
-            .map(|gkr_proof| {
-                let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
-                let main_openings_variable = main_openings.read(builder);
-                let preprocessed_openings_variable: MleEval<Ext<_, _>> = preprocessed_openings
-                    .as_ref()
-                    .map(MleEval::to_vec)
-                    .unwrap_or_default()
-                    .read(builder)
-                    .into();
-                (main_openings_variable, preprocessed_openings_variable)
-            })
-            .collect::<Vec<_>>();
-        /////// End of hack.
+            .filter(|chip| shard_chips.contains(&chip.name()))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+
+        let degrees = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
+
+        let cumulative_sum = SymbolicExt::zero();
+
+        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+
+        // Verify the `LogUp` GKR proof.
+        RecursiveLogUpGkrVerifier::<C, SC, A>::verify_logup_gkr(
+            builder,
+            &shard_chips,
+            &degrees,
+            alpha,
+            beta,
+            cumulative_sum,
+            max_log_row_count,
+            logup_gkr_proof,
+            challenger,
+        );
 
         builder.cycle_tracker_v2_enter("verify-zerocheck");
         self.verify_zerocheck(
             builder,
-            challenger,
+            &shard_chips,
             opened_values,
+            &logup_gkr_proof.logup_evaluations,
             zerocheck_proof,
-            &gkr_points_variable,
-            &gkr_column_openings_variable,
             public_values,
+            challenger,
         );
         builder.cycle_tracker_v2_exit();
 
@@ -302,23 +317,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{marker::PhantomData, sync::Arc};
+    use std::marker::PhantomData;
 
     use slop_algebra::extension::BinomialExtensionField;
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_jagged::BabyBearPoseidon2;
-    use sp1_core_executor::{Program, SP1Context};
-    use sp1_core_machine::{
-        io::SP1Stdin,
-        riscv::RiscvAir,
-        utils::{prove_core, setup_logger},
-    };
+    use sp1_core_machine::{riscv::RiscvAir, utils::setup_logger};
     use sp1_recursion_compiler::{
         circuit::{AsmCompiler, AsmConfig},
         config::InnerConfig,
     };
     use sp1_recursion_machine::test::run_recursion_test_machines;
-    use sp1_stark::{prover::CpuProver, SP1CoreOpts, ShardVerifier};
+    use sp1_stark::{MachineProof, MachineVerifier, MachineVerifyingKey, ShardVerifier};
 
     use crate::{
         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
@@ -343,7 +353,6 @@ mod tests {
     #[tokio::test]
     async fn test_verify_shard() {
         setup_logger();
-        let program = Program::from(test_artifacts::FIBONACCI_ELF).unwrap();
         let log_blowup = 1;
         let log_stacking_height = 21;
         let max_log_row_count = 21;
@@ -354,33 +363,42 @@ mod tests {
             max_log_row_count,
             machine.clone(),
         );
-        let prover = CpuProver::new(verifier.clone());
 
-        let (pk, vk) = prover.setup(Arc::new(program.clone())).await;
+        // let (pk, vk) = prover.setup(Arc::new(program.clone())).await;
 
-        let challenger = verifier.pcs_verifier.challenger();
+        // let challenger = verifier.pcs_verifier.challenger();
 
-        let (proof, _) = prove_core(
-            Arc::new(prover),
-            Arc::new(pk),
-            Arc::new(program.clone()),
-            &SP1Stdin::new(),
-            SP1CoreOpts::default(),
-            SP1Context::default(),
-            challenger,
-        )
-        .await
-        .unwrap();
+        // let (proof, _) = prove_core(
+        //     Arc::new(prover),
+        //     Arc::new(pk),
+        //     Arc::new(program.clone()),
+        //     &SP1Stdin::new(),
+        //     SP1CoreOpts::default(),
+        //     SP1Context::default(),
+        //     challenger,
+        // )
+        // .await
+        // .unwrap();
 
-        let shard_proof = proof.shard_proofs[0].clone();
-        let challenger_state = shard_proof.testing_data.challenger_state.clone();
+        // let shard_proof = proof.shard_proofs[0].clone();
 
         let mut builder = Builder::<C>::default();
 
-        //// This is a hack until the GKR verification is finalized.
-        let mut challenger_variable =
-            DuplexChallengerVariable::from_challenger(&mut builder, &challenger_state);
-        /////// End of hack.
+        // Get the vk and shard proof from the test artifacts.
+        let vk_bytes = include_bytes!("../test_artifacts/vk.bin");
+        let proof_bytes = include_bytes!("../test_artifacts/proof.bin");
+
+        let vk = bincode::deserialize::<MachineVerifyingKey<SC>>(vk_bytes.as_slice()).unwrap();
+        let proof = bincode::deserialize::<MachineProof<SC>>(proof_bytes.as_slice()).unwrap();
+
+        let mut initial_challenger = verifier.pcs_verifier.challenger();
+        vk.observe_into(&mut initial_challenger);
+
+        let mut challenger = verifier.pcs_verifier.challenger();
+        let machine_verifier = MachineVerifier::new(verifier);
+        machine_verifier.verify(&vk, &proof, &mut challenger).unwrap();
+
+        let shard_proof = proof.shard_proofs[0].clone();
 
         let vk_variable = vk.read(&mut builder);
         let shard_proof_variable = shard_proof.read(&mut builder);
@@ -413,6 +431,9 @@ mod tests {
             _phantom: std::marker::PhantomData,
         };
 
+        let mut challenger_variable =
+            DuplexChallengerVariable::from_challenger(&mut builder, &initial_challenger);
+
         builder.cycle_tracker_v2_enter("verify-shard");
         stark_verifier.verify_shard(
             &mut builder,
@@ -429,20 +450,6 @@ mod tests {
         let mut witness_stream = Vec::new();
         Witnessable::<AsmConfig<F, EF>>::write(&vk, &mut witness_stream);
         Witnessable::<AsmConfig<F, EF>>::write(&shard_proof, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(
-            &shard_proof.testing_data.gkr_points,
-            &mut witness_stream,
-        );
-        shard_proof.gkr_proofs.iter().for_each(|gkr_proof| {
-            let (main_openings, preprocessed_openings) = &gkr_proof.column_openings;
-            Witnessable::<AsmConfig<F, EF>>::write(main_openings, &mut witness_stream);
-            let preprocessed_openings_unwrapped: MleEval<_> =
-                preprocessed_openings.as_ref().map(MleEval::to_vec).unwrap_or_default().into();
-            Witnessable::<AsmConfig<F, EF>>::write(
-                &preprocessed_openings_unwrapped,
-                &mut witness_stream,
-            );
-        });
 
         run_recursion_test_machines(program.clone(), witness_stream).await;
     }

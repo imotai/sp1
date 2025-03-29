@@ -5,12 +5,15 @@ use p3_symmetric::CryptographicPermutation;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_multilinear::Point;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     prelude::{Builder, Config, Ext, Felt},
 };
 use sp1_recursion_executor::{HASH_RATE, NUM_BITS, PERMUTATION_WIDTH};
+
+use crate::CircuitConfig;
 
 // Constants for the Multifield challenger.
 pub const POSEIDON_2_BB_RATE: usize = 16;
@@ -51,6 +54,22 @@ pub trait FieldChallengerVariable<C: Config, Bit>:
     fn check_witness(&mut self, builder: &mut Builder<C>, nb_bits: usize, witness: Felt<C::F>);
 
     fn duplexing(&mut self, builder: &mut Builder<C>);
+
+    fn sample_point(
+        &mut self,
+        builder: &mut Builder<C>,
+        dimension: u32,
+    ) -> Point<Ext<C::F, C::EF>> {
+        (0..dimension).map(|_| self.sample_ext(builder)).collect()
+    }
+
+    fn observe_ext_element(&mut self, builder: &mut Builder<C>, element: Ext<C::F, C::EF>)
+    where
+        C: CircuitConfig,
+    {
+        let felts = C::ext2felt(builder, element);
+        self.observe_slice(builder, felts);
+    }
 }
 
 pub trait CanSampleBitsVariable<C: Config, V> {

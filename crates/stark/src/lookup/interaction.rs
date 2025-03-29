@@ -2,7 +2,7 @@ use core::fmt::{Debug, Display};
 use std::ops::Mul;
 
 use slop_air::{PairCol, VirtualPairCol};
-use slop_algebra::{AbstractField, ExtensionField, Field};
+use slop_algebra::{AbstractField, Field};
 use slop_multilinear::MleEval;
 
 use crate::air::InteractionScope;
@@ -94,7 +94,7 @@ impl<F: Field> Interaction<F> {
     ) -> (Expr, Expr)
     where
         F: Into<Expr>,
-        Expr: AbstractField<F: ExtensionField<F>> + Mul<F, Output = Expr>,
+        Expr: AbstractField + Mul<F, Output = Expr>,
         Var: Into<Expr> + Copy,
     {
         let mut multiplicity_eval = self.multiplicity.constant.into();
