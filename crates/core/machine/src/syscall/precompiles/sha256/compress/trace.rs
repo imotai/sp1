@@ -6,7 +6,7 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, PrecompileEvent, ShaCompressEvent},
+    events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent, ShaCompressEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -60,6 +60,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
             let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
             cols.octet_num[octet_num] = F::one();
             cols.octet[octet] = F::one();
+            cols.index = F::from_canonical_u32((8 * octet_num + octet) as u32);
 
             // If in the compression phase, set the k value.
             if octet_num != 0 && octet_num != 9 {
@@ -110,6 +111,10 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
             !shard.get_precompile_events(SyscallCode::SHA_COMPRESS).is_empty()
         }
     }
+
+    fn local_only(&self) -> bool {
+        true
+    }
 }
 
 impl ShaCompressChip {
@@ -137,7 +142,8 @@ impl ShaCompressChip {
             cols.octet_num[octet_num_idx] = F::one();
             cols.is_initialize = F::one();
 
-            cols.mem.populate_read(event.h_read_records[j], blu);
+            cols.mem.populate(MemoryRecordEnum::Read(event.h_read_records[j]), blu);
+            cols.mem_value = Word::from(event.h_read_records[j].value);
             cols.mem_addr = F::from_canonical_u32(event.h_ptr + (j * 4) as u32);
 
             cols.a = Word::from(event.h_read_records[0].value);
@@ -148,9 +154,9 @@ impl ShaCompressChip {
             cols.f = Word::from(event.h_read_records[5].value);
             cols.g = Word::from(event.h_read_records[6].value);
             cols.h = Word::from(event.h_read_records[7].value);
+            cols.index = F::from_canonical_u32(j as u32);
 
             cols.is_real = F::one();
-            cols.start = cols.is_real * cols.octet_num[0] * cols.octet[0];
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);
             }
@@ -174,8 +180,10 @@ impl ShaCompressChip {
             cols.clk = F::from_canonical_u32(event.clk);
             cols.w_ptr = F::from_canonical_u32(event.w_ptr);
             cols.h_ptr = F::from_canonical_u32(event.h_ptr);
-            cols.mem.populate_read(event.w_i_read_records[j], blu);
+            cols.mem.populate(MemoryRecordEnum::Read(event.w_i_read_records[j]), blu);
+            cols.mem_value = Word::from(event.w_i_read_records[j].value);
             cols.mem_addr = F::from_canonical_u32(event.w_ptr + (j * 4) as u32);
+            cols.index = F::from_canonical_u32(j as u32 + 8);
 
             let a = h_array[0];
             let b = h_array[1];
@@ -197,27 +205,27 @@ impl ShaCompressChip {
             let e_rr_6 = cols.e_rr_6.populate(blu, e, 6);
             let e_rr_11 = cols.e_rr_11.populate(blu, e, 11);
             let e_rr_25 = cols.e_rr_25.populate(blu, e, 25);
-            let s1_intermediate = cols.s1_intermediate.populate(blu, e_rr_6, e_rr_11);
-            let s1 = cols.s1.populate(blu, s1_intermediate, e_rr_25);
+            let s1_intermediate = cols.s1_intermediate.populate_xor_u16(blu, e_rr_6, e_rr_11);
+            let s1 = cols.s1.populate_xor_u16(blu, s1_intermediate, e_rr_25);
 
-            let e_and_f = cols.e_and_f.populate(blu, e, f);
-            let e_not = cols.e_not.populate(blu, e);
-            let e_not_and_g = cols.e_not_and_g.populate(blu, e_not, g);
-            let ch = cols.ch.populate(blu, e_and_f, e_not_and_g);
+            let e_and_f = cols.e_and_f.populate_and_u16(blu, e, f);
+            let e_not = cols.e_not.populate(e);
+            let e_not_and_g = cols.e_not_and_g.populate_and_u16(blu, e_not, g);
+            let ch = cols.ch.populate_xor_u16(blu, e_and_f, e_not_and_g);
 
             let temp1 = cols.temp1.populate(blu, h, s1, ch, event.w[j], SHA_COMPRESS_K[j]);
 
             let a_rr_2 = cols.a_rr_2.populate(blu, a, 2);
             let a_rr_13 = cols.a_rr_13.populate(blu, a, 13);
             let a_rr_22 = cols.a_rr_22.populate(blu, a, 22);
-            let s0_intermediate = cols.s0_intermediate.populate(blu, a_rr_2, a_rr_13);
-            let s0 = cols.s0.populate(blu, s0_intermediate, a_rr_22);
+            let s0_intermediate = cols.s0_intermediate.populate_xor_u16(blu, a_rr_2, a_rr_13);
+            let s0 = cols.s0.populate_xor_u16(blu, s0_intermediate, a_rr_22);
 
-            let a_and_b = cols.a_and_b.populate(blu, a, b);
-            let a_and_c = cols.a_and_c.populate(blu, a, c);
-            let b_and_c = cols.b_and_c.populate(blu, b, c);
-            let maj_intermediate = cols.maj_intermediate.populate(blu, a_and_b, a_and_c);
-            let maj = cols.maj.populate(blu, maj_intermediate, b_and_c);
+            let a_and_b = cols.a_and_b.populate_and_u16(blu, a, b);
+            let a_and_c = cols.a_and_c.populate_and_u16(blu, a, c);
+            let b_and_c = cols.b_and_c.populate_and_u16(blu, b, c);
+            let maj_intermediate = cols.maj_intermediate.populate_xor_u16(blu, a_and_b, a_and_c);
+            let maj = cols.maj.populate_xor_u16(blu, maj_intermediate, b_and_c);
 
             let temp2 = cols.temp2.populate(blu, s0, maj);
 
@@ -234,7 +242,6 @@ impl ShaCompressChip {
             h_array[0] = temp1_add_temp2;
 
             cols.is_real = F::one();
-            cols.start = cols.is_real * cols.octet_num[0] * cols.octet[0];
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);
@@ -259,8 +266,10 @@ impl ShaCompressChip {
             cols.is_finalize = F::one();
 
             cols.finalize_add.populate(blu, og_h[j], h_array[j]);
-            cols.mem.populate_write(event.h_write_records[j], blu);
+            cols.mem.populate(MemoryRecordEnum::Write(event.h_write_records[j]), blu);
+            cols.mem_value = Word::from(event.h_write_records[j].value);
             cols.mem_addr = F::from_canonical_u32(event.h_ptr + (j * 4) as u32);
+            cols.index = F::from_canonical_u32(j as u32 + 72);
 
             v[j] = h_array[j];
             cols.a = Word::from(v[0]);
@@ -286,7 +295,6 @@ impl ShaCompressChip {
 
             cols.is_real = F::one();
             cols.is_last_row = cols.octet[7] * cols.octet_num[9];
-            cols.start = cols.is_real * cols.octet_num[0] * cols.octet[0];
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

@@ -15,8 +15,7 @@ use strum_macros::{Display, EnumIter};
 
 use super::{interaction::AirInteraction, BinomialExtension};
 use crate::{
-    lookup::InteractionKind, septic_digest::SepticDigest, septic_extension::SepticExtension,
-    ConstraintSumcheckFolder, Word,
+    lookup::InteractionKind, septic_extension::SepticExtension, ConstraintSumcheckFolder, Word,
 };
 
 /// The scope of an interaction.
@@ -123,23 +122,9 @@ pub trait ByteAirBuilder: BaseAirBuilder {
         c: impl Into<Self::Expr>,
         multiplicity: impl Into<Self::Expr>,
     ) {
-        self.send_byte_pair(opcode, a, Self::Expr::zero(), b, c, multiplicity);
-    }
-
-    /// Sends a byte operation with two outputs to be processed.
-    #[allow(clippy::too_many_arguments)]
-    fn send_byte_pair(
-        &mut self,
-        opcode: impl Into<Self::Expr>,
-        a1: impl Into<Self::Expr>,
-        a2: impl Into<Self::Expr>,
-        b: impl Into<Self::Expr>,
-        c: impl Into<Self::Expr>,
-        multiplicity: impl Into<Self::Expr>,
-    ) {
         self.send(
             AirInteraction::new(
-                vec![opcode.into(), a1.into(), a2.into(), b.into(), c.into()],
+                vec![opcode.into(), a.into(), b.into(), c.into()],
                 multiplicity.into(),
                 InteractionKind::Byte,
             ),
@@ -157,23 +142,9 @@ pub trait ByteAirBuilder: BaseAirBuilder {
         c: impl Into<Self::Expr>,
         multiplicity: impl Into<Self::Expr>,
     ) {
-        self.receive_byte_pair(opcode, a, Self::Expr::zero(), b, c, multiplicity);
-    }
-
-    /// Receives a byte operation with two outputs to be processed.
-    #[allow(clippy::too_many_arguments)]
-    fn receive_byte_pair(
-        &mut self,
-        opcode: impl Into<Self::Expr>,
-        a1: impl Into<Self::Expr>,
-        a2: impl Into<Self::Expr>,
-        b: impl Into<Self::Expr>,
-        c: impl Into<Self::Expr>,
-        multiplicity: impl Into<Self::Expr>,
-    ) {
         self.receive(
             AirInteraction::new(
-                vec![opcode.into(), a1.into(), a2.into(), b.into(), c.into()],
+                vec![opcode.into(), a.into(), b.into(), c.into()],
                 multiplicity.into(),
                 InteractionKind::Byte,
             ),
@@ -184,6 +155,42 @@ pub trait ByteAirBuilder: BaseAirBuilder {
 
 /// A trait which contains methods related to RISC-V instruction interactions in an AIR.
 pub trait InstructionAirBuilder: BaseAirBuilder {
+    /// Sends the current CPU state.
+    fn send_state(
+        &mut self,
+        shard: impl Into<Self::Expr>,
+        clk: impl Into<Self::Expr>,
+        pc: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        self.send(
+            AirInteraction::new(
+                vec![shard.into(), clk.into(), pc.into()],
+                multiplicity.into(),
+                InteractionKind::State,
+            ),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Receives the current CPU state.
+    fn receive_state(
+        &mut self,
+        shard: impl Into<Self::Expr>,
+        clk: impl Into<Self::Expr>,
+        pc: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        self.receive(
+            AirInteraction::new(
+                vec![shard.into(), clk.into(), pc.into()],
+                multiplicity.into(),
+                InteractionKind::State,
+            ),
+            InteractionScope::Local,
+        );
+    }
+
     /// Sends a RISC-V instruction to be processed.
     #[allow(clippy::too_many_arguments)]
     fn send_instruction(
@@ -382,14 +389,8 @@ pub trait MultiTableAirBuilder<'a>: PermutationAirBuilder {
     /// The type of the local cumulative sum.
     type LocalSum: Into<Self::ExprEF> + Copy;
 
-    /// The type of the global cumulative sum;
-    type GlobalSum: Into<Self::Expr> + Copy;
-
     /// Returns the local cumulative sum of the permutation.
     fn local_cumulative_sum(&self) -> &'a Self::LocalSum;
-
-    /// Returns the global cumulative sum of the permutation.
-    fn global_cumulative_sum(&self) -> &'a SepticDigest<Self::GlobalSum>;
 }
 
 /// A trait that contains the common helper methods for building `SP1 recursion` and SP1 machine

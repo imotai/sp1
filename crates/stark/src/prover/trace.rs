@@ -124,8 +124,6 @@ where
         output: &Sender<ShardData<F, A, B>>,
         prover_permits: Arc<Semaphore>,
     ) {
-        // Get the public values from the record.
-        let public_values = record.public_values::<F>();
         let airs = self.machine.chips().to_vec();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -140,12 +138,14 @@ where
                 })
                 .collect::<BTreeMap<_, _>>();
 
-            tx.send(chips_and_traces).ok().unwrap();
+            // Get the public values from the record.
+            let public_values = record.public_values::<F>();
+            tx.send((chips_and_traces, public_values)).ok().unwrap();
             // Emphasize that we are dropping the record after sending the traces.
             drop(record);
         });
         // Wait for the traces to be generated and copy them to the target backend.
-        let chips_and_traces = rx.await.unwrap();
+        let (chips_and_traces, public_values) = rx.await.unwrap();
 
         let chip_set = chips_and_traces.keys().cloned().collect::<BTreeSet<_>>();
         let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();

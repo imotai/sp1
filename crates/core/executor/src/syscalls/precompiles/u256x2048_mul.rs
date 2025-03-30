@@ -52,7 +52,7 @@ pub(crate) fn u256x2048_mul<E: ExecutorConfig>(
 
     let lo_memory_records = rt.mw_slice(lo_ptr, &lo_words);
     let hi_memory_records = rt.mw_slice(hi_ptr, &hi_words);
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = PrecompileEvent::U256xU2048Mul(U256xU2048MulEvent {
         shard,
         clk,
@@ -73,7 +73,8 @@ pub(crate) fn u256x2048_mul<E: ExecutorConfig>(
         local_mem_access: rt.postprocess(),
     });
 
-    let sycall_event = rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+    let sycall_event =
+        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, sycall_event, event);
 
     None

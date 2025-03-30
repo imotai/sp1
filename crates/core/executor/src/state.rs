@@ -8,7 +8,12 @@ use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use sp1_stark::{BabyBearPoseidon2, MachineVerifyingKey};
 
-use crate::{events::MemoryRecord, memory::Memory, syscalls::SyscallCode, SP1ReduceProof};
+use crate::{
+    events::{MemoryEntry, Shard},
+    memory::Memory,
+    syscalls::SyscallCode,
+    SP1ReduceProof,
+};
 
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -18,11 +23,11 @@ pub struct ExecutionState {
     pub pc: u32,
 
     /// The shard clock keeps track of how many shards have been executed.
-    pub current_shard: u32,
+    pub current_shard: Shard,
 
     /// The memory which instructions operate over. Values contain the memory value and last shard
     /// + timestamp that each memory address was accessed.
-    pub memory: Memory<MemoryRecord>,
+    pub memory: Memory<MemoryEntry>,
 
     /// The global clock keeps track of how many instructions have been executed through all
     /// shards.
@@ -64,7 +69,7 @@ impl ExecutionState {
         Self {
             global_clk: 0,
             // Start at shard 1 since shard 0 is reserved for memory initialization.
-            current_shard: 1,
+            current_shard: Shard::new(1).unwrap(),
             clk: 0,
             pc: pc_start,
             memory: Memory::new_preallocated(),
@@ -90,7 +95,7 @@ pub struct ForkState {
     /// The original `pc` value at the fork point.
     pub pc: u32,
     /// All memory changes since the fork point.
-    pub memory_diff: Memory<Option<MemoryRecord>>,
+    pub memory_diff: Memory<Option<MemoryEntry>>,
 }
 
 impl ExecutionState {

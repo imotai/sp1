@@ -1,4 +1,4 @@
-use std::{hash::Hash, sync::Arc};
+use std::{fmt::Display, hash::Hash, sync::Arc};
 
 use p3_uni_stark::{get_max_constraint_degree, SymbolicAirBuilder};
 use slop_air::{Air, BaseAir, PairBuilder};
@@ -319,5 +319,65 @@ where
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.name().cmp(&other.name())
+    }
+}
+
+/// Statistics about a chip.
+#[derive(Debug, Clone)]
+pub struct ChipStatistics<F> {
+    /// The name of the chip.
+    name: String,
+    /// The height of the chip.
+    height: usize,
+    /// The number of preprocessed columns.
+    preprocessed_cols: usize,
+    /// The number of main columns.
+    main_cols: usize,
+    _marker: std::marker::PhantomData<F>,
+}
+
+impl<F: Field> ChipStatistics<F> {
+    /// Creates a new chip statistics from a chip and height.
+    #[must_use]
+    pub fn new<A: MachineAir<F>>(chip: &Chip<F, A>, height: usize) -> Self {
+        let name = chip.name();
+        let preprocessed_cols = chip.preprocessed_width();
+        let main_cols = chip.width();
+        Self { name, height, preprocessed_cols, main_cols, _marker: std::marker::PhantomData }
+    }
+
+    /// Returns the total width of the chip.
+    #[must_use]
+    #[inline]
+    pub const fn total_width(&self) -> usize {
+        self.preprocessed_cols + self.main_cols
+    }
+
+    /// Returns the total number of cells in the chip.
+    #[must_use]
+    #[inline]
+    pub const fn total_number_of_cells(&self) -> usize {
+        self.total_width() * self.height
+    }
+
+    /// Returns the total memory size of the chip in bytes.
+    #[must_use]
+    #[inline]
+    pub const fn total_memory_size(&self) -> usize {
+        self.total_number_of_cells() * std::mem::size_of::<F>()
+    }
+}
+
+impl<F: Field> Display for ChipStatistics<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:<15} | Prep Cols = {:<5} | Main Cols = {:<5} | Rows = {:<5} | Cells = {:<10}",
+            self.name,
+            self.preprocessed_cols,
+            self.main_cols,
+            self.height,
+            self.total_number_of_cells()
+        )
     }
 }

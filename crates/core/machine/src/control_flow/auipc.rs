@@ -1,25 +1,23 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_PC_INC, UNUSED_PC,
+    ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
-    air::{MachineAir, SP1AirBuilder},
-    Word,
-};
+
+use sp1_stark::air::{MachineAir, SP1AirBuilder};
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
 
 use crate::{
-    operations::BabyBearWordRangeChecker,
+    adapter::{register::j_type::JTypeReader, state::CPUState},
     utils::{next_power_of_two, zeroed_f_vec},
 };
 
@@ -34,34 +32,18 @@ impl<F> BaseAir<F> for AuipcChip {
     }
 }
 
-/// The column layout for AUIPC/UNIMP/EBREAK instructions.
+/// The column layout for AUIPC instructions.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct AuipcColumns<T> {
-    /// The program counter of the instruction.
-    pub pc: Word<T>,
+    /// The current shard, timestamp, program counter of the CPU.
+    pub state: CPUState<T>,
 
-    /// The value of the first operand.
-    pub op_a_value: Word<T>,
-    /// The value of the second operand.
-    pub op_b_value: Word<T>,
-    /// The value of the third operand.
-    pub op_c_value: Word<T>,
-
-    /// Whether the first operand is not register 0.
-    pub op_a_not_0: T,
-
-    /// BabyBear range checker for the program counter.
-    pub pc_range_checker: BabyBearWordRangeChecker<T>,
+    /// The adapter to read program and register information.
+    pub adapter: JTypeReader<T>,
 
     /// Whether the instruction is an AUIPC instruction.
-    pub is_auipc: T,
-
-    /// Whether the instruction is an unimplemented instruction.
-    pub is_unimp: T,
-
-    /// Whether the instruction is an ebreak instruction.
-    pub is_ebreak: T,
+    pub is_real: T,
 }
 
 impl<AB> Air<AB> for AuipcChip
@@ -75,84 +57,31 @@ where
         let local = main.row_slice(0);
         let local: &AuipcColumns<AB::Var> = (*local).borrow();
 
-        // SAFETY: All selectors `is_auipc`, `is_unimp`, `is_ebreak` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three
-        // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
-        builder.assert_bool(local.is_auipc);
-        builder.assert_bool(local.is_unimp);
-        builder.assert_bool(local.is_ebreak);
-        let is_real = local.is_auipc + local.is_unimp + local.is_ebreak;
-        builder.assert_bool(is_real.clone());
+        builder.assert_bool(local.is_real);
 
-        let opcode = AB::Expr::from_canonical_u32(Opcode::AUIPC as u32) * local.is_auipc
-            + AB::Expr::from_canonical_u32(Opcode::UNIMP as u32) * local.is_unimp
-            + AB::Expr::from_canonical_u32(Opcode::EBREAK as u32) * local.is_ebreak;
+        let opcode = AB::Expr::from_canonical_u32(Opcode::AUIPC as u32);
 
-        // SAFETY: This checks the following.
-        // - `next_pc = pc + 4`
-        // - `num_extra_cycles = 0`
-        // - `op_a_val` is constrained by the chip when `op_a_not_0 == 1`
-        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
-        // - `op_a_immutable = 0`
-        // - `is_memory = 0`
-        // - `is_syscall = 0`
-        // - `is_halt = 0`
-        builder.receive_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.pc.reduce::<AB>(),
-            local.pc.reduce::<AB>() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            opcode,
-            local.op_a_value,
-            local.op_b_value,
-            local.op_c_value,
-            AB::Expr::one() - local.op_a_not_0,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            is_real.clone(),
-        );
-
-        // Verify that the opcode is never UNIMP or EBREAK.
-        builder.assert_zero(local.is_unimp);
-        builder.assert_zero(local.is_ebreak);
-
-        // Range check the pc.
-        // SAFETY: `is_auipc` is already checked to be boolean above.
-        // `BabyBearWordRangeChecker` assumes that the value is already checked to be a valid word.
-        // This is checked implicitly, as the ADD ALU table checks that all inputs are valid words.
-        // This check is done inside the `AddOperation`. Therefore, `pc` is a valid word.
-        BabyBearWordRangeChecker::<AB::F>::range_check(
+        // Constrain the state of the CPU.
+        CPUState::<AB::F>::eval(
             builder,
-            local.pc,
-            local.pc_range_checker,
-            local.is_auipc.into(),
+            local.state,
+            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.is_real.into(),
         );
 
-        // Verify that op_a == pc + op_b, when `op_a_not_0 == 1`.
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(Opcode::ADD as u32),
-            local.op_a_value,
-            local.pc,
-            local.op_b_value,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.op_a_not_0,
+        // Constrain the program and register reads.
+        // Set `op_b` immediate as `op_a_not_0 * (pc + op_b)` value in the instruction encoding.
+        JTypeReader::<AB::F>::eval(
+            builder,
+            local.state.shard::<AB>(),
+            local.state.clk::<AB>(),
+            local.state.pc,
+            opcode,
+            *local.adapter.b(),
+            local.adapter,
+            local.is_real.into(),
         );
-
-        // Assert that in padding rows, `op_a_not_0 == 0`, so all interactions are with zero
-        // multiplicity.
-        builder.when(local.op_a_not_0).assert_one(is_real);
     }
 }
 
@@ -188,17 +117,20 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
 
                     if idx < input.auipc_events.len() {
                         let event = &input.auipc_events[idx];
-                        cols.is_auipc = F::from_bool(event.opcode == Opcode::AUIPC);
-                        cols.is_unimp = F::from_bool(event.opcode == Opcode::UNIMP);
-                        cols.is_ebreak = F::from_bool(event.opcode == Opcode::EBREAK);
-                        cols.pc = event.pc.into();
-                        if event.opcode == Opcode::AUIPC {
-                            cols.pc_range_checker.populate(cols.pc, &mut blu);
+                        let mut instruction = *input.program.fetch(event.0.pc);
+                        instruction.op_b = event.0.pc.wrapping_add(instruction.op_b);
+                        if instruction.op_a == 0 {
+                            instruction.op_b = 0;
                         }
-                        cols.op_a_value = event.a.into();
-                        cols.op_b_value = event.b.into();
-                        cols.op_c_value = event.c.into();
-                        cols.op_a_not_0 = F::from_bool(!event.op_a_0);
+                        cols.is_real = F::one();
+
+                        cols.state.populate(
+                            &mut blu,
+                            input.public_values.execution_shard,
+                            event.0.clk,
+                            event.0.pc,
+                        );
+                        cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });
                 blu

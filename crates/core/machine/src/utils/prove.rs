@@ -91,8 +91,12 @@ fn generate_records<F: PrimeField32>(
             for record in records.iter_mut() {
                 state.shard += 1;
                 state.execution_shard = record.public_values.execution_shard;
+                state.next_execution_shard = record.public_values.execution_shard + 1;
                 state.start_pc = record.public_values.start_pc;
                 state.next_pc = record.public_values.next_pc;
+                state.last_timestamp = record.public_values.last_timestamp;
+                state.last_timestamp_inv =
+                    F::from_canonical_u32(state.last_timestamp).inverse().as_canonical_u32();
                 state.committed_value_digest = record.public_values.committed_value_digest;
                 state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
                 record.public_values = *state;
@@ -110,9 +114,7 @@ fn generate_records<F: PrimeField32>(
 
             // Update the public values & prover state for the shards which do not
             // contain "cpu events" before committing to them.
-            if !done {
-                state.execution_shard += 1;
-            }
+            state.execution_shard = state.next_execution_shard;
             for record in deferred.iter_mut() {
                 state.shard += 1;
                 state.previous_init_addr_bits = record.public_values.previous_init_addr_bits;
@@ -121,6 +123,9 @@ fn generate_records<F: PrimeField32>(
                     record.public_values.previous_finalize_addr_bits;
                 state.last_finalize_addr_bits = record.public_values.last_finalize_addr_bits;
                 state.start_pc = state.next_pc;
+                state.last_timestamp = 0;
+                state.last_timestamp_inv = 0;
+                state.next_execution_shard = state.execution_shard;
                 record.public_values = *state;
             }
             records.append(&mut deferred);

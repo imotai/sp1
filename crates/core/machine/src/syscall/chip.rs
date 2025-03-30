@@ -86,6 +86,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             SyscallShardKind::Core => &input
                 .syscall_events
                 .iter()
+                .map(|(event, _)| event)
                 .filter(|e| e.syscall_code.should_send() == 1)
                 .copied()
                 .collect::<Vec<_>>(),
@@ -109,8 +110,14 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
-        let events = match self.shard_kind() {
-            SyscallShardKind::Core => &input.syscall_events,
+        let events = match self.shard_kind {
+            SyscallShardKind::Core => &input
+                .syscall_events
+                .iter()
+                .map(|(event, _)| event)
+                .filter(|e| e.syscall_code.should_send() == 1)
+                .copied()
+                .collect::<Vec<_>>(),
             SyscallShardKind::Precompile => &input
                 .precompile_events
                 .all_events()
@@ -145,6 +152,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             SyscallShardKind::Core => input
                 .syscall_events
                 .par_iter()
+                .map(|(event, _)| event)
                 .filter(|event| event.syscall_code.should_send() == 1)
                 .map(|event| row_fn(event, false))
                 .collect::<Vec<_>>(),
@@ -175,6 +183,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                     shard
                         .syscall_events
                         .iter()
+                        .map(|(event, _)| event)
                         .filter(|e| e.syscall_code.should_send() == 1)
                         .take(1)
                         .count()
@@ -182,7 +191,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                 }
                 SyscallShardKind::Precompile => {
                     !shard.precompile_events.is_empty()
-                        && shard.cpu_events.is_empty()
+                        && !shard.contains_cpu()
                         && shard.global_memory_initialize_events.is_empty()
                         && shard.global_memory_finalize_events.is_empty()
                 }

@@ -4,9 +4,9 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, PrecompileEvent, ShaExtendEvent},
+    events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent, ShaExtendEvent},
     syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ByteOpcode, ExecutionRecord, Program,
 };
 use sp1_stark::air::MachineAir;
 use std::borrow::BorrowMut;
@@ -43,10 +43,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
         if padded_nb_rows == 2 || padded_nb_rows == 1 {
             padded_nb_rows = 4;
         }
-        for i in nb_rows..padded_nb_rows {
-            let mut row = [F::zero(); NUM_SHA_EXTEND_COLS];
-            let cols: &mut ShaExtendCols<F> = row.as_mut_slice().borrow_mut();
-            cols.populate_flags(i);
+        for _ in nb_rows..padded_nb_rows {
+            let row = [F::zero(); NUM_SHA_EXTEND_COLS];
             rows.push(row);
         }
 
@@ -84,6 +82,10 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
             !shard.get_precompile_events(SyscallCode::SHA_EXTEND).is_empty()
         }
     }
+
+    fn local_only(&self) -> bool {
+        true
+    }
 }
 
 impl ShaExtendChip {
@@ -97,15 +99,20 @@ impl ShaExtendChip {
             let mut row = [F::zero(); NUM_SHA_EXTEND_COLS];
             let cols: &mut ShaExtendCols<F> = row.as_mut_slice().borrow_mut();
             cols.is_real = F::one();
-            cols.populate_flags(j);
+            cols.i = F::from_canonical_u32(j as u32 + 16);
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.w_ptr = F::from_canonical_u32(event.w_ptr);
 
-            cols.w_i_minus_15.populate(event.w_i_minus_15_reads[j], blu);
-            cols.w_i_minus_2.populate(event.w_i_minus_2_reads[j], blu);
-            cols.w_i_minus_16.populate(event.w_i_minus_16_reads[j], blu);
-            cols.w_i_minus_7.populate(event.w_i_minus_7_reads[j], blu);
+            let w_i_minus_15_read = MemoryRecordEnum::Read(event.w_i_minus_15_reads[j]);
+            let w_i_minus_2_read = MemoryRecordEnum::Read(event.w_i_minus_2_reads[j]);
+            let w_i_minus_16_read = MemoryRecordEnum::Read(event.w_i_minus_16_reads[j]);
+            let w_i_minus_7_read = MemoryRecordEnum::Read(event.w_i_minus_7_reads[j]);
+
+            cols.w_i_minus_15.populate(w_i_minus_15_read, blu);
+            cols.w_i_minus_2.populate(w_i_minus_2_read, blu);
+            cols.w_i_minus_16.populate(w_i_minus_16_read, blu);
+            cols.w_i_minus_7.populate(w_i_minus_7_read, blu);
 
             // `s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift
             // 3)`.
@@ -114,8 +121,8 @@ impl ShaExtendChip {
             let w_i_minus_15_rr_18 = cols.w_i_minus_15_rr_18.populate(blu, w_i_minus_15, 18);
             let w_i_minus_15_rs_3 = cols.w_i_minus_15_rs_3.populate(blu, w_i_minus_15, 3);
             let s0_intermediate =
-                cols.s0_intermediate.populate(blu, w_i_minus_15_rr_7, w_i_minus_15_rr_18);
-            let s0 = cols.s0.populate(blu, s0_intermediate, w_i_minus_15_rs_3);
+                cols.s0_intermediate.populate_xor_u16(blu, w_i_minus_15_rr_7, w_i_minus_15_rr_18);
+            let s0 = cols.s0.populate_xor_u16(blu, s0_intermediate, w_i_minus_15_rs_3);
 
             // `s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift
             // 10)`.
@@ -124,15 +131,22 @@ impl ShaExtendChip {
             let w_i_minus_2_rr_19 = cols.w_i_minus_2_rr_19.populate(blu, w_i_minus_2, 19);
             let w_i_minus_2_rs_10 = cols.w_i_minus_2_rs_10.populate(blu, w_i_minus_2, 10);
             let s1_intermediate =
-                cols.s1_intermediate.populate(blu, w_i_minus_2_rr_17, w_i_minus_2_rr_19);
-            let s1 = cols.s1.populate(blu, s1_intermediate, w_i_minus_2_rs_10);
+                cols.s1_intermediate.populate_xor_u16(blu, w_i_minus_2_rr_17, w_i_minus_2_rr_19);
+            let s1 = cols.s1.populate_xor_u16(blu, s1_intermediate, w_i_minus_2_rs_10);
 
             // Compute `s2`.
             let w_i_minus_7 = event.w_i_minus_7_reads[j].value;
             let w_i_minus_16 = event.w_i_minus_16_reads[j].value;
             cols.s2.populate(blu, w_i_minus_16, s0, w_i_minus_7, s1);
 
-            cols.w_i.populate(event.w_i_writes[j], blu);
+            let w_i_write = MemoryRecordEnum::Write(event.w_i_writes[j]);
+            cols.w_i.populate(w_i_write, blu);
+            blu.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::LTU,
+                a: 1u16,
+                b: j as u8,
+                c: 48,
+            });
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

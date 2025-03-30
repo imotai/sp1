@@ -5,7 +5,9 @@ use std::{
 };
 
 use p3_field::{AbstractField, Field, PrimeField32};
-use sp1_stark::{MachineRecord, SP1CoreOpts, PROOF_MAX_NUM_PVS};
+use sp1_stark::{
+    air::SP1AirBuilder, septic_digest::SepticDigest, MachineRecord, SP1CoreOpts, PROOF_MAX_NUM_PVS,
+};
 
 use crate::{
     instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr},
@@ -106,6 +108,20 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
 
         ret.to_vec()
     }
+
+    fn update_global_cumulative_sum<T: PrimeField32>(
+        &mut self,
+        _global_cumulative_sum: SepticDigest<T>,
+    ) {
+        panic!("Recursion does not have global chip");
+    }
+
+    fn global_cumulative_sum<T: PrimeField32>(_public_values: &[T]) -> SepticDigest<T> {
+        SepticDigest::<T>::zero()
+    }
+
+    // No public value constraints for recursion public values.
+    fn eval_public_values<AB: SP1AirBuilder>(_builder: &mut AB) {}
 }
 
 impl<F: Field> ExecutionRecord<F> {

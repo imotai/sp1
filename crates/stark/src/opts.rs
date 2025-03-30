@@ -69,11 +69,11 @@ impl SP1ProverOpts {
 
         // Set the core options.
         if 24 <= gpu_ram_gb {
-            let log2_shard_size = 21;
+            let log2_shard_size = 22;
             opts.core_opts.shard_size = 1 << log2_shard_size;
             opts.core_opts.shard_batch_size = 1;
 
-            let log2_deferred_threshold = 14;
+            let log2_deferred_threshold = 13;
             opts.core_opts.split_opts = SplitOpts::new(1 << log2_deferred_threshold);
 
             opts.core_opts.records_and_traces_channel_capacity = 4;

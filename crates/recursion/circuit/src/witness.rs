@@ -230,22 +230,14 @@ impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> W
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let preprocessed = self.preprocessed.read(builder);
         let main = self.main.read(builder);
-        let global_cumulative_sum = self.global_cumulative_sum.read(builder);
         let local_cumulative_sum = self.local_cumulative_sum.read(builder);
         let degree = self.degree.read(builder);
-        Self::WitnessVariable {
-            preprocessed,
-            main,
-            global_cumulative_sum,
-            local_cumulative_sum,
-            degree,
-        }
+        Self::WitnessVariable { preprocessed, main, local_cumulative_sum, degree }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
         self.preprocessed.write(witness);
         self.main.write(witness);
-        self.global_cumulative_sum.write(witness);
         self.local_cumulative_sum.write(witness);
         self.degree.write(witness);
     }

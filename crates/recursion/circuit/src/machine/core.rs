@@ -19,8 +19,6 @@ use sp1_core_machine::{
 };
 
 use sp1_recursion_executor::PV_DIGEST_NUM_WORDS;
-use sp1_stark::air::InteractionScope;
-use sp1_stark::air::MachineAir;
 use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS},
     shape::OrderedShape,
@@ -41,7 +39,7 @@ use crate::{
     challenger::{CanObserveVariable, DuplexChallengerVariable},
     jagged::RecursiveJaggedConfig,
     machine::{assert_complete, recursion_public_values_digest},
-    shard::{MachineVerifyingKeyVariable, ShardProofVariable, StarkVerifier},
+    shard::{MachineVerifyingKeyVariable, ShardProofVariable, RecursiveShardVerifier},
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfig, BabyBearFriConfigVariable, CircuitConfig, InnerSC,
 };
@@ -139,9 +137,8 @@ where
     /// as the one witnessed here.
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &StarkVerifier<RiscvAir<<SC as JaggedConfig>::F>, SC, C, JC>,
+        machine: &RecursiveShardVerifier<RiscvAir<<SC as JaggedConfig>::F>, SC, C, JC>,
         input: SP1RecursionWitnessVariable<C, SC, JC>,
-        challenger: &mut SC::FriChallengerVariable,
     ) where
         RiscvAir<<SC as JaggedConfig>::F>: for<'b> Air<RecursiveVerifierConstraintFolder<'b, C>>,
     {
@@ -193,9 +190,6 @@ where
 
         // Assert that the number of proofs is not zero.
         assert!(!shard_proofs.is_empty());
-
-        // Initialize a flag to denote the first (if any) CPU shard.
-        let cpu_shard_seen = false;
 
         // Verify proofs.
         for (i, shard_proof) in shard_proofs.into_iter().enumerate() {
@@ -289,6 +283,17 @@ where
                     vk.initial_global_cumulative_sum,
                 ));
 
+                // If it's the first shard, the execution shard should be 1.
+                builder.assert_felt_eq(
+                    is_first_shard * (initial_execution_shard - C::F::one()),
+                    C::F::zero(),
+                );
+                // If it's the first shard, it must be a CPU shard, so the next execution shard must be 2.
+                builder.assert_felt_eq(
+                    is_first_shard * (public_values.next_execution_shard - C::F::two()),
+                    C::F::zero(),
+                );
+
                 // Assert that `init_addr_bits` and `finalize_addr_bits` are zero for the first
                 for bit in current_init_addr_bits.iter() {
                     builder.assert_felt_eq(is_first_shard * *bit, C::F::zero());
@@ -302,9 +307,13 @@ where
             //
             // Do not verify the cumulative sum here, since the permutation challenge is shared
             // between all shards.
+            let not_cpu_shard: Felt<_> = builder.eval(
+                SymbolicFelt::one()
+                    - (public_values.next_execution_shard - public_values.execution_shard),
+            );
 
             // Prepare a challenger.
-            // let mut challenger = SC::challenger_variable(builder);
+            let mut challenger = SC::challenger_variable(builder);
 
             // Observe the vk and start pc.
             if let Some(commit) = vk.preprocessed_commit {
@@ -317,27 +326,12 @@ where
             let zero: Felt<_> = builder.eval(C::F::zero());
             challenger.observe(builder, zero);
 
-            // Observe the public values.
-            challenger.observe_slice(
-                builder,
-                shard_proof.public_values[0..machine.machine.num_pv_elts()].iter().copied(),
-            );
             tracing::debug_span!("verify shard")
-                .in_scope(|| machine.verify_shard(builder, &vk, &shard_proof, challenger));
-
-            let chips = machine.machine.chips();
+                .in_scope(|| machine.verify_shard(builder, &vk, &shard_proof, &mut challenger));
 
             // Assert that first shard has a "CPU". Equivalently, assert that if the shard does
             // not have a "CPU", then the current shard is not 1.
-            // if !contains_cpu {
-            //     builder.assert_felt_ne(current_shard, C::F::one());
-            // }
-
-            // CPU log degree bound check constraints (this assertion is made in compile time).
-            // if shard_proof.contains_cpu() {
-            //     let log_degree_cpu = shard_proof.log_degree_cpu();
-            //     assert!(log_degree_cpu <= MAX_CPU_LOG_DEGREE);
-            // }
+            builder.assert_felt_ne(not_cpu_shard * current_shard, C::F::one());
 
             // Shard constraints.
             {
@@ -350,21 +344,8 @@ where
 
             // Execution shard constraints.
             {
-                // If the shard has a "CPU" chip, then the execution shard should be incremented by
-                // 1.
-                // if contains_cpu {
-                //     // If this is the first time we've seen the CPU, we initialize the initial and
-                //     // current execution shards.
-                //     if !cpu_shard_seen {
-                //         initial_execution_shard = public_values.execution_shard;
-                //         current_execution_shard = initial_execution_shard;
-                //         cpu_shard_seen = true;
-                //     }
-
-                //     builder.assert_felt_eq(current_execution_shard, public_values.execution_shard);
-
-                //     current_execution_shard = builder.eval(current_execution_shard + C::F::one());
-                // }
+                builder.assert_felt_eq(current_execution_shard, public_values.execution_shard);
+                current_execution_shard = public_values.next_execution_shard;
             }
 
             // Program counter constraints.
@@ -372,14 +353,11 @@ where
                 // Assert that the start_pc of the proof is equal to the current pc.
                 builder.assert_felt_eq(current_pc, public_values.start_pc);
 
-                // If it's not a shard with "CPU", then assert that the start_pc equals the
-                // next_pc.
-                // if !contains_cpu {
-                //     builder.assert_felt_eq(public_values.start_pc, public_values.next_pc);
-                // } else {
-                // If it's a shard with "CPU", then assert that the start_pc is not zero.
-                builder.assert_felt_ne(public_values.start_pc, C::F::zero());
-                // }
+                // If it's not a CPU shard, then assert that the start_pc equals the next_pc.
+                builder.assert_felt_eq(
+                    not_cpu_shard * (public_values.start_pc - public_values.next_pc),
+                    C::F::zero(),
+                );
 
                 // Update current_pc to be the end_pc of the current proof.
                 current_pc = public_values.next_pc;
@@ -408,29 +386,6 @@ where
                 {
                     builder.assert_felt_eq(*bit, *current_bit);
                 }
-
-                // Assert that if MemoryInit is not present, then the address bits are the same.
-                // if !contains_memory_init {
-                //     for (prev_bit, last_bit) in public_values
-                //         .previous_init_addr_bits
-                //         .iter()
-                //         .zip_eq(public_values.last_init_addr_bits.iter())
-                //     {
-                //         builder.assert_felt_eq(*prev_bit, *last_bit);
-                //     }
-                // }
-
-                // Assert that if MemoryFinalize is not present, then the address bits are the
-                // same.
-                // if !contains_memory_finalize {
-                //     for (prev_bit, last_bit) in public_values
-                //         .previous_finalize_addr_bits
-                //         .iter()
-                //         .zip_eq(public_values.last_finalize_addr_bits.iter())
-                //     {
-                //         builder.assert_felt_eq(*prev_bit, *last_bit);
-                //     }
-                // }
 
                 // Update the MemoryInitialize address bits.
                 for (bit, pub_bit) in
@@ -479,16 +434,13 @@ where
                 }
 
                 // If it's not a shard with "CPU", then the committed value digest shouldn't change.
-                // if !contains_cpu {
-                //     for (word_d, pub_word_d) in committed_value_digest
-                //         .iter()
-                //         .zip(public_values.committed_value_digest.iter())
-                //     {
-                //         for (d, pub_d) in word_d.0.iter().zip(pub_word_d.0.iter()) {
-                //             builder.assert_felt_eq(*d, *pub_d);
-                //         }
-                //     }
-                // }
+                for (word_d, pub_word_d) in
+                    committed_value_digest.iter().zip(public_values.committed_value_digest.iter())
+                {
+                    for (d, pub_d) in word_d.0.iter().zip(pub_word_d.0.iter()) {
+                        builder.assert_felt_eq(not_cpu_shard * (*d - *pub_d), C::F::zero());
+                    }
+                }
 
                 // Update the committed value digest.
                 for (word_d, pub_word_d) in committed_value_digest
@@ -529,14 +481,11 @@ where
 
                 // If it's not a shard with "CPU", then the deferred proofs digest should not
                 // change.
-                // if !contains_cpu {
-                //     for (d, pub_d) in deferred_proofs_digest
-                //         .iter()
-                //         .zip(public_values.deferred_proofs_digest.iter())
-                //     {
-                //         builder.assert_felt_eq(*d, *pub_d);
-                //     }
-                // }
+                for (d, pub_d) in
+                    deferred_proofs_digest.iter().zip(public_values.deferred_proofs_digest.iter())
+                {
+                    builder.assert_felt_eq(not_cpu_shard * (*d - *pub_d), C::F::zero());
+                }
 
                 // Update the deferred proofs digest.
                 deferred_proofs_digest.copy_from_slice(&public_values.deferred_proofs_digest);
@@ -548,11 +497,7 @@ where
 
             // We add the global cumulative sums of the global chips.
             // Note that we constrain that the non-global chips have zero global cumulative sum in `verify_shard`.
-            for (chip, values) in chips.iter().zip(shard_proof.opened_values.chips.iter()) {
-                if chip.commit_scope() == InteractionScope::Global {
-                    global_cumulative_sums.push(values.global_cumulative_sum);
-                }
-            }
+            global_cumulative_sums.push(public_values.global_cumulative_sum);
         }
 
         // We sum the digests in `global_cumulative_sums` to get the overall global cumulative sum.
@@ -590,10 +535,7 @@ where
             recursion_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
             recursion_public_values.exit_code = exit_code;
             recursion_public_values.is_complete = is_complete;
-            // Set the contains an execution shard flag.
-            recursion_public_values.contains_execution_shard =
-                builder.eval(C::F::from_bool(cpu_shard_seen));
-            // recursion_public_values.vk_root = vk_root;
+            recursion_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
 
             // Calculate the digest and set it in the public values.
             recursion_public_values.digest =
@@ -601,7 +543,7 @@ where
 
             assert_complete(builder, recursion_public_values, is_complete);
 
-            // SC::commit_recursion_public_values(builder, *recursion_public_values);
+            SC::commit_recursion_public_values(builder, *recursion_public_values);
         }
     }
 }

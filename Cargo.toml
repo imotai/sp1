@@ -26,7 +26,7 @@ members = [
   "crates/stark",
   "crates/test-artifacts",
   "crates/zkvm/*",
-  "crates/primitives"
+  "crates/primitives",
 ]
 exclude = [
   "examples/target",

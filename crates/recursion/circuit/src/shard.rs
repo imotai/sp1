@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, marker::PhantomData};
 
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
@@ -12,6 +12,7 @@ use crate::{
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use p3_air::Air;
+use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
@@ -19,13 +20,13 @@ use slop_multilinear::{Evaluations, MleEval};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
-    ir::{Builder, Felt, SymbolicExt},
+    ir::{Builder, Config, Felt, SymbolicExt},
     prelude::{Ext, SymbolicFelt},
 };
 use sp1_recursion_executor::DIGEST_SIZE;
 use sp1_stark::{
-    air::MachineAir, septic_digest::SepticDigest, LogupGkrProof, Machine, MachineConfig,
-    ShardOpenedValues,
+    air::MachineAir, septic_digest::SepticDigest, GenericVerifierPublicValuesConstraintFolder,
+    LogupGkrProof, Machine, MachineConfig, MachineRecord, ShardOpenedValues,
 };
 
 #[allow(clippy::type_complexity)]
@@ -96,7 +97,7 @@ where
 }
 
 /// A verifier for shard proofs.
-pub struct StarkVerifier<
+pub struct RecursiveShardVerifier<
     A: MachineAir<C::F>,
     SC: BabyBearFriConfigVariable<C>,
     C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
@@ -111,7 +112,7 @@ pub struct StarkVerifier<
     pub _phantom: std::marker::PhantomData<(C, SC, A, JC)>,
 }
 
-impl<C, SC, A, JC> StarkVerifier<A, SC, C, JC>
+impl<C, SC, A, JC> RecursiveShardVerifier<A, SC, C, JC>
 where
     A: MachineAir<C::F>,
     SC: BabyBearFriConfigVariable<C> + MachineConfig,
@@ -126,6 +127,47 @@ where
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
 {
+    /// Verify the public values satisfy the required constraints, and return the cumulative sum.
+    pub fn verify_public_values(
+        &self,
+        builder: &mut Builder<C>,
+        challenge: Ext<C::F, C::EF>,
+        alpha: Ext<C::F, C::EF>,
+        beta: Ext<C::F, C::EF>,
+        public_values: &[Felt<C::F>],
+    ) -> SymbolicExt<C::F, C::EF> {
+        let zero_ext: Ext<_, _> = builder.constant(C::EF::zero());
+        let one_ext: Ext<_, _> = builder.constant(C::EF::one());
+        let mut folder = RecursiveVerifierPublicValuesConstraintFolder::<C> {
+            preprocessed: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            main: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            perm: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            perm_challenges: &[alpha, beta],
+            local_cumulative_sum: &zero_ext,
+            is_first_row: one_ext,
+            is_last_row: one_ext,
+            is_transition: one_ext,
+            alpha: challenge,
+            accumulator: SymbolicExt::zero(),
+            local_interaction_digest: SymbolicExt::zero(),
+            public_values,
+            _marker: PhantomData,
+        };
+        A::Record::eval_public_values(&mut folder);
+        // Check that the constraints hold.
+        builder.assert_ext_eq(folder.accumulator, SymbolicExt::zero());
+        folder.local_interaction_digest
+    }
+
     pub fn verify_shard(
         &self,
         builder: &mut Builder<C>,
@@ -169,6 +211,11 @@ where
         // Sample the permutation challenges.
         let alpha = challenger.sample_ext(builder);
         let beta = challenger.sample_ext(builder);
+        // Sample the public value challenge.
+        let pv_challenge = challenger.sample_ext(builder);
+
+        let cumulative_sum =
+            -self.verify_public_values(builder, pv_challenge, alpha, beta, public_values);
 
         let shard_chips = self
             .machine
@@ -179,8 +226,6 @@ where
             .collect::<BTreeSet<_>>();
 
         let degrees = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
-
-        let cumulative_sum = SymbolicExt::zero();
 
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
 
@@ -315,6 +360,16 @@ where
     }
 }
 
+pub type RecursiveVerifierPublicValuesConstraintFolder<'a, C> =
+    GenericVerifierPublicValuesConstraintFolder<
+        'a,
+        <C as Config>::F,
+        <C as Config>::EF,
+        Felt<<C as Config>::F>,
+        Ext<<C as Config>::F, <C as Config>::EF>,
+        SymbolicExt<<C as Config>::F, <C as Config>::EF>,
+    >;
+
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
@@ -354,8 +409,8 @@ mod tests {
     async fn test_verify_shard() {
         setup_logger();
         let log_blowup = 1;
-        let log_stacking_height = 21;
-        let max_log_row_count = 21;
+        let log_stacking_height = 22;
+        let max_log_row_count = 22;
         let machine = RiscvAir::machine();
         let verifier = ShardVerifier::from_basefold_parameters(
             log_blowup,
@@ -425,7 +480,7 @@ mod tests {
             jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
         };
 
-        let stark_verifier = StarkVerifier::<A, SC, C, JC> {
+        let stark_verifier = RecursiveShardVerifier::<A, SC, C, JC> {
             machine,
             pcs_verifier: recursive_jagged_verifier,
             _phantom: std::marker::PhantomData,

@@ -29,7 +29,7 @@ pub trait LogUpGkrTraceGenerator<F: Field, EF: ExtensionField<F>, A: MachineAir<
         traces: Traces<F, B>,
         alpha: EF,
         beta: EF,
-    ) -> impl Future<Output = (LogUpGkrOutput<EF>, Self::Circuit)> + Send;
+    ) -> impl Future<Output = (LogUpGkrOutput<EF, B>, Self::Circuit)> + Send;
 }
 
 /// Basic information about the GKR circuit.

@@ -1,10 +1,8 @@
 mod air;
 mod columns;
-mod flags;
+mod controller;
 mod trace;
-
 pub use columns::*;
-
 /// Implements the SHA extension operation which loops over i = \[16, 63\] and modifies w\[i\] in
 /// each iteration. The only input to the syscall is the 4byte-aligned pointer to the w array.
 ///
@@ -12,6 +10,10 @@ pub use columns::*;
 /// iteration of the loop.
 #[derive(Default)]
 pub struct ShaExtendChip;
+
+/// Implements the controller for the ShaExtendChip.
+#[derive(Default)]
+pub struct ShaExtendControlChip;
 
 impl ShaExtendChip {
     pub const fn new() -> Self {

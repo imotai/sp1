@@ -9,7 +9,7 @@ use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::DuplexChallengerVariable,
     jagged::RecursiveJaggedConfig,
-    shard::StarkVerifier,
+    shard::RecursiveShardVerifier,
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfigVariable, CircuitConfig,
 };
@@ -53,7 +53,7 @@ where
 {
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &StarkVerifier<A, SC, C, JC>,
+        machine: &RecursiveShardVerifier<A, SC, C, JC>,
         input: SP1CompressWitnessVariable<C, SC, JC>,
         _vk_root: [Felt<C::F>; DIGEST_SIZE],
     ) {

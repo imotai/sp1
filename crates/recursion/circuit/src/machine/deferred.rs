@@ -29,7 +29,7 @@ use crate::{
     hash::{FieldHasher, FieldHasherVariable},
     jagged::RecursiveJaggedConfig,
     machine::assert_recursion_public_values_valid,
-    shard::{MachineVerifyingKeyVariable, ShardProofVariable, StarkVerifier},
+    shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfig,
     BabyBearFriConfigVariable,
@@ -130,7 +130,7 @@ where
     /// - Aggregates the proof information into the accumulated deferred digest.
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &StarkVerifier<A, SC, C, JC>,
+        machine: &RecursiveShardVerifier<A, SC, C, JC>,
         input: SP1DeferredWitnessVariable<C, SC, JC>,
         // value_assertions: bool,
         challenger: &mut SC::FriChallengerVariable,
@@ -205,8 +205,8 @@ where
 
             // Update deferred proof digest
             // poseidon2( current_digest[..8] || pv.sp1_vk_digest[..8] ||
-            // pv.committed_value_digest[..32] )
-            let mut inputs: [Felt<C::F>; 48] = array::from_fn(|_| builder.uninit());
+            // pv.committed_value_digest[..16] )
+            let mut inputs: [Felt<C::F>; 32] = array::from_fn(|_| builder.uninit());
             inputs[0..DIGEST_SIZE].copy_from_slice(&reconstruct_deferred_digest);
 
             inputs[DIGEST_SIZE..DIGEST_SIZE + DIGEST_SIZE]
@@ -250,8 +250,6 @@ where
         deferred_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
         // Set the is_complete flag.
         deferred_public_values.is_complete = is_complete;
-        // Set the `contains_execution_shard` flag.
-        deferred_public_values.contains_execution_shard = builder.eval(C::F::zero());
         // Set the cumulative sum to zero.
         deferred_public_values.global_cumulative_sum =
             SepticDigest(SepticCurve::convert(SepticDigest::<C::F>::zero().0, |value| {

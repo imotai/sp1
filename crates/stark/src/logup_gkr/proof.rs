@@ -1,16 +1,18 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use slop_alloc::{Backend, CpuBackend};
 use slop_multilinear::{Mle, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
 
 /// The output of the log-up GKR circuit.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct LogUpGkrOutput<EF> {
+#[serde(bound(serialize = "Mle<EF, B>: Serialize", deserialize = "Mle<EF, B>: Deserialize<'de>"))]
+pub struct LogUpGkrOutput<EF, B: Backend = CpuBackend> {
     /// Numerator
-    pub numerator: Mle<EF>,
+    pub numerator: Mle<EF, B>,
     /// Denominator
-    pub denominator: Mle<EF>,
+    pub denominator: Mle<EF, B>,
 }
 
 /// The proof for a single round of the log-up GKR circuit.

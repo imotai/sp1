@@ -1,23 +1,26 @@
 mod air;
 pub mod columns;
+pub mod constants;
+mod controller;
 mod trace;
 
-use p3_keccak_air::KeccakAir;
-
 pub const STATE_SIZE: usize = 25;
+pub const BITS_PER_LIMB: usize = 16;
 
 // The permutation state is 25 u64's.  Our word size is 32 bits, so it is 50 words.
 pub const STATE_NUM_WORDS: usize = STATE_SIZE * 2;
 
-pub struct KeccakPermuteChip {
-    p3_keccak: KeccakAir,
-}
+pub struct KeccakPermuteChip;
 
 impl KeccakPermuteChip {
     pub const fn new() -> Self {
-        Self { p3_keccak: KeccakAir {} }
+        Self {}
     }
 }
+
+/// Implements the controller for the KeccakPermuteChip, which receives the syscalls and sends it to the chip.
+#[derive(Default)]
+pub struct KeccakPermuteControlChip;
 
 // #[cfg(test)]
 // pub mod permute_tests {

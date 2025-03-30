@@ -1158,9 +1158,9 @@ lazy_static! {
 pub fn hash_deferred_proof(
     prev_digest: &[BabyBear; 8],
     vk_digest: &[BabyBear; 8],
-    pv_digest: &[BabyBear; 32],
+    pv_digest: &[BabyBear; 16],
 ) -> [BabyBear; 8] {
-    let mut inputs = Vec::with_capacity(48);
+    let mut inputs = Vec::with_capacity(32);
     inputs.extend_from_slice(prev_digest);
     inputs.extend_from_slice(vk_digest);
     inputs.extend_from_slice(pv_digest);

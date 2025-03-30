@@ -50,7 +50,7 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
     rt.clk += 1;
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = FpOpEvent {
         shard,
         clk,
@@ -79,7 +79,7 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,
@@ -97,7 +97,7 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,

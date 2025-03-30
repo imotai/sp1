@@ -19,10 +19,14 @@ pub mod utils;
 pub mod verify;
 
 use anyhow::Result;
+use sp1_recursion_circuit::machine::{
+    PublicValuesOutputDigest, SP1CompressVerifier, SP1RecursiveVerifier,
+};
+use sp1_stark::air::PublicValues;
 use std::borrow::Borrow;
 use std::sync::{Arc, Mutex};
 
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
 use slop_basefold::{DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig};
 use slop_jagged::JaggedConfig;
@@ -41,7 +45,7 @@ use sp1_recursion_circuit::{
         InnerVal, SP1CompressWitnessValues, SP1DeferredVerifier, SP1DeferredWitnessValues,
         SP1RecursionWitnessValues, JC,
     },
-    shard::StarkVerifier,
+    shard::RecursiveShardVerifier,
     witness::Witnessable,
     BabyBearFriConfigVariable,
 };
@@ -139,7 +143,7 @@ pub type WrapAir<F> = RecursionAir<F, WRAP_DEGREE>;
 //     /// Whether to verify verification keys.
 //     pub vk_verification: bool,
 // }
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{mpsc, oneshot, Semaphore};
 use utils::words_to_bytes;
 use verify::ArcProver;
 pub type SP1VerifyingKey = MachineVerifyingKey<CoreSC>;
@@ -148,10 +152,12 @@ pub type SP1ProvingKey<C> = MachineProvingKey<C>;
 
 pub struct SP1Prover<C: SP1ProverComponents> {
     core_prover: Arc<ShardProver<C::CoreProverComponents>>,
-    _core_verifier: StarkVerifier<RiscvAir<BabyBear>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
+    core_verifier: ShardVerifier<CoreSC, RiscvAir<BabyBear>>,
+    recursive_core_verifier:
+        RecursiveShardVerifier<RiscvAir<BabyBear>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
     compress_prover: Arc<ShardProver<C::CompressProverComponents>>,
-    recursion_verifier: ShardVerifier<InnerSC, CompressAir<BabyBear>>,
-    recursion_stark_verifier: StarkVerifier<
+    compress_verifier: ShardVerifier<InnerSC, CompressAir<BabyBear>>,
+    recursive_compress_verifier: RecursiveShardVerifier<
         CompressAir<InnerVal>,
         BabyBearPoseidon2,
         InnerConfig,
@@ -251,6 +257,35 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     // }
     // }
 
+    // TODO: hide behind builder pattern
+    pub fn new(
+        core_prover: Arc<ShardProver<C::CoreProverComponents>>,
+        core_verifier: ShardVerifier<CoreSC, RiscvAir<BabyBear>>,
+        recursive_core_verifier: RecursiveShardVerifier<
+            RiscvAir<BabyBear>,
+            CoreSC,
+            InnerConfig,
+            JC<InnerConfig, CoreSC>,
+        >,
+        compress_prover: Arc<ShardProver<C::CompressProverComponents>>,
+        compress_verifier: ShardVerifier<InnerSC, CompressAir<BabyBear>>,
+        recursive_compress_verifier: RecursiveShardVerifier<
+            CompressAir<InnerVal>,
+            BabyBearPoseidon2,
+            InnerConfig,
+            JC<InnerConfig, BabyBearPoseidon2>,
+        >,
+    ) -> Self {
+        Self {
+            core_prover,
+            core_verifier,
+            recursive_core_verifier,
+            compress_prover,
+            compress_verifier,
+            recursive_compress_verifier,
+        }
+    }
+
     pub async fn setup(
         &self,
         elf: &[u8],
@@ -331,6 +366,12 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             while let Some(proof) = proof_rx.recv().await {
                 shard_proofs.push(proof);
             }
+            // TODO: fix the prove stream to be ordered.
+            shard_proofs.sort_by_key(|proof| {
+                let pv: &PublicValues<Word<BabyBear>, BabyBear> =
+                    proof.public_values.as_slice().borrow();
+                pv.shard.as_canonical_u32()
+            });
             let (public_values_stream, cycles) = handle.await.unwrap().unwrap();
             let public_values = SP1PublicValues::from(&public_values_stream);
             Self::check_for_high_cycles(cycles);
@@ -424,6 +465,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     OrInput<
                         ShardData<
                             <InnerSC as JaggedConfig>::F,
+                            CompressAir<<InnerSC as JaggedConfig>::F>,
                             <C::CompressProverComponents as MachineProverComponents>::B,
                         >,
                     >,
@@ -576,7 +618,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 let span = tracing::debug_span!("prove");
                 // TODO: Think about the capacity of this channel.
                 // let (prove_shard_tx, mut prove_shard_rx) = mpsc::channel::<(_, Sender<_>)>(1);
-                let (prove_shard_tx, mut prove_shard_rx) = mpsc::channel::<(_, Sender<_>)>(1);
+                let (prove_shard_tx, mut prove_shard_rx) =
+                    mpsc::channel::<(_, oneshot::Sender<_>)>(1);
                 let self_clone = self.clone();
 
                 tokio::spawn(async move {
@@ -592,21 +635,19 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                                 COMPRESS_LOG_BLOWUP,
                             ),
                         );
-                        tracing::debug_span!("observe proving key").in_scope(|| {
-                            pk.observe_into(&mut challenger);
-                        });
+                        pk.observe_into(&mut challenger);
                         let proof = self_clone
                             .compress_prover
                             .prove_shard(&pk, shard_data, &mut challenger)
+                            .instrument(tracing::debug_span!("prove shard"))
                             .await;
-                        tx.send((proof, vk)).await.unwrap();
+                        tx.send((proof, vk)).ok().unwrap();
                     }
                 });
                 let self_clone = self.clone();
                 let handle = tokio::task::spawn_blocking(move || {
                     let _span = span.enter();
                     loop {
-                        let self_clone = self_clone.clone();
                         let received = { record_and_trace_rx.lock().unwrap().blocking_recv() };
                         if let Some((index, height, OrInput::ProgramAndOther(boxed_prt))) = received
                         {
@@ -614,7 +655,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                             {
                                 // Get the keys.
                                 let (proof, vk) = {
-                                    let (tx, mut rx) = mpsc::channel(1);
+                                    let (tx, rx) = oneshot::channel();
                                     prove_shard_tx
                                         .blocking_send(((program.clone(), shard_data), tx))
                                         .unwrap();
@@ -635,10 +676,12 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                                         ),
                                     );
 
+                                vk.observe_into(&mut challenger);
                                 // Verify the proof.
-                                #[cfg(feature = "debug")]
+                                //TODO: comment back in
+                                // #[cfg(feature = "debug")]
                                 self_clone
-                                    .recursion_verifier
+                                    .compress_verifier
                                     .verify_shard(&vk, &proof, &mut challenger)
                                     .unwrap();
 
@@ -821,15 +864,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let builder_span = tracing::debug_span!("build recursion program").entered();
         let mut builder = Builder::<InnerConfig>::default();
 
-        let mut _challenger =
-            <BabyBearPoseidon2 as BabyBearFriConfigVariable<InnerConfig>>::challenger_variable(
-                &mut builder,
-            );
-
-        let _input = tracing::debug_span!("read input").in_scope(|| input.read(&mut builder));
-        // tracing::debug_span!("verify").in_scope(|| {
-        //     SP1RecursiveVerifier::verify(&mut builder, &self.core_verifier, input, &mut challenger)
-        // });
+        let input = tracing::debug_span!("read input").in_scope(|| input.read(&mut builder));
+        tracing::debug_span!("verify").in_scope(|| {
+            SP1RecursiveVerifier::verify(&mut builder, &self.recursive_core_verifier, input)
+        });
         let block = tracing::debug_span!("build block").in_scope(|| builder.into_root_block());
         builder_span.exit();
         // SAFETY: The circuit is well-formed. It does not use synchronization primitives
@@ -856,7 +894,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // self.join_programs_map.get(&input.shape()).cloned().unwrap_or_else(|| {
         // tracing::warn!("join program not found in map, recomputing join program.");
         // Get the operations.
-        Arc::new(compress_program_from_input::<C>(&self.recursion_stark_verifier, input))
+        Arc::new(compress_program_from_input::<C>(&self.recursive_compress_verifier, input))
         // })
     }
 
@@ -871,6 +909,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     ) -> Vec<SP1CircuitWitness> {
         let (deferred_inputs, deferred_digest) =
             self.get_recursion_deferred_inputs(vk, deferred_proofs, batch_size);
+
+        assert!(deferred_proofs.is_empty());
 
         let is_complete = shard_proofs.len() == 1 && deferred_proofs.is_empty();
         let core_inputs = self.get_recursion_core_inputs(
@@ -942,7 +982,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 end_execution_shard: BabyBear::one(),
                 init_addr_bits: [BabyBear::zero(); 32],
                 finalize_addr_bits: [BabyBear::zero(); 32],
-                committed_value_digest: [Word::<BabyBear>([BabyBear::zero(); 4]); 8],
+                committed_value_digest: [Word::<BabyBear>([BabyBear::zero(); 2]); 8],
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });
 
@@ -975,7 +1015,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Verify the proof.
         SP1DeferredVerifier::verify(
             &mut builder,
-            &self.recursion_stark_verifier,
+            &self.recursive_compress_verifier,
             input,
             &mut challenger, // self.vk_verification,
         );
@@ -1317,7 +1357,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
 pub fn compress_program_from_input<C: SP1ProverComponents>(
     // config: Option<&RecursionShapeConfig<BabyBear, CompressAir<BabyBear>>>,
-    _recursion_verifier: &StarkVerifier<
+    recursion_verifier: &RecursiveShardVerifier<
         CompressAir<InnerVal>,
         BabyBearPoseidon2,
         InnerConfig,
@@ -1330,22 +1370,16 @@ pub fn compress_program_from_input<C: SP1ProverComponents>(
     let builder_span = tracing::debug_span!("build compress program").entered();
     let mut builder = Builder::<InnerConfig>::default();
     // read the input.
-    let _input = input.read(&mut builder);
+    let input = input.read(&mut builder);
 
-    // TODO: Is there a more trait-safe way to do this?
-    let mut _challenger =
-        <BabyBearPoseidon2 as BabyBearFriConfigVariable<InnerConfig>>::challenger_variable(
-            &mut builder,
-        );
     // Verify the proof.
-    // SP1CompressVerifier::verify(
-    //     &mut builder,
-    //     recursion_verifier,
-    //     input,
-    //     // vk_verification,
-    //     PublicValuesOutputDigest::Reduce,
-    //     &mut challenger,
-    // );
+    SP1CompressVerifier::verify(
+        &mut builder,
+        recursion_verifier,
+        input,
+        // vk_verification,
+        PublicValuesOutputDigest::Reduce,
+    );
     let block = builder.into_root_block();
     builder_span.exit();
     // SAFETY: The circuit is well-formed. It does not use synchronization primitives
@@ -1497,7 +1531,7 @@ pub mod tests {
             jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
         };
 
-        let core_stark_verifier = StarkVerifier {
+        let core_stark_verifier = RecursiveShardVerifier {
             machine,
             pcs_verifier: recursive_jagged_verifier,
             _phantom: std::marker::PhantomData,
@@ -1532,7 +1566,7 @@ pub mod tests {
             jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
         };
 
-        let recursion_stark_verifier = StarkVerifier {
+        let recursion_stark_verifier = RecursiveShardVerifier {
             machine,
             pcs_verifier: recursive_jagged_verifier,
             _phantom: std::marker::PhantomData,
@@ -1544,9 +1578,10 @@ pub mod tests {
         let prover = SP1Prover {
             compress_prover,
             core_prover,
-            _core_verifier: core_stark_verifier,
-            recursion_stark_verifier,
-            recursion_verifier: verifier_2,
+            core_verifier: core_verifier.clone(),
+            recursive_core_verifier: core_stark_verifier,
+            recursive_compress_verifier: recursion_stark_verifier,
+            compress_verifier: verifier_2,
         };
 
         let prover = Arc::new(prover);

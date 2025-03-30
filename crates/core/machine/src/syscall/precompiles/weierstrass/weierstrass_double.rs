@@ -4,17 +4,22 @@ use core::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::{air::MemoryAirBuilder, utils::zeroed_f_vec};
+use crate::{
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    memory::MemoryAccessColsU8,
+    utils::{limbs_to_words, zeroed_f_vec},
+};
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{
-        ByteLookupEvent, ByteRecord, EllipticCurveDoubleEvent, FieldOperation, MemoryWriteRecord,
-        PrecompileEvent, SyscallEvent,
+        ByteLookupEvent, ByteRecord, EllipticCurveDoubleEvent, FieldOperation, MemoryRecordEnum,
+        MemoryWriteRecord, PrecompileEvent, SyscallEvent,
     },
     syscalls::SyscallCode,
     ExecutionRecord, Program,
@@ -27,11 +32,7 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
 
-use crate::{
-    memory::{MemoryCols, MemoryWriteCols},
-    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
-    utils::limbs_from_prev_access,
-};
+use crate::{operations::field::field_op::FieldOpCols, operations::field::range::FieldLtCols};
 
 pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDoubleAssignCols<u8, P>>()
@@ -48,7 +49,7 @@ pub struct WeierstrassDoubleAssignCols<T, P: FieldParameters + NumWords> {
     pub shard: T,
     pub clk: T,
     pub p_ptr: T,
-    pub p_access: GenericArray<MemoryWriteCols<T>, P::WordsCurvePoint>,
+    pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub(crate) slope_denominator: FieldOpCols<T, P>,
     pub(crate) slope_numerator: FieldOpCols<T, P>,
     pub(crate) slope: FieldOpCols<T, P>,
@@ -244,7 +245,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         };
         let zero = BigUint::zero();
         let one = BigUint::one();
-        cols.p_access[num_words_field_element].populate(dummy_memory_record, &mut vec![]);
+        let dummy_record_enum = MemoryRecordEnum::Write(dummy_memory_record);
+        cols.p_access[num_words_field_element].populate(dummy_record_enum, &mut vec![]);
         Self::populate_field_ops(&mut vec![], cols, zero, one);
 
         values.chunks_mut(chunk_size * num_cols).enumerate().par_bridge().for_each(|(i, rows)| {
@@ -320,7 +322,8 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
 
         // Populate the memory access columns.
         for i in 0..cols.p_access.len() {
-            cols.p_access[i].populate(event.p_memory_records[i], new_byte_lookup_events);
+            let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
+            cols.p_access[i].populate(record, new_byte_lookup_events);
         }
     }
 }
@@ -342,8 +345,14 @@ where
         let local: &WeierstrassDoubleAssignCols<AB::Var, E::BaseField> = (*local).borrow();
 
         let num_words_field_element = E::BaseField::NB_LIMBS / 4;
-        let p_x = limbs_from_prev_access(&local.p_access[0..num_words_field_element]);
-        let p_y = limbs_from_prev_access(&local.p_access[num_words_field_element..]);
+        let p_x_limbs = builder
+            .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
+        let p_y_limbs = builder
+            .generate_limbs(&local.p_access[num_words_field_element..], local.is_real.into());
+        let p_x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
+        let p_y: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
 
         // `a` in the Weierstrass form: y^2 = x^3 + a * x + b.
         let a = E::BaseField::to_limbs_field::<AB::Expr, _>(&E::a_int());
@@ -428,23 +437,16 @@ where
         local.x3_range.eval(builder, &local.x3_ins.result, &modulus, local.is_real);
         local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        // Constraint self.p_access.value = [self.x3_ins.result, self.y3_ins.result]. This is to
-        // ensure that p_access is updated with the new value.
-        for i in 0..E::BaseField::NB_LIMBS {
-            builder
-                .when(local.is_real)
-                .assert_eq(local.x3_ins.result[i], local.p_access[i / 4].value()[i % 4]);
-            builder.when(local.is_real).assert_eq(
-                local.y3_ins.result[i],
-                local.p_access[num_words_field_element + i / 4].value()[i % 4],
-            );
-        }
+        let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
+        let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into(),
             local.p_ptr,
-            &local.p_access,
+            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
             local.is_real,
         );
 

@@ -4,17 +4,23 @@ use core::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::{air::MemoryAirBuilder, operations::field::range::FieldLtCols, utils::zeroed_f_vec};
+use crate::{
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    memory::MemoryAccessColsU8,
+    operations::field::range::FieldLtCols,
+    utils::{limbs_to_words, zeroed_f_vec},
+};
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{
         ByteLookupEvent, ByteRecord, EllipticCurveAddEvent, FieldOperation, MemoryReadRecord,
-        PrecompileEvent, SyscallEvent,
+        MemoryRecordEnum, PrecompileEvent, SyscallEvent,
     },
     syscalls::SyscallCode,
     ExecutionRecord, Program,
@@ -29,11 +35,7 @@ use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
 use typenum::Unsigned;
 
-use crate::{
-    memory::{MemoryCols, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::FieldOpCols,
-    utils::limbs_from_prev_access,
-};
+use crate::operations::field::field_op::FieldOpCols;
 
 pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassAddAssignCols<u8, P>>()
@@ -51,8 +53,8 @@ pub struct WeierstrassAddAssignCols<T, P: FieldParameters + NumWords> {
     pub clk: T,
     pub p_ptr: T,
     pub q_ptr: T,
-    pub p_access: GenericArray<MemoryWriteCols<T>, P::WordsCurvePoint>,
-    pub q_access: GenericArray<MemoryReadCols<T>, P::WordsCurvePoint>,
+    pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
+    pub q_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub(crate) slope_denominator: FieldOpCols<T, P>,
     pub(crate) inverse_check: FieldOpCols<T, P>,
     pub(crate) slope_numerator: FieldOpCols<T, P>,
@@ -231,8 +233,9 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             MemoryReadRecord { value: 1, shard: 0, timestamp: 1, prev_shard: 0, prev_timestamp: 0 };
         let zero = BigUint::zero();
         let one = BigUint::one();
-        cols.q_access[0].populate(dummy_memory_record, &mut vec![]);
-        cols.q_access[num_words_field_element].populate(dummy_memory_record, &mut vec![]);
+        let dummy_memory_record_enum = MemoryRecordEnum::Read(dummy_memory_record);
+        cols.q_access[0].populate(dummy_memory_record_enum, &mut vec![]);
+        cols.q_access[num_words_field_element].populate(dummy_memory_record_enum, &mut vec![]);
         Self::populate_field_ops(&mut vec![], cols, zero.clone(), zero, one.clone(), one);
 
         values.chunks_mut(chunk_size * num_cols).enumerate().par_bridge().for_each(|(i, rows)| {
@@ -303,11 +306,22 @@ where
 
         let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 4;
 
-        let p_x = limbs_from_prev_access(&local.p_access[0..num_words_field_element]);
-        let p_y = limbs_from_prev_access(&local.p_access[num_words_field_element..]);
-
-        let q_x = limbs_from_prev_access(&local.q_access[0..num_words_field_element]);
-        let q_y = limbs_from_prev_access(&local.q_access[num_words_field_element..]);
+        let p_x_limbs = builder
+            .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
+        let p_x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
+        let p_y_limbs = builder
+            .generate_limbs(&local.p_access[num_words_field_element..], local.is_real.into());
+        let p_y: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
+        let q_x_limbs = builder
+            .generate_limbs(&local.q_access[0..num_words_field_element], local.is_real.into());
+        let q_x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(q_x_limbs.try_into().expect("failed to convert limbs"));
+        let q_y_limbs = builder
+            .generate_limbs(&local.q_access[num_words_field_element..], local.is_real.into());
+        let q_y: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(q_y_limbs.try_into().expect("failed to convert limbs"));
 
         // slope = (q.y - p.y) / (q.x - p.x).
         let slope = {
@@ -315,8 +329,7 @@ where
 
             local.slope_denominator.eval(builder, &q_x, &p_x, FieldOperation::Sub, local.is_real);
 
-            // We check that (q.x - p.x) is non-zero in the base field, by computing 1 / (q.x -
-            // p.x).
+            // We check that (q.x - p.x) is non-zero in the base field, by computing 1 / (q.x - p.x).
             let mut coeff_1 = Vec::new();
             coeff_1.resize(<E::BaseField as NumLimbs>::Limbs::USIZE, AB::Expr::zero());
             coeff_1[0] = AB::Expr::one();
@@ -383,31 +396,24 @@ where
         local.x3_range.eval(builder, &local.x3_ins.result, &modulus, local.is_real);
         local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        // Constraint self.p_access.value = [self.x3_ins.result, self.y3_ins.result]. This is to
-        // ensure that p_access is updated with the new value.
-        for i in 0..E::BaseField::NB_LIMBS {
-            builder
-                .when(local.is_real)
-                .assert_eq(local.x3_ins.result[i], local.p_access[i / 4].value()[i % 4]);
-            builder.when(local.is_real).assert_eq(
-                local.y3_ins.result[i],
-                local.p_access[num_words_field_element + i / 4].value()[i % 4],
-            );
-        }
+        let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
+        let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
             local.q_ptr,
-            &local.q_access,
+            &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
-        builder.eval_memory_access_slice(
+        // We read p at +1 since p, q could be the same.
+        builder.eval_memory_access_slice_write(
             local.shard,
-            local.clk + AB::F::from_canonical_u32(1), /* We read p at +1 since p, q could be the
-                                                       * same. */
+            local.clk + AB::F::from_canonical_u32(1),
             local.p_ptr,
-            &local.p_access,
+            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
             local.is_real,
         );
 
@@ -463,10 +469,12 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
 
         // Populate the memory access columns.
         for i in 0..cols.q_access.len() {
-            cols.q_access[i].populate(event.q_memory_records[i], new_byte_lookup_events);
+            let record = MemoryRecordEnum::Read(event.q_memory_records[i]);
+            cols.q_access[i].populate(record, new_byte_lookup_events);
         }
         for i in 0..cols.p_access.len() {
-            cols.p_access[i].populate(event.p_memory_records[i], new_byte_lookup_events);
+            let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
+            cols.p_access[i].populate(record, new_byte_lookup_events);
         }
     }
 }

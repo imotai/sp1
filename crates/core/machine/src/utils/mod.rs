@@ -5,21 +5,18 @@ mod span;
 mod test;
 
 pub use logger::*;
-use p3_field::Field;
+use p3_field::{AbstractField, Field};
 pub use prove::*;
-use sp1_curves::params::Limbs;
 pub use span::*;
 pub use test::*;
 
-use crate::memory::MemoryCols;
-
-use generic_array::ArrayLength;
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-
+use sp1_primitives::consts::WORD_BYTE_SIZE;
 pub use sp1_primitives::consts::{
     bytes_to_words_le, bytes_to_words_le_vec, num_to_comma_separated, words_to_bytes_le,
     words_to_bytes_le_vec,
 };
+use sp1_stark::{air::SP1AirBuilder, Word};
 
 pub const fn indices_arr<const N: usize>() -> [usize; N] {
     let mut indices_arr = [0; N];
@@ -40,20 +37,13 @@ pub fn pad_to_power_of_two<const N: usize, T: Clone + Default>(values: &mut Vec<
     values.resize(n_real_rows.next_power_of_two() * N, T::default());
 }
 
-pub fn limbs_from_prev_access<T: Copy, N: ArrayLength, M: MemoryCols<T>>(
-    cols: &[M],
-) -> Limbs<T, N> {
-    let vec = cols.iter().flat_map(|access| access.prev_value().0).collect::<Vec<T>>();
-
-    let sized = vec.try_into().unwrap_or_else(|_| panic!("failed to convert to limbs"));
-    Limbs(sized)
-}
-
-pub fn limbs_from_access<T: Copy, N: ArrayLength, M: MemoryCols<T>>(cols: &[M]) -> Limbs<T, N> {
-    let vec = cols.iter().flat_map(|access| access.value().0).collect::<Vec<T>>();
-
-    let sized = vec.try_into().unwrap_or_else(|_| panic!("failed to convert to limbs"));
-    Limbs(sized)
+pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Expr>> {
+    let base = AB::Expr::from_canonical_u32(1 << 8);
+    let result_words: Vec<Word<AB::Expr>> = limbs
+        .chunks(WORD_BYTE_SIZE)
+        .map(|l| Word([l[0] + l[1] * base.clone(), l[2] + l[3] * base.clone()]))
+        .collect();
+    result_words
 }
 
 /// Pad to a power of two, with an option to specify the power.

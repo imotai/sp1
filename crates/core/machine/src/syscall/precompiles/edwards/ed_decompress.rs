@@ -1,17 +1,23 @@
+use crate::{
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    memory::{MemoryAccessCols, MemoryAccessColsU8},
+    utils::limbs_to_words,
+};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-use std::marker::PhantomData;
-
-use crate::air::MemoryAirBuilder;
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, EdDecompressEvent, FieldOperation, PrecompileEvent},
+    events::{
+        ByteLookupEvent, ByteRecord, EdDecompressEvent, FieldOperation, MemoryRecordEnum,
+        PrecompileEvent,
+    },
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -23,13 +29,16 @@ use sp1_curves::{
     params::{FieldParameters, Limbs},
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::{
+    air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder},
+    Word,
+};
+use std::marker::PhantomData;
 use typenum::U32;
 
 use crate::{
-    memory::{MemoryReadCols, MemoryWriteCols},
     operations::field::{field_op::FieldOpCols, field_sqrt::FieldSqrtCols, range::FieldLtCols},
-    utils::{limbs_from_access, limbs_from_prev_access, pad_rows_fixed},
+    utils::pad_rows_fixed,
 };
 
 pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
@@ -47,8 +56,9 @@ pub struct EdDecompressCols<T> {
     pub clk: T,
     pub ptr: T,
     pub sign: T,
-    pub x_access: GenericArray<MemoryWriteCols<T>, WordsFieldElement>,
-    pub y_access: GenericArray<MemoryReadCols<T>, WordsFieldElement>,
+    pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
+    pub x_value: GenericArray<Word<T>, WordsFieldElement>,
+    pub y_access: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
     pub(crate) neg_x_range: FieldLtCols<T, Ed25519BaseField>,
     pub(crate) y_range: FieldLtCols<T, Ed25519BaseField>,
     pub(crate) yy: FieldOpCols<T, Ed25519BaseField>,
@@ -73,8 +83,12 @@ impl<F: PrimeField32> EdDecompressCols<F> {
         self.ptr = F::from_canonical_u32(event.ptr);
         self.sign = F::from_bool(event.sign);
         for i in 0..8 {
-            self.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
-            self.y_access[i].populate(event.y_memory_records[i], &mut new_byte_lookup_events);
+            let x_record = MemoryRecordEnum::Write(event.x_memory_records[i]);
+            self.x_access[i].populate(x_record, &mut new_byte_lookup_events);
+            let current_x_record = x_record.current_record();
+            self.x_value[i] = Word::from(current_x_record.value);
+            let y_record = MemoryRecordEnum::Read(event.y_memory_records[i]);
+            self.y_access[i].populate(y_record, &mut new_byte_lookup_events);
         }
 
         let y = &BigUint::from_bytes_le(&event.y_bytes);
@@ -113,7 +127,8 @@ impl<V: Copy> EdDecompressCols<V> {
     {
         builder.assert_bool(self.sign);
 
-        let y: Limbs<V, U32> = limbs_from_prev_access(&self.y_access);
+        let y_limbs = builder.generate_limbs(&self.y_access, self.is_real.into());
+        let y: Limbs<AB::Expr, U32> = Limbs(y_limbs.try_into().expect("failed to convert limbs"));
         let max_num_limbs =
             Ed25519BaseField::to_limbs_field::<AB::Expr, AB::F>(&Ed25519BaseField::modulus());
         self.y_range.eval(builder, &y, &max_num_limbs, self.is_real);
@@ -143,8 +158,7 @@ impl<V: Copy> EdDecompressCols<V> {
             self.is_real,
         );
 
-        // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained
-        // to be canonical here.
+        // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained to be canonical here.
         self.x.eval(builder, &self.u_div_v.result, AB::F::zero(), self.is_real);
         self.neg_x.eval(
             builder,
@@ -156,30 +170,40 @@ impl<V: Copy> EdDecompressCols<V> {
         // Constrain that `neg_x.result` is also canonical.
         self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
 
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_write(
             self.shard,
             self.clk,
             self.ptr,
             &self.x_access,
-            self.is_real,
-        );
-        builder.eval_memory_access_slice(
-            self.shard,
-            self.clk,
-            self.ptr.into() + AB::F::from_canonical_u32(32),
-            &self.y_access,
+            self.x_value.to_vec(),
             self.is_real,
         );
 
-        // Constrain that the correct result is written into x.
-        // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
-        // is canonical.
-        let x_limbs: Limbs<V, U32> = limbs_from_access(&self.x_access);
-        builder.when(self.is_real).when(self.sign).assert_all_eq(self.neg_x.result, x_limbs);
-        builder
-            .when(self.is_real)
-            .when_not(self.sign)
-            .assert_all_eq(self.x.multiplication.result, x_limbs);
+        builder.eval_memory_access_slice_read(
+            self.shard,
+            self.clk,
+            self.ptr.into() + AB::F::from_canonical_u32(32),
+            &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
+            self.is_real,
+        );
+
+        // Constrain that x_value is correct.
+        // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value is canonical.
+        let neg_x_words = limbs_to_words::<AB>(self.neg_x.result.0.to_vec());
+        let mul_x_words = limbs_to_words::<AB>(self.x.multiplication.result.0.to_vec());
+        let x_value_words = self.x_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
+        for (neg_x_word, x_value_word) in neg_x_words.iter().zip(x_value_words.iter()) {
+            builder
+                .when(self.is_real)
+                .when(self.sign)
+                .assert_all_eq(neg_x_word.clone(), x_value_word.clone());
+        }
+        for (mul_x_word, x_value_word) in mul_x_words.iter().zip(x_value_words.iter()) {
+            builder
+                .when(self.is_real)
+                .when_not(self.sign)
+                .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
+        }
 
         builder.receive_syscall(
             self.shard,

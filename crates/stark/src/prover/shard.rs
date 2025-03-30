@@ -25,7 +25,7 @@ use crate::{
     air::{MachineAir, MachineProgram},
     prover::{ZeroCheckPoly, ZerocheckAir},
     septic_digest::SepticDigest,
-    AirOpenedValues, Chip, ChipDimensions, ChipEvaluation, ChipOpenedValues,
+    AirOpenedValues, Chip, ChipDimensions, ChipEvaluation, ChipOpenedValues, ChipStatistics,
     ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineConfig,
     MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
@@ -398,7 +398,6 @@ impl<C: MachineProverComponents> ShardProver<C> {
             1,
             lambda,
         )
-        .instrument(tracing::debug_span!("zerocheck sumcheck proof"))
         .await;
 
         // Compute the chip openings from the component poly evaluations.
@@ -418,7 +417,6 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 ChipOpenedValues {
                     preprocessed,
                     main,
-                    global_cumulative_sum: SepticDigest::<C::F>::zero(), //global_sum,
                     local_cumulative_sum: C::EF::zero(),
                     degree: log_degrees[&air.name()].clone(),
                 }
@@ -451,6 +449,23 @@ impl<C: MachineProverComponents> ShardProver<C> {
         challenger: &mut C::Challenger,
     ) -> ShardProof<C::Config> {
         let ShardData { traces, public_values, permit, shard_chips } = data;
+
+        // Log the shard data.
+
+        let mut total_number_of_cells = 0;
+        tracing::info!("Proving shard");
+        for (chip, trace) in shard_chips.iter().zip_eq(traces.values()) {
+            let height = trace.num_real_entries();
+            let stats = ChipStatistics::new(chip, height);
+            tracing::info!("{}", stats);
+            total_number_of_cells += stats.total_number_of_cells();
+        }
+        tracing::info!(
+            "Total number of cells: {}, number of variables: {}",
+            total_number_of_cells,
+            total_number_of_cells.next_power_of_two().ilog2()
+        );
+
         // Observe the public values.
         challenger.observe_slice(&public_values[0..self.num_pv_elts()]);
 
@@ -463,6 +478,8 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Sample the logup challenges.
         let alpha = challenger.sample_ext_element::<C::EF>();
         let beta = challenger.sample_ext_element::<C::EF>();
+        let _pv_challenge = challenger.sample_ext_element::<C::EF>();
+
         let logup_gkr_proof = self
             .logup_gkr_prover
             .prove_logup_gkr(
@@ -585,6 +602,9 @@ pub struct MachineProvingKey<C: MachineProverComponents> {
 impl<C: MachineProverComponents> MachineProvingKey<C> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
+        if let Some(preprocessed_commit) = self.preprocessed_commit.as_ref() {
+            challenger.observe(preprocessed_commit.clone());
+        }
         challenger.observe(self.pc_start);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);

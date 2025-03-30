@@ -57,7 +57,7 @@ pub(crate) fn fp2_mul_syscall<P: FpOpField, E: ExecutorConfig>(
     result.resize(num_words, 0);
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = Fp2MulEvent {
         shard,
         clk,
@@ -69,7 +69,8 @@ pub(crate) fn fp2_mul_syscall<P: FpOpField, E: ExecutorConfig>(
         y_memory_records,
         local_mem_access: rt.postprocess(),
     };
-    let syscall_event = rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+    let syscall_event =
+        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
     match P::FIELD_TYPE {
         FieldType::Bn254 => rt.add_precompile_event(
             syscall_code,

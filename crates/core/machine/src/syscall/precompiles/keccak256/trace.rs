@@ -106,13 +106,17 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
             !shard.get_precompile_events(SyscallCode::KECCAK_PERMUTE).is_empty()
         }
     }
+
+    fn local_only(&self) -> bool {
+        true
+    }
 }
 
 impl KeccakPermuteChip {
     pub fn populate_chunk<F: PrimeField32>(
         event: &KeccakPermuteEvent,
         chunk: &mut [F],
-        new_byte_lookup_events: &mut Vec<ByteLookupEvent>,
+        _: &mut Vec<ByteLookupEvent>,
     ) {
         let start_clk = event.clk;
         let shard = event.shard;
@@ -130,26 +134,8 @@ impl KeccakPermuteChip {
             cols.shard = F::from_canonical_u32(shard);
             cols.clk = F::from_canonical_u32(start_clk);
             cols.state_addr = F::from_canonical_u32(event.state_addr);
+            cols.index = F::from_canonical_u32(i as u32);
             cols.is_real = F::one();
-
-            // If this is the first row, then populate read memory accesses
-            if i == 0 {
-                for (j, read_record) in event.state_read_records.iter().enumerate() {
-                    cols.state_mem[j].populate_read(*read_record, new_byte_lookup_events);
-                    new_byte_lookup_events.add_u8_range_checks(&read_record.value.to_le_bytes());
-                }
-                cols.do_memory_check = F::one();
-                cols.receive_ecall = F::one();
-            }
-
-            // If this is the last row, then populate write memory accesses
-            if i == NUM_ROUNDS - 1 {
-                for (j, write_record) in event.state_write_records.iter().enumerate() {
-                    cols.state_mem[j].populate_write(*write_record, new_byte_lookup_events);
-                    new_byte_lookup_events.add_u8_range_checks(&write_record.value.to_le_bytes());
-                }
-                cols.do_memory_check = F::one();
-            }
         }
     }
 }

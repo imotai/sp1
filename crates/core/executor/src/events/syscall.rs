@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::syscalls::SyscallCode;
 
-use super::MemoryWriteRecord;
-
 /// Syscall Event.
 ///
 /// This object encapsulated the information needed to prove a syscall invocation from the CPU
@@ -19,10 +17,6 @@ pub struct SyscallEvent {
     pub shard: u32,
     /// The clock cycle.
     pub clk: u32,
-    /// The `op_a` memory write record.
-    pub a_record: MemoryWriteRecord,
-    /// Whether the `op_a` memory write record is real.
-    pub a_record_is_real: bool,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
     /// The syscall code.
@@ -33,4 +27,6 @@ pub struct SyscallEvent {
     pub arg1: u32,
     /// The second operand value (`op_c`).
     pub arg2: u32,
+    /// The exit code.
+    pub exit_code: u32,
 }

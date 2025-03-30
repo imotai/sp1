@@ -48,6 +48,7 @@ impl Instruction {
         matches!(
             self.opcode,
             Opcode::ADD
+                | Opcode::ADDI
                 | Opcode::SUB
                 | Opcode::XOR
                 | Opcode::OR
@@ -104,6 +105,20 @@ impl Instruction {
     #[inline]
     pub const fn is_jump_instruction(&self) -> bool {
         matches!(self.opcode, Opcode::JAL | Opcode::JALR)
+    }
+
+    /// Returns if the instruction is a jal instruction.
+    #[must_use]
+    #[inline]
+    pub const fn is_jal_instruction(&self) -> bool {
+        matches!(self.opcode, Opcode::JAL)
+    }
+
+    /// Returns if the instruction is a jalr instruction.
+    #[must_use]
+    #[inline]
+    pub const fn is_jalr_instruction(&self) -> bool {
+        matches!(self.opcode, Opcode::JALR)
     }
 
     /// Returns if the instruction is an auipc instruction.

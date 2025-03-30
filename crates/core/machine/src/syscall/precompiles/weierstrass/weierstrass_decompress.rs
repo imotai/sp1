@@ -4,14 +4,19 @@ use core::{
 };
 use std::fmt::Debug;
 
-use crate::{air::MemoryAirBuilder, utils::zeroed_f_vec};
+use crate::{
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    memory::{MemoryAccessCols, MemoryAccessColsU8},
+    utils::{limbs_to_words, zeroed_f_vec},
+};
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteRecord, FieldOperation, PrecompileEvent},
+    events::{ByteRecord, FieldOperation, MemoryReadRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -25,17 +30,19 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::{
+    air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder},
+    Word,
+};
 use std::marker::PhantomData;
 use typenum::Unsigned;
 
 use crate::{
-    memory::{MemoryReadCols, MemoryReadWriteCols},
     operations::field::{
         field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
         field_sqrt::FieldSqrtCols, range::FieldLtCols,
     },
-    utils::{bytes_to_words_le_vec, limbs_from_access, limbs_from_prev_access, pad_rows_fixed},
+    utils::{bytes_to_words_le_vec, pad_rows_fixed},
 };
 
 pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() -> usize {
@@ -52,8 +59,9 @@ pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub clk: T,
     pub ptr: T,
     pub sign_bit: T,
-    pub x_access: GenericArray<MemoryReadCols<T>, P::WordsFieldElement>,
-    pub y_access: GenericArray<MemoryReadWriteCols<T>, P::WordsFieldElement>,
+    pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
+    pub y_access: GenericArray<MemoryAccessCols<T>, P::WordsFieldElement>,
+    pub y_value: GenericArray<Word<T>, P::WordsFieldElement>,
     pub(crate) range_x: FieldLtCols<T, P>,
     pub(crate) neg_y_range_check: FieldLtCols<T, P>,
     pub(crate) x_2: FieldOpCols<T, P>,
@@ -196,11 +204,14 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             Self::populate_field_ops(&mut new_byte_lookup_events, cols, x);
 
             for i in 0..cols.x_access.len() {
-                cols.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Read(event.x_memory_records[i]);
+                cols.x_access[i].populate(record, &mut new_byte_lookup_events);
             }
             for i in 0..cols.y_access.len() {
-                cols.y_access[i]
-                    .populate_write(event.y_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Write(event.y_memory_records[i]);
+                let current_record = record.current_record();
+                cols.y_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.y_value[i] = Word::from(current_record.value);
             }
 
             if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
@@ -243,6 +254,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         pad_rows_fixed(
             &mut rows,
             || {
+                let mut blu = vec![];
                 let mut row = zeroed_f_vec(width);
                 let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
                     row.as_mut_slice()[0..weierstrass_width].borrow_mut();
@@ -252,7 +264,16 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 let dummy_bytes = dummy_value.to_bytes_le();
                 let words = bytes_to_words_le_vec(&dummy_bytes);
                 for i in 0..cols.x_access.len() {
-                    cols.x_access[i].access.value = words[i].into();
+                    cols.x_access[i].populate(
+                        MemoryRecordEnum::Read(MemoryReadRecord {
+                            prev_shard: 0,
+                            prev_timestamp: 0,
+                            value: words[i],
+                            shard: 0,
+                            timestamp: 1,
+                        }),
+                        &mut blu,
+                    );
                 }
 
                 Self::populate_field_ops(&mut vec![], cols, dummy_value);
@@ -318,8 +339,9 @@ where
 
         builder.assert_bool(local.sign_bit);
 
-        let x: Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&local.x_access);
+        let x_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
+        let x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(x_limbs.try_into().expect("failed to convert limbs"));
         let max_num_limbs = E::BaseField::to_limbs_field_vec(&E::BaseField::modulus());
         local.range_x.eval(
             builder,
@@ -357,13 +379,14 @@ where
             limbs_from_vec::<AB::Expr, <E::BaseField as NumLimbs>::Limbs, AB::F>(modulus_limbs);
         local.neg_y_range_check.eval(builder, &local.neg_y.result, &modulus_limbs, local.is_real);
 
-        // Constrain that `y` is a square root. Note that `y.multiplication.result` is constrained
-        // to be canonical here. Since `y_limbs` is constrained to be either
-        // `y.multiplication.result` or `neg_y.result`, `y_limbs` will be canonical.
+        // Constrain that `y` is a square root. Note that `y.multiplication.result` is constrained to be canonical here.
+        // Since `y_limbs` is constrained to be either `y.multiplication.result` or `neg_y.result`, `y_limbs` will be canonical.
         local.y.eval(builder, &local.x_3_plus_b_plus_ax.result, local.y.lsb, local.is_real);
 
-        let y_limbs: Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs> =
-            limbs_from_access(&local.y_access);
+        let neg_y_words = limbs_to_words::<AB>(local.neg_y.result.0.to_vec());
+        let mul_words = limbs_to_words::<AB>(local.y.multiplication.result.0.to_vec());
+        let y_value_words =
+            local.y_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
 
         // Constrain the y value according the sign rule convention.
         match self.sign_rule {
@@ -373,14 +396,18 @@ where
                 // value. Thus, if the sign_bit matches the local.y.lsb value, then the result
                 // should be the square root of the y value. Otherwise, the result should be the
                 // negative square root of the y value.
-                builder
-                    .when(local.is_real)
-                    .when_ne(local.y.lsb, AB::Expr::one() - local.sign_bit)
-                    .assert_all_eq(local.y.multiplication.result, y_limbs);
-                builder
-                    .when(local.is_real)
-                    .when_ne(local.y.lsb, local.sign_bit)
-                    .assert_all_eq(local.neg_y.result, y_limbs);
+                for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_ne(local.y.lsb, AB::Expr::one() - local.sign_bit)
+                        .assert_all_eq(mul_word.clone(), y_value_word.clone());
+                }
+                for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_ne(local.y.lsb, local.sign_bit)
+                        .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
+                }
             }
             SignChoiceRule::Lexicographic => {
                 // When the sign rule is Lexicographic, the sign_bit corresponds to whether
@@ -407,16 +434,18 @@ where
                 );
 
                 // Assert that the value of `y` matches the claimed value by the flags.
-
-                builder
-                    .when(local.is_real)
-                    .when(choice_cols.is_y_eq_sqrt_y_result)
-                    .assert_all_eq(local.y.multiplication.result, y_limbs);
-
-                builder
-                    .when(local.is_real)
-                    .when_not(choice_cols.is_y_eq_sqrt_y_result)
-                    .assert_all_eq(local.neg_y.result, y_limbs);
+                for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when(choice_cols.is_y_eq_sqrt_y_result)
+                        .assert_all_eq(mul_word.clone(), y_value_word.clone());
+                }
+                for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_not(choice_cols.is_y_eq_sqrt_y_result)
+                        .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
+                }
 
                 // Assert that the comparison only turns on when `is_real` is true.
                 builder.when_not(local.is_real).assert_zero(choice_cols.when_sqrt_y_res_is_lt);
@@ -460,20 +489,21 @@ where
         }
 
         for i in 0..num_words_field_element {
-            builder.eval_memory_access(
+            builder.eval_memory_access_read(
                 local.shard,
                 local.clk,
                 local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
-                &local.x_access[i],
+                local.x_access[i].memory_access,
                 local.is_real,
             );
         }
         for i in 0..num_words_field_element {
-            builder.eval_memory_access(
+            builder.eval_memory_access_write(
                 local.shard,
                 local.clk,
                 local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4),
-                &local.y_access[i],
+                local.y_access[i],
+                local.y_value[i],
                 local.is_real,
             );
         }

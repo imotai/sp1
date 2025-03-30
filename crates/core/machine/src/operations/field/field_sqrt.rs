@@ -67,8 +67,7 @@ impl<F: PrimeField32, P: FieldParameters> FieldSqrtCols<F, P> {
 
         let and_event = ByteLookupEvent {
             opcode: ByteOpcode::AND,
-            a1: self.lsb.as_canonical_u32() as u16,
-            a2: 0,
+            a: self.lsb.as_canonical_u32() as u16,
             b: sqrt_bytes[0],
             c: 1,
         };

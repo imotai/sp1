@@ -28,80 +28,82 @@ use serde::{Deserialize, Serialize};
 pub enum Opcode {
     /// rd ← rs1 + rs2, pc ← pc + 4
     ADD = 0,
+    /// rd ← rs1 + imm, pc ← pc + 4
+    ADDI = 1,
     /// rd ← rs1 - rs2, pc ← pc + 4
-    SUB = 1,
+    SUB = 2,
     /// rd ← rs1 ^ rs2, pc ← pc + 4
-    XOR = 2,
+    XOR = 3,
     /// rd ← rs1 | rs2, pc ← pc + 4
-    OR = 3,
+    OR = 4,
     /// rd ← rs1 & rs2, pc ← pc + 4
-    AND = 4,
+    AND = 5,
     /// rd ← rs1 << rs2, pc ← pc + 4
-    SLL = 5,
+    SLL = 6,
     /// rd ← rs1 >> rs2 (logical), pc ← pc + 4
-    SRL = 6,
+    SRL = 7,
     /// rd ← rs1 >> rs2 (arithmetic), pc ← pc + 4
-    SRA = 7,
+    SRA = 8,
     /// rd ← (rs1 < rs2) ? 1 : 0 (signed), pc ← pc + 4
-    SLT = 8,
+    SLT = 9,
     /// rd ← (rs1 < rs2) ? 1 : 0 (unsigned), pc ← pc + 4
-    SLTU = 9,
+    SLTU = 10,
     /// rd ← rs1 * rs2 (signed), pc ← pc + 4
-    MUL = 10,
+    MUL = 11,
     /// rd ← rs1 * rs2 (half), pc ← pc + 4
-    MULH = 11,
+    MULH = 12,
     /// rd ← rs1 * rs2 (half unsigned), pc ← pc + 4
-    MULHU = 12,
+    MULHU = 13,
     /// rd ← rs1 * rs2 (half signed unsigned), pc ← pc + 4
-    MULHSU = 13,
+    MULHSU = 14,
     /// rd ← rs1 / rs2 (signed), pc ← pc + 4
-    DIV = 14,
+    DIV = 15,
     /// rd ← rs1 / rs2 (unsigned), pc ← pc + 4
-    DIVU = 15,
+    DIVU = 16,
     /// rd ← rs1 % rs2 (signed), pc ← pc + 4
-    REM = 16,
+    REM = 17,
     /// rd ← rs1 % rs2 (unsigned), pc ← pc + 4
-    REMU = 17,
+    REMU = 18,
     /// rd ← sx(m8(rs1 + imm)), pc ← pc + 4
-    LB = 18,
+    LB = 19,
     /// rd ← sx(m16(rs1 + imm)), pc ← pc + 4
-    LH = 19,
+    LH = 20,
     /// rd ← sx(m32(rs1 + imm)), pc ← pc + 4
-    LW = 20,
+    LW = 21,
     /// rd ← zx(m8(rs1 + imm)), pc ← pc + 4
-    LBU = 21,
+    LBU = 22,
     /// rd ← zx(m16(rs1 + imm)), pc ← pc + 4
-    LHU = 22,
+    LHU = 23,
     /// m8(rs1 + imm) ← rs2[7:0], pc ← pc + 4
-    SB = 23,
+    SB = 24,
     /// m16(rs1 + imm) ← rs2[15:0], pc ← pc + 4
-    SH = 24,
+    SH = 25,
     /// m32(rs1 + imm) ← rs2[31:0], pc ← pc + 4
-    SW = 25,
+    SW = 26,
     /// pc ← pc + ((rs1 == rs2) ? imm : 4)
-    BEQ = 26,
+    BEQ = 27,
     /// pc ← pc + ((rs1 != rs2) ? imm : 4)
-    BNE = 27,
+    BNE = 28,
     /// pc ← pc + ((rs1 < rs2) ? imm : 4) (signed)
-    BLT = 28,
+    BLT = 29,
     /// pc ← pc + ((rs1 >= rs2) ? imm : 4) (signed)
-    BGE = 29,
+    BGE = 30,
     /// pc ← pc + ((rs1 < rs2) ? imm : 4) (unsigned)
-    BLTU = 30,
+    BLTU = 31,
     /// pc ← pc + ((rs1 >= rs2) ? imm : 4) (unsigned)
-    BGEU = 31,
+    BGEU = 32,
     /// rd ← pc + 4, pc ← pc + imm
-    JAL = 32,
+    JAL = 33,
     /// rd ← pc + 4, pc ← (rs1 + imm) & ∼1
-    JALR = 33,
+    JALR = 34,
     /// rd ← pc + imm, pc ← pc + 4
-    AUIPC = 34,
+    AUIPC = 35,
     /// Transfer control to the debugger.
-    ECALL = 35,
+    ECALL = 36,
     /// Transfer control to the operating system.
-    EBREAK = 36,
+    EBREAK = 37,
     /// Unimplemented instruction.
-    UNIMP = 37,
+    UNIMP = 38,
 }
 /// Byte Opcode.
 ///
@@ -117,18 +119,14 @@ pub enum ByteOpcode {
     OR = 1,
     /// Bitwise XOR.
     XOR = 2,
-    /// Shift Left Logical.
-    SLL = 3,
     /// Unsigned 8-bit Range Check.
-    U8Range = 4,
-    /// Shift Right with Carry.
-    ShrCarry = 5,
+    U8Range = 3,
     /// Unsigned Less Than.
-    LTU = 6,
+    LTU = 4,
     /// Most Significant Bit.
-    MSB = 7,
-    /// Unsigned 16-bit Range Check.
-    U16Range = 8,
+    MSB = 5,
+    /// Range Check.
+    Range = 6,
 }
 
 impl Opcode {
@@ -137,6 +135,7 @@ impl Opcode {
     pub const fn mnemonic(&self) -> &str {
         match self {
             Opcode::ADD => "add",
+            Opcode::ADDI => "addi",
             Opcode::SUB => "sub",
             Opcode::XOR => "xor",
             Opcode::OR => "or",

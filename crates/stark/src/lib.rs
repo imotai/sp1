@@ -30,7 +30,6 @@ mod logup_gkr;
 mod lookup;
 mod machine;
 mod opts;
-mod permutation;
 pub mod prover;
 mod record;
 pub mod septic_curve;

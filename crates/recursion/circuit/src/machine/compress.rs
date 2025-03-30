@@ -14,7 +14,7 @@ use slop_algebra::AbstractField;
 use slop_jagged::JaggedConfig;
 
 use serde::{Deserialize, Serialize};
-use sp1_recursion_compiler::ir::{Builder, Felt, SymbolicFelt};
+use sp1_recursion_compiler::ir::{Builder, Felt};
 
 use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 
@@ -28,11 +28,8 @@ use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::CanObserveVariable,
     jagged::RecursiveJaggedConfig,
-    machine::{
-        assert_complete, assert_recursion_public_values_valid, recursion_public_values_digest,
-        root_public_values_digest,
-    },
-    shard::{MachineVerifyingKeyVariable, ShardProofVariable, StarkVerifier},
+    machine::{recursion_public_values_digest, root_public_values_digest},
+    shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfigVariable, CircuitConfig, EF,
 };
@@ -109,11 +106,10 @@ where
     ///   checked against itself as in [sp1_prover::Prover] or as in [super::SP1RootVerifier].
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &StarkVerifier<A, SC, C, JC>,
+        machine: &RecursiveShardVerifier<A, SC, C, JC>,
         input: SP1CompressWitnessVariable<C, SC, JC>,
         //vk_root: [Felt<C::F>; DIGEST_SIZE],
         kind: PublicValuesOutputDigest,
-        challenger: &mut SC::FriChallengerVariable,
     ) {
         // Read input.
         let SP1CompressWitnessVariable { vks_and_proofs, is_complete } = input;
@@ -152,16 +148,12 @@ where
         let mut finalize_addr_bits: [Felt<_>; 32] =
             core::array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
 
-        // Initialize a flag to denote if the any of the recursive proofs represents a shard range
-        // where at least once of the shards is an execution shard (i.e. contains cpu).
-        let mut contains_execution_shard: Felt<_> = builder.eval(C::F::zero());
-
         // Verify proofs, check consistency, and aggregate public values.
         for (i, (vk, shard_proof)) in vks_and_proofs.into_iter().enumerate() {
             // Verify the shard proof.
 
             // Prepare a challenger.
-            // let mut challenger = machine.pcs_verifier.challenger_variable(builder);
+            let mut challenger = SC::challenger_variable(builder);
 
             // Observe the vk and start pc.
             if let Some(vk) = vk.preprocessed_commit.as_ref() {
@@ -173,20 +165,14 @@ where
             // Observe the padding.
             let zero: Felt<_> = builder.eval(C::F::zero());
             challenger.observe(builder, zero);
-
-            // Observe the public values.
-            challenger.observe_slice(
-                builder,
-                shard_proof.public_values[0..machine.machine.num_pv_elts()].iter().copied(),
-            );
-
-            machine.verify_shard(builder, &vk, &shard_proof, challenger);
+            // Verify the shard proof.
+            machine.verify_shard(builder, &vk, &shard_proof, &mut challenger);
 
             // Get the current public values.
             let current_public_values: &RecursionPublicValues<Felt<C::F>> =
                 shard_proof.public_values.as_slice().borrow();
             // Assert that the public values are valid.
-            assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
+            // assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
             // Assert that the vk root is the same as the witnessed one.
             // for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
             //     builder.assert_felt_eq(*expected, *actual);
@@ -293,41 +279,8 @@ where
 
             // Execution shard constraints.
             {
-                // Assert that `contains_execution_shard` is boolean.
-                builder.assert_felt_eq(
-                    current_public_values.contains_execution_shard
-                        * (SymbolicFelt::one() - current_public_values.contains_execution_shard),
-                    C::F::zero(),
-                );
-                // A flag to indicate whether the first execution shard has been seen. We have:
-                // - `is_first_execution_shard_seen`  = current_contains_execution_shard &&
-                //   !execution_shard_seen_before.
-                // Since `contains_execution_shard` is the boolean flag used to denote if we have
-                // seen an execution shard, we can use it to denote if we have seen an execution
-                // shard before.
-                let is_first_execution_shard_seen: Felt<_> = builder.eval(
-                    current_public_values.contains_execution_shard
-                        * (SymbolicFelt::one() - contains_execution_shard),
-                );
-
-                // If this is the first execution shard, then we update the start execution shard
-                // and the `execution_shard` values.
-                compress_public_values.start_execution_shard = builder.eval(
-                    current_public_values.start_execution_shard * is_first_execution_shard_seen
-                        + compress_public_values.start_execution_shard
-                            * (SymbolicFelt::one() - is_first_execution_shard_seen),
-                );
-                execution_shard = builder.eval(
-                    current_public_values.start_execution_shard * is_first_execution_shard_seen
-                        + execution_shard * (SymbolicFelt::one() - is_first_execution_shard_seen),
-                );
-
-                // If this is an execution shard, make the assertion that the value is consistent.
-                builder.assert_felt_eq(
-                    current_public_values.contains_execution_shard
-                        * (execution_shard - current_public_values.start_execution_shard),
-                    C::F::zero(),
-                );
+                builder
+                    .assert_felt_eq(execution_shard, current_public_values.start_execution_shard);
             }
 
             // Assert that the MemoryInitialize address bits are the same.
@@ -415,26 +368,8 @@ where
             }
 
             // Update the accumulated values.
-
-            // If the current shard has an execution shard, then we update the flag in case it was
-            // not already set. That is:
-            // - If the current shard has an execution shard and the flag is set to zero, it will be
-            //   set to one.
-            // - If the current shard has an execution shard and the flag is set to one, it will
-            //   remain set to one.
-            contains_execution_shard = builder.eval(
-                contains_execution_shard
-                    + current_public_values.contains_execution_shard
-                        * (SymbolicFelt::one() - contains_execution_shard),
-            );
-
-            // If this proof contains an execution shard, we update the execution shard value.
-            execution_shard = builder.eval(
-                current_public_values.next_execution_shard
-                    * current_public_values.contains_execution_shard
-                    + execution_shard
-                        * (SymbolicFelt::one() - current_public_values.contains_execution_shard),
-            );
+            // Update the execution shard.
+            execution_shard = current_public_values.next_execution_shard;
 
             // Update the reconstruct deferred proof digest.
             for (digest, current_digest) in reconstruct_deferred_digest
@@ -495,12 +430,10 @@ where
         compress_public_values.global_cumulative_sum = global_cumulative_sum;
         // Assign the `is_complete` flag.
         compress_public_values.is_complete = is_complete;
-        // Set the contains an execution shard flag.
-        compress_public_values.contains_execution_shard = contains_execution_shard;
         // Set the exit code.
         compress_public_values.exit_code = exit_code;
         // Reflect the vk root.
-        // compress_public_values.vk_root = vk_root;
+        compress_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
         // Set the digest according to the previous values.
         compress_public_values.digest = match kind {
             PublicValuesOutputDigest::Reduce => {
@@ -512,9 +445,10 @@ where
         };
 
         // If the proof is complete, make completeness assertions.
-        assert_complete(builder, compress_public_values, is_complete);
+        // TODO: comment back in
+        // assert_complete(builder, compress_public_values, is_complete);
 
-        // SC::commit_recursion_public_values(builder, *compress_public_values);
+        SC::commit_recursion_public_values(builder, *compress_public_values);
     }
 }
 

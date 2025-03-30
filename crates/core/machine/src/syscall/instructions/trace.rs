@@ -6,11 +6,12 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, SyscallEvent},
+    events::{ByteLookupEvent, ByteRecord, SyscallEvent},
     syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, RTypeRecord,
 };
-use sp1_stark::air::MachineAir;
+use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_stark::{air::MachineAir, Word};
 
 use crate::utils::{next_power_of_two, zeroed_f_vec};
 
@@ -51,7 +52,15 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
 
                     if idx < input.syscall_events.len() {
                         let event = &input.syscall_events[idx];
-                        self.event_to_row(event, cols, &mut blu);
+                        let instruction = input.program.fetch(event.0.pc);
+                        self.event_to_row(&event.0, &event.1, cols, &mut blu);
+                        cols.state.populate(
+                            &mut blu,
+                            input.public_values.execution_shard,
+                            event.0.clk,
+                            event.0.pc,
+                        );
+                        cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
                 blu
@@ -77,21 +86,19 @@ impl SyscallInstrsChip {
     fn event_to_row<F: PrimeField32>(
         &self,
         event: &SyscallEvent,
+        record: &RTypeRecord,
         cols: &mut SyscallInstrColumns<F>,
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
 
-        cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
-        cols.op_b_value = event.arg1.into();
-        cols.op_c_value = event.arg2.into();
-
-        let syscall_id = cols.op_a_access.prev_value[0];
-        let num_cycles = cols.op_a_access.prev_value[2];
+        cols.op_a_value = Word::from(record.a.value());
+        cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
+        blu.add_u16_range_checks(&u32_to_u16_limbs(record.a.value()));
+        let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
+        let syscall_id = a_prev_value[0];
+        let num_cycles = a_prev_value[2];
 
         cols.num_extra_cycles = num_cycles;
         cols.is_halt =
@@ -127,7 +134,7 @@ impl SyscallInstrsChip {
         if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
             || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
         {
-            let digest_idx = cols.op_b_value.to_u32() as usize;
+            let digest_idx = record.b.value() as usize;
             cols.index_bitmap[digest_idx] = F::one();
         }
 

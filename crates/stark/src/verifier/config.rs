@@ -45,6 +45,9 @@ pub struct MachineVerifyingKey<C: MachineConfig> {
 impl<C: MachineConfig> MachineVerifyingKey<C> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
+        if let Some(preprocessed_commit) = self.preprocessed_commit.as_ref() {
+            challenger.observe(preprocessed_commit.clone());
+        }
         challenger.observe(self.pc_start);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);

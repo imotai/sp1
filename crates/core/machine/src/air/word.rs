@@ -87,9 +87,9 @@ pub trait WordAirBuilder: ByteAirBuilder {
     ) {
         input.iter().for_each(|limb| {
             self.send_byte(
-                Self::Expr::from_canonical_u8(ByteOpcode::U16Range as u8),
+                Self::Expr::from_canonical_u8(ByteOpcode::Range as u8),
                 *limb,
-                Self::Expr::zero(),
+                Self::Expr::from_canonical_u32(16),
                 Self::Expr::zero(),
                 mult.clone(),
             );

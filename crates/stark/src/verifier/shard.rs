@@ -17,11 +17,13 @@ use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir, septic_digest::SepticDigest, Chip, ChipOpenedValues, LogUpEvaluations,
-    LogUpGkrVerifier, LogupGkrVerificationError, Machine, VerifierConstraintFolder,
+    air::MachineAir, Chip, ChipOpenedValues, LogUpEvaluations, LogUpGkrVerifier,
+    LogupGkrVerificationError, Machine, VerifierConstraintFolder,
+    VerifierPublicValuesConstraintFolder,
 };
 
 use super::{MachineConfig, MachineVerifyingKey, ShardOpenedValues, ShardProof};
+use crate::record::MachineRecord;
 
 /// A verifier for shard proofs.
 #[derive_where(Clone)]
@@ -59,6 +61,9 @@ pub enum ShardVerifierError<C: MachineConfig> {
     /// The GKR verification failed.
     #[error("GKR verification failed: {0}")]
     GkrVerificationFailed(LogupGkrVerificationError<C::EF>),
+    /// The public values verification failed.
+    #[error("public values verification failed")]
+    InvalidPublicValues,
 }
 
 /// An error that occurs when the shape of the openings does not match the expected shape.
@@ -94,7 +99,6 @@ where
         let dummy_main_trace = vec![C::EF::zero(); chip.width()];
 
         let default_challenge = C::EF::default();
-        let default_septic_digest = SepticDigest::<C::F>::default();
 
         let mut folder = VerifierConstraintFolder::<C> {
             preprocessed: VerticalPair::new(
@@ -111,7 +115,6 @@ where
             ),
             perm_challenges: &[],
             local_cumulative_sum: &default_challenge,
-            global_cumulative_sum: &default_septic_digest,
             is_first_row: default_challenge,
             is_last_row: default_challenge,
             is_transition: default_challenge,
@@ -137,7 +140,6 @@ where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {
         let default_challenge = C::EF::default();
-        let default_septic_digest = SepticDigest::<C::F>::default();
 
         let mut folder = VerifierConstraintFolder::<C> {
             preprocessed: VerticalPair::new(
@@ -154,7 +156,6 @@ where
             ),
             perm_challenges: &[],
             local_cumulative_sum: &default_challenge,
-            global_cumulative_sum: &default_septic_digest,
             is_first_row: default_challenge,
             is_last_row: default_challenge,
             is_transition: default_challenge,
@@ -307,6 +308,46 @@ where
         Ok(())
     }
 
+    /// Verify the public values satisfy the required constraints, and return the cumulative sum.
+    pub fn verify_public_values(
+        &self,
+        challenge: C::EF,
+        alpha: C::EF,
+        beta: C::EF,
+        public_values: &[C::F],
+    ) -> Result<C::EF, ShardVerifierError<C>> {
+        let mut folder = VerifierPublicValuesConstraintFolder::<C> {
+            preprocessed: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            main: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            perm: VerticalPair::new(
+                RowMajorMatrixView::new_row(&[]),
+                RowMajorMatrixView::new_row(&[]),
+            ),
+            perm_challenges: &[alpha, beta],
+            local_cumulative_sum: &C::EF::zero(),
+            is_first_row: C::EF::one(),
+            is_last_row: C::EF::one(),
+            is_transition: C::EF::one(),
+            alpha: challenge,
+            accumulator: C::EF::zero(),
+            local_interaction_digest: C::EF::zero(),
+            public_values,
+            _marker: PhantomData,
+        };
+        A::Record::eval_public_values(&mut folder);
+        if folder.accumulator == C::EF::zero() {
+            Ok(folder.local_interaction_digest)
+        } else {
+            Err(ShardVerifierError::InvalidPublicValues)
+        }
+    }
+
     /// Verify a shard proof.
     #[allow(clippy::too_many_lines)]
     pub fn verify_shard(
@@ -335,9 +376,11 @@ where
 
         let alpha = challenger.sample_ext_element::<C::EF>();
         let beta = challenger.sample_ext_element::<C::EF>();
+        let pv_challenge = challenger.sample_ext_element::<C::EF>();
 
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
-        let cumulative_sum = C::EF::zero();
+        let cumulative_sum =
+            -self.verify_public_values(pv_challenge, alpha, beta, public_values)?;
 
         let shard_chips = self
             .machine

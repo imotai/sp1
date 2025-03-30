@@ -1,5 +1,6 @@
 mod air;
 mod columns;
+mod controller;
 mod trace;
 
 pub const SHA_COMPRESS_K: [u32; 64] = [
@@ -29,6 +30,9 @@ impl ShaCompressChip {
     }
 }
 
+/// Implements the controller for the ShaCompressChip, which receives the syscalls and sends it to the chip.
+#[derive(Default)]
+pub struct ShaCompressControlChip;
 // #[cfg(test)]
 // pub mod compress_tests {
 
@@ -44,23 +48,23 @@ impl ShaCompressChip {
 //     pub fn sha_compress_program() -> Program {
 //         let w_ptr = 100;
 //         let h_ptr = 1000;
-//         let mut instructions = vec![Instruction::new(Opcode::ADD, 29, 0, 5, false, true)];
+//         let mut instructions = vec![Instruction::new(Opcode::ADDI, 29, 0, 5, false, true)];
 //         for i in 0..64 {
 //             instructions.extend(vec![
-//                 Instruction::new(Opcode::ADD, 30, 0, w_ptr + i * 4, false, true),
+//                 Instruction::new(Opcode::ADDI, 30, 0, w_ptr + i * 4, false, true),
 //                 Instruction::new(Opcode::SW, 29, 30, 0, false, true),
 //             ]);
 //         }
 //         for i in 0..8 {
 //             instructions.extend(vec![
-//                 Instruction::new(Opcode::ADD, 30, 0, h_ptr + i * 4, false, true),
+//                 Instruction::new(Opcode::ADDI, 30, 0, h_ptr + i * 4, false, true),
 //                 Instruction::new(Opcode::SW, 29, 30, 0, false, true),
 //             ]);
 //         }
 //         instructions.extend(vec![
-//             Instruction::new(Opcode::ADD, 5, 0, SyscallCode::SHA_COMPRESS as u32, false, true),
-//             Instruction::new(Opcode::ADD, 10, 0, w_ptr, false, true),
-//             Instruction::new(Opcode::ADD, 11, 0, h_ptr, false, true),
+//             Instruction::new(Opcode::ADDI, 5, 0, SyscallCode::SHA_COMPRESS as u32, false, true),
+//             Instruction::new(Opcode::ADDI, 10, 0, w_ptr, false, true),
+//             Instruction::new(Opcode::ADDI, 11, 0, h_ptr, false, true),
 //             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false),
 //         ]);
 //         Program::new(instructions, 0, 0)

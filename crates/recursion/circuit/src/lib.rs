@@ -12,6 +12,7 @@ use sp1_recursion_compiler::{
     config::{InnerConfig, OuterConfig},
     ir::{Builder, Config, DslIr, Ext, Felt, SymbolicExt, SymbolicFelt, Var, Variable},
 };
+use sp1_recursion_executor::RecursionPublicValues;
 use std::iter::{repeat, zip};
 
 use slop_basefold::{
@@ -79,6 +80,11 @@ pub trait BabyBearFriConfigVariable<C: CircuitConfig<F = BabyBear>>:
 
     /// Get a new challenger corresponding to the given config.
     fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable;
+
+    fn commit_recursion_public_values(
+        builder: &mut Builder<C>,
+        public_values: RecursionPublicValues<Felt<C::F>>,
+    );
 }
 
 pub trait CircuitConfig: Config {
@@ -626,6 +632,13 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
 
     fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
         DuplexChallengerVariable::new(builder)
+    }
+
+    fn commit_recursion_public_values(
+        builder: &mut Builder<C>,
+        public_values: RecursionPublicValues<Felt<<C>::F>>,
+    ) {
+        builder.commit_public_values_v2(public_values);
     }
 }
 

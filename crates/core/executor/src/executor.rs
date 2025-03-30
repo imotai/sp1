@@ -15,15 +15,11 @@ use thiserror::Error;
 
 use crate::{
     context::SP1Context,
-    dependencies::{
-        emit_auipc_dependency, emit_branch_dependencies, emit_divrem_dependencies,
-        emit_jump_dependencies, emit_memory_dependencies,
-    },
-    estimate_riscv_lde_size,
+    estimate_tarce_elements,
     events::{
-        AUIPCEvent, AluEvent, BranchEvent, CpuEvent, JumpEvent, MemInstrEvent,
-        MemoryAccessPosition, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryReadRecord,
-        MemoryRecord, MemoryRecordEnum, MemoryWriteRecord, SyscallEvent,
+        AUIPCEvent, AluEvent, BranchEvent, JumpEvent, LogicalShard, MemInstrEvent,
+        MemoryAccessPosition, MemoryEntry, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
+        MemoryReadRecord, MemoryWriteRecord, Shard, SyscallEvent,
         NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
     },
     hook::{HookEnv, HookRegistry},
@@ -34,7 +30,8 @@ use crate::{
     state::{ExecutionState, ForkState},
     subproof::SubproofVerifier,
     syscalls::{get_syscall, SyscallCode, SyscallContext},
-    CoreAirId, Instruction, MaximalShapes, Opcode, Program, Register, RiscvAirId,
+    ALUTypeRecord, ITypeRecord, Instruction, JTypeRecord, Opcode, Program, RTypeRecord, Register,
+    RiscvAirId,
 };
 
 /// The default increment for the program counter.  Is used for all instructions except
@@ -79,7 +76,7 @@ pub struct Executor<'a> {
 
     /// Memory addresses that were touched in this batch of shards. Used to minimize the size of
     /// checkpoints.
-    pub memory_checkpoint: Memory<Option<MemoryRecord>>,
+    pub memory_checkpoint: Memory<Option<MemoryEntry>>,
 
     /// Memory addresses that were initialized in this batch of shards. Used to minimize the size
     /// of checkpoints. The value stored is whether or not it had a value at the beginning of
@@ -147,9 +144,6 @@ pub struct Executor<'a> {
     /// Registry of hooks, to be invoked by writing to certain file descriptors.
     pub hook_registry: HookRegistry<'a>,
 
-    /// The maximal shapes for the program.
-    pub maximal_shapes: Option<MaximalShapes>,
-
     /// The costs of the program.
     pub costs: HashMap<RiscvAirId, u64>,
 
@@ -158,13 +152,10 @@ pub struct Executor<'a> {
     pub deferred_proof_verification: DeferredProofVerification,
 
     /// The frequency to check the stopping condition.
-    pub shape_check_frequency: u64,
+    pub size_check_frequency: u64,
 
-    /// Early exit if the estimate LDE size is too big.
-    pub lde_size_check: bool,
-
-    /// The maximum LDE size to allow.
-    pub lde_size_threshold: u64,
+    /// The maximum trace size to allow.
+    pub elements_threshold: Option<u64>,
 
     /// event counts for the current shard.
     pub event_counts: EnumMap<RiscvAirId, u64>,
@@ -224,9 +215,41 @@ pub enum ExecutorMode {
 pub struct LocalCounts {
     /// The event counts.
     pub event_counts: Box<EnumMap<Opcode, u64>>,
+    /// The load x0 counts.
+    pub load_x0_counts: u64,
     /// The number of syscalls sent globally in the current shard.
     pub syscalls_sent: usize,
     /// The number of addresses touched in this shard.
+    ///
+    /// We increment the local memory event counter precisely when the main shard touches an
+    /// address that was last touched by another shard. (Main shards, sometimes referred to as
+    /// core shards, are the shards that are directly produced by the executor and correspond to
+    /// usual RISC-V interpretation.)
+    ///
+    /// We now describe the logic used to increment the counter (which is replicated in several
+    /// places). Let `lshard` refer to the new/current [`LogicalShard`] and `record.lshard` refer to
+    /// the `LogicalShard` of the last memory operation associated with the address being modified.
+    /// To check for the above situation, we require two conditions:
+    ///
+    /// - `!lshard.external_flag()`: checks that the current shard is not an external shard,
+    ///   i.e. it is a main shard.
+    /// - `record.lshard != lshard`: checks that the address was last touched by a shard
+    ///   other than the current one. The (packed) fields of `LogicalShard` check for two cases:
+    ///   - If [`LogicalShard::external_flag`] is different, then one shard is external and one
+    ///     is not. If this field is the only difference, then (currently) one shard is the main
+    ///     shard and the other is a precompile invoked while interpreting in the main shard.
+    ///     This is because we set `external_flag` only when creating a [`SyscallContext`].
+    ///   - If [`LogicalShard::shard`] is different, then the shards are different in the sense of
+    ///     the SP1 proof system and memory argument. If this field is the only difference, then
+    ///     one shard is the current shard and the other is a previous shard in the execution or
+    ///     the memory initialization shard.
+    ///
+    /// Therefore, comparing equality of consecutive `LogicalShard`s in an address's memory
+    /// operation sequence enables detection of moments when its memory entry is transferred
+    /// between shards via the global (inter-shard) memory argument. By constantly testing
+    /// equality, we can detect these interruptions and calculate the endpoints of an
+    /// uninterrupted telescoping series of memory operations in a single SP1 shard --
+    /// that is, the data of a local memory event.
     pub local_mem: usize,
 }
 
@@ -364,11 +387,9 @@ impl<'a> Executor<'a> {
             memory_checkpoint: Memory::default(),
             uninitialized_memory_checkpoint: Memory::default(),
             local_memory_access: HashMap::new(),
-            maximal_shapes: None,
             costs: costs.into_iter().map(|(k, v)| (k, v as u64)).collect(),
-            shape_check_frequency: 16,
-            lde_size_check: false,
-            lde_size_threshold: 0,
+            size_check_frequency: 16,
+            elements_threshold: Some(1 << 29),
             event_counts: EnumMap::default(),
         }
     }
@@ -499,15 +520,22 @@ impl<'a> Executor<'a> {
     /// Get the current shard.
     #[must_use]
     #[inline]
-    pub fn shard(&self) -> u32 {
+    pub fn shard(&self) -> Shard {
         self.state.current_shard
+    }
+
+    /// Get the current logical shard.
+    #[must_use]
+    #[inline]
+    pub fn lshard(&self) -> LogicalShard {
+        LogicalShard::new(self.shard(), false)
     }
 
     /// Read a word from memory and create an access record.
     pub fn mr<E: ExecutorConfig>(
         &mut self,
         addr: u32,
-        shard: u32,
+        lshard: LogicalShard,
         timestamp: u32,
         local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
@@ -542,7 +570,7 @@ impl<'a> Executor<'a> {
         }
 
         // If it's the first time accessing this address, initialize previous values.
-        let record: &mut MemoryRecord = match entry {
+        let record: &mut MemoryEntry = match entry {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
@@ -551,22 +579,17 @@ impl<'a> Executor<'a> {
                     .page_table
                     .entry(addr)
                     .or_insert_with(|| *value != 0);
-                entry.insert(MemoryRecord { value: *value, shard: 0, timestamp: 0 })
+                entry.insert(MemoryEntry::init(*value))
             }
         };
 
-        // We update the local memory counter in two cases:
-        //  1. This is the first time the address is touched, this corresponds to the condition
-        //     record.shard != shard.
-        //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
-        //     local_memory_access to detect this. *WARNING*: This means that we are counting on the
-        //     .is_some() condition to be true only in the SyscallContext.
-        if !E::UNCONSTRAINED && (record.shard != shard || local_memory_access.is_some()) {
+        // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
+        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
             self.local_counts.local_mem += 1;
         }
 
         let prev_record = *record;
-        record.shard = shard;
+        record.lshard = lshard;
         record.timestamp = timestamp;
 
         if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
@@ -579,29 +602,28 @@ impl<'a> Executor<'a> {
             local_memory_access
                 .entry(addr)
                 .and_modify(|e| {
-                    e.final_mem_access = *record;
+                    e.final_mem_access = (*record).into();
                 })
                 .or_insert(MemoryLocalEvent {
                     addr,
-                    initial_mem_access: prev_record,
-                    final_mem_access: *record,
+                    initial_mem_access: prev_record.into(),
+                    final_mem_access: (*record).into(),
                 });
         }
 
         // Construct the memory read record.
-        MemoryReadRecord::new(
-            record.value,
-            record.shard,
-            record.timestamp,
-            prev_record.shard,
-            prev_record.timestamp,
-        )
+        MemoryReadRecord::new(record, &prev_record)
     }
 
     /// Read a register and return its value.
     ///
     /// Assumes that the executor mode IS NOT [`ExecutorMode::Trace`]
-    pub fn rr<E: ExecutorConfig>(&mut self, register: Register, shard: u32, timestamp: u32) -> u32 {
+    pub fn rr<E: ExecutorConfig>(
+        &mut self,
+        register: Register,
+        lshard: LogicalShard,
+        timestamp: u32,
+    ) -> u32 {
         // Get the memory record entry.
         let addr = register as u32;
         let entry = self.state.memory.registers.entry(addr);
@@ -628,7 +650,7 @@ impl<'a> Executor<'a> {
         }
 
         // If it's the first time accessing this address, initialize previous values.
-        let record: &mut MemoryRecord = match entry {
+        let record: &mut MemoryEntry = match entry {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
@@ -637,11 +659,16 @@ impl<'a> Executor<'a> {
                     .registers
                     .entry(addr)
                     .or_insert_with(|| *value != 0);
-                entry.insert(MemoryRecord { value: *value, shard: 0, timestamp: 0 })
+                entry.insert(MemoryEntry::init(*value))
             }
         };
 
-        record.shard = shard;
+        // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
+        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+            self.local_counts.local_mem += 1;
+        }
+
+        record.lshard = lshard;
         record.timestamp = timestamp;
         record.value
     }
@@ -652,7 +679,7 @@ impl<'a> Executor<'a> {
     pub fn rr_traced<E: ExecutorConfig>(
         &mut self,
         register: Register,
-        shard: u32,
+        lshard: LogicalShard,
         timestamp: u32,
         local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
@@ -680,7 +707,7 @@ impl<'a> Executor<'a> {
             self.unconstrained_state.memory_diff.entry(addr).or_insert(record.copied());
         }
         // If it's the first time accessing this address, initialize previous values.
-        let record: &mut MemoryRecord = match entry {
+        let record: &mut MemoryEntry = match entry {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
@@ -689,11 +716,17 @@ impl<'a> Executor<'a> {
                     .registers
                     .entry(addr)
                     .or_insert_with(|| *value != 0);
-                entry.insert(MemoryRecord { value: *value, shard: 0, timestamp: 0 })
+                entry.insert(MemoryEntry::init(*value))
             }
         };
+
+        // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
+        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+            self.local_counts.local_mem += 1;
+        }
+
         let prev_record = *record;
-        record.shard = shard;
+        record.lshard = lshard;
         record.timestamp = timestamp;
         if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
@@ -704,29 +737,23 @@ impl<'a> Executor<'a> {
             local_memory_access
                 .entry(addr)
                 .and_modify(|e| {
-                    e.final_mem_access = *record;
+                    e.final_mem_access = (*record).into();
                 })
                 .or_insert(MemoryLocalEvent {
                     addr,
-                    initial_mem_access: prev_record,
-                    final_mem_access: *record,
+                    initial_mem_access: prev_record.into(),
+                    final_mem_access: (*record).into(),
                 });
         }
         // Construct the memory read record.
-        MemoryReadRecord::new(
-            record.value,
-            record.shard,
-            record.timestamp,
-            prev_record.shard,
-            prev_record.timestamp,
-        )
+        MemoryReadRecord::new(record, &prev_record)
     }
     /// Write a word to memory and create an access record.
     pub fn mw<E: ExecutorConfig>(
         &mut self,
         addr: u32,
         value: u32,
-        shard: u32,
+        lshard: LogicalShard,
         timestamp: u32,
         local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
@@ -759,7 +786,7 @@ impl<'a> Executor<'a> {
             self.unconstrained_state.memory_diff.entry(addr).or_insert(record.copied());
         }
         // If it's the first time accessing this address, initialize previous values.
-        let record: &mut MemoryRecord = match entry {
+        let record: &mut MemoryEntry = match entry {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
@@ -769,23 +796,18 @@ impl<'a> Executor<'a> {
                     .entry(addr)
                     .or_insert_with(|| *value != 0);
 
-                entry.insert(MemoryRecord { value: *value, shard: 0, timestamp: 0 })
+                entry.insert(MemoryEntry::init(*value))
             }
         };
 
-        // We update the local memory counter in two cases:
-        //  1. This is the first time the address is touched, this corresponds to the condition
-        //     record.shard != shard.
-        //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
-        //     local_memory_access to detect this. *WARNING*: This means that we are counting on the
-        //     .is_some() condition to be true only in the SyscallContext.
-        if !E::UNCONSTRAINED && (record.shard != shard || local_memory_access.is_some()) {
+        // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
+        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
             self.local_counts.local_mem += 1;
         }
 
         let prev_record = *record;
         record.value = value;
-        record.shard = shard;
+        record.lshard = lshard;
         record.timestamp = timestamp;
         if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
@@ -797,24 +819,17 @@ impl<'a> Executor<'a> {
             local_memory_access
                 .entry(addr)
                 .and_modify(|e| {
-                    e.final_mem_access = *record;
+                    e.final_mem_access = (*record).into();
                 })
                 .or_insert(MemoryLocalEvent {
                     addr,
-                    initial_mem_access: prev_record,
-                    final_mem_access: *record,
+                    initial_mem_access: prev_record.into(),
+                    final_mem_access: (*record).into(),
                 });
         }
 
         // Construct the memory write record.
-        MemoryWriteRecord::new(
-            record.value,
-            record.shard,
-            record.timestamp,
-            prev_record.value,
-            prev_record.shard,
-            prev_record.timestamp,
-        )
+        MemoryWriteRecord::new(record, &prev_record)
     }
 
     /// Write a word to a register and create an access record.
@@ -824,7 +839,7 @@ impl<'a> Executor<'a> {
         &mut self,
         register: Register,
         value: u32,
-        shard: u32,
+        lshard: LogicalShard,
         timestamp: u32,
         local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
@@ -855,7 +870,7 @@ impl<'a> Executor<'a> {
         }
 
         // If it's the first time accessing this register, initialize previous values.
-        let record: &mut MemoryRecord = match entry {
+        let record: &mut MemoryEntry = match entry {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
@@ -865,13 +880,18 @@ impl<'a> Executor<'a> {
                     .entry(addr)
                     .or_insert_with(|| *value != 0);
 
-                entry.insert(MemoryRecord { value: *value, shard: 0, timestamp: 0 })
+                entry.insert(MemoryEntry::init(*value))
             }
         };
 
+        // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
+        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+            self.local_counts.local_mem += 1;
+        }
+
         let prev_record = *record;
         record.value = value;
-        record.shard = shard;
+        record.lshard = lshard;
         record.timestamp = timestamp;
 
         if !E::UNCONSTRAINED {
@@ -884,24 +904,17 @@ impl<'a> Executor<'a> {
             local_memory_access
                 .entry(addr)
                 .and_modify(|e| {
-                    e.final_mem_access = *record;
+                    e.final_mem_access = (*record).into();
                 })
                 .or_insert(MemoryLocalEvent {
                     addr,
-                    initial_mem_access: prev_record,
-                    final_mem_access: *record,
+                    initial_mem_access: prev_record.into(),
+                    final_mem_access: (*record).into(),
                 });
         }
 
         // Construct the memory write record.
-        MemoryWriteRecord::new(
-            record.value,
-            record.shard,
-            record.timestamp,
-            prev_record.value,
-            prev_record.shard,
-            prev_record.timestamp,
-        )
+        MemoryWriteRecord::new(record, &prev_record)
     }
 
     /// Write a word to a register and create an access record.
@@ -912,7 +925,7 @@ impl<'a> Executor<'a> {
         &mut self,
         register: Register,
         value: u32,
-        shard: u32,
+        lshard: LogicalShard,
         timestamp: u32,
     ) {
         let addr = register as u32;
@@ -941,7 +954,7 @@ impl<'a> Executor<'a> {
         }
 
         // If it's the first time accessing this register, initialize previous values.
-        let record: &mut MemoryRecord = match entry {
+        let record: &mut MemoryEntry = match entry {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
@@ -951,12 +964,17 @@ impl<'a> Executor<'a> {
                     .entry(addr)
                     .or_insert_with(|| *value != 0);
 
-                entry.insert(MemoryRecord { value: *value, shard: 0, timestamp: 0 })
+                entry.insert(MemoryEntry::init(*value))
             }
         };
 
+        // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
+        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+            self.local_counts.local_mem += 1;
+        }
+
         record.value = value;
-        record.shard = shard;
+        record.lshard = lshard;
         record.timestamp = timestamp;
     }
 
@@ -965,7 +983,7 @@ impl<'a> Executor<'a> {
     pub fn mr_cpu<E: ExecutorConfig>(&mut self, addr: u32) -> u32 {
         // Read the address from memory and create a memory read record.
         let record =
-            self.mr::<E>(addr, self.shard(), self.timestamp(&MemoryAccessPosition::Memory), None);
+            self.mr::<E>(addr, self.lshard(), self.timestamp(&MemoryAccessPosition::Memory), None);
         // If we're not in unconstrained mode, record the access for the current cycle.
         if E::MODE == ExecutorMode::Trace {
             self.memory_accesses.memory = Some(record.into());
@@ -983,7 +1001,7 @@ impl<'a> Executor<'a> {
         // Read the address from memory and create a memory read record if in trace mode.
         if E::MODE == ExecutorMode::Trace {
             let record =
-                self.rr_traced::<E>(register, self.shard(), self.timestamp(&position), None);
+                self.rr_traced::<E>(register, self.lshard(), self.timestamp(&position), None);
             if !E::UNCONSTRAINED {
                 match position {
                     MemoryAccessPosition::A => self.memory_accesses.a = Some(record.into()),
@@ -996,7 +1014,7 @@ impl<'a> Executor<'a> {
             }
             record.value
         } else {
-            self.rr::<E>(register, self.shard(), self.timestamp(&position))
+            self.rr::<E>(register, self.lshard(), self.timestamp(&position))
         }
     }
 
@@ -1011,7 +1029,7 @@ impl<'a> Executor<'a> {
         let record = self.mw::<E>(
             addr,
             value,
-            self.shard(),
+            self.lshard(),
             self.timestamp(&MemoryAccessPosition::Memory),
             None,
         );
@@ -1033,15 +1051,20 @@ impl<'a> Executor<'a> {
 
         // Read the address from memory and create a memory read record.
         if E::MODE == ExecutorMode::Trace {
-            let record =
-                self.rw_traced::<E>(register, value, self.shard(), self.timestamp(&position), None);
+            let record = self.rw_traced::<E>(
+                register,
+                value,
+                self.lshard(),
+                self.timestamp(&position),
+                None,
+            );
             if !E::UNCONSTRAINED {
                 // The only time we are writing to a register is when it is in operand A.
                 debug_assert!(self.memory_accesses.a.is_none());
                 self.memory_accesses.a = Some(record.into());
             }
         } else {
-            self.rw::<E>(register, value, self.shard(), self.timestamp(&position));
+            self.rw::<E>(register, value, self.lshard(), self.timestamp(&position));
         }
     }
 
@@ -1060,82 +1083,79 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
         exit_code: u32,
     ) {
-        self.emit_cpu(clk, next_pc, a, b, c, record, exit_code);
+        self.record.start_pc.get_or_insert(self.state.pc);
+        self.record.next_pc = next_pc;
+        self.record.exit_code = exit_code;
+        self.record.cpu_event_count += 1;
 
         if instruction.is_alu_instruction() {
-            self.emit_alu_event(instruction.opcode, a, b, c, op_a_0);
+            self.emit_alu_event(instruction.opcode, a, b, c, record, op_a_0);
         } else if instruction.is_memory_load_instruction()
             || instruction.is_memory_store_instruction()
         {
-            self.emit_mem_instr_event(instruction.opcode, a, b, c, op_a_0);
+            self.emit_mem_instr_event(instruction.opcode, a, b, c, record, op_a_0);
         } else if instruction.is_branch_instruction() {
-            self.emit_branch_event(instruction.opcode, a, b, c, op_a_0, next_pc);
-        } else if instruction.is_jump_instruction() {
-            self.emit_jump_event(instruction.opcode, a, b, c, op_a_0, next_pc);
+            self.emit_branch_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
+        } else if instruction.is_jal_instruction() {
+            self.emit_jal_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
+        } else if instruction.is_jalr_instruction() {
+            self.emit_jalr_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_auipc_instruction() {
-            self.emit_auipc_event(instruction.opcode, a, b, c, op_a_0);
+            self.emit_auipc_event(instruction.opcode, a, b, c, record, op_a_0);
         } else if instruction.is_ecall_instruction() {
-            self.emit_syscall_event(clk, record.a, op_a_0, syscall_code, b, c, next_pc);
+            self.emit_syscall_event(clk, syscall_code, b, c, record, op_a_0, next_pc, exit_code);
         } else {
             unreachable!()
         }
     }
 
-    /// Emit a CPU event.
-    #[allow(clippy::too_many_arguments)]
-    #[inline]
-    fn emit_cpu(
+    /// Emit an ALU event.
+    fn emit_alu_event(
         &mut self,
-        clk: u32,
-        next_pc: u32,
+        opcode: Opcode,
         a: u32,
         b: u32,
         c: u32,
         record: MemoryAccessRecord,
-        exit_code: u32,
+        op_a_0: bool,
     ) {
-        self.record.cpu_events.push(CpuEvent {
-            clk,
-            pc: self.state.pc,
-            next_pc,
-            a,
-            a_record: record.a,
-            b,
-            b_record: record.b,
-            c,
-            c_record: record.c,
-            exit_code,
-        });
-    }
-
-    /// Emit an ALU event.
-    fn emit_alu_event(&mut self, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) {
-        let event = AluEvent { pc: self.state.pc, opcode, a, b, c, op_a_0 };
+        let event = AluEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
         match opcode {
             Opcode::ADD => {
-                self.record.add_events.push(event);
+                let record = RTypeRecord::from(record);
+                self.record.add_events.push((event, record));
+            }
+            Opcode::ADDI => {
+                let record = ITypeRecord::from(record);
+                self.record.addi_events.push((event, record));
             }
             Opcode::SUB => {
-                self.record.sub_events.push(event);
+                let record = RTypeRecord::from(record);
+                self.record.sub_events.push((event, record));
             }
             Opcode::XOR | Opcode::OR | Opcode::AND => {
-                self.record.bitwise_events.push(event);
+                let record = ALUTypeRecord::from(record);
+                self.record.bitwise_events.push((event, record));
             }
             Opcode::SLL => {
-                self.record.shift_left_events.push(event);
+                let record = ALUTypeRecord::from(record);
+                self.record.shift_left_events.push((event, record));
             }
             Opcode::SRL | Opcode::SRA => {
-                self.record.shift_right_events.push(event);
+                let record = ALUTypeRecord::from(record);
+                self.record.shift_right_events.push((event, record));
             }
             Opcode::SLT | Opcode::SLTU => {
-                self.record.lt_events.push(event);
+                let record = ALUTypeRecord::from(record);
+                self.record.lt_events.push((event, record));
             }
             Opcode::MUL | Opcode::MULHU | Opcode::MULHSU | Opcode::MULH => {
-                self.record.mul_events.push(event);
+                let record = ALUTypeRecord::from(record);
+                self.record.mul_events.push((event, record));
             }
             Opcode::DIVU | Opcode::REMU | Opcode::DIV | Opcode::REM => {
-                self.record.divrem_events.push(event);
-                emit_divrem_dependencies(self, event);
+                let record = ALUTypeRecord::from(record);
+                self.record.divrem_events.push((event, record));
             }
             _ => unreachable!(),
         }
@@ -1143,9 +1163,17 @@ impl<'a> Executor<'a> {
 
     /// Emit a memory instruction event.
     #[inline]
-    fn emit_mem_instr_event(&mut self, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) {
+    fn emit_mem_instr_event(
+        &mut self,
+        opcode: Opcode,
+        a: u32,
+        b: u32,
+        c: u32,
+        record: MemoryAccessRecord,
+        op_a_0: bool,
+    ) {
         let event = MemInstrEvent {
-            shard: self.shard(),
+            shard: self.shard().get(),
             clk: self.state.clk,
             pc: self.state.pc,
             opcode,
@@ -1155,53 +1183,105 @@ impl<'a> Executor<'a> {
             op_a_0,
             mem_access: self.memory_accesses.memory.expect("Must have memory access"),
         };
-
-        self.record.memory_instr_events.push(event);
-        emit_memory_dependencies(
-            self,
-            event,
-            self.memory_accesses.memory.expect("Must have memory access").current_record(),
-        );
+        let record = ITypeRecord::from(record);
+        if matches!(opcode, Opcode::LB | Opcode::LBU | Opcode::LH | Opcode::LHU | Opcode::LW)
+            && op_a_0
+        {
+            self.record.memory_load_x0_events.push((event, record));
+        } else if matches!(opcode, Opcode::LB | Opcode::LBU) {
+            self.record.memory_load_byte_events.push((event, record));
+        } else if matches!(opcode, Opcode::LH | Opcode::LHU) {
+            self.record.memory_load_half_events.push((event, record));
+        } else if opcode == Opcode::LW {
+            self.record.memory_load_word_events.push((event, record));
+        } else if opcode == Opcode::SB {
+            self.record.memory_store_byte_events.push((event, record));
+        } else if opcode == Opcode::SH {
+            self.record.memory_store_half_events.push((event, record));
+        } else if opcode == Opcode::SW {
+            self.record.memory_store_word_events.push((event, record));
+        }
     }
 
     /// Emit a branch event.
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     fn emit_branch_event(
         &mut self,
         opcode: Opcode,
         a: u32,
         b: u32,
         c: u32,
+        record: MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u32,
     ) {
-        let event = BranchEvent { pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
-        self.record.branch_events.push(event);
-        emit_branch_dependencies(self, event);
+        let event = BranchEvent {
+            clk: self.state.clk,
+            pc: self.state.pc,
+            next_pc,
+            opcode,
+            a,
+            b,
+            c,
+            op_a_0,
+        };
+        let record = ITypeRecord::from(record);
+        self.record.branch_events.push((event, record));
     }
 
-    /// Emit a jump event.
+    /// Emit a jal event.
     #[inline]
-    fn emit_jump_event(
+    #[allow(clippy::too_many_arguments)]
+    fn emit_jal_event(
         &mut self,
         opcode: Opcode,
         a: u32,
         b: u32,
         c: u32,
+        record: MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u32,
     ) {
-        let event = JumpEvent::new(self.state.pc, next_pc, opcode, a, b, c, op_a_0);
-        self.record.jump_events.push(event);
-        emit_jump_dependencies(self, event);
+        let event =
+            JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
+        let record = JTypeRecord::from(record);
+        self.record.jal_events.push((event, record));
+    }
+
+    /// Emit a jalr event.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn emit_jalr_event(
+        &mut self,
+        opcode: Opcode,
+        a: u32,
+        b: u32,
+        c: u32,
+        record: MemoryAccessRecord,
+        op_a_0: bool,
+        next_pc: u32,
+    ) {
+        let event =
+            JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
+        let record = ITypeRecord::from(record);
+        self.record.jalr_events.push((event, record));
     }
 
     /// Emit an AUIPC event.
     #[inline]
-    fn emit_auipc_event(&mut self, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) {
-        let event = AUIPCEvent::new(self.state.pc, opcode, a, b, c, op_a_0);
-        self.record.auipc_events.push(event);
-        emit_auipc_dependency(self, event);
+    fn emit_auipc_event(
+        &mut self,
+        opcode: Opcode,
+        a: u32,
+        b: u32,
+        c: u32,
+        record: MemoryAccessRecord,
+        op_a_0: bool,
+    ) {
+        let event = AUIPCEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
+        let record = JTypeRecord::from(record);
+        self.record.auipc_events.push((event, record));
     }
 
     /// Create a syscall event.
@@ -1210,37 +1290,24 @@ impl<'a> Executor<'a> {
     pub(crate) fn syscall_event(
         &self,
         clk: u32,
-        a_record: Option<MemoryRecordEnum>,
-        op_a_0: Option<bool>,
         syscall_code: SyscallCode,
         arg1: u32,
         arg2: u32,
+        op_a_0: bool,
         next_pc: u32,
+        exit_code: u32,
     ) -> SyscallEvent {
-        let (write, is_real) = match a_record {
-            Some(MemoryRecordEnum::Write(record)) => (record, true),
-            _ => (MemoryWriteRecord::default(), false),
-        };
-
-        // If op_a_0 is None, then we assume it is not register 0.  Note that this will happen
-        // for syscall events that are created within the precompiles' execute function.  Those
-        // events will be added to precompile tables, which wouldn't use the op_a_0 field.
-        // Note that we can't make the op_a_0 field an Option<bool> in SyscallEvent because
-        // of the cbindgen.
-        let op_a_0 = op_a_0.unwrap_or(false);
-
         SyscallEvent {
-            shard: self.shard(),
-            clk,
             pc: self.state.pc,
             next_pc,
-            a_record: write,
-            a_record_is_real: is_real,
+            shard: self.shard().get(),
+            clk,
             op_a_0,
             syscall_code,
             syscall_id: syscall_code.syscall_id(),
             arg1,
             arg2,
+            exit_code,
         }
     }
 
@@ -1249,17 +1316,18 @@ impl<'a> Executor<'a> {
     fn emit_syscall_event(
         &mut self,
         clk: u32,
-        a_record: Option<MemoryRecordEnum>,
-        op_a_0: bool,
         syscall_code: SyscallCode,
         arg1: u32,
         arg2: u32,
+        record: MemoryAccessRecord,
+        op_a_0: bool,
         next_pc: u32,
+        exit_code: u32,
     ) {
         let syscall_event =
-            self.syscall_event(clk, a_record, Some(op_a_0), syscall_code, arg1, arg2, next_pc);
-
-        self.record.syscall_events.push(syscall_event);
+            self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc, exit_code);
+        let record = RTypeRecord::from(record);
+        self.record.syscall_events.push((syscall_event, record));
     }
 
     /// Fetch the destination register and input operand values for an ALU instruction.
@@ -1353,17 +1421,9 @@ impl<'a> Executor<'a> {
         if !E::UNCONSTRAINED {
             self.report.opcode_counts[instruction.opcode] += 1;
             self.local_counts.event_counts[instruction.opcode] += 1;
-            if instruction.is_memory_load_instruction() {
-                self.local_counts.event_counts[Opcode::ADD] += 2;
-            } else if instruction.is_jump_instruction() {
-                self.local_counts.event_counts[Opcode::ADD] += 1;
-            } else if instruction.is_branch_instruction() {
-                self.local_counts.event_counts[Opcode::ADD] += 1;
-                self.local_counts.event_counts[Opcode::SLTU] += 2;
-            } else if instruction.is_divrem_instruction() {
-                self.local_counts.event_counts[Opcode::MUL] += 2;
-                self.local_counts.event_counts[Opcode::ADD] += 2;
-                self.local_counts.event_counts[Opcode::SLTU] += 1;
+            if instruction.is_memory_load_instruction() && instruction.op_a == Register::X0 as u8 {
+                self.local_counts.event_counts[instruction.opcode] -= 1;
+                self.local_counts.load_x0_counts += 1;
             }
         }
 
@@ -1429,7 +1489,7 @@ impl<'a> Executor<'a> {
     fn execute_alu<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
         let (rd, b, c) = self.alu_rr::<E>(instruction);
         let a = match instruction.opcode {
-            Opcode::ADD => b.wrapping_add(c),
+            Opcode::ADD | Opcode::ADDI => b.wrapping_add(c),
             Opcode::SUB => b.wrapping_sub(c),
             Opcode::XOR => b ^ c,
             Opcode::OR => b | c,
@@ -1612,6 +1672,10 @@ impl<'a> Executor<'a> {
         let syscall_count = self.state.syscall_counts.entry(syscall_for_count).or_insert(0);
         *syscall_count += 1;
 
+        if !E::UNCONSTRAINED && syscall.should_send() == 1 {
+            self.local_counts.syscalls_sent += 1;
+        }
+
         let syscall_impl = get_syscall(syscall)?;
         let mut precompile_rt: SyscallContext<'_, '_, E> = SyscallContext::new(self);
         let (a, precompile_next_pc, precompile_cycles, returned_exit_code) = {
@@ -1696,87 +1760,35 @@ impl<'a> Executor<'a> {
             // Every N cycles, check if there exists at least one shape that fits.
             //
             // If we're close to not fitting, early stop the shard to ensure we don't OOM.
-            let mut shape_match_found = true;
-            if self.state.global_clk % self.shape_check_frequency == 0 {
+            let mut maximal_size_reached = true;
+            if self.state.global_clk % self.size_check_frequency == 0 {
                 // Estimate the number of events in the trace.
                 self.estimate_riscv_event_counts(
-                    (self.state.clk >> 2) as u64,
                     self.local_counts.local_mem as u64,
                     self.local_counts.syscalls_sent as u64,
                     *self.local_counts.event_counts,
+                    self.local_counts.load_x0_counts,
                 );
 
                 // Check if the LDE size is too large.
-                if self.lde_size_check {
+                if let Some(threshold) = self.elements_threshold {
                     let padded_event_counts =
-                        pad_rv32im_event_counts(self.event_counts, self.shape_check_frequency);
-                    let padded_lde_size = estimate_riscv_lde_size(padded_event_counts, &self.costs);
-                    if padded_lde_size > self.lde_size_threshold {
+                        pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
+                    let padded_lde_size = estimate_tarce_elements(padded_event_counts, &self.costs);
+                    if padded_lde_size > threshold {
                         tracing::warn!(
                             "stopping shard early due to lde size: {} gb",
                             (padded_lde_size as u64) / 1_000_000_000
                         );
-                        shape_match_found = false;
-                    }
-                }
-                // Check if we're too "close" to a maximal shape.
-                else if let Some(maximal_shapes) = &self.maximal_shapes {
-                    let distance = |threshold: usize, count: usize| {
-                        (count != 0).then(|| threshold - count).unwrap_or(usize::MAX)
-                    };
-
-                    shape_match_found = false;
-
-                    for shape in maximal_shapes.iter() {
-                        let cpu_threshold = shape[CoreAirId::Cpu];
-                        if self.state.clk > ((1 << cpu_threshold) << 2) {
-                            continue;
-                        }
-
-                        let mut l_infinity = usize::MAX;
-                        let mut shape_too_small = false;
-                        for air in CoreAirId::iter() {
-                            if air == CoreAirId::Cpu {
-                                continue;
-                            }
-
-                            let threshold = 1 << shape[air];
-                            let count = self.event_counts[RiscvAirId::from(air)] as usize;
-                            if count > threshold {
-                                shape_too_small = true;
-                                break;
-                            }
-
-                            if distance(threshold, count) < l_infinity {
-                                l_infinity = distance(threshold, count);
-                            }
-                        }
-
-                        if shape_too_small {
-                            continue;
-                        }
-
-                        if l_infinity >= 32 * (self.shape_check_frequency as usize) {
-                            shape_match_found = true;
-                            break;
-                        }
-                    }
-
-                    if !shape_match_found {
-                        self.record.counts = Some(self.event_counts);
-                        log::warn!(
-                            "stopping shard early due to no shapes fitting: \
-                            clk: {},
-                            clk_usage: {}",
-                            (self.state.clk / 4).next_power_of_two().ilog2(),
-                            ((self.state.clk / 4) as f64).log2(),
-                        );
+                        maximal_size_reached = false;
                     }
                 }
             }
 
-            if cpu_exit || !shape_match_found {
-                self.state.current_shard += 1;
+            if cpu_exit || !maximal_size_reached {
+                self.state.current_shard = Shard::new(self.state.current_shard.get() + 1)
+                    .expect("Shard number should not overflow");
+                self.record.last_timestamp = self.state.clk;
                 self.state.clk = 0;
                 self.bump_record::<E>();
             }
@@ -1804,6 +1816,9 @@ impl<'a> Executor<'a> {
             for (_, event) in self.local_memory_access.drain() {
                 self.record.cpu_local_memory_access.push(event);
             }
+        }
+        if self.record.last_timestamp == 0 {
+            self.record.last_timestamp = self.state.clk;
         }
 
         let removed_record = std::mem::replace(
@@ -1911,7 +1926,7 @@ impl<'a> Executor<'a> {
 
         tracing::debug!("loading memory image");
         for (&addr, value) in &self.program.memory_image {
-            self.state.memory.insert(addr, MemoryRecord { value: *value, shard: 0, timestamp: 0 });
+            self.state.memory.insert(addr, MemoryEntry::init(*value));
         }
     }
 
@@ -2026,7 +2041,7 @@ impl<'a> Executor<'a> {
         }
 
         // Push the remaining execution record, if there are any CPU events.
-        if !self.record.cpu_events.is_empty() {
+        if self.record.contains_cpu() {
             self.bump_record::<E>();
         }
 
@@ -2038,17 +2053,19 @@ impl<'a> Executor<'a> {
             record.public_values = public_values;
             record.public_values.committed_value_digest = public_values.committed_value_digest;
             record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
-            record.public_values.execution_shard = start_shard + i as u32;
-            if record.cpu_events.is_empty() {
-                record.public_values.start_pc = last_next_pc;
-                record.public_values.next_pc = last_next_pc;
-                record.public_values.exit_code = last_exit_code;
-            } else {
-                record.public_values.start_pc = record.cpu_events[0].pc;
-                record.public_values.next_pc = record.cpu_events.last().unwrap().next_pc;
-                record.public_values.exit_code = record.cpu_events.last().unwrap().exit_code;
+            record.public_values.execution_shard = start_shard.get() + i as u32;
+            if record.contains_cpu() {
+                record.public_values.start_pc = record.start_pc.unwrap();
+                record.public_values.next_pc = record.next_pc;
+                record.public_values.exit_code = record.exit_code;
+                record.public_values.last_timestamp = record.last_timestamp;
                 last_next_pc = record.public_values.next_pc;
                 last_exit_code = record.public_values.exit_code;
+            } else {
+                record.public_values.start_pc = last_next_pc;
+                record.public_values.next_pc = last_next_pc;
+                record.public_values.last_timestamp = 0;
+                record.public_values.exit_code = last_exit_code;
             }
         }
 
@@ -2096,7 +2113,7 @@ impl<'a> Executor<'a> {
 
             let addr_0_final_record = match addr_0_record {
                 Some(record) => record,
-                None => &MemoryRecord { value: 0, shard: 0, timestamp: 1 },
+                None => &MemoryEntry { lshard: LogicalShard::default(), timestamp: 1, value: 0 },
             };
             memory_finalize_events
                 .push(MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
@@ -2158,34 +2175,23 @@ impl<'a> Executor<'a> {
     /// Maps the opcode counts to the number of events in each air.
     pub fn estimate_riscv_event_counts(
         &mut self,
-        cpu_cycles: u64,
         touched_addresses: u64,
         syscalls_sent: u64,
         opcode_counts: EnumMap<Opcode, u64>,
+        load_x0_counts: u64,
     ) {
-        // Compute the number of events in the cpu chip.
-        self.event_counts[RiscvAirId::Cpu] = cpu_cycles;
+        // Compute the number of events in the add chip.
+        self.event_counts[RiscvAirId::Add] = opcode_counts[Opcode::ADD];
 
-        // Compute the number of events in the add sub chip.
-        self.event_counts[RiscvAirId::AddSub] =
-            opcode_counts[Opcode::ADD] + opcode_counts[Opcode::SUB];
+        // Compute the number of events in the addi chip.
+        self.event_counts[RiscvAirId::Addi] = opcode_counts[Opcode::ADDI];
 
-        // Compute the number of events in the mul chip.
-        self.event_counts[RiscvAirId::Mul] = opcode_counts[Opcode::MUL]
-            + opcode_counts[Opcode::MULH]
-            + opcode_counts[Opcode::MULHU]
-            + opcode_counts[Opcode::MULHSU];
+        // Compute the number of events in the sub chip.
+        self.event_counts[RiscvAirId::Sub] = opcode_counts[Opcode::SUB];
 
         // Compute the number of events in the bitwise chip.
         self.event_counts[RiscvAirId::Bitwise] =
             opcode_counts[Opcode::XOR] + opcode_counts[Opcode::OR] + opcode_counts[Opcode::AND];
-
-        // Compute the number of events in the shift left chip.
-        self.event_counts[RiscvAirId::ShiftLeft] = opcode_counts[Opcode::SLL];
-
-        // Compute the number of events in the shift right chip.
-        self.event_counts[RiscvAirId::ShiftRight] =
-            opcode_counts[Opcode::SRL] + opcode_counts[Opcode::SRA];
 
         // Compute the number of events in the divrem chip.
         self.event_counts[RiscvAirId::DivRem] = opcode_counts[Opcode::DIV]
@@ -2196,6 +2202,19 @@ impl<'a> Executor<'a> {
         // Compute the number of events in the lt chip.
         self.event_counts[RiscvAirId::Lt] =
             opcode_counts[Opcode::SLT] + opcode_counts[Opcode::SLTU];
+
+        // Compute the number of events in the mul chip.
+        self.event_counts[RiscvAirId::Mul] = opcode_counts[Opcode::MUL]
+            + opcode_counts[Opcode::MULH]
+            + opcode_counts[Opcode::MULHU]
+            + opcode_counts[Opcode::MULHSU];
+
+        // Compute the number of events in the shift left chip.
+        self.event_counts[RiscvAirId::ShiftLeft] = opcode_counts[Opcode::SLL];
+
+        // Compute the number of events in the shift right chip.
+        self.event_counts[RiscvAirId::ShiftRight] =
+            opcode_counts[Opcode::SRL] + opcode_counts[Opcode::SRA];
 
         // Compute the number of events in the memory local chip.
         self.event_counts[RiscvAirId::MemoryLocal] =
@@ -2210,8 +2229,8 @@ impl<'a> Executor<'a> {
             + opcode_counts[Opcode::BGEU];
 
         // Compute the number of events in the jump chip.
-        self.event_counts[RiscvAirId::Jump] =
-            opcode_counts[Opcode::JAL] + opcode_counts[Opcode::JALR];
+        self.event_counts[RiscvAirId::Jal] = opcode_counts[Opcode::JAL];
+        self.event_counts[RiscvAirId::Jalr] = opcode_counts[Opcode::JALR];
 
         // Compute the number of events in the auipc chip.
         self.event_counts[RiscvAirId::Auipc] = opcode_counts[Opcode::AUIPC]
@@ -2219,14 +2238,15 @@ impl<'a> Executor<'a> {
             + opcode_counts[Opcode::EBREAK];
 
         // Compute the number of events in the memory instruction chip.
-        self.event_counts[RiscvAirId::MemoryInstrs] = opcode_counts[Opcode::LB]
-            + opcode_counts[Opcode::LH]
-            + opcode_counts[Opcode::LW]
-            + opcode_counts[Opcode::LBU]
-            + opcode_counts[Opcode::LHU]
-            + opcode_counts[Opcode::SB]
-            + opcode_counts[Opcode::SH]
-            + opcode_counts[Opcode::SW];
+        self.event_counts[RiscvAirId::LoadByte] =
+            opcode_counts[Opcode::LB] + opcode_counts[Opcode::LBU];
+        self.event_counts[RiscvAirId::LoadHalf] =
+            opcode_counts[Opcode::LH] + opcode_counts[Opcode::LHU];
+        self.event_counts[RiscvAirId::LoadWord] = opcode_counts[Opcode::LW];
+        self.event_counts[RiscvAirId::LoadX0] = load_x0_counts;
+        self.event_counts[RiscvAirId::StoreByte] = opcode_counts[Opcode::SB];
+        self.event_counts[RiscvAirId::StoreHalf] = opcode_counts[Opcode::SH];
+        self.event_counts[RiscvAirId::StoreWord] = opcode_counts[Opcode::SW];
 
         // Compute the number of events in the syscall instruction chip.
         self.event_counts[RiscvAirId::SyscallInstrs] = opcode_counts[Opcode::ECALL];
@@ -2237,13 +2257,6 @@ impl<'a> Executor<'a> {
         // Compute the number of events in the global chip.
         self.event_counts[RiscvAirId::Global] =
             2 * touched_addresses + self.event_counts[RiscvAirId::SyscallInstrs];
-
-        // Adjust for divrem dependencies.
-        self.event_counts[RiscvAirId::Mul] += self.event_counts[RiscvAirId::DivRem];
-        self.event_counts[RiscvAirId::Lt] += self.event_counts[RiscvAirId::DivRem];
-
-        // Note: we ignore the additional dependencies for addsub, since they are accounted for in
-        // the maximal shapes.
     }
 
     #[inline]

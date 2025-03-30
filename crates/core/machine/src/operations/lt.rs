@@ -35,8 +35,7 @@ impl<F: PrimeField32, const N: usize> AssertLtColsBytes<F, N> {
                 self.b_comparison_byte = F::from_canonical_u8(*b_byte);
                 record.add_byte_lookup_event(ByteLookupEvent {
                     opcode: ByteOpcode::LTU,
-                    a1: 1,
-                    a2: 0,
+                    a: 1,
                     b: *a_byte,
                     c: *b_byte,
                 });
@@ -96,7 +95,7 @@ impl<V: Copy, const N: usize> AssertLtColsBytes<V, N> {
         let a: [AB::Expr; N] = core::array::from_fn(|i| a[i].clone().into());
         let b: [AB::Expr; N] = core::array::from_fn(|i| b[i].clone().into());
 
-        let mut first_lt_byte = AB::Expr::zero();
+        let mut a_comparison_byte = AB::Expr::zero();
         let mut b_comparison_byte = AB::Expr::zero();
         for (a_byte, b_byte, &flag) in
             izip!(a.iter().rev(), b.iter().rev(), self.byte_flags.iter().rev())
@@ -105,7 +104,7 @@ impl<V: Copy, const N: usize> AssertLtColsBytes<V, N> {
             // We can do this by calculating the sum of the flags since only `1` is set to `1`.
             is_inequality_visited = is_inequality_visited.clone() + flag.into();
 
-            first_lt_byte = first_lt_byte.clone() + a_byte.clone() * flag;
+            a_comparison_byte = a_comparison_byte.clone() + a_byte.clone() * flag;
             b_comparison_byte = b_comparison_byte.clone() + b_byte.clone() * flag;
 
             builder
@@ -114,7 +113,7 @@ impl<V: Copy, const N: usize> AssertLtColsBytes<V, N> {
                 .assert_eq(a_byte.clone(), b_byte.clone());
         }
 
-        builder.when(is_real.clone()).assert_eq(self.a_comparison_byte, first_lt_byte);
+        builder.when(is_real.clone()).assert_eq(self.a_comparison_byte, a_comparison_byte);
         builder.when(is_real.clone()).assert_eq(self.b_comparison_byte, b_comparison_byte);
 
         // Send the comparison interaction.
@@ -128,11 +127,12 @@ impl<V: Copy, const N: usize> AssertLtColsBytes<V, N> {
     }
 }
 
-/// Operation columns for verifying that an element is within the range `[0, modulus)`.
+/// Operation columns for comparing two bit arrays.
+/// Assumes that the two arrays are of the same length, and are boolean.
 #[derive(Debug, Clone, Copy, AlignedBorrow)]
 #[repr(C)]
 pub struct AssertLtColsBits<T, const N: usize> {
-    /// Boolean flags to indicate the first byte in which the element is smaller than the modulus.
+    /// Boolean flags to indicate the first bit in which the two arrays differ.
     pub(crate) bit_flags: [T; N],
 }
 

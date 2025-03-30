@@ -41,14 +41,32 @@ pub enum InteractionKind {
     /// Requesting a range check for a given value and range.
     Range = 6,
 
-    /// Interaction with the field op table for field operations.
-    Field = 7,
+    /// Interaction with the current CPU state.
+    State = 7,
 
     /// Interaction with a syscall.
     Syscall = 8,
 
     /// Interaction with the global table.
     Global = 9,
+
+    /// Interaction with the `ShaExtend` chip.
+    ShaExtend = 10,
+
+    /// Interaction with the `ShaCompress` chip.
+    ShaCompress = 11,
+
+    /// Interaction with the `Keccak` chip.
+    Keccak = 12,
+
+    /// Interaction to accumulate the global interaction digests.
+    GlobalAccumulation = 13,
+
+    /// Interaction with the `MemoryGlobalInit` chip.
+    MemoryGlobalInitControl = 14,
+
+    /// Interaction with the `MemoryGlobalFinalize` chip.
+    MemoryGlobalFinalizeControl = 15,
 }
 
 impl InteractionKind {
@@ -62,8 +80,15 @@ impl InteractionKind {
             InteractionKind::Alu,
             InteractionKind::Byte,
             InteractionKind::Range,
-            InteractionKind::Field,
+            InteractionKind::State,
             InteractionKind::Syscall,
+            InteractionKind::Global,
+            InteractionKind::ShaExtend,
+            InteractionKind::ShaCompress,
+            InteractionKind::Keccak,
+            InteractionKind::GlobalAccumulation,
+            InteractionKind::MemoryGlobalInitControl,
+            InteractionKind::MemoryGlobalFinalizeControl,
         ]
     }
 }
@@ -143,9 +168,17 @@ impl Display for InteractionKind {
             InteractionKind::Alu => write!(f, "Alu"),
             InteractionKind::Byte => write!(f, "Byte"),
             InteractionKind::Range => write!(f, "Range"),
-            InteractionKind::Field => write!(f, "Field"),
+            InteractionKind::State => write!(f, "State"),
             InteractionKind::Syscall => write!(f, "Syscall"),
             InteractionKind::Global => write!(f, "Global"),
+            InteractionKind::ShaExtend => write!(f, "ShaExtend"),
+            InteractionKind::ShaCompress => write!(f, "ShaCompress"),
+            InteractionKind::Keccak => write!(f, "Keccak"),
+            InteractionKind::GlobalAccumulation => write!(f, "GlobalAccumulation"),
+            InteractionKind::MemoryGlobalInitControl => write!(f, "MemoryGlobalInitControl"),
+            InteractionKind::MemoryGlobalFinalizeControl => {
+                write!(f, "MemoryGlobalFinalizeControl")
+            }
         }
     }
 }

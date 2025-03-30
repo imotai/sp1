@@ -6,14 +6,14 @@ use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use slop_multilinear::Point;
 use slop_sumcheck::PartialSumcheckProof;
 
-use crate::{septic_digest::SepticDigest, LogupGkrProof};
+use crate::LogupGkrProof;
 
 use super::MachineConfig;
 
 /// The maximum number of elements that can be stored in the public values vec.  Both SP1 and
 /// recursive proofs need to pad their public values vec to this length.  This is required since the
 /// recursion verification program expects the public values vec to be fixed length.
-pub const PROOF_MAX_NUM_PVS: usize = 231;
+pub const PROOF_MAX_NUM_PVS: usize = 214;
 
 /// Data required for testing.
 #[derive(Clone, Serialize, Deserialize)]
@@ -69,8 +69,6 @@ pub struct ChipOpenedValues<F, EF> {
     pub preprocessed: AirOpenedValues<EF>,
     /// The opening of the main trace.
     pub main: AirOpenedValues<EF>,
-    /// The global cumulative sum.
-    pub global_cumulative_sum: SepticDigest<F>,
     /// The local cumulative sum.
     pub local_cumulative_sum: EF,
     /// The big-endian bit representation of the degree of the chip.

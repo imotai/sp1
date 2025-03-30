@@ -18,11 +18,17 @@ use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
-    control_flow::{AuipcChip, BranchChip, JumpChip},
+    control_flow::{AuipcChip, BranchChip, JalChip, JalrChip},
     global::GlobalChip,
     memory::{
-        MemoryChipType, MemoryInstructionsChip, MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW,
+        load::{
+            load_byte::LoadByteChip, load_half::LoadHalfChip, load_word::LoadWordChip,
+            load_x0::LoadX0Chip,
+        },
+        store::{store_byte::StoreByteChip, store_half::StoreHalfChip, store_word::StoreWordChip},
+        MemoryChipType, MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW,
     },
+    range::{trace::NUM_ROWS as RANGE_CHIP_NUM_ROWS, RangeChip},
     syscall::{
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
@@ -32,7 +38,10 @@ use crate::{
 /// A module for importing all the different RISC-V chips.
 pub(crate) mod riscv_chips {
     pub use crate::{
-        alu::{AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip},
+        alu::{
+            add::AddChip, addi::AddiChip, sub::SubChip, BitwiseChip, DivRemChip, LtChip, MulChip,
+            ShiftLeft, ShiftRightChip,
+        },
         bytes::ByteChip,
         cpu::CpuChip,
         memory::MemoryGlobalChip,
@@ -41,8 +50,10 @@ pub(crate) mod riscv_chips {
             chip::SyscallChip,
             precompiles::{
                 edwards::{EdAddAssignChip, EdDecompressChip},
-                keccak256::KeccakPermuteChip,
-                sha256::{ShaCompressChip, ShaExtendChip},
+                keccak256::{KeccakPermuteChip, KeccakPermuteControlChip},
+                sha256::{
+                    ShaCompressChip, ShaCompressControlChip, ShaExtendChip, ShaExtendControlChip,
+                },
                 u256x2048_mul::U256x2048MulChip,
                 uint256::Uint256MulChip,
                 weierstrass::{
@@ -62,7 +73,7 @@ pub(crate) mod riscv_chips {
 }
 
 /// The maximum log number of shards in core.
-pub const MAX_LOG_NUMBER_OF_SHARDS: usize = 16;
+pub const MAX_LOG_NUMBER_OF_SHARDS: usize = 24;
 
 /// The maximum number of shards in core.
 pub const MAX_NUMBER_OF_SHARDS: usize = 1 << MAX_LOG_NUMBER_OF_SHARDS;
@@ -78,9 +89,13 @@ pub enum RiscvAir<F: PrimeField32> {
     /// An AIR that contains a preprocessed program table and a lookup for the instructions.
     Program(ProgramChip),
     /// An AIR for the RISC-V CPU. Each row represents a cpu cycle.
-    Cpu(CpuChip),
-    /// An AIR for the RISC-V Add and SUB instruction.
-    Add(AddSubChip),
+    // Cpu(CpuChip),
+    /// An AIR for the RISC-V Add instruction.
+    Add(AddChip),
+    /// An AIR for the RISC-V Addi instruction.
+    Addi(AddiChip),
+    // An AIR for the RISC-V Sub instruction.
+    Sub(SubChip),
     /// An AIR for RISC-V Bitwise instructions.
     Bitwise(BitwiseChip),
     /// An AIR for RISC-V Mul instruction.
@@ -93,18 +108,34 @@ pub enum RiscvAir<F: PrimeField32> {
     ShiftLeft(ShiftLeft),
     /// An AIR for RISC-V SRL and SRA instruction.
     ShiftRight(ShiftRightChip),
-    /// An AIR for RISC-V memory instructions.
-    Memory(MemoryInstructionsChip),
+    /// An AIR for RISC-V memory load byte instructions.
+    LoadByte(LoadByteChip),
+    /// An AIR for RISC-V memory load half instructions.
+    LoadHalf(LoadHalfChip),
+    /// An AIR for RISC-V memory load word instructions.
+    LoadWord(LoadWordChip),
+    /// An AIR for RISC-V memory load x0 instructions.
+    LoadX0(LoadX0Chip),
+    /// An AIR for RISC-V memory store byte instructions.
+    StoreByte(StoreByteChip),
+    /// An AIR for RISC-V memory store half instructions.
+    StoreHalf(StoreHalfChip),
+    /// An AIR for RISC-V memory store word instructions.
+    StoreWord(StoreWordChip),
     /// An AIR for RISC-V AUIPC instruction.
     AUIPC(AuipcChip),
     /// An AIR for RISC-V branch instructions.
     Branch(BranchChip),
-    /// An AIR for RISC-V jump instructions.
-    Jump(JumpChip),
+    /// An AIR for RISC-V jal instructions.
+    Jal(JalChip),
+    /// An AIR for RISC-V jalr instructions.
+    Jalr(JalrChip),
     /// An AIR for RISC-V ecall instructions.
     SyscallInstrs(SyscallInstrsChip),
     /// A lookup table for byte operations.
     ByteLookup(ByteChip<F>),
+    /// A lookup table for range operations.
+    RangeLookup(RangeChip<F>),
     /// A table for initializing the global memory state.
     MemoryGlobalInit(MemoryGlobalChip),
     /// A table for finalizing the global memory state.
@@ -119,8 +150,12 @@ pub enum RiscvAir<F: PrimeField32> {
     Global(GlobalChip),
     /// A precompile for sha256 extend.
     Sha256Extend(ShaExtendChip),
+    /// A controller for sha256 extend.
+    Sha256ExtendControl(ShaExtendControlChip),
     /// A precompile for sha256 compress.
     Sha256Compress(ShaCompressChip),
+    /// A controller for sha256 compress.
+    Sha256CompressControl(ShaCompressControlChip),
     /// A precompile for addition on the Elliptic curve ed25519.
     Ed25519Add(EdAddAssignChip<EdwardsCurve<Ed25519Parameters>>),
     /// A precompile for decompressing a point on the Edwards curve ed25519.
@@ -139,6 +174,8 @@ pub enum RiscvAir<F: PrimeField32> {
     Secp256r1Double(WeierstrassDoubleAssignChip<SwCurve<Secp256r1Parameters>>),
     /// A precompile for the Keccak permutation.
     KeccakP(KeccakPermuteChip),
+    /// A controller for the Keccak permutation.
+    KeccakPControl(KeccakPermuteControlChip),
     /// A precompile for addition on the Elliptic curve bn254.
     Bn254Add(WeierstrassAddAssignChip<SwCurve<Bn254Parameters>>),
     /// A precompile for doubling a point on the Elliptic curve bn254.
@@ -177,9 +214,6 @@ impl<F: PrimeField32> RiscvAir<F> {
 
         // The order of the chips is used to determine the order of trace generation.
         let mut chips = vec![];
-        let cpu = Chip::new(RiscvAir::Cpu(CpuChip::default()));
-        chips.push(cpu.clone());
-        core_chips.insert(cpu);
 
         let program = Chip::new(RiscvAir::Program(ProgramChip::default()));
         chips.push(program.clone());
@@ -187,11 +221,17 @@ impl<F: PrimeField32> RiscvAir<F> {
 
         let sha_extend = Chip::new(RiscvAir::Sha256Extend(ShaExtendChip::default()));
         chips.push(sha_extend.clone());
-        precompile_clusters.push(BTreeSet::from([sha_extend]));
+        let sha_extend_control =
+            Chip::new(RiscvAir::Sha256ExtendControl(ShaExtendControlChip::default()));
+        chips.push(sha_extend_control.clone());
+        precompile_clusters.push(BTreeSet::from([sha_extend, sha_extend_control]));
 
         let sha_compress = Chip::new(RiscvAir::Sha256Compress(ShaCompressChip::default()));
         chips.push(sha_compress.clone());
-        precompile_clusters.push(BTreeSet::from([sha_compress]));
+        let sha_compress_control =
+            Chip::new(RiscvAir::Sha256CompressControl(ShaCompressControlChip::default()));
+        chips.push(sha_compress_control.clone());
+        precompile_clusters.push(BTreeSet::from([sha_compress, sha_compress_control]));
 
         let ed_add_assign = Chip::new(RiscvAir::Ed25519Add(EdAddAssignChip::<
             EdwardsCurve<Ed25519Parameters>,
@@ -245,7 +285,10 @@ impl<F: PrimeField32> RiscvAir<F> {
 
         let keccak_permute = Chip::new(RiscvAir::KeccakP(KeccakPermuteChip::new()));
         chips.push(keccak_permute.clone());
-        precompile_clusters.push(BTreeSet::from([keccak_permute]));
+        let keccak_permute_control =
+            Chip::new(RiscvAir::KeccakPControl(KeccakPermuteControlChip::new()));
+        chips.push(keccak_permute_control.clone());
+        precompile_clusters.push(BTreeSet::from([keccak_permute_control, keccak_permute]));
 
         let bn254_add_assign = Chip::new(RiscvAir::Bn254Add(WeierstrassAddAssignChip::<
             SwCurve<Bn254Parameters>,
@@ -326,9 +369,17 @@ impl<F: PrimeField32> RiscvAir<F> {
         chips.push(div_rem.clone());
         core_chips.insert(div_rem);
 
-        let add_sub = Chip::new(RiscvAir::Add(AddSubChip::default()));
-        chips.push(add_sub.clone());
-        core_chips.insert(add_sub);
+        let add = Chip::new(RiscvAir::Add(AddChip::default()));
+        chips.push(add.clone());
+        core_chips.insert(add);
+
+        let addi = Chip::new(RiscvAir::Addi(AddiChip::default()));
+        chips.push(addi.clone());
+        core_chips.insert(addi);
+
+        let sub = Chip::new(RiscvAir::Sub(SubChip::default()));
+        chips.push(sub.clone());
+        core_chips.insert(sub);
 
         let bitwise = Chip::new(RiscvAir::Bitwise(BitwiseChip::default()));
         chips.push(bitwise.clone());
@@ -350,9 +401,33 @@ impl<F: PrimeField32> RiscvAir<F> {
         chips.push(lt.clone());
         core_chips.insert(lt);
 
-        let memory_instructions = Chip::new(RiscvAir::Memory(MemoryInstructionsChip::default()));
-        chips.push(memory_instructions.clone());
-        core_chips.insert(memory_instructions);
+        let load_byte = Chip::new(RiscvAir::LoadByte(LoadByteChip::default()));
+        chips.push(load_byte.clone());
+        core_chips.insert(load_byte);
+
+        let load_half = Chip::new(RiscvAir::LoadHalf(LoadHalfChip::default()));
+        chips.push(load_half.clone());
+        core_chips.insert(load_half);
+
+        let load_word = Chip::new(RiscvAir::LoadWord(LoadWordChip::default()));
+        chips.push(load_word.clone());
+        core_chips.insert(load_word);
+
+        let load_x0 = Chip::new(RiscvAir::LoadX0(LoadX0Chip::default()));
+        chips.push(load_x0.clone());
+        core_chips.insert(load_x0);
+
+        let store_byte = Chip::new(RiscvAir::StoreByte(StoreByteChip::default()));
+        chips.push(store_byte.clone());
+        core_chips.insert(store_byte);
+
+        let store_half = Chip::new(RiscvAir::StoreHalf(StoreHalfChip::default()));
+        chips.push(store_half.clone());
+        core_chips.insert(store_half);
+
+        let store_word = Chip::new(RiscvAir::StoreWord(StoreWordChip::default()));
+        chips.push(store_word.clone());
+        core_chips.insert(store_word);
 
         let auipc = Chip::new(RiscvAir::AUIPC(AuipcChip::default()));
         chips.push(auipc.clone());
@@ -362,9 +437,13 @@ impl<F: PrimeField32> RiscvAir<F> {
         chips.push(branch.clone());
         core_chips.insert(branch);
 
-        let jump = Chip::new(RiscvAir::Jump(JumpChip::default()));
-        chips.push(jump.clone());
-        core_chips.insert(jump);
+        let jal = Chip::new(RiscvAir::Jal(JalChip::default()));
+        chips.push(jal.clone());
+        core_chips.insert(jal);
+
+        let jalr = Chip::new(RiscvAir::Jalr(JalrChip::default()));
+        chips.push(jalr.clone());
+        core_chips.insert(jalr);
 
         let syscall_instrs = Chip::new(RiscvAir::SyscallInstrs(SyscallInstrsChip::default()));
         chips.push(syscall_instrs.clone());
@@ -395,6 +474,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         let byte = Chip::new(RiscvAir::ByteLookup(ByteChip::default()));
         chips.push(byte.clone());
         preprocessed_chips.insert(byte);
+
+        let range = Chip::new(RiscvAir::RangeLookup(RangeChip::default()));
+        chips.push(range.clone());
+        preprocessed_chips.insert(range);
 
         // Insert all preprocessed chips to the core cluster.
         core_chips.extend(preprocessed_chips.clone());
@@ -436,9 +519,6 @@ impl<F: PrimeField32> RiscvAir<F> {
 
         // The order of the chips is used to determine the order of trace generation.
         let mut chips = vec![];
-        let cpu = Chip::new(RiscvAir::Cpu(CpuChip::default()));
-        costs.insert(cpu.name(), cpu.cost());
-        chips.push(cpu);
 
         let program = Chip::new(RiscvAir::Program(ProgramChip::default()));
         costs.insert(program.name(), program.cost());
@@ -448,9 +528,19 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(sha_extend.name(), 48 * sha_extend.cost());
         chips.push(sha_extend);
 
+        let sha_extend_control =
+            Chip::new(RiscvAir::Sha256ExtendControl(ShaExtendControlChip::default()));
+        costs.insert(sha_extend_control.name(), sha_extend_control.cost());
+        chips.push(sha_extend_control);
+
         let sha_compress = Chip::new(RiscvAir::Sha256Compress(ShaCompressChip::default()));
         costs.insert(sha_compress.name(), 80 * sha_compress.cost());
         chips.push(sha_compress);
+
+        let sha_compress_control =
+            Chip::new(RiscvAir::Sha256CompressControl(ShaCompressControlChip::default()));
+        costs.insert(sha_compress_control.name(), sha_compress_control.cost());
+        chips.push(sha_compress_control);
 
         let ed_add_assign = Chip::new(RiscvAir::Ed25519Add(EdAddAssignChip::<
             EdwardsCurve<Ed25519Parameters>,
@@ -505,6 +595,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         let keccak_permute = Chip::new(RiscvAir::KeccakP(KeccakPermuteChip::new()));
         costs.insert(keccak_permute.name(), 24 * keccak_permute.cost());
         chips.push(keccak_permute);
+
+        let keccak_control = Chip::new(RiscvAir::KeccakPControl(KeccakPermuteControlChip::new()));
+        costs.insert(keccak_control.name(), keccak_control.cost());
+        chips.push(keccak_control);
 
         let bn254_add_assign = Chip::new(RiscvAir::Bn254Add(WeierstrassAddAssignChip::<
             SwCurve<Bn254Parameters>,
@@ -585,9 +679,17 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(div_rem.name(), div_rem.cost());
         chips.push(div_rem);
 
-        let add_sub = Chip::new(RiscvAir::Add(AddSubChip::default()));
-        costs.insert(add_sub.name(), add_sub.cost());
-        chips.push(add_sub);
+        let add = Chip::new(RiscvAir::Add(AddChip::default()));
+        costs.insert(add.name(), add.cost());
+        chips.push(add);
+
+        let addi = Chip::new(RiscvAir::Addi(AddiChip::default()));
+        costs.insert(addi.name(), addi.cost());
+        chips.push(addi);
+
+        let sub = Chip::new(RiscvAir::Sub(SubChip::default()));
+        costs.insert(sub.name(), sub.cost());
+        chips.push(sub);
 
         let bitwise = Chip::new(RiscvAir::Bitwise(BitwiseChip::default()));
         costs.insert(bitwise.name(), bitwise.cost());
@@ -609,9 +711,33 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(lt.name(), lt.cost());
         chips.push(lt);
 
-        let memory_instructions = Chip::new(RiscvAir::Memory(MemoryInstructionsChip::default()));
-        costs.insert(memory_instructions.name(), memory_instructions.cost());
-        chips.push(memory_instructions);
+        let load_byte = Chip::new(RiscvAir::LoadByte(LoadByteChip::default()));
+        costs.insert(load_byte.name(), load_byte.cost());
+        chips.push(load_byte);
+
+        let load_half = Chip::new(RiscvAir::LoadHalf(LoadHalfChip::default()));
+        costs.insert(load_half.name(), load_half.cost());
+        chips.push(load_half);
+
+        let load_word = Chip::new(RiscvAir::LoadWord(LoadWordChip::default()));
+        costs.insert(load_word.name(), load_word.cost());
+        chips.push(load_word);
+
+        let load_x0 = Chip::new(RiscvAir::LoadX0(LoadX0Chip::default()));
+        costs.insert(load_x0.name(), load_x0.cost());
+        chips.push(load_x0);
+
+        let store_byte = Chip::new(RiscvAir::StoreByte(StoreByteChip::default()));
+        costs.insert(store_byte.name(), store_byte.cost());
+        chips.push(store_byte);
+
+        let store_half = Chip::new(RiscvAir::StoreHalf(StoreHalfChip::default()));
+        costs.insert(store_half.name(), store_half.cost());
+        chips.push(store_half);
+
+        let store_word = Chip::new(RiscvAir::StoreWord(StoreWordChip::default()));
+        costs.insert(store_word.name(), store_word.cost());
+        chips.push(store_word);
 
         let auipc = Chip::new(RiscvAir::AUIPC(AuipcChip::default()));
         costs.insert(auipc.name(), auipc.cost());
@@ -621,9 +747,13 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(branch.name(), branch.cost());
         chips.push(branch);
 
-        let jump = Chip::new(RiscvAir::Jump(JumpChip::default()));
-        costs.insert(jump.name(), jump.cost());
-        chips.push(jump);
+        let jal = Chip::new(RiscvAir::Jal(JalChip::default()));
+        costs.insert(jal.name(), jal.cost());
+        chips.push(jal);
+
+        let jalr = Chip::new(RiscvAir::Jalr(JalrChip::default()));
+        costs.insert(jalr.name(), jalr.cost());
+        chips.push(jalr);
 
         let syscall_instrs = Chip::new(RiscvAir::SyscallInstrs(SyscallInstrsChip::default()));
         costs.insert(syscall_instrs.name(), syscall_instrs.cost());
@@ -652,6 +782,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(byte.name(), byte.cost());
         chips.push(byte);
 
+        let range = Chip::new(RiscvAir::RangeLookup(RangeChip::default()));
+        costs.insert(range.name(), range.cost());
+        chips.push(range);
+
         assert_eq!(chips.len(), costs.len(), "chips and costs must have the same length",);
 
         (chips, costs)
@@ -662,15 +796,17 @@ impl<F: PrimeField32> RiscvAir<F> {
         vec![
             (RiscvAirId::Program, program.instructions.len()),
             (RiscvAirId::Byte, BYTE_CHIP_NUM_ROWS),
+            (RiscvAirId::Range, RANGE_CHIP_NUM_ROWS),
         ]
     }
 
     /// Get the heights of the chips for a given execution record.
     pub fn core_heights(record: &ExecutionRecord) -> Vec<(RiscvAirId, usize)> {
         vec![
-            (RiscvAirId::Cpu, record.cpu_events.len()),
             (RiscvAirId::DivRem, record.divrem_events.len()),
-            (RiscvAirId::AddSub, record.add_events.len() + record.sub_events.len()),
+            (RiscvAirId::Add, record.add_events.len()),
+            (RiscvAirId::Addi, record.addi_events.len()),
+            (RiscvAirId::Sub, record.sub_events.len()),
             (RiscvAirId::Bitwise, record.bitwise_events.len()),
             (RiscvAirId::Mul, record.mul_events.len()),
             (RiscvAirId::ShiftRight, record.shift_right_events.len()),
@@ -684,10 +820,17 @@ impl<F: PrimeField32> RiscvAir<F> {
                     .into_iter()
                     .count(),
             ),
-            (RiscvAirId::MemoryInstrs, record.memory_instr_events.len()),
+            (RiscvAirId::LoadByte, record.memory_load_byte_events.len()),
+            (RiscvAirId::LoadHalf, record.memory_load_half_events.len()),
+            (RiscvAirId::LoadWord, record.memory_load_word_events.len()),
+            (RiscvAirId::LoadX0, record.memory_load_x0_events.len()),
+            (RiscvAirId::StoreByte, record.memory_store_byte_events.len()),
+            (RiscvAirId::StoreHalf, record.memory_store_half_events.len()),
+            (RiscvAirId::StoreWord, record.memory_store_word_events.len()),
             (RiscvAirId::Auipc, record.auipc_events.len()),
             (RiscvAirId::Branch, record.branch_events.len()),
-            (RiscvAirId::Jump, record.jump_events.len()),
+            (RiscvAirId::Jal, record.jal_events.len()),
+            (RiscvAirId::Jalr, record.jalr_events.len()),
             (RiscvAirId::Global, record.global_interaction_events.len()),
             (RiscvAirId::SyscallCore, record.syscall_events.len()),
             (RiscvAirId::SyscallInstrs, record.syscall_events.len()),
@@ -725,18 +868,26 @@ impl<F: PrimeField32> RiscvAir<F> {
 
     pub(crate) fn get_all_core_airs() -> Vec<Self> {
         vec![
-            RiscvAir::Cpu(CpuChip::default()),
-            RiscvAir::Add(AddSubChip::default()),
+            RiscvAir::Add(AddChip::default()),
+            RiscvAir::Addi(AddiChip::default()),
+            RiscvAir::Sub(SubChip::default()),
             RiscvAir::Bitwise(BitwiseChip::default()),
             RiscvAir::Mul(MulChip::default()),
             RiscvAir::DivRem(DivRemChip::default()),
             RiscvAir::Lt(LtChip::default()),
             RiscvAir::ShiftLeft(ShiftLeft::default()),
             RiscvAir::ShiftRight(ShiftRightChip::default()),
-            RiscvAir::Memory(MemoryInstructionsChip::default()),
+            RiscvAir::LoadByte(LoadByteChip::default()),
+            RiscvAir::LoadHalf(LoadHalfChip::default()),
+            RiscvAir::LoadWord(LoadWordChip::default()),
+            RiscvAir::LoadX0(LoadX0Chip::default()),
+            RiscvAir::StoreByte(StoreByteChip::default()),
+            RiscvAir::StoreHalf(StoreHalfChip::default()),
+            RiscvAir::StoreWord(StoreWordChip::default()),
             RiscvAir::AUIPC(AuipcChip::default()),
             RiscvAir::Branch(BranchChip::default()),
-            RiscvAir::Jump(JumpChip::default()),
+            RiscvAir::Jal(JalChip::default()),
+            RiscvAir::Jalr(JalrChip::default()),
             RiscvAir::SyscallInstrs(SyscallInstrsChip::default()),
             RiscvAir::MemoryLocal(MemoryLocalChip::new()),
             RiscvAir::Global(GlobalChip),
@@ -769,6 +920,7 @@ impl<F: PrimeField32> RiscvAir<F> {
         airs.remove(&Self::SyscallPrecompile(SyscallChip::precompile()));
         airs.remove(&Self::Program(ProgramChip::default()));
         airs.remove(&Self::ByteLookup(ByteChip::default()));
+        airs.remove(&Self::RangeLookup(RangeChip::default()));
 
         airs.into_iter()
             .map(|air| {
@@ -808,12 +960,15 @@ impl<F: PrimeField32> RiscvAir<F> {
             Self::Ed25519Add(_) => SyscallCode::ED_ADD,
             Self::Ed25519Decompress(_) => SyscallCode::ED_DECOMPRESS,
             Self::KeccakP(_) => SyscallCode::KECCAK_PERMUTE,
+            Self::KeccakPControl(_) => SyscallCode::KECCAK_PERMUTE,
             Self::Secp256k1Add(_) => SyscallCode::SECP256K1_ADD,
             Self::Secp256k1Double(_) => SyscallCode::SECP256K1_DOUBLE,
             Self::Secp256r1Add(_) => SyscallCode::SECP256R1_ADD,
             Self::Secp256r1Double(_) => SyscallCode::SECP256R1_DOUBLE,
             Self::Sha256Compress(_) => SyscallCode::SHA_COMPRESS,
+            Self::Sha256CompressControl(_) => SyscallCode::SHA_COMPRESS,
             Self::Sha256Extend(_) => SyscallCode::SHA_EXTEND,
+            Self::Sha256ExtendControl(_) => SyscallCode::SHA_EXTEND,
             Self::Uint256Mul(_) => SyscallCode::UINT256_MUL,
             Self::U256x2048Mul(_) => SyscallCode::U256XU2048_MUL,
             Self::Bls12381Decompress(_) => SyscallCode::BLS12381_DECOMPRESS,
@@ -824,25 +979,34 @@ impl<F: PrimeField32> RiscvAir<F> {
             Self::Bls12381Fp2Mul(_) => SyscallCode::BLS12381_FP2_MUL,
             Self::Bls12381Fp2AddSub(_) => SyscallCode::BLS12381_FP2_ADD,
             Self::Add(_) => unreachable!("Invalid for core chip"),
+            Self::Addi(_) => unreachable!("Invalid for core chip"),
+            Self::Sub(_) => unreachable!("Invalid for core chip"),
             Self::Bitwise(_) => unreachable!("Invalid for core chip"),
             Self::DivRem(_) => unreachable!("Invalid for core chip"),
-            Self::Cpu(_) => unreachable!("Invalid for core chip"),
+            // Self::Cpu(_) => unreachable!("Invalid for core chip"),
             Self::MemoryGlobalInit(_) => unreachable!("Invalid for memory init/final"),
             Self::MemoryGlobalFinal(_) => unreachable!("Invalid for memory init/final"),
             Self::MemoryLocal(_) => unreachable!("Invalid for memory local"),
             Self::Global(_) => unreachable!("Invalid for global chip"),
-            // Self::ProgramMemory(_) => unreachable!("Invalid for memory program"),
             Self::Program(_) => unreachable!("Invalid for core chip"),
             Self::Mul(_) => unreachable!("Invalid for core chip"),
             Self::Lt(_) => unreachable!("Invalid for core chip"),
             Self::ShiftRight(_) => unreachable!("Invalid for core chip"),
             Self::ShiftLeft(_) => unreachable!("Invalid for core chip"),
-            Self::Memory(_) => unreachable!("Invalid for memory chip"),
+            Self::LoadByte(_) => unreachable!("Invalid for memory chip"),
+            Self::LoadHalf(_) => unreachable!("Invalid for memory chip"),
+            Self::LoadWord(_) => unreachable!("Invalid for memory chip"),
+            Self::LoadX0(_) => unreachable!("Invalid for memory chip"),
+            Self::StoreByte(_) => unreachable!("Invalid for memory chip"),
+            Self::StoreHalf(_) => unreachable!("Invalid for memory chip"),
+            Self::StoreWord(_) => unreachable!("Invalid for memory chip"),
             Self::AUIPC(_) => unreachable!("Invalid for auipc chip"),
             Self::Branch(_) => unreachable!("Invalid for branch chip"),
-            Self::Jump(_) => unreachable!("Invalid for jump chip"),
+            Self::Jal(_) => unreachable!("Invalid for jal chip"),
+            Self::Jalr(_) => unreachable!("Invalid for jalr chip"),
             Self::SyscallInstrs(_) => unreachable!("Invalid for syscall instr chip"),
             Self::ByteLookup(_) => unreachable!("Invalid for core chip"),
+            Self::RangeLookup(_) => unreachable!("Invalid for core chip"),
             Self::SyscallCore(_) => unreachable!("Invalid for core chip"),
             Self::SyscallPrecompile(_) => unreachable!("Invalid for syscall precompile chip"),
         }
@@ -874,6 +1038,8 @@ pub mod tests {
 
     use std::sync::Arc;
 
+    use p3_air::BaseAir;
+    use p3_baby_bear::BabyBear;
     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
     use sp1_stark::prover::CpuProver;
     use sp1_stark::{MachineVerifier, SP1CoreOpts, ShardVerifier};
@@ -881,6 +1047,7 @@ pub mod tests {
     use crate::riscv::RiscvAir;
     use crate::utils::prove_core;
     use crate::{programs::tests::*, utils::setup_logger};
+    use sp1_stark::InteractionKind;
     //     use p3_baby_bear::BabyBear;
     //     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
     //     use sp1_stark::{
@@ -941,8 +1108,8 @@ pub mod tests {
     // 0)];         for shift_op in shift_ops.iter() {
     //             for op in operands.iter() {
     //                 let instructions = vec![
-    //                     Instruction::new(Opcode::ADD, 29, 0, op.0, false, true),
-    //                     Instruction::new(Opcode::ADD, 30, 0, op.1, false, true),
+    //                     Instruction::new(Opcode::ADDI, 29, 0, op.0, false, true),
+    //                     Instruction::new(Opcode::ADDI, 30, 0, op.1, false, true),
     //                     Instruction::new(*shift_op, 31, 29, 3, false, false),
     //                 ];
     //                 let program = Program::new(instructions, 0, 0);
@@ -956,8 +1123,8 @@ pub mod tests {
     //     fn test_sub_prove() {
     //         utils::setup_logger();
     //         let instructions = vec![
-    //             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-    //             Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
+    //             Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+    //             Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
     //             Instruction::new(Opcode::SUB, 31, 30, 29, false, false),
     //         ];
     //         let program = Program::new(instructions, 0, 0);
@@ -971,14 +1138,27 @@ pub mod tests {
     // async fn test_add_prove() {
     //     // setup_logger();
     //     let instructions = vec![
-    //         Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-    //         Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
+    //         Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+    //         Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
     //         Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
     //     ];
     //     let program = Program::new(instructions, 0, 0);
     //     let stdin = SP1Stdin::new();
     //     run_test(program, stdin).await.unwrap();
     // }
+
+    #[test]
+    fn test_chips_main_width_interaction_ratio() {
+        let chips = RiscvAir::<BabyBear>::chips();
+        for chip in chips.iter() {
+            let main_width = chip.air.width();
+            for kind in InteractionKind::all_kinds() {
+                let interaction_count =
+                    chip.num_sends_by_kind(kind) + chip.num_receives_by_kind(kind);
+                assert!(interaction_count <= main_width);
+            }
+        }
+    }
 
     #[tokio::test]
     async fn test_mul_prove() {
@@ -989,8 +1169,8 @@ pub mod tests {
         for mul_op in mul_ops.iter() {
             for operand in operands.iter() {
                 let instructions = vec![
-                    Instruction::new(Opcode::ADD, 29, 0, operand.0, false, true),
-                    Instruction::new(Opcode::ADD, 30, 0, operand.1, false, true),
+                    Instruction::new(Opcode::ADDI, 29, 0, operand.0, false, true),
+                    Instruction::new(Opcode::ADDI, 30, 0, operand.1, false, true),
                     Instruction::new(*mul_op, 31, 30, 29, false, false),
                 ];
                 let program = Program::new(instructions, 0, 0);
@@ -1006,8 +1186,8 @@ pub mod tests {
         let less_than = [Opcode::SLT, Opcode::SLTU];
         for lt_op in less_than.iter() {
             let instructions = vec![
-                Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-                Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
+                Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+                Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
                 Instruction::new(*lt_op, 31, 30, 29, false, false),
             ];
             let program = Program::new(instructions, 0, 0);
@@ -1023,8 +1203,8 @@ pub mod tests {
 
         for bitwise_op in bitwise_opcodes.iter() {
             let instructions = vec![
-                Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-                Instruction::new(Opcode::ADD, 30, 0, 8, false, true),
+                Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+                Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
                 Instruction::new(*bitwise_op, 31, 30, 29, false, false),
             ];
             let program = Program::new(instructions, 0, 0);
@@ -1043,19 +1223,21 @@ pub mod tests {
             (123 * 456, 789),
             (0xffff * (0xffff - 1), 0xffff),
             (u32::MAX - 5, u32::MAX - 7),
+            (1 << 31, u32::MAX),
+            (1, 0),
+            (0, 0),
         ];
+        let mut instructions = vec![];
         for div_rem_op in div_rem_ops.iter() {
             for op in operands.iter() {
-                let instructions = vec![
-                    Instruction::new(Opcode::ADD, 29, 0, op.0, false, true),
-                    Instruction::new(Opcode::ADD, 30, 0, op.1, false, true),
-                    Instruction::new(*div_rem_op, 31, 29, 30, false, false),
-                ];
-                let program = Program::new(instructions, 0, 0);
-                let stdin = SP1Stdin::new();
-                run_test(program, stdin).await.unwrap();
+                instructions.push(Instruction::new(Opcode::ADDI, 29, 0, op.0, false, true));
+                instructions.push(Instruction::new(Opcode::ADDI, 30, 0, op.1, false, true));
+                instructions.push(Instruction::new(*div_rem_op, 31, 29, 30, false, false));
             }
         }
+        let program = Program::new(instructions.to_vec(), 0, 0);
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]

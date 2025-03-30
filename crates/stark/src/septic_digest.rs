@@ -2,7 +2,7 @@
 use crate::{septic_curve::SepticCurve, septic_extension::SepticExtension};
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, Field};
-use std::iter::Sum;
+use std::{iter::Sum, ops::Add};
 
 /// The x-coordinate for a curve point used as a starting cumulative sum for global permutation
 /// trace generation, derived from `sqrt(2)`.
@@ -60,6 +60,23 @@ impl<F: Field> SepticDigest<F> {
     /// Checks that the digest is zero, the starting point of the accumulation.
     pub fn is_zero(&self) -> bool {
         *self == SepticDigest::<F>::zero()
+    }
+}
+
+impl<F: Field> Add for SepticDigest<F> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        let start = Self::starting_digest().0;
+
+        let sum_a = start.add_incomplete(self.0).sub_incomplete(Self::zero().0);
+        let sum_b = sum_a.add_incomplete(rhs.0).sub_incomplete(Self::zero().0);
+
+        let mut result = sum_b;
+        result.add_assign(SepticDigest::<F>::zero().0);
+        result.sub_assign(start);
+
+        SepticDigest(result)
     }
 }
 

@@ -20,7 +20,7 @@ pub async fn run_recursion_test_machines(
     program: RecursionProgram<BabyBear>,
     witness: Vec<Block<BabyBear>>,
 ) {
-    type A = RecursionAir<BabyBear, 3>;
+    // type A = RecursionAir<BabyBear, 3>;
 
     let mut runtime = Runtime::<
         BabyBear,

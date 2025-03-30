@@ -1,0 +1,228 @@
+use crate::air::SP1CoreAirBuilder;
+use crate::memory::MemoryAccessCols;
+
+use super::KeccakPermuteControlChip;
+use super::STATE_NUM_WORDS;
+use core::borrow::Borrow;
+use p3_air::{Air, BaseAir};
+use p3_field::AbstractField;
+use p3_field::PrimeField32;
+use p3_matrix::dense::RowMajorMatrix;
+use p3_matrix::Matrix;
+use sp1_core_executor::events::ByteRecord;
+use sp1_core_executor::events::MemoryRecordEnum;
+use sp1_core_executor::syscalls::SyscallCode;
+use sp1_core_executor::{events::PrecompileEvent, ExecutionRecord, Program};
+use sp1_derive::AlignedBorrow;
+use sp1_stark::air::InteractionScope;
+use sp1_stark::air::{AirInteraction, MachineAir};
+use sp1_stark::InteractionKind;
+use sp1_stark::Word;
+use std::borrow::BorrowMut;
+
+impl KeccakPermuteControlChip {
+    pub const fn new() -> Self {
+        Self {}
+    }
+}
+
+pub const NUM_KECCAK_PERMUTE_CONTROL_COLS: usize = size_of::<KeccakPermuteControlCols<u8>>();
+
+#[derive(AlignedBorrow, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct KeccakPermuteControlCols<T> {
+    pub shard: T,
+    pub clk: T,
+    pub state_addr: T,
+    pub is_real: T,
+    pub initial_memory_access: [MemoryAccessCols<T>; 50],
+    pub final_memory_access: [MemoryAccessCols<T>; 50],
+    pub final_value: [Word<T>; 50],
+}
+
+impl<F> BaseAir<F> for KeccakPermuteControlChip {
+    fn width(&self) -> usize {
+        NUM_KECCAK_PERMUTE_CONTROL_COLS
+    }
+}
+
+impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
+    type Record = ExecutionRecord;
+    type Program = Program;
+
+    fn name(&self) -> String {
+        "KeccakPermuteControl".to_string()
+    }
+
+    fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
+        let mut blu_events = vec![];
+        for (_, event) in input.get_precompile_events(SyscallCode::KECCAK_PERMUTE).iter() {
+            let event = if let PrecompileEvent::KeccakPermute(event) = event {
+                event
+            } else {
+                unreachable!()
+            };
+            let mut row = [F::zero(); NUM_KECCAK_PERMUTE_CONTROL_COLS];
+            let cols: &mut KeccakPermuteControlCols<F> = row.as_mut_slice().borrow_mut();
+            for (j, read_record) in event.state_read_records.iter().enumerate() {
+                cols.initial_memory_access[j]
+                    .populate(MemoryRecordEnum::Read(*read_record), &mut blu_events);
+            }
+            for (j, write_record) in event.state_write_records.iter().enumerate() {
+                cols.final_memory_access[j]
+                    .populate(MemoryRecordEnum::Write(*write_record), &mut blu_events);
+                cols.final_value[j] = Word::from(write_record.value);
+            }
+        }
+        output.add_byte_lookup_events(blu_events);
+    }
+
+    fn generate_trace(
+        &self,
+        input: &ExecutionRecord,
+        _: &mut ExecutionRecord,
+    ) -> RowMajorMatrix<F> {
+        let mut rows = Vec::new();
+        let mut blu_events = vec![];
+        for (_, event) in input.get_precompile_events(SyscallCode::KECCAK_PERMUTE).iter() {
+            let event = if let PrecompileEvent::KeccakPermute(event) = event {
+                event
+            } else {
+                unreachable!()
+            };
+            let mut row = [F::zero(); NUM_KECCAK_PERMUTE_CONTROL_COLS];
+            let cols: &mut KeccakPermuteControlCols<F> = row.as_mut_slice().borrow_mut();
+            cols.shard = F::from_canonical_u32(event.shard);
+            cols.clk = F::from_canonical_u32(event.clk);
+            cols.state_addr = F::from_canonical_u32(event.state_addr);
+            cols.is_real = F::one();
+            for (j, read_record) in event.state_read_records.iter().enumerate() {
+                cols.initial_memory_access[j]
+                    .populate(MemoryRecordEnum::Read(*read_record), &mut blu_events);
+            }
+            for (j, write_record) in event.state_write_records.iter().enumerate() {
+                cols.final_memory_access[j]
+                    .populate(MemoryRecordEnum::Write(*write_record), &mut blu_events);
+                cols.final_value[j] = Word::from(write_record.value);
+            }
+
+            rows.push(row);
+        }
+
+        let nb_rows = rows.len();
+        let mut padded_nb_rows = nb_rows.next_power_of_two();
+        if padded_nb_rows == 2 || padded_nb_rows == 1 {
+            padded_nb_rows = 4;
+        }
+        for _ in nb_rows..padded_nb_rows {
+            let row = [F::zero(); NUM_KECCAK_PERMUTE_CONTROL_COLS];
+            rows.push(row);
+        }
+
+        // Convert the trace to a row major matrix.
+        RowMajorMatrix::new(
+            rows.into_iter().flatten().collect::<Vec<_>>(),
+            NUM_KECCAK_PERMUTE_CONTROL_COLS,
+        )
+    }
+
+    fn included(&self, shard: &Self::Record) -> bool {
+        if let Some(shape) = shard.shape.as_ref() {
+            shape.included::<F, _>(self)
+        } else {
+            !shard.get_precompile_events(SyscallCode::KECCAK_PERMUTE).is_empty()
+        }
+    }
+
+    fn local_only(&self) -> bool {
+        true
+    }
+}
+
+impl<AB> Air<AB> for KeccakPermuteControlChip
+where
+    AB: SP1CoreAirBuilder,
+{
+    fn eval(&self, builder: &mut AB) {
+        // Initialize columns.
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &KeccakPermuteControlCols<AB::Var> = (*local).borrow();
+
+        builder.assert_bool(local.is_real);
+
+        // Receive the syscall.
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            AB::F::from_canonical_u32(SyscallCode::KECCAK_PERMUTE.syscall_id()),
+            local.state_addr,
+            AB::Expr::zero(),
+            local.is_real,
+            InteractionScope::Local,
+        );
+
+        // Send the initial state.
+        builder.send(
+            AirInteraction::new(
+                vec![
+                    local.shard.into(),
+                    local.clk.into(),
+                    local.state_addr.into(),
+                    AB::Expr::zero(),
+                ]
+                .into_iter()
+                .chain(
+                    local
+                        .initial_memory_access
+                        .into_iter()
+                        .flat_map(|access| access.prev_value.into_iter())
+                        .map(Into::into),
+                )
+                .collect(),
+                local.is_real.into(),
+                InteractionKind::Keccak,
+            ),
+            InteractionScope::Local,
+        );
+
+        // Receive the final state.
+        builder.receive(
+            AirInteraction::new(
+                vec![
+                    local.shard.into(),
+                    local.clk.into(),
+                    local.state_addr.into(),
+                    AB::Expr::from_canonical_u32(24),
+                ]
+                .into_iter()
+                .chain(
+                    local.final_value.into_iter().flat_map(|word| word.into_iter()).map(Into::into),
+                )
+                .collect(),
+                local.is_real.into(),
+                InteractionKind::Keccak,
+            ),
+            InteractionScope::Local,
+        );
+
+        // Evaluate the memory accesses.
+        for i in 0..STATE_NUM_WORDS {
+            builder.eval_memory_access_read(
+                local.shard,
+                local.clk,
+                local.state_addr + AB::Expr::from_canonical_u32(4 * i as u32),
+                local.initial_memory_access[i],
+                local.is_real,
+            );
+            builder.eval_memory_access_write(
+                local.shard,
+                local.clk + AB::Expr::one(),
+                local.state_addr + AB::Expr::from_canonical_u32(4 * i as u32),
+                local.final_memory_access[i],
+                local.final_value[i],
+                local.is_real,
+            );
+        }
+    }
+}

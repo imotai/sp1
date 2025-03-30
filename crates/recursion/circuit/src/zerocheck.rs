@@ -4,7 +4,7 @@ use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
     challenger::FieldChallengerVariable,
     jagged::RecursiveJaggedConfig,
-    shard::StarkVerifier,
+    shard::RecursiveShardVerifier,
     sumcheck::verify_sumcheck,
     symbolic::IntoSymbolic,
     BabyBearFriConfigVariable, CircuitConfig,
@@ -21,9 +21,8 @@ use sp1_recursion_compiler::{
     prelude::{Builder, Ext, SymbolicExt},
 };
 use sp1_stark::{
-    air::MachineAir, septic_curve::SepticCurve, septic_digest::SepticDigest, Chip,
-    ChipOpenedValues, GenericVerifierConstraintFolder, LogUpEvaluations, OpeningShapeError,
-    ShardOpenedValues,
+    air::MachineAir, Chip, ChipOpenedValues, GenericVerifierConstraintFolder, LogUpEvaluations,
+    OpeningShapeError, ShardOpenedValues,
 };
 
 pub type RecursiveVerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
@@ -47,10 +46,6 @@ where
     A: MachineAir<C::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
 {
     let default_challenge: Ext<C::F, C::EF> = builder.constant(C::EF::default());
-    let default_septic_digest =
-        SepticDigest(SepticCurve::convert(SepticDigest::<C::F>::zero().0, |value| {
-            builder.eval(value)
-        }));
     let mut folder = RecursiveVerifierConstraintFolder::<C> {
         preprocessed: VerticalPair::new(
             RowMajorMatrixView::new_row(&opening.preprocessed.local),
@@ -63,7 +58,6 @@ where
         perm: VerticalPair::new(RowMajorMatrixView::new_row(&[]), RowMajorMatrixView::new_row(&[])),
         perm_challenges: &[],
         local_cumulative_sum: &default_challenge,
-        global_cumulative_sum: &default_septic_digest,
         public_values,
         is_first_row: default_challenge,
         is_last_row: default_challenge,
@@ -92,10 +86,6 @@ where
     let dummy_main_trace = vec![zero; chip.width()];
 
     let default_challenge: Ext<C::F, C::EF> = builder.constant(C::EF::default());
-    let default_septic_digest =
-        SepticDigest(SepticCurve::convert(SepticDigest::<C::F>::zero().0, |value| {
-            builder.eval(value)
-        }));
     let mut folder = RecursiveVerifierConstraintFolder::<C> {
         preprocessed: VerticalPair::new(
             RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
@@ -108,7 +98,6 @@ where
         perm: VerticalPair::new(RowMajorMatrixView::new_row(&[]), RowMajorMatrixView::new_row(&[])),
         perm_challenges: &[],
         local_cumulative_sum: &default_challenge,
-        global_cumulative_sum: &default_septic_digest,
         is_first_row: default_challenge,
         is_last_row: default_challenge,
         is_transition: default_challenge,
@@ -146,7 +135,7 @@ where
     Ok(())
 }
 
-impl<C, SC, A, JC> StarkVerifier<A, SC, C, JC>
+impl<C, SC, A, JC> RecursiveShardVerifier<A, SC, C, JC>
 where
     C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
     SC: BabyBearFriConfigVariable<C>,
@@ -280,6 +269,7 @@ where
     }
 }
 
+// TODO: Add tests back.
 // #[cfg(test)]
 // mod tests {
 //     use std::{marker::PhantomData, sync::Arc};

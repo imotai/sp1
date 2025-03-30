@@ -6,10 +6,10 @@ use std::{
 use futures::future::OptionFuture;
 use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};
-use slop_alloc::{Backend, ToHost};
+use slop_alloc::{Backend, CanCopyFromRef, CanCopyIntoRef, CpuBackend, ToHost};
 use slop_challenger::FieldChallenger;
 use slop_multilinear::{
-    MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, Point, PointBackend,
+    Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, Point, PointBackend,
 };
 use slop_tensor::AddAssignBackend;
 
@@ -76,9 +76,11 @@ pub trait LogUpGkrProverComponents: 'static + Send + Sync {
     type B: MleBaseBackend<Self::F>
         + MleBaseBackend<Self::EF>
         + MleEvaluationBackend<Self::F, Self::EF>
+        + MleEvaluationBackend<Self::EF, Self::EF>
         + MleEvaluationBackend<Self::F, Self::F>
         + PointBackend<Self::EF>
-        + AddAssignBackend<Self::EF>;
+        + AddAssignBackend<Self::EF>
+        + CanCopyIntoRef<Mle<Self::EF, Self::B>, CpuBackend, Output = Mle<Self::EF>>;
     /// TODO
     type Challenger: FieldChallenger<Self::F> + 'static + Send + Sync;
 
@@ -182,6 +184,9 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         beta: Self::EF,
         challenger: &mut Self::Challenger,
     ) -> LogupGkrProof<Self::EF> {
+        let num_interactions =
+            chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
+        let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
         // Run the GKR circuit and get the output.
         let (output, circuit) = self
             .trace_generator
@@ -190,17 +195,20 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
 
         let LogUpGkrOutput { numerator, denominator } = &output;
 
-        let num_interactions =
-            chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
-        let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
-
+        let host_numerator = numerator.to_host().await.unwrap();
+        let host_denominator = denominator.to_host().await.unwrap();
         // Observe the output claims.
-        for (n, d) in
-            numerator.guts().as_slice().iter().zip_eq(denominator.guts().as_slice().iter())
+        for (n, d) in host_numerator
+            .guts()
+            .as_slice()
+            .iter()
+            .zip_eq(host_denominator.guts().as_slice().iter())
         {
             challenger.observe_ext_element(*n);
             challenger.observe_ext_element(*d);
         }
+        let output_host =
+            LogUpGkrOutput { numerator: host_numerator, denominator: host_denominator };
 
         // TODO: instead calculate from number of interactions.
         let initial_number_of_variables = numerator.num_variables();
@@ -208,8 +216,11 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         let first_eval_point = challenger.sample_point::<Self::EF>(initial_number_of_variables);
 
         // Follow the GKR protocol layer by layer.
-        let first_numerator_eval = numerator.eval_at(&first_eval_point).await[0];
-        let first_denominator_eval = denominator.eval_at(&first_eval_point).await[0];
+        let first_point = numerator.backend().copy_to(&first_eval_point).await.unwrap();
+        let first_numerator_eval =
+            numerator.eval_at(&first_point).await.to_host().await.unwrap()[0];
+        let first_denominator_eval =
+            denominator.eval_at(&first_point).await.to_host().await.unwrap()[0];
 
         let (eval_point, round_proofs) = self
             .prove_gkr_circuit(
@@ -251,6 +262,6 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         let logup_evaluations =
             LogUpEvaluations { point: eval_point, chip_openings: chip_evaluations };
 
-        LogupGkrProof { circuit_output: output, round_proofs, logup_evaluations }
+        LogupGkrProof { circuit_output: output_host, round_proofs, logup_evaluations }
     }
 }

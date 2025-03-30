@@ -6,7 +6,7 @@ use num::Integer;
 use p3_baby_bear::BabyBear;
 use p3_field::PrimeField32;
 use p3_util::log2_ceil_usize;
-use sp1_core_executor::{ExecutionRecord, Program, RiscvAirId};
+use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program, RiscvAirId};
 use sp1_stark::{
     air::MachineAir,
     shape::{OrderedShape, Shape, ShapeCluster},
@@ -18,6 +18,7 @@ use super::riscv::riscv_chips::{ByteChip, ProgramChip, SyscallChip};
 use crate::{
     global::GlobalChip,
     memory::{MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW},
+    range::RangeChip,
     riscv::RiscvAir,
 };
 
@@ -138,7 +139,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
             let heights = RiscvAir::<F>::core_heights(record);
 
             // Try to find the smallest shape fitting within at least one of the candidate shapes.
-            let log2_shard_size = record.cpu_events.len().next_power_of_two().ilog2() as usize;
+            let log2_shard_size = record.cpu_event_count.next_power_of_two().ilog2() as usize;
             let mut minimal_shape = None;
             let mut minimal_area = usize::MAX;
             let mut minimal_cluster = None;
@@ -436,6 +437,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                         .chain(vec![
                             (MachineAir::<BabyBear>::name(&ProgramChip), 19),
                             (MachineAir::<BabyBear>::name(&ByteChip::default()), 16),
+                            (MachineAir::<BabyBear>::name(&RangeChip::default()), 17),
                         ])
                         .collect::<Vec<_>>(),
                 )
@@ -455,6 +457,7 @@ impl<F: PrimeField32> Default for CoreShapeConfig<F> {
         let allowed_preprocessed_log2_heights = HashMap::from([
             (RiscvAirId::Program, vec![Some(19), Some(20), Some(21), Some(22)]),
             (RiscvAirId::Byte, vec![Some(16)]),
+            (RiscvAirId::Range, vec![Some(17)]),
         ]);
 
         // Generate the clusters from the maximal shapes and register them indexed by log2 shard
@@ -548,11 +551,14 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RiscvAirId>) -> ShapeCluster<
 
     let mut maybe_log2_heights = HashMap::new();
 
-    let cpu_log_height = shape.log2_height(&RiscvAirId::Cpu);
-    maybe_log2_heights.insert(RiscvAirId::Cpu, heuristic(cpu_log_height, 0));
+    let add_log_height = shape.log2_height(&RiscvAirId::Add);
+    maybe_log2_heights.insert(RiscvAirId::Add, heuristic(add_log_height, 0));
 
-    let addsub_log_height = shape.log2_height(&RiscvAirId::AddSub);
-    maybe_log2_heights.insert(RiscvAirId::AddSub, heuristic(addsub_log_height, 0));
+    let addi_log_height = shape.log2_height(&RiscvAirId::Addi);
+    maybe_log2_heights.insert(RiscvAirId::Addi, heuristic(addi_log_height, 0));
+
+    let sub_log_height = shape.log2_height(&RiscvAirId::Sub);
+    maybe_log2_heights.insert(RiscvAirId::Sub, heuristic(sub_log_height, 0));
 
     let lt_log_height = shape.log2_height(&RiscvAirId::Lt);
     maybe_log2_heights.insert(RiscvAirId::Lt, heuristic(lt_log_height, 0));
@@ -575,8 +581,26 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RiscvAirId>) -> ShapeCluster<
     let shift_left_log_height = shape.log2_height(&RiscvAirId::ShiftLeft);
     maybe_log2_heights.insert(RiscvAirId::ShiftLeft, heuristic(shift_left_log_height, 1));
 
-    let memory_instrs_log_height = shape.log2_height(&RiscvAirId::MemoryInstrs);
-    maybe_log2_heights.insert(RiscvAirId::MemoryInstrs, heuristic(memory_instrs_log_height, 0));
+    let load_byte_log_height = shape.log2_height(&RiscvAirId::LoadByte);
+    maybe_log2_heights.insert(RiscvAirId::LoadByte, heuristic(load_byte_log_height, 0));
+
+    let load_half_log_height = shape.log2_height(&RiscvAirId::LoadHalf);
+    maybe_log2_heights.insert(RiscvAirId::LoadHalf, heuristic(load_half_log_height, 0));
+
+    let load_word_log_height = shape.log2_height(&RiscvAirId::LoadWord);
+    maybe_log2_heights.insert(RiscvAirId::LoadWord, heuristic(load_word_log_height, 0));
+
+    let load_x0_log_height = shape.log2_height(&RiscvAirId::LoadX0);
+    maybe_log2_heights.insert(RiscvAirId::LoadX0, heuristic(load_x0_log_height, 0));
+
+    let store_byte_log_height = shape.log2_height(&RiscvAirId::StoreByte);
+    maybe_log2_heights.insert(RiscvAirId::StoreByte, heuristic(store_byte_log_height, 0));
+
+    let store_half_log_height = shape.log2_height(&RiscvAirId::StoreHalf);
+    maybe_log2_heights.insert(RiscvAirId::StoreHalf, heuristic(store_half_log_height, 0));
+
+    let store_word_log_height = shape.log2_height(&RiscvAirId::StoreWord);
+    maybe_log2_heights.insert(RiscvAirId::StoreWord, heuristic(store_word_log_height, 0));
 
     let auipc_log_height = shape.log2_height(&RiscvAirId::Auipc);
     maybe_log2_heights.insert(RiscvAirId::Auipc, heuristic(auipc_log_height, 0));
@@ -584,8 +608,11 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RiscvAirId>) -> ShapeCluster<
     let branch_log_height = shape.log2_height(&RiscvAirId::Branch);
     maybe_log2_heights.insert(RiscvAirId::Branch, heuristic(branch_log_height, 0));
 
-    let jump_log_height = shape.log2_height(&RiscvAirId::Jump);
-    maybe_log2_heights.insert(RiscvAirId::Jump, heuristic(jump_log_height, 0));
+    let jal_log_height = shape.log2_height(&RiscvAirId::Jal);
+    maybe_log2_heights.insert(RiscvAirId::Jal, heuristic(jal_log_height, 0));
+
+    let jalr_log_height = shape.log2_height(&RiscvAirId::Jalr);
+    maybe_log2_heights.insert(RiscvAirId::Jalr, heuristic(jalr_log_height, 0));
 
     let syscall_core_log_height = shape.log2_height(&RiscvAirId::SyscallCore);
     maybe_log2_heights.insert(RiscvAirId::SyscallCore, heuristic(syscall_core_log_height, 0));
@@ -618,7 +645,15 @@ pub enum CoreShapeError {
 }
 
 pub fn create_dummy_program(shape: &Shape<RiscvAirId>) -> Program {
-    let mut program = Program::new(vec![], 1 << 5, 1 << 5);
+    let mut program = Program::new(
+        vec![
+            Instruction::new(Opcode::ADDI, 29, 0, 1, false, true),
+            Instruction::new(Opcode::ADDI, 30, 0, 1, false, true),
+            Instruction::new(Opcode::ADD, 31, 29, 30, false, false),
+        ],
+        1 << 5,
+        1 << 5,
+    );
     program.preprocessed_shape = Some(shape.clone());
     program
 }

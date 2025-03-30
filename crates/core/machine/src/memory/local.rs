@@ -6,12 +6,14 @@ use std::{
 use crate::utils::{next_power_of_two, zeroed_f_vec};
 
 use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
+use p3_field::AbstractField;
+use p3_field::PrimeField32;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
-use sp1_core_executor::{events::GlobalInteractionEvent, ExecutionRecord, Program};
+use sp1_core_executor::events::GlobalInteractionEvent;
+use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
@@ -19,10 +21,7 @@ use sp1_stark::{
 };
 
 pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW: usize = 4;
-// pub const NUM_LOCAL_MEMORY_INTERACTIONS_PER_ROW: usize = NUM_LOCAL_MEMORY_ENTRIES_PER_ROW * 2;
 pub(crate) const NUM_MEMORY_LOCAL_INIT_COLS: usize = size_of::<MemoryLocalCols<u8>>();
-
-// const_assert!(NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC == NUM_LOCAL_MEMORY_ENTRIES_PER_ROW);
 
 #[derive(AlignedBorrow, Clone, Copy)]
 #[repr(C)]
@@ -99,10 +98,10 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                     mem_event.initial_mem_access.shard,
                     mem_event.initial_mem_access.timestamp,
                     mem_event.addr,
-                    mem_event.initial_mem_access.value & 255,
-                    (mem_event.initial_mem_access.value >> 8) & 255,
-                    (mem_event.initial_mem_access.value >> 16) & 255,
-                    (mem_event.initial_mem_access.value >> 24) & 255,
+                    mem_event.initial_mem_access.value & 0xFFFF,
+                    (mem_event.initial_mem_access.value >> 16) & 0xFFFF,
+                    0u32,
+                    0u32,
                 ],
                 is_receive: true,
                 kind: InteractionKind::Memory as u8,
@@ -112,10 +111,10 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                     mem_event.final_mem_access.shard,
                     mem_event.final_mem_access.timestamp,
                     mem_event.addr,
-                    mem_event.final_mem_access.value & 255,
-                    (mem_event.final_mem_access.value >> 8) & 255,
-                    (mem_event.final_mem_access.value >> 16) & 255,
-                    (mem_event.final_mem_access.value >> 24) & 255,
+                    mem_event.final_mem_access.value & 0xFFFF,
+                    (mem_event.final_mem_access.value >> 16) & 0xFFFF,
+                    0u32,
+                    0u32,
                 ],
                 is_receive: false,
                 kind: InteractionKind::Memory as u8,
@@ -223,8 +222,8 @@ where
                         local.addr.into(),
                         local.initial_value[0].into(),
                         local.initial_value[1].into(),
-                        local.initial_value[2].into(),
-                        local.initial_value[3].into(),
+                        AB::Expr::zero(),
+                        AB::Expr::zero(),
                         AB::Expr::zero(),
                         AB::Expr::one(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
@@ -244,8 +243,8 @@ where
                         local.addr.into(),
                         local.final_value[0].into(),
                         local.final_value[1].into(),
-                        local.final_value[2].into(),
-                        local.final_value[3].into(),
+                        AB::Expr::zero(),
+                        AB::Expr::zero(),
                         AB::Expr::one(),
                         AB::Expr::zero(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
