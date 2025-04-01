@@ -21,9 +21,7 @@
 #![warn(missing_docs)]
 
 pub mod air;
-mod bb31_poseidon2;
 mod chip;
-// mod config;
 mod debug;
 mod folder;
 mod logup_gkr;
