@@ -116,8 +116,6 @@ __global__ void jaggedVirtualFixLastVariable(
     size_t width,
     size_t stackingWidth)
 {
-    // TODO: here we assume height is a power of 2
-    size_t height = halfHeight << 1;
     for (size_t rowIdx = blockIdx.x * blockDim.x + threadIdx.x; rowIdx < halfHeight; rowIdx += gridDim.x * blockDim.x)
     {
         size_t evenRowIdx = rowIdx << 1;

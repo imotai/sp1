@@ -397,7 +397,7 @@ mod tests {
     use slop_sumcheck::SumcheckPolyFirstRound;
 
     use crate::{
-        CudaJaggedMleGenerator, Poseidon2BabyBearJaggedCudaProverComponents,
+        CudaJaggedMleGenerator, Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval,
         VirtualJaggedSumcheckProver,
     };
 
@@ -407,7 +407,7 @@ mod tests {
         let log_blowup = 1;
 
         type JC = BabyBearPoseidon2TrivialEval;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
+        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
 

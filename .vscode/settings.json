@@ -55,6 +55,18 @@
         "limits": "cpp",
         "locale": "cpp",
         "memory": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "iomanip": "cpp",
+        "istream": "cpp",
+        "mutex": "cpp",
+        "ostream": "cpp",
+        "numeric": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "__functional_03": "cpp",
+        "__hash_table": "cpp",
+        "__tuple": "cpp",
+        "thread": "cpp",
+        "unordered_map": "cpp"
     },
 }

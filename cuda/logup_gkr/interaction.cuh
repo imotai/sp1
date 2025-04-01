@@ -1,7 +1,6 @@
 #pragma once
 
 /*
-
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct PairColDevice<F> {
@@ -30,38 +29,42 @@ pub struct DeviceInteractionsView<'a, F: Field> {
 
 */
 
-namespace logup_trace_gen {
-    extern "C" void *gkr_tracegen_kernel();
-    }
-
-template <typename F> struct PairCol {
-  size_t column_idx;
-  bool is_preprocessed;
-  F weight;
+template <typename F>
+struct PairCol
+{
+    size_t column_idx;
+    bool is_preprocessed;
+    F weight;
 
 public:
-  __device__ F get(F *preprocessed, F *main, size_t RowIdx, size_t height) {
-    if (is_preprocessed) {
-      return preprocessed[column_idx * height + RowIdx] * weight;
-    } else {
-      return main[column_idx * height + RowIdx] * weight;
+    __device__ F get(F *preprocessed, F *main, size_t RowIdx, size_t height)
+    {
+        if (is_preprocessed)
+        {
+            return preprocessed[column_idx * height + RowIdx] * weight;
+        }
+        else
+        {
+            return main[column_idx * height + RowIdx] * weight;
+        }
     }
-  }
 };
 
-template <typename F> struct Interactions {
-  size_t *values_ptr;
-  size_t *multiplicities_ptr;
-  size_t *values_col_weights_ptr;
+template <typename F>
+struct Interactions
+{
+    size_t *values_ptr;
+    size_t *multiplicities_ptr;
+    size_t *values_col_weights_ptr;
 
-  PairCol<F> *values_col_weights;
-  F *values_constants;
+    PairCol<F> *values_col_weights;
+    F *values_constants;
 
-  PairCol<F> *mult_col_weights;
-  F *mult_constants;
+    PairCol<F> *mult_col_weights;
+    F *mult_constants;
 
-  F *arg_indices;
-  bool *is_send;
+    F *arg_indices;
+    bool *is_send;
 
-  size_t num_interactions;
+    size_t num_interactions;
 };

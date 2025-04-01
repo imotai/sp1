@@ -14,7 +14,6 @@ members = [
     "crates/air",
     "crates/basefold",
     "crates/cuda",
-    "crates/derive",
     "crates/sys",
     "crates/dft",
     "crates/merkle-tree",
@@ -24,6 +23,7 @@ members = [
     "crates/machine",
     "crates/tracing",
     "crates/perf",
+    "crates/logup-gkr",
 ]
 resolver = "2"
 
@@ -42,7 +42,6 @@ debug-assertions = true
 [workspace.dependencies]
 # cuslop
 csl-sys = { path = "crates/sys" }
-csl-derive = { path = "crates/derive" }
 csl-cuda = { path = "crates/cuda" }
 csl-dft = { path = "crates/dft" }
 csl-merkle-tree = { path = "crates/merkle-tree" }
@@ -53,6 +52,7 @@ csl-zerocheck = { path = "crates/zerocheck" }
 csl-tracing = { path = "crates/tracing" }
 csl-machine = { path = "crates/machine" }
 csl-perf = { path = "crates/perf" }
+csl-logup-gkr = { path = "crates/logup-gkr" }
 
 # slop 
 slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
@@ -76,10 +76,13 @@ slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 slop-air = { git = "https://github.com/succinctlabs/slop" }
 
 # SP1
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
@@ -107,6 +110,9 @@ sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch =
 # sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
 # sp1-stark = { path = "../sp1-wip/crates/stark" }
 # sp1-primitives = { path = "../sp1-wip/crates/primitives" }
+# sp1-prover = { path = "../sp1-wip/crates/prover" }
+# sp1-recursion-circuit = { path = "../sp1-wip/crates/recursion/circuit" }
+# sp1-recursion-compiler = { path = "../sp1-wip/crates/recursion/compiler" }
 
 # async
 tokio = { version = "1.42.0" }

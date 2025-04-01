@@ -124,14 +124,9 @@ impl<'a> PermutationAirBuilder for SymbolicProverFolder<'a> {
 }
 impl<'a> MultiTableAirBuilder<'a> for SymbolicProverFolder<'a> {
     type LocalSum = SymbolicVarEF;
-    type GlobalSum = SymbolicVarF;
 
     fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
         self.local_cumulative_sum
-    }
-
-    fn global_cumulative_sum(&self) -> &'a SepticDigest<Self::GlobalSum> {
-        self.global_cumulative_sum
     }
 }
 
@@ -213,33 +208,4 @@ pub fn CUDA_P3_EVAL_RESET() {
     *CUDA_P3_EVAL_EF_CONSTANTS.lock().unwrap() = Vec::new();
     *CUDA_P3_EVAL_EXPR_F_CTR.lock().unwrap() = 0;
     *CUDA_P3_EVAL_EXPR_EF_CTR.lock().unwrap() = 0;
-}
-
-#[cfg(test)]
-mod tests {
-
-    use slop_baby_bear::BabyBear;
-    use sp1_core_machine::{riscv::RiscvAir, utils::setup_logger};
-    use sp1_stark::air::MachineAir;
-
-    use crate::codegen_cuda_eval;
-
-    #[test]
-    pub fn test_add() {
-        setup_logger();
-
-        let machine = RiscvAir::<BabyBear>::machine();
-        let chips = machine.chips();
-        for chip in chips {
-            if chip.name() == "AddSub" {
-                let (code, f_ctr, _, f_constants, ef_constants) = codegen_cuda_eval(chip);
-                println!("{:#?}", code);
-                println!("{}", f_ctr);
-                println!("{:?}", f_constants);
-                println!("{:?}", ef_constants);
-                return;
-            }
-        }
-        panic!("no AddSub chip found");
-    }
 }

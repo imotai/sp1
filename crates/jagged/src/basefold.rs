@@ -1,9 +1,18 @@
 use csl_basefold::Poseidon2BabyBear16BasefoldCudaProverComponents;
-use slop_jagged::{JaggedBasefoldProverComponents, TrivialJaggedEvalConfig};
+use slop_baby_bear::BabyBear;
+use slop_jagged::{
+    JaggedBasefoldProverComponents, JaggedEvalSumcheckProver, TrivialJaggedEvalConfig,
+};
 
 use crate::VirtualJaggedSumcheckProver;
 
 pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
+    Poseidon2BabyBear16BasefoldCudaProverComponents,
+    VirtualJaggedSumcheckProver,
+    JaggedEvalSumcheckProver<BabyBear>,
+>;
+
+pub type Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCudaProverComponents,
     VirtualJaggedSumcheckProver,
     TrivialJaggedEvalConfig,
@@ -26,7 +35,7 @@ mod tests {
         MachineJaggedPcsVerifier,
     };
 
-    use crate::Poseidon2BabyBearJaggedCudaProverComponents;
+    use crate::Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval;
 
     #[tokio::test]
     #[serial]
@@ -34,7 +43,7 @@ mod tests {
         let log_blowup = 1;
 
         type JC = BabyBearPoseidon2TrivialEval;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
+        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
 

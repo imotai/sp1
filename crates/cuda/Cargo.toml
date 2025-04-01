@@ -10,7 +10,6 @@ categories.workspace = true
 [dependencies]
 csl-air = { workspace = true }
 csl-sys = { workspace = true }
-csl-derive = { workspace = true }
 
 slop-air = { workspace = true }
 slop-alloc = { workspace = true }

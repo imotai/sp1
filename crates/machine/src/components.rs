@@ -2,7 +2,11 @@ use std::marker::PhantomData;
 
 use csl_air::SymbolicProverFolder;
 use csl_cuda::TaskScope;
-use csl_jagged::Poseidon2BabyBearJaggedCudaProverComponents;
+use csl_jagged::{
+    Poseidon2BabyBearJaggedCudaProverComponents,
+    Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval,
+};
+use csl_logup_gkr::LogupGkrCudaProverComponents;
 use csl_zerocheck::ZerocheckEvalProgramProverData;
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
@@ -12,10 +16,8 @@ use slop_jagged::{BabyBearPoseidon2TrivialEval, JaggedProver, JaggedProverCompon
 use sp1_stark::{
     air::MachineAir,
     prover::{DefaultTraceGenerator, MachineProverComponents, ShardProver, ZerocheckAir},
-    ShardVerifier,
+    BabyBearPoseidon2, GkrProverImpl, ShardVerifier,
 };
-
-use crate::gkr::Poseidon2BabyBearGkrCudaProverComponents;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CudaProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
@@ -51,11 +53,12 @@ where
 
     type PcsProverComponents = Poseidon2BabyBearJaggedCudaProverComponents;
 
-    type GkrComponents = Poseidon2BabyBearGkrCudaProverComponents;
+    type GkrProver =
+        GkrProverImpl<LogupGkrCudaProverComponents<Self::F, Self::EF, A, Self::Challenger>>;
 }
 
-pub fn new_cuda_prover<A>(
-    verifier: ShardVerifier<BabyBearPoseidon2TrivialEval, A>,
+pub fn new_cuda_prover_sumcheck_eval<A>(
+    verifier: ShardVerifier<BabyBearPoseidon2, A>,
     scope: TaskScope,
 ) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponents, A>
 where
@@ -69,5 +72,66 @@ where
     let airs = machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
     let trace_generator = DefaultTraceGenerator::new_in(machine, scope.clone());
     let zerocheck_data = ZerocheckEvalProgramProverData::new(&airs, scope);
-    CudaProver { pcs_prover, zerocheck_prover_data: zerocheck_data, trace_generator }
+    let logup_gkr_prover = LogupGkrCudaProverComponents::default_prover();
+    CudaProver {
+        trace_generator,
+        logup_gkr_prover,
+        zerocheck_prover_data: zerocheck_data,
+        pcs_prover,
+    }
+}
+
+impl<A> MachineProverComponents
+    for CudaProverComponents<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval, A>
+where
+    A: MachineAir<F> + ZerocheckAir<F, EF> + std::fmt::Debug,
+{
+    type F = F;
+    type EF = EF;
+    type Program = <A as MachineAir<F>>::Program;
+    type Record = <A as MachineAir<F>>::Record;
+    type Air = A;
+    type B = TaskScope;
+
+    type Commitment =
+        <Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval as JaggedProverComponents>::Commitment;
+
+    type Challenger =
+        <Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval as JaggedProverComponents>::Challenger;
+
+    type Config =
+        <Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval as JaggedProverComponents>::Config;
+
+    type TraceGenerator = DefaultTraceGenerator<F, A, TaskScope>;
+
+    type ZerocheckProverData = ZerocheckEvalProgramProverData<Self::F, Self::EF, A>;
+
+    type PcsProverComponents = Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval;
+
+    type GkrProver =
+        GkrProverImpl<LogupGkrCudaProverComponents<Self::F, Self::EF, A, Self::Challenger>>;
+}
+
+pub fn new_cuda_prover_trivial_eval<A>(
+    verifier: ShardVerifier<BabyBearPoseidon2TrivialEval, A>,
+    scope: TaskScope,
+) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval, A>
+where
+    A: MachineAir<F>
+        + ZerocheckAir<F, EF>
+        + for<'a> Air<SymbolicProverFolder<'a>>
+        + std::fmt::Debug,
+{
+    let ShardVerifier { pcs_verifier, machine } = verifier;
+    let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
+    let airs = machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
+    let trace_generator = DefaultTraceGenerator::new_in(machine, scope.clone());
+    let zerocheck_data = ZerocheckEvalProgramProverData::new(&airs, scope);
+    let logup_gkr_prover = LogupGkrCudaProverComponents::default_prover();
+    CudaProver {
+        trace_generator,
+        logup_gkr_prover,
+        zerocheck_prover_data: zerocheck_data,
+        pcs_prover,
+    }
 }

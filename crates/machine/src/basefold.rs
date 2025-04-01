@@ -16,7 +16,7 @@ mod tests {
         include_bytes!("../programs/fibonacci/riscv32im-succinct-zkvm-elf");
     use tracing::Instrument;
 
-    use crate::{gpu_prover_opts, new_cuda_prover};
+    use crate::{gpu_prover_opts, new_cuda_prover_trivial_eval};
 
     /// The canonical entry point for testing a [`Program`] and [`SP1Stdin`] with a [`MachineProver`].
     pub async fn run_test(
@@ -52,7 +52,7 @@ mod tests {
             max_log_row_count,
             machine,
         );
-        let prover = new_cuda_prover(verifier.clone(), scope);
+        let prover = new_cuda_prover_trivial_eval(verifier.clone(), scope);
 
         let (pk, vk) = prover
             .setup(runtime.program.clone())

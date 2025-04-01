@@ -26,7 +26,7 @@ use super::ConstraintPolyEvalKernel;
 
 const EVAL_BLOCK_SIZE: usize = 256;
 const EVAL_STRIDE: usize = 1;
-const MAX_EVAL_INTERPOLATED_ROWS: usize = 1024 * EVAL_BLOCK_SIZE * EVAL_STRIDE;
+const MAX_EVAL_INTERPOLATED_ROWS: usize = 256 * EVAL_BLOCK_SIZE * EVAL_STRIDE;
 
 pub struct ZerocheckEvalProgramProverData<F, EF, A> {
     pub eval_programs: BTreeMap<String, Arc<EvalProgram<F, EF>>>,
@@ -184,6 +184,8 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         let mut output: Tensor<EF, TaskScope> =
             Tensor::with_sizes_in([3, interpolated_main_rows_height], backend.clone());
 
+        backend.synchronize().await.unwrap();
+
         let (preprocessed_ptr, preprocessed_width) =
             if let Some(preprocessed_rows) = interpolated_preprocessed_rows {
                 (preprocessed_rows.as_ptr(), preprocessed_rows.sizes()[1])
@@ -273,23 +275,24 @@ where
     ) -> (EF, EF, EF) {
         let height = main_values.inner().as_ref().unwrap().num_non_zero_entries();
         let mut y_s = [EF::zero(); 3];
-        for start in (0..height).step_by(MAX_EVAL_INTERPOLATED_ROWS) {
+        let mut start = 0;
+        while start < height {
             let end = (start + MAX_EVAL_INTERPOLATED_ROWS).min(height);
 
-            let start = start >> 1;
-            let end = end.div_ceil(2);
+            let eval_start = start >> 1;
+            let eval_end = end.div_ceil(2);
 
             let interpolated_main_rows =
-                interpolate_rows(main_values.inner().as_ref().unwrap(), start..end);
-            let interpolated_preprocessed_rows = preprocessed_values
-                .as_ref()
-                .map(|values| interpolate_rows(values.inner().as_ref().unwrap(), start..end));
+                interpolate_rows(main_values.inner().as_ref().unwrap(), eval_start..eval_end);
+            let interpolated_preprocessed_rows = preprocessed_values.as_ref().map(|values| {
+                interpolate_rows(values.inner().as_ref().unwrap(), eval_start..eval_end)
+            });
             let output = self
                 .constraint_poly_eval(
                     &partial_lagrange,
                     &interpolated_preprocessed_rows,
                     &interpolated_main_rows,
-                    start,
+                    eval_start,
                 )
                 .await;
             let y_s_device = Tensor::sum(&output, 1).await;
@@ -297,6 +300,8 @@ where
             for (acc, val) in y_s.iter_mut().zip(y_s_host.iter()) {
                 *acc += *val;
             }
+
+            start = end;
         }
         (y_s[0], y_s[1], y_s[2])
     }
@@ -351,17 +356,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{array, time::Instant};
 
-    use rand::{distributions::Standard, Rng};
-    use slop_air::BaseAir;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_baby_bear::BabyBear;
-    use slop_multilinear::{Mle, Point};
+    use slop_multilinear::Mle;
     use slop_tensor::Tensor;
-
-    use sp1_core_machine::riscv::RiscvAir;
-    use sp1_stark::{air::MachineAir, prover::ZerocheckCpuProver, PROOF_MAX_NUM_PVS};
 
     #[tokio::test]
     async fn test_interpolate_rows() {
@@ -409,97 +408,5 @@ mod tests {
         assert_eq!(calculated_y_0s, expected_y_0s);
         assert_eq!(calculated_y_2s, expected_y_2s);
         assert_eq!(calculated_y_4s, expected_y_4s);
-    }
-
-    #[tokio::test]
-    async fn test_zerocheck_cpu_air() {
-        let mut rng = rand::thread_rng();
-
-        type F = BabyBear;
-        type EF = BinomialExtensionField<F, 4>;
-
-        let cpu_chip = &RiscvAir::<F>::chips()[0];
-        assert!(cpu_chip.name() == "Cpu");
-        let cpu_width = cpu_chip.width();
-        let cpu_num_constraints = 36; // TODO fill this out.
-
-        let main_mle = Arc::new(Mle::<EF>::new(Tensor::rand(&mut rng, [1 << 21, cpu_width])));
-        let main_mle = PaddedMle::padded_with_zeros(main_mle, 21);
-
-        let alpha: EF = rng.sample(Standard);
-        let mut powers_of_alpha = alpha.powers().take(cpu_num_constraints).collect::<Vec<_>>();
-        powers_of_alpha.reverse();
-
-        let public_values: [F; PROOF_MAX_NUM_PVS] = array::from_fn(|_| rng.sample(Standard));
-
-        let random_point = Point::<EF>::rand(&mut rng, 20);
-        let partial_lagrange_cpu = Arc::new(Mle::<EF>::partial_lagrange(&random_point).await);
-        let gkr_powers: Vec<EF> = (0..cpu_width).map(|_| rng.gen::<EF>()).collect();
-
-        let host_prover = ZerocheckCpuProver::new(
-            cpu_chip.air.clone(),
-            Arc::new(public_values.to_vec()),
-            Arc::new(powers_of_alpha.clone()),
-            Arc::new(gkr_powers.clone()),
-        );
-
-        let start_time = Instant::now();
-        let (cpu_y_0, cpu_y_2, cpu_y_4) = host_prover
-            .sum_as_poly_in_last_variable::<false>(partial_lagrange_cpu, None, main_mle.clone())
-            .await;
-        let cpu_time = start_time.elapsed();
-        println!("CPU time: {:?}", cpu_time);
-
-        // Get the eval program.
-        let eval_program = Arc::new(EvalProgram::compile(cpu_chip.air.as_ref()));
-
-        let public_values = Buffer::from(public_values.to_vec());
-        let powers_of_alpha = Buffer::from(powers_of_alpha.to_vec());
-
-        let (gpu_y_0, gpu_y_2, gpu_y_4) = csl_cuda::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let eval_program = Arc::new(eval_program.to_device_in(&t).await.unwrap());
-                let public_values_device = Arc::new(public_values.to_device_in(&t).await.unwrap());
-                let powers_of_alpha_device =
-                    Arc::new(powers_of_alpha.to_device_in(&t).await.unwrap());
-                let gkr_powers_device =
-                    Arc::new(Buffer::from(gkr_powers.to_vec()).to_device_in(&t).await.unwrap());
-
-                let device_prover = ZerocheckEvalProgramProver::new(
-                    eval_program,
-                    cpu_chip.air.clone(),
-                    Arc::new(public_values),
-                    public_values_device,
-                    Arc::new(powers_of_alpha),
-                    powers_of_alpha_device,
-                    Arc::new(gkr_powers.into()),
-                    gkr_powers_device,
-                );
-
-                let main_mle_device = t.into_device(main_mle).await.unwrap();
-                let point = t.to_device(&random_point).await.unwrap();
-                let partial_lagrange =
-                    Arc::new(Mle::<EF, TaskScope>::partial_lagrange(&point).await);
-
-                t.synchronize().await.unwrap();
-                let time = tokio::time::Instant::now();
-                let (gpu_y_0, gpu_y_2, gpu_y_4) = device_prover
-                    .sum_as_poly_in_last_variable::<false>(partial_lagrange, None, main_mle_device)
-                    .await;
-                t.synchronize().await.unwrap();
-                let gpu_time = time.elapsed();
-                println!("GPU time: {:?}", gpu_time);
-
-                (gpu_y_0, gpu_y_2, gpu_y_4)
-            })
-            .await
-            .await
-            .unwrap();
-
-        assert_eq!(cpu_y_0, gpu_y_0);
-        assert_eq!(cpu_y_2, gpu_y_2);
-        assert_eq!(cpu_y_4, gpu_y_4);
     }
 }

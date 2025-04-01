@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
 use clap::{arg, Parser};
-use csl_perf::make_measurement;
+use csl_perf::{make_measurement, Stage};
 use csl_tracing::init_tracer;
-use sp1_core_executor::Program;
 use sp1_core_machine::io::SP1Stdin;
 
 const FIBONACCI_LONG_ELF: &[u8] =
@@ -16,15 +13,16 @@ struct Args {
     pub program: String,
     #[arg(long, default_value = "false")]
     pub skip_verify: bool,
+    #[arg(long, default_value = "core")]
+    pub stage: Stage,
 }
 
-fn get_program_and_input(program: String) -> (Arc<Program>, SP1Stdin) {
+fn get_program_and_input(program: String) -> (Vec<u8>, SP1Stdin) {
     // If the program elf is local, load it.
     if let Some(program_path) = program.strip_prefix("local-") {
         assert!(program_path == "fibonacci");
-        let program = Arc::new(Program::from(FIBONACCI_LONG_ELF).unwrap());
         let stdin = SP1Stdin::new();
-        return (program, stdin);
+        return (FIBONACCI_LONG_ELF.to_vec(), stdin);
     }
     // Otherwise, assume it's a progra from the s3 bucket.
     // Download files from S3
@@ -53,9 +51,7 @@ fn get_program_and_input(program: String) -> (Arc<Program>, SP1Stdin) {
     std::fs::remove_file(program_path).unwrap();
     std::fs::remove_file(stdin_path).unwrap();
 
-    let program = Program::from(&program).unwrap();
-
-    (Arc::new(program), stdin)
+    (program, stdin)
 }
 
 #[tokio::main]
@@ -64,13 +60,16 @@ async fn main() {
 
     let args = Args::parse();
     let name = args.program.clone();
-    let (program, stdin) = get_program_and_input(args.program);
+    let stage = args.stage;
+    let (elf, stdin) = get_program_and_input(args.program);
 
     let measurement =
-        csl_cuda::spawn(|t| async move { make_measurement(&name, program, &stdin, t).await })
-            .await
-            .unwrap()
-            .await
-            .unwrap();
+        csl_cuda::spawn(
+            move |t| async move { make_measurement(&name, &elf, &stdin, stage, t).await },
+        )
+        .await
+        .unwrap()
+        .await
+        .unwrap();
     println!("{}", measurement);
 }
