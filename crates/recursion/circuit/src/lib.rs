@@ -203,7 +203,18 @@ impl CircuitConfig for InnerConfig {
         input: Felt<<Self as Config>::F>,
         power_bits: Vec<Felt<<Self as Config>::F>>,
     ) -> Felt<<Self as Config>::F> {
-        builder.exp_reverse_bits_v2(input, power_bits)
+        let mut result = builder.constant(Self::F::one());
+        let mut power_f = input;
+        let bit_len = power_bits.len();
+
+        for i in 1..=bit_len {
+            let index = bit_len - i;
+            let bit = power_bits[index];
+            let prod: Felt<_> = builder.eval(result * power_f);
+            result = builder.eval(bit * prod + (SymbolicFelt::one() - bit) * result);
+            power_f = builder.eval(power_f * power_f);
+        }
+        result
     }
 
     fn batch_fri(
@@ -327,7 +338,6 @@ impl CircuitConfig for WrapConfig {
         input: Felt<<Self as Config>::F>,
         power_bits: Vec<Felt<<Self as Config>::F>>,
     ) -> Felt<<Self as Config>::F> {
-        // builder.exp_reverse_bits_v2(input, power_bits)
         let mut result = builder.constant(Self::F::one());
         let mut power_f = input;
         let bit_len = power_bits.len();
@@ -348,7 +358,6 @@ impl CircuitConfig for WrapConfig {
         p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
         p_at_xs: Vec<Felt<<Self as Config>::F>>,
     ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        // builder.batch_fri_v2(alpha_pows, p_at_zs, p_at_xs)
         // Initialize the `acc` to zero.
         let mut acc: Ext<_, _> = builder.uninit();
         builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::zero()));

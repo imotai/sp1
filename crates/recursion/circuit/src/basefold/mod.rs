@@ -342,10 +342,12 @@ impl<
 
         let mut folded_evals = reduced_openings;
 
+        builder.cycle_tracker_v2_enter("compute exp reverse bits");
         let mut xis: Vec<Felt<C::F>> = indices
             .iter()
             .map(|index| C::exp_reverse_bits(builder, two_adic_generator, index.to_vec()))
             .collect::<Vec<_>>();
+        builder.cycle_tracker_v2_exit();
 
         let mut indices = indices.to_vec();
 

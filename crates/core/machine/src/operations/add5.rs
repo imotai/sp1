@@ -39,9 +39,13 @@ impl<F: Field> Add5Operation<F> {
         let mut carry = 0;
         let mut carry_limbs = [0u8; WORD_SIZE];
         for i in 0..WORD_SIZE {
-            carry = ((a[i] as u32) + (b[i] as u32) + (c[i] as u32) + (d[i] as u32) + (e[i] as u32)
-                - expected_limbs[i] as u32
-                + carry)
+            carry = ((a[i] as u32)
+                + (b[i] as u32)
+                + (c[i] as u32)
+                + (d[i] as u32)
+                + (e[i] as u32)
+                + carry
+                - expected_limbs[i] as u32)
                 / base;
             carry_limbs[i] = carry as u8;
         }

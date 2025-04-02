@@ -230,6 +230,7 @@ where
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
 
         // Verify the `LogUp` GKR proof.
+        builder.cycle_tracker_v2_enter("verify-logup-gkr");
         RecursiveLogUpGkrVerifier::<C, SC, A>::verify_logup_gkr(
             builder,
             &shard_chips,
@@ -241,7 +242,9 @@ where
             logup_gkr_proof,
             challenger,
         );
+        builder.cycle_tracker_v2_exit();
 
+        // Verify the zerocheck proof.
         builder.cycle_tracker_v2_enter("verify-zerocheck");
         self.verify_zerocheck(
             builder,

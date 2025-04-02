@@ -13,7 +13,6 @@ use strum_macros::EnumDiscriminants;
 use crate::chips::{
     alu_base::{BaseAluChip, NUM_BASE_ALU_ENTRIES_PER_ROW},
     alu_ext::{ExtAluChip, NUM_EXT_ALU_ENTRIES_PER_ROW},
-    exp_reverse_bits::ExpReverseBitsLenChip,
     mem::{
         constant::NUM_CONST_MEM_ENTRIES_PER_ROW, variable::NUM_VAR_MEM_ENTRIES_PER_ROW,
         MemoryConstChip, MemoryVarChip,
@@ -41,10 +40,8 @@ pub enum RecursionAir<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: u
     Poseidon2Skinny(Poseidon2SkinnyChip<DEGREE>),
     Poseidon2Wide(Poseidon2WideChip<DEGREE>),
     Select(SelectChip),
-    // FriFold(FriFoldChip<DEGREE>),
     // BatchFRI(BatchFRIChip<DEGREE>),
     PrefixSumChecks(PrefixSumChecksChip),
-    ExpReverseBitsLen(ExpReverseBitsLenChip<DEGREE>),
     PublicValues(PublicValuesChip),
 }
 
@@ -66,11 +63,9 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
             RecursionAir::BaseAlu(BaseAluChip),
             RecursionAir::ExtAlu(ExtAluChip),
             RecursionAir::Poseidon2Wide(Poseidon2WideChip::<DEGREE>),
-            // RecursionAir::FriFold(FriFoldChip::<DEGREE>::default()),
             // RecursionAir::BatchFRI(BatchFRIChip::<DEGREE>),
             RecursionAir::PrefixSumChecks(PrefixSumChecksChip),
             RecursionAir::Select(SelectChip),
-            RecursionAir::ExpReverseBitsLen(ExpReverseBitsLenChip::<DEGREE>),
             RecursionAir::PublicValues(PublicValuesChip),
         ]
         .map(Chip::new)
@@ -90,11 +85,9 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
         //     RecursionAir::BaseAlu(BaseAluChip),
         //     RecursionAir::ExtAlu(ExtAluChip),
         //     RecursionAir::Poseidon2Skinny(Poseidon2SkinnyChip::<DEGREE>::default()),
-        //     // RecursionAir::FriFold(FriFoldChip::<DEGREE>::default()),
         //     // RecursionAir::BatchFRI(BatchFRIChip::<DEGREE>),
         //     RecursionAir::PrefixSumChecks(PrefixSumChecksChip),
         //     RecursionAir::Select(SelectChip),
-        //     RecursionAir::ExpReverseBitsLen(ExpReverseBitsLenChip::<DEGREE>),
         //     RecursionAir::PublicValues(PublicValuesChip),
         // ]
         // .map(Chip::new)
@@ -115,7 +108,6 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
             // RecursionAir::BatchFRI(BatchFRIChip::<DEGREE>),
             RecursionAir::PrefixSumChecks(PrefixSumChecksChip),
             RecursionAir::Select(SelectChip),
-            RecursionAir::ExpReverseBitsLen(ExpReverseBitsLenChip::<DEGREE>),
             RecursionAir::PublicValues(PublicValuesChip),
         ]
         .map(Chip::new)
@@ -179,10 +171,6 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
             // (Self::BatchFRI(BatchFRIChip::<DEGREE>), heights.batch_fri_events),
             (Self::PrefixSumChecks(PrefixSumChecksChip), heights.prefix_sum_checks_events),
             (Self::Select(SelectChip), heights.select_events),
-            (
-                Self::ExpReverseBitsLen(ExpReverseBitsLenChip::<DEGREE>),
-                heights.exp_reverse_bits_len_events,
-            ),
             (Self::PublicValues(PublicValuesChip), PUB_VALUES_LOG_HEIGHT),
         ]
         .map(|(chip, log_height)| (chip.name(), log_height))

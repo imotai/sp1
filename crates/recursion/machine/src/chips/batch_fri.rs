@@ -177,7 +177,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for BatchFRIChip<DEGREE
     }
 
     fn included(&self, _record: &Self::Record) -> bool {
-        true
+        false
     }
 }
 
