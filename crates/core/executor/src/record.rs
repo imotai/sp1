@@ -241,6 +241,16 @@ impl ExecutionRecord {
                 SyscallCode::KECCAK_PERMUTE => opts.keccak,
                 SyscallCode::SHA_EXTEND => opts.sha_extend,
                 SyscallCode::SHA_COMPRESS => opts.sha_compress,
+                SyscallCode::SECP256K1_ADD
+                | SyscallCode::SECP256R1_ADD
+                | SyscallCode::BN254_ADD
+                | SyscallCode::ED_ADD
+                | SyscallCode::SECP256K1_DECOMPRESS
+                | SyscallCode::SECP256R1_DECOMPRESS
+                | SyscallCode::ED_DECOMPRESS => opts.ec_add_256bit,
+                SyscallCode::SECP256K1_DOUBLE
+                | SyscallCode::SECP256R1_DOUBLE
+                | SyscallCode::BN254_DOUBLE => opts.ec_double_256bit,
                 _ => opts.deferred,
             };
 

@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use crate::{
     context::SP1Context,
-    estimate_tarce_elements,
+    estimate_trace_elements,
     events::{
         AUIPCEvent, AluEvent, BranchEvent, JumpEvent, LogicalShard, MemInstrEvent,
         MemoryAccessPosition, MemoryEntry, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
@@ -154,8 +154,8 @@ pub struct Executor<'a> {
     /// The frequency to check the stopping condition.
     pub size_check_frequency: u64,
 
-    /// The maximum trace size to allow.
-    pub elements_threshold: Option<u64>,
+    /// The maximum trace size and table height to allow.
+    pub sharding_threshold: Option<(u64, u64)>,
 
     /// event counts for the current shard.
     pub event_counts: EnumMap<RiscvAirId, u64>,
@@ -389,7 +389,7 @@ impl<'a> Executor<'a> {
             local_memory_access: HashMap::new(),
             costs: costs.into_iter().map(|(k, v)| (k, v as u64)).collect(),
             size_check_frequency: 16,
-            elements_threshold: Some(1 << 29),
+            sharding_threshold: Some((1 << 29, 1 << 22)),
             event_counts: EnumMap::default(),
         }
     }
@@ -1770,15 +1770,18 @@ impl<'a> Executor<'a> {
                     self.local_counts.load_x0_counts,
                 );
 
-                // Check if the LDE size is too large.
-                if let Some(threshold) = self.elements_threshold {
+                // Check if the main trace area or table height is too large.
+                if let Some((element_threshold, height_threshold)) = self.sharding_threshold {
                     let padded_event_counts =
                         pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
-                    let padded_lde_size = estimate_tarce_elements(padded_event_counts, &self.costs);
-                    if padded_lde_size > threshold {
-                        tracing::warn!(
-                            "stopping shard early due to lde size: {} gb",
-                            (padded_lde_size as u64) / 1_000_000_000
+                    let (padded_element_count, max_height) =
+                        estimate_trace_elements(padded_event_counts, &self.costs);
+
+                    if padded_element_count > element_threshold || max_height > height_threshold {
+                        tracing::info!(
+                            "stopping shard at clk {}, max height {}",
+                            self.state.clk,
+                            max_height
                         );
                         maximal_size_reached = false;
                     }
@@ -2255,8 +2258,7 @@ impl<'a> Executor<'a> {
         self.event_counts[RiscvAirId::SyscallCore] = syscalls_sent;
 
         // Compute the number of events in the global chip.
-        self.event_counts[RiscvAirId::Global] =
-            2 * touched_addresses + self.event_counts[RiscvAirId::SyscallInstrs];
+        self.event_counts[RiscvAirId::Global] = 2 * touched_addresses + syscalls_sent;
     }
 
     #[inline]

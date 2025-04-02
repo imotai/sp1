@@ -4,7 +4,7 @@ use super::poseidon2::{
     trace::populate_perm_deg3,
     Poseidon2Operation, NUM_EXTERNAL_ROUNDS,
 };
-use crate::air::MemoryAirBuilder;
+use crate::air::WordAirBuilder;
 use p3_air::AirBuilder;
 use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
@@ -107,7 +107,7 @@ impl<F: Field> GlobalInteractionOperation<F> {
         is_send: AB::Expr,
         is_real: AB::Var,
         kind: AB::Var,
-        shard_limbs: [AB::Expr; 2],
+        shard_limbs: [AB::Var; 2],
     ) {
         // Constrain that the `is_real` is boolean.
         builder.assert_bool(is_real);
@@ -121,12 +121,12 @@ impl<F: Field> GlobalInteractionOperation<F> {
 
         // Range check the first element in the message to be 24 bits so that we can encode the
         // interaction kind in the upper bits.
-        builder.eval_range_check_24bits(
+        builder.when(is_real).assert_eq(
             values[0].clone(),
-            shard_limbs[0].clone(),
-            shard_limbs[1].clone(),
-            is_real,
+            shard_limbs[0] + shard_limbs[1] * AB::F::from_canonical_u32(1 << 16),
         );
+        builder.slice_range_check_u16(&[shard_limbs[0]], is_real);
+        builder.slice_range_check_u8(&[shard_limbs[1]], is_real);
 
         // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate
         // of the Poseidon2 hash is 8. Combining `values[0]` with `kind` is safe, as

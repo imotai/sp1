@@ -69,11 +69,11 @@ impl SP1ProverOpts {
 
         // Set the core options.
         if 24 <= gpu_ram_gb {
-            let log2_shard_size = 22;
+            let log2_shard_size = 24;
             opts.core_opts.shard_size = 1 << log2_shard_size;
             opts.core_opts.shard_batch_size = 1;
 
-            let log2_deferred_threshold = 13;
+            let log2_deferred_threshold = 14;
             opts.core_opts.split_opts = SplitOpts::new(1 << log2_deferred_threshold);
 
             opts.core_opts.records_and_traces_channel_capacity = 4;
@@ -177,6 +177,10 @@ pub struct SplitOpts {
     pub sha_compress: usize,
     /// The threshold for memory events.
     pub memory: usize,
+    /// The threshold for ec add 256bit events.
+    pub ec_add_256bit: usize,
+    /// The threshold for ec double 256bit events.
+    pub ec_double_256bit: usize,
 }
 
 impl SplitOpts {
@@ -189,10 +193,12 @@ impl SplitOpts {
         Self {
             combine_memory_threshold: 1 << 17,
             deferred: deferred_split_threshold,
-            keccak: 8 * deferred_split_threshold / 24,
-            sha_extend: 32 * deferred_split_threshold / 48,
+            ec_add_256bit: deferred_split_threshold * 64 / 65,
+            ec_double_256bit: deferred_split_threshold * 64 / 33,
+            keccak: 32 * deferred_split_threshold / 101,
+            sha_extend: 64 * deferred_split_threshold / 129,
             sha_compress: 32 * deferred_split_threshold / 80,
-            memory: 64 * deferred_split_threshold,
+            memory: 32 * deferred_split_threshold,
         }
     }
 }

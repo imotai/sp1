@@ -42,15 +42,13 @@ impl<F: PrimeField32> MemoryAccessTimestamp<F> {
             if use_clk_comparison { current_record.timestamp } else { current_record.shard };
 
         let diff_minus_one = current_time_value - prev_time_value - 1;
-        let diff_16bit_limb = (diff_minus_one & 0xffff) as u16;
-        self.diff_16bit_limb = F::from_canonical_u16(diff_16bit_limb);
-        let diff_8bit_limb = ((diff_minus_one >> 16) & 0xff) as u8;
-        self.diff_8bit_limb = F::from_canonical_u8(diff_8bit_limb);
+        let diff_low_limb = (diff_minus_one & ((1 << 14) - 1)) as u16;
+        self.diff_low_limb = F::from_canonical_u16(diff_low_limb);
+        let diff_high_limb = (diff_minus_one >> 14) as u16;
+        self.diff_high_limb = F::from_canonical_u16(diff_high_limb);
 
         // Add a byte table lookup with the u16 range check.
-        output.add_u16_range_check(diff_16bit_limb);
-
-        // Add a byte table lookup with the U8Range op.
-        output.add_u8_range_check(0, diff_8bit_limb);
+        output.add_bit_range_check(diff_low_limb, 14);
+        output.add_bit_range_check(diff_high_limb, 14);
     }
 }

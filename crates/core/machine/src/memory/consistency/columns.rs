@@ -16,12 +16,12 @@ pub struct MemoryAccessTimestamp<T> {
     /// timestamp and the previous access's timestamp.  Note the actual value of the timestamp
     /// is either the accesses' shard or clk depending on the value of compare_clk.
     ///
-    /// This column is the least significant 16 bit limb of current access timestamp - prev access
+    /// This column is the least significant 14 bit limb of current access timestamp - prev access
     /// timestamp - 1.
-    pub diff_16bit_limb: T,
-    /// This column is the most significant 8 bit limb of current access timestamp - prev access
+    pub diff_low_limb: T,
+    /// This column is the most significant 14 bit limb of current access timestamp - prev access
     /// timestamp - 1.
-    pub diff_8bit_limb: T,
+    pub diff_high_limb: T,
 }
 
 /// New Memory Access Columns

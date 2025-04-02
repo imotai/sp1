@@ -262,7 +262,7 @@ where
             local.is_send.into(),
             local.is_real,
             local.kind,
-            [local.shard_16bit_limb.into(), local.shard_8bit_limb.into()],
+            [local.shard_16bit_limb, local.shard_8bit_limb],
         );
 
         // Evaluate the accumulation.
