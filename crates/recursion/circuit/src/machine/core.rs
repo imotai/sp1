@@ -39,7 +39,7 @@ use crate::{
     challenger::{CanObserveVariable, DuplexChallengerVariable},
     jagged::RecursiveJaggedConfig,
     machine::{assert_complete, recursion_public_values_digest},
-    shard::{MachineVerifyingKeyVariable, ShardProofVariable, RecursiveShardVerifier},
+    shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfig, BabyBearFriConfigVariable, CircuitConfig, InnerSC,
 };

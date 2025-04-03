@@ -1,13 +1,12 @@
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
-use p3_field::{AbstractField, PrimeField, PrimeField32};
+use p3_field::{AbstractField, Field, PrimeField};
 use sp1_stark::{
     air::{
         AirInteraction, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
         SP1_PROOF_NUM_PV_ELTS,
     },
-    septic_curve::SepticCurve,
     septic_digest::SepticDigest,
     shape::Shape,
     InteractionKind, MachineRecord, SP1CoreOpts, SplitOpts, Word,
@@ -568,19 +567,8 @@ impl MachineRecord for ExecutionRecord {
         public_values.to_vec()
     }
 
-    /// Updates the global cumulative sum.
-    fn update_global_cumulative_sum<F: PrimeField32>(
-        &mut self,
-        global_cumulative_sum: SepticDigest<F>,
-    ) {
-        self.public_values.global_cumulative_sum =
-            SepticDigest(SepticCurve::convert(global_cumulative_sum.0, |x| {
-                F::as_canonical_u32(&x)
-            }));
-    }
-
     /// Retrieves the global cumulative sum.
-    fn global_cumulative_sum<F: PrimeField32>(public_values: &[F]) -> SepticDigest<F> {
+    fn global_cumulative_sum<F: Field>(public_values: &[F]) -> SepticDigest<F> {
         let public_values: &PublicValues<Word<F>, F> = public_values.borrow();
         public_values.global_cumulative_sum
     }

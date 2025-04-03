@@ -1,12 +1,14 @@
+use std::iter::once;
+
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_challenger::Synchronizable;
 use thiserror::Error;
 
-use crate::{air::MachineAir, VerifierConstraintFolder};
+use crate::{air::MachineAir, septic_digest::SepticDigest, VerifierConstraintFolder};
 
 use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
-
+use crate::record::MachineRecord;
 /// A complete proof of program execution.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
@@ -71,6 +73,21 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
             span.exit();
         }
 
-        Ok(())
+        // TODO: add the rest of the verifier checks, and move to sp1-prover crate.
+        // Verify the cumulative sum is 0.
+        tracing::debug_span!("verify global cumulative sum is 0").in_scope(|| {
+            let sum = proof
+                .shard_proofs
+                .iter()
+                .map(|shard| A::Record::global_cumulative_sum(&shard.public_values))
+                .chain(once(vk.initial_global_cumulative_sum))
+                .sum::<SepticDigest<C::F>>();
+
+            if !sum.is_zero() {
+                return Err(MachineVerifierError::NonZeroCumulativeSum);
+            }
+
+            Ok(())
+        })
     }
 }

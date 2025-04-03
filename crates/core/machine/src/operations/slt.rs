@@ -217,7 +217,7 @@ impl<F: Field> LtOperationUnsigned<F> {
         builder.assert_eq(c_comparison_limb, c_comp_limb);
 
         // Using the values above, we can constrain the `is_comp_eq` flag. We already asserted
-        // in the loop that when `is_comp_eq == 1` then all limbs are euqal. It is left to
+        // in the loop that when `is_comp_eq == 1` then all limbs are equal. It is left to
         // verify that when `is_comp_eq == 0` the comparison limbs are indeed not equal.
         // This is done using the inverse hint `not_eq_inv`, when `is_real` is true.
         builder

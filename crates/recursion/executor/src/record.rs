@@ -109,14 +109,7 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
         ret.to_vec()
     }
 
-    fn update_global_cumulative_sum<T: PrimeField32>(
-        &mut self,
-        _global_cumulative_sum: SepticDigest<T>,
-    ) {
-        panic!("Recursion does not have global chip");
-    }
-
-    fn global_cumulative_sum<T: PrimeField32>(_public_values: &[T]) -> SepticDigest<T> {
+    fn global_cumulative_sum<T: Field>(_public_values: &[T]) -> SepticDigest<T> {
         SepticDigest::<T>::zero()
     }
 

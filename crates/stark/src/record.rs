@@ -1,6 +1,6 @@
 use crate::{air::SP1AirBuilder, septic_digest::SepticDigest};
 use hashbrown::HashMap;
-use slop_algebra::{AbstractField, PrimeField32};
+use slop_algebra::{AbstractField, Field};
 
 /// A record that can be proven by a machine.
 pub trait MachineRecord: Default + Sized + Send + Sync + Clone {
@@ -19,14 +19,8 @@ pub trait MachineRecord: Default + Sized + Send + Sync + Clone {
     /// Returns the public values of the record.
     fn public_values<F: AbstractField>(&self) -> Vec<F>;
 
-    /// Updates the global cumulative sum of the record.
-    fn update_global_cumulative_sum<F: PrimeField32>(
-        &mut self,
-        global_cumulative_sum: SepticDigest<F>,
-    );
-
     /// Extracts the global cumulative sum from the public values.
-    fn global_cumulative_sum<F: PrimeField32>(public_values: &[F]) -> SepticDigest<F>;
+    fn global_cumulative_sum<F: Field>(public_values: &[F]) -> SepticDigest<F>;
 
     /// Constrains the public values of the record.
     fn eval_public_values<AB: SP1AirBuilder>(builder: &mut AB);

@@ -93,7 +93,7 @@ where
         for round_proof in round_proofs.iter() {
             // Get the batching challenge for combining the claims.
             let lambda = challenger.sample_ext(builder);
-            // Check that the claimed sum is consitent with the previous round values.
+            // Check that the claimed sum is consistent with the previous round values.
             let expected_claim = numerator_eval * lambda + denominator_eval;
             builder.assert_ext_eq(round_proof.sumcheck_proof.claimed_sum, expected_claim);
 
@@ -132,7 +132,7 @@ where
         // Verify that the last layer evaluations are consistent with the evaluations of the traces.
         let (interaction_point, trace_point) =
             eval_point.split_at(number_of_interaction_variables as usize);
-        // Assert that the mumber of trace variables matches the expected one.
+        // Assert that the number of trace variables matches the expected one.
         let trace_variables = trace_point.dimension();
         assert_eq!(trace_variables, max_log_row_count);
 
