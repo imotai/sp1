@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use csl_air::SymbolicProverFolder;
+use csl_air::{air_block::BlockAir, SymbolicProverFolder};
 use csl_cuda::TaskScope;
 use csl_jagged::{
     Poseidon2BabyBearJaggedCudaProverComponents,
@@ -9,7 +9,6 @@ use csl_jagged::{
 use csl_logup_gkr::LogupGkrCudaProverComponents;
 use csl_zerocheck::ZerocheckEvalProgramProverData;
 use serde::{Deserialize, Serialize};
-use slop_air::Air;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
 use slop_jagged::{BabyBearPoseidon2TrivialEval, JaggedProver, JaggedProverComponents};
@@ -62,10 +61,7 @@ pub fn new_cuda_prover_sumcheck_eval<A>(
     scope: TaskScope,
 ) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponents, A>
 where
-    A: MachineAir<F>
-        + ZerocheckAir<F, EF>
-        + for<'a> Air<SymbolicProverFolder<'a>>
-        + std::fmt::Debug,
+    A: for<'a> BlockAir<SymbolicProverFolder<'a>> + ZerocheckAir<F, EF> + std::fmt::Debug,
 {
     let ShardVerifier { pcs_verifier, machine } = verifier;
     let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
@@ -117,10 +113,7 @@ pub fn new_cuda_prover_trivial_eval<A>(
     scope: TaskScope,
 ) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval, A>
 where
-    A: MachineAir<F>
-        + ZerocheckAir<F, EF>
-        + for<'a> Air<SymbolicProverFolder<'a>>
-        + std::fmt::Debug,
+    A: for<'a> BlockAir<SymbolicProverFolder<'a>> + ZerocheckAir<F, EF> + std::fmt::Debug,
 {
     let ShardVerifier { pcs_verifier, machine } = verifier;
     let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);

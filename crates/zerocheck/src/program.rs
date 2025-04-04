@@ -1,4 +1,6 @@
-use csl_air::{codegen_cuda_eval, instruction::Instruction16, SymbolicProverFolder};
+use csl_air::{
+    air_block::BlockAir, codegen_cuda_eval, instruction::Instruction16, SymbolicProverFolder,
+};
 use csl_cuda::{
     sys::{
         runtime::KernelPtr,
@@ -20,11 +22,9 @@ use csl_cuda::{
     },
     TaskScope,
 };
-use slop_air::Air;
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
 use slop_alloc::{mem::CopyError, Backend, Buffer, CopyToBackend, CpuBackend, HasBackend};
 use slop_baby_bear::BabyBear;
-use sp1_stark::air::MachineAir;
 
 pub trait InterpolateRowKernel<K: Field> {
     fn interpolate_row_kernel() -> KernelPtr;
@@ -76,22 +76,49 @@ impl ConstraintPolyEvalKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope
 
 #[derive(Debug)]
 pub struct EvalProgram<F, EF, B: Backend = CpuBackend> {
+    pub constraint_indices: Buffer<u32, B>,
     pub operations: Buffer<Instruction16, B>,
+    pub operations_indices: Buffer<u32, B>,
     pub f_ctr: u32,
     pub f_constants: Buffer<F, B>,
+    pub f_constants_indices: Buffer<u32, B>,
     pub ef_constants: Buffer<EF, B>,
+    pub ef_constants_indices: Buffer<u32, B>,
 }
 
 impl EvalProgram<BabyBear, BinomialExtensionField<BabyBear, 4>> {
     pub fn compile<A>(air: &A) -> Self
     where
-        A: MachineAir<BabyBear> + for<'a> Air<SymbolicProverFolder<'a>>,
+        A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
     {
-        let (operations, f_ctr, _, f_constants, ef_constants) = codegen_cuda_eval(air);
+        let (
+            constraint_indices,
+            operations,
+            operations_indices,
+            f_constants,
+            f_constants_indices,
+            ef_constants,
+            ef_constants_indices,
+            f_ctr,
+            _,
+        ) = codegen_cuda_eval(air);
+        let constraint_indices = Buffer::from(constraint_indices);
         let operations = Buffer::from(operations);
+        let operations_indices = Buffer::from(operations_indices);
         let f_constants = Buffer::from(f_constants);
+        let f_constants_indices = Buffer::from(f_constants_indices);
         let ef_constants = Buffer::from(ef_constants);
-        Self { operations, f_ctr, f_constants, ef_constants }
+        let ef_constants_indices = Buffer::from(ef_constants_indices);
+        Self {
+            constraint_indices,
+            operations,
+            operations_indices,
+            f_ctr,
+            f_constants,
+            f_constants_indices,
+            ef_constants,
+            ef_constants_indices,
+        }
     }
 }
 
@@ -113,10 +140,14 @@ where
 
     async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         Ok(EvalProgram {
+            constraint_indices: self.constraint_indices.copy_to_backend(backend).await?,
             operations: self.operations.copy_to_backend(backend).await?,
+            operations_indices: self.operations_indices.copy_to_backend(backend).await?,
             f_ctr: self.f_ctr,
             f_constants: self.f_constants.copy_to_backend(backend).await?,
+            f_constants_indices: self.f_constants_indices.copy_to_backend(backend).await?,
             ef_constants: self.ef_constants.copy_to_backend(backend).await?,
+            ef_constants_indices: self.ef_constants_indices.copy_to_backend(backend).await?,
         })
     }
 }

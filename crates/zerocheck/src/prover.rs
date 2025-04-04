@@ -1,4 +1,4 @@
-use csl_air::{codegen_cuda_eval, SymbolicProverFolder};
+use csl_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
 use slop_air::Air;
 use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, ExtensionField, Field,
@@ -36,17 +36,39 @@ pub struct ZerocheckEvalProgramProverData<F, EF, A> {
 
 impl<A> ZerocheckEvalProgramProverData<BabyBear, BinomialExtensionField<BabyBear, 4>, A>
 where
-    A: MachineAir<BabyBear> + for<'a> Air<SymbolicProverFolder<'a>>,
+    A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
 {
     pub fn new(airs: &[Arc<A>], allocator: TaskScope) -> Self {
         let mut eval_programs = BTreeMap::new();
         for air in airs.iter() {
-            let (operations, f_ctr, _, f_constants, ef_constants) = codegen_cuda_eval(air.as_ref());
+            let (
+                constraint_indices,
+                operations,
+                operations_indices,
+                f_constants,
+                f_constants_indices,
+                ef_constants,
+                ef_constants_indices,
+                f_ctr,
+                _,
+            ) = codegen_cuda_eval(air.as_ref());
+            let constraint_indices = Buffer::from(constraint_indices);
             let operations = Buffer::from(operations);
+            let operations_indices = Buffer::from(operations_indices);
             let f_constants = Buffer::from(f_constants);
+            let f_constants_indices = Buffer::from(f_constants_indices);
             let ef_constants = Buffer::from(ef_constants);
-            let eval_program =
-                Arc::new(EvalProgram { operations, f_ctr, f_constants, ef_constants });
+            let ef_constants_indices = Buffer::from(ef_constants_indices);
+            let eval_program = Arc::new(EvalProgram {
+                constraint_indices,
+                operations,
+                operations_indices,
+                f_ctr,
+                f_constants,
+                f_constants_indices,
+                ef_constants,
+                ef_constants_indices,
+            });
             eval_programs.insert(air.name().to_owned(), eval_program);
         }
         Self { eval_programs, allocator, _marker: PhantomData }
@@ -172,17 +194,45 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         F: Field,
         EF: ExtensionField<F>,
     {
-        let EvalProgram { operations, f_ctr, f_constants, ef_constants } =
-            self.eval_program.as_ref();
+        let EvalProgram {
+            constraint_indices,
+            operations,
+            operations_indices,
+            f_ctr,
+            f_constants,
+            f_constants_indices,
+            ef_constants,
+            ef_constants_indices,
+        } = self.eval_program.as_ref();
 
+        let num_air_blocks = operations_indices.len();
+        assert_eq!(num_air_blocks, f_constants_indices.len());
+        assert_eq!(num_air_blocks, ef_constants_indices.len());
         let backend = interpolated_main_rows.backend();
 
         let operations_len = operations.len();
         let main_width = interpolated_main_rows.sizes()[1];
         let interpolated_main_rows_height = interpolated_main_rows.sizes()[2];
 
+        let (grid_size_x, grid_size_y, block_size_x, block_size_y): (usize, usize, usize, usize) =
+            if interpolated_main_rows_height > 256 {
+                (
+                    interpolated_main_rows_height.div_ceil(256),
+                    num_air_blocks.div_ceil(2),
+                    256,
+                    num_air_blocks.min(2),
+                )
+            } else {
+                let y = num_air_blocks.next_power_of_two().min(256 / interpolated_main_rows_height);
+                (1, num_air_blocks.div_ceil(y), interpolated_main_rows_height, y)
+            };
+
+        let grid_size = (grid_size_x, grid_size_y, 3);
+        let num_tiles = (block_size_x * block_size_y).checked_div(32).unwrap_or(1);
+        let shared_mem = num_tiles * std::mem::size_of::<EF>();
+
         let mut output: Tensor<EF, TaskScope> =
-            Tensor::with_sizes_in([3, interpolated_main_rows_height], backend.clone());
+            Tensor::with_sizes_in([3, grid_size_x * grid_size_y], backend.clone());
 
         backend.synchronize().await.unwrap();
 
@@ -198,10 +248,15 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
             // Run the interpolate row kernel.
             let partial_lagrange_ptr = partial_lagrange.guts().as_ptr().add(offset);
             let args = args!(
+                num_air_blocks,
+                constraint_indices.as_ptr(),
                 operations.as_ptr(),
+                operations_indices.as_ptr(),
                 operations_len,
                 f_constants.as_ptr(),
+                f_constants_indices.as_ptr(),
                 ef_constants.as_ptr(),
+                ef_constants_indices.as_ptr(),
                 partial_lagrange_ptr,
                 preprocessed_ptr,
                 preprocessed_width,
@@ -214,11 +269,6 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
                 output.as_mut_ptr()
             );
 
-            const BLOCK_SIZE: usize = 256;
-            const STRIDE: usize = 1;
-            let grid_size_x = interpolated_main_rows_height.div_ceil(BLOCK_SIZE * STRIDE);
-            let grid_size = (grid_size_x, 3, 1);
-
             output.assume_init();
             backend
                 .launch_kernel(
@@ -226,9 +276,9 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
                         *f_ctr as usize,
                     ),
                     grid_size,
-                    (BLOCK_SIZE, 1, 1),
+                    (block_size_x, block_size_y, 1),
                     &args,
-                    0,
+                    shared_mem,
                 )
                 .unwrap();
         }

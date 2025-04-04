@@ -1,19 +1,19 @@
 #![allow(clippy::assign_op_pattern)]
 
+pub mod air_block;
 pub mod instruction;
 pub mod optimizer;
 pub mod symbolic_expr_ef;
 pub mod symbolic_expr_f;
 pub mod symbolic_var_ef;
 pub mod symbolic_var_f;
-
 use std::sync::Mutex;
 
+use air_block::BlockAir;
 use instruction::{Instruction16, Instruction32};
 use lazy_static::lazy_static;
 use slop_air::{
-    Air, AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder,
-    PermutationAirBuilder,
+    AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder, PermutationAirBuilder,
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
@@ -21,7 +21,7 @@ use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use sp1_stark::septic_curve::SepticCurve;
 use sp1_stark::septic_extension::SepticExtension;
 use sp1_stark::{
-    air::{EmptyMessageBuilder, MachineAir, MultiTableAirBuilder},
+    air::{EmptyMessageBuilder, MultiTableAirBuilder},
     septic_digest::SepticDigest,
 };
 use sp1_stark::{AirOpenedValues, PROOF_MAX_NUM_PVS};
@@ -57,6 +57,7 @@ pub struct SymbolicProverFolder<'a> {
     pub is_last_row: SymbolicVarF,
     pub is_transition: SymbolicVarF,
     pub public_values: &'a [SymbolicVarF],
+    pub num_constraints: u32,
 }
 
 impl<'a> AirBuilder for SymbolicProverFolder<'a> {
@@ -90,6 +91,7 @@ impl<'a> AirBuilder for SymbolicProverFolder<'a> {
         let x: Self::Expr = x.into();
         let mut code = CUDA_P3_EVAL_CODE.lock().unwrap();
         code.push(Instruction32::f_assert_zero(x));
+        self.num_constraints += 1;
         drop(code);
     }
 }
@@ -106,6 +108,7 @@ impl<'a> ExtensionBuilder for SymbolicProverFolder<'a> {
         let x: SymbolicExprEF = x.into();
         let mut code = CUDA_P3_EVAL_CODE.lock().unwrap();
         code.push(Instruction32::e_assert_zero(x));
+        self.num_constraints += 1;
         drop(code);
     }
 }
@@ -147,9 +150,12 @@ impl<'a> AirBuilderWithPublicValues for SymbolicProverFolder<'a> {
 impl<'a> EmptyMessageBuilder for SymbolicProverFolder<'a> {}
 
 /// Generates code in CUDA for evaluating the constraint polynomial on the device.
-pub fn codegen_cuda_eval<A>(air: &A) -> (Vec<Instruction16>, u32, u32, Vec<F>, Vec<EF>)
+#[allow(clippy::type_complexity)]
+pub fn codegen_cuda_eval<A>(
+    air: &A,
+) -> (Vec<u32>, Vec<Instruction16>, Vec<u32>, Vec<F>, Vec<u32>, Vec<EF>, Vec<u32>, u32, u32)
 where
-    A: for<'a> Air<SymbolicProverFolder<'a>> + MachineAir<F>,
+    A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
 {
     let preprocessed_width = air.preprocessed_width() as u32;
     let width = air.width() as u32;
@@ -188,18 +194,48 @@ where
         is_first_row: SymbolicVarF::is_first_row(),
         is_last_row: SymbolicVarF::is_last_row(),
         is_transition: SymbolicVarF::is_transition(),
+        num_constraints: 0,
     };
 
-    air.eval(&mut folder);
-    let code = CUDA_P3_EVAL_CODE.lock().unwrap().to_vec();
-    let f_constants = CUDA_P3_EVAL_F_CONSTANTS.lock().unwrap().to_vec();
-    let ef_constants = CUDA_P3_EVAL_EF_CONSTANTS.lock().unwrap().to_vec();
+    let nb_block = air.num_blocks();
+    let mut constraint_indices = Vec::new();
+    let mut instructions = Vec::new();
+    let mut block_indices = Vec::new();
+    let mut f_constants = Vec::new();
+    let mut f_constants_indices = Vec::new();
+    let mut ef_constants = Vec::new();
+    let mut ef_constants_indices = Vec::new();
+    let mut f_ctr = 0;
+    let mut ef_ctr = 0;
+    for i in 0..nb_block {
+        constraint_indices.push(folder.num_constraints);
+        air.eval_block(&mut folder, i);
+        let code = CUDA_P3_EVAL_CODE.lock().unwrap().to_vec();
+        let block_f_constants = CUDA_P3_EVAL_F_CONSTANTS.lock().unwrap().to_vec();
+        let block_ef_constants = CUDA_P3_EVAL_EF_CONSTANTS.lock().unwrap().to_vec();
+        CUDA_P3_EVAL_RESET();
+        let (block_code, block_f_ctr, block_ef_ctr) = optimizer::optimize(code);
+        block_indices.push(instructions.len() as u32);
+        f_constants_indices.push(f_constants.len() as u32);
+        ef_constants_indices.push(ef_constants.len() as u32);
+        f_ctr = f_ctr.max(block_f_ctr);
+        ef_ctr = ef_ctr.max(block_ef_ctr);
+        instructions.extend(block_code);
+        f_constants.extend(block_f_constants);
+        ef_constants.extend(block_ef_constants);
+    }
 
-    CUDA_P3_EVAL_RESET();
-
-    let (code, f_ctr, ef_ctr) = optimizer::optimize(code);
-
-    (code, f_ctr as u32, ef_ctr as u32, f_constants, ef_constants)
+    (
+        constraint_indices,
+        instructions,
+        block_indices,
+        f_constants,
+        f_constants_indices,
+        ef_constants,
+        ef_constants_indices,
+        f_ctr as u32,
+        ef_ctr as u32,
+    )
 }
 
 #[allow(non_snake_case)]

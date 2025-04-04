@@ -10,7 +10,13 @@ slop-baby-bear = { workspace = true }
 slop-algebra = { workspace = true }
 
 sp1-core-machine = { workspace = true }
+sp1-recursion-machine = { workspace = true }
 sp1-stark = { workspace = true }
+sp1-curves = { workspace = true }
+sp1-core-executor = { workspace = true }
+sp1-primitives = { workspace = true }
+
+itertools = { workspace = true }
 
 lazy_static = "1.4.0"
 tracing = "0.1.40"
