@@ -8,7 +8,7 @@ use sp1_derive::AlignedBorrow;
 /// are used to track the VM context.
 #[derive(AlignedBorrow)]
 #[repr(C)]
-pub(crate) struct KeccakMemCols<T> {
+pub struct KeccakMemCols<T> {
     /// Keccak columns from p3_keccak_air. Note it is assumed in trace gen to be the first field.
     pub keccak: KeccakCols<T>,
     pub shard: T,

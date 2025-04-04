@@ -16,7 +16,7 @@ pub struct Poseidon2WideChip<const DEGREE: usize>;
 
 impl<'a, const DEGREE: usize> Poseidon2WideChip<DEGREE> {
     /// Transmute a row it to an immutable [`Poseidon2Cols`] instance.
-    pub(crate) fn convert<T>(row: impl Deref<Target = [T]>) -> Box<dyn Poseidon2Cols<T> + 'a>
+    pub fn convert<T>(row: impl Deref<Target = [T]>) -> Box<dyn Poseidon2Cols<T> + 'a>
     where
         T: Copy + 'a,
     {
