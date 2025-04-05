@@ -71,8 +71,8 @@ pub struct SP1DeferredWitnessValues<SC: BabyBearFriConfig + FieldHasher<BabyBear
     pub end_pc: SC::F,
     pub end_shard: SC::F,
     pub end_execution_shard: SC::F,
-    pub init_addr_bits: [SC::F; 32],
-    pub finalize_addr_bits: [SC::F; 32],
+    pub init_addr_word: Word<SC::F>,
+    pub finalize_addr_word: Word<SC::F>,
     pub is_complete: bool,
 }
 
@@ -93,8 +93,8 @@ pub struct SP1DeferredWitnessVariable<
     pub end_pc: Felt<C::F>,
     pub end_shard: Felt<C::F>,
     pub end_execution_shard: Felt<C::F>,
-    pub init_addr_bits: [Felt<C::F>; 32],
-    pub finalize_addr_bits: [Felt<C::F>; 32],
+    pub init_addr_word: Word<Felt<C::F>>,
+    pub finalize_addr_word: Word<Felt<C::F>>,
     pub is_complete: Felt<C::F>,
 }
 
@@ -145,8 +145,8 @@ where
             end_pc,
             end_shard,
             end_execution_shard,
-            init_addr_bits,
-            finalize_addr_bits,
+            init_addr_word,
+            finalize_addr_word,
             is_complete,
         } = input;
 
@@ -230,11 +230,11 @@ where
         deferred_public_values.next_shard = end_shard;
         deferred_public_values.start_execution_shard = end_execution_shard;
         deferred_public_values.next_execution_shard = end_execution_shard;
-        // Set the init and finalize address bits to be the hinted values.
-        deferred_public_values.previous_init_addr_bits = init_addr_bits;
-        deferred_public_values.last_init_addr_bits = init_addr_bits;
-        deferred_public_values.previous_finalize_addr_bits = finalize_addr_bits;
-        deferred_public_values.last_finalize_addr_bits = finalize_addr_bits;
+        // Set the init and finalize address words to be the hinted values.
+        deferred_public_values.previous_init_addr_word = init_addr_word;
+        deferred_public_values.last_init_addr_word = init_addr_word;
+        deferred_public_values.previous_finalize_addr_word = finalize_addr_word;
+        deferred_public_values.last_finalize_addr_word = finalize_addr_word;
 
         // Set the sp1_vk_digest to be the hitned value.
         deferred_public_values.sp1_vk_digest = sp1_vk_digest;
@@ -290,8 +290,8 @@ where
 //             end_pc: BabyBear::zero(),
 //             end_shard: BabyBear::zero(),
 //             end_execution_shard: BabyBear::zero(),
-//             init_addr_bits: [BabyBear::zero(); 32],
-//             finalize_addr_bits: [BabyBear::zero(); 32],
+//             init_addr_word: Word([BabyBear::zero(); 2]),
+//             finalize_addr_word: Word([BabyBear::zero(); 2]),
 //         }
 //     }
 // }

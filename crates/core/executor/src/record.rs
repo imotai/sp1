@@ -290,8 +290,8 @@ impl ExecutionRecord {
                 &mut blank_record
             };
 
-            let mut init_addr_bits = [0; 32];
-            let mut finalize_addr_bits = [0; 32];
+            let mut init_addr_word = 0;
+            let mut finalize_addr_word = 0;
             for mem_chunks in self
                 .global_memory_initialize_events
                 .chunks(opts.memory)
@@ -305,21 +305,18 @@ impl ExecutionRecord {
                     EitherOrBoth::Right(mem_finalize_chunk) => ([].as_slice(), mem_finalize_chunk),
                 };
                 last_record_ref.global_memory_initialize_events.extend_from_slice(mem_init_chunk);
-                last_record_ref.public_values.previous_init_addr_bits = init_addr_bits;
+                last_record_ref.public_values.previous_init_addr_word = init_addr_word;
                 if let Some(last_event) = mem_init_chunk.last() {
-                    let last_init_addr_bits = core::array::from_fn(|i| (last_event.addr >> i) & 1);
-                    init_addr_bits = last_init_addr_bits;
+                    init_addr_word = last_event.addr;
                 }
-                last_record_ref.public_values.last_init_addr_bits = init_addr_bits;
+                last_record_ref.public_values.last_init_addr_word = init_addr_word;
 
                 last_record_ref.global_memory_finalize_events.extend_from_slice(mem_finalize_chunk);
-                last_record_ref.public_values.previous_finalize_addr_bits = finalize_addr_bits;
+                last_record_ref.public_values.previous_finalize_addr_word = finalize_addr_word;
                 if let Some(last_event) = mem_finalize_chunk.last() {
-                    let last_finalize_addr_bits =
-                        core::array::from_fn(|i| (last_event.addr >> i) & 1);
-                    finalize_addr_bits = last_finalize_addr_bits;
+                    finalize_addr_word = last_event.addr;
                 }
-                last_record_ref.public_values.last_finalize_addr_bits = finalize_addr_bits;
+                last_record_ref.public_values.last_finalize_addr_word = finalize_addr_word;
 
                 if !pack_memory_events_into_last_record {
                     // If not packing memory events into the last record, add 'last_record_ref'
@@ -671,7 +668,7 @@ impl ExecutionRecord {
         builder.send(
             AirInteraction::new(
                 once(AB::Expr::zero())
-                    .chain(public_values.previous_init_addr_bits.into_iter().map(Into::into))
+                    .chain(public_values.previous_init_addr_word.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),
@@ -682,7 +679,7 @@ impl ExecutionRecord {
         builder.receive(
             AirInteraction::new(
                 once(public_values.global_init_count.into())
-                    .chain(public_values.last_init_addr_bits.into_iter().map(Into::into))
+                    .chain(public_values.last_init_addr_word.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),
@@ -690,14 +687,6 @@ impl ExecutionRecord {
             ),
             InteractionScope::Local,
         );
-
-        for bit in public_values
-            .previous_init_addr_bits
-            .iter()
-            .chain(public_values.last_init_addr_bits.iter())
-        {
-            builder.assert_bool(*bit);
-        }
     }
 
     fn eval_global_memory_finalize<AB: SP1AirBuilder>(
@@ -707,7 +696,7 @@ impl ExecutionRecord {
         builder.send(
             AirInteraction::new(
                 once(AB::Expr::zero())
-                    .chain(public_values.previous_finalize_addr_bits.into_iter().map(Into::into))
+                    .chain(public_values.previous_finalize_addr_word.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),
@@ -718,7 +707,7 @@ impl ExecutionRecord {
         builder.receive(
             AirInteraction::new(
                 once(public_values.global_finalize_count.into())
-                    .chain(public_values.last_finalize_addr_bits.into_iter().map(Into::into))
+                    .chain(public_values.last_finalize_addr_word.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),
@@ -726,13 +715,5 @@ impl ExecutionRecord {
             ),
             InteractionScope::Local,
         );
-
-        for bit in public_values
-            .previous_finalize_addr_bits
-            .iter()
-            .chain(public_values.last_finalize_addr_bits.iter())
-        {
-            builder.assert_bool(*bit);
-        }
     }
 }

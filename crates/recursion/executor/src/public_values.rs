@@ -101,17 +101,17 @@ pub struct RecursionPublicValues<T> {
     /// Next execution shard that should be proven.
     pub next_execution_shard: T,
 
-    /// Previous MemoryInit address bits.
-    pub previous_init_addr_bits: [T; 32],
+    /// Previous MemoryInit address word.
+    pub previous_init_addr_word: Word<T>,
 
-    /// Last MemoryInit address bits.
-    pub last_init_addr_bits: [T; 32],
+    /// Last MemoryInit address word.
+    pub last_init_addr_word: Word<T>,
 
-    /// Previous MemoryFinalize address bits.
-    pub previous_finalize_addr_bits: [T; 32],
+    /// Previous MemoryFinalize address word.
+    pub previous_finalize_addr_word: Word<T>,
 
-    /// Last MemoryFinalize address bits.
-    pub last_finalize_addr_bits: [T; 32],
+    /// Last MemoryFinalize address word.
+    pub last_finalize_addr_word: Word<T>,
 
     /// Start state of reconstruct_deferred_digest.
     pub start_reconstruct_deferred_digest: [T; POSEIDON_NUM_WORDS],

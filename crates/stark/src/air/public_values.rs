@@ -46,17 +46,17 @@ pub struct PublicValues<W, T> {
     /// The next execution shard number.
     pub next_execution_shard: T,
 
-    /// The bits of the largest address that is witnessed for initialization in the previous shard.
-    pub previous_init_addr_bits: [T; 32],
+    /// The largest address that is witnessed for initialization in the previous shard.
+    pub previous_init_addr_word: W,
 
     /// The largest address that is witnessed for initialization in the current shard.
-    pub last_init_addr_bits: [T; 32],
+    pub last_init_addr_word: W,
 
-    /// The bits of the largest address that is witnessed for finalization in the previous shard.
-    pub previous_finalize_addr_bits: [T; 32],
+    /// The largest address that is witnessed for finalization in the previous shard.
+    pub previous_finalize_addr_word: W,
 
-    /// The bits of the largest address that is witnessed for finalization in the current shard.
-    pub last_finalize_addr_bits: [T; 32],
+    /// The largest address that is witnessed for finalization in the current shard.
+    pub last_finalize_addr_word: W,
 
     /// The last timestamp of the shard.
     pub last_timestamp: T,
@@ -101,10 +101,10 @@ impl PublicValues<u32, u32> {
         copy.execution_shard = 0;
         copy.start_pc = 0;
         copy.next_pc = 0;
-        copy.previous_init_addr_bits = [0; 32];
-        copy.last_init_addr_bits = [0; 32];
-        copy.previous_finalize_addr_bits = [0; 32];
-        copy.last_finalize_addr_bits = [0; 32];
+        copy.previous_init_addr_word = 0;
+        copy.last_init_addr_word = 0;
+        copy.previous_finalize_addr_word = 0;
+        copy.last_finalize_addr_word = 0;
         copy
     }
 }
@@ -158,10 +158,10 @@ impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F>
             shard,
             execution_shard,
             next_execution_shard,
-            previous_init_addr_bits,
-            last_init_addr_bits,
-            previous_finalize_addr_bits,
-            last_finalize_addr_bits,
+            previous_init_addr_word,
+            last_init_addr_word,
+            previous_finalize_addr_word,
+            last_finalize_addr_word,
             last_timestamp,
             last_timestamp_inv,
             global_init_count,
@@ -183,10 +183,10 @@ impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F>
         let shard = F::from_canonical_u32(shard);
         let execution_shard = F::from_canonical_u32(execution_shard);
         let next_execution_shard = F::from_canonical_u32(next_execution_shard);
-        let previous_init_addr_bits = previous_init_addr_bits.map(F::from_canonical_u32);
-        let last_init_addr_bits = last_init_addr_bits.map(F::from_canonical_u32);
-        let previous_finalize_addr_bits = previous_finalize_addr_bits.map(F::from_canonical_u32);
-        let last_finalize_addr_bits = last_finalize_addr_bits.map(F::from_canonical_u32);
+        let previous_init_addr_word = Word::from(previous_init_addr_word);
+        let last_init_addr_word = Word::from(last_init_addr_word);
+        let previous_finalize_addr_word = Word::from(previous_finalize_addr_word);
+        let last_finalize_addr_word = Word::from(last_finalize_addr_word);
         let last_timestamp = F::from_canonical_u32(last_timestamp);
         let last_timestamp_inv = F::from_canonical_u32(last_timestamp_inv);
         let global_init_count = F::from_canonical_u32(global_init_count);
@@ -204,10 +204,10 @@ impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F>
             shard,
             execution_shard,
             next_execution_shard,
-            previous_init_addr_bits,
-            last_init_addr_bits,
-            previous_finalize_addr_bits,
-            last_finalize_addr_bits,
+            previous_init_addr_word,
+            last_init_addr_word,
+            previous_finalize_addr_word,
+            last_finalize_addr_word,
             last_timestamp,
             last_timestamp_inv,
             global_init_count,

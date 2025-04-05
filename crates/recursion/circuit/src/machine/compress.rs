@@ -143,10 +143,8 @@ where
         let mut reconstruct_deferred_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut global_cumulative_sums = Vec::new();
-        let mut init_addr_bits: [Felt<_>; 32] =
-            core::array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
-        let mut finalize_addr_bits: [Felt<_>; 32] =
-            core::array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
+        let mut init_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut finalize_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Verify proofs, check consistency, and aggregate public values.
         for (i, (vk, shard_proof)) in vks_and_proofs.into_iter().enumerate() {
@@ -214,26 +212,28 @@ where
                     current_public_values.start_execution_shard;
                 execution_shard = current_public_values.start_execution_shard;
 
-                // Initialize the MemoryInitialize address bits.
-                for (bit, (first_bit, current_bit)) in init_addr_bits.iter_mut().zip(
+                // Initialize the MemoryInitialize address word.
+                for (limb, (first_limb, current_limb)) in init_addr_word.0.iter_mut().zip(
                     compress_public_values
-                        .previous_init_addr_bits
+                        .previous_init_addr_word
+                        .0
                         .iter_mut()
-                        .zip(current_public_values.previous_init_addr_bits.iter()),
+                        .zip(current_public_values.previous_init_addr_word.0.iter()),
                 ) {
-                    *bit = *current_bit;
-                    *first_bit = *current_bit;
+                    *limb = *current_limb;
+                    *first_limb = *current_limb;
                 }
 
-                // Initialize the MemoryFinalize address bits.
-                for (bit, (first_bit, current_bit)) in finalize_addr_bits.iter_mut().zip(
+                // Initialize the MemoryFinalize address word.
+                for (limb, (first_limb, current_limb)) in finalize_addr_word.0.iter_mut().zip(
                     compress_public_values
-                        .previous_finalize_addr_bits
+                        .previous_finalize_addr_word
+                        .0
                         .iter_mut()
-                        .zip(current_public_values.previous_finalize_addr_bits.iter()),
+                        .zip(current_public_values.previous_finalize_addr_word.0.iter()),
                 ) {
-                    *bit = *current_bit;
-                    *first_bit = *current_bit;
+                    *limb = *current_limb;
+                    *first_limb = *current_limb;
                 }
 
                 // Assign the committed values and deferred proof digests.
@@ -283,19 +283,20 @@ where
                     .assert_felt_eq(execution_shard, current_public_values.start_execution_shard);
             }
 
-            // Assert that the MemoryInitialize address bits are the same.
-            for (bit, current_bit) in
-                init_addr_bits.iter().zip(current_public_values.previous_init_addr_bits.iter())
+            // Assert that the MemoryInitialize address limbs are the same.
+            for (limb, current_limb) in
+                init_addr_word.0.iter().zip(current_public_values.previous_init_addr_word.0.iter())
             {
-                builder.assert_felt_eq(*bit, *current_bit);
+                builder.assert_felt_eq(*limb, *current_limb);
             }
 
-            // Assert that the MemoryFinalize address bits are the same.
-            for (bit, current_bit) in finalize_addr_bits
+            // Assert that the MemoryFinalize address limbs are the same.
+            for (limb, current_limb) in finalize_addr_word
+                .0
                 .iter()
-                .zip(current_public_values.previous_finalize_addr_bits.iter())
+                .zip(current_public_values.previous_finalize_addr_word.0.iter())
             {
-                builder.assert_felt_eq(*bit, *current_bit);
+                builder.assert_felt_eq(*limb, *current_limb);
             }
 
             // Digest constraints.
@@ -385,19 +386,20 @@ where
             // Update the shard to be the next shard.
             shard = current_public_values.next_shard;
 
-            // Update the MemoryInitialize address bits.
-            for (bit, next_bit) in
-                init_addr_bits.iter_mut().zip(current_public_values.last_init_addr_bits.iter())
+            // Update the MemoryInitialize address limbs.
+            for (limb, next_limb) in
+                init_addr_word.0.iter_mut().zip(current_public_values.last_init_addr_word.0.iter())
             {
-                *bit = *next_bit;
+                *limb = *next_limb;
             }
 
-            // Update the MemoryFinalize address bits.
-            for (bit, next_bit) in finalize_addr_bits
+            // Update the MemoryFinalize address limbs.
+            for (limb, next_limb) in finalize_addr_word
+                .0
                 .iter_mut()
-                .zip(current_public_values.last_finalize_addr_bits.iter())
+                .zip(current_public_values.last_finalize_addr_word.0.iter())
             {
-                *bit = *next_bit;
+                *limb = *next_limb;
             }
 
             // Add the global cumulative sums to the vector.
@@ -416,10 +418,10 @@ where
         compress_public_values.next_shard = shard;
         // Set next execution shard to be the last execution shard
         compress_public_values.next_execution_shard = execution_shard;
-        // Set the MemoryInitialize address bits to be the last MemoryInitialize address bits.
-        compress_public_values.last_init_addr_bits = init_addr_bits;
-        // Set the MemoryFinalize address bits to be the last MemoryFinalize address bits.
-        compress_public_values.last_finalize_addr_bits = finalize_addr_bits;
+        // Set the MemoryInitialize address word to be the last MemoryInitialize address word.
+        compress_public_values.last_init_addr_word = init_addr_word;
+        // Set the MemoryFinalize address word to be the last MemoryFinalize address word.
+        compress_public_values.last_finalize_addr_word = finalize_addr_word;
         // Set the start reconstruct deferred digest to be the last reconstruct deferred digest.
         compress_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
         // Assign the deferred proof digests.

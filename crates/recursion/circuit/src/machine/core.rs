@@ -165,13 +165,13 @@ where
         let mut current_pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize memory initialization and finalization variables.
-        let mut initial_previous_init_addr_bits: [Felt<_>; 32] =
+        let mut initial_previous_init_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut initial_previous_finalize_addr_bits: [Felt<_>; 32] =
+        let mut initial_previous_finalize_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_init_addr_bits: [Felt<_>; 32] =
+        let mut current_init_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_finalize_addr_bits: [Felt<_>; 32] =
+        let mut current_finalize_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize the exit code variable.
@@ -216,21 +216,23 @@ where
                 current_pc = public_values.start_pc;
 
                 // Memory initialization & finalization.
-                for ((bit, pub_bit), first_bit) in current_init_addr_bits
+                for ((limb, pub_limb), first_limb) in current_init_addr_word
+                    .0
                     .iter_mut()
-                    .zip(public_values.previous_init_addr_bits.iter())
-                    .zip(initial_previous_init_addr_bits.iter_mut())
+                    .zip(public_values.previous_init_addr_word.0.iter())
+                    .zip(initial_previous_init_addr_word.0.iter_mut())
                 {
-                    *bit = *pub_bit;
-                    *first_bit = *pub_bit;
+                    *limb = *pub_limb;
+                    *first_limb = *pub_limb;
                 }
-                for ((bit, pub_bit), first_bit) in current_finalize_addr_bits
+                for ((limb, pub_limb), first_limb) in current_finalize_addr_word
+                    .0
                     .iter_mut()
-                    .zip(public_values.previous_finalize_addr_bits.iter())
-                    .zip(initial_previous_finalize_addr_bits.iter_mut())
+                    .zip(public_values.previous_finalize_addr_word.0.iter())
+                    .zip(initial_previous_finalize_addr_word.0.iter_mut())
                 {
-                    *bit = *pub_bit;
-                    *first_bit = *pub_bit;
+                    *limb = *pub_limb;
+                    *first_limb = *pub_limb;
                 }
 
                 // Exit code.
@@ -294,12 +296,12 @@ where
                     C::F::zero(),
                 );
 
-                // Assert that `init_addr_bits` and `finalize_addr_bits` are zero for the first
-                for bit in current_init_addr_bits.iter() {
-                    builder.assert_felt_eq(is_first_shard * *bit, C::F::zero());
+                // Assert that `init_addr_word` and `finalize_addr_word` are zero for the first
+                for limb in current_init_addr_word.0.iter() {
+                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
                 }
-                for bit in current_finalize_addr_bits.iter() {
-                    builder.assert_felt_eq(is_first_shard * *bit, C::F::zero());
+                for limb in current_finalize_addr_word.0.iter() {
+                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
                 }
             }
 
@@ -371,35 +373,40 @@ where
 
             // Memory initialization & finalization constraints.
             {
-                // Assert that the MemoryInitialize address bits match the current loop variable.
-                for (bit, current_bit) in current_init_addr_bits
+                // Assert that the MemoryInitialize address limbs match the current loop variable.
+                for (limb, current_limb) in current_init_addr_word
+                    .0
                     .iter()
-                    .zip_eq(public_values.previous_init_addr_bits.iter())
+                    .zip_eq(public_values.previous_init_addr_word.0.iter())
                 {
-                    builder.assert_felt_eq(*bit, *current_bit);
+                    builder.assert_felt_eq(*limb, *current_limb);
                 }
 
-                // Assert that the MemoryFinalize address bits match the current loop variable.
-                for (bit, current_bit) in current_finalize_addr_bits
+                // Assert that the MemoryFinalize address limbs match the current loop variable.
+                for (limb, current_limb) in current_finalize_addr_word
+                    .0
                     .iter()
-                    .zip_eq(public_values.previous_finalize_addr_bits.iter())
+                    .zip_eq(public_values.previous_finalize_addr_word.0.iter())
                 {
-                    builder.assert_felt_eq(*bit, *current_bit);
+                    builder.assert_felt_eq(*limb, *current_limb);
                 }
 
-                // Update the MemoryInitialize address bits.
-                for (bit, pub_bit) in
-                    current_init_addr_bits.iter_mut().zip(public_values.last_init_addr_bits.iter())
-                {
-                    *bit = *pub_bit;
-                }
-
-                // Update the MemoryFinalize address bits.
-                for (bit, pub_bit) in current_finalize_addr_bits
+                // Update the MemoryInitialize address limbs.
+                for (limb, pub_limb) in current_init_addr_word
+                    .0
                     .iter_mut()
-                    .zip(public_values.last_finalize_addr_bits.iter())
+                    .zip(public_values.last_init_addr_word.0.iter())
                 {
-                    *bit = *pub_bit;
+                    *limb = *pub_limb;
+                }
+
+                // Update the MemoryFinalize address limbs.
+                for (limb, pub_limb) in current_finalize_addr_word
+                    .0
+                    .iter_mut()
+                    .zip(public_values.last_finalize_addr_word.0.iter())
+                {
+                    *limb = *pub_limb;
                 }
             }
 
@@ -524,11 +531,11 @@ where
             recursion_public_values.next_shard = current_shard;
             recursion_public_values.start_execution_shard = initial_execution_shard;
             recursion_public_values.next_execution_shard = current_execution_shard;
-            recursion_public_values.previous_init_addr_bits = initial_previous_init_addr_bits;
-            recursion_public_values.last_init_addr_bits = current_init_addr_bits;
-            recursion_public_values.previous_finalize_addr_bits =
-                initial_previous_finalize_addr_bits;
-            recursion_public_values.last_finalize_addr_bits = current_finalize_addr_bits;
+            recursion_public_values.previous_init_addr_word = initial_previous_init_addr_word;
+            recursion_public_values.last_init_addr_word = current_init_addr_word;
+            recursion_public_values.previous_finalize_addr_word =
+                initial_previous_finalize_addr_word;
+            recursion_public_values.last_finalize_addr_word = current_finalize_addr_word;
             recursion_public_values.sp1_vk_digest = vk_digest;
             recursion_public_values.global_cumulative_sum = global_cumulative_sum;
             recursion_public_values.start_reconstruct_deferred_digest = reconstruct_deferred_digest;

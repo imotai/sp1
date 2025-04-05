@@ -1,25 +1,27 @@
 use super::MemoryChipType;
+use crate::air::WordAirBuilder;
 use crate::{
-    operations::{AssertLtColsBits, BabyBearBitDecomposition, IsZeroOperation},
+    operations::{BabyBearWordRangeChecker, IsZeroOperation, LtOperationUnsigned},
     utils::next_power_of_two,
 };
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
+use sp1_core_executor::events::ByteRecord;
 use sp1_core_executor::events::GlobalInteractionEvent;
 use sp1_core_executor::{events::MemoryInitializeFinalizeEvent, ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
-    InteractionKind,
+    InteractionKind, Word,
 };
-use std::{array, iter::once};
+use std::iter::once;
 
 /// A memory chip that can initialize or finalize values in memory.
 pub struct MemoryGlobalChip {
@@ -71,7 +73,38 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             }
         };
 
+        let previous_addr = match self.kind {
+            MemoryChipType::Initialize => input.public_values.previous_init_addr_word,
+            MemoryChipType::Finalize => input.public_values.previous_finalize_addr_word,
+        };
+
         memory_events.sort_by_key(|event| event.addr);
+
+        let chunk_size = std::cmp::max(memory_events.len() / num_cpus::get(), 1);
+        let indices = (0..memory_events.len()).collect::<Vec<_>>();
+        let blu_batches = indices
+            .par_chunks(chunk_size)
+            .map(|chunk| {
+                let mut blu = Vec::new();
+                let mut row = [F::zero(); NUM_MEMORY_INIT_COLS];
+                let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
+                chunk.iter().for_each(|&i| {
+                    let addr = memory_events[i].addr;
+                    let value = memory_events[i].value;
+                    let prev_addr = if i == 0 { previous_addr } else { memory_events[i - 1].addr };
+                    blu.add_u16_range_checks(&u32_to_u16_limbs(value));
+                    blu.add_u16_range_checks(&u32_to_u16_limbs(prev_addr));
+                    blu.add_u16_range_checks(&u32_to_u16_limbs(addr));
+                    cols.prev_addr_range_checker.populate(Word::from(prev_addr), &mut blu);
+                    cols.addr_range_checker.populate(Word::from(addr), &mut blu);
+                    if i != 0 || prev_addr != 0 {
+                        cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr, true);
+                    }
+                });
+                blu
+            })
+            .collect::<Vec<_>>();
+        output.add_byte_lookup_events(blu_batches.into_iter().flatten().collect());
 
         let events = memory_events.into_iter().map(|event| {
             let interaction_shard = if is_receive { event.shard } else { 0 };
@@ -114,9 +147,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             MemoryChipType::Finalize => input.global_memory_finalize_events.clone(),
         };
 
-        let previous_addr_bits = match self.kind {
-            MemoryChipType::Initialize => input.public_values.previous_init_addr_bits,
-            MemoryChipType::Finalize => input.public_values.previous_finalize_addr_bits,
+        let previous_addr = match self.kind {
+            MemoryChipType::Initialize => input.public_values.previous_init_addr_word,
+            MemoryChipType::Finalize => input.public_values.previous_finalize_addr_word,
         };
 
         memory_events.sort_by_key(|event| event.addr);
@@ -126,42 +159,37 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp, used } =
                     event.to_owned();
 
+                let mut blu = vec![];
                 let mut row = [F::zero(); NUM_MEMORY_INIT_COLS];
                 let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
-                cols.addr = F::from_canonical_u32(addr);
-                cols.addr_bits.populate(addr);
+                cols.addr = Word::from(addr);
+                cols.addr_range_checker.populate(cols.addr, &mut blu);
                 cols.shard = F::from_canonical_u32(shard);
                 cols.timestamp = F::from_canonical_u32(timestamp);
-                cols.value = array::from_fn(|i| F::from_canonical_u32((value >> i) & 1));
+                cols.value = Word::from(value);
                 cols.is_real = F::from_canonical_u32(used);
-
                 row
             })
             .collect::<Vec<_>>();
 
+        let mut blu = vec![];
         for i in 0..memory_events.len() {
             let addr = memory_events[i].addr;
             let cols: &mut MemoryInitCols<F> = rows[i].as_mut_slice().borrow_mut();
-            let prev_addr = if i == 0 {
-                previous_addr_bits.iter().enumerate().map(|(j, bit)| bit * (1 << j)).sum::<u32>()
-            } else {
-                memory_events[i - 1].addr
-            };
+            let prev_addr = if i == 0 { previous_addr } else { memory_events[i - 1].addr };
             if prev_addr == 0 && i != 0 {
                 cols.prev_valid = F::zero();
             } else {
                 cols.prev_valid = F::one();
             }
             cols.index = F::from_canonical_u32(i as u32);
-            cols.prev_addr = F::from_canonical_u32(prev_addr);
-            cols.prev_addr_bits.populate(prev_addr);
+            cols.prev_addr = Word::from(prev_addr);
+            cols.prev_addr_range_checker.populate(cols.prev_addr, &mut blu);
             cols.is_prev_addr_zero.populate(prev_addr);
             cols.is_index_zero.populate(i as u32);
             if prev_addr != 0 || i != 0 {
                 cols.is_comp = F::one();
-                let addr_bits: [_; 32] = array::from_fn(|i| (addr >> i) & 1);
-                let prev_addr_bits: [_; 32] = array::from_fn(|i| (prev_addr >> i) & 1);
-                cols.lt_cols.populate(&prev_addr_bits, &addr_bits);
+                cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr, true);
             }
         }
 
@@ -207,22 +235,22 @@ pub struct MemoryInitCols<T: Copy> {
     pub index: T,
 
     /// The address of the previous memory access.
-    pub prev_addr: T,
+    pub prev_addr: Word<T>,
 
     /// The address of the memory access.
-    pub addr: T,
+    pub addr: Word<T>,
 
     /// Comparison assertions for address to be strictly increasing.
-    pub lt_cols: AssertLtColsBits<T, 32>,
+    pub lt_cols: LtOperationUnsigned<T>,
 
-    /// A bit decomposition of `prev_addr`.
-    pub prev_addr_bits: BabyBearBitDecomposition<T>,
+    /// The range checker for `prev_addr`.
+    pub prev_addr_range_checker: BabyBearWordRangeChecker<T>,
 
-    /// A bit decomposition of `addr`.
-    pub addr_bits: BabyBearBitDecomposition<T>,
+    /// The range checker for `addr`.
+    pub addr_range_checker: BabyBearWordRangeChecker<T>,
 
     /// The value of the memory access.
-    pub value: [T; 32],
+    pub value: Word<T>,
 
     /// Whether the memory access is a real access.
     pub is_real: T,
@@ -252,20 +280,14 @@ where
         let local = main.row_slice(0);
         let local: &MemoryInitCols<AB::Var> = (*local).borrow();
 
-        // Constrain that `local.is_real` and the value bits are boolean.
+        // Constrain that `local.is_real` is boolean.
         builder.assert_bool(local.is_real);
-        for i in 0..32 {
-            builder.assert_bool(local.value[i]);
-        }
-
-        // Combine the value bits into two u16 limbs.
-        let mut limb1 = AB::Expr::zero();
-        let mut limb2 = AB::Expr::zero();
-        for i in 0..16 {
-            limb1 = limb1.clone() + local.value[i].into() * AB::F::from_canonical_u16(1 << i);
-            limb2 = limb2.clone() + local.value[i + 16].into() * AB::F::from_canonical_u16(1 << i);
-        }
-        let value = [limb1, limb2];
+        // Constrain that the value is a valid `Word`.
+        builder.slice_range_check_u16(&local.value.0, local.is_real);
+        // Constrain that the previous address is a valid `Word`.
+        builder.slice_range_check_u16(&local.prev_addr.0, local.is_real);
+        // Constrain that the address is a valid `Word`.
+        builder.slice_range_check_u16(&local.addr.0, local.is_real);
 
         let interaction_kind = match self.kind {
             MemoryChipType::Initialize => InteractionKind::MemoryGlobalInitControl,
@@ -277,7 +299,7 @@ where
             AirInteraction::new(
                 vec![local.index]
                     .into_iter()
-                    .chain(local.prev_addr_bits.bits)
+                    .chain(local.prev_addr.0)
                     .chain(once(local.prev_valid))
                     .map(Into::into)
                     .collect(),
@@ -292,7 +314,7 @@ where
             AirInteraction::new(
                 vec![local.index + AB::Expr::one()]
                     .into_iter()
-                    .chain(local.addr_bits.bits.map(Into::into))
+                    .chain(local.addr.0.map(Into::into))
                     .chain(once(local.is_comp.into()))
                     .collect(),
                 local.is_real.into(),
@@ -308,9 +330,9 @@ where
                     vec![
                         AB::Expr::zero(),
                         AB::Expr::zero(),
-                        local.addr.into(),
-                        value[0].clone(),
-                        value[1].clone(),
+                        local.addr.reduce::<AB>(),
+                        local.value.0[0].into(),
+                        local.value.0[1].into(),
                         AB::Expr::zero(),
                         AB::Expr::zero(),
                         AB::Expr::one(),
@@ -329,9 +351,9 @@ where
                     vec![
                         local.shard.into(),
                         local.timestamp.into(),
-                        local.addr.into(),
-                        value[0].clone(),
-                        value[1].clone(),
+                        local.addr.reduce::<AB>(),
+                        local.value.0[0].into(),
+                        local.value.0[1].into(),
                         AB::Expr::zero(),
                         AB::Expr::zero(),
                         AB::Expr::zero(),
@@ -345,26 +367,26 @@ where
             );
         }
 
-        // Canonically decompose the previous address into bits so we can do comparisons.
-        BabyBearBitDecomposition::<AB::F>::range_check(
+        // Check that the previous address is a valid BabyBear word.
+        BabyBearWordRangeChecker::<AB::F>::range_check(
             builder,
             local.prev_addr,
-            local.prev_addr_bits,
+            local.prev_addr_range_checker,
             local.is_real.into(),
         );
 
-        // Canonically decompose the address into bits so we can do comparisons.
-        BabyBearBitDecomposition::<AB::F>::range_check(
+        // Check that the address is a valid BabyBear word.
+        BabyBearWordRangeChecker::<AB::F>::range_check(
             builder,
             local.addr,
-            local.addr_bits,
+            local.addr_range_checker,
             local.is_real.into(),
         );
 
-        // We assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
+        // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
         IsZeroOperation::<AB::F>::eval(
             builder,
-            local.prev_addr.into(),
+            local.prev_addr.reduce::<AB>(),
             local.is_prev_addr_zero,
             local.is_real.into(),
         );
@@ -374,6 +396,7 @@ where
             local.is_index_zero,
             local.is_real.into(),
         );
+
         // Comparison will be done unless `prev_addr == 0` and `index == 0`.
         // If `is_real = 0`, then `is_comp` will be zero.
         // If `is_real = 1`, then `is_comp` will be zero when `prev_addr == 0` and `index == 0`.
@@ -383,22 +406,24 @@ where
             local.is_real
                 * (AB::Expr::one() - local.is_prev_addr_zero.result * local.is_index_zero.result),
         );
+        builder.assert_bool(local.is_comp);
         // If `is_comp = 1`, then `prev_addr < addr` should hold.
-        local.lt_cols.eval(
+        LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
             builder,
-            &local.prev_addr_bits.bits,
-            &local.addr_bits.bits,
-            local.is_comp,
+            local.prev_addr.map(Into::into),
+            local.addr.map(Into::into),
+            local.lt_cols,
+            local.is_comp.into(),
         );
+        builder.when(local.is_comp).assert_one(local.lt_cols.u16_compare_operation.bit);
+
         // If `prev_addr == 0` and `index == 0`, then `addr == 0`, and the `value` should be zero.
         // This forces the initialization of address 0 with value 0.
         // Constraints related to register %x0: Register %x0 should always be 0.
         // See 2.6 Load and Store Instruction on P.18 of the RISC-V spec.
         let is_not_comp = local.is_real - local.is_comp;
-        for i in 0..32 {
-            builder.when(is_not_comp.clone()).assert_zero(local.addr_bits.bits[i]);
-            builder.when(is_not_comp.clone()).assert_zero(local.value[i]);
-        }
+        builder.when(is_not_comp.clone()).assert_word_zero(local.addr);
+        builder.when(is_not_comp.clone()).assert_word_zero(local.value);
 
         // Make assertions for specific types of memory chips.
         if self.kind == MemoryChipType::Initialize {

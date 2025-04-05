@@ -980,8 +980,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 end_pc: vk.pc_start,
                 end_shard: BabyBear::one(),
                 end_execution_shard: BabyBear::one(),
-                init_addr_bits: [BabyBear::zero(); 32],
-                finalize_addr_bits: [BabyBear::zero(); 32],
+                init_addr_word: Word([BabyBear::zero(); 2]),
+                finalize_addr_word: Word([BabyBear::zero(); 2]),
                 committed_value_digest: [Word::<BabyBear>([BabyBear::zero(); 2]); 8],
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });

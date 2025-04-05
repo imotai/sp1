@@ -117,11 +117,11 @@ fn generate_records<F: PrimeField32>(
             state.execution_shard = state.next_execution_shard;
             for record in deferred.iter_mut() {
                 state.shard += 1;
-                state.previous_init_addr_bits = record.public_values.previous_init_addr_bits;
-                state.last_init_addr_bits = record.public_values.last_init_addr_bits;
-                state.previous_finalize_addr_bits =
-                    record.public_values.previous_finalize_addr_bits;
-                state.last_finalize_addr_bits = record.public_values.last_finalize_addr_bits;
+                state.previous_init_addr_word = record.public_values.previous_init_addr_word;
+                state.last_init_addr_word = record.public_values.last_init_addr_word;
+                state.previous_finalize_addr_word =
+                    record.public_values.previous_finalize_addr_word;
+                state.last_finalize_addr_word = record.public_values.last_finalize_addr_word;
                 state.start_pc = state.next_pc;
                 state.last_timestamp = 0;
                 state.last_timestamp_inv = 0;
