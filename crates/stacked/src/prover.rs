@@ -81,9 +81,9 @@ where
             let mut host_round_evals = vec![];
             for eval in round_evals.iter() {
                 let host_eval = eval.to_host().await.unwrap();
-                host_round_evals.push(host_eval);
+                host_round_evals.extend(host_eval);
             }
-            let host_round_evals = Evaluations::new(host_round_evals);
+            let host_round_evals = Evaluations::new(vec![host_round_evals.into()]);
             host_batch_evaluations.push(host_round_evals);
         }
         let (pcs_prover_data, mle_rounds): (Rounds<_>, Rounds<_>) = prover_data

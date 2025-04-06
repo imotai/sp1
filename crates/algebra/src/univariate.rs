@@ -9,15 +9,7 @@ pub struct UnivariatePolynomial<K> {
 }
 
 impl<K: Field> UnivariatePolynomial<K> {
-    pub fn new(mut coefficients: Vec<K>) -> Self {
-        // Pop trailing zeros.
-        while let Some(&x) = coefficients.last() {
-            if x == K::zero() {
-                coefficients.pop();
-            } else {
-                break;
-            }
-        }
+    pub fn new(coefficients: Vec<K>) -> Self {
         Self { coefficients }
     }
 
@@ -31,12 +23,15 @@ impl<K: Field> UnivariatePolynomial<K> {
 
 /// Basic univariate polynomial operations.
 impl<K: AbstractField> UnivariatePolynomial<K> {
-    pub fn zero() -> Self {
-        Self { coefficients: vec![] }
+    pub fn zero(degree: usize) -> Self {
+        Self { coefficients: vec![K::zero(); degree + 1] }
     }
 
-    pub fn one() -> Self {
-        Self { coefficients: vec![K::one()] }
+    pub fn one(degree: usize) -> Self {
+        let zeros = vec![K::zero(); degree];
+        let mut coefficients = vec![K::one()];
+        coefficients.extend(zeros);
+        Self { coefficients }
     }
 
     pub fn eval_at_point(&self, point: K) -> K {

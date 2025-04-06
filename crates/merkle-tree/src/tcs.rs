@@ -70,13 +70,12 @@ impl<M: MerkleTreeConfig> TensorCs for MerkleTreeTcs<M> {
     ) -> Result<(), Self::VerifierError> {
         for (i, (index, path)) in indices.iter().zip_eq(opening.proof.paths.split()).enumerate() {
             // Collect the lead slices of the claimed values.
-            let claimed_values_slices =
-                opening.values.iter().map(|value| value.get(i).unwrap().as_slice());
+            let claimed_values_slices = opening.values.get(i).unwrap().as_slice();
 
             let path = path.as_slice();
 
             // Iterate the path and compute the root.
-            let digest = self.hasher.hash_iter_slices(claimed_values_slices);
+            let digest = self.hasher.hash_iter_slices(vec![claimed_values_slices]);
 
             let mut root = digest;
             let mut index = *index;

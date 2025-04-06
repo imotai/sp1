@@ -192,17 +192,16 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         let mut batch_evals = vec![B::EF::zero(); query_indices.len()];
         let mut batch_challenge_power = B::EF::one();
         for opening in proof.component_polynomials_query_openings.iter() {
-            for values in opening.values.iter() {
-                for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
-                    let beta_powers = batching_challenge.shifted_powers(batch_challenge_power);
-                    for (value, beta_power) in values.as_slice().iter().zip(beta_powers) {
-                        *batch_eval += beta_power * *value;
-                    }
+            let values = &opening.values;
+            for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
+                let beta_powers = batching_challenge.shifted_powers(batch_challenge_power);
+                for (value, beta_power) in values.as_slice().iter().zip(beta_powers) {
+                    *batch_eval += beta_power * *value;
                 }
-                let count = values.get(0).unwrap().as_slice().len();
-                batch_challenge_power =
-                    batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
             }
+            let count = values.get(0).unwrap().as_slice().len();
+            batch_challenge_power =
+                batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
         }
 
         // Verify the proof of the claimed values.
@@ -265,7 +264,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         for ((commitment, query_opening), beta) in
             commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas)
         {
-            let openings = &query_opening.values[0];
+            let openings = &query_opening.values;
             for (((index, folded_eval), opening), x) in indices
                 .iter_mut()
                 .zip_eq(folded_evals.iter_mut())

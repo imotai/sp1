@@ -211,14 +211,15 @@ where
         &self,
         tensors: Message<T>,
         indices: &[usize],
-    ) -> Vec<Tensor<<Self::Cs as slop_commit::TensorCs>::Data, CpuBackend>>
+    ) -> Tensor<<Self::Cs as slop_commit::TensorCs>::Data, CpuBackend>
     where
         T: OwnedBorrow<Tensor<<Self::Cs as slop_commit::TensorCs>::Data, CpuBackend>>,
     {
         let tensors = tensors.to_vec();
         let indices = indices.to_vec();
+        let total_width = tensors.iter().map(|tensor| tensor.borrow().sizes()[1]).sum::<usize>();
         slop_futures::rayon::spawn(move || {
-            let mut openings = Vec::with_capacity(tensors.len());
+            let mut openings = Vec::new(); // Vec::with_capacity(tensors.len());
             for tensor in tensors.iter() {
                 let tensor = tensor.borrow();
                 let width = tensor.sizes()[1];
@@ -228,10 +229,10 @@ where
                     .cloned()
                     .collect::<Vec<_>>();
                 let openings_for_tensor =
-                    Tensor::from(openings_for_tensor).reshape([indices.len(), width]);
-                openings.push(openings_for_tensor);
+                    RowMajorMatrix::new(openings_for_tensor, width).transpose().values;
+                openings.extend(openings_for_tensor);
             }
-            openings
+            Tensor::from(openings).reshape([total_width, indices.len()]).transpose()
         })
         .await
         .unwrap()

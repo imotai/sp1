@@ -12,7 +12,7 @@ use crate::Message;
 #[serde(bound(serialize = "", deserialize = ""))]
 pub struct TensorCsOpening<C: TensorCs> {
     /// The claimed values of the opening.
-    pub values: Vec<Tensor<C::Data>>,
+    pub values: Tensor<C::Data>,
     /// The proof of the opening.
     pub proof: <C as TensorCs>::Proof,
 }
@@ -49,7 +49,7 @@ pub trait TensorCs: 'static + Clone + Send + Sync {
 
 impl<C: TensorCs> TensorCsOpening<C> {
     #[inline]
-    pub const fn new(values: Vec<Tensor<C::Data>>, proof: <C as TensorCs>::Proof) -> Self {
+    pub const fn new(values: Tensor<C::Data>, proof: <C as TensorCs>::Proof) -> Self {
         Self { values, proof }
     }
 }
@@ -85,7 +85,7 @@ pub trait ComputeTcsOpenings<A: Backend>: TensorCsProver<A> {
         &self,
         tensors: Message<T>,
         indices: &[usize],
-    ) -> impl Future<Output = Vec<Tensor<<Self::Cs as TensorCs>::Data>>> + Send
+    ) -> impl Future<Output = Tensor<<Self::Cs as TensorCs>::Data>> + Send
     where
         T: OwnedBorrow<Tensor<<Self::Cs as TensorCs>::Data, A>>;
 }
