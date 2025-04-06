@@ -167,11 +167,13 @@ where
         &self,
         tensors: Message<T>,
         indices: &[usize],
-    ) -> Vec<Tensor<<Self::Cs as slop_commit::TensorCs>::Data>>
+    ) -> Tensor<<Self::Cs as slop_commit::TensorCs>::Data>
     where
         T: OwnedBorrow<Tensor<M::Data, TaskScope>>,
     {
+        // let mut openings
         let openings = {
+            let num_opening_values = tensors.iter().map(|t| t.borrow().sizes()[0]).sum::<usize>();
             let height = tensors[0].borrow().sizes()[1].ilog2() as usize;
             let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) = tensors
                 .iter()
@@ -191,39 +193,44 @@ where
             let tensor_height = tensors[0].borrow().sizes()[1];
 
             // Allocate tensors for the openings.
-            let mut openings = tensors
-                .iter()
-                .map(|tensor| {
-                    Tensor::<M::Data, _>::with_sizes_in(
-                        [indices.len(), tensor.borrow().sizes()[0]],
-                        scope.clone(),
-                    )
-                })
-                .collect::<Vec<_>>();
-            let openings_ptrs_host =
-                openings.iter_mut().map(|tensor| tensor.as_mut_ptr()).collect::<Vec<_>>();
-            let mut openings_ptrs =
-                Buffer::with_capacity_in(openings_ptrs_host.len(), scope.clone());
-            openings_ptrs.extend_from_host_slice(&openings_ptrs_host).unwrap();
+            let mut openings = Tensor::<M::Data, _>::with_sizes_in(
+                [indices.len(), num_opening_values],
+                scope.clone(),
+            );
             let mut indices_buffer =
                 Buffer::<usize, _>::with_capacity_in(indices.len(), scope.clone());
             indices_buffer.extend_from_host_slice(indices).unwrap();
             let indices = indices_buffer;
+
+            let offsets = widths_host
+                .iter()
+                .scan(0, |offset, &width| {
+                    let old_offset = *offset;
+                    *offset += width;
+                    Some(old_offset)
+                })
+                .collect::<Vec<_>>();
+            // let total = offsets.pop().unwrap();
+            // assert_eq!(total, num_opening_values);
+            let mut offsets_buffer =
+                Buffer::<usize, _>::with_capacity_in(offsets.len(), scope.clone());
+            offsets_buffer.extend_from_host_slice(&offsets).unwrap();
+            let offsets = offsets_buffer;
             unsafe {
-                for opening in openings.iter_mut() {
-                    opening.assume_init();
-                }
+                openings.assume_init();
 
                 let block_dim = 256;
                 let grid_dim = indices.len().div_ceil(block_dim);
                 let args = args!(
                     tensor_ptrs.as_ptr(),
-                    openings_ptrs.as_mut_ptr(),
+                    openings.as_mut_ptr(),
                     indices.as_ptr(),
                     indices.len(),
                     num_inputs,
                     widths.as_ptr(),
-                    tensor_height
+                    offsets.as_ptr(),
+                    tensor_height,
+                    num_opening_values
                 );
                 scope
                     .launch_kernel(K::compute_openings_kernel(), grid_dim, block_dim, &args, 0)
@@ -231,12 +238,7 @@ where
             }
             openings
         };
-        let mut openings_host = vec![];
-        for opening in openings {
-            openings_host.push(opening.into_host().await.unwrap());
-        }
-
-        openings_host
+        openings.into_host().await.unwrap()
     }
 }
 

@@ -228,6 +228,15 @@ pub async fn make_measurement(
             let cycles = core_proof.cycles as usize;
             let num_shards = core_proof.proof.0.len();
 
+            // // Serialize the proof and vk and save to a file.
+            // let vk_bytes = bincode::serialize(&vk).unwrap();
+            // let core_machine_proof = sp1_stark::MachineProof::<BabyBearPoseidon2> {
+            //     shard_proofs: core_proof.proof.0.clone(),
+            // };
+            // let proof_bytes = bincode::serialize(&core_machine_proof).unwrap();
+            // std::fs::write("vk.bin", vk_bytes).unwrap();
+            // std::fs::write("proof.bin", proof_bytes).unwrap();
+
             // Verify the proof
             let core_proof_data = SP1CoreProofData(core_proof.proof.0.clone());
             prover.verify(&core_proof_data, &vk).unwrap();

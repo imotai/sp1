@@ -26,6 +26,7 @@ slop-multilinear = { workspace = true }
 sp1-stark = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-core-executor = { workspace = true }
+sp1-recursion-circuit = { workspace = true }
 sp1-primitives = { workspace = true }
 
 tracing = { workspace = true }

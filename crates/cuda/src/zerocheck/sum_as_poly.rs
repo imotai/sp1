@@ -37,7 +37,7 @@ where
 {
     let num_real_entries = poly.main_columns.num_real_entries();
     if num_real_entries == 0 {
-        return UnivariatePolynomial::zero();
+        return UnivariatePolynomial::zero(3);
     }
 
     let claim = claim.expect("claim must be provided");

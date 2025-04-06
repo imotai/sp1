@@ -88,24 +88,26 @@ extern "C" void *compute_paths_poseidon_2_baby_bear_16_kernel()
 
 __global__ void computeOpeningsBabyBear16(
     bb31_t **__restrict__ inputs,
-    bb31_t **__restrict__ outputs,
+    bb31_t *__restrict__ outputs,
     size_t *indices,
     size_t numIndices,
     size_t numInputs,
     size_t *batchSizes,
-    size_t matrixHeight)
+    size_t *batchOffsets,
+    size_t matrixHeight,
+    size_t numOpeningValues)
 {
     for (size_t batchIdx = (blockIdx.z * blockDim.z) + threadIdx.z; batchIdx < numInputs; batchIdx += blockDim.z * gridDim.z)
     {
         bb31_t *in = inputs[batchIdx];
-        bb31_t *out = outputs[batchIdx];
+        size_t offset = batchOffsets[batchIdx];
         size_t batchSize = batchSizes[batchIdx];
         for (size_t i = (blockIdx.x * blockDim.x) + threadIdx.x; i < numIndices; i += blockDim.x * gridDim.x)
         {
             size_t rowIdx = indices[i];
             for (size_t j = (blockIdx.y * blockDim.y) + threadIdx.y; j < batchSize; j += blockDim.y * gridDim.y)
             {
-                out[i * batchSize + j] = in[j * matrixHeight + rowIdx];
+                outputs[i * numOpeningValues + j + offset] = in[j * matrixHeight + rowIdx];
             }
         }
     }
