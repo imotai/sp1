@@ -3384,7 +3384,7 @@ dependencies = [
  "slop-challenger",
  "slop-commit",
  "slop-dft",
- "slop-fri 1.2.0 (git+https://github.com/succinctlabs/slop)",
+ "slop-fri",
  "slop-matrix",
  "slop-maybe-rayon",
  "slop-merkle-tree",
@@ -3415,7 +3415,7 @@ dependencies = [
  "slop-challenger",
  "slop-commit",
  "slop-dft",
- "slop-fri 1.2.0 (git+https://github.com/succinctlabs/slop)",
+ "slop-fri",
  "slop-futures",
  "slop-matrix",
  "slop-maybe-rayon",
@@ -3463,14 +3463,6 @@ dependencies = [
  "slop-alloc",
  "slop-matrix",
  "slop-tensor",
-]
-
-[[package]]
-name = "slop-fri"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov/basefold_proof_change#4dfed13471c18129fdb3e732cdec5491b55b5416"
-dependencies = [
- "p3-fri",
 ]
 
 [[package]]
@@ -3957,7 +3949,7 @@ dependencies = [
  "slop-basefold-prover",
  "slop-challenger",
  "slop-commit",
- "slop-fri 1.2.0 (git+https://github.com/succinctlabs/slop?branch=erabinov/basefold_proof_change)",
+ "slop-fri",
  "slop-jagged",
  "slop-matrix",
  "slop-merkle-tree",

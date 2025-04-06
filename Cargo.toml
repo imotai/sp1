@@ -82,7 +82,7 @@ slop-algebra = { git = "https://github.com/succinctlabs/slop" }
 slop-alloc = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
-slop-fri = { git = "https://github.com/succinctlabs/slop", branch = "erabinov/basefold_proof_change" }
+slop-fri = { git = "https://github.com/succinctlabs/slop" }
 slop-commit = { git = "https://github.com/succinctlabs/slop" }
 slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
