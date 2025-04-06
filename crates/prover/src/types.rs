@@ -25,8 +25,8 @@ use sp1_recursion_circuit::machine::{
     SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues,
 };
 use sp1_recursion_circuit::InnerSC;
-use sp1_stark::MachineVerifyingKey;
-use sp1_stark::{log2_ceil_usize, ChipDimensions, MachineConfig, ShardProof, DIGEST_SIZE};
+use sp1_stark::{log2_ceil_usize, ChipDimensions, MachineVerifyingKey};
+use sp1_stark::{MachineConfig, ShardProof, DIGEST_SIZE};
 use thiserror::Error;
 
 use crate::CoreSC;
@@ -123,8 +123,6 @@ where
             inputs.push(BabyBear::from_canonical_usize(*height));
             let log_height = log2_ceil_usize(*height);
             inputs.push(BabyBear::from_canonical_usize(log_height));
-            // let g = BabyBear::two_adic_generator(*height);
-            // inputs.push(g);
         }
 
         poseidon2_hash(inputs)

@@ -19,6 +19,7 @@ pub mod utils;
 pub mod verify;
 
 use anyhow::Result;
+use sp1_recursion_circuit::dummy::dummy_shard_proof;
 use sp1_recursion_circuit::machine::{
     PublicValuesOutputDigest, SP1CompressVerifier, SP1RecursiveVerifier,
 };
@@ -31,7 +32,9 @@ use slop_baby_bear::BabyBear;
 use slop_basefold::{DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig};
 use slop_jagged::JaggedConfig;
 use slop_merkle_tree::my_bb_16_perm;
-use sp1_core_executor::{ExecutionError, ExecutionReport, Executor, Program, SP1Context};
+use sp1_core_executor::{
+    ExecutionError, ExecutionRecord, ExecutionReport, Executor, Program, SP1Context,
+};
 use sp1_core_machine::{
     io::SP1Stdin,
     reduce::SP1ReduceProof,
@@ -41,6 +44,7 @@ use sp1_core_machine::{
 use sp1_primitives::{hash_deferred_proof, io::SP1PublicValues};
 
 use sp1_recursion_circuit::{
+    dummy::jagged::dummy_hash,
     machine::{
         InnerVal, SP1CompressWitnessValues, SP1DeferredVerifier, SP1DeferredWitnessValues,
         SP1RecursionWitnessValues, JC,
@@ -55,7 +59,7 @@ use sp1_recursion_compiler::{
     ir::{Builder, DslIrProgram},
 };
 use sp1_recursion_executor::{RecursionProgram, RecursionPublicValues, Runtime, DIGEST_SIZE};
-use sp1_stark::prover::ShardData;
+use sp1_stark::prover::{CoreProofShape, ShardData};
 use sp1_stark::ShardVerifier;
 
 use sp1_stark::{
@@ -300,6 +304,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         (pk, program, vk)
     }
+
     /// Generate shard proofs which split up and prove the valid execution of a RISC-V program with
     /// the core prover. Uses the provided context.
     #[instrument(name = "prove_core", level = "info", skip_all)]
@@ -347,7 +352,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 .await
             });
 
-            // Receive the first few shapes and comile the recursion programs.
+            // // Receive the first few shapes and comile the recursion programs.
             // for _ in 0..3 {
             //     if let Ok((shape, is_complete)) = shape_rx.recv().await.unwrap() {
             //         let recursion_shape =
@@ -357,7 +362,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             //         let compress_shape = SP1CompressProgramShape::Recursion(recursion_shape);
 
             //         // Insert the program into the cache.
-            //         self.program_from_shape(compress_shape, None);
+            //         self.recursion_program_from_shape(compress_shape, None);
             //     }
             // }
 
@@ -629,12 +634,12 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                             .setup(program)
                             .instrument(tracing::info_span!("setup compress program"))
                             .await;
-                        // Observe the proving key.
                         let mut challenger = Poseidon2BabyBear16BasefoldConfig::default_challenger(
                             &Poseidon2BabyBear16BasefoldConfig::default_verifier(
                                 COMPRESS_LOG_BLOWUP,
                             ),
                         );
+                        // Observe the proving key.
                         pk.observe_into(&mut challenger);
                         let proof = self_clone
                             .compress_prover
@@ -662,6 +667,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                                     rx.blocking_recv().unwrap()
                                 };
 
+                                // TODO: comment back in.
                                 // #[cfg(feature = "debug")]
                                 // self.compress_prover.debug_constraints(
                                 //     &self.compress_prover.pk_to_host(&pk),
@@ -884,6 +890,34 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let program = Arc::new(program);
         compiler_span.exit();
         program.clone()
+    }
+
+    pub fn recursion_program_from_shape(
+        &self,
+        vk: MachineVerifyingKey<CoreSC>,
+        record: &ExecutionRecord,
+        batch_size: usize,
+    ) -> Option<Arc<RecursionProgram<BabyBear>>> {
+        let CoreProofShape { shard_chips, preprocessed_multiple, main_multiple } =
+            self.core_prover.shape_from_record(record)?;
+
+        let dummy_proof = dummy_shard_proof(
+            shard_chips,
+            self.core_prover.pcs_prover.max_log_row_count,
+            self.core_verifier.pcs_verifier.stacked_pcs_verifier.pcs_verifier.fri_config.log_blowup,
+            self.core_prover.pcs_prover.log_stacking_height() as usize,
+            &[preprocessed_multiple, main_multiple],
+        );
+
+        let circuit_witness = SP1RecursionWitnessValues {
+            vk,
+            shard_proofs: vec![dummy_proof; batch_size],
+            is_complete: false,
+            is_first_shard: false,
+            reconstruct_deferred_digest: dummy_hash(),
+        };
+
+        Some(self.recursion_program(&circuit_witness))
     }
 
     pub fn compress_program(

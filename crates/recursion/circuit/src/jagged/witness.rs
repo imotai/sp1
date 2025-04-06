@@ -84,18 +84,18 @@ where
     type WitnessVariable = JaggedPcsProofVariable<SC::Recursive>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let stacked_pcs_proof = self.stacked_pcs_proof.read(builder);
+        let params = self.params.read(builder);
         let sumcheck_proof = self.sumcheck_proof.read(builder);
         let jagged_eval_proof = self.jagged_eval_proof.read(builder);
-        let params = self.params.read(builder);
+        let stacked_pcs_proof = self.stacked_pcs_proof.read(builder);
 
         JaggedPcsProofVariable { stacked_pcs_proof, sumcheck_proof, jagged_eval_proof, params }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        self.stacked_pcs_proof.write(witness);
+        self.params.write(witness);
         self.sumcheck_proof.write(witness);
         self.jagged_eval_proof.write(witness);
-        self.params.write(witness);
+        self.stacked_pcs_proof.write(witness);
     }
 }

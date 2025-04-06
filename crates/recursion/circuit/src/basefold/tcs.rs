@@ -28,7 +28,7 @@ pub trait RecursiveTcs: Sized {
 /// An opening of a tensor commitment scheme.
 pub struct RecursiveTensorCsOpening<C: RecursiveTcs> {
     /// The claimed values of the opening.
-    pub values: Vec<Tensor<C::Data>>,
+    pub values: Tensor<C::Data>,
     /// The proof of the opening.
     pub proof: <C as RecursiveTcs>::Proof,
 }
@@ -65,12 +65,7 @@ where
     ) {
         for (i, (index, path)) in indices.iter().zip_eq(opening.proof.paths.split()).enumerate() {
             // Collect the lead slices of the claimed values.
-            let claimed_values_slices = opening
-                .values
-                .iter()
-                .flat_map(|value| value.get(i).unwrap().as_slice())
-                .copied()
-                .collect::<Vec<_>>();
+            let claimed_values_slices = opening.values.get(i).unwrap().as_slice().to_vec();
 
             let path = path.as_slice().to_vec();
             let digest = M::hash(builder, &claimed_values_slices);

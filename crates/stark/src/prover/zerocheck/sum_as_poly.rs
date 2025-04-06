@@ -272,7 +272,9 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
 ) -> UnivariatePolynomial<EF> {
     let num_real_entries = poly.main_columns.num_real_entries();
     if num_real_entries == 0 {
-        return UnivariatePolynomial::zero();
+        // NOTE: We hard-code the degree of the zerocheck to be three here. This is important to get
+        // the correct shape of a dummy proof.
+        return UnivariatePolynomial::zero(3);
     }
 
     let claim = claim.expect("claim must be provided");

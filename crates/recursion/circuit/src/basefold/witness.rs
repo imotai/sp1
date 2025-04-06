@@ -88,15 +88,13 @@ where
     type WitnessVariable = RecursiveTensorCsOpening<TC::Recursive>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let values: Vec<Tensor<Felt<C::F>>> = self.values.iter().map(|v| v.read(builder)).collect();
+        let values: Tensor<Felt<C::F>> = self.values.read(builder);
         let proof = self.proof.read(builder);
         RecursiveTensorCsOpening::<TC::Recursive> { values, proof }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        for value in &self.values {
-            value.write(witness);
-        }
+        self.values.write(witness);
         self.proof.write(witness);
     }
 }
@@ -170,13 +168,13 @@ where
     type WitnessVariable = RecursiveStackedPcsProof<RecursivePcsProof, C::F, C::EF>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let pcs_proof = self.pcs_proof.read(builder);
         let batch_evaluations = self.batch_evaluations.read(builder);
+        let pcs_proof = self.pcs_proof.read(builder);
         RecursiveStackedPcsProof::<RecursivePcsProof, C::F, C::EF> { pcs_proof, batch_evaluations }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        self.pcs_proof.write(witness);
         self.batch_evaluations.write(witness);
+        self.pcs_proof.write(witness);
     }
 }

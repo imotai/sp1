@@ -290,30 +290,30 @@ where
     type WitnessVariable = ShardProofVariable<C, SC, SC::Recursive>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let main_commitment = self.main_commitment.read(builder);
-        let zerocheck_proof = self.zerocheck_proof.read(builder);
-        let evaluation_proof = self.evaluation_proof.read(builder);
-        let opened_values = self.opened_values.read(builder);
         let public_values = self.public_values.read(builder);
+        let main_commitment = self.main_commitment.read(builder);
         let logup_gkr_proof = self.logup_gkr_proof.read(builder);
+        let zerocheck_proof = self.zerocheck_proof.read(builder);
+        let opened_values = self.opened_values.read(builder);
+        let evaluation_proof = self.evaluation_proof.read(builder);
         Self::WitnessVariable {
             main_commitment,
             zerocheck_proof,
-            evaluation_proof,
             opened_values,
             public_values,
             logup_gkr_proof,
+            evaluation_proof,
             shard_chips: self.shard_chips.clone(),
         }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        self.main_commitment.write(witness);
-        self.zerocheck_proof.write(witness);
-        self.evaluation_proof.write(witness);
-        self.opened_values.write(witness);
         self.public_values.write(witness);
+        self.main_commitment.write(witness);
         self.logup_gkr_proof.write(witness);
+        self.zerocheck_proof.write(witness);
+        self.opened_values.write(witness);
+        self.evaluation_proof.write(witness);
     }
 }
 

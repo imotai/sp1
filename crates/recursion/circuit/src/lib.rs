@@ -23,6 +23,7 @@ use slop_merkle_tree::{MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig}
 use sp1_stark::{shape::OrderedShape, BabyBearPoseidon2};
 pub mod basefold;
 pub mod challenger;
+pub mod dummy;
 pub mod hash;
 pub mod jagged;
 pub mod logup_gkr;

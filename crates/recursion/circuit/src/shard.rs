@@ -41,8 +41,6 @@ pub struct ShardProofVariable<
     pub main_commitment: SC::DigestVariable,
     /// The values of the traces at the final random point.
     pub opened_values: ShardOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>,
-    /// The evaluation proof.
-    pub evaluation_proof: JaggedPcsProofVariable<JC>,
     /// The zerocheck IOP proof.
     pub zerocheck_proof: PartialSumcheckProof<Ext<C::F, C::EF>>,
     /// The public values
@@ -51,6 +49,8 @@ pub struct ShardProofVariable<
     pub logup_gkr_proof: LogupGkrProof<Ext<C::F, C::EF>>,
     /// The chips participating in the shard.
     pub shard_chips: BTreeSet<String>,
+    /// The evaluation proof.
+    pub evaluation_proof: JaggedPcsProofVariable<JC>,
 }
 
 pub struct MachineVerifyingKeyVariable<
@@ -386,11 +386,14 @@ mod tests {
         config::InnerConfig,
     };
     use sp1_recursion_machine::test::run_recursion_test_machines;
-    use sp1_stark::{MachineProof, MachineVerifier, MachineVerifyingKey, ShardVerifier};
+    use sp1_stark::{
+        prover::CpuProver, MachineProof, MachineVerifier, MachineVerifyingKey, ShardVerifier,
+    };
 
     use crate::{
         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
         challenger::DuplexChallengerVariable,
+        dummy::dummy_shard_proof,
         jagged::{RecursiveJaggedConfigImpl, RecursiveJaggedEvalSumcheckConfig},
         witness::Witnessable,
     };
@@ -421,6 +424,7 @@ mod tests {
             max_log_row_count,
             machine.clone(),
         );
+        let prover = CpuProver::new(verifier.clone());
 
         // let (pk, vk) = prover.setup(Arc::new(program.clone())).await;
 
@@ -457,9 +461,17 @@ mod tests {
         machine_verifier.verify(&vk, &proof, &mut challenger).unwrap();
 
         let shard_proof = proof.shard_proofs[0].clone();
+        let shape = prover.shape_from_proof(&shard_proof);
+        let dummy_proof = dummy_shard_proof(
+            shape.shard_chips,
+            max_log_row_count,
+            log_blowup,
+            log_stacking_height as usize,
+            &[shape.preprocessed_multiple, shape.main_multiple],
+        );
 
         let vk_variable = vk.read(&mut builder);
-        let shard_proof_variable = shard_proof.read(&mut builder);
+        let shard_proof_variable = dummy_proof.read(&mut builder);
 
         let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {

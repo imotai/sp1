@@ -27,7 +27,7 @@ use sp1_core_executor::{
     Program, SP1Context,
 };
 
-fn generate_checkpoints(
+pub fn generate_checkpoints(
     mut runtime: Executor,
     checkpoints_tx: Sender<(usize, File, bool, u64)>,
 ) -> Result<Vec<u8>, SP1CoreProverError> {
@@ -61,7 +61,7 @@ fn generate_checkpoints(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_records<F: PrimeField32>(
+pub fn generate_records<F: PrimeField32>(
     machine: &Machine<F, RiscvAir<F>>,
     program: Arc<Program>,
     record_gen_sync: Arc<TurnBasedSync>,

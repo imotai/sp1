@@ -272,17 +272,16 @@ impl<
         let mut batch_evals = vec![zero; query_indices.len()];
         let mut batch_challenge_power = SymbolicExt::from(one);
         for opening in proof.component_polynomials_query_openings.iter() {
-            for values in opening.values.iter() {
-                for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
-                    let beta_powers = batching_challenge.shifted_powers(batch_challenge_power);
-                    for (value, beta_power) in values.as_slice().iter().zip(beta_powers) {
-                        *batch_eval += beta_power * *value;
-                    }
+            let values = &opening.values;
+            for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
+                let beta_powers = batching_challenge.shifted_powers(batch_challenge_power);
+                for (value, beta_power) in values.as_slice().iter().zip(beta_powers) {
+                    *batch_eval += beta_power * *value;
                 }
-                let count = values.get(0).unwrap().as_slice().len();
-                batch_challenge_power =
-                    batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
             }
+            let count = values.get(0).unwrap().as_slice().len();
+            batch_challenge_power =
+                batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
         }
         let batch_evals: Vec<Ext<C::F, C::EF>> =
             batch_evals.into_iter().map(|x| builder.eval(x)).collect_vec();
@@ -358,7 +357,7 @@ impl<
         for ((commitment, query_opening), beta) in
             commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas)
         {
-            let openings = &query_opening.values[0];
+            let openings = &query_opening.values;
             for (((index, folded_eval), opening), x) in indices
                 .iter_mut()
                 .zip_eq(folded_evals.iter_mut())

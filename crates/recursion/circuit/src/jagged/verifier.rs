@@ -66,10 +66,10 @@ impl<
 }
 
 pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
-    pub stacked_pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
+    pub params: JaggedLittlePolynomialVerifierParams<Felt<JC::F>>,
     pub sumcheck_proof: PartialSumcheckProof<Ext<JC::F, JC::EF>>,
     pub jagged_eval_proof: JC::JaggedEvalProof,
-    pub params: JaggedLittlePolynomialVerifierParams<Felt<JC::F>>,
+    pub stacked_pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
 }
 
 impl<

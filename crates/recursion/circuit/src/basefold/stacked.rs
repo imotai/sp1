@@ -18,8 +18,8 @@ pub struct RecursiveStackedPcsVerifier<P> {
 }
 
 pub struct RecursiveStackedPcsProof<PcsProof, F, EF> {
-    pub pcs_proof: PcsProof,
     pub batch_evaluations: Rounds<Evaluations<Ext<F, EF>>>,
+    pub pcs_proof: PcsProof,
 }
 
 impl<
