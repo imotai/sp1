@@ -92,10 +92,11 @@ impl<C: MachineProverComponents> MachineProver<C> {
                 let prover_permits = prover_permits.clone();
                 tokio::spawn(async move {
                     // Generate the traces.
-                    shard_prover
-                        .generate_traces(record, &data_tx, prover_permits)
+                    let shard_data = shard_prover
+                        .generate_traces(record, prover_permits)
                         .instrument(tracing::debug_span!("generate traces"))
                         .await;
+                    data_tx.send(shard_data).await.unwrap();
                 });
             }
             drop(data_tx);

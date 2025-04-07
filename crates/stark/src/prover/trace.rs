@@ -13,7 +13,7 @@ use slop_algebra::Field;
 use slop_alloc::{Backend, CanCopyFrom, CpuBackend, GLOBAL_CPU_BACKEND};
 use slop_multilinear::{Mle, MleBaseBackend, PaddedMle, ZeroEvalBackend};
 use slop_tensor::Tensor;
-use tokio::sync::{mpsc::Sender, oneshot, Semaphore};
+use tokio::sync::{oneshot, Semaphore};
 
 use crate::{air::MachineAir, Machine, MachineRecord};
 
@@ -69,17 +69,15 @@ pub trait TraceGenerator<F: Field, A: MachineAir<F>, B: Backend>: 'static + Send
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
-        output: &Sender<Traces<F, B>>,
-    ) -> impl Future<Output = ()> + Send;
+    ) -> impl Future<Output = Traces<F, B>> + Send;
 
     /// Generate the main traces for the given execution record.
     fn generate_main_traces(
         &self,
         record: A::Record,
         max_log_row_count: usize,
-        output: &Sender<ShardData<F, A, B>>,
         prover_permits: Arc<Semaphore>,
-    ) -> impl Future<Output = ()> + Send;
+    ) -> impl Future<Output = ShardData<F, A, B>> + Send;
 }
 
 /// A trace generator that used the default methods on chips for generating traces.
@@ -121,9 +119,8 @@ where
         &self,
         record: A::Record,
         max_log_row_count: usize,
-        output: &Sender<ShardData<F, A, B>>,
         prover_permits: Arc<Semaphore>,
-    ) {
+    ) -> ShardData<F, A, B> {
         let airs = self.machine.chips().to_vec();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -187,16 +184,14 @@ where
 
         let traces = Traces { named_traces: traces };
 
-        let data = ShardData { traces, public_values, permit, shard_chips };
-        output.send(data).await.unwrap();
+        ShardData { traces, public_values, permit, shard_chips }
     }
 
     async fn generate_preprocessed_traces(
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
-        output: &Sender<Traces<F, B>>,
-    ) {
+    ) -> Traces<F, B> {
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -216,7 +211,6 @@ where
         // Wait for traces.
         let named_preprocessed_traces = rx.await.unwrap();
         // Wait for the device to be available.
-        let permit = output.reserve().await.unwrap();
         let named_traces =
             join_all(named_preprocessed_traces.into_iter().map(|(name, trace)| async move {
                 let trace = self.trace_allocator.copy_into(trace).await.unwrap();
@@ -227,7 +221,6 @@ where
             .await
             .into_iter()
             .collect::<BTreeMap<_, _>>();
-        let traces = Traces { named_traces };
-        permit.send(traces);
+        Traces { named_traces }
     }
 }

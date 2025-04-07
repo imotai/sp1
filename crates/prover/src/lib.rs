@@ -496,7 +496,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 tokio::spawn(async move {
                     // Receive a record and a `Sender` and send traces back through the `Sender`.
                     while let Some((record, tx)) = record_rx.recv().await {
-                        compress_prover.generate_traces(record, &tx, prover_permits.clone()).await;
+                        let shard_data =
+                            compress_prover.generate_traces(record, prover_permits.clone()).await;
+                        tx.send(shard_data).await.unwrap();
                     }
                 });
                 let compress_prover = self.compress_prover.clone();

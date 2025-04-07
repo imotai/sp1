@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
@@ -6,8 +6,9 @@ use slop_basefold::{DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig};
 use slop_jagged::JaggedConfig;
 use slop_multilinear::Point;
 use sp1_stark::{
-    air::MachineAir, AirOpenedValues, BabyBearPoseidon2, Chip, ChipOpenedValues, ShardOpenedValues,
-    ShardProof, PROOF_MAX_NUM_PVS,
+    air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, BabyBearPoseidon2, Chip,
+    ChipDimensions, ChipOpenedValues, MachineVerifyingKey, ShardOpenedValues, ShardProof,
+    PROOF_MAX_NUM_PVS,
 };
 
 use crate::dummy::{
@@ -15,6 +16,17 @@ use crate::dummy::{
 };
 
 type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
+
+pub fn dummy_vk(
+    preprocessed_chip_information: BTreeMap<String, ChipDimensions>,
+) -> MachineVerifyingKey<BabyBearPoseidon2> {
+    MachineVerifyingKey {
+        pc_start: BabyBear::zero(),
+        initial_global_cumulative_sum: SepticDigest::zero(),
+        preprocessed_commit: Some([BabyBear::zero(); 8]),
+        preprocessed_chip_information,
+    }
+}
 
 pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
     shard_chips: BTreeSet<Chip<BabyBear, A>>,

@@ -18,7 +18,7 @@ use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{Evaluations, HostEvaluationBackend, MleEval, Point, PointBackend};
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
-use tokio::sync::{mpsc::Sender, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::Instrument;
 
 use crate::{
@@ -193,12 +193,10 @@ impl<C: MachineProverComponents> ShardProver<C> {
         initial_global_cumulative_sum: SepticDigest<C::F>,
     ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
         let pc_start = program.pc_start();
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        self.trace_generator
-            .generate_preprocessed_traces(program, self.max_log_row_count(), &tx)
+        let preprocessed_traces = self
+            .trace_generator
+            .generate_preprocessed_traces(program, self.max_log_row_count())
             .await;
-
-        let preprocessed_traces = rx.recv().await.unwrap();
 
         let constraints_map = self
             .all_chips()
@@ -432,13 +430,12 @@ impl<C: MachineProverComponents> ShardProver<C> {
     pub async fn generate_traces(
         &self,
         record: C::Record,
-        tx: &Sender<ShardData<C::F, C::Air, C::B>>,
         prover_permits: Arc<Semaphore>,
-    ) {
+    ) -> ShardData<C::F, C::Air, C::B> {
         // Generate the traces.
         self.trace_generator
-            .generate_main_traces(record, self.max_log_row_count(), tx, prover_permits)
-            .await;
+            .generate_main_traces(record, self.max_log_row_count(), prover_permits)
+            .await
     }
 
     /// Generate a proof for a given execution record.
