@@ -13,6 +13,9 @@ use crate::{
 
 use super::PROOF_MAX_NUM_PVS;
 
+/// The maximum constraint degree for a chip.
+pub const MAX_CONSTRAINT_DEGREE: usize = 3;
+
 /// An Air that encodes lookups based on interactions.
 #[derive(Debug)]
 pub struct Chip<F: Field, A> {
@@ -96,7 +99,7 @@ where
             get_max_constraint_degree(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS);
 
         if !sends.is_empty() || !receives.is_empty() {
-            max_constraint_degree = std::cmp::max(max_constraint_degree, 3);
+            max_constraint_degree = std::cmp::max(max_constraint_degree, MAX_CONSTRAINT_DEGREE);
         }
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
