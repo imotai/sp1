@@ -20,6 +20,7 @@
 //! above, and also checks that index < t_{tab+1}. Assuming that c_{tab} is a power of 2, the
 //! multiplication `row * c_{tab}` can be done by bit-shift, and the addition is checked via the
 //! grade-school algorithm.
+use core::fmt;
 use std::iter::once;
 use std::{array, cmp::max};
 
@@ -40,6 +41,16 @@ pub struct MemoryState {
     pub carry: bool,
 
     pub comparison_so_far: bool,
+}
+
+impl fmt::Display for MemoryState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "COMPARISON_SO_FAR_{}__CARRY_{}",
+            self.comparison_so_far as usize, self.carry as usize
+        )
+    }
 }
 
 impl MemoryState {
@@ -66,7 +77,16 @@ pub enum StateOrFail {
     Fail,
 }
 
-/// A struct representing the five bits the branching program needs to read in order to go to the next
+impl fmt::Display for StateOrFail {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StateOrFail::State(memory_state) => write!(f, "{}", memory_state),
+            StateOrFail::Fail => write!(f, "FAIL"),
+        }
+    }
+}
+
+/// A struct representing the four bits the branching program needs to read in order to go to the next
 /// layer of the program. The program streams the bits of the row, column, index, and the
 /// "table area prefix sum".
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -80,8 +100,8 @@ pub struct BitState<T> {
 /// Enumerate all the possible memory states.
 pub fn all_memory_states() -> Vec<MemoryState> {
     (0..2)
-        .flat_map(|carry| {
-            (0..2).map(move |comparison_so_far| MemoryState {
+        .flat_map(|comparison_so_far| {
+            (0..2).map(move |carry| MemoryState {
                 carry: carry != 0,
                 comparison_so_far: comparison_so_far != 0,
             })
@@ -477,8 +497,10 @@ pub mod tests {
 
     type F = BabyBear;
 
+    use crate::StateOrFail;
+
     use super::{
-        all_bit_states, all_memory_states, JaggedLittlePolynomialProverParams,
+        all_bit_states, all_memory_states, transition_function, JaggedLittlePolynomialProverParams,
         JaggedLittlePolynomialVerifierParams,
     };
 
@@ -799,6 +821,25 @@ pub mod tests {
             } else {
                 assert_eq!(branching_program_eval, &F::zero());
             }
+        }
+    }
+
+    #[test]
+    fn output_transition_table() {
+        let memory_states = all_memory_states();
+        let bit_states = all_bit_states();
+
+        for bit_state in bit_states {
+            let mut output_state: Vec<StateOrFail> = Vec::new();
+
+            for memory_state in memory_states.clone() {
+                output_state.push(transition_function(bit_state, memory_state));
+            }
+
+            println!(
+                "{}",
+                output_state.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" ")
+            );
         }
     }
 }
