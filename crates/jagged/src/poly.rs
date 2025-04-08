@@ -54,7 +54,7 @@ impl fmt::Display for MemoryState {
 }
 
 impl MemoryState {
-    fn get_index(&self) -> usize {
+    pub fn get_index(&self) -> usize {
         (self.carry as usize) + ((self.comparison_so_far as usize) << 1)
     }
 }
