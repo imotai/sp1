@@ -33,6 +33,8 @@ use sp1_stark::{LogUpGkrRoundProver, LogupGkrRoundProof};
 
 use crate::{FirstGkrLayer, GkrCircuitLayer, GkrLayer};
 
+const STRIDE_FACTOR: usize = 1 << 17;
+
 #[derive(Clone, Debug)]
 pub struct LogupGkrCudaRoundProver<F, EF, Challenger> {
     _marker: std::marker::PhantomData<(F, EF, Challenger)>,
@@ -314,8 +316,8 @@ where
                         Tensor::with_sizes_in([4, height], backend.clone());
 
                     const BLOCK_SIZE: usize = 256;
-                    const STRIDE: usize = 32;
-                    let grid_size_x = height.div_ceil(BLOCK_SIZE * STRIDE);
+                    let stride = height.div_ceil(STRIDE_FACTOR);
+                    let grid_size_x = height.div_ceil(BLOCK_SIZE * stride);
                     let grid_size = (grid_size_x, 1, 1);
                     unsafe {
                         let args =
@@ -434,8 +436,8 @@ where
                 let scope = circuit.layer.backend();
 
                 const BLOCK_SIZE: usize = 256;
-                const STRIDE: usize = 32;
-                let grid_dim = height.div_ceil(BLOCK_SIZE).div_ceil(STRIDE);
+                let stride = height.div_ceil(STRIDE_FACTOR);
+                let grid_dim = height.div_ceil(BLOCK_SIZE).div_ceil(stride);
                 let mut output =
                     Tensor::<EF, TaskScope>::with_sizes_in([3, grid_dim], scope.clone());
                 let num_tiles = BLOCK_SIZE.checked_div(32).unwrap_or(1);
@@ -476,9 +478,8 @@ where
                 let scope = guts.backend();
 
                 const BLOCK_SIZE: usize = 256;
-                const STRIDE: usize = 32;
-
-                let grid_dim = output_height.div_ceil(BLOCK_SIZE).div_ceil(STRIDE);
+                let stride = height.div_ceil(STRIDE_FACTOR);
+                let grid_dim = output_height.div_ceil(BLOCK_SIZE).div_ceil(stride);
                 let mut univariate_evals =
                     Tensor::<EF, TaskScope>::with_sizes_in([3, grid_dim], scope.clone());
 
@@ -701,9 +702,9 @@ where
         let scope = circuit.numerator.backend();
 
         const BLOCK_SIZE: usize = 256;
-        const STRIDE: usize = 32;
 
-        let grid_dim = height.div_ceil(BLOCK_SIZE).div_ceil(STRIDE);
+        let stride = height.div_ceil(STRIDE_FACTOR);
+        let grid_dim = height.div_ceil(BLOCK_SIZE).div_ceil(stride);
         let mut output = Tensor::<EF, TaskScope>::with_sizes_in([3, grid_dim], scope.clone());
 
         let num_tiles = BLOCK_SIZE.checked_div(32).unwrap_or(1);
