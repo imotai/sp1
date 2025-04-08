@@ -108,6 +108,7 @@ impl<T> Point<T, CpuBackend> {
         self.values.iter()
     }
 
+    // Creates a bool hypercube point that is the big endian binary representation of `num`.
     pub fn from_usize(num: usize, dimension: usize) -> Self
     where
         T: AbstractField,

@@ -403,8 +403,8 @@ impl ColRanges {
 }
 
 pub struct BranchingProgram<K: AbstractField> {
-    z_row_rev: Point<K>,
-    z_index_rev: Point<K>,
+    z_row: Point<K>,
+    z_index: Point<K>,
     memory_states: Vec<MemoryState>,
     bit_states: Vec<BitState<bool>>,
     pub(crate) num_vars: usize,
@@ -415,8 +415,8 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
         let log_m = z_index.dimension();
 
         Self {
-            z_row_rev: z_row.reversed(),
-            z_index_rev: z_index.reversed(),
+            z_row,
+            z_index,
             memory_states: all_memory_states(),
             bit_states: all_bit_states(),
             num_vars: log_m,
@@ -426,9 +426,6 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
     pub fn eval(&self, prefix_sum: &Point<K>, next_prefix_sum: &Point<K>) -> K {
         let mut state_by_state_results: [K; 4] = array::from_fn(|_| K::zero());
         state_by_state_results[MemoryState::success().get_index()] = K::one();
-
-        let prefix_sum_rev = prefix_sum.reversed();
-        let next_prefix_sum_rev = next_prefix_sum.reversed();
 
         // The dynamic programming algorithm to output the result of the branching
         // iterates over the layers of the branching program in reverse order.
@@ -440,10 +437,10 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
             // in the ith layer, looks at the ith least significant bit, which is
             // the m - 1 - i th bit if the bits are in a bit array in big-endian.
             let point = [
-                self.z_row_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                self.z_index_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
-                next_prefix_sum_rev.get(layer).unwrap_or(&K::zero()).clone(),
+                Self::get_ith_least_significant_val(&self.z_row, layer),
+                Self::get_ith_least_significant_val(&self.z_index, layer),
+                Self::get_ith_least_significant_val(prefix_sum, layer),
+                Self::get_ith_least_significant_val(next_prefix_sum, layer),
             ]
             .into_iter()
             .collect::<Point<K>>();
@@ -482,6 +479,16 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
         }
 
         state_by_state_results[MemoryState::initial_state().get_index()].clone()
+    }
+
+    /// We assume that the point is in big-endian order.
+    fn get_ith_least_significant_val(point: &Point<K>, i: usize) -> K {
+        let dim = point.dimension();
+        if dim <= i {
+            K::zero()
+        } else {
+            point.get(dim - i - 1).expect("index out of bounds").clone()
+        }
     }
 }
 
