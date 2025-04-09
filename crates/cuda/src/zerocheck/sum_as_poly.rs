@@ -15,6 +15,7 @@ use slop_multilinear::{
 use sp1_stark::prover::{
     increment_y_values, interpolate_last_var_padded_values, ZeroCheckPoly, ZerocheckRoundProver,
 };
+use sp1_stark::MAX_CONSTRAINT_DEGREE;
 
 use crate::TaskScope;
 
@@ -37,7 +38,8 @@ where
 {
     let num_real_entries = poly.main_columns.num_real_entries();
     if num_real_entries == 0 {
-        return UnivariatePolynomial::zero(3);
+        // The +1 is from the zerocheck poly's eq.
+        return UnivariatePolynomial::zero(MAX_CONSTRAINT_DEGREE + 1);
     }
 
     let claim = claim.expect("claim must be provided");
