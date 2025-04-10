@@ -3,8 +3,7 @@ use std::time::{Duration, Instant};
 use clap::{command, Parser};
 use rand::Rng;
 use sp1_cuda::SP1CudaProver;
-use sp1_prover::HashableKey;
-use sp1_prover::{components::CpuProverComponents, ProverMode};
+use sp1_prover::{components::CpuProverComponents, HashableKey, ProverMode};
 use sp1_sdk::{self, Prover, ProverClient, SP1Context, SP1Prover, SP1Stdin};
 use sp1_stark::SP1ProverOpts;
 use test_artifacts::VERIFY_PROOF_ELF;
@@ -68,7 +67,6 @@ fn main() {
                 time_operation(|| prover.execute(&elf, &stdin, context.clone()));
 
             let cycles = report.expect("execution failed").1.total_instruction_count();
-
             let (core_proof, prove_core_duration) = time_operation(|| {
                 prover.prove_core(&pk_d, program, &stdin, opts, context).unwrap()
             });
@@ -138,7 +136,7 @@ fn main() {
             println!("{:?}", result);
         }
         ProverMode::Cuda => {
-            let server = SP1CudaProver::new().expect("failed to initialize CUDA prover");
+            let server = SP1CudaProver::new(None).expect("failed to initialize CUDA prover");
 
             let context = SP1Context::default();
             let (report, execution_duration) =

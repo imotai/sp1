@@ -5,7 +5,7 @@ use secp256k1::{Message, PublicKey, Secp256k1};
 fn test_recover_rand_lte_100(
     stdin: &mut sp1_sdk::SP1Stdin,
 ) -> impl FnOnce(sp1_sdk::SP1PublicValues) {
-    let times = rand::random::<u8>().min(100);
+    let times = 100_u8;
 
     stdin.write(&times);
 
@@ -43,11 +43,11 @@ fn test_recover_rand_lte_100(
     }
 }
 
-#[sp1_test::sp1_test("secp256k1_verify")]
+#[sp1_test::sp1_test("secp256k1_verify", syscalls = [SECP256K1_DOUBLE, SECP256K1_ADD])]
 fn test_verify_rand_lte_100(
     stdin: &mut sp1_sdk::SP1Stdin,
 ) -> impl FnOnce(sp1_sdk::SP1PublicValues) {
-    let times = rand::random::<u8>().min(100);
+    let times = 100_u8;
     stdin.write(&times);
 
     let secp = Secp256k1::new();

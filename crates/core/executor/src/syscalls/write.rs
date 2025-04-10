@@ -1,5 +1,7 @@
-use sp1_primitives::consts::fd::{FD_HINT, FD_PUBLIC_VALUES, LOWEST_ALLOWED_FD};
-use sp1_primitives::consts::num_to_comma_separated;
+use sp1_primitives::consts::{
+    fd::{FD_HINT, FD_PUBLIC_VALUES, LOWEST_ALLOWED_FD},
+    num_to_comma_separated,
+};
 
 use crate::{Executor, ExecutorConfig, Register};
 
@@ -7,8 +9,7 @@ use super::{SyscallCode, SyscallContext};
 /// Handle writes to file descriptors during execution.
 ///
 /// If stdout (fd = 1):
-/// - If the stream is a cycle tracker, either log the cycle tracker or accumulate it in the
-///   report.
+/// - If the stream is a cycle tracker, either log the cycle tracker or accumulate it in the report.
 /// - Else, print the stream to stdout.
 ///
 /// If stderr (fd = 2):
@@ -23,7 +24,6 @@ use super::{SyscallCode, SyscallContext};
 /// If the fd matches a hook in the hook registry, invoke the hook.
 ///
 /// Else, log a warning.
-
 #[allow(clippy::pedantic)]
 pub fn write_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,
@@ -45,17 +45,44 @@ pub fn write_syscall<E: ExecutorConfig>(
             Some(command) => handle_cycle_tracker_command(rt, command),
             None => {
                 // If the string does not match any known command, print it to stdout.
-                let flush_s = update_io_buf(ctx, fd, s);
+                let flush_s = update_io_buf(rt, fd, s);
+
                 if !flush_s.is_empty() {
-                    flush_s.into_iter().for_each(|line| eprintln!("stdout: {}", line));
+                    match rt.io_options.stdout {
+                        Some(ref mut writer) => {
+                            flush_s.into_iter().for_each(|mut line| {
+                                line.push('\n');
+
+                                if let Err(e) = writer.write_all(line.as_bytes()) {
+                                    tracing::error!("failed to write to stdout io override: {e}");
+                                }
+                            });
+                        }
+                        None => {
+                            flush_s.into_iter().for_each(|line| eprintln!("stdout: {}", line));
+                        }
+                    }
                 }
             }
         }
     } else if fd == 2 {
         let s = core::str::from_utf8(slice).unwrap();
-        let flush_s = update_io_buf(ctx, fd, s);
+        let flush_s = update_io_buf(rt, fd, s);
         if !flush_s.is_empty() {
-            flush_s.into_iter().for_each(|line| eprintln!("stderr: {}", line));
+            match rt.io_options.stderr {
+                Some(ref mut writer) => {
+                    flush_s.into_iter().for_each(|mut line| {
+                        line.push('\n');
+
+                        if let Err(e) = writer.write_all(line.as_bytes()) {
+                            tracing::error!("failed to write to stderr io override: {e}");
+                        }
+                    });
+                }
+                None => {
+                    flush_s.into_iter().for_each(|line| eprintln!("stderr: {}", line));
+                }
+            }
         }
     } else if fd <= LOWEST_ALLOWED_FD {
         if std::env::var("SP1_ALLOW_DEPRECATED_HOOKS")
@@ -96,7 +123,7 @@ pub fn write_syscall<E: ExecutorConfig>(
             panic!(
                     "You are using reserved file descriptor {fd} that is not supported on SP1 versions >= v4.0.0. \
                     Update your patches to the latest versions that are compatible with versions >= v4.0.0. \
-                    See `https://docs.succinct.xyz/docs/writing-programs/patched-crates` for more information"
+                    See `https://docs.succinct.xyz/docs/sp1/writing-programs/patched-crates` for more information"
                 );
         }
     } else if fd == FD_PUBLIC_VALUES {
@@ -154,13 +181,18 @@ fn handle_cycle_tracker_command(rt: &mut Executor, command: CycleTrackerCommand)
         }
         CycleTrackerCommand::ReportEnd(name) => {
             // Attempt to end the cycle tracker and accumulate the total cycles in the fn_name's
-            // entry in the ExecutionReport.
+            // entry in the ExecutionReport. Also increment the number of invocations.
             if let Some(total_cycles) = end_cycle_tracker(rt, &name) {
                 rt.report
                     .cycle_tracker
                     .entry(name.to_string())
                     .and_modify(|cycles| *cycles += total_cycles)
                     .or_insert(total_cycles);
+                rt.report
+                    .invocation_tracker
+                    .entry(name.to_string())
+                    .and_modify(|invocations| *invocations += 1)
+                    .or_insert(1);
             }
         }
     }
@@ -188,8 +220,7 @@ fn end_cycle_tracker(rt: &mut Executor, name: &str) -> Option<u64> {
 
 /// Update the io buffer for the given file descriptor with the given string.
 #[allow(clippy::mut_mut)]
-fn update_io_buf<E: ExecutorConfig>(ctx: &mut SyscallContext<E>, fd: u32, s: &str) -> Vec<String> {
-    let rt = &mut ctx.rt;
+fn update_io_buf(rt: &mut Executor<'_>, fd: u32, s: &str) -> Vec<String> {
     let entry = rt.io_buf.entry(fd).or_default();
     entry.push_str(s);
     if entry.contains('\n') {

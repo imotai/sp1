@@ -2,9 +2,11 @@
 //!
 //! This module provides a client for directly interacting with the network prover service.
 
-use std::result::Result::Ok as StdOk;
-use std::str::FromStr;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    result::Result::Ok as StdOk,
+    str::FromStr,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use alloy_primitives::B256;
 use alloy_signer::SignerSync;
@@ -17,18 +19,21 @@ use sp1_core_machine::io::SP1Stdin;
 use sp1_prover::{HashableKey, SP1VerifyingKey};
 use tonic::{transport::Channel, Code};
 
-use super::grpc;
-use super::retry::{self, RetryableRpc, DEFAULT_RETRY_TIMEOUT};
-use super::utils::Signable;
-use crate::network::proto::artifact::{
-    artifact_store_client::ArtifactStoreClient, ArtifactType, CreateArtifactRequest,
+use super::{
+    grpc,
+    retry::{self, RetryableRpc, DEFAULT_RETRY_TIMEOUT},
+    utils::Signable,
 };
-use crate::network::proto::network::{
-    prover_network_client::ProverNetworkClient, CreateProgramRequest, CreateProgramRequestBody,
-    CreateProgramResponse, FulfillmentStatus, FulfillmentStrategy, GetFilteredProofRequestsRequest,
-    GetFilteredProofRequestsResponse, GetNonceRequest, GetProgramRequest, GetProgramResponse,
-    GetProofRequestStatusRequest, GetProofRequestStatusResponse, MessageFormat, ProofMode,
-    RequestProofRequest, RequestProofRequestBody, RequestProofResponse,
+use crate::network::proto::{
+    artifact::{artifact_store_client::ArtifactStoreClient, ArtifactType, CreateArtifactRequest},
+    network::{
+        prover_network_client::ProverNetworkClient, CreateProgramRequest, CreateProgramRequestBody,
+        CreateProgramResponse, FulfillmentStatus, FulfillmentStrategy,
+        GetFilteredProofRequestsRequest, GetFilteredProofRequestsResponse, GetNonceRequest,
+        GetProgramRequest, GetProgramResponse, GetProofRequestStatusRequest,
+        GetProofRequestStatusResponse, MessageFormat, ProofMode, RequestProofRequest,
+        RequestProofRequestBody, RequestProofResponse,
+    },
 };
 
 /// A client for interacting with the network.
@@ -113,7 +118,7 @@ impl NetworkClient {
         } else {
             // The program doesn't exist, create it.
             self.create_program(vk_hash, vk, elf).await?;
-            log::info!("Registered program {:?}", vk_hash);
+            tracing::info!("Registered program {:?}", vk_hash);
             Ok(vk_hash)
         }
     }
@@ -194,6 +199,7 @@ impl NetworkClient {
         limit: Option<u32>,
         page: Option<u32>,
         mode: Option<i32>,
+        not_bid_by: Option<Vec<u8>>,
     ) -> Result<GetFilteredProofRequestsResponse> {
         self.with_retry(
             || {
@@ -201,6 +207,7 @@ impl NetworkClient {
                 let vk_hash = vk_hash.clone();
                 let requester = requester.clone();
                 let fulfiller = fulfiller.clone();
+                let not_bid_by = not_bid_by.clone();
 
                 async move {
                     let mut rpc = self.prover_network_client().await?;
@@ -218,6 +225,7 @@ impl NetworkClient {
                             limit,
                             page,
                             mode,
+                            not_bid_by,
                         })
                         .await?
                         .into_inner())
@@ -280,6 +288,7 @@ impl NetworkClient {
     /// * `strategy`: The [`FulfillmentStrategy`] to use.
     /// * `timeout_secs`: The timeout for the proof request in seconds.
     /// * `cycle_limit`: The cycle limit for the proof request.
+    /// * `gas_limit`: The gas limit for the proof request.
     #[allow(clippy::too_many_arguments)]
     pub async fn request_proof(
         &self,
@@ -290,6 +299,7 @@ impl NetworkClient {
         strategy: FulfillmentStrategy,
         timeout_secs: u64,
         cycle_limit: u64,
+        gas_limit: u64,
     ) -> Result<RequestProofResponse> {
         // Calculate the deadline.
         let start = SystemTime::now();
@@ -315,6 +325,7 @@ impl NetworkClient {
                     stdin_uri: stdin_uri.clone(),
                     deadline,
                     cycle_limit,
+                    gas_limit,
                 };
                 let request_response = rpc
                     .request_proof(RequestProofRequest {
@@ -333,13 +344,25 @@ impl NetworkClient {
     }
 
     pub(crate) async fn prover_network_client(&self) -> Result<ProverNetworkClient<Channel>> {
-        let channel = grpc::configure_endpoint(&self.rpc_url)?.connect().await?;
-        Ok(ProverNetworkClient::new(channel))
+        self.with_retry(
+            || async {
+                let channel = grpc::configure_endpoint(&self.rpc_url)?.connect().await?;
+                Ok(ProverNetworkClient::new(channel))
+            },
+            "creating network client",
+        )
+        .await
     }
 
     pub(crate) async fn artifact_store_client(&self) -> Result<ArtifactStoreClient<Channel>> {
-        let channel = grpc::configure_endpoint(&self.rpc_url)?.connect().await?;
-        Ok(ArtifactStoreClient::new(channel))
+        self.with_retry(
+            || async {
+                let channel = grpc::configure_endpoint(&self.rpc_url)?.connect().await?;
+                Ok(ArtifactStoreClient::new(channel))
+            },
+            "creating artifact client",
+        )
+        .await
     }
 
     pub(crate) async fn create_artifact_with_content<T: Serialize + Send + Sync>(

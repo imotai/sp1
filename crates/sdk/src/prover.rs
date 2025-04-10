@@ -17,8 +17,9 @@ use sp1_prover::{
 use sp1_stark::{air::PublicValues, MachineVerificationError, Word};
 use thiserror::Error;
 
-use crate::install::try_install_circuit_artifacts;
-use crate::{SP1Proof, SP1ProofMode, SP1ProofWithPublicValues};
+use crate::{
+    install::try_install_circuit_artifacts, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
+};
 
 /// A basic set of primitives that each prover variant must implement.
 pub trait Prover<C: SP1ProverComponents>: Send + Sync {
@@ -79,6 +80,9 @@ pub enum SP1VerificationError {
     /// An error that occurs when the Groth16 verification fails.
     #[error("Groth16 verification error: {0}")]
     Groth16(anyhow::Error),
+    /// An error that occurs when the proof is invalid.
+    #[error("Unexpected error: {0:?}")]
+    Other(anyhow::Error),
 }
 
 pub(crate) fn verify_proof<C: SP1ProverComponents>(

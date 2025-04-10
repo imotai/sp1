@@ -126,11 +126,9 @@ pub fn get_syscall<'a, 'b, E: ExecutorConfig>(
         SyscallCode::BN254_FP2_ADD | SyscallCode::BN254_FP2_SUB => {
             Ok(Syscall::new(fp2_addsub_syscall::<Bn254BaseField, E>, 1))
         }
-        SyscallCode::BLS12381_FP_ADD
-        | SyscallCode::BLS12381_FP_SUB
-        | SyscallCode::BLS12381_FP_MUL => {
-            Ok(Syscall::new(fp_op_syscall::<Bls12381BaseField, E>, 1))
-        }
+        SyscallCode::BLS12381_FP_ADD |
+        SyscallCode::BLS12381_FP_SUB |
+        SyscallCode::BLS12381_FP_MUL => Ok(Syscall::new(fp_op_syscall::<Bls12381BaseField, E>, 1)),
         SyscallCode::BN254_FP_ADD | SyscallCode::BN254_FP_SUB | SyscallCode::BN254_FP_MUL => {
             Ok(Syscall::new(fp_op_syscall::<Bn254BaseField, E>, 1))
         }

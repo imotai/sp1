@@ -112,17 +112,25 @@ dependencies = [
 [[package]]
 name = "ecdsa"
 version = "0.16.9"
-source = "git+https://github.com/sp1-patches/signatures?tag=patch-0.16.9-sp1-4.0.0#5a0aefaef40c7a4cf991ab63f43650fea3ea0db0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee27f32b5c5292967d2d4a9d7f1e0b0aed2c15daded5a60300e4abb9d8020bca"
 dependencies = [
- "cfg-if",
+ "digest",
+ "elliptic-curve",
+ "signature",
+]
+
+[[package]]
+name = "ecdsa"
+version = "0.16.9"
+source = "git+https://github.com/sp1-patches/signatures.git?tag=patch-16.9-sp1-4.1.0#1880299a48fe7ef249edaa616fd411239fb5daf1"
+dependencies = [
  "der",
  "digest",
  "elliptic-curve",
- "hex-literal",
  "rfc6979",
  "serdect",
  "signature",
- "sp1-lib",
  "spki",
 ]
 
@@ -144,6 +152,7 @@ dependencies = [
  "ff",
  "generic-array",
  "group",
+ "hkdf",
  "pkcs8",
  "rand_core",
  "sec1",
@@ -208,10 +217,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "hex-literal"
-version = "0.4.1"
+name = "hkdf"
+version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
+checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
+dependencies = [
+ "hmac",
+]
 
 [[package]]
 name = "hmac"
@@ -286,30 +298,31 @@ checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
 [[package]]
 name = "p256"
 version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9863ad85fa8f4460f9c48cb909d38a0d689dba1f6f6988a5e3e0d31071bcd4b"
+source = "git+https://github.com/sp1-patches/elliptic-curves?tag=patch-p256-13.2-sp1-4.1.0#f527279b192e0d1b293108af2faee513495411ca"
 dependencies = [
- "ecdsa",
+ "ecdsa 0.16.9 (git+https://github.com/sp1-patches/signatures.git?tag=patch-16.9-sp1-4.1.0)",
  "elliptic-curve",
+ "hex",
  "primeorder",
  "serdect",
  "sha2",
+ "sp1-lib",
 ]
 
 [[package]]
 name = "p256_patch_test"
 version = "0.1.0"
 dependencies = [
- "ecdsa",
+ "ecdsa 0.16.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "p256",
  "sp1-zkvm",
 ]
 
 [[package]]
 name = "p3-baby-bear"
-version = "0.2.0-succinct"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "080896e9d09e9761982febafe3b3da5cbf320e32f0c89b6e2e01e875129f4c2d"
+checksum = "49ecc3edc6fb8186268e05031c26a8b2b1e567957d63adcae1026d55d6bb189b"
 dependencies = [
  "num-bigint",
  "p3-field",
@@ -322,9 +335,9 @@ dependencies = [
 
 [[package]]
 name = "p3-dft"
-version = "0.2.0-succinct"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "292e97d02d4c38d8b306c2b8c0428bf15f4d32a11a40bcf80018f675bf33267e"
+checksum = "eece7b035978976138622b116fefe6c4cc372b1ce70739c40e7a351a9bb68f1f"
 dependencies = [
  "p3-field",
  "p3-matrix",
@@ -335,9 +348,9 @@ dependencies = [
 
 [[package]]
 name = "p3-field"
-version = "0.2.0-succinct"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f91d8e5f9ede1171adafdb0b6a0df1827fbd4eb6a6217bfa36374e5d86248757"
+checksum = "b6f0edf3fde4fd0d1455e901fc871c558010ae18db6e68f1b0fa111391855316"
 dependencies = [
  "itertools",
  "num-bigint",
@@ -349,9 +362,9 @@ dependencies = [
 
 [[package]]
 name = "p3-matrix"
-version = "0.2.0-succinct"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98bf2c7680b8e906a5e147fe4ceb05a11cc9fa35678aa724333bcb35c72483c1"
+checksum = "60961b4d7ffd2e8412ce4e66e213de610356df71cc4e396519c856a664138a27"
 dependencies = [
  "itertools",
  "p3-field",
@@ -364,15 +377,15 @@ dependencies = [
 
 [[package]]
 name = "p3-maybe-rayon"
-version = "0.2.0"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3925562a4c03183eafc92fd07b19f65ac6cb4b48d68c3920ce58d9bee6efe362"
+checksum = "7bbe762738c382c9483410f52348ab9de41bb42c391e8171643a71486cf1ef8f"
 
 [[package]]
 name = "p3-mds"
-version = "0.2.0-succinct"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "706cea48976f54702dc68dffa512684c1304d1a3606cadea423cfe0b1ee25134"
+checksum = "4127956cc6c783b7d021c5c42d5d89456d5f3bda4a7b165fcc2a3fd4e78fbede"
 dependencies = [
  "itertools",
  "p3-dft",
@@ -385,9 +398,9 @@ dependencies = [
 
 [[package]]
 name = "p3-poseidon2"
-version = "0.2.0-succinct"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2ce5f5ec7f1ba3a233a671621029def7bd416e7c51218c9d1167d21602cf312"
+checksum = "be09497da406a98e89dc05c1ce539eeef29541bad61a5b2108a44ffe94dd0b4c"
 dependencies = [
  "gcd",
  "p3-field",
@@ -399,9 +412,9 @@ dependencies = [
 
 [[package]]
 name = "p3-symmetric"
-version = "0.2.0-succinct"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f29dc5bb6c99d3de75869d5c086874b64890280eeb7d3e068955f939e219253"
+checksum = "6e7d954033f657d48490344ca4b3dbcc054962a0e92831b736666bb2f5e5820b"
 dependencies = [
  "itertools",
  "p3-field",
@@ -410,9 +423,9 @@ dependencies = [
 
 [[package]]
 name = "p3-util"
-version = "0.2.0"
+version = "0.2.2-succinct"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88dd5ca3eb6ff33cb20084778c32a6d68064a1913b4632437408c5a1098408b3"
+checksum = "4a6ce0b6bee23fd54e05306f6752ae80b0b71a91166553ab39d7899801497237"
 dependencies = [
  "serde",
 ]
@@ -444,9 +457,8 @@ dependencies = [
 
 [[package]]
 name = "primeorder"
-version = "0.13.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "353e1ca18966c16d9deb1c69278edbc5f194139612772bd9537af60ac231e1e6"
+version = "0.13.1"
+source = "git+https://github.com/sp1-patches/elliptic-curves?tag=patch-p256-13.2-sp1-4.1.0#f527279b192e0d1b293108af2faee513495411ca"
 dependencies = [
  "elliptic-curve",
  "serdect",
@@ -503,7 +515,7 @@ dependencies = [
 [[package]]
 name = "rfc6979"
 version = "0.4.0"
-source = "git+https://github.com/sp1-patches/signatures?tag=patch-0.16.9-sp1-4.0.0#5a0aefaef40c7a4cf991ab63f43650fea3ea0db0"
+source = "git+https://github.com/sp1-patches/signatures.git?tag=patch-16.9-sp1-4.1.0#1880299a48fe7ef249edaa616fd411239fb5daf1"
 dependencies = [
  "hmac",
  "subtle",
@@ -577,16 +589,17 @@ dependencies = [
 
 [[package]]
 name = "sp1-lib"
-version = "4.0.1"
+version = "4.2.0"
 dependencies = [
  "bincode",
+ "elliptic-curve",
  "serde",
  "sp1-primitives",
 ]
 
 [[package]]
 name = "sp1-primitives"
-version = "4.0.1"
+version = "4.2.0"
 dependencies = [
  "bincode",
  "hex",
@@ -602,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-zkvm"
-version = "4.0.1"
+version = "4.2.0"
 dependencies = [
  "cfg-if",
  "getrandom",

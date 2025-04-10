@@ -26,8 +26,7 @@ use typenum::Unsigned;
 
 use crate::{
     memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::FieldOpCols,
-    operations::field::range::FieldLtCols,
+    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
     utils::{limbs_from_prev_access, pad_rows_fixed, words_to_bytes_le_vec},
 };
 
@@ -132,7 +131,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
     fn name(&self) -> String {
         match P::FIELD_TYPE {
             FieldType::Bn254 => "Bn254Fp2MulAssign".to_string(),
-            FieldType::Bls12381 => "Bls12831Fp2MulAssign".to_string(),
+            FieldType::Bls12381 => "Bls12381Fp2MulAssign".to_string(),
         }
     }
 
