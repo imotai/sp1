@@ -27,17 +27,17 @@ members = [
 ]
 resolver = "2"
 
-[profile.release]
+[profile.dev]
 opt-level = 3
-lto = true
+debug = false
 
-[profile.bench]
-opt-level = 3
-
-[profile.fast]
+[profile.lto]
 inherits = "release"
-debug = true
-debug-assertions = true
+lto = "thin"
+incremental = true
+
+[profile.release]
+lto = true
 
 [workspace.dependencies]
 # cuslop
@@ -129,3 +129,5 @@ derive-where = "1.2.7"
 serde = { version = "1.0.217", features = ["derive"] }
 rand = "0.8"
 serial_test = "3.2.0"
+cc = { version = "1.0", features = ["parallel"] }
+which = "6.0"
