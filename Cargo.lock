@@ -3690,7 +3690,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3728,7 +3728,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -3785,7 +3785,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -3806,7 +3806,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -3815,7 +3815,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "bincode",
  "hex",
@@ -3833,7 +3833,7 @@ dependencies = [
 [[package]]
 name = "sp1-prover"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3879,7 +3879,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-circuit"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "derive-where",
  "hashbrown 0.14.5",
@@ -3929,7 +3929,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-compiler"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -3953,7 +3953,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -3962,7 +3962,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "backtrace",
  "cbindgen",
@@ -4006,7 +4006,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "cbindgen",
  "cc",
@@ -4042,7 +4042,7 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir%2Fgkr-unified-clean#42a54f314fced58101ea5f1cb829ae6d84c5aead"
 dependencies = [
  "arrayref",
  "derive-where",
