@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug, Formatter, Result},
+    fmt::Debug,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut, Index, IndexMut},
 };
@@ -13,7 +13,7 @@ use slop_alloc::{
 };
 use slop_tensor::Tensor;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[derive_where(PartialEq, Eq; Buffer<T, A>)]
 #[serde(bound(
     serialize = "Buffer<T, A>: Serialize",
@@ -225,14 +225,14 @@ impl<T> Point<T, CpuBackend> {
     }
 }
 
-impl<T> Debug for Point<T, CpuBackend>
-where
-    T: Debug,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "Point({:?})", self.values.as_slice())
-    }
-}
+// impl<T> Debug for Point<T, CpuBackend>
+// where
+//     T: Debug,
+// {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+//         write!(f, "Point({:?})", self.values.as_slice())
+//     }
+// }
 
 impl<T> From<Vec<T>> for Point<T, CpuBackend> {
     fn from(values: Vec<T>) -> Self {

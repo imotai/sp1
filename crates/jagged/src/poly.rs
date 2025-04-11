@@ -402,6 +402,7 @@ impl ColRanges {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct BranchingProgram<K: AbstractField> {
     z_row: Point<K>,
     z_index: Point<K>,

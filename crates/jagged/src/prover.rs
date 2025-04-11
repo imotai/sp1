@@ -140,7 +140,7 @@ pub enum JaggedProverError<C: JaggedProverComponents> {
     ),
 }
 
-pub trait DfeaultJaggedProver: JaggedProverComponents {
+pub trait DefaultJaggedProver: JaggedProverComponents {
     fn prover_from_verifier(verifier: &JaggedPcsVerifier<Self::Config>) -> JaggedProver<Self>;
 }
 
@@ -156,7 +156,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
     pub fn from_verifier(verifier: &JaggedPcsVerifier<C::Config>) -> Self
     where
-        C: DfeaultJaggedProver,
+        C: DefaultJaggedProver,
     {
         C::prover_from_verifier(verifier)
     }

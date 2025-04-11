@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use slop_algebra::extension::BinomialExtensionField;
+use slop_alloc::CpuBackend;
 use slop_baby_bear::BabyBear;
 use slop_basefold::{
     BasefoldConfig, BasefoldProof, BasefoldVerifier, DefaultBasefoldConfig,
@@ -12,10 +14,10 @@ use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
 
 use crate::{
-    CpuJaggedMleGenerator, DfeaultJaggedProver, HadamardJaggedSumcheckProver, JaggedBackend,
-    JaggedConfig, JaggedEvalConfig, JaggedEvalProver, JaggedEvalSumcheckConfig,
-    JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
-    JaggedSumcheckProver, TrivialJaggedEvalConfig,
+    BranchingProgramBatchCPUImpl, CpuJaggedMleGenerator, DefaultJaggedProver,
+    HadamardJaggedSumcheckProver, JaggedBackend, JaggedConfig, JaggedEvalConfig, JaggedEvalProver,
+    JaggedEvalSumcheckConfig, JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver,
+    JaggedProverComponents, JaggedSumcheckProver, TrivialJaggedEvalConfig,
 };
 
 pub type BabyBearPoseidon2 =
@@ -27,7 +29,11 @@ pub type BabyBearPoseidon2TrivialEval =
 pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCpuProverComponents,
     HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
-    JaggedEvalSumcheckProver<BabyBear>,
+    JaggedEvalSumcheckProver<
+        BabyBear,
+        BranchingProgramBatchCPUImpl<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+        CpuBackend,
+    >,
 >;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,7 +130,7 @@ where
 
 const DEFAULT_INTERLEAVE_BATCH_SIZE: usize = 32;
 
-impl<Bpc, JP, E> DfeaultJaggedProver for JaggedBasefoldProverComponents<Bpc, JP, E>
+impl<Bpc, JP, E> DefaultJaggedProver for JaggedBasefoldProverComponents<Bpc, JP, E>
 where
     Bpc: BasefoldProverComponents + DefaultBasefoldProver,
     Bpc::Config: DefaultBasefoldConfig,
