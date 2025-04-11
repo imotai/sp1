@@ -12,7 +12,7 @@ use slop_multilinear::Point;
 
 use crate::BranchingProgram;
 
-/// A trait that represents the batch evaluation of the branching program.
+/// A trait for the jagged assist's sum as poly.
 pub trait JaggedAssistSumAsPoly<F: Field, EF: ExtensionField<F>, A: Backend>: Sized {
     fn new(
         z_row: Point<EF>,
@@ -31,13 +31,13 @@ pub trait JaggedAssistSumAsPoly<F: Field, EF: ExtensionField<F>, A: Backend>: Si
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct BranchingProgramBatchCPUImpl<F: Field, EF: ExtensionField<F>> {
+pub struct JaggedAssistSumAsPolyCPUImpl<F: Field, EF: ExtensionField<F>> {
     branching_program: BranchingProgram<EF>,
     merged_prefix_sums: Arc<Vec<Point<F>>>,
     half: EF,
 }
 
-impl<F: Field, EF: ExtensionField<F>> BranchingProgramBatchCPUImpl<F, EF> {
+impl<F: Field, EF: ExtensionField<F>> JaggedAssistSumAsPolyCPUImpl<F, EF> {
     #[inline]
     fn eval(
         &self,
@@ -83,7 +83,7 @@ impl<F: Field, EF: ExtensionField<F>> BranchingProgramBatchCPUImpl<F, EF> {
 }
 
 impl<F: Field, EF: ExtensionField<F>, A: Backend> JaggedAssistSumAsPoly<F, EF, A>
-    for BranchingProgramBatchCPUImpl<F, EF>
+    for JaggedAssistSumAsPolyCPUImpl<F, EF>
 {
     async fn new(
         z_row: Point<EF>,

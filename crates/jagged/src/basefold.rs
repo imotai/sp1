@@ -14,8 +14,8 @@ use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
 
 use crate::{
-    BranchingProgramBatchCPUImpl, CpuJaggedMleGenerator, DefaultJaggedProver,
-    HadamardJaggedSumcheckProver, JaggedBackend, JaggedConfig, JaggedEvalConfig, JaggedEvalProver,
+    CpuJaggedMleGenerator, DefaultJaggedProver, HadamardJaggedSumcheckProver,
+    JaggedAssistSumAsPolyCPUImpl, JaggedBackend, JaggedConfig, JaggedEvalConfig, JaggedEvalProver,
     JaggedEvalSumcheckConfig, JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver,
     JaggedProverComponents, JaggedSumcheckProver, TrivialJaggedEvalConfig,
 };
@@ -31,7 +31,7 @@ pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverCompon
     HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
     JaggedEvalSumcheckProver<
         BabyBear,
-        BranchingProgramBatchCPUImpl<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+        JaggedAssistSumAsPolyCPUImpl<BabyBear, BinomialExtensionField<BabyBear, 4>>,
         CpuBackend,
     >,
 >;

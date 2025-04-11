@@ -1,11 +1,11 @@
-mod jagged_assist;
 mod sumcheck_eval;
 mod sumcheck_poly;
+mod sumcheck_sum_as_poly;
 mod trivial_eval;
 
-pub use jagged_assist::*;
 pub use sumcheck_eval::*;
 pub use sumcheck_poly::*;
+pub use sumcheck_sum_as_poly::*;
 pub use trivial_eval::*;
 
 use std::{error::Error, fmt::Debug, future::Future};
@@ -123,7 +123,7 @@ mod tests {
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 
         let batch_eval_poly =
-            JaggedEvalSumcheckPoly::<F, EF, BranchingProgramBatchCPUImpl<F, EF>, CpuBackend>::new(
+            JaggedEvalSumcheckPoly::<F, EF, JaggedAssistSumAsPolyCPUImpl<F, EF>, CpuBackend>::new(
                 z_row.clone(),
                 z_col.clone(),
                 z_index.clone(),
