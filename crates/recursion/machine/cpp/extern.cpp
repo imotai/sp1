@@ -32,49 +32,6 @@ extern void alu_ext_instr_to_row_babybear(
       *reinterpret_cast<ExtAluAccessCols<bb31_t>*>(access));
 }
 
-extern void batch_fri_event_to_row_babybear(const BatchFRIEvent<BabyBearP3>* io,
-                                            BatchFRICols<BabyBearP3>* cols) {
-  batch_fri::event_to_row<bb31_t>(
-      *reinterpret_cast<const BatchFRIEvent<bb31_t>*>(io),
-      *reinterpret_cast<BatchFRICols<bb31_t>*>(cols));
-}
-extern void batch_fri_instr_to_row_babybear(
-    const BatchFRIInstrFFI<BabyBearP3>* instr,
-    BatchFRIPreprocessedCols<BabyBearP3>* cols, size_t index) {
-  batch_fri::instr_to_row<bb31_t>(
-      *reinterpret_cast<const BatchFRIInstrFFI<bb31_t>*>(instr),
-      *reinterpret_cast<BatchFRIPreprocessedCols<bb31_t>*>(cols), index);
-}
-
-extern void exp_reverse_bits_event_to_row_babybear(
-    const ExpReverseBitsEventFFI<BabyBearP3>* io, size_t i,
-    ExpReverseBitsLenCols<BabyBearP3>* cols) {
-  exp_reverse_bits::event_to_row<bb31_t>(
-      *reinterpret_cast<const ExpReverseBitsEventFFI<bb31_t>*>(io), i,
-      *reinterpret_cast<ExpReverseBitsLenCols<bb31_t>*>(cols));
-}
-extern void exp_reverse_bits_instr_to_row_babybear(
-    const ExpReverseBitsInstrFFI<BabyBearP3>* instr, size_t i, size_t len,
-    ExpReverseBitsLenPreprocessedCols<BabyBearP3>* cols) {
-  exp_reverse_bits::instr_to_row<bb31_t>(
-      *reinterpret_cast<const ExpReverseBitsInstrFFI<bb31_t>*>(instr), i, len,
-      *reinterpret_cast<ExpReverseBitsLenPreprocessedCols<bb31_t>*>(cols));
-}
-
-extern void fri_fold_event_to_row_babybear(const FriFoldEvent<BabyBearP3>* io,
-                                           FriFoldCols<BabyBearP3>* cols) {
-  fri_fold::event_to_row<bb31_t>(
-      *reinterpret_cast<const FriFoldEvent<bb31_t>*>(io),
-      *reinterpret_cast<FriFoldCols<bb31_t>*>(cols));
-}
-extern void fri_fold_instr_to_row_babybear(
-    const FriFoldInstrFFI<BabyBearP3>* instr, size_t i,
-    FriFoldPreprocessedCols<BabyBearP3>* cols) {
-  fri_fold::instr_to_row<bb31_t>(
-      *reinterpret_cast<const FriFoldInstrFFI<bb31_t>*>(instr), i,
-      *reinterpret_cast<FriFoldPreprocessedCols<bb31_t>*>(cols));
-}
-
 extern void public_values_event_to_row_babybear(
     const CommitPublicValuesEvent<BabyBearP3>* io, size_t digest_idx,
     PublicValuesCols<BabyBearP3>* cols) {

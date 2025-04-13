@@ -79,8 +79,9 @@ where
         let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
         let trace_generator = DefaultTraceGenerator::new(machine);
         let zerocheck_data = ZerocheckCpuProverData::default();
+        let logup_gkr_trace_generator = LogupGkrCpuTraceGenerator::default();
         let logup_gkr_prover =
-            GkrProverImpl::new(LogupGkrCpuTraceGenerator, LogupGkrCpuRoundProver);
+            GkrProverImpl::new(logup_gkr_trace_generator, LogupGkrCpuRoundProver);
         Self {
             trace_generator,
             logup_gkr_prover,

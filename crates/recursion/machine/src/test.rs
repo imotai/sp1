@@ -20,7 +20,7 @@ pub async fn run_recursion_test_machines(
     program: RecursionProgram<BabyBear>,
     witness: Vec<Block<BabyBear>>,
 ) {
-    // type A = RecursionAir<BabyBear, 3>;
+    type A = RecursionAir<BabyBear, 3>;
 
     let mut runtime = Runtime::<
         BabyBear,
@@ -30,9 +30,9 @@ pub async fn run_recursion_test_machines(
     runtime.witness_stream = witness.into();
     runtime.run().unwrap();
 
-    // // Run with the poseidon2 wide chip.
-    // let machine = A::machine_wide_with_all_chips();
-    // run_test_recursion(vec![runtime.record.clone()], machine, program.clone()).await.unwrap();
+    // Run with the poseidon2 wide chip.
+    let machine = A::machine_wide_with_all_chips();
+    run_test_recursion(vec![runtime.record.clone()], machine, program.clone()).await.unwrap();
 
     // // Run with the poseidon2 skinny chip.
     // let skinny_machine = B::machine_skinny_with_all_chips();
