@@ -1,7 +1,6 @@
-use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
-use slop_baby_bear::BabyBear;
+use slop_algebra::{ExtensionField, Field};
 use slop_multilinear::Point;
-use slop_tensor::Tensor;
+use slop_tensor::{ReduceSumBackend, Tensor};
 
 use csl_cuda::{
     args,
@@ -17,7 +16,7 @@ pub unsafe trait BranchingProgramKernel<F: Field, EF: ExtensionField<F>> {
 
 /// # Safety
 ///
-unsafe impl BranchingProgramKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl<F: Field, EF: ExtensionField<F>> BranchingProgramKernel<F, EF> for TaskScope {
     fn branching_program_kernel() -> KernelPtr {
         unsafe { branching_program_kernel() }
     }
@@ -35,10 +34,15 @@ pub async fn branching_program<F: Field, EF: ExtensionField<F>>(
     num_columns: usize,
     round_num: i8,
     lambdas_device: &Tensor<EF, TaskScope>,
+    z_col_eq_vals_device: &Tensor<EF, TaskScope>,
+    intermediate_eq_full_evals_device: &Tensor<EF, TaskScope>,
 ) -> Tensor<EF, TaskScope>
 where
-    TaskScope: BranchingProgramKernel<F, EF>,
+    TaskScope: BranchingProgramKernel<F, EF> + ReduceSumBackend<EF>,
 {
+    // Right now, we assume there are two points.
+    assert!(lambdas_device.total_len() == 2);
+
     let backend = curr_prefix_sums_device.backend();
 
     const BLOCK_SIZE: usize = 256;
@@ -47,27 +51,29 @@ where
     let grid_size = (grid_size_x, 2, 1);
 
     let mut bp_results: Tensor<EF, TaskScope> =
-        Tensor::with_sizes_in([num_columns, 2], backend.clone());
-
-    let args = args!(
-        curr_prefix_sums_device.as_ptr(),
-        next_prefix_sums_device.as_ptr(),
-        prefix_sum_length,
-        z_row_device.as_ptr(),
-        z_row_device.dimension(),
-        z_index_device.as_ptr(),
-        z_index_device.dimension(),
-        current_prefix_sum_rho_device.as_ptr(),
-        current_prefix_sum_rho_device.dimension(),
-        next_prefix_sum_rho_device.as_ptr(),
-        next_prefix_sum_rho_device.dimension(),
-        num_columns,
-        round_num,
-        lambdas_device.as_ptr(),
-        bp_results.as_mut_ptr()
-    );
+        Tensor::with_sizes_in([2, num_columns], backend.clone());
 
     unsafe {
+        let args = args!(
+            curr_prefix_sums_device.as_ptr(),
+            next_prefix_sums_device.as_ptr(),
+            prefix_sum_length,
+            z_row_device.as_ptr(),
+            z_row_device.dimension(),
+            z_index_device.as_ptr(),
+            z_index_device.dimension(),
+            current_prefix_sum_rho_device.as_ptr(),
+            current_prefix_sum_rho_device.dimension(),
+            next_prefix_sum_rho_device.as_ptr(),
+            next_prefix_sum_rho_device.dimension(),
+            num_columns,
+            round_num,
+            lambdas_device.as_ptr(),
+            z_col_eq_vals_device.as_ptr(),
+            intermediate_eq_full_evals_device.as_ptr(),
+            bp_results.as_mut_ptr()
+        );
+
         bp_results.assume_init();
 
         backend
@@ -81,7 +87,7 @@ where
             .unwrap();
     }
 
-    bp_results
+    bp_results.sum(1).await
 }
 
 #[cfg(test)]
@@ -191,11 +197,12 @@ mod tests {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn generate_branching_program_test_data(
         num_columns: usize,
         prefix_sum_length: usize,
         max_height: usize,
-    ) -> (Vec<Point<F>>, Vec<Point<F>>, Point<EF>, Point<EF>) {
+    ) -> (Vec<Point<F>>, Vec<Point<F>>, Point<EF>, Point<EF>, Vec<EF>, Vec<EF>) {
         let mut rng = rand::thread_rng();
 
         let mut prefix_sums = vec![];
@@ -224,7 +231,18 @@ mod tests {
         let z_index = (0..prefix_sum_length).map(|_| rng.sample(Standard)).collect::<Vec<_>>();
         let z_index_point: Point<EF> = z_index.into();
 
-        (curr_prefix_sum_points, next_prefix_sum_points, z_row_point, z_index_point)
+        let z_col_eq_vals = (0..num_columns).map(|_| rng.sample(Standard)).collect::<Vec<_>>();
+        let intermediate_eq_full_evals =
+            (0..num_columns).map(|_| rng.sample(Standard)).collect::<Vec<_>>();
+
+        (
+            curr_prefix_sum_points,
+            next_prefix_sum_points,
+            z_row_point,
+            z_index_point,
+            z_col_eq_vals,
+            intermediate_eq_full_evals,
+        )
     }
 
     #[tokio::test]
@@ -233,13 +251,19 @@ mod tests {
         const PREFIX_SUM_LENGTH: usize = 30;
         const MAX_HEIGHT: usize = 1 << 21;
 
-        let (curr_prefix_sum_points, next_prefix_sum_points, z_row_point, z_index_point) =
-            generate_branching_program_test_data(num_columns, PREFIX_SUM_LENGTH, MAX_HEIGHT);
+        let (
+            curr_prefix_sum_points,
+            next_prefix_sum_points,
+            z_row_point,
+            z_index_point,
+            z_col_eq_vals,
+            intermediate_eq_full_evals,
+        ) = generate_branching_program_test_data(num_columns, PREFIX_SUM_LENGTH, MAX_HEIGHT);
 
         // Get the CPU results to compare.
         let bp = BranchingProgram::new(z_row_point.clone(), z_index_point.clone());
 
-        let mut expected_results = Vec::new();
+        let mut expected_result = EF::zero();
         for (curr_prefix_sum, next_prefix_sum) in
             curr_prefix_sum_points.iter().zip(next_prefix_sum_points.iter())
         {
@@ -247,11 +271,11 @@ mod tests {
                 curr_prefix_sum.values().iter().map(|x| (*x).into()).collect::<Vec<_>>().into();
             let next_prefix_sum_ef: Point<EF> =
                 next_prefix_sum.values().iter().map(|x| (*x).into()).collect::<Vec<_>>().into();
-            let expected_result = bp.eval(&curr_prefix_sum_ef, &next_prefix_sum_ef);
-            expected_results.push(expected_result);
-            expected_results.push(expected_result);
+            expected_result += bp.eval(&curr_prefix_sum_ef, &next_prefix_sum_ef);
         }
 
+        // The kernel currently assumes there are two points, even if they are not used (e.g. if
+        // the round number == -1).
         let lambdas = vec![EF::zero(), EF::two().inverse()];
 
         let bp_results_host = csl_cuda::task()
@@ -289,6 +313,14 @@ mod tests {
                 let lambdas_tensor: Tensor<EF> = lambdas.into();
                 let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
 
+                let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
+                let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
+
+                let intermediate_eq_full_evals_tensor: Tensor<EF> =
+                    intermediate_eq_full_evals.into();
+                let intermediate_eq_full_evals_device =
+                    t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
+
                 t.synchronize().await.unwrap();
                 let time = std::time::Instant::now();
 
@@ -303,6 +335,8 @@ mod tests {
                     num_columns,
                     -1,
                     &lambdas_device,
+                    &z_col_eq_vals_device,
+                    &intermediate_eq_full_evals_device,
                 )
                 .await;
 
@@ -323,6 +357,8 @@ mod tests {
                     num_columns,
                     -1,
                     &lambdas_device,
+                    &z_col_eq_vals_device,
+                    &intermediate_eq_full_evals_device,
                 )
                 .await;
 
@@ -336,7 +372,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(bp_results_host, expected_results);
+        assert_eq!(bp_results_host, vec![expected_result, expected_result]);
     }
 
     #[tokio::test]
@@ -351,8 +387,14 @@ mod tests {
         const MAX_HEIGHT: usize = 1 << 21;
 
         for round_num in 0..PREFIX_SUM_LENGTH * 2 {
-            let (curr_prefix_sum_points, next_prefix_sum_points, z_row_point, z_index_point) =
-                generate_branching_program_test_data(num_columns, PREFIX_SUM_LENGTH, MAX_HEIGHT);
+            let (
+                curr_prefix_sum_points,
+                next_prefix_sum_points,
+                z_row_point,
+                z_index_point,
+                z_col_eq_vals,
+                intermediate_eq_full_evals,
+            ) = generate_branching_program_test_data(num_columns, PREFIX_SUM_LENGTH, MAX_HEIGHT);
 
             let rhos: Point<EF> =
                 (0..round_num).map(|_| rng.sample(Standard)).collect::<Vec<_>>().into();
@@ -362,9 +404,9 @@ mod tests {
             // Get the CPU results to compare.
             let bp = BranchingProgram::new(z_row_point.clone(), z_index_point.clone());
 
-            let mut expected_results = Vec::new();
-            for column in 0..num_columns {
-                for lambda in lambdas.iter() {
+            let mut expected_results = vec![EF::zero(); 2];
+            for (lambda, expected_result) in lambdas.iter().zip(expected_results.iter_mut()) {
+                for column in 0..num_columns {
                     let mut merged_prefix_sum = curr_prefix_sum_points[column].clone();
                     merged_prefix_sum.extend(&next_prefix_sum_points[column]);
 
@@ -375,7 +417,7 @@ mod tests {
                         .collect::<Vec<_>>()
                         .into();
 
-                    let (mut bp_prefix_sum, _) =
+                    let (mut bp_prefix_sum, eq_prefix_sum) =
                         merged_prefix_sum.split_at(merged_prefix_sum.dimension() - round_num - 1);
                     bp_prefix_sum.add_dimension_back(*lambda);
                     bp_prefix_sum.extend(&rhos);
@@ -384,11 +426,22 @@ mod tests {
                     let (curr_prefix_sum, next_prefix_sum) =
                         bp_prefix_sum.split_at(num_dimensions / 2);
 
-                    expected_results.push(bp.eval(&curr_prefix_sum, &next_prefix_sum));
+                    let eq_val = if *lambda == EF::zero() {
+                        EF::one() - *eq_prefix_sum.values()[0]
+                    } else if *lambda == EF::two().inverse() {
+                        EF::two().inverse()
+                    } else {
+                        unreachable!("lambda must be 0 or 1/2")
+                    };
+
+                    let eq_eval = intermediate_eq_full_evals[column] * eq_val;
+
+                    *expected_result += (eq_eval * z_col_eq_vals[column])
+                        * bp.eval(&curr_prefix_sum, &next_prefix_sum);
                 }
             }
 
-            let bp_results_host = csl_cuda::task()
+            let bp_results_device = csl_cuda::task()
                 .await
                 .unwrap()
                 .run(|t| async move {
@@ -421,7 +474,7 @@ mod tests {
                         Point<EF>,
                         Point<EF>,
                     ) = if round_num < PREFIX_SUM_LENGTH {
-                        (Vec::new().into(), rhos.clone().into())
+                        (Vec::new().into(), rhos.clone())
                     } else {
                         let current_prefix_sum_rho_point_dim = round_num - PREFIX_SUM_LENGTH;
                         rhos.split_at(current_prefix_sum_rho_point_dim)
@@ -430,6 +483,9 @@ mod tests {
                     let lambdas_tensor: Tensor<EF> = lambdas.into();
                     let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
 
+                    let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
+                    let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
+
                     t.synchronize().await.unwrap();
                     let time = std::time::Instant::now();
 
@@ -437,6 +493,11 @@ mod tests {
                         t.into_device(current_prefix_sum_rho_point.clone()).await.unwrap();
                     let next_prefix_sum_rho_device =
                         t.into_device(next_prefix_sum_rho_point.clone()).await.unwrap();
+
+                    let intermediate_eq_full_evals_tensor: Tensor<EF> =
+                        intermediate_eq_full_evals.into();
+                    let intermediate_eq_full_evals_device =
+                        t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
 
                     let bp_results_device = branching_program(
                         &curr_prefix_sums_device,
@@ -449,20 +510,22 @@ mod tests {
                         num_columns,
                         round_num.try_into().unwrap(),
                         &lambdas_device,
+                        &z_col_eq_vals_device,
+                        &intermediate_eq_full_evals_device,
                     )
                     .await;
 
                     t.synchronize().await.unwrap();
                     println!("branching program time: {:?}", time.elapsed());
 
-                    let bp_results = bp_results_device.storage.into_host().await.unwrap();
-                    bp_results.into_vec()
+                    let bp_results_device = bp_results_device.storage.into_host().await.unwrap();
+                    bp_results_device.into_vec()
                 })
                 .await
                 .await
                 .unwrap();
 
-            assert_eq!(bp_results_host, expected_results);
+            assert_eq!(bp_results_device, expected_results);
         }
     }
 }

@@ -55,6 +55,7 @@ csl-perf = { path = "crates/perf" }
 csl-logup-gkr = { path = "crates/logup-gkr" }
 
 # slop 
+slop-air = { git = "https://github.com/succinctlabs/slop" }
 slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
@@ -73,7 +74,6 @@ slop-alloc = { git = "https://github.com/succinctlabs/slop" }
 slop-futures = { git = "https://github.com/succinctlabs/slop" }
 slop-stacked = { git = "https://github.com/succinctlabs/slop" }
 slop-jagged = { git = "https://github.com/succinctlabs/slop" }
-slop-air = { git = "https://github.com/succinctlabs/slop" }
 
 # SP1
 sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }

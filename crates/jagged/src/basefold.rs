@@ -1,15 +1,22 @@
 use csl_basefold::Poseidon2BabyBear16BasefoldCudaProverComponents;
+use csl_cuda::TaskScope;
+use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
 use slop_jagged::{
     JaggedBasefoldProverComponents, JaggedEvalSumcheckProver, TrivialJaggedEvalConfig,
 };
 
+use crate::JaggedAssistSumAsPolyGPUImpl;
 use crate::VirtualJaggedSumcheckProver;
 
 pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCudaProverComponents,
     VirtualJaggedSumcheckProver,
-    JaggedEvalSumcheckProver<BabyBear>,
+    JaggedEvalSumcheckProver<
+        BabyBear,
+        JaggedAssistSumAsPolyGPUImpl<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+        TaskScope,
+    >,
 >;
 
 pub type Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval = JaggedBasefoldProverComponents<

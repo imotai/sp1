@@ -105,6 +105,45 @@ __device__ void computePartialLagrange(
 }
 
 template<typename F, typename EF>
+__device__ static inline EF getEqVal(
+    size_t lambda_idx,
+    size_t column_idx,
+    size_t num_columns,
+    const F* current_prefix_sums,
+    const F* next_prefix_sums,
+    size_t prefix_sum_length,
+    int curr_prefix_eq_val_least_sig_bit,
+    int next_prefix_eq_val_least_sig_bit,
+    EF half)
+{
+    if (lambda_idx == 1) {
+        return half;
+    }
+
+    assert(lambda_idx == 0);
+
+    if (curr_prefix_eq_val_least_sig_bit != -1) {
+        return EF(F::one() - getIthLeastSignificantValFromPoints(
+            current_prefix_sums,
+            prefix_sum_length,
+            column_idx,
+            num_columns,
+            curr_prefix_eq_val_least_sig_bit));
+    }
+
+    if (next_prefix_eq_val_least_sig_bit != -1) {
+        return EF(F::one() - getIthLeastSignificantValFromPoints(
+            next_prefix_sums,
+            prefix_sum_length,
+            column_idx,
+            num_columns,
+            next_prefix_eq_val_least_sig_bit));
+    }
+
+    assert(false);
+}
+
+template<typename F, typename EF>
 __global__ void branchingProgram(
     // The prefix sums.  The current and next prefix sums must be the same length.
     // Note that the number of layers is prefix_sum_length.
@@ -134,6 +173,12 @@ __global__ void branchingProgram(
     // The lambda points.
     const EF *lambdas,
 
+    // The z_col_eq_vals.  This has length num_columns.
+    const EF *z_col_eq_vals,
+
+    // The intermediate_eq_full_evals.  This has length num_columns.
+    const EF *intermediate_eq_full_evals,
+
     // The output.
     EF *__restrict__ output
 )
@@ -146,8 +191,12 @@ __global__ void branchingProgram(
     Range next_rho_layer_idx_range;
     Range curr_prefix_sum_layer_idx_range;
     Range next_prefix_sum_layer_idx_range;
-    
+    int curr_prefix_eq_val_least_sig_bit;
+    int next_prefix_eq_val_least_sig_bit;
+
     if (round_num == -1) {
+        curr_prefix_eq_val_least_sig_bit = -1;
+        next_prefix_eq_val_least_sig_bit = -1;
         curr_prefix_sum_lambda_layer_idx = -1;
         next_prefix_sum_lambda_layer_idx = -1;
         curr_rho_layer_idx_range = Range{-1, -1};
@@ -155,6 +204,8 @@ __global__ void branchingProgram(
         curr_prefix_sum_layer_idx_range = Range{0, num_layers};
         next_prefix_sum_layer_idx_range = Range{0, num_layers};
     } else if (round_num < prefix_sum_length) {
+        curr_prefix_eq_val_least_sig_bit = -1;
+        next_prefix_eq_val_least_sig_bit = round_num;
         curr_prefix_sum_lambda_layer_idx = -1;
         next_prefix_sum_lambda_layer_idx = round_num;
         curr_rho_layer_idx_range = Range{-1, -1};
@@ -162,6 +213,8 @@ __global__ void branchingProgram(
         curr_prefix_sum_layer_idx_range = Range{0, num_layers};
         next_prefix_sum_layer_idx_range = Range{next_prefix_sum_lambda_layer_idx + 1, num_layers};
     } else {  // round_num >= prefix_sum_length
+        curr_prefix_eq_val_least_sig_bit = round_num - prefix_sum_length;
+        next_prefix_eq_val_least_sig_bit = -1;
         curr_prefix_sum_lambda_layer_idx = round_num - prefix_sum_length;
         next_prefix_sum_lambda_layer_idx = -1;
         curr_rho_layer_idx_range = Range{0, curr_prefix_sum_lambda_layer_idx};
@@ -253,7 +306,22 @@ __global__ void branchingProgram(
                 }
             }
 
-            EF::store(output, column_idx * 2 + lambda_idx, state_by_state_results[INITIAL_MEMORY_STATE]);
+            if (round_num != -1) {
+                EF eq_eval = getEqVal<F, EF>(
+                    lambda_idx,
+                    column_idx,
+                    num_columns,
+                    current_prefix_sums,
+                    next_prefix_sums,
+                    prefix_sum_length,
+                    curr_prefix_eq_val_least_sig_bit,
+                    next_prefix_eq_val_least_sig_bit,
+                    lambdas[1]) * intermediate_eq_full_evals[column_idx];
+                EF z_col_eq_val = z_col_eq_vals[column_idx];
+                EF::store(output, lambda_idx * num_columns + column_idx, state_by_state_results[INITIAL_MEMORY_STATE] * z_col_eq_val * eq_eval);
+            } else {
+                EF::store(output, lambda_idx * num_columns + column_idx, state_by_state_results[INITIAL_MEMORY_STATE]);
+            }
         }
     }
 }
