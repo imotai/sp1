@@ -634,8 +634,6 @@ dependencies = [
  "slop-stacked",
  "slop-sumcheck",
  "slop-tensor",
- "sp1-core-executor",
- "sp1-core-machine",
  "sp1-stark",
  "thiserror 1.0.69",
  "tokio",
@@ -716,6 +714,7 @@ dependencies = [
  "csl-cuda",
  "csl-jagged",
  "csl-logup-gkr",
+ "csl-tracegen",
  "csl-tracing",
  "csl-zerocheck",
  "serde",
@@ -781,9 +780,51 @@ dependencies = [
 name = "csl-sys"
 version = "1.2.0"
 dependencies = [
+ "cbindgen",
  "cc",
+ "pathdiff",
  "slop-baby-bear",
+ "sp1-core-executor",
+ "sp1-core-machine",
  "which",
+]
+
+[[package]]
+name = "csl-tracegen"
+version = "1.2.0"
+dependencies = [
+ "csl-air",
+ "csl-cuda",
+ "csl-jagged",
+ "csl-tracing",
+ "csl-zerocheck",
+ "futures",
+ "rand 0.8.5",
+ "rayon",
+ "serde",
+ "slop-air",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-baby-bear",
+ "slop-basefold",
+ "slop-basefold-prover",
+ "slop-challenger",
+ "slop-commit",
+ "slop-futures",
+ "slop-jagged",
+ "slop-matrix",
+ "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-sumcheck",
+ "slop-symmetric",
+ "slop-tensor",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-primitives",
+ "sp1-recursion-machine",
+ "sp1-stark",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

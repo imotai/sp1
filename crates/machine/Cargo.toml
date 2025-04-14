@@ -13,6 +13,7 @@ csl-jagged = { workspace = true }
 csl-zerocheck = { workspace = true }
 csl-air = { workspace = true }
 csl-tracing = { workspace = true }
+csl-tracegen = { workspace = true }
 csl-logup-gkr = { workspace = true }
 
 slop-air = { workspace = true }

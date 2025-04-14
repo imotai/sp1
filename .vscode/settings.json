@@ -19,6 +19,11 @@
         "-A",
         "incomplete-features"
     ],
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/crates/**/include",
+        "${workspaceFolder}/target/include",
+    ],
+    "C_Cpp.intelliSenseEngine": "Tag Parser",
     "files.associations": {
         "cassert": "cpp",
         "array": "cpp",

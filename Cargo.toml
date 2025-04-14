@@ -23,6 +23,7 @@ members = [
     "crates/machine",
     "crates/tracing",
     "crates/perf",
+    "crates/tracegen",
     "crates/logup-gkr",
 ]
 resolver = "2"
@@ -52,6 +53,7 @@ csl-zerocheck = { path = "crates/zerocheck" }
 csl-tracing = { path = "crates/tracing" }
 csl-machine = { path = "crates/machine" }
 csl-perf = { path = "crates/perf" }
+csl-tracegen = { path = "crates/tracegen" }
 csl-logup-gkr = { path = "crates/logup-gkr" }
 
 # slop 
@@ -118,9 +120,10 @@ sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "ta
 # sp1-recursion-machine = { path = "../sp1-wip/crates/recursion/machine" }
 # sp1-curves = { path = "../sp1-wip/crates/curves" }
 
-# async
+# async/concurrency
 tokio = { version = "1.42.0" }
 futures = "0.3.31"
+rayon = "1.10.0"
 # misc
 tracing = "0.1.40"
 thiserror = "1.0"
@@ -131,3 +134,5 @@ rand = "0.8"
 serial_test = "3.2.0"
 cc = { version = "1.0", features = ["parallel"] }
 which = "6.0"
+cbindgen = "0.27.0"
+pathdiff = "0.2.1"
