@@ -6,9 +6,7 @@ use slop_tensor::Tensor;
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_stark::BabyBearPoseidon2;
 
-use crate::basefold::merkle_tree::verify;
-use crate::hash::FieldHasherVariable;
-use crate::{AsRecursive, CircuitConfig};
+use crate::{basefold::merkle_tree::verify, hash::FieldHasherVariable, AsRecursive, CircuitConfig};
 
 pub trait RecursiveTcs: Sized {
     type Data;
@@ -89,9 +87,7 @@ mod tests {
 
     use super::*;
     use itertools::Itertools;
-    use slop_commit::ComputeTcsOpenings;
-    use slop_commit::TensorCsOpening;
-    use slop_commit::TensorCsProver;
+    use slop_commit::{ComputeTcsOpenings, TensorCsOpening, TensorCsProver};
     use slop_merkle_tree::{my_bb_16_perm, Poseidon2BabyBear16Prover};
     use slop_tensor::Tensor;
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};

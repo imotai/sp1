@@ -18,6 +18,7 @@ members = [
   "crates/recursion/compiler",
   "crates/recursion/derive",
   "crates/recursion/executor",
+  "crates/recursion/gnark-ffi",
   "crates/recursion/machine",
   "crates/curves",
   "crates/derive",
@@ -26,6 +27,7 @@ members = [
   "crates/stark",
   "crates/test-artifacts",
   "crates/zkvm/*",
+  "crates/sdk",
   "crates/primitives",
 ]
 exclude = [
@@ -36,8 +38,6 @@ exclude = [
   "crates/perf",
   "crates/recursion/circuit-old",
   "crates/recursion/gnark-cli",
-  "crates/recursion/gnark-ffi",
-  "crates/sdk",
   "crates/verifier",
 ]
 resolver = "2"
@@ -181,6 +181,8 @@ serde_json = "1.0.132"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tokio = "1.42.0"
+futures = "0.3"
+futures-util = "0.3.31"
 derive-where = "1.2.7"
 strum_macros = "0.27.1"
 strum = "0.27.1"

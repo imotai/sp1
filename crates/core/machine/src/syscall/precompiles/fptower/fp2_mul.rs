@@ -30,8 +30,7 @@ use std::mem::size_of;
 use typenum::Unsigned;
 
 use crate::{
-    operations::field::field_op::FieldOpCols,
-    operations::field::range::FieldLtCols,
+    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
     utils::{limbs_to_words, pad_rows_fixed, words_to_bytes_le_vec},
 };
 

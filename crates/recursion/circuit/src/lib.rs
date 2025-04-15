@@ -1,11 +1,8 @@
-//! Copied from [`sp1_recursion_program`].
-
 use challenger::{
     CanCopyChallenger, CanObserveVariable, DuplexChallengerVariable, FieldChallengerVariable,
 };
 use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
 use itertools::izip;
-// use jagged::RecursiveJaggedConfig;
 use slop_algebra::AbstractField;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -650,13 +647,6 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
     ) {
         builder.commit_public_values_v2(public_values);
     }
-}
-
-// TODO: FIND A BETTER PLACE FOR THIS.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1RecursionShape {
-    pub proof_shapes: Vec<OrderedShape>,
-    pub is_complete: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

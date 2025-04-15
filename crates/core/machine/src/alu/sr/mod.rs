@@ -237,7 +237,8 @@ where
             }
         }
         let inverse_32 = AB::F::from_canonical_u32(32).inverse();
-        // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and a multiple of 32.
+        // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and
+        // a multiple of 32.
         builder.send_byte(
             AB::F::from_canonical_u32(ByteOpcode::Range as u32),
             (local.adapter.c()[0] - c_lower_bits) * inverse_32,

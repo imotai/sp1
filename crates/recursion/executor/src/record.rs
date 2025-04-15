@@ -6,7 +6,7 @@ use std::{
 
 use p3_field::{AbstractField, Field, PrimeField32};
 use sp1_stark::{
-    air::SP1AirBuilder, septic_digest::SepticDigest, MachineRecord, SP1CoreOpts, PROOF_MAX_NUM_PVS,
+    air::SP1AirBuilder, septic_digest::SepticDigest, MachineRecord, PROOF_MAX_NUM_PVS,
 };
 
 use crate::{
@@ -43,7 +43,7 @@ pub struct ExecutionRecord<F> {
 }
 
 impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
-    type Config = SP1CoreOpts;
+    // type Config = SP1CoreOpts;
 
     fn stats(&self) -> hashbrown::HashMap<String, usize> {
         [

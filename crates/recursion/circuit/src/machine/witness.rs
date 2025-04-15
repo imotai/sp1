@@ -87,7 +87,7 @@ pub type JC<C, SC> =
     RecursiveJaggedConfigImpl<C, SC, RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>>;
 
 impl Witnessable<InnerConfig> for SP1RecursionWitnessValues<BabyBearPoseidon2>
-where
+//where
 // C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<InnerVal>>,
 {
     type WitnessVariable = SP1RecursionWitnessVariable<

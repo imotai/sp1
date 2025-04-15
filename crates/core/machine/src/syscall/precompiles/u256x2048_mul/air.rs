@@ -357,7 +357,8 @@ where
             builder,
             &a_limbs,
             &b_limb_array[0],
-            &Polynomial::from_coefficients(&[AB::Expr::zero()]), // Zero polynomial for no previous carry
+            &Polynomial::from_coefficients(&[AB::Expr::zero()]), /* Zero polynomial for no
+                                                                  * previous carry */
             &modulus_polynomial,
             local.is_real,
         );

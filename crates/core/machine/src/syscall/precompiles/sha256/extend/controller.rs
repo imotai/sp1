@@ -1,16 +1,14 @@
 use super::ShaExtendControlChip;
 use core::borrow::Borrow;
 use p3_air::{Air, BaseAir};
-use p3_field::AbstractField;
-use p3_field::PrimeField32;
-use p3_matrix::dense::RowMajorMatrix;
-use p3_matrix::Matrix;
-use sp1_core_executor::syscalls::SyscallCode;
-use sp1_core_executor::{events::PrecompileEvent, ExecutionRecord, Program};
+use p3_field::{AbstractField, PrimeField32};
+use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use sp1_core_executor::{events::PrecompileEvent, syscalls::SyscallCode, ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{AirInteraction, MachineAir};
-use sp1_stark::air::{InteractionScope, SP1AirBuilder};
-use sp1_stark::InteractionKind;
+use sp1_stark::{
+    air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
+    InteractionKind,
+};
 use std::borrow::BorrowMut;
 
 impl ShaExtendControlChip {

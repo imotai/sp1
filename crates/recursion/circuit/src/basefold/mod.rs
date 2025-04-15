@@ -3,8 +3,9 @@ use crate::{
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use itertools::Itertools;
-use slop_algebra::TwoAdicField;
-use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
+use slop_algebra::{
+    extension::BinomialExtensionField, AbstractExtensionField, AbstractField, TwoAdicField,
+};
 use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
 use slop_multilinear::{Evaluations, Point};
@@ -322,8 +323,8 @@ impl<
         );
     }
 
-    /// The FRI verifier for a single query. We modify this from Plonky3 to be compatible with opening
-    /// only a single vector.
+    /// The FRI verifier for a single query. We modify this from Plonky3 to be compatible with
+    /// opening only a single vector.
     #[allow(clippy::too_many_arguments)]
     fn verify_queries(
         &self,
@@ -458,8 +459,7 @@ mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 
-    use crate::challenger::DuplexChallengerVariable;
-    use crate::witness::Witnessable;
+    use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
 
     use super::*;
     use futures::prelude::*;

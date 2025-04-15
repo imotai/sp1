@@ -52,7 +52,8 @@ impl<F: Field> Add4Operation<F> {
     /// Evaluate the add4 operation.
     /// Assumes that `a`, `b`, `c`, `d` are valid `Word`s of two u16 limbs.
     /// Constrains that `is_real` is boolean.
-    /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a + b + c + d`.
+    /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a + b + c +
+    /// d`.
     #[allow(clippy::too_many_arguments)]
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,

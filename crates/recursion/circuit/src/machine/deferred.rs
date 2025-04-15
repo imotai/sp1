@@ -12,10 +12,10 @@ use slop_baby_bear::BabyBear;
 // use slop_matrix::dense::RowMajorMatrix;
 use sp1_primitives::consts::WORD_SIZE;
 use sp1_recursion_compiler::ir::{Builder, Felt};
-use sp1_stark::septic_curve::SepticCurve;
-use sp1_stark::septic_digest::SepticDigest;
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS},
+    septic_curve::SepticCurve,
+    septic_digest::SepticDigest,
     MachineVerifyingKey, ShardProof, Word,
 };
 
@@ -277,7 +277,8 @@ where
 //             SP1CompressWitnessValues::<BabyBearPoseidon2>::dummy(machine, &shape.inner);
 //         let vks_and_proofs = inner_witness.vks_and_proofs;
 
-//         let vk_merkle_data = SP1MerkleProofWitnessValues::dummy(vks_and_proofs.len(), shape.height);
+//         let vk_merkle_data = SP1MerkleProofWitnessValues::dummy(vks_and_proofs.len(),
+// shape.height);
 
 //         Self {
 //             vks_and_proofs,

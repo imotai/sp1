@@ -1,5 +1,4 @@
-use crate::adapter::register::j_type::JTypeReader;
-use crate::adapter::state::CPUState;
+use crate::adapter::{register::j_type::JTypeReader, state::CPUState};
 use sp1_derive::AlignedBorrow;
 use std::mem::size_of;
 

@@ -1,8 +1,10 @@
 pub mod register;
-use crate::cpu::columns::CpuCols;
 use crate::{
     air::SP1CoreAirBuilder,
-    cpu::{columns::NUM_CPU_COLS, CpuChip},
+    cpu::{
+        columns::{CpuCols, NUM_CPU_COLS},
+        CpuChip,
+    },
 };
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_field::AbstractField;
@@ -38,17 +40,18 @@ where
 
         // // Program constraints.
         // // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
-        // // The `pc` and `instruction` is taken from the `ProgramChip`, where these are preprocessed.
-        // builder.send_program(local.pc, local.instruction, local.is_real);
+        // // The `pc` and `instruction` is taken from the `ProgramChip`, where these are
+        // preprocessed. builder.send_program(local.pc, local.instruction, local.is_real);
 
         // // Register constraints.
         // self.eval_registers::<AB>(builder, local, shard.clone(), clk.clone());
 
         // // Assert the shard and clk to send.  Only the memory and syscall instructions need the
         // // actual shard and clk values for memory access evals.
-        // // SAFETY: The usage of `builder.if_else` requires `is_memory + is_syscall` to be boolean.
-        // // The correctness of `is_memory` and `is_syscall` will be checked in the opcode specific chips.
-        // // In these correct cases, `is_memory + is_syscall` will be always boolean.
+        // // SAFETY: The usage of `builder.if_else` requires `is_memory + is_syscall` to be
+        // boolean. // The correctness of `is_memory` and `is_syscall` will be checked in
+        // the opcode specific chips. // In these correct cases, `is_memory + is_syscall`
+        // will be always boolean.
         let expected_shard_to_send =
             builder.if_else(local.is_memory + local.is_syscall, shard.clone(), AB::Expr::zero());
         let expected_clk_to_send =
@@ -60,13 +63,15 @@ where
         // // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         // // The `shard`, `clk`, `pc` are constrained throughout the CpuChip.
         // // The `local.instruction.opcode`, `local.instruction.op_a_0` are from the ProgramChip.
-        // // The `local.op_b_val()` and `local.op_c_val()` are constrained in `eval_registers` in the CpuChip.
-        // // Therefore, opcode specific chips that will receive this instruction need to the following.
-        // // - For an instruction with a valid opcode, exactly one opcode specific chip can receive the instruction.
-        // // - The `next_pc`, `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`, `is_syscall`, `is_halt` are constrained correctly.
-        // // Note that in this case, `shard_to_send` and `clk_to_send` will be correctly constrained as well.
-        // // If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val() == 0`.
-        // // Therefore, in this case, `op_a_val` doesn't need to be constrained in the opcode specific chips.
+        // // The `local.op_b_val()` and `local.op_c_val()` are constrained in `eval_registers` in
+        // the CpuChip. // Therefore, opcode specific chips that will receive this
+        // instruction need to the following. // - For an instruction with a valid opcode,
+        // exactly one opcode specific chip can receive the instruction. // - The `next_pc`,
+        // `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`, `is_syscall`, `is_halt`
+        // are constrained correctly. // Note that in this case, `shard_to_send` and
+        // `clk_to_send` will be correctly constrained as well. // If `instruction.op_a_0 ==
+        // 1`, then `eval_registers` enforces `op_a_val() == 0`. // Therefore, in this case,
+        // `op_a_val` doesn't need to be constrained in the opcode specific chips.
         // builder.send_instruction(
         //     local.shard_to_send,
         //     local.clk_to_send,
@@ -123,8 +128,8 @@ impl CpuChip {
     //     builder.when(local.is_real).assert_eq(public_values.execution_shard, shard.clone());
 
     //     let next_shard =
-    //         AB::Expr::from_canonical_u32(1u32 << 16) * next.shard_8bit_limb + next.shard_16bit_limb;
-    //     // Verify that all shard values are the same.
+    //         AB::Expr::from_canonical_u32(1u32 << 16) * next.shard_8bit_limb +
+    // next.shard_16bit_limb;     // Verify that all shard values are the same.
     //     builder.when_transition().when(next.is_real).assert_eq(shard.clone(), next_shard);
 
     //     // Verify that the shard value is within 24 bits.
@@ -139,9 +144,9 @@ impl CpuChip {
     //     // Verify that the first row has a clk value of 0.
     //     builder.when_first_row().assert_zero(clk.clone());
 
-    //     // We already assert that `local.clk < 2^24`. `num_extra_cycles` is an entry of a word and
-    //     // therefore less than `2^8`, this means that the sum cannot overflow in a 31 bit field.
-    //     // The default clk increment is also `4`, equal to `DEFAULT_PC_INC`.
+    //     // We already assert that `local.clk < 2^24`. `num_extra_cycles` is an entry of a word
+    // and     // therefore less than `2^8`, this means that the sum cannot overflow in a 31 bit
+    // field.     // The default clk increment is also `4`, equal to `DEFAULT_PC_INC`.
     //     let expected_next_clk =
     //         clk.clone() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC) + local.num_extra_cycles;
 
@@ -188,8 +193,8 @@ impl CpuChip {
     //         .assert_eq(public_values.next_pc, local.next_pc);
 
     //     // If the last real row is the last row, verify the public value's next pc.
-    //     builder.when_last_row().when(local.is_real).assert_eq(public_values.next_pc, local.next_pc);
-    // }
+    //     builder.when_last_row().when(local.is_real).assert_eq(public_values.next_pc,
+    // local.next_pc); }
 
     // Constraints related to the is_real column.
     //
@@ -201,8 +206,8 @@ impl CpuChip {
     //     local: &CpuCols<AB::Var>,
     //     next: &CpuCols<AB::Var>,
     // ) {
-    //     // Check the is_real flag.  It should be 1 for the first row.  Once its 0, it should never
-    //     // change value.
+    //     // Check the is_real flag.  It should be 1 for the first row.  Once its 0, it should
+    // never     // change value.
     //     builder.assert_bool(local.is_real);
     //     builder.when_first_row().assert_one(local.is_real);
     //     builder.when_transition().when_not(local.is_real).assert_zero(next.is_real);

@@ -7,7 +7,7 @@ use std::time::Duration;
 use alloy_primitives::B256;
 use anyhow::Result;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::SP1ProvingKey;
+use sp1_prover::{components::CpuSP1ProverComponents, SP1ProvingKey};
 
 use crate::{
     utils::block_on, utils::sp1_dump, NetworkProver, SP1ProofMode, SP1ProofWithPublicValues,
@@ -19,7 +19,7 @@ use super::proto::network::FulfillmentStrategy;
 pub struct NetworkProveBuilder<'a> {
     pub(crate) prover: &'a NetworkProver,
     pub(crate) mode: SP1ProofMode,
-    pub(crate) pk: &'a SP1ProvingKey,
+    pub(crate) pk: SP1ProvingKey<CpuSP1ProverComponents>,
     pub(crate) stdin: SP1Stdin,
     pub(crate) timeout: Option<Duration>,
     pub(crate) strategy: FulfillmentStrategy,
@@ -315,7 +315,7 @@ impl NetworkProveBuilder<'_> {
         let Self { prover, mode, pk, stdin, timeout, strategy, skip_simulation, cycle_limit } =
             self;
         prover
-            .request_proof_impl(pk, &stdin, mode, strategy, timeout, skip_simulation, cycle_limit)
+            .request_proof_impl(&pk, &stdin, mode, strategy, timeout, skip_simulation, cycle_limit)
             .await
     }
 
@@ -373,6 +373,6 @@ impl NetworkProveBuilder<'_> {
 
         sp1_dump(&pk.elf, &stdin);
 
-        prover.prove_impl(pk, &stdin, mode, strategy, timeout, skip_simulation, cycle_limit).await
+        prover.prove_impl(pk, stdin, mode, strategy, timeout, skip_simulation, cycle_limit).await
     }
 }

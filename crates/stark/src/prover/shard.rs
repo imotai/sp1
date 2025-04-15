@@ -5,10 +5,11 @@ use std::{
     sync::Arc,
 };
 
+use derive_where::derive_where;
 use itertools::Itertools;
 use p3_uni_stark::get_symbolic_constraints;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_air::{Air, BaseAir};
+use slop_air::Air;
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
@@ -177,13 +178,19 @@ impl<C: MachineProverComponents> ShardProver<C> {
     pub async fn setup(
         &self,
         program: Arc<C::Program>,
+        setup_permits: Arc<Semaphore>,
     ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
         let program_sent = program.clone();
         let initial_global_cumulative_sum =
             tokio::task::spawn_blocking(move || program_sent.initial_global_cumulative_sum())
                 .await
                 .unwrap();
-        self.setup_with_initial_global_cumulative_sum(program, initial_global_cumulative_sum).await
+        self.setup_with_initial_global_cumulative_sum(
+            program,
+            initial_global_cumulative_sum,
+            setup_permits,
+        )
+        .await
     }
 
     /// Setup from a program with a specific initial global cumulative sum.
@@ -191,11 +198,12 @@ impl<C: MachineProverComponents> ShardProver<C> {
         &self,
         program: Arc<C::Program>,
         initial_global_cumulative_sum: SepticDigest<C::F>,
+        setup_permits: Arc<Semaphore>,
     ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
         let pc_start = program.pc_start();
         let preprocessed_traces = self
             .trace_generator
-            .generate_preprocessed_traces(program, self.max_log_row_count())
+            .generate_preprocessed_traces(program, self.max_log_row_count(), setup_permits)
             .await;
 
         let constraints_map = self
@@ -426,25 +434,21 @@ impl<C: MachineProverComponents> ShardProver<C> {
         (shard_open_values, partial_sumcheck_proof)
     }
 
-    /// Generate the shard data
-    pub async fn generate_traces(
-        &self,
-        record: C::Record,
-        prover_permits: Arc<Semaphore>,
-    ) -> ShardData<C::F, C::Air, C::B> {
-        // Generate the traces.
-        self.trace_generator
-            .generate_main_traces(record, self.max_log_row_count(), prover_permits)
-            .await
-    }
-
     /// Generate a proof for a given execution record.
     pub async fn prove_shard(
         &self,
         pk: &MachineProvingKey<C>,
-        data: ShardData<C::F, C::Air, C::B>,
+        record: C::Record,
+        prover_permits: Arc<Semaphore>,
         challenger: &mut C::Challenger,
     ) -> ShardProof<C::Config> {
+        // Generate the traces.
+        let data = self
+            .trace_generator
+            .generate_main_traces(record, self.max_log_row_count(), prover_permits)
+            .instrument(tracing::debug_span!("generate main traces"))
+            .await;
+
         let ShardData { traces, public_values, permit, shard_chips } = data;
 
         // Log the shard data.
@@ -571,56 +575,12 @@ impl<C: MachineProverComponents> ShardProver<C> {
             shard_chips,
         }
     }
-
-    /// Given a record, compute the shape of the resulting shard proof.
-    pub fn shape_from_record(
-        &self,
-        record: &<C::Air as MachineAir<<C as MachineProverComponents>::F>>::Record,
-    ) -> Option<CoreProofShape<C::F, C::Air>> {
-        let log_stacking_height = self.pcs_prover.log_stacking_height() as usize;
-        let airs = self.machine().chips();
-        let shard_chips: BTreeSet<_> =
-            airs.iter().filter(|air| air.included(record)).cloned().collect();
-        let shard_chips = self.machine().smallest_cluster(&shard_chips).cloned()?;
-        let preprocessed_multiple = airs
-            .iter()
-            .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
-            .sum::<usize>()
-            .div_ceil(log_stacking_height);
-        let main_multiple = airs
-            .iter()
-            .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
-            .sum::<usize>()
-            .div_ceil(log_stacking_height);
-        Some(CoreProofShape { shard_chips, preprocessed_multiple, main_multiple })
-    }
-
-    /// Given a proof, compute its shape.
-    pub fn shape_from_proof(&self, proof: &ShardProof<C::Config>) -> CoreProofShape<C::F, C::Air> {
-        let shard_chips = self
-            .machine()
-            .chips()
-            .iter()
-            .filter(|air| proof.shard_chips.contains(&air.name()))
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        debug_assert_eq!(shard_chips.len(), proof.shard_chips.len());
-
-        let preprocessed_multiple =
-            proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0].round_evaluations
-                [0]
-            .num_polynomials();
-        let main_multiple = proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[1]
-            .round_evaluations[0]
-            .num_polynomials();
-
-        CoreProofShape { shard_chips, preprocessed_multiple, main_multiple }
-    }
 }
 
 /// The shape of the core proof. This and prover setup parameters should entirely determine the
 /// verifier circuit.
-#[derive(Debug, Clone)]
+#[derive_where(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug)]
 pub struct CoreProofShape<F: Field, A: MachineAir<F>> {
     /// The chips included in the record.
     pub shard_chips: BTreeSet<Chip<F, A>>,

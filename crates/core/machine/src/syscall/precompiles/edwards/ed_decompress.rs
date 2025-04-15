@@ -158,7 +158,8 @@ impl<V: Copy> EdDecompressCols<V> {
             self.is_real,
         );
 
-        // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained to be canonical here.
+        // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained
+        // to be canonical here.
         self.x.eval(builder, &self.u_div_v.result, AB::F::zero(), self.is_real);
         self.neg_x.eval(
             builder,
@@ -188,7 +189,8 @@ impl<V: Copy> EdDecompressCols<V> {
         );
 
         // Constrain that x_value is correct.
-        // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value is canonical.
+        // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
+        // is canonical.
         let neg_x_words = limbs_to_words::<AB>(self.neg_x.result.0.to_vec());
         let mul_x_words = limbs_to_words::<AB>(self.x.multiplication.result.0.to_vec());
         let x_value_words = self.x_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();

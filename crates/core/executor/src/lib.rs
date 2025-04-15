@@ -31,6 +31,7 @@ mod instruction;
 mod io;
 mod memory;
 mod opcode;
+mod opts;
 #[cfg(feature = "profiling")]
 mod profiler;
 mod program;
@@ -50,6 +51,7 @@ pub use executor::*;
 pub use hook::*;
 pub use instruction::*;
 pub use opcode::*;
+pub use opts::*;
 pub use program::*;
 pub use record::*;
 pub use reduce::*;

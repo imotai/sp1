@@ -21,7 +21,6 @@ use sp1_core_machine::{
 use sp1_recursion_executor::PV_DIGEST_NUM_WORDS;
 use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS},
-    shape::OrderedShape,
     Word,
 };
 
@@ -71,11 +70,33 @@ pub struct SP1RecursionWitnessValues<SC: MachineConfig> {
     pub reconstruct_deferred_digest: [SC::F; 8],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1RecursionShape {
-    pub proof_shapes: Vec<OrderedShape>,
-    pub is_complete: bool,
-}
+// impl<SC: BabyBearFriConfig + Send + Sync> SP1RecursionWitnessValues<SC> {
+//     pub fn shape(&self) -> SP1RecursionShape {
+//         let proof_shapes = self.shard_proofs.iter().map(|proof| proof.shape()).collect();
+
+//         SP1RecursionShape { proof_shapes, is_complete: self.is_complete }
+//     }
+// }
+
+// impl SP1RecursionWitnessValues<BabyBearPoseidon2> {
+//     pub fn dummy(
+//         machine: &MachineVerifier<BabyBearPoseidon2, RiscvAir<BabyBear>>,
+//         shape: &SP1RecursionShape,
+//     ) -> Self {
+//         let (mut vks, shard_proofs): (Vec<_>, Vec<_>) =
+//             shape.proof_shapes.iter().map(|shape| dummy_vk_and_shard_proof(machine,
+// shape)).unzip();         let vk = vks.pop().unwrap();
+//         Self {
+//             vk,
+//             shard_proofs,
+//             reconstruct_deferred_digest: [BabyBear::zero(); DIGEST_SIZE],
+//             is_complete: shape.is_complete,
+//             is_first_shard: false,
+//             vk_root: [BabyBear::zero(); DIGEST_SIZE],
+//         }
+//     }
+// }
+
 /// A program for recursively verifying a batch of SP1 proofs.
 #[derive(Debug, Clone, Copy)]
 pub struct SP1RecursiveVerifier<C: Config, SC: BabyBearFriConfig, JC: RecursiveJaggedConfig> {
@@ -278,8 +299,9 @@ where
                 // If it's the first shard (which is the first execution shard), then the `start_pc`
                 // should be vk.pc_start.
                 builder.assert_felt_eq(is_first_shard * (start_pc - vk.pc_start), C::F::zero());
-                // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the digest.
-                // If it's not the first shard, we add the zero digest to the digest.
+                // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the
+                // digest. If it's not the first shard, we add the zero digest to
+                // the digest.
                 global_cumulative_sums.push(builder.select_global_cumulative_sum(
                     is_first_shard,
                     vk.initial_global_cumulative_sum,
@@ -290,7 +312,8 @@ where
                     is_first_shard * (initial_execution_shard - C::F::one()),
                     C::F::zero(),
                 );
-                // If it's the first shard, it must be a CPU shard, so the next execution shard must be 2.
+                // If it's the first shard, it must be a CPU shard, so the next execution shard must
+                // be 2.
                 builder.assert_felt_eq(
                     is_first_shard * (public_values.next_execution_shard - C::F::two()),
                     C::F::zero(),
@@ -503,7 +526,8 @@ where
             C::range_check_felt(builder, public_values.shard, MAX_LOG_NUMBER_OF_SHARDS);
 
             // We add the global cumulative sums of the global chips.
-            // Note that we constrain that the non-global chips have zero global cumulative sum in `verify_shard`.
+            // Note that we constrain that the non-global chips have zero global cumulative sum in
+            // `verify_shard`.
             global_cumulative_sums.push(public_values.global_cumulative_sum);
         }
 
@@ -552,38 +576,5 @@ where
 
             SC::commit_recursion_public_values(builder, *recursion_public_values);
         }
-    }
-}
-
-// impl<SC: BabyBearFriConfig + Send + Sync> SP1RecursionWitnessValues<SC> {
-//     pub fn shape(&self) -> SP1RecursionShape {
-//         let proof_shapes = self.shard_proofs.iter().map(|proof| proof.shape()).collect();
-
-//         SP1RecursionShape { proof_shapes, is_complete: self.is_complete }
-//     }
-// }
-
-// impl SP1RecursionWitnessValues<BabyBearPoseidon2> {
-//     pub fn dummy(
-//         machine: &MachineVerifier<BabyBearPoseidon2, RiscvAir<BabyBear>>,
-//         shape: &SP1RecursionShape,
-//     ) -> Self {
-//         let (mut vks, shard_proofs): (Vec<_>, Vec<_>) =
-//             shape.proof_shapes.iter().map(|shape| dummy_vk_and_shard_proof(machine, shape)).unzip();
-//         let vk = vks.pop().unwrap();
-//         Self {
-//             vk,
-//             shard_proofs,
-//             reconstruct_deferred_digest: [BabyBear::zero(); DIGEST_SIZE],
-//             is_complete: shape.is_complete,
-//             is_first_shard: false,
-//             vk_root: [BabyBear::zero(); DIGEST_SIZE],
-//         }
-//     }
-// }
-
-impl From<OrderedShape> for SP1RecursionShape {
-    fn from(proof_shape: OrderedShape) -> Self {
-        Self { proof_shapes: vec![proof_shape], is_complete: false }
     }
 }

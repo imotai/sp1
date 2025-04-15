@@ -3,6 +3,7 @@
 //! This module provides an implementation of the [`crate::Prover`] trait that can generate proofs
 //! on a remote RPC server.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::prove::NetworkProveBuilder;
@@ -20,9 +21,10 @@ use alloy_primitives::B256;
 use anyhow::Result;
 use sp1_core_executor::{SP1Context, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{components::CpuProverComponents, SP1Prover, SP1_CIRCUIT_VERSION};
+use sp1_prover::local::LocalProver;
+use sp1_prover::{components::CpuSP1ProverComponents, SP1_CIRCUIT_VERSION};
 
-use {crate::utils::block_on, tokio::time::sleep};
+use tokio::time::sleep;
 
 /// An implementation of [`crate::ProverClient`] that can generate proofs on a remote RPC server.
 pub struct NetworkProver {
@@ -68,9 +70,10 @@ impl NetworkProver {
     ///     .run()
     ///     .unwrap();
     /// ```
+    #[must_use]
     pub fn execute<'a>(&'a self, elf: &'a [u8], stdin: &SP1Stdin) -> CpuExecuteBuilder<'a> {
         CpuExecuteBuilder {
-            prover: self.prover.inner(),
+            prover: self.prover.prover.clone(),
             elf,
             stdin: stdin.clone(),
             context_builder: SP1ContextBuilder::default(),
@@ -94,16 +97,17 @@ impl NetworkProver {
     /// let (pk, vk) = client.setup(elf);
     /// let proof = client.prove(&pk, &stdin).run();
     /// ```
-    pub fn prove<'a>(
-        &'a self,
-        pk: &'a SP1ProvingKey,
-        stdin: &'a SP1Stdin,
-    ) -> NetworkProveBuilder<'a> {
+    #[must_use]
+    pub fn prove(
+        &self,
+        pk: SP1ProvingKey<CpuSP1ProverComponents>,
+        stdin: SP1Stdin,
+    ) -> NetworkProveBuilder {
         NetworkProveBuilder {
             prover: self,
             mode: SP1ProofMode::Core,
             pk,
-            stdin: stdin.clone(),
+            stdin,
             timeout: None,
             strategy: FulfillmentStrategy::Hosted,
             skip_simulation: false,
@@ -313,7 +317,7 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn request_proof_impl(
         &self,
-        pk: &SP1ProvingKey,
+        pk: &SP1ProvingKey<CpuSP1ProverComponents>,
         stdin: &SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
@@ -329,8 +333,8 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn prove_impl(
         &self,
-        pk: &SP1ProvingKey,
-        stdin: &SP1Stdin,
+        pk: SP1ProvingKey<CpuSP1ProverComponents>,
+        stdin: SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
         timeout: Option<Duration>,
@@ -338,7 +342,7 @@ impl NetworkProver {
         cycle_limit: Option<u64>,
     ) -> Result<SP1ProofWithPublicValues> {
         let request_id = self
-            .request_proof_impl(pk, stdin, mode, strategy, timeout, skip_simulation, cycle_limit)
+            .request_proof_impl(&pk, &stdin, mode, strategy, timeout, skip_simulation, cycle_limit)
             .await?;
         self.wait_proof(request_id, timeout).await
     }
@@ -364,7 +368,8 @@ impl NetworkProver {
             Ok(DEFAULT_CYCLE_LIMIT)
         } else {
             self.prover
-                .inner()
+                .prover
+                .clone()
                 .execute(elf, stdin, SP1Context::default())
                 .map(|(_, report)| report.total_instruction_count())
                 .map_err(|_| Error::SimulationFailed.into())
@@ -372,22 +377,22 @@ impl NetworkProver {
     }
 }
 
-impl Prover<CpuProverComponents> for NetworkProver {
-    fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
-        self.prover.setup(elf)
+impl Prover<CpuSP1ProverComponents> for NetworkProver {
+    async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey<CpuSP1ProverComponents>, SP1VerifyingKey) {
+        self.prover.setup(elf).await
     }
 
-    fn inner(&self) -> &SP1Prover {
-        self.prover.inner()
+    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+        self.prover.prover.clone()
     }
 
-    fn prove(
+    async fn prove(
         &self,
-        pk: &SP1ProvingKey,
-        stdin: &SP1Stdin,
+        pk: SP1ProvingKey<CpuSP1ProverComponents>,
+        stdin: SP1Stdin,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues> {
-        block_on(self.prove_impl(pk, stdin, mode, FulfillmentStrategy::Hosted, None, false, None))
+        self.prove_impl(pk, stdin, mode, FulfillmentStrategy::Hosted, None, false, None).await
     }
 }
 

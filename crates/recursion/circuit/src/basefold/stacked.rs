@@ -69,17 +69,18 @@ mod tests {
     use sp1_core_machine::utils::setup_logger;
     use sp1_recursion_compiler::circuit::AsmConfig;
     use sp1_stark::BabyBearPoseidon2;
-    use std::collections::VecDeque;
-    use std::marker::PhantomData;
-    use std::sync::Arc;
+    use std::{collections::VecDeque, marker::PhantomData, sync::Arc};
 
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 
-    use crate::basefold::tcs::RecursiveMerkleTreeTcs;
-    use crate::basefold::RecursiveBasefoldConfigImpl;
-    use crate::witness::Witnessable;
-    use crate::{basefold::RecursiveBasefoldVerifier, challenger::DuplexChallengerVariable};
+    use crate::{
+        basefold::{
+            tcs::RecursiveMerkleTreeTcs, RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier,
+        },
+        challenger::DuplexChallengerVariable,
+        witness::Witnessable,
+    };
 
     use super::*;
 

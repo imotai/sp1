@@ -5,15 +5,12 @@ use crate::{
     symbolic::IntoSymbolic,
     BabyBearFriConfigVariable, CircuitConfig,
 };
-use slop_algebra::UnivariatePolynomial;
-use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+use slop_algebra::{extension::BinomialExtensionField, AbstractField, UnivariatePolynomial};
 use slop_alloc::{buffer, Buffer};
 use slop_baby_bear::BabyBear;
-use slop_multilinear::{partial_lagrange_blocking, MleEval};
-use slop_multilinear::{Mle, Point};
+use slop_multilinear::{partial_lagrange_blocking, Mle, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
-use slop_tensor::Dimensions;
-use slop_tensor::Tensor;
+use slop_tensor::{Dimensions, Tensor};
 use sp1_recursion_compiler::{
     ir::Felt,
     prelude::{Builder, Ext, SymbolicExt},
@@ -115,10 +112,8 @@ mod tests {
 
     use super::*;
     use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
-    use rand::rngs::OsRng;
-    use rand::thread_rng;
-    use slop_algebra::AbstractExtensionField;
-    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use rand::{rngs::OsRng, thread_rng};
+    use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
     use slop_baby_bear::DiffusionMatrixBabyBear;
     use slop_challenger::DuplexChallenger;
     use slop_jagged::BabyBearPoseidon2;

@@ -1,19 +1,20 @@
-use p3_field::PrimeField32;
-use p3_field::{AbstractField, Field};
-use sp1_core_executor::events::{ByteRecord, MemoryAccessPosition};
-use sp1_core_executor::Instruction;
-use sp1_core_executor::JTypeRecord;
+use p3_field::{AbstractField, Field, PrimeField32};
+use sp1_core_executor::{
+    events::{ByteRecord, MemoryAccessPosition},
+    Instruction, JTypeRecord,
+};
 use sp1_derive::AlignedBorrow;
 
-use sp1_stark::air::SP1AirBuilder;
-use sp1_stark::Word;
+use sp1_stark::{air::SP1AirBuilder, Word};
 
-use crate::air::SP1CoreAirBuilder;
-use crate::air::WordAirBuilder;
-use crate::cpu::columns::InstructionCols;
-use crate::memory::MemoryAccessCols;
+use crate::{
+    air::{SP1CoreAirBuilder, WordAirBuilder},
+    cpu::columns::InstructionCols,
+    memory::MemoryAccessCols,
+};
 
-/// A set of columns to read operations with op_a being a register and op_b and op_c being immediates.
+/// A set of columns to read operations with op_a being a register and op_b and op_c being
+/// immediates.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct JTypeReader<T> {

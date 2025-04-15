@@ -171,8 +171,9 @@ where
         let local: &BitwiseCols<AB::Var> = (*local).borrow();
 
         // SAFETY: All selectors `is_xor`, `is_or`, `is_and` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three selectors, is boolean.
-        // Therefore, the `opcode` and `cpu_opcode` matches the corresponding opcode.
+        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three
+        // selectors, is boolean. Therefore, the `opcode` and `cpu_opcode` matches the
+        // corresponding opcode.
         let is_real = local.is_xor + local.is_or + local.is_and;
         builder.assert_bool(local.is_xor);
         builder.assert_bool(local.is_or);

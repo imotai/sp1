@@ -1,11 +1,17 @@
+use derive_where::derive_where;
+use slop_baby_bear::BabyBear;
+use slop_basefold::FriConfig;
+use slop_jagged::BabyBearPoseidon2;
 use std::iter::once;
 
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
-use slop_challenger::Synchronizable;
 use thiserror::Error;
 
-use crate::{air::MachineAir, septic_digest::SepticDigest, VerifierConstraintFolder};
+use crate::{
+    air::MachineAir, prover::CoreProofShape, septic_digest::SepticDigest, Machine,
+    VerifierConstraintFolder,
+};
 
 use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
 use crate::record::MachineRecord;
@@ -38,6 +44,7 @@ pub enum MachineVerifierError<C: MachineConfig> {
 }
 
 /// A verifier for a machine proof.
+#[derive_where(Clone)]
 pub struct MachineVerifier<C: MachineConfig, A: MachineAir<C::F>> {
     /// Shard proof verifier.
     shard_verifier: ShardVerifier<C, A>,
@@ -49,6 +56,40 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
         Self { shard_verifier }
     }
 
+    /// Get a new challenger.
+    pub fn challenger(&self) -> C::Challenger {
+        self.shard_verifier.challenger()
+    }
+
+    /// Get the machine.
+    pub fn machine(&self) -> &Machine<C::F, A> {
+        &self.shard_verifier.machine
+    }
+
+    /// Get the maximum log row count.
+    pub fn max_log_row_count(&self) -> usize {
+        self.shard_verifier.pcs_verifier.max_log_row_count
+    }
+
+    /// Get the log stacking height.
+    #[must_use]
+    #[inline]
+    pub fn log_stacking_height(&self) -> u32 {
+        self.shard_verifier.log_stacking_height()
+    }
+
+    /// Get the shape of a shard proof.
+    pub fn shape_from_proof(&self, proof: &ShardProof<C>) -> CoreProofShape<C::F, A> {
+        self.shard_verifier.shape_from_proof(proof)
+    }
+
+    /// Get the shard verifier.
+    #[must_use]
+    #[inline]
+    pub fn shard_verifier(&self) -> &ShardVerifier<C, A> {
+        &self.shard_verifier
+    }
+
     /// Verify the machine proof.
     pub fn verify(
         &self,
@@ -58,7 +99,6 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
     ) -> Result<(), MachineVerifierError<C>>
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
-        C::Challenger: Synchronizable,
     {
         // Observe the verifying key.
         vk.observe_into(challenger);
@@ -67,8 +107,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
         for (i, shard_proof) in proof.shard_proofs.iter().enumerate() {
             let mut challenger = challenger.clone();
             let span = tracing::debug_span!("verify shard", i).entered();
-            self.shard_verifier
-                .verify_shard(vk, shard_proof, &mut challenger)
+            self.verify_shard(vk, shard_proof, &mut challenger)
                 .map_err(MachineVerifierError::InvalidShardProof)?;
             span.exit();
         }
@@ -89,5 +128,27 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
 
             Ok(())
         })
+    }
+
+    /// Verify a shard proof.
+    pub fn verify_shard(
+        &self,
+        vk: &MachineVerifyingKey<C>,
+        proof: &ShardProof<C>,
+        challenger: &mut C::Challenger,
+    ) -> Result<(), ShardVerifierError<C>>
+    where
+        A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+    {
+        self.shard_verifier.verify_shard(vk, proof, challenger)
+    }
+}
+
+impl<A: MachineAir<BabyBear>> MachineVerifier<BabyBearPoseidon2, A> {
+    /// Get the FRI config.
+    #[must_use]
+    #[inline]
+    pub fn fri_config(&self) -> &FriConfig<BabyBear> {
+        &self.shard_verifier.pcs_verifier.stacked_pcs_verifier.pcs_verifier.fri_config
     }
 }

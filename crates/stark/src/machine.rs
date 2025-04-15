@@ -85,7 +85,6 @@ where
     pub fn generate_dependencies(
         &self,
         records: &mut [A::Record],
-        opts: &<A::Record as MachineRecord>::Config,
         chips_filter: Option<&[String]>,
     ) {
         let chips = self
@@ -106,7 +105,7 @@ where
                 chip.generate_dependencies(record, &mut output);
                 record.append(&mut output);
             });
-            tracing::debug_span!("register nonces").in_scope(|| record.register_nonces(opts));
+            // tracing::debug_span!("register nonces").in_scope(|| record.register_nonces(opts));
         });
     }
 }

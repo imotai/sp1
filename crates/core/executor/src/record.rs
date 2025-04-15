@@ -9,10 +9,15 @@ use sp1_stark::{
     },
     septic_digest::SepticDigest,
     shape::Shape,
-    InteractionKind, MachineRecord, SP1CoreOpts, SplitOpts, Word,
+    InteractionKind, MachineRecord, Word,
 };
-use std::sync::Mutex;
-use std::{borrow::Borrow, iter::once, mem::take, str::FromStr, sync::Arc};
+use std::{
+    borrow::Borrow,
+    iter::once,
+    mem::take,
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +29,7 @@ use crate::{
         MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SyscallEvent,
     },
     syscalls::SyscallCode,
-    RiscvAirId,
+    RiscvAirId, SplitOpts,
 };
 
 /// A record of the execution of a program.
@@ -467,8 +472,6 @@ impl From<MemoryAccessRecord> for ALUTypeRecord {
 }
 
 impl MachineRecord for ExecutionRecord {
-    type Config = SP1CoreOpts;
-
     fn stats(&self) -> HashMap<String, usize> {
         let mut stats = HashMap::new();
         stats.insert("cpu_events".to_string(), self.cpu_event_count as usize);

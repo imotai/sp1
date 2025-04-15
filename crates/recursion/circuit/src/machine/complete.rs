@@ -1,8 +1,10 @@
 use itertools::Itertools;
 use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
-use sp1_recursion_compiler::circuit::CircuitV2Builder;
-use sp1_recursion_compiler::ir::{Builder, Config, Felt};
+use sp1_recursion_compiler::{
+    circuit::CircuitV2Builder,
+    ir::{Builder, Config, Felt},
+};
 use sp1_recursion_executor::RecursionPublicValues;
 
 /// Assertions on recursion public values which represent a complete proof.

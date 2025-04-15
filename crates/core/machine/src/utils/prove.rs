@@ -5,22 +5,23 @@ use std::{
     io::{self, Seek, SeekFrom},
     sync::{Arc, Mutex},
 };
-use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedSender};
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender, UnboundedSender},
+    Semaphore,
+};
 
-use crate::riscv::RiscvAir;
+use crate::{executor::MachineExecutorBuilder, riscv::RiscvAir};
 use thiserror::Error;
 
 use p3_field::PrimeField32;
 use sp1_stark::{
     air::PublicValues,
-    prover::{
-        MachineProver, MachineProverComponents, MachineProverOpts, MachineProvingKey, ShardProver,
-    },
-    Machine, MachineProof, MachineRecord, SP1CoreOpts, ShardProof, Word,
+    prover::{MachineProverBuilder, MachineProverComponents, MachineProvingKey, ShardProver},
+    Machine, MachineProof, MachineRecord, ShardProof, ShardVerifier, Word,
 };
 
 use crate::{io::SP1Stdin, utils::concurrency::TurnBasedSync};
-use sp1_core_executor::ExecutionState;
+use sp1_core_executor::{ExecutionState, SP1CoreOpts};
 
 use sp1_core_executor::{
     subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Executor,
@@ -131,7 +132,7 @@ pub fn generate_records<F: PrimeField32>(
             records.append(&mut deferred);
 
             // Generate the dependencies.
-            machine.generate_dependencies(&mut records, &opts, None);
+            machine.generate_dependencies(&mut records, None);
 
             // Let another worker update the state.
             record_gen_sync.advance_turn();
@@ -147,13 +148,13 @@ pub fn generate_records<F: PrimeField32>(
 }
 
 pub async fn prove_core<F, PC>(
+    verifier: ShardVerifier<PC::Config, RiscvAir<F>>,
     prover: Arc<ShardProver<PC>>,
     pk: Arc<MachineProvingKey<PC>>,
     program: Arc<Program>,
-    stdin: &SP1Stdin,
+    stdin: SP1Stdin,
     opts: SP1CoreOpts,
     context: SP1Context<'static>,
-    challenger: PC::Challenger,
 ) -> Result<(MachineProof<PC::Config>, u64), SP1CoreProverError>
 where
     PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
@@ -162,7 +163,7 @@ where
     let (proof_tx, mut proof_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let (_, cycles) =
-        prove_core_stream(prover, pk, program, stdin, opts, context, proof_tx, challenger)
+        prove_core_stream(verifier, prover, pk, program, stdin, opts, context, proof_tx)
             .await
             .unwrap();
 
@@ -178,89 +179,54 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn prove_core_stream<F, PC>(
+pub(crate) async fn prove_core_stream<F, PC>(
     // TODO: clean this up
+    verifier: ShardVerifier<PC::Config, RiscvAir<F>>,
     prover: Arc<ShardProver<PC>>,
     pk: Arc<MachineProvingKey<PC>>,
     program: Arc<Program>,
-    stdin: &SP1Stdin,
+    stdin: SP1Stdin,
     opts: SP1CoreOpts,
     context: SP1Context<'static>,
     proof_tx: UnboundedSender<ShardProof<PC::Config>>,
-    challenger: PC::Challenger,
 ) -> Result<(Vec<u8>, u64), SP1CoreProverError>
 where
     PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
     F: PrimeField32,
 {
-    // Setup the runtime.
-    let mut runtime = Executor::with_context(program.clone(), opts, context);
-    runtime.write_vecs(&stdin.buffer);
-    for proof in stdin.proofs.iter() {
-        let (proof, vk) = proof.clone();
-        runtime.write_proof(proof, vk);
-    }
-    // Setup the machine prover.
-    let machine_prover_opts = MachineProverOpts {
-        num_prover_workers: opts.shard_batch_size,
-        num_trace_workers: opts.trace_gen_workers,
-        shard_data_channel_capacity: opts.shard_batch_size,
-    };
-    let machine = prover.machine().clone();
-    let prover = MachineProver::new(machine_prover_opts, &prover);
+    // TODO: get this from input
+    let num_record_workers = 4;
+    let num_trace_gen_workers = 4;
+    let (records_tx, mut records_rx) = mpsc::channel::<ExecutionRecord>(num_record_workers);
 
-    // Spawn the checkpoint generator task.
-    let (checkpoints_tx, checkpoints_rx) =
-        mpsc::channel::<(usize, File, bool, u64)>(opts.checkpoints_channel_capacity);
-    let checkpoint_generator_handle =
-        tokio::task::spawn_blocking(move || generate_checkpoints(runtime, checkpoints_tx));
+    let machine_executor = MachineExecutorBuilder::<F>::new(opts, num_record_workers).build();
 
-    // Spawn the record generator workers.
-    let checkpoints_rx = Arc::new(Mutex::new(checkpoints_rx));
-    let record_gen_sync = Arc::new(TurnBasedSync::new());
-    let (records_tx, records_rx) =
-        mpsc::channel::<ExecutionRecord>(opts.records_and_traces_channel_capacity);
-    let state = Arc::new(Mutex::new(PublicValues::<u32, u32>::default().reset()));
-    let report_aggregate = Arc::new(Mutex::new(ExecutionReport::default()));
-    let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
-    let mut record_gen_handles = Vec::new();
-    for _ in 0..opts.trace_gen_workers {
-        let worker_sync = record_gen_sync.clone();
-        let checkpoints_rx = checkpoints_rx.clone();
-        let records_tx = records_tx.clone();
-        let state = Arc::clone(&state);
-        let deferred = Arc::clone(&deferred);
-        let report_aggregate = report_aggregate.clone();
-        let program = program.clone();
-        let machine = machine.clone();
-        let handle = tokio::task::spawn_blocking(move || {
-            generate_records(
-                &machine,
-                program,
-                worker_sync,
-                checkpoints_rx,
-                records_tx,
-                state,
-                deferred,
-                report_aggregate,
-                opts,
-            )
-        });
-        record_gen_handles.push(handle);
-    }
+    let prover_permits = Arc::new(Semaphore::new(opts.shard_batch_size));
+    let prover = MachineProverBuilder::<PC>::new(verifier, vec![prover_permits], vec![prover])
+        .num_workers(num_trace_gen_workers)
+        .build();
 
-    drop(records_tx);
-    drop(deferred);
+    let prover_handle = tokio::spawn(async move {
+        let mut handles = Vec::new();
+        while let Some(record) = records_rx.recv().await {
+            let handle = prover.prove_shard(pk.clone(), record);
+            handles.push(handle);
+        }
+        for handle in handles {
+            let proof = handle.await.unwrap();
+            proof_tx.send(proof).unwrap();
+        }
+    });
 
-    // Run the prover and wait for all proofs to be sent.
-    prover.prove_stream(pk, records_rx, proof_tx, challenger).await.unwrap();
+    // Run the machine executor.
+    let output = machine_executor.execute(program, stdin, context, records_tx).await.unwrap();
 
-    // Wait for the checkpoint generator to finish.
-    let pv_stream: Vec<u8> = checkpoint_generator_handle.await.unwrap()?;
+    // Wait for the prover to finish.
+    prover_handle.await.unwrap();
 
-    // Get the cycles from the aggregate report.
-    let report_aggregate = report_aggregate.lock().unwrap();
-    let cycles = report_aggregate.total_instruction_count();
+    let pv_stream = output.public_value_stream;
+    let cycles = output.cycles;
+
     Ok((pv_stream, cycles))
 }
 

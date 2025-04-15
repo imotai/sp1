@@ -186,23 +186,14 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
         pad_rows_fixed(&mut rows, || [BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_COLS], None);
 
         // Convert the trace to a row major matrix.
-        let trace = RowMajorMatrix::new(
+        RowMajorMatrix::new(
             unsafe {
                 std::mem::transmute::<Vec<BabyBear>, Vec<F>>(
                     rows.into_iter().flatten().collect::<Vec<BabyBear>>(),
                 )
             },
             NUM_PREFIX_SUM_CHECKS_COLS,
-        );
-
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "lagrange eval trace dims is width: {:?}, height: {:?}",
-            trace.width(),
-            trace.height()
-        );
-
-        trace
+        )
     }
 
     fn included(&self, _: &Self::Record) -> bool {
@@ -251,7 +242,8 @@ where
         builder.receive_block(prep_local.acc_addr, local.acc, prep_local.is_real);
         builder.receive_single(prep_local.felt_acc_addr, local.felt_acc, prep_local.is_real);
 
-        // Constrain the memory write for the next accumulator for lagrange eval and bit2felt (Horner's method).
+        // Constrain the memory write for the next accumulator for lagrange eval and bit2felt
+        // (Horner's method).
         builder.assert_ext_eq(
             local.new_acc.as_extension::<AB>(),
             local.acc.as_extension::<AB>() * (one - sum_x_y + prod.clone() + prod),

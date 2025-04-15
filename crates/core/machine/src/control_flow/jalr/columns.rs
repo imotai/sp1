@@ -1,5 +1,4 @@
-use crate::adapter::register::i_type::ITypeReader;
-use crate::adapter::state::CPUState;
+use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 use std::mem::size_of;

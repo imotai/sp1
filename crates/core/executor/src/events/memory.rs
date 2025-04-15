@@ -105,7 +105,8 @@ impl From<MemoryEntry> for MemoryRecord {
 }
 
 // Constants used to define `LogicalShard` and `Shard`.
-// If we change these constants, be sure to to change the docs and revisit all relevant `unsafe` blocks.
+// If we change these constants, be sure to to change the docs and revisit all relevant `unsafe`
+// blocks.
 const SHARD_MASK: u32 = u32::MAX >> 1;
 const EXTERNAL_FLAG_SHIFT: u32 = u32::BITS - 1;
 

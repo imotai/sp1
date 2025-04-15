@@ -370,8 +370,8 @@ where
 //             .collect::<Vec<_>>();
 
 //         let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(log_blowup);
-//         let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {
-//             fri_config: verifier.fri_config,
+//         let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>>
+// {             fri_config: verifier.fri_config,
 //             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
 //         };
 //         let recursive_verifier =
@@ -385,10 +385,8 @@ where
 //                 SC,
 //                 RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
 //             >,
-//         > {
-//             stacked_pcs_verifier: recursive_verifier,
-//             max_log_row_count,
-//             jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
+//         > { stacked_pcs_verifier: recursive_verifier, max_log_row_count, jagged_evaluator:
+//         > RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
 //         };
 
 //         let stark_verifier = StarkVerifier::<A, SC, C, JC> {
@@ -451,8 +449,8 @@ where
 //                 &mut witness_stream,
 //             );
 //         });
-//         let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
-//         runtime.witness_stream = witness_stream.into();
+//         let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program,
+// my_bb_16_perm());         runtime.witness_stream = witness_stream.into();
 //         runtime.run().expect_err("invalid proof should not be verified");
 //     }
 // }

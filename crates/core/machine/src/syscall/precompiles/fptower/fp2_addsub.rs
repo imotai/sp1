@@ -30,8 +30,7 @@ use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
 use typenum::Unsigned;
 
 use crate::{
-    operations::field::field_op::FieldOpCols,
-    operations::field::range::FieldLtCols,
+    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
     utils::{pad_rows_fixed, words_to_bytes_le_vec},
 };
 

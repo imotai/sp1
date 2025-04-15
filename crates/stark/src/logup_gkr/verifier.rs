@@ -73,7 +73,8 @@ where
     ) -> Result<(), LogupGkrVerificationError<EF>> {
         let LogupGkrProof { circuit_output, round_proofs, logup_evaluations } = proof;
 
-        //  TODO: compare the number of variables to total number of itneractions as read from chips.
+        //  TODO: compare the number of variables to total number of itneractions as read from
+        // chips.
         let LogUpGkrOutput { numerator, denominator } = circuit_output;
 
         // Observe the output claims.

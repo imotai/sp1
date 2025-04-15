@@ -1,20 +1,21 @@
 use p3_air::AirBuilder;
-use p3_field::PrimeField32;
-use p3_field::{AbstractField, Field};
-use sp1_core_executor::events::{ByteRecord, MemoryAccessPosition};
-use sp1_core_executor::ALUTypeRecord;
-use sp1_core_executor::Instruction;
+use p3_field::{AbstractField, Field, PrimeField32};
+use sp1_core_executor::{
+    events::{ByteRecord, MemoryAccessPosition},
+    ALUTypeRecord, Instruction,
+};
 use sp1_derive::AlignedBorrow;
 
-use sp1_stark::air::SP1AirBuilder;
-use sp1_stark::Word;
+use sp1_stark::{air::SP1AirBuilder, Word};
 
-use crate::air::SP1CoreAirBuilder;
-use crate::air::WordAirBuilder;
-use crate::cpu::columns::InstructionCols;
-use crate::memory::MemoryAccessCols;
+use crate::{
+    air::{SP1CoreAirBuilder, WordAirBuilder},
+    cpu::columns::InstructionCols,
+    memory::MemoryAccessCols,
+};
 
-/// A set of columns to read operations with op_a and op_b being registers and op_c being a register or immediate.
+/// A set of columns to read operations with op_a and op_b being registers and op_c being a register
+/// or immediate.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ALUTypeReader<T> {
@@ -116,7 +117,8 @@ impl<F: Field> ALUTypeReader<F> {
             cols.op_c_memory,
             is_real - cols.imm_c,
         );
-        // If `op_c` is an immediate, assert that `op_c` value is copied into `op_c_memory.prev_value`.
+        // If `op_c` is an immediate, assert that `op_c` value is copied into
+        // `op_c_memory.prev_value`.
         builder.when(cols.imm_c).assert_word_eq(cols.op_c_memory.prev_value, cols.op_c);
     }
 

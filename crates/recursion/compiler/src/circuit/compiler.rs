@@ -832,7 +832,12 @@ where
             ));
         });
 
-        RootProgram { inner: program, total_memory }
+        RootProgram {
+            inner: program,
+            total_memory,
+            dummy_preprocessed_height: 0,
+            dummy_main_height: 0,
+        }
     }
 }
 

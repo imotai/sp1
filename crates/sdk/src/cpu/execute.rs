@@ -2,11 +2,13 @@
 //!
 //! This module provides a builder for simulating the execution of a program on the CPU.
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use sp1_core_executor::{ExecutionReport, HookEnv, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::io::SP1PublicValues;
-use sp1_prover::{components::CpuProverComponents, SP1Prover};
+use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver};
 
 /// A builder for simulating the execution of a program on the CPU.
 ///
@@ -15,7 +17,7 @@ use sp1_prover::{components::CpuProverComponents, SP1Prover};
 pub struct CpuExecuteBuilder<'a> {
     pub(crate) elf: &'a [u8],
     pub(crate) stdin: SP1Stdin,
-    pub(crate) prover: &'a SP1Prover<CpuProverComponents>,
+    pub(crate) prover: Arc<LocalProver<CpuSP1ProverComponents>>,
     pub(crate) context_builder: SP1ContextBuilder<'a>,
 }
 

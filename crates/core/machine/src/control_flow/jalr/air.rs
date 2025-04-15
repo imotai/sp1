@@ -1,5 +1,4 @@
-use crate::adapter::register::i_type::ITypeReader;
-use crate::adapter::state::CPUState;
+use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;

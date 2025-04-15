@@ -1,4 +1,5 @@
 use slop_algebra::Field;
+use slop_merkle_tree::my_bb_16_perm;
 
 /// The digest size.
 pub const DIGEST_SIZE: usize = 8;
@@ -30,4 +31,10 @@ pub fn batch_multiplicative_inverse_inplace<F: Field>(values: &mut [F]) {
 #[must_use]
 pub fn log2_ceil_usize(n: usize) -> usize {
     n.next_power_of_two().ilog2() as usize
+}
+
+/// Get the inner perm
+#[must_use]
+pub fn inner_perm() -> slop_merkle_tree::Perm {
+    my_bb_16_perm()
 }

@@ -26,13 +26,9 @@
 // pub struct SP1MerkleProofWitnessVariable<
 //     C: CircuitConfig<F = BabyBear>,
 //     SC: FieldHasherVariable<C> + BabyBearFriConfigVariable<C>,
-// > {
-//     /// The shard proofs to verify.
-//     pub vk_merkle_proofs: Vec<MerkleProofVariable<C, SC>>,
-//     /// Hinted values to enable dummy digests.
-//     pub values: Vec<SC::DigestVariable>,
-//     /// The root of the merkle tree.
-//     pub root: SC::DigestVariable,
+// > { /// The shard proofs to verify. pub vk_merkle_proofs: Vec<MerkleProofVariable<C, SC>>, ///
+// > Hinted values to enable dummy digests. pub values: Vec<SC::DigestVariable>, /// The root of the
+// > merkle tree. pub root: SC::DigestVariable,
 // }
 
 // /// An input layout for the reduce verifier.
@@ -50,8 +46,8 @@
 //     SC: BabyBearFriConfigVariable<C>,
 //     C: CircuitConfig<F = SC::Val, EF = SC::Challenge>,
 // {
-//     /// Verify (via Merkle tree) that the vkey digests of a proof belong to a specified set (encoded
-//     /// the Merkle tree proofs in input).
+//     /// Verify (via Merkle tree) that the vkey digests of a proof belong to a specified set
+// (encoded     /// the Merkle tree proofs in input).
 //     pub fn verify(
 //         builder: &mut Builder<C>,
 //         digests: Vec<SC::DigestVariable>,
@@ -81,9 +77,8 @@
 // pub struct SP1CompressWithVKeyWitnessVariable<
 //     C: CircuitConfig<F = BabyBear>,
 //     SC: BabyBearFriConfigVariable<C>,
-// > {
-//     pub compress_var: SP1CompressWitnessVariable<C, SC>,
-//     pub merkle_var: SP1MerkleProofWitnessVariable<C, SC>,
+// > { pub compress_var: SP1CompressWitnessVariable<C, SC>, pub merkle_var:
+// > SP1MerkleProofWitnessVariable<C, SC>,
 // }
 
 // /// An input layout for the verifier of the proof shape phase of the compress stage.
@@ -126,8 +121,8 @@
 // impl<SC: BabyBearFriConfig + FieldHasher<BabyBear>> SP1CompressWithVKeyWitnessValues<SC> {
 //     pub fn shape(&self) -> SP1CompressWithVkeyShape {
 //         let merkle_tree_height = self.merkle_val.vk_merkle_proofs.first().unwrap().path.len();
-//         SP1CompressWithVkeyShape { compress_shape: self.compress_val.shape(), merkle_tree_height }
-//     }
+//         SP1CompressWithVkeyShape { compress_shape: self.compress_val.shape(), merkle_tree_height
+// }     }
 // }
 
 // impl SP1MerkleProofWitnessValues<BabyBearPoseidon2> {

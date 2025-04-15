@@ -82,7 +82,8 @@ where
             .when(AB::Expr::one() - local.is_halt)
             .assert_eq(local.next_pc, local.state.pc + AB::Expr::from_canonical_u32(4));
 
-        // `num_extra_cycles` is checked to be equal to the return value of `get_num_extra_ecall_cycles`
+        // `num_extra_cycles` is checked to be equal to the return value of
+        // `get_num_extra_ecall_cycles`
         builder.assert_eq::<AB::Var, AB::Expr>(
             local.num_extra_cycles,
             self.get_num_extra_ecall_cycles::<AB>(&a, local),
@@ -320,7 +321,8 @@ impl SyscallInstrsChip {
 
         // Verify that the is_halt flag is correct.
         // If `is_real = 0`, then `local.is_halt = 0`.
-        // If `is_real = 1`, then `is_halt_check.result` will be correct, so `local.is_halt` is correct.
+        // If `is_real = 1`, then `is_halt_check.result` will be correct, so `local.is_halt` is
+        // correct.
         builder.assert_eq(local.is_halt, is_halt * local.is_real);
     }
 

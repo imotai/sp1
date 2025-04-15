@@ -6,11 +6,10 @@ use crate::prelude::*;
 use itertools::Itertools;
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractExtensionField, AbstractField};
-use sp1_recursion_executor::RecursionPublicValues;
-use sp1_recursion_executor::{D, DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
-use sp1_stark::septic_curve::SepticCurve;
-use sp1_stark::septic_digest::SepticDigest;
-use sp1_stark::septic_extension::SepticExtension;
+use sp1_recursion_executor::{RecursionPublicValues, D, DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
+use sp1_stark::{
+    septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
+};
 
 pub trait CircuitV2Builder<C: Config> {
     fn bits2num_v2_f(
@@ -299,8 +298,9 @@ impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
         }
     }
 
-    /// Returns the zero digest when `is_first_shard` is zero, and returns the `vk_digest` when `is_first_shard` is one.
-    /// It is assumed that `is_first_shard` is already checked to be a boolean.
+    /// Returns the zero digest when `is_first_shard` is zero, and returns the `vk_digest` when
+    /// `is_first_shard` is one. It is assumed that `is_first_shard` is already checked to be a
+    /// boolean.
     fn select_global_cumulative_sum(
         &mut self,
         is_first_shard: Felt<C::F>,

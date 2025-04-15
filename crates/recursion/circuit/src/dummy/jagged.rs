@@ -24,9 +24,10 @@ pub fn dummy_query_proof(
     log_blowup: usize,
     num_queries: usize,
 ) -> Vec<TensorCsOpening<<Poseidon2BabyBear16BasefoldConfig as BasefoldConfig>::Tcs>> {
-    // The outer Vec is an iteration over the commit-phase rounds, of which there should be `log_max_height-1`
-    // (perhaps there's an off-by-one error here). The TensorCsOpening is laid out so that the tensor shape
-    // is [num_queries, 8 (degree of extension field*folding parameter)].
+    // The outer Vec is an iteration over the commit-phase rounds, of which there should be
+    // `log_max_height-1` (perhaps there's an off-by-one error here). The TensorCsOpening is
+    // laid out so that the tensor shape is [num_queries, 8 (degree of extension field*folding
+    // parameter)].
     (0..max_height)
         .map(|i| {
             let openings = Tensor::<BabyBear, _>::zeros_in([num_queries, 4 * 2], CpuBackend);
@@ -96,8 +97,8 @@ pub fn dummy_pcs_proof(
     );
 
     // Add 2 because of the dummy columns after the preprocessed and main rounds, and then one more
-    // because the prefix sums start at 0 and end at total trace area (so there is one more prefix sum
-    // than the number of columns).
+    // because the prefix sums start at 0 and end at total trace area (so there is one more prefix
+    // sum than the number of columns).
     let col_prefix_sums = (0..total_machine_cols + 3)
         .map(|_| Point::<InnerVal>::from_usize(0, total_num_variables + 1))
         .collect::<Vec<_>>();
@@ -106,8 +107,8 @@ pub fn dummy_pcs_proof(
 
     let partial_sumcheck_proof = dummy_sumcheck_proof(total_num_variables, 2);
 
-    // Add 2 because the there is a dummy column after the preprocessed and main rounds to round area
-    // to a multiple of `1<<log_stacking_height`.
+    // Add 2 because the there is a dummy column after the preprocessed and main rounds to round
+    // area to a multiple of `1<<log_stacking_height`.
     let branching_program_evals = vec![InnerChallenge::zero(); total_machine_cols + 2];
 
     let eval_sumcheck_proof = dummy_sumcheck_proof(2 * (total_num_variables + 1), 2);

@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
 
-use crate::adapter::register::j_type::JTypeReader;
-use crate::adapter::state::CPUState;
+use crate::adapter::{register::j_type::JTypeReader, state::CPUState};
 use p3_air::Air;
 use p3_field::AbstractField;
 use p3_matrix::Matrix;

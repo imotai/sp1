@@ -41,13 +41,17 @@ pub enum GkrCircuitLayer<F: Field, EF> {
 
 /// A layer of the GKR circuit.
 pub struct LogUpGkrCpuLayer<F, EF> {
-    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions `num_row_variables` x `num_interaction_variables`)
+    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions `num_row_variables` x
+    /// `num_interaction_variables`)
     pub numerator_0: Vec<PaddedMle<F>>,
-    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions `num_row_variables` x `num_interaction_variables`)
+    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions
+    /// `num_row_variables` x `num_interaction_variables`)
     pub denominator_0: Vec<PaddedMle<EF>>,
-    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions `num_row_variables` x `num_interaction_variables`)
+    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions `num_row_variables` x
+    /// `num_interaction_variables`)
     pub numerator_1: Vec<PaddedMle<F>>,
-    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions `num_row_variables` x `num_interaction_variables`)
+    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions
+    /// `num_row_variables` x `num_interaction_variables`)
     pub denominator_1: Vec<PaddedMle<EF>>,
     /// The number of row variables (log height of each mle)
     pub num_row_variables: usize,
@@ -57,13 +61,17 @@ pub struct LogUpGkrCpuLayer<F, EF> {
 
 /// An interaction layer of the GKR circuit (`num_row_variables` == 1).
 pub struct InteractionLayer<F, EF> {
-    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions `num_interaction_variables` x 1)
+    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions
+    /// `num_interaction_variables` x 1)
     pub numerator_0: Arc<Mle<F>>,
-    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions `num_interaction_variables` x 1)
+    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions
+    /// `num_interaction_variables` x 1)
     pub denominator_0: Arc<Mle<EF>>,
-    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions `num_interaction_variables` x 1)
+    /// The numerators of the layer (`PaddedMle<F>` per table with dimensions
+    /// `num_interaction_variables` x 1)
     pub numerator_1: Arc<Mle<F>>,
-    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions `num_interaction_variables` x 1)
+    /// The denominators of the layer (`PaddedMle<EF>` per table with dimensions
+    /// `num_interaction_variables` x 1)
     pub denominator_1: Arc<Mle<EF>>,
 }
 

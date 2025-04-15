@@ -38,11 +38,11 @@
 //     ///   implementation in this function assumes a fixed recursive verifier specified by
 //     ///   `recursive_vk`.
 //     /// - Deferred proofs: proofs which are recursive proof of a batch of deferred proofs. The
-//     ///   implementation in this function assumes a fixed deferred verification program specified by
-//     ///   `deferred_vk`.
-//     /// - Compress proofs: these are proofs which refer to a prove of this program. The key for it
-//     ///   is part of public values will be propagated across all levels of recursion and will be
-//     ///   checked against itself as in [sp1_prover::Prover] or as in [super::SP1RootVerifier].
+//     ///   implementation in this function assumes a fixed deferred verification program specified
+// by     ///   `deferred_vk`.
+//     /// - Compress proofs: these are proofs which refer to a prove of this program. The key for
+// it     ///   is part of public values will be propagated across all levels of recursion and will
+// be     ///   checked against itself as in [sp1_prover::Prover] or as in [super::SP1RootVerifier].
 //     pub fn verify(
 //         builder: &mut Builder<C>,
 //         machine: &StarkMachine<SC, A>,
@@ -70,13 +70,15 @@
 
 //         // Observe the public values.
 //         challenger
-//             .observe_slice(builder, proof.public_values[0..machine.num_pv_elts()].iter().copied());
+//             .observe_slice(builder,
+// proof.public_values[0..machine.num_pv_elts()].iter().copied());
 
 //         StarkVerifier::verify_shard(builder, &vk, machine, &mut challenger, &proof);
 
 //         // Get the public values, and assert that they are valid.
-//         let public_values: &RootPublicValues<Felt<C::F>> = proof.public_values.as_slice().borrow();
-//         assert_root_public_values_valid::<C, SC>(builder, public_values);
+//         let public_values: &RootPublicValues<Felt<C::F>> =
+// proof.public_values.as_slice().borrow();         assert_root_public_values_valid::<C,
+// SC>(builder, public_values);
 
 //         // Assert the public values are of a complete proof.
 //         assert_complete(builder, &public_values.inner, is_complete);

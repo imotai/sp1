@@ -70,7 +70,8 @@ mod tests {
 
         // let (pk, vk) = machine.setup(&program);
         // let result =
-        //     run_test_machine(vec![runtime.record], machine, pk, vk.clone()).expect("should verify");
+        //     run_test_machine(vec![runtime.record], machine, pk, vk.clone()).expect("should
+        // verify");
 
         // tracing::info!("num shard proofs: {}", result.shard_proofs.len());
     }

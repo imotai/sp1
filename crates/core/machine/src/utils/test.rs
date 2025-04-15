@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use sp1_core_executor::{Executor, Program, SP1Context, Trace};
+use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
-    prover::CpuProver, BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError,
-    SP1CoreOpts, ShardVerifier,
+    prover::CpuShardProver, BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError,
+    ShardVerifier,
 };
+use tokio::sync::Semaphore;
 use tracing::Instrument;
 
 use crate::{io::SP1Stdin, riscv::RiscvAir};
@@ -80,21 +81,21 @@ pub async fn run_test_core(
         max_log_row_count,
         machine,
     );
-    let prover = CpuProver::new(verifier.clone());
-
+    let prover = CpuShardProver::new(verifier.clone());
+    let setup_permit = Arc::new(Semaphore::new(1));
     let (pk, vk) = prover
-        .setup(runtime.program.clone())
+        .setup(runtime.program.clone(), setup_permit)
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
     let challenger = verifier.pcs_verifier.challenger();
     let (proof, _) = prove_core(
+        verifier.clone(),
         Arc::new(prover),
         Arc::new(pk),
         runtime.program.clone(),
-        &inputs,
+        inputs,
         SP1CoreOpts::default(),
         SP1Context::default(),
-        challenger,
     )
     .instrument(tracing::debug_span!("prove core"))
     .await

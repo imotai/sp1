@@ -332,8 +332,8 @@ impl<T: Copy> IntoIterator for ChallengerPublicValues<T> {
 //         constraints::ConstraintCompiler,
 //         ir::{Builder, Config, Ext, ExtConst, Felt, Var},
 //     };
-//     use sp1_recursion_core::stark::{outer_perm, BabyBearPoseidon2Outer, OuterCompress, OuterHash};
-//     use sp1_recursion_gnark_ffi::PlonkBn254Prover;
+//     use sp1_recursion_core::stark::{outer_perm, BabyBearPoseidon2Outer, OuterCompress,
+// OuterHash};     use sp1_recursion_gnark_ffi::PlonkBn254Prover;
 //     use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
 
 //     use crate::{

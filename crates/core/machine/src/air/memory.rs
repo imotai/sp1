@@ -13,7 +13,8 @@ use crate::memory::{MemoryAccessCols, MemoryAccessTimestamp};
 
 pub trait MemoryAirBuilder: BaseAirBuilder {
     /// Constrain a memory read, by using the read value as the write value.
-    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous one.
+    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous
+    /// one.
     fn eval_memory_access_read<E: Into<Self::Expr> + Clone>(
         &mut self,
         shard: impl Into<Self::Expr>,
@@ -64,7 +65,8 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
     }
 
     /// Constrain a memory write, given the write value.
-    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous one.
+    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous
+    /// one.
     fn eval_memory_access_write<E: Into<Self::Expr> + Clone>(
         &mut self,
         shard: impl Into<Self::Expr>,

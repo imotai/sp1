@@ -171,8 +171,8 @@ mod tests {
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use slop_jagged::{
-        JaggedEvalProver, JaggedEvalSumcheckProver, JaggedLittlePolynomialProverParams,
-        JaggedLittlePolynomialVerifierParams,
+        JaggedEvalProver, JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams,
+        JaggedProverComponents, Poseidon2BabyBearJaggedCpuProverComponents,
     };
     use slop_merkle_tree::{my_bb_16_perm, Perm};
     use slop_multilinear::Point;
@@ -198,6 +198,8 @@ mod tests {
     type EF = BinomialExtensionField<BabyBear, 4>;
     type C = AsmConfig<F, EF>;
     type SC = BabyBearPoseidon2;
+    type EvalProver =
+        <Poseidon2BabyBearJaggedCpuProverComponents as JaggedProverComponents>::JaggedEvalProver;
 
     fn trivial_jagged_eval(
         verifier_params: &JaggedLittlePolynomialVerifierParams<F>,
@@ -258,7 +260,7 @@ mod tests {
         expected_result: EF,
         should_succeed: bool,
     ) -> Vec<Felt<F>> {
-        let prover = JaggedEvalSumcheckProver(PhantomData);
+        let prover = EvalProver::default();
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
         let jagged_eval_proof = prover

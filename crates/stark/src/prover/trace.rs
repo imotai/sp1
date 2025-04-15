@@ -69,6 +69,7 @@ pub trait TraceGenerator<F: Field, A: MachineAir<F>, B: Backend>: 'static + Send
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
+        setup_permits: Arc<Semaphore>,
     ) -> impl Future<Output = Traces<F, B>> + Send;
 
     /// Generate the main traces for the given execution record.
@@ -191,7 +192,9 @@ where
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
+        setup_permits: Arc<Semaphore>,
     ) -> Traces<F, B> {
+        // Generate the traces on the CPU.
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -207,6 +210,9 @@ where
             tx.send(named_preprocessed_traces).ok().unwrap();
         });
 
+        // Wait for a permit to be available to copy the traces to the target backend.
+        let permit = setup_permits.acquire_owned().await.unwrap();
+
         // Wait for the traces to be generated and copy them to the target backend.
         // Wait for traces.
         let named_preprocessed_traces = rx.await.unwrap();
@@ -221,6 +227,8 @@ where
             .await
             .into_iter()
             .collect::<BTreeMap<_, _>>();
+        drop(permit);
+
         Traces { named_traces }
     }
 }

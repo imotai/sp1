@@ -17,7 +17,7 @@ sp1-recursion-compiler = { workspace = true }
 sp1-recursion-circuit = { workspace = true }
 sp1-recursion-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true }
-# sp1-recursion-gnark-ffi = { workspace = true }
+sp1-recursion-gnark-ffi = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-stark = { workspace = true }
 slop-alloc = { workspace = true }
@@ -45,9 +45,12 @@ clap = { version = "4.5.9", features = ["derive", "env"] }
 anyhow = "1.0.83"
 dirs = "5.0.1"
 tokio = { workspace = true }
+futures = { workspace = true }
+derive-where = { workspace = true }
 serial_test = "3.1.1"
 num-bigint = "0.4.6"
 thiserror = "1.0.63"
+sysinfo = "0.30.13"
 rayon = "1.10.0"
 lru = "0.12.4"
 eyre = "0.6.12"
@@ -100,6 +103,7 @@ test-artifacts = { workspace = true }
 # path = "scripts/post_trusted_setup.rs"
 
 [features]
+native-gnark = ["sp1-recursion-gnark-ffi/native"]
 debug = ["sp1-core-machine/debug"]
 bigint-rug = ["sp1-core-machine/bigint-rug"]
 

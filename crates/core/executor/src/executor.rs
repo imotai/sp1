@@ -9,7 +9,7 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
-use sp1_stark::{air::PublicValues, SP1CoreOpts};
+use sp1_stark::air::PublicValues;
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
@@ -31,7 +31,7 @@ use crate::{
     subproof::SubproofVerifier,
     syscalls::{get_syscall, SyscallCode, SyscallContext},
     ALUTypeRecord, ITypeRecord, Instruction, JTypeRecord, Opcode, Program, RTypeRecord, Register,
-    RiscvAirId,
+    RiscvAirId, SP1CoreOpts,
 };
 
 /// The default increment for the program counter.  Is used for all instructions except
@@ -227,18 +227,18 @@ pub struct LocalCounts {
     /// usual RISC-V interpretation.)
     ///
     /// We now describe the logic used to increment the counter (which is replicated in several
-    /// places). Let `lshard` refer to the new/current [`LogicalShard`] and `record.lshard` refer to
-    /// the `LogicalShard` of the last memory operation associated with the address being modified.
-    /// To check for the above situation, we require two conditions:
+    /// places). Let `lshard` refer to the new/current [`LogicalShard`] and `record.lshard` refer
+    /// to the `LogicalShard` of the last memory operation associated with the address being
+    /// modified. To check for the above situation, we require two conditions:
     ///
-    /// - `!lshard.external_flag()`: checks that the current shard is not an external shard,
-    ///   i.e. it is a main shard.
-    /// - `record.lshard != lshard`: checks that the address was last touched by a shard
-    ///   other than the current one. The (packed) fields of `LogicalShard` check for two cases:
-    ///   - If [`LogicalShard::external_flag`] is different, then one shard is external and one
-    ///     is not. If this field is the only difference, then (currently) one shard is the main
-    ///     shard and the other is a precompile invoked while interpreting in the main shard.
-    ///     This is because we set `external_flag` only when creating a [`SyscallContext`].
+    /// - `!lshard.external_flag()`: checks that the current shard is not an external shard, i.e.
+    ///   it is a main shard.
+    /// - `record.lshard != lshard`: checks that the address was last touched by a shard other than
+    ///   the current one. The (packed) fields of `LogicalShard` check for two cases:
+    ///   - If [`LogicalShard::external_flag`] is different, then one shard is external and one is
+    ///     not. If this field is the only difference, then (currently) one shard is the main shard
+    ///     and the other is a precompile invoked while interpreting in the main shard. This is
+    ///     because we set `external_flag` only when creating a [`SyscallContext`].
     ///   - If [`LogicalShard::shard`] is different, then the shards are different in the sense of
     ///     the SP1 proof system and memory argument. If this field is the only difference, then
     ///     one shard is the current shard and the other is a previous shard in the execution or
@@ -2293,7 +2293,6 @@ mod tests {
 
     use std::sync::Arc;
 
-    use sp1_stark::SP1CoreOpts;
     use sp1_zkvm::syscalls::SHA_COMPRESS;
 
     use crate::programs::tests::{
@@ -2301,7 +2300,7 @@ mod tests {
         simple_memory_program, simple_program, ssz_withdrawals_program, u256xu2048_mul_program,
     };
 
-    use crate::{Register, Simple};
+    use crate::{Register, SP1CoreOpts, Simple};
 
     use super::{Executor, Instruction, Opcode, Program};
 

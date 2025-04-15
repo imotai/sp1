@@ -1,8 +1,7 @@
 use crate::*;
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
-use sp1_stark::air::MachineProgram;
-use sp1_stark::septic_digest::SepticDigest;
+use sp1_stark::{air::MachineProgram, septic_digest::SepticDigest};
 use std::ops::Deref;
 
 pub use basic_block::BasicBlock;
@@ -26,12 +25,17 @@ impl<F> RecursionProgram<F> {
     /// - `SeqBlock`s in a `RawProgram` are linearly ordered, meaning:
     ///     - Each `SeqBlock` has a set of initial instructions `I` and final instructions `O`.
     ///     - For `SeqBlock::Basic`:
-    ///         - `I` is the singleton consisting of the first instruction in the enclosed `BasicBlock`.
-    ///         - `O` is the singleton consisting of the last instruction in the enclosed `BasicBlock`.
+    ///         - `I` is the singleton consisting of the first instruction in the enclosed
+    ///           `BasicBlock`.
+    ///         - `O` is the singleton consisting of the last instruction in the enclosed
+    ///           `BasicBlock`.
     ///     - For `SeqBlock::Parallel`:
-    ///         - `I` is the set of initial instructions `I` in the first `SeqBlock` of the enclosed `RawProgram`.
-    ///         - `O` is the set of final instructions in the last `SeqBlock` of the enclosed `RawProgram`.
-    ///     - For consecutive `SeqBlock`s, each element of the first one's `O` happens before the second one's `I`.
+    ///         - `I` is the set of initial instructions `I` in the first `SeqBlock` of the enclosed
+    ///           `RawProgram`.
+    ///         - `O` is the set of final instructions in the last `SeqBlock` of the enclosed
+    ///           `RawProgram`.
+    ///     - For consecutive `SeqBlock`s, each element of the first one's `O` happens before the
+    ///       second one's `I`.
     pub unsafe fn new_unchecked(program: RootProgram<F>) -> Self {
         Self(program)
     }
@@ -181,6 +185,8 @@ mod validation {
         RootProgram {
             inner: RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] },
             total_memory: 0, // Will be filled in.
+            dummy_preprocessed_height: 0,
+            dummy_main_height: 0,
         }
         .validate()
     }
@@ -190,12 +196,19 @@ mod validation {
 pub struct RootProgram<F> {
     pub inner: raw::RawProgram<Instruction<F>>,
     pub total_memory: usize,
+    pub dummy_preprocessed_height: usize,
+    pub dummy_main_height: usize,
 }
 
 // `Default` without bounds on the type parameter.
 impl<F> Default for RootProgram<F> {
     fn default() -> Self {
-        Self { inner: Default::default(), total_memory: Default::default() }
+        Self {
+            inner: Default::default(),
+            total_memory: Default::default(),
+            dummy_preprocessed_height: 0,
+            dummy_main_height: 0,
+        }
     }
 }
 

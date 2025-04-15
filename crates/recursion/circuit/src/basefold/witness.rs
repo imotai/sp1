@@ -1,5 +1,5 @@
-use crate::basefold::tcs::{RecursiveTcs, RecursiveTensorCsOpening};
 use crate::{
+    basefold::tcs::{RecursiveTcs, RecursiveTensorCsOpening},
     witness::{WitnessWriter, Witnessable},
     AsRecursive, CircuitConfig,
 };
@@ -13,8 +13,7 @@ use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
 use sp1_recursion_compiler::ir::{Builder, Ext, Felt};
 
-use super::stacked::RecursiveStackedPcsProof;
-use super::{RecursiveBasefoldConfig, RecursiveBasefoldProof};
+use super::{stacked::RecursiveStackedPcsProof, RecursiveBasefoldConfig, RecursiveBasefoldProof};
 
 impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Tensor<T> {
     type WitnessVariable = Tensor<T::WitnessVariable>;

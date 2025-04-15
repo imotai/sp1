@@ -12,14 +12,14 @@ pub use public_values::PV_DIGEST_NUM_WORDS;
 use backtrace::Backtrace as Trace;
 pub use block::Block;
 use cfg_if::cfg_if;
-use instruction::HintAddCurveInstr;
 pub use instruction::Instruction;
-use instruction::{FieldEltType, HintBitsInstr, HintExt2FeltsInstr, HintInstr, PrintInstr};
+use instruction::{
+    FieldEltType, HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr, PrintInstr,
+};
 use itertools::Itertools;
 use memory::*;
 pub use opcode::*;
-use p3_field::{AbstractExtensionField, PrimeField64};
-use p3_field::{AbstractField, ExtensionField, PrimeField32};
+use p3_field::{AbstractExtensionField, AbstractField, ExtensionField, PrimeField32, PrimeField64};
 use p3_maybe_rayon::prelude::*;
 use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{CryptographicPermutation, Permutation};
@@ -29,9 +29,7 @@ pub use public_values::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH, RECURSIVE_PR
 pub use record::*;
 use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::septic_curve::SepticCurve;
-use sp1_stark::septic_extension::SepticExtension;
-use sp1_stark::MachineRecord;
+use sp1_stark::{septic_curve::SepticCurve, septic_extension::SepticExtension, MachineRecord};
 use std::{
     array,
     borrow::Borrow,

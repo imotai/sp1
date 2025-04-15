@@ -30,7 +30,8 @@ impl ShaCompressChip {
     }
 }
 
-/// Implements the controller for the ShaCompressChip, which receives the syscalls and sends it to the chip.
+/// Implements the controller for the ShaCompressChip, which receives the syscalls and sends it to
+/// the chip.
 #[derive(Default)]
 pub struct ShaCompressControlChip;
 // #[cfg(test)]

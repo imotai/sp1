@@ -1,23 +1,20 @@
-use crate::air::SP1CoreAirBuilder;
-use crate::memory::MemoryAccessCols;
+use crate::{air::SP1CoreAirBuilder, memory::MemoryAccessCols};
 
-use super::KeccakPermuteControlChip;
-use super::STATE_NUM_WORDS;
+use super::{KeccakPermuteControlChip, STATE_NUM_WORDS};
 use core::borrow::Borrow;
 use p3_air::{Air, BaseAir};
-use p3_field::AbstractField;
-use p3_field::PrimeField32;
-use p3_matrix::dense::RowMajorMatrix;
-use p3_matrix::Matrix;
-use sp1_core_executor::events::ByteRecord;
-use sp1_core_executor::events::MemoryRecordEnum;
-use sp1_core_executor::syscalls::SyscallCode;
-use sp1_core_executor::{events::PrecompileEvent, ExecutionRecord, Program};
+use p3_field::{AbstractField, PrimeField32};
+use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use sp1_core_executor::{
+    events::{ByteRecord, MemoryRecordEnum, PrecompileEvent},
+    syscalls::SyscallCode,
+    ExecutionRecord, Program,
+};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::InteractionScope;
-use sp1_stark::air::{AirInteraction, MachineAir};
-use sp1_stark::InteractionKind;
-use sp1_stark::Word;
+use sp1_stark::{
+    air::{AirInteraction, InteractionScope, MachineAir},
+    InteractionKind, Word,
+};
 use std::borrow::BorrowMut;
 
 impl KeccakPermuteControlChip {

@@ -138,43 +138,6 @@ where
         self.receives.iter().filter(|i| i.kind == kind).count()
     }
 
-    // /// Generates a permutation trace for the given matrix.
-    // pub fn generate_permutation_trace<EF: ExtensionField<F>>(
-    //     &self,
-    //     preprocessed: Option<&RowMajorMatrix<F>>,
-    //     main: &RowMajorMatrix<F>,
-    //     random_elements: &[EF],
-    // ) -> (RowMajorMatrix<EF>, EF)
-    // where
-    //     F: PrimeField,
-    //     A: MachineAir<F>,
-    // {
-    //     let batch_size = self.logup_batch_size();
-    //     generate_permutation_trace::<F, EF>(
-    //         &self.sends,
-    //         &self.receives,
-    //         preprocessed,
-    //         main,
-    //         random_elements,
-    //         batch_size,
-    //     )
-    // }
-
-    // /// Returns the width of the permutation trace.
-    // #[inline]
-    // #[must_use]
-    // pub fn permutation_width(&self) -> usize {
-    //     let (scoped_sends, scoped_receives) = scoped_interactions(self.sends(), self.receives());
-    //     let empty = Vec::new();
-    //     let local_sends = scoped_sends.get(&InteractionScope::Local).unwrap_or(&empty);
-    //     let local_receives = scoped_receives.get(&InteractionScope::Local).unwrap_or(&empty);
-
-    //     local_permutation_trace_width(
-    //         local_sends.len() + local_receives.len(),
-    //         self.logup_batch_size(),
-    //     )
-    // }
-
     /// Returns the cost of a row in the chip.
     #[inline]
     #[must_use]

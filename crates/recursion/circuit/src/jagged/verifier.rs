@@ -138,9 +138,9 @@ impl<
             evaluation_claims.iter().flatten().flatten().copied().collect::<Vec<_>>();
 
         // For each commit, Rizz needed a commitment to a vector of length a multiple of
-        // 1 << self.pcs.log_stacking_height, and this is achieved by adding a single column of zeroes
-        // as the last matrix of the commitment. We insert these "artificial" zeroes into the evaluation
-        // claims.
+        // 1 << self.pcs.log_stacking_height, and this is achieved by adding a single column of
+        // zeroes as the last matrix of the commitment. We insert these "artificial" zeroes
+        // into the evaluation claims.
         let zero_ext: Ext<JC::F, JC::EF> = builder.constant(JC::EF::zero());
         for insertion_point in insertion_points.iter().rev() {
             column_claims.insert(*insertion_point, zero_ext);

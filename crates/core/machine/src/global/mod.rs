@@ -286,8 +286,8 @@ mod tests {
     use crate::programs::tests::*;
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{ExecutionRecord, Executor, Trace};
-    use sp1_stark::{air::MachineAir, SP1CoreOpts};
+    use sp1_core_executor::{ExecutionRecord, Executor, SP1CoreOpts, Trace};
+    use sp1_stark::air::MachineAir;
 
     #[test]
     fn test_global_generate_trace() {

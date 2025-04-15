@@ -1,6 +1,6 @@
 use super::MemoryChipType;
-use crate::air::WordAirBuilder;
 use crate::{
+    air::WordAirBuilder,
     operations::{BabyBearWordRangeChecker, IsZeroOperation, LtOperationUnsigned},
     utils::next_power_of_two,
 };
@@ -12,9 +12,10 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
-use sp1_core_executor::events::ByteRecord;
-use sp1_core_executor::events::GlobalInteractionEvent;
-use sp1_core_executor::{events::MemoryInitializeFinalizeEvent, ExecutionRecord, Program};
+use sp1_core_executor::{
+    events::{ByteRecord, GlobalInteractionEvent, MemoryInitializeFinalizeEvent},
+    ExecutionRecord, Program,
+};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::{

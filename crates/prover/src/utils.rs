@@ -11,9 +11,9 @@ use std::{
 // use slop_algebra::{AbstractField, PrimeField32};
 // use slop_baby_bear::BabyBear;
 // use slop_symmetric::CryptographicHasher;
-use sp1_core_executor::{Executor, Program};
+use sp1_core_executor::{Executor, Program, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin; //reduce::SP1ReduceProof};
-use sp1_stark::{SP1CoreOpts, Word};
+use sp1_stark::Word;
 // use sp1_recursion_circuit::machine::RootPublicValues;
 // use sp1_recursion_core::{
 //     air::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH},
@@ -24,8 +24,8 @@ use sp1_stark::{SP1CoreOpts, Word};
 use crate::SP1CoreProofData;
 
 /// Get the SP1 vkey BabyBear Poseidon2 digest this reduce proof is representing.
-// pub fn sp1_vkey_digest_babybear(proof: &SP1ReduceProof<BabyBearPoseidon2Outer>) -> [BabyBear; 8] {
-//     let proof = &proof.proof;
+// pub fn sp1_vkey_digest_babybear(proof: &SP1ReduceProof<BabyBearPoseidon2Outer>) -> [BabyBear; 8]
+// {     let proof = &proof.proof;
 //     let pv: &RecursionPublicValues<BabyBear> = proof.public_values.as_slice().borrow();
 //     pv.sp1_vk_digest
 // }

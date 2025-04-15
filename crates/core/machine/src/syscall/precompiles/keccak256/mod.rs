@@ -18,7 +18,8 @@ impl KeccakPermuteChip {
     }
 }
 
-/// Implements the controller for the KeccakPermuteChip, which receives the syscalls and sends it to the chip.
+/// Implements the controller for the KeccakPermuteChip, which receives the syscalls and sends it to
+/// the chip.
 #[derive(Default)]
 pub struct KeccakPermuteControlChip;
 

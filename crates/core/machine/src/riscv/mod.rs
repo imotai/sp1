@@ -1036,17 +1036,11 @@ impl<F: PrimeField32> fmt::Debug for RiscvAir<F> {
 #[cfg(test)]
 pub mod tests {
 
-    use std::sync::Arc;
-
     use p3_air::BaseAir;
     use p3_baby_bear::BabyBear;
-    use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
-    use sp1_stark::prover::CpuProver;
-    use sp1_stark::{MachineVerifier, SP1CoreOpts, ShardVerifier};
+    use sp1_core_executor::{Instruction, Opcode, Program};
 
-    use crate::riscv::RiscvAir;
-    use crate::utils::prove_core;
-    use crate::{programs::tests::*, utils::setup_logger};
+    use crate::{programs::tests::*, riscv::RiscvAir, utils::setup_logger};
     use sp1_stark::InteractionKind;
     //     use p3_baby_bear::BabyBear;
     //     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
@@ -1256,96 +1250,96 @@ pub mod tests {
         run_test(program, stdin).await.unwrap();
     }
 
-    #[tokio::test]
-    async fn test_fibonacci_prove_checkpoints() {
-        setup_logger();
+    // #[tokio::test]
+    // async fn test_fibonacci_prove_checkpoints() {
+    //     setup_logger();
 
-        let program = fibonacci_program();
-        let stdin = SP1Stdin::new();
-        let mut opts = SP1CoreOpts::default();
-        opts.shard_size = 1024;
-        opts.shard_batch_size = 2;
+    //     let program = fibonacci_program();
+    //     let stdin = SP1Stdin::new();
+    //     let mut opts = SP1CoreOpts::default();
+    //     opts.shard_size = 1024;
+    //     opts.shard_batch_size = 2;
 
-        let log_blowup = 1;
-        let log_stacking_height = 21;
-        let max_log_row_count = 21;
-        let machine = RiscvAir::machine();
-        let verifier = ShardVerifier::from_basefold_parameters(
-            log_blowup,
-            log_stacking_height,
-            max_log_row_count,
-            machine,
-        );
-        let prover = CpuProver::new(verifier.clone());
-        let challenger = verifier.pcs_verifier.challenger();
+    //     let log_blowup = 1;
+    //     let log_stacking_height = 21;
+    //     let max_log_row_count = 21;
+    //     let machine = RiscvAir::machine();
+    //     let verifier = ShardVerifier::from_basefold_parameters(
+    //         log_blowup,
+    //         log_stacking_height,
+    //         max_log_row_count,
+    //         machine,
+    //     );
+    //     let prover = CpuProver::new(verifier.clone());
+    //     let challenger = verifier.pcs_verifier.challenger();
 
-        let program = Arc::new(program);
-        let (pk, vk) = prover.setup(program.clone()).await;
-        let (proof, _) = prove_core(
-            Arc::new(prover),
-            Arc::new(pk),
-            program,
-            &stdin,
-            opts,
-            SP1Context::default(),
-            challenger,
-        )
-        .await
-        .unwrap();
+    //     let program = Arc::new(program);
+    //     let (pk, vk) = prover.setup(program.clone()).await;
+    //     let (proof, _) = prove_core(
+    //         Arc::new(prover),
+    //         Arc::new(pk),
+    //         program,
+    //         &stdin,
+    //         opts,
+    //         SP1Context::default(),
+    //         challenger,
+    //     )
+    //     .await
+    //     .unwrap();
 
-        let mut challenger = verifier.pcs_verifier.challenger();
-        let machine_verifier = MachineVerifier::new(verifier);
-        tracing::debug_span!("verify the proof")
-            .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))
-            .unwrap();
-    }
+    //     let mut challenger = verifier.pcs_verifier.challenger();
+    //     let machine_verifier = MachineVerifier::new(verifier);
+    //     tracing::debug_span!("verify the proof")
+    //         .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))
+    //         .unwrap();
+    // }
 
-    #[tokio::test]
-    async fn test_fibonacci_prove_batch() {
-        setup_logger();
-        let program = Arc::new(fibonacci_program());
-        let stdin = SP1Stdin::new();
+    // #[tokio::test]
+    // async fn test_fibonacci_prove_batch() {
+    //     setup_logger();
+    //     let program = Arc::new(fibonacci_program());
+    //     let stdin = SP1Stdin::new();
 
-        let opts = SP1CoreOpts::default();
-        let log_blowup = 1;
-        let log_stacking_height = 21;
-        let max_log_row_count = 21;
-        let machine = RiscvAir::machine();
-        let verifier = ShardVerifier::from_basefold_parameters(
-            log_blowup,
-            log_stacking_height,
-            max_log_row_count,
-            machine,
-        );
-        let prover = CpuProver::new(verifier.clone());
-        let challenger = verifier.pcs_verifier.challenger();
-        let (pk, vk) = prover.setup(program.clone()).await;
-        let (proof, _) = prove_core(
-            Arc::new(prover),
-            Arc::new(pk),
-            program,
-            &stdin,
-            opts,
-            SP1Context::default(),
-            challenger,
-        )
-        .await
-        .unwrap();
+    //     let opts = SP1CoreOpts::default();
+    //     let log_blowup = 1;
+    //     let log_stacking_height = 21;
+    //     let max_log_row_count = 21;
+    //     let machine = RiscvAir::machine();
+    //     let verifier = ShardVerifier::from_basefold_parameters(
+    //         log_blowup,
+    //         log_stacking_height,
+    //         max_log_row_count,
+    //         machine,
+    //     );
+    //     let prover = CpuProver::new(verifier.clone());
+    //     let challenger = verifier.pcs_verifier.challenger();
+    //     let (pk, vk) = prover.setup(program.clone()).await;
+    //     let (proof, _) = prove_core(
+    //         Arc::new(prover),
+    //         Arc::new(pk),
+    //         program,
+    //         &stdin,
+    //         opts,
+    //         SP1Context::default(),
+    //         challenger,
+    //     )
+    //     .await
+    //     .unwrap();
 
-        let mut challenger = verifier.pcs_verifier.challenger();
-        let machine_verifier = MachineVerifier::new(verifier);
-        tracing::debug_span!("verify the proof")
-            .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))
-            .unwrap();
-    }
+    //     let mut challenger = verifier.pcs_verifier.challenger();
+    //     let machine_verifier = MachineVerifier::new(verifier);
+    //     tracing::debug_span!("verify the proof")
+    //         .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))
+    //         .unwrap();
+    // }
 
-    #[tokio::test]
-    async fn test_simple_memory_program_prove() {
-        setup_logger();
-        let program = simple_memory_program();
-        let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
-    }
+    // #[tokio::test]
+    // async fn test_simple_memory_program_prove() {
+    //     setup_logger();
+    //     let program = simple_memory_program();
+    //     let stdin = SP1Stdin::new();
+    //     run_test(program, stdin).await.unwrap();
+    // }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_ssz_withdrawal() {

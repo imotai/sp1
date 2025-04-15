@@ -7,10 +7,9 @@ use sp1_recursion_executor::{
     linear_program, Block, ExecutionRecord, Instruction, RecursionProgram, Runtime, D,
 };
 use sp1_stark::{
-    prover::{CpuProver, MachineProver, MachineProverOpts},
-    BabyBearPoseidon2, Machine, MachineProof, MachineVerifier, MachineVerifierError, ShardVerifier,
+    prover::CpuProverBuilder, BabyBearPoseidon2, Machine, MachineProof, MachineVerifier,
+    MachineVerifierError, ShardVerifier,
 };
-use tokio::sync::mpsc;
 use tracing::Instrument;
 
 use crate::machine::RecursionAir;
@@ -40,7 +39,8 @@ pub async fn run_recursion_test_machines(
     // println!("ran proof gen with machine skinny");
 }
 
-/// Constructs a linear program and runs it on machines that use the wide and skinny Poseidon2 chips.
+/// Constructs a linear program and runs it on machines that use the wide and skinny Poseidon2
+/// chips.
 pub async fn test_recursion_linear_program(instrs: Vec<Instruction<BabyBear>>) {
     run_recursion_test_machines(linear_program(instrs).unwrap(), Vec::new()).await;
 }
@@ -59,29 +59,17 @@ pub async fn run_test_recursion<const DEGREE: usize>(
         max_log_row_count,
         machine,
     );
-    let prover = CpuProver::new(verifier.clone());
+    let prover = CpuProverBuilder::simple(verifier.clone()).build();
 
     let (pk, vk) = prover
-        .setup(Arc::new(program))
+        .setup(Arc::new(program), None)
         .instrument(tracing::debug_span!("setup").or_current())
-        .await;
-    let challenger = verifier.pcs_verifier.challenger();
-    let (proof_tx, mut proof_rx) = tokio::sync::mpsc::unbounded_channel();
-    let machine_prover_opts = MachineProverOpts::default();
-    let prover = MachineProver::new(machine_prover_opts, &Arc::new(prover));
-    let (records_tx, records_rx) = mpsc::channel::<ExecutionRecord<BabyBear>>(1);
-    for record in records {
-        records_tx.send(record).await.unwrap();
-    }
-    drop(records_tx);
-    prover
-        .prove_stream(Arc::new(pk), records_rx, proof_tx, challenger)
-        .instrument(tracing::debug_span!("prove stream"))
         .await
         .unwrap();
-
-    let mut shard_proofs = Vec::new();
-    while let Some(proof) = proof_rx.recv().await {
+    let mut shard_proofs = Vec::with_capacity(records.len());
+    let pk = Arc::new(pk);
+    for record in records {
+        let proof = prover.prove_shard(pk.clone(), record).await.unwrap();
         shard_proofs.push(proof);
     }
 

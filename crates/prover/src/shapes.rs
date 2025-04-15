@@ -1,63 +1,80 @@
-use std::{
-    // collections::{BTreeMap, BTreeSet, HashSet},
-    // fs::File,
-    hash::{DefaultHasher, Hash, Hasher},
-    // panic::{catch_unwind, AssertUnwindSafe},
-    // path::PathBuf,
-    // sync::{Arc, Mutex},
-};
+use slop_baby_bear::BabyBear;
+use sp1_core_machine::riscv::RiscvAir;
+use sp1_stark::prover::CoreProofShape;
 
-// use eyre::Result;
-use serde::{Deserialize, Serialize};
-// use slop_algebra::AbstractField;
-// use slop_baby_bear::BabyBear;
-// use sp1_core_machine::shape::CoreShapeConfig;
-use sp1_recursion_circuit::{SP1CompressWithVkeyShape, SP1DeferredShape, SP1RecursionShape};
-// use sp1_recursion_executor::RecursionProgram;
-// use sp1_recursion_circuit::machine::{
-//     SP1CompressWithVKeyWitnessValues, SP1CompressWithVkeyShape, SP1DeferredShape,
-//     SP1DeferredWitnessValues, SP1RecursionShape, SP1RecursionWitnessValues,
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SP1RecursionShape {
+    // TODO: Add dummy vk somehow
+    pub proof_shapes: Vec<CoreProofShape<BabyBear, RiscvAir<BabyBear>>>,
+    pub max_log_row_count: usize,
+    pub log_blowup: usize,
+    pub log_stacking_height: usize,
+}
+
+// pub struct SP1ReduceShape {
+//     pub proof_shapes: Vec<OrderedShape>,
+// }
+
+// use std::{
+//     // collections::{BTreeMap, BTreeSet, HashSet},
+//     // fs::File,
+//     hash::{DefaultHasher, Hash, Hasher},
+//     // panic::{catch_unwind, AssertUnwindSafe},
+//     // path::PathBuf,
+//     // sync::{Arc, Mutex},
 // };
-// use sp1_recursion_core::{
-//     //     shape::{RecursionShape, RecursionShapeConfig},
-//     RecursionProgram,
-// };
-use sp1_stark::shape::OrderedShape;
-use thiserror::Error;
+
+// // use eyre::Result;
+// use serde::{Deserialize, Serialize};
+// // use slop_algebra::AbstractField;
+// // use slop_baby_bear::BabyBear;
+// // use sp1_core_machine::shape::CoreShapeConfig;
+// use sp1_recursion_circuit::{SP1CompressWithVkeyShape, SP1DeferredShape, SP1RecursionShape};
+// // use sp1_recursion_executor::RecursionProgram;
+// // use sp1_recursion_circuit::machine::{
+// //     SP1CompressWithVKeyWitnessValues, SP1CompressWithVkeyShape, SP1DeferredShape,
+// //     SP1DeferredWitnessValues, SP1RecursionShape, SP1RecursionWitnessValues,
+// // };
+// // use sp1_recursion_core::{
+// //     //     shape::{RecursionShape, RecursionShapeConfig},
+// //     RecursionProgram,
+// // };
+// use sp1_stark::shape::OrderedShape;
+// use thiserror::Error;
 
 // use crate::{components::SP1ProverComponents, CompressAir, HashableKey, SP1Prover, ShrinkAir};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum SP1ProofShape {
-    Recursion(OrderedShape),
-    Compress(Vec<OrderedShape>),
-    Deferred(OrderedShape),
-    Shrink(OrderedShape),
-}
+// #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+// pub enum SP1ProofShape {
+//     Recursion(OrderedShape),
+//     Compress(Vec<OrderedShape>),
+//     Deferred(OrderedShape),
+//     Shrink(OrderedShape),
+// }
 
-#[derive(Debug, Clone, Hash)]
-pub enum SP1CompressProgramShape {
-    Recursion(SP1RecursionShape),
-    Compress(SP1CompressWithVkeyShape),
-    Deferred(SP1DeferredShape),
-    Shrink(SP1CompressWithVkeyShape),
-}
+// #[derive(Debug, Clone, Hash)]
+// pub enum SP1CompressProgramShape {
+//     Recursion(SP1RecursionShape),
+//     Compress(SP1CompressWithVkeyShape),
+//     Deferred(SP1DeferredShape),
+//     Shrink(SP1CompressWithVkeyShape),
+// }
 
-impl SP1CompressProgramShape {
-    pub fn hash_u64(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        Hash::hash(&self, &mut hasher);
-        hasher.finish()
-    }
-}
+// impl SP1CompressProgramShape {
+//     pub fn hash_u64(&self) -> u64 {
+//         let mut hasher = DefaultHasher::new();
+//         Hash::hash(&self, &mut hasher);
+//         hasher.finish()
+//     }
+// }
 
-#[derive(Debug, Error)]
-pub enum VkBuildError {
-    #[error("IO error: {0}")]
-    IO(#[from] std::io::Error),
-    #[error("Serialization error: {0}")]
-    Bincode(#[from] bincode::Error),
-}
+// #[derive(Debug, Error)]
+// pub enum VkBuildError {
+//     #[error("IO error: {0}")]
+//     IO(#[from] std::io::Error),
+//     #[error("Serialization error: {0}")]
+//     Bincode(#[from] bincode::Error),
+// }
 
 // pub fn check_shapes<C: SP1ProverComponents>(
 //     reduce_batch_size: usize,
@@ -68,8 +85,8 @@ pub enum VkBuildError {
 //     let (shape_tx, shape_rx) =
 //         std::sync::mpsc::sync_channel::<SP1CompressProgramShape>(num_compiler_workers);
 //     let (panic_tx, panic_rx) = std::sync::mpsc::channel();
-//     let core_shape_config = prover.core_shape_config.as_ref().expect("core shape config not found");
-//     let recursion_shape_config =
+//     let core_shape_config = prover.core_shape_config.as_ref().expect("core shape config not
+// found");     let recursion_shape_config =
 //         prover.compress_shape_config.as_ref().expect("recursion shape config not found");
 
 //     let shape_rx = Mutex::new(shape_rx);
@@ -151,8 +168,8 @@ pub enum VkBuildError {
 //     let prover = Arc::new(prover);
 
 //     // Get the shape configs.
-//     let core_shape_config = prover.core_shape_config.as_ref().expect("core shape config not found");
-//     let recursion_shape_config =
+//     let core_shape_config = prover.core_shape_config.as_ref().expect("core shape config not
+// found");     let recursion_shape_config =
 //         prover.compress_shape_config.as_ref().expect("recursion shape config not found");
 
 //     let (vk_set, panic_indices, height) = if dummy {
@@ -172,9 +189,10 @@ pub enum VkBuildError {
 //         // Setup the channels.
 //         let (vk_tx, vk_rx) = std::sync::mpsc::channel();
 //         let (shape_tx, shape_rx) =
-//             std::sync::mpsc::sync_channel::<(usize, SP1CompressProgramShape)>(num_compiler_workers);
-//         let (program_tx, program_rx) = std::sync::mpsc::sync_channel(num_setup_workers);
-//         let (panic_tx, panic_rx) = std::sync::mpsc::channel();
+//             std::sync::mpsc::sync_channel::<(usize,
+// SP1CompressProgramShape)>(num_compiler_workers);         let (program_tx, program_rx) =
+// std::sync::mpsc::sync_channel(num_setup_workers);         let (panic_tx, panic_rx) =
+// std::sync::mpsc::channel();
 
 //         // Setup the mutexes.
 //         let shape_rx = Mutex::new(shape_rx);
@@ -218,8 +236,8 @@ pub enum VkBuildError {
 //                             Ok(program) => program_tx.send((i, program, is_shrink)).unwrap(),
 //                             Err(e) => {
 //                                 tracing::warn!(
-//                                     "Program generation failed for shape {} {:?}, with error: {:?}",
-//                                     i,
+//                                     "Program generation failed for shape {} {:?}, with error:
+// {:?}",                                     i,
 //                                     shape,
 //                                     e
 //                                 );
@@ -328,7 +346,8 @@ pub enum VkBuildError {
 //     );
 
 //     // Serialize the vk into an ordering.
-//     let vk_map = vk_set.into_iter().enumerate().map(|(i, vk)| (vk, i)).collect::<BTreeMap<_, _>>();
+//     let vk_map = vk_set.into_iter().enumerate().map(|(i, vk)| (vk, i)).collect::<BTreeMap<_,
+// _>>();
 
 //     // Create the file to store the vk map.
 //     let mut file = if dummy {
@@ -446,18 +465,18 @@ pub enum VkBuildError {
 //                 self.recursion_program(&input)
 //             }
 //             SP1CompressProgramShape::Deferred(shape) => {
-//                 let input = SP1DeferredWitnessValues::dummy(self.compress_prover.machine(), &shape);
-//                 self.deferred_program(&input)
+//                 let input = SP1DeferredWitnessValues::dummy(self.compress_prover.machine(),
+// &shape);                 self.deferred_program(&input)
 //             }
 //             SP1CompressProgramShape::Compress(shape) => {
 //                 let input =
-//                     SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(), &shape);
-//                 self.compress_program(&input)
+//                     SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(),
+// &shape);                 self.compress_program(&input)
 //             }
 //             SP1CompressProgramShape::Shrink(shape) => {
 //                 let input =
-//                     SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(), &shape);
-//                 self.shrink_program(
+//                     SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(),
+// &shape);                 self.shrink_program(
 //                     shrink_shape.unwrap_or_else(ShrinkAir::<BabyBear>::shrink_shape),
 //                     &input,
 //                 )
@@ -479,8 +498,8 @@ pub enum VkBuildError {
 //         let recursion_shape_config = RecursionShapeConfig::default();
 //         let reduce_batch_size = 2;
 //         let all_shapes =
-//             SP1ProofShape::generate(&core_shape_config, &recursion_shape_config, reduce_batch_size)
-//                 .collect::<BTreeSet<_>>();
+//             SP1ProofShape::generate(&core_shape_config, &recursion_shape_config,
+// reduce_batch_size)                 .collect::<BTreeSet<_>>();
 
 //         println!("Number of compress shapes: {}", all_shapes.len());
 //     }

@@ -158,8 +158,7 @@ mod tests {
     use p3_matrix::{dense::RowMajorMatrix, Matrix};
     use sp1_primitives::RC_16_30_U32;
     use sp1_stark::air::MachineAir;
-    use std::array;
-    use std::borrow::Borrow;
+    use std::{array, borrow::Borrow};
 
     use super::*;
 

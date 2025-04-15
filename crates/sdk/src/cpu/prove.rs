@@ -5,8 +5,7 @@
 use anyhow::Result;
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::SP1ProvingKey;
-use sp1_stark::{SP1CoreOpts, SP1ProverOpts};
+use sp1_prover::CpuSP1ProvingKey;
 
 use super::CpuProver;
 use crate::{SP1ProofMode, SP1ProofWithPublicValues};
@@ -15,18 +14,16 @@ use crate::{SP1ProofMode, SP1ProofWithPublicValues};
 ///
 /// This builder provides a typed interface for configuring the SP1 RISC-V prover. The builder is
 /// used for only the [`crate::cpu::CpuProver`] client type.
-pub struct CpuProveBuilder<'a> {
-    pub(crate) prover: &'a CpuProver,
+pub struct CpuProveBuilder {
+    pub(crate) prover: CpuProver,
     pub(crate) mode: SP1ProofMode,
-    pub(crate) context_builder: SP1ContextBuilder<'a>,
-    pub(crate) pk: &'a SP1ProvingKey,
+    pub(crate) context_builder: SP1ContextBuilder<'static>,
+    pub(crate) pk: CpuSP1ProvingKey,
     pub(crate) stdin: SP1Stdin,
-    pub(crate) core_opts: SP1CoreOpts,
-    pub(crate) recursion_opts: SP1CoreOpts,
     pub(crate) mock: bool,
 }
 
-impl CpuProveBuilder<'_> {
+impl CpuProveBuilder {
     /// Set the proof kind to [`SP1ProofKind::Core`] mode.
     ///
     /// # Details
@@ -154,58 +151,58 @@ impl CpuProveBuilder<'_> {
         self
     }
 
-    /// Set the shard size for proving.
-    ///
-    /// # Details
-    /// The value should be 2^16, 2^17, ..., 2^22. You must be careful to set this value
-    /// correctly, as it will affect the memory usage of the prover and the recursion/verification
-    /// complexity. By default, the value is set to some predefined values that are optimized for performance
-    /// based on the available amount of RAM on the system.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
-    ///     .shard_size(1 << 16)
-    ///     .run();
-    /// ```
-    #[must_use]
-    pub fn shard_size(mut self, value: usize) -> Self {
-        assert!(value.is_power_of_two(), "shard size must be a power of 2");
-        self.core_opts.shard_size = value;
-        self
-    }
+    // /// Set the shard size for proving.
+    // ///
+    // /// # Details
+    // /// The value should be 2^16, 2^17, ..., 2^22. You must be careful to set this value
+    // /// correctly, as it will affect the memory usage of the prover and the recursion/verification
+    // /// complexity. By default, the value is set to some predefined values that are optimized for performance
+    // /// based on the available amount of RAM on the system.
+    // ///
+    // /// # Example
+    // /// ```rust,no_run
+    // /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    // ///
+    // /// let elf = &[1, 2, 3];
+    // /// let stdin = SP1Stdin::new();
+    // ///
+    // /// let client = ProverClient::builder().cpu().build();
+    // /// let (pk, vk) = client.setup(elf);
+    // /// let builder = client.prove(&pk, &stdin)
+    // ///     .shard_size(1 << 16)
+    // ///     .run();
+    // /// ```
+    // #[must_use]
+    // pub fn shard_size(mut self, value: usize) -> Self {
+    //     assert!(value.is_power_of_two(), "shard size must be a power of 2");
+    //     self.core_opts.shard_size = value;
+    //     self
+    // }
 
-    /// Set the shard batch size for proving.
-    ///
-    /// # Details
-    /// This is the number of shards that are processed in a single batch in the prover. You should
-    /// probably not change this value unless you know what you are doing.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
-    ///     .shard_batch_size(4)
-    ///     .run();
-    /// ```
-    #[must_use]
-    pub fn shard_batch_size(mut self, value: usize) -> Self {
-        self.core_opts.shard_batch_size = value;
-        self
-    }
+    // /// Set the shard batch size for proving.
+    // ///
+    // /// # Details
+    // /// This is the number of shards that are processed in a single batch in the prover. You should
+    // /// probably not change this value unless you know what you are doing.
+    // ///
+    // /// # Example
+    // /// ```rust,no_run
+    // /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    // ///
+    // /// let elf = &[1, 2, 3];
+    // /// let stdin = SP1Stdin::new();
+    // ///
+    // /// let client = ProverClient::builder().cpu().build();
+    // /// let (pk, vk) = client.setup(elf);
+    // /// let builder = client.prove(&pk, &stdin)
+    // ///     .shard_batch_size(4)
+    // ///     .run();
+    // /// ```
+    // #[must_use]
+    // pub fn shard_batch_size(mut self, value: usize) -> Self {
+    //     self.core_opts.shard_batch_size = value;
+    //     self
+    // }
 
     /// Set the maximum number of cpu cycles to use for execution.
     ///
@@ -281,11 +278,9 @@ impl CpuProveBuilder<'_> {
     ///     .run()
     ///     .unwrap();
     /// ```
-    pub fn run(self) -> Result<SP1ProofWithPublicValues> {
+    pub async fn run(self) -> Result<SP1ProofWithPublicValues> {
         // Get the arguments.
-        let Self { prover, mode, pk, stdin, mut context_builder, core_opts, recursion_opts, mock } =
-            self;
-        let opts = SP1ProverOpts { core_opts, recursion_opts };
+        let Self { prover, mode, pk, stdin, mut context_builder, mock } = self;
         let context = context_builder.build();
 
         // Dump the program and stdin to files for debugging if `SP1_DUMP` is set.
@@ -293,9 +288,9 @@ impl CpuProveBuilder<'_> {
 
         // Run the prover.
         if mock {
-            prover.mock_prove_impl(pk, &stdin, context, mode)
+            prover.mock_prove_impl(pk, stdin, context, mode)
         } else {
-            prover.prove_impl(pk, &stdin, opts, context, mode)
+            prover.prove_impl(pk, stdin, context, mode).await
         }
     }
 }

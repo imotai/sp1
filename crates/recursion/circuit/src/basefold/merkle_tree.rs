@@ -1,5 +1,4 @@
-use crate::CircuitConfig;
-use crate::FieldHasherVariable;
+use crate::{CircuitConfig, FieldHasherVariable};
 use sp1_recursion_compiler::ir::Builder;
 
 pub fn verify<C: CircuitConfig, HV: FieldHasherVariable<C>>(

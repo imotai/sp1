@@ -167,9 +167,11 @@ impl<F: Field> GlobalAccumulationOperation<F> {
         let witnessed_sum_checker_x = SepticExtension::<AB::Expr>::from_base_fn(|idx| {
             local_accumulation.sum_checker.0[idx].into()
         });
-        // Since `sum_checker_x` is degree 3, we constrain it to be equal to `witnessed_sum_checker_x` first.
+        // Since `sum_checker_x` is degree 3, we constrain it to be equal to
+        // `witnessed_sum_checker_x` first.
         builder.assert_septic_ext_eq(sum_checker_x, witnessed_sum_checker_x.clone());
-        // Now we can constrain that when `local_is_real[i] == 1`, the two `sum_checker` values are both zero.
+        // Now we can constrain that when `local_is_real[i] == 1`, the two `sum_checker` values are
+        // both zero.
         builder
             .when(local_is_real)
             .assert_septic_ext_eq(witnessed_sum_checker_x, SepticExtension::<AB::Expr>::zero());

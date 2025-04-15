@@ -9,10 +9,9 @@ use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, Field, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
-use sp1_core_executor::ByteOpcode;
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
@@ -241,7 +240,8 @@ where
             }
         }
         let inverse_32 = AB::F::from_canonical_u32(32).inverse();
-        // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and a multiple of 32.
+        // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and
+        // a multiple of 32.
         builder.send_byte(
             AB::F::from_canonical_u32(ByteOpcode::Range as u32),
             (local.adapter.c()[0] - c_lower_bits) * inverse_32,

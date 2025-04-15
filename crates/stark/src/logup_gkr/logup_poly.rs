@@ -598,25 +598,21 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
 
 #[cfg(test)]
 mod tests {
-    use crate::GkrCircuitLayer;
-    use crate::LogUpGkrRoundProver;
-    use crate::LogupGkrCpuRoundProver;
-    use crate::LogupGkrCpuTraceGenerator;
+    use crate::{
+        GkrCircuitLayer, LogUpGkrRoundProver, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator,
+    };
 
     use super::*;
     use itertools::Itertools;
     use rand::{thread_rng, Rng};
-    use slop_algebra::extension::BinomialExtensionField;
-    use slop_algebra::AbstractField;
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
     use slop_baby_bear::BabyBear;
-    use slop_basefold::BasefoldVerifier;
-    use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
+    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_challenger::FieldChallenger;
     use slop_matrix::dense::RowMajorMatrix;
     use slop_multilinear::{PaddedMle, Padding};
-    use slop_sumcheck::partially_verify_sumcheck_proof;
-    use slop_sumcheck::reduce_sumcheck_to_evaluation;
+    use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
     use slop_tensor::Tensor;
 
     type EF = BinomialExtensionField<BabyBear, 4>;

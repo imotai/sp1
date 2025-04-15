@@ -32,7 +32,7 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
 
-use crate::{operations::field::field_op::FieldOpCols, operations::field::range::FieldLtCols};
+use crate::operations::field::{field_op::FieldOpCols, range::FieldLtCols};
 
 pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDoubleAssignCols<u8, P>>()

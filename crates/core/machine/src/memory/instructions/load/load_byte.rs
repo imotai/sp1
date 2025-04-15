@@ -2,24 +2,26 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
-use std::borrow::{Borrow, BorrowMut};
-use std::mem::size_of;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
+};
 
-use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
-use crate::air::SP1CoreAirBuilder;
-use crate::memory::MemoryAccessCols;
-use crate::operations::AddressOperation;
-use crate::utils::{next_power_of_two, zeroed_f_vec};
+use crate::{
+    adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessCols,
+    operations::AddressOperation,
+    utils::{next_power_of_two, zeroed_f_vec},
+};
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_field::PrimeField32;
-use p3_field::{AbstractField, Field};
+use p3_field::{AbstractField, Field, PrimeField32};
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use sp1_core_executor::DEFAULT_PC_INC;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ByteOpcode, ExecutionRecord, Opcode, Program,
+    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
 use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::air::MachineAir;
@@ -192,8 +194,8 @@ where
         let clk = local.state.clk::<AB>();
 
         // SAFETY: All selectors `is_lb`, `is_lbu` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the selectors, is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode.
+        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
+        // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
         let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
             + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu;
         let is_real = local.is_lb + local.is_lbu;

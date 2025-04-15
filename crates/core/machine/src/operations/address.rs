@@ -75,11 +75,12 @@ impl<F: Field> AddressOperation<F> {
             is_real.clone(),
         );
 
-        // Check `0 <= (addr[0] - 32 * is_zero - 2 * bit1 - bit0) / 4 < 2^14`, where `is_zero = (addr[1] == 0)`
-        // This enforces that `addr[0] - 32 * is_zero - 2 * bit1 - bit0` is a multiple of `4` within `u16`.
-        // This shows `addr[0] - 2 * bit1 - bit0` is a multiple of `4`.
-        // If `is_zero = 1`, then this checks `addr[0] - 32 - 2 * bit1 - bit0` is nonnegative, showing the address bound.
-        // If `is_zero = 0`, this checks `addr[0] - 2 * bit1 - bit0` is within `u16`, which is correct.
+        // Check `0 <= (addr[0] - 32 * is_zero - 2 * bit1 - bit0) / 4 < 2^14`, where `is_zero =
+        // (addr[1] == 0)` This enforces that `addr[0] - 32 * is_zero - 2 * bit1 - bit0` is
+        // a multiple of `4` within `u16`. This shows `addr[0] - 2 * bit1 - bit0` is a
+        // multiple of `4`. If `is_zero = 1`, then this checks `addr[0] - 32 - 2 * bit1 -
+        // bit0` is nonnegative, showing the address bound. If `is_zero = 0`, this checks
+        // `addr[0] - 2 * bit1 - bit0` is within `u16`, which is correct.
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
             (addr.0[0]

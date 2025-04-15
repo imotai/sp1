@@ -1,9 +1,7 @@
 use itertools::Itertools;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::ir::{Builder, Felt};
-use sp1_recursion_executor::{
-    DIGEST_SIZE, {RecursionPublicValues, NUM_PV_ELMS_TO_HASH},
-};
+use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_PV_ELMS_TO_HASH};
 use sp1_stark::{air::PV_DIGEST_NUM_WORDS, Word};
 
 use crate::{hash::Posedion2BabyBearHasherVariable, CircuitConfig};

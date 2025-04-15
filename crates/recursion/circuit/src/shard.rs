@@ -69,7 +69,8 @@ where
     SC: BabyBearFriConfigVariable<C>,
 {
     /// Hash the verifying key + prep domains into a single digest.
-    /// poseidon2( commit[0..8] || pc_start || initial_global_cumulative_sum || prep_domains[N].{log_n, .size, .shift, .g})
+    /// poseidon2( commit[0..8] || pc_start || initial_global_cumulative_sum ||
+    /// prep_domains[N].{log_n, .size, .shift, .g})
     pub fn hash(&self, builder: &mut Builder<C>) -> SC::DigestVariable
     where
         C::F: TwoAdicField,
@@ -386,9 +387,7 @@ mod tests {
         config::InnerConfig,
     };
     use sp1_recursion_machine::test::run_recursion_test_machines;
-    use sp1_stark::{
-        prover::CpuProver, MachineProof, MachineVerifier, MachineVerifyingKey, ShardVerifier,
-    };
+    use sp1_stark::{MachineProof, MachineVerifier, MachineVerifyingKey, ShardVerifier};
 
     use crate::{
         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
@@ -424,7 +423,6 @@ mod tests {
             max_log_row_count,
             machine.clone(),
         );
-        let prover = CpuProver::new(verifier.clone());
 
         // let (pk, vk) = prover.setup(Arc::new(program.clone())).await;
 
@@ -461,7 +459,7 @@ mod tests {
         machine_verifier.verify(&vk, &proof, &mut challenger).unwrap();
 
         let shard_proof = proof.shard_proofs[0].clone();
-        let shape = prover.shape_from_proof(&shard_proof);
+        let shape = machine_verifier.shape_from_proof(&shard_proof);
         let dummy_proof = dummy_shard_proof(
             shape.shard_chips,
             max_log_row_count,

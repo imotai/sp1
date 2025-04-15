@@ -301,7 +301,8 @@ pub enum DslIr<C: Config> {
     CircuitV2BatchFRI(
         Box<(Ext<C::F, C::EF>, Vec<Ext<C::F, C::EF>>, Vec<Ext<C::F, C::EF>>, Vec<Felt<C::F>>)>,
     ),
-    /// Executes full lagrange eval as well as computes field element that corresponds to input bit representation.
+    /// Executes full lagrange eval as well as computes field element that corresponds to input bit
+    /// representation.
     CircuitV2PrefixSumChecks(
         Box<(
             Felt<C::F>,
@@ -375,8 +376,8 @@ impl<C: Config> DslIrProgram<C> {
     ///   - The block's last instruction comes before the first instruction in the parent's next
     ///     sequential block, if it exists.
     ///   - If the sequential blocks mentioned in eiither of the previous two rules do not exist,
-    ///     then the situation is that of two consecutive [`DslIr::Parallel`] instructions `x` and `y`.
-    ///     Then each last instruction of `x` comes before each first instruction of `y`.
+    ///     then the situation is that of two consecutive [`DslIr::Parallel`] instructions `x` and
+    ///     `y`. Then each last instruction of `x` comes before each first instruction of `y`.
     pub unsafe fn new_unchecked(block: DslIrBlock<C>) -> Self {
         Self(block)
     }

@@ -5,7 +5,7 @@ use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::AbstractField;
 use slop_basefold::DefaultBasefoldConfig;
-use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
+use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{
     JaggedBasefoldConfig, JaggedEvalConfig, JaggedPcsVerifier, JaggedPcsVerifierError,
@@ -17,8 +17,8 @@ use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir, Chip, ChipOpenedValues, LogUpEvaluations, LogUpGkrVerifier,
-    LogupGkrVerificationError, Machine, VerifierConstraintFolder,
+    air::MachineAir, prover::CoreProofShape, Chip, ChipOpenedValues, LogUpEvaluations,
+    LogUpGkrVerifier, LogupGkrVerificationError, Machine, VerifierConstraintFolder,
     VerifierPublicValuesConstraintFolder,
 };
 
@@ -77,13 +77,60 @@ pub enum OpeningShapeError {
     MainWidthMismatch(usize, usize),
 }
 
-impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A>
-where
-    A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
-{
+impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
     /// Get a shard verifier from a jagged pcs verifier.
     pub fn new(pcs_verifier: JaggedPcsVerifier<C>, machine: Machine<C::F, A>) -> Self {
         Self { pcs_verifier, machine }
+    }
+
+    /// Get the maximum log row count.
+    #[must_use]
+    #[inline]
+    pub fn max_log_row_count(&self) -> usize {
+        self.pcs_verifier.max_log_row_count
+    }
+
+    /// Get the machine.
+    #[must_use]
+    #[inline]
+    pub fn machine(&self) -> &Machine<C::F, A> {
+        &self.machine
+    }
+
+    /// Get the log stacking height.
+    #[must_use]
+    #[inline]
+    pub fn log_stacking_height(&self) -> u32 {
+        self.pcs_verifier.stacked_pcs_verifier.log_stacking_height
+    }
+
+    /// Get a new challenger.
+    #[must_use]
+    #[inline]
+    pub fn challenger(&self) -> C::Challenger {
+        self.pcs_verifier.challenger()
+    }
+
+    /// Get the shape of a shard proof.
+    pub fn shape_from_proof(&self, proof: &ShardProof<C>) -> CoreProofShape<C::F, A> {
+        let shard_chips = self
+            .machine()
+            .chips()
+            .iter()
+            .filter(|air| proof.shard_chips.contains(&air.name()))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        debug_assert_eq!(shard_chips.len(), proof.shard_chips.len());
+
+        let preprocessed_multiple =
+            proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0].round_evaluations
+                [0]
+            .num_polynomials();
+        let main_multiple = proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[1]
+            .round_evaluations[0]
+            .num_polynomials();
+
+        CoreProofShape { shard_chips, preprocessed_multiple, main_multiple }
     }
 
     /// Compute the padded row adjustment for a chip.
@@ -204,7 +251,10 @@ where
         proof: &ShardProof<C>,
         public_values: &[C::F],
         challenger: &mut C::Challenger,
-    ) -> Result<(), ShardVerifierError<C>> {
+    ) -> Result<(), ShardVerifierError<C>>
+    where
+        A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
+    {
         // Get the random challenge to merge the constraints.
         let alpha = challenger.sample_ext_element::<C::EF>();
 
@@ -358,7 +408,6 @@ where
     ) -> Result<(), ShardVerifierError<C>>
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
-        C::Challenger: Synchronizable,
     {
         let ShardProof {
             shard_chips,
