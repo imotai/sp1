@@ -7,6 +7,7 @@ mod padded;
 mod pcs;
 mod point;
 mod restrict;
+mod virtual_geq;
 
 pub use base::*;
 pub use eval::*;
@@ -17,3 +18,4 @@ pub use padded::*;
 pub use pcs::*;
 pub use point::*;
 pub use restrict::*;
+pub use virtual_geq::*;
