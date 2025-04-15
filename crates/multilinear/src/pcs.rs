@@ -57,6 +57,11 @@ pub trait MultilinearPcsVerifier: 'static + Send + Sync + Clone {
     /// The error type of the verifier.
     type VerifierError: Error;
 
+    /// A default challenger for Fiat-Shamir.
+    ///
+    /// The challenger returned by this method is un-seeded and it's state can be determinstic.
+    fn default_challenger(&self) -> Self::Challenger;
+
     /// Verify an evaluation proofs for multilinear polynomials sent.
     ///
     /// All inputs are assumed to "trusted" in the sense of Fiat-Shamir. Namely, it is assumed that

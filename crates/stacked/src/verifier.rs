@@ -24,6 +24,10 @@ pub struct StackedPcsProof<PcsProof, EF> {
 }
 
 impl<P: MultilinearPcsVerifier> StackedPcsVerifier<P> {
+    pub fn challenger(&self) -> P::Challenger {
+        self.pcs_verifier.default_challenger()
+    }
+
     #[inline]
     pub const fn new(pcs_verifier: P, log_stacking_height: u32) -> Self {
         Self { pcs_verifier, log_stacking_height }

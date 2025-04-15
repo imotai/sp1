@@ -92,6 +92,10 @@ impl<B: BasefoldConfig> MultilinearPcsVerifier for BasefoldVerifier<B> {
     type Challenger = B::Challenger;
     type VerifierError = BaseFoldVerifierError<B>;
 
+    fn default_challenger(&self) -> Self::Challenger {
+        B::default_challenger(self)
+    }
+
     fn verify_trusted_evaluations(
         &self,
         commitments: &[Self::Commitment],

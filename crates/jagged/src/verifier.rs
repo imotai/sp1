@@ -41,6 +41,10 @@ pub enum JaggedPcsVerifierError<C: JaggedConfig> {
 }
 
 impl<C: JaggedConfig> JaggedPcsVerifier<C> {
+    pub fn challenger(&self) -> C::Challenger {
+        self.stacked_pcs_verifier.challenger()
+    }
+
     pub fn verify_trusted_evaluations(
         &self,
         commitments: &[C::Commitment],

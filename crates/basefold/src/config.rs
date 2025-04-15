@@ -42,11 +42,12 @@ pub trait BasefoldConfig:
         + Send
         + Sync
         + Clone;
+
+    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::Challenger;
 }
 
 pub trait DefaultBasefoldConfig: BasefoldConfig + Sized {
     fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self>;
-    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::Challenger;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -64,24 +65,24 @@ impl<F, EF, Tcs, Challenger> Default for BasefoldConfigImpl<F, EF, Tcs, Challeng
     }
 }
 
-impl<F, EF, Tcs, Challenger> BasefoldConfig for BasefoldConfigImpl<F, EF, Tcs, Challenger>
-where
-    F: TwoAdicField,
-    EF: ExtensionField<F>,
-    Tcs: TensorCs<Data = F>,
-    Challenger: FieldChallenger<F>
-        + GrindingChallenger
-        + CanObserve<<Tcs as TensorCs>::Commitment>
-        + 'static
-        + Send
-        + Sync,
-{
-    type F = F;
-    type EF = EF;
-    type Tcs = Tcs;
-    type Commitment = <Tcs as TensorCs>::Commitment;
-    type Challenger = Challenger;
-}
+// impl<F, EF, Tcs, Challenger> BasefoldConfig for BasefoldConfigImpl<F, EF, Tcs, Challenger>
+// where
+//     F: TwoAdicField,
+//     EF: ExtensionField<F>,
+//     Tcs: TensorCs<Data = F>,
+//     Challenger: FieldChallenger<F>
+//         + GrindingChallenger
+//         + CanObserve<<Tcs as TensorCs>::Commitment>
+//         + 'static
+//         + Send
+//         + Sync,
+// {
+//     type F = F;
+//     type EF = EF;
+//     type Tcs = Tcs;
+//     type Commitment = <Tcs as TensorCs>::Commitment;
+//     type Challenger = Challenger;
+// }
 
 pub type Poseidon2BabyBear16BasefoldConfig = BasefoldConfigImpl<
     BabyBear,
@@ -90,17 +91,25 @@ pub type Poseidon2BabyBear16BasefoldConfig = BasefoldConfigImpl<
     DuplexChallenger<BabyBear, Perm, 16, 8>,
 >;
 
-impl DefaultBasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
-    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
-        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 100);
-        let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
-        BasefoldVerifier::<Self> { fri_config, tcs }
-    }
+impl BasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
+    type F = BabyBear;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+    type Commitment = <MerkleTreeTcs<Poseidon2BabyBearConfig> as TensorCs>::Commitment;
+    type Tcs = MerkleTreeTcs<Poseidon2BabyBearConfig>;
+    type Challenger = DuplexChallenger<BabyBear, Perm, 16, 8>;
 
     fn default_challenger(
         _verifier: &BasefoldVerifier<Self>,
     ) -> DuplexChallenger<BabyBear, Perm, 16, 8> {
         let default_perm = my_bb_16_perm();
         DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm)
+    }
+}
+
+impl DefaultBasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
+    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
+        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 100);
+        let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
+        BasefoldVerifier::<Self> { fri_config, tcs }
     }
 }

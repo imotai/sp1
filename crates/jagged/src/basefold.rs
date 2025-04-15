@@ -96,10 +96,6 @@ where
         let stacked_pcs_verifier = StackedPcsVerifier::new(basefold_verifer, log_stacking_height);
         Self { stacked_pcs_verifier, max_log_row_count, jagged_evaluator: E::default() }
     }
-
-    pub fn challenger(&self) -> BC::Challenger {
-        self.stacked_pcs_verifier.pcs_verifier.challenger()
-    }
 }
 
 impl<Bpc, JP, E> JaggedProver<JaggedBasefoldProverComponents<Bpc, JP, E>>

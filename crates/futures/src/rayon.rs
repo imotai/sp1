@@ -1,17 +1,13 @@
 use std::any::Any;
+use std::backtrace::Backtrace;
 use std::sync::OnceLock;
-use std::{
-    backtrace::Backtrace,
-    future::Future,
-    marker::PhantomData,
-    pin::Pin,
-    task::{Context, Poll},
-};
 
-use pin_project::pin_project;
+use futures::stream::AbortHandle;
 use thiserror::Error;
 
 use tokio::sync::oneshot;
+
+use crate::handle::TaskHandle;
 
 static GLOBAL_POOL: OnceLock<()> = OnceLock::new();
 
@@ -40,44 +36,42 @@ pub enum TaskPool {
     Local(rayon::ThreadPool),
 }
 
-pub fn spawn<F, R>(func: F) -> TaskHandle<'static, R>
+/// Spawn a task on the global pool.
+pub fn spawn<F, R>(func: F) -> TaskHandle<R, TaskJoinError>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
     GLOBAL_POOL.get_or_init(init_global_pool);
     let (tx, rx) = oneshot::channel();
+    let (abort_handle, _) = AbortHandle::new_pair();
     rayon::spawn(move || {
         let result = func();
-        tx.send(result).ok();
+        tx.send(Ok(result)).ok();
     });
-    TaskHandle { rx, _marker: PhantomData }
+    TaskHandle::new(rx, abort_handle)
 }
 
-#[pin_project]
-pub struct TaskHandle<'a, T> {
-    #[pin]
-    rx: oneshot::Receiver<T>,
-    _marker: PhantomData<&'a T>,
+/// Spawn a task that can be aborted using a signle handle.
+pub fn spawn_abortable<F, R>(func: F) -> TaskHandle<R, TaskJoinError>
+where
+    F: FnOnce(AbortHandle) -> R + Send + 'static,
+    R: Send + 'static,
+{
+    GLOBAL_POOL.get_or_init(init_global_pool);
+    let (tx, rx) = oneshot::channel();
+    let (abort_handle, abort_registration) = AbortHandle::new_pair();
+    rayon::spawn(move || {
+        let handle = abort_registration.handle();
+        let result = func(handle);
+        tx.send(Ok(result)).ok();
+    });
+    TaskHandle::new(rx, abort_handle)
 }
 
 #[derive(Error, Debug)]
 #[error("TaskJoinError")]
 pub struct TaskJoinError(#[from] oneshot::error::RecvError);
-
-impl<'a, T> Future for TaskHandle<'a, T> {
-    type Output = Result<T, TaskJoinError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
-        let rx = this.rx;
-        match oneshot::Receiver::poll(rx, cx) {
-            Poll::Ready(Ok(result)) => Poll::Ready(Ok(result)),
-            Poll::Ready(Err(e)) => Poll::Ready(Err(TaskJoinError(e))),
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
 
 #[derive(Error, Debug)]
 #[error("CpuTaskPoolBuilderError: {0}")]
@@ -115,6 +109,5 @@ mod tests {
             tx.send(()).unwrap();
         });
         rx.await.unwrap();
-        // handle.await.unwrap();
     }
 }
