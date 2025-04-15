@@ -9,7 +9,7 @@ categories.workspace = true
 
 [dependencies]
 csl-cuda = { workspace = true }
-csl-machine = { workspace = true }
+csl-prover = { workspace = true }
 csl-tracing = { workspace = true }
 csl-jagged = { workspace = true }
 
@@ -36,7 +36,7 @@ prettytable = "0.10.0"
 bigint-rug = [
     "sp1-core-executor/bigint-rug",
     "sp1-core-machine/bigint-rug",
-    "csl-machine/bigint-rug",
+    "csl-prover/bigint-rug",
 ]
 
 [lints]

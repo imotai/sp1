@@ -61,6 +61,7 @@ where
         &self,
         program: Arc<<A as MachineAir<F>>::Program>,
         max_log_row_count: usize,
+        prover_permits: Arc<Semaphore>,
     ) -> Traces<F, TaskScope> {
         // This function's contents are copied from the DefaultTraceGenerator.
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
@@ -78,6 +79,9 @@ where
             tx.send(named_preprocessed_traces).ok().unwrap();
         });
 
+        // Wait for a prover to be available.
+        let permit = prover_permits.acquire_owned().await.unwrap();
+
         // Wait for the traces to be generated and copy them to the target backend.
         // Wait for traces.
         let named_preprocessed_traces = rx.await.unwrap();
@@ -92,6 +96,7 @@ where
             .await
             .into_iter()
             .collect::<BTreeMap<_, _>>();
+        drop(permit);
         Traces { named_traces }
     }
 

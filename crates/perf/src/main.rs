@@ -4,7 +4,7 @@ use csl_tracing::init_tracer;
 use sp1_core_machine::io::SP1Stdin;
 
 const FIBONACCI_LONG_ELF: &[u8] =
-    include_bytes!("../../machine/programs/fibonacci/riscv32im-succinct-zkvm-elf");
+    include_bytes!("../../prover/programs/fibonacci/riscv32im-succinct-zkvm-elf");
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -65,7 +65,7 @@ async fn main() {
 
     let measurement =
         csl_cuda::spawn(
-            move |t| async move { make_measurement(&name, &elf, &stdin, stage, t).await },
+            move |t| async move { make_measurement(&name, &elf, stdin, stage, t).await },
         )
         .await
         .unwrap()

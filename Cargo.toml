@@ -20,7 +20,7 @@ members = [
     "crates/basefold",
     "crates/jagged",
     "crates/zerocheck",
-    "crates/machine",
+    "crates/prover",
     "crates/tracing",
     "crates/perf",
     "crates/tracegen",
@@ -51,7 +51,7 @@ csl-jagged = { path = "crates/jagged" }
 csl-air = { path = "crates/air" }
 csl-zerocheck = { path = "crates/zerocheck" }
 csl-tracing = { path = "crates/tracing" }
-csl-machine = { path = "crates/machine" }
+csl-prover = { path = "crates/prover" }
 csl-perf = { path = "crates/perf" }
 csl-tracegen = { path = "crates/tracegen" }
 csl-logup-gkr = { path = "crates/logup-gkr" }

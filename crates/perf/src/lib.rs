@@ -1,31 +1,16 @@
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use clap::ValueEnum;
-use components::CudaSP1ProverComponents;
 use csl_cuda::TaskScope;
-use csl_machine::*;
-use slop_baby_bear::BabyBear;
+use csl_prover::{local_gpu_opts, SP1CudaProverBuilder};
 use sp1_core_executor::SP1Context;
-use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir};
-use sp1_prover::{CompressAir, SP1CoreProofData, SP1Prover};
-use sp1_recursion_circuit::{
-    basefold::{
-        stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
-        RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier,
-    },
-    jagged::{
-        RecursiveJaggedConfigImpl, RecursiveJaggedEvalSumcheckConfig, RecursiveJaggedPcsVerifier,
-    },
-    shard::RecursiveShardVerifier,
-};
-use sp1_recursion_compiler::config::InnerConfig;
-use sp1_stark::{BabyBearPoseidon2, ShardVerifier};
+use sp1_core_machine::io::SP1Stdin;
+use sp1_prover::{local::LocalProver, SP1CoreProofData};
 use tokio::time::Instant;
 use tracing::Instrument;
 
 pub use report::{write_measurements_to_csv, Measurement};
 
-mod components;
 mod report;
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -37,118 +22,13 @@ pub enum Stage {
 pub async fn make_measurement(
     name: &str,
     elf: &[u8],
-    stdin: &SP1Stdin,
+    stdin: SP1Stdin,
     stage: Stage,
     t: TaskScope,
 ) -> Measurement {
-    let core_log_blowup = 1;
-    let core_log_stacking_height = 21;
-    let core_max_log_row_count = 22;
-
-    let compress_log_blowup = 1;
-    let compress_log_stacking_height = 20;
-    let compress_max_log_row_count = 20;
-
-    let machine = RiscvAir::machine();
-
-    type SC = BabyBearPoseidon2;
-    type C = InnerConfig;
-
-    // Make a new SP1 prover
-
-    let core_verifier = ShardVerifier::from_basefold_parameters(
-        core_log_blowup,
-        core_log_stacking_height,
-        core_max_log_row_count,
-        machine.clone(),
-    );
-
-    let recursive_core_verifier = {
-        let recursive_verifier = RecursiveBasefoldVerifier {
-            fri_config: core_verifier.pcs_verifier.stacked_pcs_verifier.pcs_verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
-        };
-        let recursive_verifier =
-            RecursiveStackedPcsVerifier::new(recursive_verifier, core_log_stacking_height);
-
-        let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<
-            SC,
-            C,
-            RecursiveJaggedConfigImpl<
-                C,
-                SC,
-                RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-            >,
-        > {
-            stacked_pcs_verifier: recursive_verifier,
-            max_log_row_count: core_max_log_row_count,
-            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
-        };
-
-        RecursiveShardVerifier {
-            machine,
-            pcs_verifier: recursive_jagged_verifier,
-            _phantom: std::marker::PhantomData,
-        }
-    };
-
-    let machine = CompressAir::<BabyBear>::machine_wide_with_all_chips();
-    let compress_shard_verifier = ShardVerifier::from_basefold_parameters(
-        compress_log_blowup,
-        compress_log_stacking_height,
-        compress_max_log_row_count,
-        machine.clone(),
-    );
-
-    let recursive_compress_verifier = {
-        let recursive_verifier = RecursiveBasefoldVerifier {
-            fri_config: compress_shard_verifier
-                .pcs_verifier
-                .stacked_pcs_verifier
-                .pcs_verifier
-                .fri_config,
-            tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
-        };
-        let recursive_verifier =
-            RecursiveStackedPcsVerifier::new(recursive_verifier, compress_log_stacking_height);
-
-        let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<
-            SC,
-            C,
-            RecursiveJaggedConfigImpl<
-                C,
-                SC,
-                RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-            >,
-        > {
-            stacked_pcs_verifier: recursive_verifier,
-            max_log_row_count: compress_max_log_row_count,
-            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
-        };
-
-        RecursiveShardVerifier {
-            machine,
-            pcs_verifier: recursive_jagged_verifier,
-            _phantom: std::marker::PhantomData,
-        }
-    };
-
-    let core_prover = Arc::new(new_cuda_prover_sumcheck_eval(core_verifier.clone(), t.clone()));
-
-    let compress_prover =
-        Arc::new(new_cuda_prover_sumcheck_eval(compress_shard_verifier.clone(), t.clone()));
-    let prover = SP1Prover::<CudaSP1ProverComponents>::new(
-        core_prover,
-        core_verifier,
-        recursive_core_verifier,
-        compress_prover,
-        compress_shard_verifier,
-        recursive_compress_verifier,
-    );
-
-    let prover = Arc::new(prover);
-
-    let opts = gpu_prover_opts();
+    let sp1_prover = SP1CudaProverBuilder::new(t.clone()).build();
+    let opts = local_gpu_opts();
+    let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
     let time = Instant::now();
     let (pk, program, vk) =
@@ -157,11 +37,10 @@ pub async fn make_measurement(
 
     let pk = Arc::new(pk);
 
-    tracing::info!("opts shard batch size: {}", opts.core_opts.shard_batch_size);
     let time = Instant::now();
     let core_proof = prover
         .clone()
-        .prove_core(pk, program, stdin, opts, SP1Context::default())
+        .prove_core(pk.pk.clone(), program, stdin, SP1Context::default())
         .instrument(tracing::info_span!("prove core"))
         .await
         .unwrap();
@@ -169,6 +48,19 @@ pub async fn make_measurement(
 
     let cycles = core_proof.cycles as usize;
     let num_shards = core_proof.proof.0.len();
+
+    // // Serialize the proof and vk and save to a file.
+    // let vk_bytes = bincode::serialize(&vk).unwrap();
+    // let core_machine_proof = sp1_stark::MachineProof::<BabyBearPoseidon2> {
+    //     shard_proofs: core_proof.proof.0.clone(),
+    // };
+    // let proof_bytes = bincode::serialize(&core_machine_proof).unwrap();
+    // std::fs::write("vk.bin", vk_bytes).unwrap();
+    // std::fs::write("proof.bin", proof_bytes).unwrap();
+
+    // Verify the proof
+    let core_proof_data = SP1CoreProofData(core_proof.proof.0.clone());
+    prover.prover().verify(&core_proof_data, &vk).unwrap();
 
     if let Stage::Core = stage {
         return Measurement {
@@ -182,36 +74,23 @@ pub async fn make_measurement(
         };
     }
 
-    // // Serialize the proof and vk and save to a file.
-    // let vk_bytes = bincode::serialize(&vk).unwrap();
-    // let core_machine_proof = sp1_stark::MachineProof::<BabyBearPoseidon2> {
-    //     shard_proofs: core_proof.proof.0.clone(),
-    // };
-    // let proof_bytes = bincode::serialize(&core_machine_proof).unwrap();
-    // std::fs::write("vk.bin", vk_bytes).unwrap();
-    // std::fs::write("proof.bin", proof_bytes).unwrap();
-
-    // Verify the proof
-    let core_proof_data = SP1CoreProofData(core_proof.proof.0.clone());
-    prover.verify(&core_proof_data, &vk).unwrap();
-
     // Make the compress proof.
     let time = Instant::now();
     let compress_proof = prover
         .clone()
-        .compress(&vk, core_proof, vec![], opts)
+        .compress(&vk, core_proof, vec![])
         .instrument(tracing::info_span!("compress"))
         .await
         .unwrap();
     let compress_time = time.elapsed();
 
     // Verify the compress proof
-    prover.verify_compressed(&compress_proof, &vk).unwrap();
+    prover.prover().verify_compressed(&compress_proof, &vk).unwrap();
 
-    // Serialize the compress proof and measure it's size.
-    let compress_proof_bytes = bincode::serialize(&compress_proof).unwrap();
-    let compress_proof_size = compress_proof_bytes.len();
-    tracing::info!("compress proof size: {}", compress_proof_size);
+    // // Serialize the compress proof and measure it's size.
+    // // let compress_proof_bytes = bincode::serialize(&compress_proof).unwrap();
+    // // let compress_proof_size = compress_proof_bytes.len();
+    // // tracing::info!("compress proof size: {}", compress_proof_size);
 
     Measurement {
         name: name.to_string(),
