@@ -139,6 +139,34 @@ extern "C" void *partial_lagrange_baby_bear_extension()
     return (void *)partial_lagrange_naive<bb31_t, bb31_extension_t>;
 }
 
+
+template <typename F>
+__global__ void partial_geq_naive(
+    F *__restrict__ output,
+    size_t threshold,
+    size_t total_num_variables)
+{
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < (1 << total_num_variables); i += blockDim.x * gridDim.x)
+    {
+        F value;
+        if (i >= threshold)
+        {
+            value = F::one();
+        }
+        else
+        {
+            value = F::zero();
+        }
+
+        F::store(output, i, value);
+    }
+}
+
+extern "C" void *partial_geq_baby_bear()
+{
+    return (void *)partial_geq_naive<bb31_t>;
+}
+
 template <typename F, typename EF >
 __global__ void fixLastVariable(
     const F *input,

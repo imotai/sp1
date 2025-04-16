@@ -40,6 +40,15 @@ tokio = { workspace = true }
 # for perf binary
 clap = { version = "4.5.7", features = ["derive", "env"] }
 bincode = "1.3.3"
+rand = {workspace = true}
+itertools = {workspace = true}
+p3-uni-stark = {workspace = true}
+slop-air = {workspace = true}
+slop-algebra = {workspace = true}
+slop-jagged = {workspace = true}
+slop-matrix = {workspace = true}
+slop-sumcheck = {workspace = true}
+slop-alloc = {workspace = true}
 
 [features]
 default = []

@@ -49,6 +49,25 @@ __global__ void logupGkrFixLastVariableCircuitLayer(
             outputDimension = dimension - 1;
         }
 
+
+
+        // if (oddNumRows[interactionIdx]) {
+        //     printf("InteractionIdx = %d\n", interactionIdx);
+        // }
+        size_t interactionHeight = (startIndices[interactionIdx + 1] - startIndices[interactionIdx]);
+
+        size_t isOdd = interactionHeight & 1;
+
+        bool isLast = (interactionHeight  -1) == rowIdx;
+        
+
+        if ((isOdd==1) && isLast)
+        {
+            // If the number of rows is odd, we need to set the last row to the padding value
+            CircuitValues<EF> paddingValues = CircuitValues<EF>::paddingValues();
+            paddingValues.store(outputLayer, restrictedIndex, 1U, outputHeight);
+        }
+
         // Write the output interaction data and dimension. Do it only once per pair of points.
         if (parity == 0)
         {

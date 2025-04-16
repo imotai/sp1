@@ -30,6 +30,8 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 sp1-core-machine = { workspace = true }
+slop-matrix = { workspace = true }
+itertools = {workspace = true}
 
 rand = { workspace = true }
 

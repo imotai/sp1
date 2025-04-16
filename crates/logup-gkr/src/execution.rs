@@ -126,17 +126,17 @@ where
                 let real_height = input_data.traces.get(name).unwrap().num_real_entries();
                 let height = std::cmp::max(real_height, 1);
                 let height = height.div_ceil(4);
-                dimensions.push(height.ilog2() + 1);
+                dimensions.push(sp1_stark::log2_ceil_usize(height) + 1);
                 vec![height as u32; interactions.num_interactions]
             })
             .collect::<Vec<_>>();
-        let mut interaction_start_indices = once(0)
+        let interaction_start_indices = once(0)
             .chain(interaction_row_counts.iter().scan(0u32, |acc, x| {
                 *acc += x;
                 Some(*acc)
             }))
             .collect::<Buffer<_>>();
-        let height = interaction_start_indices.pop().unwrap() as usize;
+        let height = interaction_start_indices.last().copied().unwrap() as usize;
 
         let interaction_start_indices =
             interaction_start_indices.to_device_in(&backend).await.unwrap();
@@ -272,13 +272,13 @@ where
         let output_interaction_row_counts =
             layer.interaction_row_counts.iter().map(|count| count.div_ceil(2)).collect::<Vec<_>>();
         // The output indices is just the prefix sum of the interaction row counts.
-        let mut output_interaction_start_indices = once(0)
+        let output_interaction_start_indices = once(0)
             .chain(output_interaction_row_counts.iter().scan(0u32, |acc, x| {
                 *acc += x;
                 Some(*acc)
             }))
             .collect::<Buffer<_>>();
-        let output_height = output_interaction_start_indices.pop().unwrap() as usize;
+        let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
         let output_interaction_start_indices =
             output_interaction_start_indices.to_device_in(backend).await.unwrap();
 
@@ -340,13 +340,13 @@ where
         let output_interaction_row_counts =
             layer.interaction_row_counts.iter().map(|count| count.div_ceil(2)).collect::<Vec<_>>();
         // The output indices is just the prefix sum of the interaction row counts.
-        let mut output_interaction_start_indices = once(0)
+        let output_interaction_start_indices = once(0)
             .chain(output_interaction_row_counts.iter().scan(0u32, |acc, x| {
                 *acc += x;
                 Some(*acc)
             }))
             .collect::<Buffer<_>>();
-        let output_height = output_interaction_start_indices.pop().unwrap() as usize;
+        let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
         let output_interaction_start_indices =
             output_interaction_start_indices.to_device_in(backend).await.unwrap();
 

@@ -87,7 +87,7 @@ sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", b
 sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
-
+p3-uni-stark = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
 # slop-baby-bear = { path = "../slop/crates/baby-bear" }
@@ -119,6 +119,7 @@ sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "ta
 # sp1-recursion-compiler = { path = "../sp1-wip/crates/recursion/compiler" }
 # sp1-recursion-machine = { path = "../sp1-wip/crates/recursion/machine" }
 # sp1-curves = { path = "../sp1-wip/crates/curves" }
+# sp1-recursion-executor = { path = "../sp1-wip/crates/recursion/executor" }
 
 # async/concurrency
 tokio = { version = "1.42.0" }

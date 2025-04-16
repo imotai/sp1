@@ -1,5 +1,7 @@
 use csl_sys::{
-    mle::{partial_lagrange_baby_bear, partial_lagrange_baby_bear_extension},
+    mle::{
+        partial_geq_baby_bear, partial_lagrange_baby_bear, partial_lagrange_baby_bear_extension,
+    },
     runtime::KernelPtr,
 };
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
@@ -17,6 +19,12 @@ use crate::{args, TaskScope};
 ///
 pub unsafe trait PartialLagrangeKernel<F: Field> {
     fn partial_lagrange_kernel() -> KernelPtr;
+}
+
+/// # Safety
+///
+pub unsafe trait PartialGeqKernel<F: Field> {
+    fn partial_geq_kernel() -> KernelPtr;
 }
 
 impl<F: Field> MleBaseBackend<F> for TaskScope {
@@ -96,6 +104,39 @@ unsafe impl PartialLagrangeKernel<BinomialExtensionField<BabyBear, 4>> for TaskS
     }
 }
 
+unsafe impl PartialGeqKernel<BabyBear> for TaskScope {
+    fn partial_geq_kernel() -> KernelPtr {
+        unsafe { partial_geq_baby_bear() }
+    }
+}
+
+pub async fn partial_geq<F: Field>(
+    threshold: usize,
+    num_variables: usize,
+    backend: &TaskScope,
+) -> Tensor<F, TaskScope>
+where
+    TaskScope: PartialGeqKernel<F>,
+{
+    let mut eq = backend.uninit_mle(1, 1 << num_variables);
+    unsafe {
+        eq.assume_init();
+        let block_dim = 256;
+        let grid_dim = ((1 << num_variables) as u32).div_ceil(block_dim);
+        let args = args!(eq.as_mut_ptr(), threshold, num_variables);
+        backend
+            .launch_kernel(
+                <TaskScope as PartialGeqKernel<F>>::partial_geq_kernel(),
+                grid_dim,
+                block_dim,
+                &args,
+                0,
+            )
+            .unwrap();
+    }
+    eq
+}
+
 impl<F: Field, EF: ExtensionField<F>> MleFixedAtZeroBackend<F, EF> for TaskScope
 where
     TaskScope: MleEvaluationBackend<F, EF>,
@@ -116,7 +157,9 @@ mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_alloc::IntoHost;
     use slop_baby_bear::BabyBear;
-    use slop_multilinear::{Mle, Point};
+    use slop_multilinear::{full_geq, Mle, Point};
+
+    use crate::partial_geq;
 
     #[tokio::test]
     async fn test_mle_eval() {
@@ -148,5 +191,40 @@ mod tests {
 
         let host_evals = mle.eval_at(&point).await.to_vec();
         assert_eq!(evals, host_evals);
+    }
+
+    #[tokio::test]
+    async fn test_partial_geq() {
+        let mut rng = rand::thread_rng();
+
+        type F = BabyBear;
+        type EF = BinomialExtensionField<F, 4>;
+
+        let num_variables = 14;
+        let point = Point::<EF>::rand(&mut rng, num_variables);
+
+        for threshold in 0..1 << num_variables {
+            let point_ref = &point;
+            let eval = crate::task()
+                .await
+                .unwrap()
+                .run(|t| async move {
+                    let partial_geq = partial_geq::<F>(threshold, num_variables as usize, &t).await;
+                    let d_point = point_ref.copy_into(&t);
+                    let eval = Mle::new(partial_geq).eval_at(&d_point).await;
+                    eval.into_evaluations().into_host().await.unwrap()
+                })
+                .await
+                .await
+                .unwrap();
+
+            let copied_eval = eval.into_host().await.unwrap();
+
+            let host_evals =
+                full_geq(&Point::<EF>::from_usize(threshold, num_variables as usize), &point);
+            let eval = copied_eval.as_slice().to_vec();
+            assert_eq!(eval.len(), 1);
+            assert_eq!(eval[0], host_evals);
+        }
     }
 }

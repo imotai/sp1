@@ -104,6 +104,7 @@ mod tests {
     use slop_alloc::IntoHost;
     use slop_baby_bear::BabyBear;
     use slop_multilinear::{Mle, MleEval, PaddedMle, Padding, Point};
+    use slop_tensor::Tensor;
 
     use crate::ToDevice;
 
@@ -114,7 +115,7 @@ mod tests {
         type F = BabyBear;
         type EF = BinomialExtensionField<F, 4>;
 
-        let mle = Mle::<F>::rand(&mut rng, 100, 16);
+        let mle = Mle::new(Tensor::<F>::rand(&mut rng, [(1 << 16) + 2, 100]));
         let point = Point::<EF>::rand(&mut rng, 18);
 
         let padding_values: MleEval<F> = vec![rng.gen::<F>(); 100].into();

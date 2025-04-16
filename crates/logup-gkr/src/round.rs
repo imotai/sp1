@@ -347,21 +347,20 @@ where
                     };
                 }
 
-                // If this is not the last layer, we need to fix the last variable and create a
-                // new circuit layer.
                 let output_interaction_row_counts = circuit
                     .interaction_row_counts
                     .iter()
                     .map(|count| count.div_ceil(2))
                     .collect::<Vec<_>>();
                 // The output indices is just the prefix sum of the interaction row counts.
-                let mut output_interaction_start_indices = once(0)
+                let output_interaction_start_indices = once(0)
                     .chain(output_interaction_row_counts.iter().scan(0u32, |acc, x| {
                         *acc += x;
                         Some(*acc)
                     }))
                     .collect::<Buffer<_>>();
-                let output_height = output_interaction_start_indices.pop().unwrap() as usize;
+                let output_height =
+                    output_interaction_start_indices.last().copied().unwrap() as usize;
                 let output_interaction_start_indices =
                     output_interaction_start_indices.to_device_in(backend).await.unwrap();
 
@@ -617,13 +616,13 @@ where
             .map(|count| count.div_ceil(2))
             .collect::<Vec<_>>();
         // The output indices is just the prefix sum of the interaction row counts.
-        let mut output_interaction_start_indices = once(0)
+        let output_interaction_start_indices = once(0)
             .chain(output_interaction_row_counts.iter().scan(0u32, |acc, x| {
                 *acc += x;
                 Some(*acc)
             }))
             .collect::<Buffer<_>>();
-        let output_height = output_interaction_start_indices.pop().unwrap() as usize;
+        let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
         let output_interaction_start_indices =
             output_interaction_start_indices.to_device_in(backend).await.unwrap();
 
@@ -848,18 +847,18 @@ mod tests {
 
         let num_interaction_variables = interaction_row_counts.len().next_power_of_two().ilog2();
 
-        let mut interaction_start_indices = once(0)
+        let interaction_start_indices = once(0)
             .chain(interaction_row_counts.iter().scan(0u32, |acc, x| {
                 *acc += x;
                 Some(*acc)
             }))
             .collect::<Buffer<_>>();
-        let height = interaction_start_indices.pop().unwrap() as usize;
+        let height = interaction_start_indices.last().copied().unwrap() as usize;
         let interaction_data = interaction_row_counts
             .iter()
             .enumerate()
             .flat_map(|(i, c)| {
-                let dimension = c.ilog2() + 1;
+                let dimension = c.next_power_of_two().ilog2() + 1;
                 let data = i as u32 + (dimension << 24);
                 vec![data; *c as usize]
             })
@@ -896,18 +895,18 @@ mod tests {
 
         let num_interaction_variables = interaction_row_counts.len().next_power_of_two().ilog2();
 
-        let mut interaction_start_indices = once(0)
+        let interaction_start_indices = once(0)
             .chain(interaction_row_counts.iter().scan(0u32, |acc, x| {
                 *acc += x;
                 Some(*acc)
             }))
             .collect::<Buffer<_>>();
-        let height = interaction_start_indices.pop().unwrap() as usize;
+        let height = interaction_start_indices.last().copied().unwrap() as usize;
         let interaction_data = interaction_row_counts
             .iter()
             .enumerate()
             .flat_map(|(i, c)| {
-                let dimension = c.ilog2() + 1;
+                let dimension = c.next_power_of_two().ilog2() + 1;
                 let data = i as u32 + (dimension << 24);
                 vec![data; *c as usize]
             })
@@ -995,7 +994,7 @@ mod tests {
         let mut rng = thread_rng();
 
         let interaction_row_counts: Vec<u32> =
-            vec![1 << 8, 1 << 4, 1 << 10, 1 << 10, 1 << 8, 1 << 10, 1 << 8];
+            vec![(1 << 8) + 2, (1 << 4), (1 << 10), 1 << 10, 1 << 8, 1 << 10, (1 << 8) + 2];
         let (layer, test_data) =
             generate_test_data(&mut rng, interaction_row_counts, Some(12)).await;
         let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
@@ -1082,8 +1081,16 @@ mod tests {
         let verifier = BasefoldVerifier::<Config>::new(1);
         let get_challenger = move || verifier.clone().challenger();
 
-        let interaction_row_counts: Vec<u32> =
-            vec![1 << 10, 1 << 8, 1 << 10, 1 << 8, 1 << 6, 1 << 10, 1 << 8, 1 << 6];
+        let interaction_row_counts: Vec<u32> = vec![
+            1 << 10,
+            (1 << 8) + 2,
+            (1 << 10) + 2,
+            1 << 8,
+            1 << 6,
+            1 << 10,
+            1 << 8,
+            (1 << 6) + 2,
+        ];
         let (layer, test_data) =
             generate_test_data(&mut rng, interaction_row_counts, Some(15)).await;
         let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
@@ -1202,7 +1209,8 @@ mod tests {
         type TraceGenerator = LogUpGkrCudaTraceGenerator<BabyBear, EF, ()>;
         let trace_generator = TraceGenerator::default();
 
-        let interaction_row_counts: Vec<u32> = vec![1 << 10, 1 << 10, 1 << 6, 1 << 8, 1 << 10];
+        let interaction_row_counts: Vec<u32> =
+            vec![(1 << 10) + 32, (1 << 10) - 2, 1 << 6, 1 << 8, (1 << 10) + 2];
         let (layer, test_data) = generate_test_data(&mut rng, interaction_row_counts, None).await;
         let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
 
@@ -1311,8 +1319,8 @@ mod tests {
         let prover = LogupGkrCudaRoundProver::<BabyBear, EF, Challenger>::default();
 
         let interaction_row_counts: Vec<u32> =
-            [vec![1 << 0; 50], vec![1 << 16; 2], vec![1 << 10; 10]].concat();
-        let layer = random_first_layer(&mut rng, interaction_row_counts, Some(20)).await;
+            [vec![(1 << 0) + 14; 50], vec![(1 << 16) - 12; 2], vec![(1 << 10) + 2; 10]].concat();
+        let layer = random_first_layer(&mut rng, interaction_row_counts, Some(21)).await;
         println!("generated test data");
 
         let FirstGkrLayer {
@@ -1418,7 +1426,9 @@ mod tests {
             let mut numerator_eval = first_numerator_eval;
             let mut denominator_eval = first_denominator_eval;
             let mut eval_point = first_eval_point;
-            for round_proof in round_proofs.iter() {
+            let num_proofs = round_proofs.len();
+            println!("Num rounds: {}", num_proofs);
+            for (i, round_proof) in round_proofs.iter().enumerate() {
                 // Get the batching challenge for combining the claims.
                 let lambda = challenger.sample_ext_element::<EF>();
                 // Check that the claimed sum is consitent with the previous round values.
@@ -1436,7 +1446,8 @@ mod tests {
                     round_proof.denominator_0 * round_proof.denominator_1;
                 let expected_final_eval =
                     eq_eval * (numerator_sumcheck_eval * lambda + denominator_sumcheck_eval);
-                assert_eq!(final_eval, expected_final_eval);
+
+                assert_eq!(final_eval, expected_final_eval, "Failure in round {i}");
 
                 // Observe the prover message.
                 challenger.observe_ext_element(round_proof.numerator_0);

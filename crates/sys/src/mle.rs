@@ -18,4 +18,6 @@ extern "C" {
 
     pub fn mle_fix_last_variable_in_place_baby_bear_base() -> KernelPtr;
     pub fn mle_fix_last_variable_in_place_baby_bear_extension() -> KernelPtr;
+
+    pub fn partial_geq_baby_bear() -> KernelPtr;
 }

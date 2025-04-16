@@ -798,13 +798,19 @@ dependencies = [
  "csl-tracegen",
  "csl-tracing",
  "csl-zerocheck",
+ "itertools 0.14.0",
+ "p3-uni-stark",
+ "rand 0.8.5",
  "serde",
  "slop-air",
  "slop-algebra",
+ "slop-alloc",
  "slop-baby-bear",
  "slop-basefold",
  "slop-jagged",
+ "slop-matrix",
  "slop-multilinear",
+ "slop-sumcheck",
  "slop-tensor",
  "sp1-core-executor",
  "sp1-core-machine",
@@ -884,12 +890,14 @@ dependencies = [
  "csl-air",
  "csl-cuda",
  "futures",
+ "itertools 0.14.0",
  "once_cell",
  "rand 0.8.5",
  "slop-air",
  "slop-algebra",
  "slop-alloc",
  "slop-baby-bear",
+ "slop-matrix",
  "slop-multilinear",
  "slop-sumcheck",
  "slop-tensor",
@@ -3453,7 +3461,7 @@ dependencies = [
 [[package]]
 name = "slop-air"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-air",
 ]
@@ -3461,7 +3469,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-field",
  "serde",
@@ -3470,7 +3478,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "itertools 0.14.0",
  "serde",
@@ -3482,7 +3490,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-baby-bear",
 ]
@@ -3490,7 +3498,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -3517,7 +3525,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "clap",
  "derive-where",
@@ -3551,7 +3559,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-challenger",
  "slop-algebra",
@@ -3561,7 +3569,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-commit",
  "serde",
@@ -3573,7 +3581,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-dft",
  "serde",
@@ -3586,7 +3594,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-fri",
 ]
@@ -3594,7 +3602,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "crossbeam",
  "futures",
@@ -3607,7 +3615,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "derive-where",
  "futures",
@@ -3638,7 +3646,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-matrix",
 ]
@@ -3646,7 +3654,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-maybe-rayon",
 ]
@@ -3654,7 +3662,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "derive-where",
  "itertools 0.14.0",
@@ -3677,7 +3685,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "derive-where",
  "futures",
@@ -3701,7 +3709,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -3709,7 +3717,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "derive-where",
  "futures",
@@ -3728,7 +3736,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "futures",
  "itertools 0.14.0",
@@ -3748,7 +3756,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-symmetric",
 ]
@@ -3756,7 +3764,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -3776,7 +3784,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#368870e068a564b541aa72c728ce7a0cbf235863"
+source = "git+https://github.com/succinctlabs/slop#cf7806d9ce450bf8658281fb96674d8cbb4b105a"
 dependencies = [
  "p3-util",
  "tracing-forest",
@@ -3815,7 +3823,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3853,7 +3861,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -3890,6 +3898,7 @@ dependencies = [
  "serde_json",
  "size",
  "slop-futures",
+ "slop-multilinear",
  "snowbridge-amcl",
  "sp1-core-executor",
  "sp1-curves",
@@ -3912,7 +3921,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -3933,7 +3942,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -3942,7 +3951,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "bincode",
  "hex",
@@ -3960,7 +3969,7 @@ dependencies = [
 [[package]]
 name = "sp1-prover"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4010,7 +4019,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-circuit"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "derive-where",
  "hashbrown 0.14.5",
@@ -4060,7 +4069,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-compiler"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -4084,7 +4093,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -4093,7 +4102,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "backtrace",
  "cbindgen",
@@ -4137,7 +4146,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-gnark-ffi"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4162,7 +4171,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "cbindgen",
  "cc",
@@ -4200,7 +4209,7 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#d7861b6e930a09db46479cf4e0a539f1ba19cc46"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=tamir/gkr-unified-clean#422c7b30f7992895ddcb7d22ad9dab35be16c9e4"
 dependencies = [
  "arrayref",
  "derive-where",

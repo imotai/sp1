@@ -223,8 +223,15 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
                     num_air_blocks.min(2),
                 )
             } else {
-                let y = num_air_blocks.next_power_of_two().min(256 / interpolated_main_rows_height);
-                (1, num_air_blocks.div_ceil(y), interpolated_main_rows_height, y)
+                let y = num_air_blocks
+                    .next_power_of_two()
+                    .min((256 / interpolated_main_rows_height).next_power_of_two());
+                (
+                    1,
+                    num_air_blocks.div_ceil(y),
+                    interpolated_main_rows_height.next_power_of_two(),
+                    y,
+                )
             };
 
         let grid_size = (grid_size_x, grid_size_y, 3);
@@ -332,10 +339,17 @@ where
             let eval_start = start >> 1;
             let eval_end = end.div_ceil(2);
 
-            let interpolated_main_rows =
-                interpolate_rows(main_values.inner().as_ref().unwrap(), eval_start..eval_end);
+            let interpolated_main_rows = interpolate_rows(
+                main_values.inner().as_ref().unwrap(),
+                eval_start..eval_end,
+                height.div_ceil(2),
+            );
             let interpolated_preprocessed_rows = preprocessed_values.as_ref().map(|values| {
-                interpolate_rows(values.inner().as_ref().unwrap(), eval_start..eval_end)
+                interpolate_rows(
+                    values.inner().as_ref().unwrap(),
+                    eval_start..eval_end,
+                    height.div_ceil(2),
+                )
             });
             let output = self
                 .constraint_poly_eval(
@@ -360,6 +374,7 @@ where
 fn interpolate_rows<K: Field>(
     values: &Mle<K, TaskScope>,
     range: Range<usize>,
+    global_height: usize,
 ) -> Tensor<K, TaskScope>
 where
     TaskScope: InterpolateRowKernel<K>,
@@ -385,7 +400,8 @@ where
         height,
         width,
         interpolated_rows_height,
-        offset
+        offset,
+        global_height
     );
     unsafe {
         interpolated_rows.assume_init();
@@ -409,6 +425,7 @@ mod tests {
 
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_baby_bear::BabyBear;
+    use slop_matrix::dense::RowMajorMatrix;
     use slop_multilinear::Mle;
     use slop_tensor::Tensor;
 
@@ -419,34 +436,58 @@ mod tests {
         type F = BabyBear;
         type EF = BinomialExtensionField<F, 4>;
 
-        let main_height = 1 << 10;
-        let main_width = 1;
+        let main_height = (1 << 7) - 1;
+        let main_width = 3;
 
         let main_mle = Mle::<EF>::new(Tensor::rand(&mut rng, [main_height, main_width]));
         let main_guts = main_mle.guts().as_slice();
 
         let (expected_y_0s, (expected_y_2s, expected_y_4s)): (Vec<_>, (Vec<_>, Vec<_>)) = main_guts
-            .chunks_exact(2)
-            .map(|chunk| {
-                (
-                    chunk[0],
-                    (
-                        EF::from_canonical_usize(2) * (chunk[1] - chunk[0]) + chunk[0],
-                        EF::from_canonical_usize(4) * (chunk[1] - chunk[0]) + chunk[0],
-                    ),
-                )
+            .chunks(2 * main_width)
+            // .take(main_height.div_ceil(2) - 1)
+            .skip(1)
+            .flat_map(|chunk| {
+                let (chunk_0, mut chunk_1) = chunk.split_at(main_width);
+                let zero_chunk = vec![EF::zero(); main_width];
+                if chunk_1.len() != main_width {
+                    chunk_1 = zero_chunk.as_slice();
+                }
+                chunk_0
+                    .iter()
+                    .zip(chunk_1)
+                    .map(move |(e_0, e_1)| {
+                        (
+                            *e_0,
+                            (
+                                EF::from_canonical_usize(2) * (*e_1 - *e_0) + *e_0,
+                                EF::from_canonical_usize(4) * (*e_1 - *e_0) + *e_0,
+                            ),
+                        )
+                    })
+                    .collect::<Vec<_>>()
             })
             .unzip();
+
+        let expected_y_0s = RowMajorMatrix::new(expected_y_0s, main_width).transpose().values;
+        let expected_y_2s = RowMajorMatrix::new(expected_y_2s, main_width).transpose().values;
+        let expected_y_4s = RowMajorMatrix::new(expected_y_4s, main_width).transpose().values;
 
         let interpolated_rows_host = csl_cuda::task()
             .await
             .unwrap()
             .run(|t| async move {
                 let main_mle_device = t.into_device(main_mle).await.unwrap();
-                let interpolated_rows =
-                    interpolate_rows::<EF>(&main_mle_device, 0..main_height / 2);
+                let interpolated_rows = interpolate_rows::<EF>(
+                    &main_mle_device,
+                    1..main_height.div_ceil(2),
+                    main_height.div_ceil(2),
+                );
                 let interpolated_rows_host = interpolated_rows.storage.into_host().await.unwrap();
-                Tensor::from(interpolated_rows_host).reshape([3, main_width, main_height / 2])
+                Tensor::from(interpolated_rows_host).reshape([
+                    3,
+                    main_width,
+                    main_height.div_ceil(2) - 1,
+                ])
             })
             .await
             .await
@@ -455,8 +496,21 @@ mod tests {
         let calculated_y_0s = interpolated_rows_host.get(0).unwrap().as_slice();
         let calculated_y_2s = interpolated_rows_host.get(1).unwrap().as_slice();
         let calculated_y_4s = interpolated_rows_host.get(2).unwrap().as_slice();
-        assert_eq!(calculated_y_0s, expected_y_0s);
-        assert_eq!(calculated_y_2s, expected_y_2s);
-        assert_eq!(calculated_y_4s, expected_y_4s);
+
+        for (i, (calculated_y_0, expected_y_0)) in
+            calculated_y_0s.iter().zip(expected_y_0s.iter()).enumerate()
+        {
+            assert_eq!(*calculated_y_0, *expected_y_0, "Mismatch at index {}", i);
+        }
+        for (i, (calculated_y_2, expected_y_2)) in
+            calculated_y_2s.iter().zip(expected_y_2s.iter()).enumerate()
+        {
+            assert_eq!(*calculated_y_2, *expected_y_2, "Mismatch at index {}", i);
+        }
+        for (i, (calculated_y_4, expected_y_4)) in
+            calculated_y_4s.iter().zip(expected_y_4s.iter()).enumerate()
+        {
+            assert_eq!(*calculated_y_4, *expected_y_4, "Mismatch at index {}", i);
+        }
     }
 }

@@ -16,3 +16,7 @@ extern "C" void *mle_fold_baby_bear_ext_ext();
 
 extern "C" void *mle_fix_last_variable_in_place_baby_bear_base();
 extern "C" void *mle_fix_last_variable_in_place_baby_bear_extension();
+
+
+extern "C" void *partial_geq_baby_bear();
+// extern "C" void *partial_geq_naive_baby_bear_extension();

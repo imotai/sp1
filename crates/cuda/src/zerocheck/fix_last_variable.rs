@@ -71,6 +71,7 @@ where
             poly.eq_adjustment,
             poly.geq_value,
             poly.padded_row_adjustment,
+            poly.virtual_geq.fix_last_variable(alpha),
         );
     }
 
@@ -98,5 +99,6 @@ where
         eq_adjustment,
         geq_value,
         poly.padded_row_adjustment,
+        poly.virtual_geq.fix_last_variable(alpha),
     )
 }

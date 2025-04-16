@@ -110,7 +110,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_jagged_populate() {
-        let row_counts_rounds = vec![vec![1 << 8, 1 << 9], vec![1 << 10]];
+        let row_counts_rounds = vec![vec![(1 << 8) + 12, 1 << 9], vec![(1 << 10) + 12]];
         let column_counts_rounds = vec![vec![3, 2], vec![1]];
         let max_log_row_count = 11;
 

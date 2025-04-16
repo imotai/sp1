@@ -415,9 +415,9 @@ mod tests {
 
         for (log_stacking_height, max_log_row_count) in [(10, 10), (11, 11), (16, 16), (20, 20)] {
             let row_counts_rounds = vec![
-                vec![1 << (max_log_row_count - 2), 1 << max_log_row_count],
+                vec![(1 << (max_log_row_count - 2)) + 8, 1 << max_log_row_count],
                 vec![
-                    1 << (max_log_row_count - 6),
+                    (1 << (max_log_row_count - 6)) + 12,
                     1 << (max_log_row_count),
                     1 << (max_log_row_count - 1),
                 ],
