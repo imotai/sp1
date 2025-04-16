@@ -39,7 +39,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
 
         let mut rows = wrapped_rows.unwrap();
         let nb_rows = rows.len();
-        let mut padded_nb_rows = nb_rows.next_power_of_two();
+        let mut padded_nb_rows = nb_rows.next_multiple_of(32);
         if padded_nb_rows == 2 || padded_nb_rows == 1 {
             padded_nb_rows = 4;
         }

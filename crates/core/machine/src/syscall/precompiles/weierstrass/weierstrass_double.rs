@@ -227,7 +227,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let num_rows = input
             .fixed_log2_rows::<F, _>(self)
             .map(|x| 1 << x)
-            .unwrap_or(std::cmp::max(events.len().next_power_of_two(), 4));
+            .unwrap_or(std::cmp::max(events.len().next_multiple_of(32), 4));
         let mut values = zeroed_f_vec(num_rows * num_cols);
         let chunk_size = 64;
 

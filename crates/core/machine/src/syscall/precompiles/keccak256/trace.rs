@@ -59,7 +59,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
     ) -> RowMajorMatrix<F> {
         let events = input.get_precompile_events(SyscallCode::KECCAK_PERMUTE);
         let num_events = events.len();
-        let num_rows = (num_events * NUM_ROUNDS).next_power_of_two();
+        let num_rows = (num_events * NUM_ROUNDS).next_multiple_of(32);
         let chunk_size = 8;
         let values = vec![0u32; num_rows * NUM_KECCAK_MEM_COLS];
         let mut values = unsafe { std::mem::transmute::<Vec<u32>, Vec<F>>(values) };
