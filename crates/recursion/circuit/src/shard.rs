@@ -376,18 +376,24 @@ pub type RecursiveVerifierPublicValuesConstraintFolder<'a, C> =
 
 #[cfg(test)]
 mod tests {
-    use std::marker::PhantomData;
+    use std::{marker::PhantomData, sync::Arc};
 
     use slop_algebra::extension::BinomialExtensionField;
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_jagged::BabyBearPoseidon2;
-    use sp1_core_machine::{riscv::RiscvAir, utils::setup_logger};
+    use sp1_core_executor::{Program, SP1Context, SP1CoreOpts};
+    use sp1_core_machine::{
+        io::SP1Stdin,
+        riscv::RiscvAir,
+        utils::{prove_core, setup_logger},
+    };
     use sp1_recursion_compiler::{
         circuit::{AsmCompiler, AsmConfig},
         config::InnerConfig,
     };
     use sp1_recursion_machine::test::run_recursion_test_machines;
-    use sp1_stark::{MachineProof, MachineVerifier, MachineVerifyingKey, ShardVerifier};
+    use sp1_stark::{prover::CpuShardProver, MachineVerifier, ShardVerifier};
+    use tokio::sync::Semaphore;
 
     use crate::{
         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
@@ -424,32 +430,27 @@ mod tests {
             machine.clone(),
         );
 
-        // let (pk, vk) = prover.setup(Arc::new(program.clone())).await;
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let program = Arc::new(Program::from(elf).unwrap());
+        let prover = Arc::new(CpuShardProver::new(verifier.clone()));
 
-        // let challenger = verifier.pcs_verifier.challenger();
-
-        // let (proof, _) = prove_core(
-        //     Arc::new(prover),
-        //     Arc::new(pk),
-        //     Arc::new(program.clone()),
-        //     &SP1Stdin::new(),
-        //     SP1CoreOpts::default(),
-        //     SP1Context::default(),
-        //     challenger,
-        // )
-        // .await
-        // .unwrap();
-
-        // let shard_proof = proof.shard_proofs[0].clone();
+        let (pk, vk) = prover.setup(program.clone(), Arc::new(Semaphore::new(1))).await;
+        let pk = Arc::new(pk);
+        let (proof, _) = prove_core(
+            verifier.clone(),
+            prover,
+            pk,
+            program,
+            SP1Stdin::default(),
+            SP1CoreOpts::default(),
+            SP1Context::default(),
+        )
+        .await
+        .unwrap();
 
         let mut builder = Builder::<C>::default();
 
         // Get the vk and shard proof from the test artifacts.
-        let vk_bytes = include_bytes!("../test_artifacts/vk.bin");
-        let proof_bytes = include_bytes!("../test_artifacts/proof.bin");
-
-        let vk = bincode::deserialize::<MachineVerifyingKey<SC>>(vk_bytes.as_slice()).unwrap();
-        let proof = bincode::deserialize::<MachineProof<SC>>(proof_bytes.as_slice()).unwrap();
 
         let mut initial_challenger = verifier.pcs_verifier.challenger();
         vk.observe_into(&mut initial_challenger);

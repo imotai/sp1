@@ -266,6 +266,16 @@ where
 
         // Verify the zerocheck proof.
         verify_sumcheck::<C, SC>(builder, challenger, zerocheck_proof);
+
+        // Observe the openings
+        for opening in opened_values.chips.iter() {
+            for eval in opening.preprocessed.local.iter() {
+                challenger.observe_ext_element(builder, *eval);
+            }
+            for eval in opening.main.local.iter() {
+                challenger.observe_ext_element(builder, *eval);
+            }
+        }
     }
 }
 

@@ -42,12 +42,6 @@ pub struct MachineProver<C: MachineProverComponents> {
     inner: Arc<MachineProverInner<C>>,
 }
 
-// impl<C: MachineProverComponents> Clone for MachineProver<C> {
-//     fn clone(&self) -> Self {
-//         Self { inner: self.inner.clone() }
-//     }
-// }
-
 /// An error for a machine prover request.
 #[derive(Debug, Clone, Error)]
 pub enum MachineProverError {

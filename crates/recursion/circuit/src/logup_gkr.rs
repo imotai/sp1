@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use sp1_recursion_compiler::prelude::*;
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{collections::BTreeSet, marker::PhantomData, ops::Deref};
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 use slop_baby_bear::BabyBear;
@@ -157,6 +157,15 @@ where
         for ((chip, openings), threshold) in
             shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees)
         {
+            // Observe the opening
+            if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
+                for eval in prep_eval.deref().iter() {
+                    challenger.observe_ext_element(builder, *eval);
+                }
+            }
+            for eval in openings.main_trace_evaluations.deref().iter() {
+                challenger.observe_ext_element(builder, *eval);
+            }
             let threshold = threshold.iter().map(|x| SymbolicExt::from(*x)).collect::<Point<_>>();
             let geq_eval = full_geq(&threshold, &point_extended);
             let ChipEvaluation { main_trace_evaluations, preprocessed_trace_evaluations } =

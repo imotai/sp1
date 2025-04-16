@@ -305,6 +305,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 main_trace_evaluations: main_opening,
                 preprocessed_trace_evaluations: prep_opening,
             } = chip_openings.get(&air.name()).unwrap();
+
             let main_trace = traces.get(&air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
 
@@ -420,6 +421,14 @@ impl<C: MachineProverComponents> ShardProver<C> {
             .zip_eq(component_poly_evals)
             .map(|(air, evals)| {
                 let (preprocessed_evals, main_evals) = evals.split_at(air.preprocessed_width());
+
+                // Observe the openings
+                for eval in preprocessed_evals.iter() {
+                    challenger.observe_ext_element(*eval);
+                }
+                for eval in main_evals.iter() {
+                    challenger.observe_ext_element(*eval);
+                }
 
                 let preprocessed =
                     AirOpenedValues { local: preprocessed_evals.to_vec(), next: vec![] };

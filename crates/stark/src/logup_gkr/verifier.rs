@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{collections::BTreeSet, marker::PhantomData, ops::Deref};
 
 use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};
@@ -186,6 +186,16 @@ where
         for ((chip, openings), threshold) in
             shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees)
         {
+            // Observe the opening
+            if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
+                for eval in prep_eval.deref().iter() {
+                    challenger.observe_ext_element(*eval);
+                }
+            }
+            for eval in openings.main_trace_evaluations.deref().iter() {
+                challenger.observe_ext_element(*eval);
+            }
+
             let geq_eval = full_geq(threshold, &point_extended);
             let ChipEvaluation { main_trace_evaluations, preprocessed_trace_evaluations } =
                 openings;

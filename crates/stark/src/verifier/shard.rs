@@ -356,6 +356,16 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger)
             .map_err(|e| ShardVerifierError::ConstraintsCheckFailed(e))?;
 
+        // Observe the openings
+        for opening in opened_values.chips.iter() {
+            for eval in opening.preprocessed.local.iter() {
+                challenger.observe_ext_element(*eval);
+            }
+            for eval in opening.main.local.iter() {
+                challenger.observe_ext_element(*eval);
+            }
+        }
+
         Ok(())
     }
 

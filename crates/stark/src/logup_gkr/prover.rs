@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
+    ops::Deref,
 };
 
 use futures::future::OptionFuture;
@@ -256,6 +257,16 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
                 main_trace_evaluations: main_evaluation,
                 preprocessed_trace_evaluations: preprocessed_evaluation,
             };
+            // Observe the openings.
+            if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
+                for eval in prep_eval.deref().iter() {
+                    challenger.observe_ext_element(*eval);
+                }
+            }
+            for eval in openings.main_trace_evaluations.deref().iter() {
+                challenger.observe_ext_element(*eval);
+            }
+
             chip_evaluations.insert(name, openings);
         }
 
