@@ -18,11 +18,11 @@ pub enum SP1ProverError {
     RecursionProverError(MachineProverError),
     /// Recursion program error.
     #[error("Recursion program error: {0}")]
-    RecursionProgramError(#[from] RecursionPrrogramError),
+    RecursionProgramError(#[from] RecursionProgramError),
 }
 
 #[derive(Debug, Error)]
-pub enum RecursionPrrogramError {
+pub enum RecursionProgramError {
     #[error("Compilation error")]
     CompilationError(#[from] oneshot::error::RecvError),
     // Recursion witness error.
