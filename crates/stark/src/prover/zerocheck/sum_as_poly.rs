@@ -186,6 +186,7 @@ where
                         let main_row_1 = if main_row.len() == 2 * num_main_columns {
                             &main_row[num_main_columns..num_main_columns * 2]
                         } else {
+                            // Provide a dummy row if there is an odd number of rows.
                             &vec![K::zero(); num_main_columns]
                         };
 
@@ -207,9 +208,14 @@ where
                                     ..preprocessed_row_0_start_idx + num_preprocessed_columns];
                             let preprocessed_row_1_start_idx =
                                 preprocessed_row_0_start_idx + num_preprocessed_columns;
-                            let preprocessed_row_1 = &preprocessed_values
-                                [preprocessed_row_1_start_idx
-                                    ..preprocessed_row_1_start_idx + num_preprocessed_columns];
+                            let preprocessed_row_1 =
+                                if preprocessed_values.len() != preprocessed_row_1_start_idx {
+                                    &preprocessed_values[preprocessed_row_1_start_idx
+                                        ..preprocessed_row_1_start_idx + num_preprocessed_columns]
+                                } else {
+                                    // Provide padding values if there is an odd number of rows.
+                                    &vec![K::zero(); num_preprocessed_columns]
+                                };
 
                             interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
                                 preprocessed_row_0,
