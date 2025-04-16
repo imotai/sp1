@@ -19,7 +19,7 @@ use sp1_stark::air::{MachineAir, SP1AirBuilder};
 use crate::{
     adapter::{register::r_type::RTypeReader, state::CPUState},
     operations::SubOperation,
-    utils::{next_power_of_two, zeroed_f_vec},
+    utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
 /// The number of main trace columns for `SubChip`.
@@ -57,7 +57,7 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let nb_rows =
-            next_power_of_two(input.sub_events.len(), input.fixed_log2_rows::<F, _>(self));
+            next_multiple_of_32(input.sub_events.len(), input.fixed_log2_rows::<F, _>(self));
         Some(nb_rows)
     }
 

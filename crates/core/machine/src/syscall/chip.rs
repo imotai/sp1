@@ -1,4 +1,4 @@
-use crate::utils::next_power_of_two;
+use crate::utils::next_multiple_of_32;
 use core::fmt;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -126,7 +126,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
         };
         let nb_rows = events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
         Some(padded_nb_rows)
     }
 

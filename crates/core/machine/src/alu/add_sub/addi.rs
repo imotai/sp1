@@ -19,7 +19,7 @@ use sp1_stark::air::{MachineAir, SP1AirBuilder};
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
     operations::AddOperation,
-    utils::{next_power_of_two, zeroed_f_vec},
+    utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
 /// The number of main trace columns for `AddiChip`.
@@ -57,7 +57,7 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let nb_rows =
-            next_power_of_two(input.addi_events.len(), input.fixed_log2_rows::<F, _>(self));
+            next_multiple_of_32(input.addi_events.len(), input.fixed_log2_rows::<F, _>(self));
         Some(nb_rows)
     }
 

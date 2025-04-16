@@ -13,7 +13,7 @@ use sp1_core_executor::{
 use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::{air::MachineAir, Word};
 
-use crate::utils::{next_power_of_two, zeroed_f_vec};
+use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
 use super::{
     columns::{SyscallInstrColumns, NUM_SYSCALL_INSTR_COLS},
@@ -37,7 +37,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
         let chunk_size = std::cmp::max((input.syscall_events.len()) / num_cpus::get(), 1);
         let nb_rows = input.syscall_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_SYSCALL_INSTR_COLS);
 
         let blu_events = values

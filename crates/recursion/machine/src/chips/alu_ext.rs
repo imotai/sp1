@@ -4,7 +4,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_algebra::{extension::BinomiallyExtendable, AbstractField, Field, PrimeField32};
 use slop_baby_bear::BabyBear;
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
-use sp1_core_machine::utils::next_power_of_two;
+use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_executor::{
     Address, Block, ExecutionRecord, ExtAluInstr, ExtAluIo, Instruction, RecursionProgram, D,
@@ -76,7 +76,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ExtAluChip {
 
     fn preprocessed_num_rows(&self, _program: &Self::Program, instrs_len: usize) -> Option<usize> {
         let nb_rows = instrs_len.div_ceil(NUM_EXT_ALU_ENTRIES_PER_ROW);
-        Some(next_power_of_two(nb_rows, None))
+        Some(next_multiple_of_32(nb_rows, None))
     }
 
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
@@ -126,7 +126,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ExtAluChip {
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let events = &input.ext_alu_events;
         let nb_rows = events.len().div_ceil(NUM_EXT_ALU_ENTRIES_PER_ROW);
-        Some(next_power_of_two(nb_rows, None))
+        Some(next_multiple_of_32(nb_rows, None))
     }
 
     fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {

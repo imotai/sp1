@@ -3,7 +3,7 @@ use p3_air::{Air, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_algebra::PrimeField32;
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
-use sp1_core_machine::utils::{next_power_of_two, pad_rows_fixed};
+use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_executor::{
     instruction::{HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr},
@@ -86,7 +86,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryChip<F> {
             .collect::<Vec<_>>();
 
         let nb_rows = accesses.len().div_ceil(NUM_VAR_MEM_ENTRIES_PER_ROW);
-        let padded_nb_rows = next_power_of_two(nb_rows, None);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, None);
         let mut values = vec![F::zero(); padded_nb_rows * NUM_MEM_PREPROCESSED_INIT_COLS];
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.

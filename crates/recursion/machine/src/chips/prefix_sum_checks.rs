@@ -5,7 +5,7 @@ use p3_air::{Air, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
-use sp1_core_machine::utils::{next_power_of_two, pad_rows_fixed};
+use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_executor::{
     Address, Block, ExecutionRecord, Instruction, PrefixSumChecksEvent, PrefixSumChecksInstr,
@@ -144,7 +144,7 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let events = &input.prefix_sum_checks_events;
-        Some(next_power_of_two(events.len(), None))
+        Some(next_multiple_of_32(events.len(), None))
     }
 
     #[instrument(name = "generate prefix sum checks trace", level = "debug", skip_all, fields(rows = input.prefix_sum_checks_events.len()))]

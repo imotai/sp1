@@ -29,6 +29,8 @@ p3-util = { workspace = true }
 p3-symmetric = { workspace = true }
 sp1-derive = { workspace = true }
 sp1-primitives = { workspace = true }
+slop-multilinear = { workspace = true }
+
 
 slop-futures = { workspace = true }
 
@@ -76,6 +78,14 @@ sp1-zkvm = { workspace = true }
 sp1-core-executor = { workspace = true }
 test-artifacts = { workspace = true }
 tokio = { workspace = true }
+slop-air = { workspace = true }
+slop-alloc = {workspace = true}
+slop-baby-bear = { workspace = true }
+slop-algebra = {workspace = true}
+slop-multilinear = {workspace = true}
+slop-matrix = {workspace = true}
+slop-sumcheck = {workspace = true}
+slop-basefold = {workspace = true}
 
 [build-dependencies]
 sp1-stark = { workspace = true }

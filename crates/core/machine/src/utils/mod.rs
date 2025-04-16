@@ -3,12 +3,14 @@ mod logger;
 mod prove;
 mod span;
 mod test;
+mod zerocheck_unit_test;
 
 pub use logger::*;
 use p3_field::{AbstractField, Field};
 pub use prove::*;
 pub use span::*;
 pub use test::*;
+pub use zerocheck_unit_test::*;
 
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_primitives::consts::WORD_BYTE_SIZE;
@@ -28,14 +30,14 @@ pub const fn indices_arr<const N: usize>() -> [usize; N] {
     indices_arr
 }
 
-pub fn pad_to_power_of_two<const N: usize, T: Clone + Default>(values: &mut Vec<T>) {
-    debug_assert!(values.len() % N == 0);
-    let mut n_real_rows = values.len() / N;
-    if n_real_rows < 16 {
-        n_real_rows = 16;
-    }
-    values.resize(n_real_rows.next_power_of_two() * N, T::default());
-}
+// pub fn pad_to_power_of_two<const N: usize, T: Clone + Default>(values: &mut Vec<T>) {
+//     debug_assert!(values.len() % N == 0);
+//     let mut n_real_rows = values.len() / N;
+//     if n_real_rows < 16 {
+//         n_real_rows = 16;
+//     }
+//     values.resize(n_real_rows.next_power_of_two() * N, T::default());
+// }
 
 pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Expr>> {
     let base = AB::Expr::from_canonical_u32(1 << 8);
@@ -59,12 +61,12 @@ pub fn pad_rows_fixed<R: Clone>(
 ) {
     let nb_rows = rows.len();
     let dummy_row = row_fn();
-    rows.resize(next_power_of_two(nb_rows, size_log2), dummy_row);
+    rows.resize(next_multiple_of_32(nb_rows, size_log2), dummy_row);
 }
 
 /// Returns the next power of two that is >= `n` and >= 16. If `fixed_power` is set, it will return
 /// `2^fixed_power` after checking that `n <= 2^fixed_power`.
-pub fn next_power_of_two(n: usize, fixed_power: Option<usize>) -> usize {
+pub fn next_multiple_of_32(n: usize, fixed_power: Option<usize>) -> usize {
     match fixed_power {
         Some(power) => {
             let padded_nb_rows = 1 << power;
@@ -81,7 +83,7 @@ pub fn next_power_of_two(n: usize, fixed_power: Option<usize>) -> usize {
             padded_nb_rows
         }
         None => {
-            let mut padded_nb_rows = n.next_power_of_two();
+            let mut padded_nb_rows = n.next_multiple_of(32);
             if padded_nb_rows < 16 {
                 padded_nb_rows = 16;
             }

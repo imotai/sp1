@@ -11,7 +11,7 @@ use sp1_core_executor::{
 };
 use sp1_stark::air::MachineAir;
 
-use crate::utils::{next_power_of_two, zeroed_f_vec};
+use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
 use super::{BranchChip, BranchColumns, NUM_BRANCH_COLS};
 
@@ -32,7 +32,7 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
         let chunk_size = std::cmp::max((input.branch_events.len()) / num_cpus::get(), 1);
         let nb_rows = input.branch_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_BRANCH_COLS);
 
         let blu_events = values

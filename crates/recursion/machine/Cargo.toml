@@ -14,7 +14,7 @@ links = "sp1-recursion-machine-sys"
 sp1-core-machine = { workspace = true }
 sp1-derive = { workspace = true }
 sp1-primitives = { workspace = true }
-sp1-recursion-executor = { workspace = true }
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 sp1-stark = { workspace = true }
 
 p3-air = { workspace = true }

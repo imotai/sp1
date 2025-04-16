@@ -9,7 +9,7 @@ use itertools::Itertools;
 use p3_matrix::dense::RowMajorMatrix;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
-use sp1_core_machine::utils::next_power_of_two;
+use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_recursion_executor::{
     ExecutionRecord, Instruction::Poseidon2, Poseidon2Io, Poseidon2SkinnyInstr, RecursionProgram,
 };
@@ -37,7 +37,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2SkinnyChip
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let events = &input.poseidon2_events;
-        Some(next_power_of_two(events.len() * (OUTPUT_ROUND_IDX + 1), None))
+        Some(next_multiple_of_32(events.len() * (OUTPUT_ROUND_IDX + 1), None))
     }
 
     #[instrument(name = "generate poseidon2 skinny trace", level = "debug", skip_all, fields(rows = input.poseidon2_events.len()))]
@@ -91,7 +91,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2SkinnyChip
     }
 
     fn preprocessed_num_rows(&self, _program: &Self::Program, instrs_len: usize) -> Option<usize> {
-        Some(next_power_of_two(instrs_len, None))
+        Some(next_multiple_of_32(instrs_len, None))
     }
 
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {

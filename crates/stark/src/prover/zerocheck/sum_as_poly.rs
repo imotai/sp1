@@ -15,13 +15,13 @@ use slop_algebra::{
 };
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
-    HostEvaluationBackend, Mle, MleBaseBackend, PaddedMle, Padding, PartialLagrangeBackend,
-    PointBackend,
+    HostEvaluationBackend, Mle, MleBaseBackend, PaddedMle, PartialLagrangeBackend, PointBackend,
 };
+use slop_sumcheck::SumcheckPolyBase;
 use tokio::sync::oneshot;
 
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
-use slop_alloc::{Backend, CanCopyIntoRef, CpuBackend, HasBackend, ToHost};
+use slop_alloc::{Backend, CanCopyIntoRef, CpuBackend, HasBackend};
 
 use super::ZeroCheckPoly;
 
@@ -75,6 +75,7 @@ pub trait ZerocheckProverData<F: Field, EF: ExtensionField<F>, B: Backend = CpuB
 }
 
 /// Zerocheck data for the CPU backend.
+#[derive(Clone)]
 pub struct ZerocheckCpuProver<F, EF, A> {
     /// The AIR that contains the constraint polynomial.
     air: Arc<A>,
@@ -137,10 +138,8 @@ where
         let powers_of_alpha = self.powers_of_alpha.clone();
         let gkr_powers = self.gkr_powers.clone();
         let (tx, rx) = oneshot::channel();
-        slop_futures::rayon::spawn(move || {
-            let num_non_padded_vars =
-                main_values.num_real_entries().next_power_of_two().ilog2() - 1;
-            let num_non_padded_terms = 1 << num_non_padded_vars;
+        tokio::task::spawn_blocking(move || {
+            let num_non_padded_terms = main_values.num_real_entries().div_ceil(2);
             let eq_chunk_size = std::cmp::max(num_non_padded_terms / num_cpus::get(), 1);
             let values_chunk_size = eq_chunk_size * 2;
 
@@ -180,13 +179,15 @@ where
                     let mut preprocessed_values_2 = vec![K::zero(); num_preprocessed_columns];
                     let mut preprocessed_values_4 = vec![K::zero(); num_preprocessed_columns];
 
-                    for (j, (eq, main_row)) in eq_chunk
-                        .iter()
-                        .zip_eq(main_chunk.chunks_exact(num_main_columns * 2))
-                        .enumerate()
+                    for (j, (eq, main_row)) in
+                        eq_chunk.iter().zip(main_chunk.chunks(num_main_columns * 2)).enumerate()
                     {
                         let main_row_0 = &main_row[0..num_main_columns];
-                        let main_row_1 = &main_row[num_main_columns..num_main_columns * 2];
+                        let main_row_1 = if main_row.len() == 2 * num_main_columns {
+                            &main_row[num_main_columns..num_main_columns * 2]
+                        } else {
+                            &vec![K::zero(); num_main_columns]
+                        };
 
                         interpolate_last_var_non_padded_values::<K, IS_FIRST_ROUND>(
                             main_row_0,
@@ -258,7 +259,7 @@ where
 pub async fn zerocheck_sum_as_poly_in_last_variable<
     K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     F: Field,
-    EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
+    EF: ExtensionField<F> + ExtensionField<K> + ExtensionField<F> + AbstractExtensionField<K>,
     AirData: ZerocheckRoundProver<F, K, EF, B>,
     B: MleBaseBackend<K>
         + PartialLagrangeBackend<EF>
@@ -274,17 +275,17 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     if num_real_entries == 0 {
         // NOTE: We hard-code the degree of the zerocheck to be three here. This is important to get
         // the correct shape of a dummy proof.
-        return UnivariatePolynomial::zero(3);
+        return UnivariatePolynomial::zero(4);
     }
 
     let claim = claim.expect("claim must be provided");
 
-    let (rest_point, last) = poly.zeta.split_at(poly.zeta.dimension() - 1);
+    let (rest_point_host, last) = poly.zeta.split_at(poly.zeta.dimension() - 1);
     let last = *last[0];
 
     // TODO:  Optimization of computing this once per zerocheck sumcheck.
     let backend = poly.main_columns.backend();
-    let rest_point = backend.copy_to(&rest_point).await.unwrap();
+    let rest_point = backend.copy_to(&rest_point_host).await.unwrap();
     let partial_lagrange: Mle<EF, B> = Mle::partial_lagrange(&rest_point).await;
     let partial_lagrange = Arc::new(partial_lagrange);
 
@@ -300,107 +301,57 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     let mut xs = Vec::new();
     let mut ys = Vec::new();
 
-    let mut y_0 = EF::zero();
-    let mut y_2 = EF::zero();
-    let mut y_4 = EF::zero();
-
-    if num_real_entries > 1 {
-        (y_0, y_2, y_4) = poly
-            .air_data
-            .sum_as_poly_in_last_variable::<IS_FIRST_ROUND>(
-                partial_lagrange,
-                poly.preprocessed_columns.clone(),
-                poly.main_columns.clone(),
-            )
-            .await;
-    } else {
-        // TODO: do not use the unsafe copy API.
-        let eq_guts_0 = partial_lagrange.guts().as_buffer()[0].copy_into_host(backend);
-
-        // Handle the case when the zerocheck polynomial is only padded variables.
-
-        // Get the column values where the last variable is set to 0, 2, and 4.
-        let (preprocessed_column_vals_0, preprocessed_column_vals_2, preprocessed_column_vals_4) =
-            if let Some(preprocessed_values) = poly.preprocessed_columns.as_ref() {
-                let preprocessed_cols =
-                    preprocessed_values.inner().as_ref().unwrap().as_ref().to_host().await.unwrap();
-                interpolate_last_var_padded_values(&preprocessed_cols)
-            } else {
-                (Vec::new(), Vec::new(), Vec::new())
-            };
-
-        let main_cols = if let Some(main_cols) = poly.main_columns.inner().as_ref() {
-            main_cols.to_host().await.unwrap()
-        } else {
-            let padded_values = match poly.main_columns.padding_values() {
-                Padding::Generic(pad_vals) => pad_vals.to_host().await.unwrap(),
-                Padding::Constant((val, _, _)) => {
-                    vec![*val; poly.main_columns.num_polynomials()].into()
-                }
-            };
-            let num_polys = poly.main_columns.num_polynomials();
-            let guts = padded_values.into_evaluations().reshape([1, num_polys]);
-            Mle::new(guts)
-        };
-        let (main_column_vals_0, main_column_vals_2, main_column_vals_4) =
-            interpolate_last_var_padded_values(&main_cols);
-
-        // Evaluate the constraint polynomial at the points 0, 2, and 4, and
-        // add the results to the y_0, y_2, and y_4 accumulators.
-        increment_y_values::<K, F, EF, AirData::Air, IS_FIRST_ROUND>(
-            poly.air_data.public_values(),
-            poly.air_data.powers_of_alpha(),
-            poly.air_data.air(),
-            &mut y_0,
-            &mut y_2,
-            &mut y_4,
-            &preprocessed_column_vals_0,
-            &main_column_vals_0,
-            &preprocessed_column_vals_2,
-            &main_column_vals_2,
-            &preprocessed_column_vals_4,
-            &main_column_vals_4,
-            poly.air_data.gkr_powers(),
-            eq_guts_0,
-        );
-
-        // Adjust the y_0 value by the padded_row_adjustment and the geq_value.
-        y_0 -= poly.geq_value * poly.padded_row_adjustment * eq_guts_0;
-
-        // Adjust the y_2 value by the padded_row_adjustment and the geq_value.
-        let geq_last_term_value =
-            (EF::one() - poly.geq_value) * EF::from_canonical_usize(2) + poly.geq_value;
-        y_2 -= geq_last_term_value * poly.padded_row_adjustment * eq_guts_0;
-
-        // Adjust the y_4 value by the padded_row_adjustment and the geq_value.
-        let geq_last_term_value =
-            (EF::one() - poly.geq_value) * EF::from_canonical_usize(4) + poly.geq_value;
-        y_4 -= geq_last_term_value * poly.padded_row_adjustment * eq_guts_0;
-    }
+    let (mut y_0, mut y_2, mut y_4) = poly
+        .air_data
+        .sum_as_poly_in_last_variable::<IS_FIRST_ROUND>(
+            partial_lagrange.clone(),
+            poly.preprocessed_columns.clone(),
+            poly.main_columns.clone(),
+        )
+        .await;
 
     // Add the point 0 and it's eval to the xs and ys.
+    let virtual_geq = poly.virtual_geq;
+
+    let threshold_half = poly.main_columns.num_real_entries().div_ceil(2) - 1;
+    let msb_lagrange_eval: EF = poly.eq_adjustment
+        * if threshold_half < (1 << (poly.num_variables() - 1)) {
+            partial_lagrange.guts().as_buffer()[threshold_half]
+                .copy_into_host(partial_lagrange.backend())
+        } else {
+            EF::zero()
+        };
+
+    let virtual_0 = virtual_geq.fix_last_variable(EF::zero()).eval_at_usize(threshold_half);
+    let virtual_2 = virtual_geq.fix_last_variable(EF::two()).eval_at_usize(threshold_half);
+    let virtual_4 =
+        virtual_geq.fix_last_variable(EF::from_canonical_usize(4)).eval_at_usize(threshold_half);
+
     xs.push(EF::zero());
 
     let eq_last_term_factor = EF::one() - last;
-    y_0 *= eq_last_term_factor;
+    y_0 *= eq_last_term_factor * poly.eq_adjustment;
+    y_0 -= poly.padded_row_adjustment * virtual_0 * msb_lagrange_eval * eq_last_term_factor;
     ys.push(y_0);
 
     // Add the point 1 and it's eval to the xs and ys.
     xs.push(EF::one());
 
-    let y_1 = (claim / poly.eq_adjustment) - y_0;
+    let y_1 = claim - y_0;
     ys.push(y_1);
 
     // Add the point 2 and it's eval to the xs and ys.
     xs.push(EF::from_canonical_usize(2));
     let eq_last_term_factor = last * F::from_canonical_usize(3) - EF::one();
-    y_2 *= eq_last_term_factor;
+    y_2 *= eq_last_term_factor * poly.eq_adjustment;
+    y_2 -= poly.padded_row_adjustment * virtual_2 * msb_lagrange_eval * eq_last_term_factor;
     ys.push(y_2);
 
     // Add the point 4 and it's eval to the xs and ys.
     xs.push(EF::from_canonical_usize(4));
     let eq_last_term_factor = last * F::from_canonical_usize(7) - F::from_canonical_usize(3);
-    y_4 *= eq_last_term_factor;
+    y_4 *= eq_last_term_factor * poly.eq_adjustment;
+    y_4 -= poly.padded_row_adjustment * virtual_4 * msb_lagrange_eval * eq_last_term_factor;
     ys.push(y_4);
 
     // Add the eq_first_term_root point and it's eval to the xs and ys.
@@ -409,8 +360,6 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     let b_const = (EF::one() - *point_first) / (EF::one() - point_first.double());
     xs.push(b_const);
     ys.push(EF::zero());
-
-    let ys = ys.iter().map(|y| *y * poly.eq_adjustment).collect::<Vec<_>>();
 
     interpolate_univariate_polynomial(&xs, &ys)
 }

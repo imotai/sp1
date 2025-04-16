@@ -39,6 +39,7 @@ pub async fn zerocheck_fix_last_variable<
             poly.eq_adjustment,
             poly.geq_value,
             poly.padded_row_adjustment,
+            poly.virtual_geq.fix_last_variable(alpha),
         );
     }
 
@@ -66,5 +67,6 @@ pub async fn zerocheck_fix_last_variable<
         eq_adjustment,
         geq_value,
         poly.padded_row_adjustment,
+        poly.virtual_geq.fix_last_variable(alpha),
     )
 }

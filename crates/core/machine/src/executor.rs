@@ -62,7 +62,7 @@ pub enum MachineExecutorError {
     ExecutorClosed,
     // Task failed.
     #[error("task failed: {0}")]
-    ExecutorPaniced(#[from] oneshot::error::RecvError),
+    ExecutorPanicked(#[from] oneshot::error::RecvError),
 }
 
 struct ExecuteTask {
@@ -310,7 +310,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         }
                     }
                 }
-                // Execution is done, send the outout to the sender.
+                // Execution is done, send the output to the sender.
                 let public_value_stream = runtime.state.public_values_stream;
                 let cycles = runtime.state.global_clk;
                 output_tx.send(Ok(ExecutionOutput { public_value_stream, cycles })).ok();

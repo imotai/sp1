@@ -23,7 +23,7 @@ use std::borrow::BorrowMut;
 
 use crate::{
     operations::{GlobalAccumulationOperation, GlobalInteractionOperation},
-    utils::{indices_arr, next_power_of_two, zeroed_f_vec},
+    utils::{indices_arr, next_multiple_of_32, zeroed_f_vec},
 };
 use sp1_derive::AlignedBorrow;
 
@@ -102,7 +102,8 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
         let events = &input.global_interaction_events;
         let nb_rows = events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+
         Some(padded_nb_rows)
     }
 

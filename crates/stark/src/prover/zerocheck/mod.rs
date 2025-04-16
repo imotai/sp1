@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 pub use fix_last_variable::*;
 use slop_algebra::{ExtensionField, Field, UnivariatePolynomial};
 use slop_alloc::{Backend, CpuBackend, HasBackend};
-use slop_multilinear::{MleBaseBackend, PaddedMle, Point};
+use slop_multilinear::{MleBaseBackend, PaddedMle, Point, VirtualGeq};
 use slop_sumcheck::{
     ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend, SumcheckPolyBase,
 };
@@ -147,6 +147,7 @@ where
 }
 
 /// Zerocheck sumcheck polynomial.
+#[derive(Debug, Clone)]
 pub struct ZeroCheckPoly<K, F, EF, AirData, B: Backend = CpuBackend> {
     /// The data that contains the constraint polynomial.
     pub air_data: AirData,
@@ -167,6 +168,10 @@ pub struct ZeroCheckPoly<K, F, EF, AirData, B: Backend = CpuBackend> {
     /// The padded row adjustment.
     pub padded_row_adjustment: EF,
 
+    /// A virtual materialization keeping track the geq polynomial which is used to adjust the sums
+    /// for airs in which the zero row doesn't satisfy the constraints.
+    pub virtual_geq: VirtualGeq<K>,
+
     _marker: PhantomData<F>,
 }
 
@@ -184,6 +189,7 @@ impl<K: Field, F: Field, EF: ExtensionField<F>, AirData, B: Backend + MleBaseBac
         eq_adjustment: EF,
         geq_value: EF,
         padded_row_adjustment: EF,
+        virtual_geq: VirtualGeq<K>,
     ) -> Self {
         Self {
             air_data,
@@ -193,6 +199,7 @@ impl<K: Field, F: Field, EF: ExtensionField<F>, AirData, B: Backend + MleBaseBac
             eq_adjustment,
             geq_value,
             padded_row_adjustment,
+            virtual_geq,
             _marker: PhantomData,
         }
     }

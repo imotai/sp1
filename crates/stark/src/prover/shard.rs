@@ -16,7 +16,9 @@ use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
-use slop_multilinear::{Evaluations, HostEvaluationBackend, MleEval, Point, PointBackend};
+use slop_multilinear::{
+    Evaluations, HostEvaluationBackend, MleEval, Point, PointBackend, VirtualGeq,
+};
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -297,7 +299,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
         let LogUpEvaluations { point: gkr_point, chip_openings } = logup_evaluations;
 
-        let mut log_degrees = BTreeMap::new();
+        let mut chip_heights = BTreeMap::new();
         for air in airs.iter().cloned() {
             let ChipEvaluation {
                 main_trace_evaluations: main_opening,
@@ -305,18 +307,10 @@ impl<C: MachineProverComponents> ShardProver<C> {
             } = chip_openings.get(&air.name()).unwrap();
             let main_trace = traces.get(&air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
-            let log_degree = num_real_entries.checked_ilog2();
-            let mut threshold_point_vals =
-                vec![C::F::zero(); self.pcs_prover.max_log_row_count + 1];
-            if let Some(log_degree) = log_degree {
-                assert_eq!(1 << log_degree, num_real_entries);
-                threshold_point_vals[self.pcs_prover.max_log_row_count - (log_degree as usize)] =
-                    C::F::one();
-            } else {
-                assert_eq!(num_real_entries, 0);
-            }
-            let threshold_point = Point::new(threshold_point_vals.into());
-            log_degrees.insert(air.name(), threshold_point);
+
+            let threshold_point =
+                Point::from_usize(num_real_entries, self.pcs_prover.max_log_row_count + 1);
+            chip_heights.insert(air.name(), threshold_point);
             let name = air.name();
             let num_variables = main_trace.num_variables();
             assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
@@ -380,6 +374,14 @@ impl<C: MachineProverComponents> ShardProver<C> {
 
             let initial_geq_value =
                 if main_trace.num_real_entries() > 0 { C::EF::zero() } else { C::EF::one() };
+
+            let virtual_geq = VirtualGeq::new(
+                main_trace.num_real_entries() as u32,
+                C::F::one(),
+                C::F::zero(),
+                self.pcs_prover.max_log_row_count as u32,
+            );
+
             let zerocheck_poly = ZeroCheckPoly::new(
                 air_data,
                 gkr_point.clone(),
@@ -388,6 +390,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 C::EF::one(),
                 initial_geq_value,
                 padded_row_adjustment,
+                virtual_geq,
             );
             zerocheck_polys.push(zerocheck_poly);
             chip_sumcheck_claims.push(chip_sumcheck_claim);
@@ -405,6 +408,9 @@ impl<C: MachineProverComponents> ShardProver<C> {
             lambda,
         )
         .await;
+
+        let mut point_extended = partial_sumcheck_proof.point_and_eval.0.clone();
+        point_extended.add_dimension(C::EF::zero());
 
         // Compute the chip openings from the component poly evaluations.
 
@@ -424,7 +430,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                     preprocessed,
                     main,
                     local_cumulative_sum: C::EF::zero(),
-                    degree: log_degrees[&air.name()].clone(),
+                    degree: chip_heights[&air.name()].clone(),
                 }
             })
             .collect::<Vec<_>>();

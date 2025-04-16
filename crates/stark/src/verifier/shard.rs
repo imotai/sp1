@@ -289,6 +289,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             openings.degree.iter().for_each(|x| {
                 assert_eq!(*x * (*x - C::F::one()), C::F::zero());
             });
+
             let geq_val = full_geq(&openings.degree, &point_extended);
 
             let padded_row_adjustment =
