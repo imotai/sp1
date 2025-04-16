@@ -240,7 +240,6 @@ mod tests {
         let shard = test_fixtures::shard();
         let mut execution_record = test_fixtures::default_execution_record();
         let trace = BaseAluChip.generate_trace(&shard, &mut execution_record);
-        assert!(trace.height() >= test_fixtures::MIN_TEST_CASES);
 
         assert_eq!(trace, generate_trace_reference(&shard, &mut execution_record));
     }

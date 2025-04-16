@@ -91,8 +91,8 @@ impl CpuProver {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .core()
     ///     .run();
     /// ```

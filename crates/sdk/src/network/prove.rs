@@ -42,8 +42,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .core()
     ///     .run();
     /// ```
@@ -68,10 +68,10 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .compressed()
-    ///     .run();
+    ///     .run().await;
     /// ```
     #[must_use]
     pub fn compressed(mut self) -> Self {
@@ -95,10 +95,10 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .plonk()
-    ///     .run();
+    ///     .run().await;
     /// ```
     #[must_use]
     pub fn plonk(mut self) -> Self {
@@ -120,10 +120,10 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .groth16()
-    ///     .run();
+    ///     .run().await;
     /// ```
     #[must_use]
     pub fn groth16(mut self) -> Self {
@@ -144,10 +144,10 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .mode(SP1ProofMode::Groth16)
-    ///     .run();
+    ///     .run().await;
     /// ```
     #[must_use]
     pub fn mode(mut self, mode: SP1ProofMode) -> Self {
@@ -170,10 +170,10 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .timeout(Duration::from_secs(60))
-    ///     .run();
+    ///     .run().await;
     /// ```
     #[must_use]
     pub fn timeout(mut self, timeout: Duration) -> Self {
@@ -197,8 +197,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .skip_simulation(true)
     ///     .run();
     /// ```
@@ -221,8 +221,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin)
     ///     .strategy(FulfillmentStrategy::Hosted)
     ///     .run()
     ///     .unwrap();
@@ -252,8 +252,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin)
     ///     .cycle_limit(1_000_000) // Set 1M cycle limit.
     ///     .skip_simulation(true)  // Skip simulation since the limit is set manually.
     ///     .run()
@@ -279,8 +279,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let request_id = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let request_id = client.prove(pk, stdin)
     ///     .request()
     ///     .unwrap();
     /// ```
@@ -304,8 +304,8 @@ impl NetworkProveBuilder<'_> {
     ///     let stdin = SP1Stdin::new();
     ///
     ///     let client = ProverClient::builder().network().build();
-    ///     let (pk, vk) = client.setup(elf);
-    ///     let request_id = client.prove(&pk, &stdin)
+    ///     let (pk, vk) = client.setup(elf).await;
+    ///     let request_id = client.prove(pk, stdin)
     ///         .request_async()
     ///         .await
     ///         .unwrap();
@@ -333,8 +333,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin)
     ///     .run()
     ///     .unwrap();
     /// ```
@@ -355,8 +355,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin)
     ///     .run_async();
     /// ```
     pub async fn run_async(self) -> Result<SP1ProofWithPublicValues> {

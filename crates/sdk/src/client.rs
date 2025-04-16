@@ -74,8 +74,8 @@ impl ProverClientBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let prover = ProverClient::builder().mock().build();
-    /// let (pk, vk) = prover.setup(elf);
-    /// let proof = prover.prove(&pk, &stdin).compressed().run().unwrap();
+    /// let (pk, vk) = prover.setup(elf).await;
+    /// let proof = prover.prove(pk, stdin).compressed().run().await.unwrap();
     /// ```
     #[must_use]
     pub fn mock(&self) -> CpuProverBuilder {
@@ -92,8 +92,8 @@ impl ProverClientBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let prover = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = prover.setup(elf);
-    /// let proof = prover.prove(&pk, &stdin).compressed().run().unwrap();
+    /// let (pk, vk) = prover.setup(elf).await;
+    /// let proof = prover.prove(pk, stdin).compressed().run().await.unwrap();
     /// ```
     #[must_use]
     pub fn cpu(&self) -> CpuProverBuilder {
@@ -128,8 +128,8 @@ impl ProverClientBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let prover = ProverClient::builder().network().build();
-    /// let (pk, vk) = prover.setup(elf);
-    /// let proof = prover.prove(&pk, &stdin).compressed().run().unwrap();
+    /// let (pk, vk) = prover.setup(elf).await;
+    /// let proof = prover.prove(pk, stdin).compressed().run().await.unwrap();
     /// ```
     #[cfg(feature = "network")]
     #[must_use]

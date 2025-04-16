@@ -38,10 +38,11 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .core()
-    ///     .run();
+    ///     .run()
+    ///     .await;
     /// ```
     #[must_use]
     pub fn core(mut self) -> Self {
@@ -64,10 +65,11 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .compressed()
-    ///     .run();
+    ///     .run()
+    ///     .await;
     /// ```
     #[must_use]
     pub fn compressed(mut self) -> Self {
@@ -91,10 +93,11 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .plonk()
-    ///     .run();
+    ///     .run()
+    ///     .await;
     /// ```
     #[must_use]
     pub fn plonk(mut self) -> Self {
@@ -116,10 +119,11 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .groth16()
-    ///     .run();
+    ///     .run()
+    ///     .await;
     /// ```
     #[must_use]
     pub fn groth16(mut self) -> Self {
@@ -140,10 +144,11 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .mode(SP1ProofMode::Groth16)
-    ///     .run();
+    ///     .run()
+    ///     .await;
     /// ```
     #[must_use]
     pub fn mode(mut self, mode: SP1ProofMode) -> Self {
@@ -167,8 +172,8 @@ impl CpuProveBuilder {
     // /// let stdin = SP1Stdin::new();
     // ///
     // /// let client = ProverClient::builder().cpu().build();
-    // /// let (pk, vk) = client.setup(elf);
-    // /// let builder = client.prove(&pk, &stdin)
+    // /// let (pk, vk) = client.setup(elf).await;
+    // /// let builder = client.prove(pk, stdin)
     // ///     .shard_size(1 << 16)
     // ///     .run();
     // /// ```
@@ -193,8 +198,8 @@ impl CpuProveBuilder {
     // /// let stdin = SP1Stdin::new();
     // ///
     // /// let client = ProverClient::builder().cpu().build();
-    // /// let (pk, vk) = client.setup(elf);
-    // /// let builder = client.prove(&pk, &stdin)
+    // /// let (pk, vk) = client.setup(elf).await;
+    // /// let builder = client.prove(pk, stdin)
     // ///     .shard_batch_size(4)
     // ///     .run();
     // /// ```
@@ -218,8 +223,8 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .cycle_limit(1000000)
     ///     .run();
     /// ```
@@ -248,8 +253,8 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin)
     ///     .deferred_proof_verification(false)
     ///     .run();
     /// ```
@@ -273,9 +278,10 @@ impl CpuProveBuilder {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin)
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin)
     ///     .run()
+    ///     .await
     ///     .unwrap();
     /// ```
     pub async fn run(self) -> Result<SP1ProofWithPublicValues> {

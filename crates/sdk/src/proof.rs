@@ -136,7 +136,7 @@ impl SP1ProofWithPublicValues {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
+    /// let (pk, vk) = client.setup(elf).await;
     /// let (public_values, _) = client.execute(&pk.elf, &stdin).run().unwrap();
     ///
     /// // Create a mock Plonk proof.

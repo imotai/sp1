@@ -94,8 +94,8 @@ impl NetworkProver {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).run();
     /// ```
     #[must_use]
     pub fn prove(
@@ -130,7 +130,7 @@ impl NetworkProver {
     ///
     /// let elf = &[1, 2, 3];
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
+    /// let (pk, vk) = client.setup(elf).await;
     ///
     /// let vk_hash = client.register_program(&vk, elf);
     /// ```
