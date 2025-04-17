@@ -392,8 +392,9 @@ mod tests {
         config::InnerConfig,
     };
     use sp1_recursion_machine::test::run_recursion_test_machines;
-    use sp1_stark::{prover::CpuShardProver, MachineVerifier, ShardVerifier};
-    use tokio::sync::Semaphore;
+    use sp1_stark::{
+        prover::CpuShardProver, prover::ProverSemaphore, MachineVerifier, ShardVerifier,
+    };
 
     use crate::{
         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
@@ -434,7 +435,7 @@ mod tests {
         let program = Arc::new(Program::from(elf).unwrap());
         let prover = Arc::new(CpuShardProver::new(verifier.clone()));
 
-        let (pk, vk) = prover.setup(program.clone(), Arc::new(Semaphore::new(1))).await;
+        let (pk, vk, _) = prover.setup(program.clone(), ProverSemaphore::new(1).pending()).await;
         let pk = Arc::new(pk);
         let (proof, _) = prove_core(
             verifier.clone(),

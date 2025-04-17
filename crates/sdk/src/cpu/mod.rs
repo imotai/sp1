@@ -22,7 +22,7 @@ use sp1_prover::{
     SP1CoreProofData,
     SP1ProofWithMetadata,
 };
-use sp1_prover::{CpuSP1ProvingKey, SP1ProverBuilder};
+use sp1_prover::{SP1ProverBuilder, SP1ProvingKey};
 
 use crate::prover::verify_proof;
 use crate::SP1VerificationError;
@@ -97,7 +97,7 @@ impl CpuProver {
     ///     .run();
     /// ```
     #[must_use]
-    pub fn prove(&self, pk: CpuSP1ProvingKey, stdin: SP1Stdin) -> CpuProveBuilder {
+    pub fn prove(&self, pk: SP1ProvingKey, stdin: SP1Stdin) -> CpuProveBuilder {
         CpuProveBuilder {
             prover: self.clone(),
             mode: SP1ProofMode::Core,
@@ -110,7 +110,7 @@ impl CpuProver {
 
     pub(crate) async fn prove_impl(
         &self,
-        pk: CpuSP1ProvingKey,
+        pk: SP1ProvingKey,
         stdin: SP1Stdin,
         context: SP1Context<'static>,
         mode: SP1ProofMode,
@@ -127,9 +127,12 @@ impl CpuProver {
         let deferred_proofs =
             stdin.proofs.iter().map(|(reduce_proof, _)| reduce_proof.clone()).collect();
 
+        let SP1ProvingKey { pk, vk, .. } = pk;
+
+        let pk = Arc::new(pk);
         // Generate the core proof.
         let proof: SP1ProofWithMetadata<SP1CoreProofData> =
-            self.prover.clone().prove_core(pk.pk.clone(), program, stdin, context).await?;
+            self.prover.clone().prove_core(pk.clone(), program, stdin, context).await?;
         if mode == SP1ProofMode::Core {
             return Ok(SP1ProofWithPublicValues {
                 proof: SP1Proof::Core(proof.proof.0),
@@ -140,7 +143,7 @@ impl CpuProver {
 
         // Generate the compressed proof.
         let public_values = proof.public_values.clone();
-        let reduce_proof = self.prover.clone().compress(&pk.vk, proof, deferred_proofs).await?;
+        let reduce_proof = self.prover.clone().compress(&vk, proof, deferred_proofs).await?;
         if mode == SP1ProofMode::Compressed {
             return Ok(SP1ProofWithPublicValues {
                 proof: SP1Proof::Compressed(Box::new(reduce_proof)),
@@ -199,7 +202,7 @@ impl CpuProver {
     #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn mock_prove_impl(
         &self,
-        pk: CpuSP1ProvingKey,
+        pk: SP1ProvingKey,
         stdin: SP1Stdin,
         context: SP1Context,
         mode: SP1ProofMode,
@@ -212,7 +215,7 @@ impl CpuProver {
     #[allow(dead_code)]
     pub(crate) fn mock_prove_impl_owned(
         self: Arc<Self>,
-        pk: CpuSP1ProvingKey,
+        pk: SP1ProvingKey,
         stdin: SP1Stdin,
         context: SP1Context<'static>,
         mode: SP1ProofMode,
@@ -242,8 +245,10 @@ impl CpuProver {
 }
 
 impl Prover<CpuSP1ProverComponents> for CpuProver {
-    async fn setup(&self, elf: &[u8]) -> (CpuSP1ProvingKey, SP1VerifyingKey) {
-        let (pk, _, vk) = self.prover.setup(elf).await;
+    async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
+        let (pk, _, vk) = self.prover.prover().core().setup(elf).await;
+        let pk = unsafe { pk.into_inner() };
+        let pk = SP1ProvingKey { pk, elf: Arc::new(elf.to_vec()), vk: vk.clone() };
         (pk, vk)
     }
 
@@ -253,7 +258,7 @@ impl Prover<CpuSP1ProverComponents> for CpuProver {
 
     async fn prove(
         &self,
-        pk: CpuSP1ProvingKey,
+        pk: SP1ProvingKey,
         stdin: SP1Stdin,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues> {

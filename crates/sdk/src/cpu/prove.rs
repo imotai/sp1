@@ -5,7 +5,7 @@
 use anyhow::Result;
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::CpuSP1ProvingKey;
+use sp1_prover::SP1ProvingKey;
 
 use super::CpuProver;
 use crate::{SP1ProofMode, SP1ProofWithPublicValues};
@@ -18,7 +18,7 @@ pub struct CpuProveBuilder {
     pub(crate) prover: CpuProver,
     pub(crate) mode: SP1ProofMode,
     pub(crate) context_builder: SP1ContextBuilder<'static>,
-    pub(crate) pk: CpuSP1ProvingKey,
+    pub(crate) pk: SP1ProvingKey,
     pub(crate) stdin: SP1Stdin,
     pub(crate) mock: bool,
 }

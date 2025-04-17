@@ -5,10 +5,7 @@ use std::{
     io::{self, Seek, SeekFrom},
     sync::{Arc, Mutex},
 };
-use tokio::sync::{
-    mpsc::{self, Receiver, Sender, UnboundedSender},
-    Semaphore,
-};
+use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedSender};
 
 use crate::{executor::MachineExecutorBuilder, riscv::RiscvAir};
 use thiserror::Error;
@@ -16,7 +13,10 @@ use thiserror::Error;
 use p3_field::PrimeField32;
 use sp1_stark::{
     air::PublicValues,
-    prover::{MachineProverBuilder, MachineProverComponents, MachineProvingKey, ShardProver},
+    prover::{
+        MachineProverBuilder, MachineProverComponents, MachineProvingKey, ProverSemaphore,
+        ShardProver,
+    },
     Machine, MachineProof, MachineRecord, ShardProof, ShardVerifier, Word,
 };
 
@@ -201,7 +201,7 @@ where
 
     let machine_executor = MachineExecutorBuilder::<F>::new(opts, num_record_workers).build();
 
-    let prover_permits = Arc::new(Semaphore::new(opts.shard_batch_size));
+    let prover_permits = ProverSemaphore::new(opts.shard_batch_size);
     let prover = MachineProverBuilder::<PC>::new(verifier, vec![prover_permits], vec![prover])
         .num_workers(num_trace_gen_workers)
         .build();

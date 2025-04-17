@@ -31,8 +31,7 @@ pub trait Prover<C: SP1ProverComponents>: Send + Sync {
     }
 
     /// Generate the proving and verifying keys for the given program.
-    fn setup(&self, elf: &[u8])
-        -> impl Future<Output = (SP1ProvingKey<C>, SP1VerifyingKey)> + Send;
+    fn setup(&self, elf: &[u8]) -> impl Future<Output = (SP1ProvingKey, SP1VerifyingKey)> + Send;
 
     /// Executes the program on the given input.
     fn execute(&self, elf: &[u8], stdin: &SP1Stdin) -> Result<(SP1PublicValues, ExecutionReport)> {
@@ -42,7 +41,7 @@ pub trait Prover<C: SP1ProverComponents>: Send + Sync {
     /// Proves the given program on the given input in the given proof mode.
     fn prove(
         &self,
-        pk: SP1ProvingKey<C>,
+        pk: SP1ProvingKey,
         stdin: SP1Stdin,
         mode: SP1ProofMode,
     ) -> impl Future<Output = Result<SP1ProofWithPublicValues>> + Send;

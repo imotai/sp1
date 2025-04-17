@@ -40,7 +40,7 @@ use tracing::Instrument;
 
 use crate::{
     components::SP1ProverComponents, error::SP1ProverError, recursion::SP1RecursionProver, CoreSC,
-    HashableKey, SP1CircuitWitness, SP1CoreProof, SP1CoreProofData, SP1Prover, SP1ProvingKey,
+    HashableKey, SP1CircuitWitness, SP1CoreProof, SP1CoreProofData, SP1Prover,
     SP1RecursionProverError, SP1VerifyingKey,
 };
 
@@ -139,17 +139,6 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         }
         runtime.run_fast()?;
         Ok((SP1PublicValues::from(&runtime.state.public_values_stream), runtime.report))
-    }
-
-    /// Preprocessing setup for a RISC-V program.
-    #[inline]
-    #[must_use]
-    pub async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey<C>, Program, SP1VerifyingKey) {
-        let (pk, program, vk) = self.prover.core().setup(elf).await;
-        let pk = Arc::new(pk);
-        let vk = SP1VerifyingKey { vk };
-        let pk = SP1ProvingKey { pk, elf: Arc::new(elf.to_vec()), vk: vk.clone() };
-        (pk, program, vk)
     }
 
     /// Get a reference to the underlying [SP1Prover]
@@ -697,12 +686,19 @@ pub mod tests {
         stdin: SP1Stdin,
         test_kind: Test,
     ) -> Result<()> {
-        let (pk, program, vk) =
-            prover.setup(elf).instrument(tracing::debug_span!("setup").or_current()).await;
+        let (pk, program, vk) = prover
+            .prover()
+            .core()
+            .setup(elf)
+            .instrument(tracing::debug_span!("setup").or_current())
+            .await;
+
+        let pk = unsafe { pk.into_inner() };
+        let pk = Arc::new(pk);
 
         let core_proof = prover
             .clone()
-            .prove_core(pk.pk.clone(), program, stdin, SP1Context::default())
+            .prove_core(pk, program, stdin, SP1Context::default())
             .instrument(tracing::info_span!("prove core"))
             .await
             .unwrap();

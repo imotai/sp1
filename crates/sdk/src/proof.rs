@@ -13,10 +13,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sp1_core_executor::SP1ReduceProof;
 use sp1_primitives::io::SP1PublicValues;
-use sp1_prover::{
-    components::CpuSP1ProverComponents, CoreSC, Groth16Bn254Proof, InnerSC, PlonkBn254Proof,
-    SP1ProvingKey,
-};
+use sp1_prover::{CoreSC, Groth16Bn254Proof, InnerSC, PlonkBn254Proof, SP1ProvingKey};
 use sp1_stark::ShardProof;
 use strum_macros::{EnumDiscriminants, EnumTryAs};
 
@@ -145,7 +142,7 @@ impl SP1ProofWithPublicValues {
     #[must_use]
     #[allow(clippy::needless_pass_by_value)]
     pub fn create_mock_proof(
-        _pk: SP1ProvingKey<CpuSP1ProverComponents>,
+        _pk: SP1ProvingKey,
         public_values: SP1PublicValues,
         mode: SP1ProofMode,
         sp1_version: &str,

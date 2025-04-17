@@ -10,20 +10,23 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use slop_futures::{handle::TaskHandle, queue::WorkerQueue};
 
-use tokio::sync::{mpsc, oneshot, Semaphore};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    air::MachineAir, prover::CoreProofShape, Machine, MachineProof, MachineVerifier,
-    MachineVerifierError, MachineVerifyingKey, ShardProof, ShardVerifier, VerifierConstraintFolder,
+    air::MachineAir,
+    prover::CoreProofShape,
+    prover::{ProverPermit, ProverPermits},
+    Machine, MachineProof, MachineVerifier, MachineVerifierError, MachineVerifyingKey, ShardProof,
+    ShardVerifier, VerifierConstraintFolder,
 };
 
-use super::{MachineProverComponents, MachineProvingKey, ShardProver};
+use super::{MachineProverComponents, MachineProvingKey, ProverSemaphore, ShardProver};
 
 /// A builder for a machine prover.
 pub struct MachineProverBuilder<C: MachineProverComponents> {
     verifier: MachineVerifier<C::Config, C::Air>,
     base_workers: Vec<Arc<ShardProver<C>>>,
-    worker_permits: Vec<Arc<Semaphore>>,
+    worker_permits: Vec<ProverSemaphore>,
     num_workers: Vec<usize>,
 }
 
@@ -70,7 +73,7 @@ struct SetupTask<C: MachineProverComponents> {
     program: Arc<C::Program>,
     vk: Option<MachineVerifyingKey<C::Config>>,
     output_tx: oneshot::Sender<
-        Result<(MachineProvingKey<C>, MachineVerifyingKey<C::Config>), MachineProverError>,
+        Result<(ProvingKey<C>, MachineVerifyingKey<C::Config>), MachineProverError>,
     >,
     abort_registration: AbortRegistration,
 }
@@ -93,12 +96,48 @@ struct SetupAndProveTask<C: MachineProverComponents> {
     abort_registration: AbortRegistration,
 }
 
+/// A proving key with a permit.
+pub struct ProvingKey<C: MachineProverComponents> {
+    /// The underlying proving key.
+    pk: MachineProvingKey<C>,
+    /// The permit for the prover.
+    permit: ProverPermit,
+}
+
+impl<C: MachineProverComponents> ProvingKey<C> {
+    /// Create a new proving key with a permit.
+    #[must_use]
+    #[inline]
+    pub fn new(pk: MachineProvingKey<C>, permit: ProverPermit) -> Self {
+        Self { pk, permit }
+    }
+
+    /// Get the underlying proving key.
+    ///
+    /// # Safety
+    /// the caller must ensure that the resource
+    #[must_use]
+    #[inline]
+    pub unsafe fn into_inner(self) -> MachineProvingKey<C> {
+        self.pk
+    }
+
+    /// Get the underlying proving key and permit.
+    ///
+    /// # Safety
+    /// todo
+    #[must_use]
+    #[inline]
+    pub unsafe fn into_parts(self) -> (MachineProvingKey<C>, ProverPermit) {
+        (self.pk, self.permit)
+    }
+}
 async fn setup_from_vk<C: MachineProverComponents>(
     prover: &ShardProver<C>,
     program: Arc<C::Program>,
     vk: Option<MachineVerifyingKey<C::Config>>,
-    prover_permits: Arc<Semaphore>,
-) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
+    prover_permits: ProverPermits,
+) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>, ProverPermit) {
     if let Some(vk) = vk {
         let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
         prover
@@ -120,7 +159,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
     /// In practice, those permits can come from the same semaphore or different ones.
     pub fn new(
         shard_verifier: ShardVerifier<C::Config, C::Air>,
-        worker_permits: Vec<Arc<Semaphore>>,
+        worker_permits: Vec<ProverSemaphore>,
         base_workers: Vec<Arc<ShardProver<C>>>,
     ) -> Self {
         assert!(
@@ -142,7 +181,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
     pub fn new_single_kind(
         shard_verifier: ShardVerifier<C::Config, C::Air>,
         shard_prover: ShardProver<C>,
-        permits: Arc<Semaphore>,
+        permits: ProverSemaphore,
     ) -> Self {
         let base_workers = vec![Arc::new(shard_prover)];
         let worker_permits = vec![permits];
@@ -194,10 +233,14 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                             Task::Setup(task) => {
                                 let SetupTask { program, vk, output_tx, abort_registration } = task;
                                 let setup_result = Abortable::new(
-                                    setup_from_vk(&worker, program, vk, prover_permits.clone()),
+                                    setup_from_vk(&worker, program, vk, prover_permits.pending()),
                                     abort_registration,
                                 )
                                 .map_err(|_| MachineProverError::TaskAborted)
+                                .map_ok(|(pk, vk, permit)| {
+                                    let pk = ProvingKey { pk, permit };
+                                    (pk, vk)
+                                })
                                 .await;
                                 // Send the output to the channel if it's still open, otherwise drop
                                 // it.
@@ -216,7 +259,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                                             .prove_shard(
                                                 &pk,
                                                 record,
-                                                prover_permits.clone(),
+                                                prover_permits.pending(),
                                                 &mut challenger,
                                             )
                                             .await
@@ -224,6 +267,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                                     abort_registration,
                                 )
                                 .map_err(|_| MachineProverError::TaskAborted)
+                                .map_ok(|(proof, _)| proof)
                                 .await;
                                 proof_tx.send(shard_proof_result).ok();
                             }
@@ -237,27 +281,27 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                                 } = task;
                                 let result = Abortable::new(
                                     async {
-                                        // Setup
-                                        let (pk, vk) = setup_from_vk(
-                                            &worker,
-                                            program,
-                                            vk,
-                                            prover_permits.clone(),
-                                        )
-                                        .await;
-                                        // Create a challenger.
-                                        let mut challenger = verifier.challenger();
-                                        // Observe the preprocessed information.
-                                        pk.observe_into(&mut challenger);
-                                        // Prove the shard.
-                                        let shard_proof = worker
-                                            .prove_shard(
-                                                &pk,
-                                                record,
-                                                prover_permits.clone(),
-                                                &mut challenger,
+                                        let (vk, shard_proof, _) = {
+                                            // Setup
+                                            let (pk, vk, permit) = setup_from_vk(
+                                                &worker,
+                                                program,
+                                                vk,
+                                                prover_permits.pending(),
                                             )
                                             .await;
+                                            // Create a challenger.
+                                            let mut challenger = verifier.challenger();
+                                            // Observe the preprocessed information.
+                                            pk.observe_into(&mut challenger);
+                                            // Prove the shard.
+                                            let permit = ProverPermits::ready(permit);
+                                            let (shard_proof, permit) = worker
+                                                .prove_shard(&pk, record, permit, &mut challenger)
+                                                .await;
+                                            drop(pk);
+                                            (vk, shard_proof, permit)
+                                        };
                                         (vk, shard_proof)
                                     },
                                     abort_registration,
@@ -396,8 +440,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
         &self,
         program: Arc<C::Program>,
         vk: Option<MachineVerifyingKey<C::Config>>,
-    ) -> TaskHandle<(MachineProvingKey<C>, MachineVerifyingKey<C::Config>), MachineProverError>
-    {
+    ) -> TaskHandle<(ProvingKey<C>, MachineVerifyingKey<C::Config>), MachineProverError> {
         let (output_tx, output_rx) = oneshot::channel();
         // Crate an abort handle for this task.
         let (abort_handle, abort_registration) = AbortHandle::new_pair();

@@ -98,11 +98,7 @@ impl NetworkProver {
     /// let proof = client.prove(pk, stdin).run();
     /// ```
     #[must_use]
-    pub fn prove(
-        &self,
-        pk: SP1ProvingKey<CpuSP1ProverComponents>,
-        stdin: SP1Stdin,
-    ) -> NetworkProveBuilder {
+    pub fn prove(&self, pk: SP1ProvingKey, stdin: SP1Stdin) -> NetworkProveBuilder {
         NetworkProveBuilder {
             prover: self,
             mode: SP1ProofMode::Core,
@@ -317,7 +313,7 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn request_proof_impl(
         &self,
-        pk: &SP1ProvingKey<CpuSP1ProverComponents>,
+        pk: &SP1ProvingKey,
         stdin: &SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
@@ -333,7 +329,7 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn prove_impl(
         &self,
-        pk: SP1ProvingKey<CpuSP1ProverComponents>,
+        pk: SP1ProvingKey,
         stdin: SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
@@ -378,7 +374,7 @@ impl NetworkProver {
 }
 
 impl Prover<CpuSP1ProverComponents> for NetworkProver {
-    async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey<CpuSP1ProverComponents>, SP1VerifyingKey) {
+    async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
         self.prover.setup(elf).await
     }
 
@@ -388,7 +384,7 @@ impl Prover<CpuSP1ProverComponents> for NetworkProver {
 
     async fn prove(
         &self,
-        pk: SP1ProvingKey<CpuSP1ProverComponents>,
+        pk: SP1ProvingKey,
         stdin: SP1Stdin,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues> {

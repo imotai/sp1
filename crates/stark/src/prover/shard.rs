@@ -21,11 +21,11 @@ use slop_multilinear::{
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::Instrument;
 
 use crate::{
     air::{MachineAir, MachineProgram},
+    prover::ProverPermit,
     prover::{ZeroCheckPoly, ZerocheckAir},
     septic_digest::SepticDigest,
     AirOpenedValues, Chip, ChipDimensions, ChipEvaluation, ChipOpenedValues, ChipStatistics,
@@ -33,7 +33,7 @@ use crate::{
     MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
-use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
+use super::{ProverPermits, TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 
 /// The components of the machine prover.
 ///
@@ -126,10 +126,19 @@ pub struct ShardData<F: Field, A, B: Backend> {
     pub traces: Traces<F, B>,
     /// The public values.
     pub public_values: Vec<F>,
-    /// A permit for a prover resource.
-    pub permit: OwnedSemaphorePermit,
     /// The shape cluster corresponding to the traces.
     pub shard_chips: BTreeSet<Chip<F, A>>,
+    /// A permit for a prover resource.
+    pub permit: ProverPermit,
+}
+
+/// The preprocessed data for a program.
+#[derive(Debug)]
+pub struct PreprocessedData<F: Field, B: Backend> {
+    /// The preprocessed traces.
+    pub preprocessed_traces: Traces<F, B>,
+    /// A permit for a prover resource.
+    pub permit: ProverPermit,
 }
 
 /// A prover for the hypercube STARK, given a configuration.
@@ -180,8 +189,8 @@ impl<C: MachineProverComponents> ShardProver<C> {
     pub async fn setup(
         &self,
         program: Arc<C::Program>,
-        setup_permits: Arc<Semaphore>,
-    ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
+        setup_permits: ProverPermits,
+    ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>, ProverPermit) {
         let program_sent = program.clone();
         let initial_global_cumulative_sum =
             tokio::task::spawn_blocking(move || program_sent.initial_global_cumulative_sum())
@@ -200,13 +209,15 @@ impl<C: MachineProverComponents> ShardProver<C> {
         &self,
         program: Arc<C::Program>,
         initial_global_cumulative_sum: SepticDigest<C::F>,
-        setup_permits: Arc<Semaphore>,
-    ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
+        setup_permits: ProverPermits,
+    ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>, ProverPermit) {
         let pc_start = program.pc_start();
-        let preprocessed_traces = self
+        let preprocessed_data = self
             .trace_generator
             .generate_preprocessed_traces(program, self.max_log_row_count(), setup_permits)
             .await;
+
+        let PreprocessedData { preprocessed_traces, permit } = preprocessed_data;
 
         let constraints_map = self
             .all_chips()
@@ -262,7 +273,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
             preprocessed_chip_information,
         };
 
-        (pk, vk)
+        (pk, vk, permit)
     }
 
     async fn commit_traces(
@@ -454,9 +465,9 @@ impl<C: MachineProverComponents> ShardProver<C> {
         &self,
         pk: &MachineProvingKey<C>,
         record: C::Record,
-        prover_permits: Arc<Semaphore>,
+        prover_permits: ProverPermits,
         challenger: &mut C::Challenger,
-    ) -> ShardProof<C::Config> {
+    ) -> (ShardProof<C::Config>, ProverPermit) {
         // Generate the traces.
         let data = self
             .trace_generator
@@ -575,12 +586,9 @@ impl<C: MachineProverComponents> ShardProver<C> {
             .await
             .unwrap();
 
-        // Allow the permit to be used again.
-        drop(permit);
-
         let shard_chips = shard_chips.iter().map(MachineAir::name).collect::<BTreeSet<_>>();
 
-        ShardProof {
+        let proof = ShardProof {
             main_commitment: main_commit,
             opened_values: shard_open_values,
             logup_gkr_proof,
@@ -588,7 +596,9 @@ impl<C: MachineProverComponents> ShardProver<C> {
             zerocheck_proof: zerocheck_partial_sumcheck_proof,
             public_values,
             shard_chips,
-        }
+        };
+
+        (proof, permit)
     }
 }
 

@@ -13,11 +13,11 @@ use slop_algebra::Field;
 use slop_alloc::{Backend, CanCopyFrom, CpuBackend, GLOBAL_CPU_BACKEND};
 use slop_multilinear::{Mle, MleBaseBackend, PaddedMle, ZeroEvalBackend};
 use slop_tensor::Tensor;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::oneshot;
 
 use crate::{air::MachineAir, Machine, MachineRecord};
 
-use super::ShardData;
+use super::{PreprocessedData, ProverPermits, ShardData};
 
 /// A collection of traces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,15 +69,15 @@ pub trait TraceGenerator<F: Field, A: MachineAir<F>, B: Backend>: 'static + Send
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
-        setup_permits: Arc<Semaphore>,
-    ) -> impl Future<Output = Traces<F, B>> + Send;
+        setup_permits: ProverPermits,
+    ) -> impl Future<Output = PreprocessedData<F, B>> + Send;
 
     /// Generate the main traces for the given execution record.
     fn generate_main_traces(
         &self,
         record: A::Record,
         max_log_row_count: usize,
-        prover_permits: Arc<Semaphore>,
+        prover_permits: ProverPermits,
     ) -> impl Future<Output = ShardData<F, A, B>> + Send;
 }
 
@@ -120,7 +120,7 @@ where
         &self,
         record: A::Record,
         max_log_row_count: usize,
-        prover_permits: Arc<Semaphore>,
+        prover_permits: ProverPermits,
     ) -> ShardData<F, A, B> {
         let airs = self.machine.chips().to_vec();
         let (tx, rx) = oneshot::channel();
@@ -149,7 +149,7 @@ where
         let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire_owned().await.unwrap();
+        let permit = prover_permits.acquire().await.unwrap();
         // Copy the traces to the target backend.
 
         // Make the padded traces.
@@ -185,15 +185,15 @@ where
 
         let traces = Traces { named_traces: traces };
 
-        ShardData { traces, public_values, permit, shard_chips }
+        ShardData { traces, public_values, shard_chips, permit }
     }
 
     async fn generate_preprocessed_traces(
         &self,
         program: Arc<A::Program>,
         max_log_row_count: usize,
-        setup_permits: Arc<Semaphore>,
-    ) -> Traces<F, B> {
+        setup_permits: ProverPermits,
+    ) -> PreprocessedData<F, B> {
         // Generate the traces on the CPU.
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
         let (tx, rx) = oneshot::channel();
@@ -211,7 +211,7 @@ where
         });
 
         // Wait for a permit to be available to copy the traces to the target backend.
-        let permit = setup_permits.acquire_owned().await.unwrap();
+        let permit = setup_permits.acquire().await.unwrap();
 
         // Wait for the traces to be generated and copy them to the target backend.
         // Wait for traces.
@@ -227,8 +227,9 @@ where
             .await
             .into_iter()
             .collect::<BTreeMap<_, _>>();
-        drop(permit);
 
-        Traces { named_traces }
+        let traces = Traces { named_traces };
+
+        PreprocessedData { preprocessed_traces: traces, permit }
     }
 }

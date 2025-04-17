@@ -27,12 +27,11 @@ use recursion::SP1RecursionProver;
 use shapes::SP1RecursionShape;
 use sp1_core_executor::Program;
 use std::{collections::BTreeMap, sync::Arc};
-use tokio::sync::Semaphore;
 
 use slop_baby_bear::BabyBear;
 
 use sp1_recursion_executor::RecursionProgram;
-use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, ShardProver};
+use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphore, ShardProver};
 
 use sp1_stark::{prover::MachineProvingKey, BabyBearPoseidon2};
 
@@ -130,10 +129,10 @@ pub struct SP1ProverBuilder<C: SP1ProverComponents> {
 impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
     pub fn new_multi_permits(
         base_core_provers: Vec<Arc<ShardProver<C::CoreComponents>>>,
-        core_prover_permits: Vec<Arc<Semaphore>>,
+        core_prover_permits: Vec<ProverSemaphore>,
         nums_core_workers: Vec<usize>,
         base_recursion_provers: Vec<Arc<ShardProver<C::RecursionComponents>>>,
-        recursion_prover_permits: Vec<Arc<Semaphore>>,
+        recursion_prover_permits: Vec<ProverSemaphore>,
         nums_recursion_workers: Vec<usize>,
     ) -> Self {
         let core_verifier = C::core_verifier();
@@ -166,10 +165,10 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
 
     pub fn new_single_permit(
         core_prover: ShardProver<C::CoreComponents>,
-        core_prover_permit: Arc<Semaphore>,
+        core_prover_permit: ProverSemaphore,
         num_core_workers: usize,
         recursion_prover: ShardProver<C::RecursionComponents>,
-        recursion_prover_permit: Arc<Semaphore>,
+        recursion_prover_permit: ProverSemaphore,
         num_recursion_workers: usize,
     ) -> Self {
         Self::new_multi_permits(
@@ -865,7 +864,7 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
             81.. => 4,
         };
 
-        let prover_permits = Arc::new(Semaphore::new(num_workers));
+        let prover_permits = ProverSemaphore::new(num_workers);
 
         let core_verifier = CpuSP1ProverComponents::core_verifier();
         let cpu_shard_prover = CpuShardProver::new(core_verifier.shard_verifier().clone());

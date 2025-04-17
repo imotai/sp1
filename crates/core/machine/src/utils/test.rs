@@ -3,10 +3,9 @@ use std::sync::Arc;
 use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
-    prover::CpuShardProver, BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError,
-    ShardVerifier,
+    prover::{CpuShardProver, ProverSemaphore},
+    BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError, ShardVerifier,
 };
-use tokio::sync::Semaphore;
 use tracing::Instrument;
 
 use crate::{io::SP1Stdin, riscv::RiscvAir};
@@ -82,9 +81,9 @@ pub async fn run_test_core(
         machine,
     );
     let prover = CpuShardProver::new(verifier.clone());
-    let setup_permit = Arc::new(Semaphore::new(1));
-    let (pk, vk) = prover
-        .setup(runtime.program.clone(), setup_permit)
+    let setup_permit = ProverSemaphore::new(1);
+    let (pk, vk, _) = prover
+        .setup(runtime.program.clone(), setup_permit.pending())
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
     let challenger = verifier.pcs_verifier.challenger();

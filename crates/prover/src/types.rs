@@ -34,23 +34,12 @@ use crate::{
     CoreSC,
 };
 
-// use crate::{
-//     utils::{babybears_to_bn254, words_to_bytes_be},
-//     CoreSC, InnerSC,
-// };
-
-/// The information necessary to generate a proof for a given RISC-V program.
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "MachineProvingKey<C::CoreComponents>: Serialize"))]
-#[serde(bound(deserialize = "MachineProvingKey<C::CoreComponents>: Deserialize<'de> "))]
-pub struct SP1ProvingKey<C: SP1ProverComponents> {
-    pub pk: Arc<MachineProvingKey<C::CoreComponents>>,
+pub struct SP1ProvingKey {
+    pub pk: MachineProvingKey<<CpuSP1ProverComponents as SP1ProverComponents>::CoreComponents>,
     pub elf: Arc<Vec<u8>>,
     /// Verifying key is also included as we need it for recursion
     pub vk: SP1VerifyingKey,
 }
-
-pub type CpuSP1ProvingKey = SP1ProvingKey<CpuSP1ProverComponents>;
 
 /// The information necessary to verify a proof for a given RISC-V program.
 #[derive(Clone, Serialize, Deserialize)]

@@ -13,7 +13,6 @@ use slop_baby_bear::BabyBear;
 use slop_jagged::{
     JaggedProver, JaggedProverComponents, Poseidon2BabyBearJaggedCpuProverComponents,
 };
-use tokio::sync::Semaphore;
 
 use crate::{
     air::MachineAir, BabyBearPoseidon2, ConstraintSumcheckFolder, GkrProverImpl,
@@ -22,7 +21,7 @@ use crate::{
 
 use super::{
     DefaultTraceGenerator, MachineProver, MachineProverBuilder, MachineProverComponents,
-    ShardProver, ZerocheckAir, ZerocheckCpuProverData,
+    ProverSemaphore, ShardProver, ZerocheckAir, ZerocheckCpuProverData,
 };
 
 /// The components of a CPU prover.
@@ -169,7 +168,7 @@ where
     #[must_use]
     pub fn simple(verifier: ShardVerifier<BabyBearPoseidon2, A>) -> Self {
         let shard_prover = Arc::new(CpuShardProver::new(verifier.clone()));
-        let prover_permits = Arc::new(Semaphore::new(1));
+        let prover_permits = ProverSemaphore::new(1);
 
         Self {
             inner: MachineProverBuilder::new(verifier, vec![prover_permits], vec![shard_prover]),
@@ -180,7 +179,7 @@ where
     #[must_use]
     pub fn new(
         verifier: ShardVerifier<BabyBearPoseidon2, A>,
-        prover_permits: Arc<Semaphore>,
+        prover_permits: ProverSemaphore,
     ) -> Self {
         let shard_prover = Arc::new(CpuShardProver::new(verifier.clone()));
 
