@@ -456,9 +456,8 @@ mod tests {
         let mut initial_challenger = verifier.pcs_verifier.challenger();
         vk.observe_into(&mut initial_challenger);
 
-        let mut challenger = verifier.pcs_verifier.challenger();
         let machine_verifier = MachineVerifier::new(verifier);
-        machine_verifier.verify(&vk, &proof, &mut challenger).unwrap();
+        machine_verifier.verify(&vk, &proof).unwrap();
 
         let shard_proof = proof.shard_proofs[0].clone();
         let shape = machine_verifier.shape_from_proof(&shard_proof);

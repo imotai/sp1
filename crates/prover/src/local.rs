@@ -337,7 +337,6 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 // Get an executor for the input
                 let executor = executors.clone().pop().await.unwrap();
                 let range = i..i + 1;
-                tracing::info!("sending input, range: {:?}", range);
                 executor.send(ExecuteTask { input, range }).unwrap();
             }
         });
@@ -419,19 +418,9 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             } else {
                 // If there is no neighboring range, add the proof to the tree.
                 let RecursionProof { shard_range, proof } = proof;
-                tracing::info!("inserting range: {:?}", shard_range);
                 let proofs = RangeProofs::new(shard_range, VecDeque::from([proof]));
                 recursion_tree.insert(proofs);
             }
-            // Print the range set.
-            tracing::info!(
-                "map: {:?}",
-                recursion_tree
-                    .map
-                    .iter()
-                    .map(|(start, proofs)| (start, proofs.shard_range.clone()))
-                    .collect::<Vec<_>>()
-            );
         }
 
         Err(SP1ProverError::RecursionProverError(MachineProverError::ProverClosed))

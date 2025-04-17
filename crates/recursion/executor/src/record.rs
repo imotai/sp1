@@ -5,9 +5,7 @@ use std::{
 };
 
 use p3_field::{AbstractField, Field, PrimeField32};
-use sp1_stark::{
-    air::SP1AirBuilder, septic_digest::SepticDigest, MachineRecord, PROOF_MAX_NUM_PVS,
-};
+use sp1_stark::{air::SP1AirBuilder, MachineRecord, PROOF_MAX_NUM_PVS};
 
 use crate::{
     instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr},
@@ -107,10 +105,6 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
         });
 
         ret.to_vec()
-    }
-
-    fn global_cumulative_sum<T: Field>(_public_values: &[T]) -> SepticDigest<T> {
-        SepticDigest::<T>::zero()
     }
 
     // No public value constraints for recursion public values.

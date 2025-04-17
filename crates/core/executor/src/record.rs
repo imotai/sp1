@@ -1,7 +1,7 @@
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
-use p3_field::{AbstractField, Field, PrimeField};
+use p3_field::{AbstractField, PrimeField};
 use sp1_stark::{
     air::{
         AirInteraction, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
@@ -568,12 +568,6 @@ impl MachineRecord for ExecutionRecord {
         let mut public_values = self.public_values;
         public_values.global_cumulative_sum = *self.global_cumulative_sum.lock().unwrap();
         public_values.to_vec()
-    }
-
-    /// Retrieves the global cumulative sum.
-    fn global_cumulative_sum<F: Field>(public_values: &[F]) -> SepticDigest<F> {
-        let public_values: &PublicValues<Word<F>, F> = public_values.borrow();
-        public_values.global_cumulative_sum
     }
 
     /// Constrains the public values.

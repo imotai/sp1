@@ -343,12 +343,11 @@ impl<C: MachineProverComponents> MachineProver<C> {
         &self,
         vk: &MachineVerifyingKey<C::Config>,
         proof: &MachineProof<C::Config>,
-        challenger: &mut C::Challenger,
     ) -> Result<(), MachineVerifierError<C::Config>>
     where
         C::Air: for<'a> Air<VerifierConstraintFolder<'a, C::Config>>,
     {
-        self.inner.verifier.verify(vk, proof, challenger)
+        self.inner.verifier.verify(vk, proof)
     }
 
     /// Get the number of workers.

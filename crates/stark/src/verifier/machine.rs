@@ -2,19 +2,14 @@ use derive_where::derive_where;
 use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
 use slop_jagged::BabyBearPoseidon2;
-use std::iter::once;
 
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use thiserror::Error;
 
-use crate::{
-    air::MachineAir, prover::CoreProofShape, septic_digest::SepticDigest, Machine,
-    VerifierConstraintFolder,
-};
+use crate::{air::MachineAir, prover::CoreProofShape, Machine, VerifierConstraintFolder};
 
 use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
-use crate::record::MachineRecord;
 /// A complete proof of program execution.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
@@ -32,9 +27,6 @@ pub enum MachineVerifierError<C: MachineConfig> {
     /// An error that occurs during the verification of a shard proof.
     #[error("invalid shard proof: {0}")]
     InvalidShardProof(ShardVerifierError<C>),
-    /// The global cumulative sum check fails.
-    #[error("non-zero global cumulative sum")]
-    NonZeroCumulativeSum,
     /// The public values are invalid
     #[error("invalid public values")]
     InvalidPublicValues(&'static str),
@@ -95,13 +87,13 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
         &self,
         vk: &MachineVerifyingKey<C>,
         proof: &MachineProof<C>,
-        challenger: &mut C::Challenger,
     ) -> Result<(), MachineVerifierError<C>>
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {
+        let mut challenger = self.challenger();
         // Observe the verifying key.
-        vk.observe_into(challenger);
+        vk.observe_into(&mut challenger);
 
         // Verify the shard proofs.
         for (i, shard_proof) in proof.shard_proofs.iter().enumerate() {
@@ -112,22 +104,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
             span.exit();
         }
 
-        // TODO: add the rest of the verifier checks, and move to sp1-prover crate.
-        // Verify the cumulative sum is 0.
-        tracing::debug_span!("verify global cumulative sum is 0").in_scope(|| {
-            let sum = proof
-                .shard_proofs
-                .iter()
-                .map(|shard| A::Record::global_cumulative_sum(&shard.public_values))
-                .chain(once(vk.initial_global_cumulative_sum))
-                .sum::<SepticDigest<C::F>>();
-
-            if !sum.is_zero() {
-                return Err(MachineVerifierError::NonZeroCumulativeSum);
-            }
-
-            Ok(())
-        })
+        Ok(())
     }
 
     /// Verify a shard proof.

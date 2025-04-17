@@ -100,10 +100,8 @@ pub async fn run_test_core(
     .await
     .unwrap();
 
-    let mut challenger = verifier.pcs_verifier.challenger();
     let machine_verifier = MachineVerifier::new(verifier);
-    tracing::debug_span!("verify the proof")
-        .in_scope(|| machine_verifier.verify(&vk, &proof, &mut challenger))?;
+    tracing::debug_span!("verify the proof").in_scope(|| machine_verifier.verify(&vk, &proof))?;
     Ok(proof)
 }
 
