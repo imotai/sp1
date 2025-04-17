@@ -255,6 +255,9 @@ impl ExecutionRecord {
                 SyscallCode::SECP256K1_DOUBLE
                 | SyscallCode::SECP256R1_DOUBLE
                 | SyscallCode::BN254_DOUBLE => opts.ec_double_256bit,
+                SyscallCode::BN254_FP_ADD
+                | SyscallCode::BN254_FP_SUB
+                | SyscallCode::BN254_FP_MUL => opts.fp_operation_256bit,
                 _ => opts.deferred,
             };
 

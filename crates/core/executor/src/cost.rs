@@ -25,98 +25,98 @@ pub fn estimate_trace_elements(
     cells += MAX_PROGRAM_SIZE * costs_per_air[&RiscvAirId::Program];
 
     // Compute the add chip contribution.
-    cells +=
-        (num_events_per_air[RiscvAirId::Add]).next_power_of_two() * costs_per_air[&RiscvAirId::Add];
+    cells += (num_events_per_air[RiscvAirId::Add]).next_multiple_of(32)
+        * costs_per_air[&RiscvAirId::Add];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Add]);
 
     // Compute the addi chip contribution.
-    cells += (num_events_per_air[RiscvAirId::Addi]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::Addi]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::Addi];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Addi]);
 
     // Compute the sub chip contribution.
-    cells +=
-        (num_events_per_air[RiscvAirId::Sub]).next_power_of_two() * costs_per_air[&RiscvAirId::Sub];
+    cells += (num_events_per_air[RiscvAirId::Sub]).next_multiple_of(32)
+        * costs_per_air[&RiscvAirId::Sub];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Sub]);
     // Compute the bitwise chip contribution.
-    cells += (num_events_per_air[RiscvAirId::Bitwise]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::Bitwise]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::Bitwise];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Bitwise]);
     // Compute the divrem chip contribution.
-    cells += (num_events_per_air[RiscvAirId::DivRem]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::DivRem]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::DivRem];
     max_height = max_height.max(num_events_per_air[RiscvAirId::DivRem]);
     // Compute the lt chip contribution.
     cells +=
-        (num_events_per_air[RiscvAirId::Lt]).next_power_of_two() * costs_per_air[&RiscvAirId::Lt];
+        (num_events_per_air[RiscvAirId::Lt]).next_multiple_of(32) * costs_per_air[&RiscvAirId::Lt];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Lt]);
     // Compute the mul chip contribution.
-    cells +=
-        (num_events_per_air[RiscvAirId::Mul]).next_power_of_two() * costs_per_air[&RiscvAirId::Mul];
+    cells += (num_events_per_air[RiscvAirId::Mul]).next_multiple_of(32)
+        * costs_per_air[&RiscvAirId::Mul];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Mul]);
     // Compute the shift left chip contribution.
-    cells += (num_events_per_air[RiscvAirId::ShiftLeft]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::ShiftLeft]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::ShiftLeft];
     max_height = max_height.max(num_events_per_air[RiscvAirId::ShiftLeft]);
     // Compute the shift right chip contribution.
-    cells += (num_events_per_air[RiscvAirId::ShiftRight]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::ShiftRight]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::ShiftRight];
     max_height = max_height.max(num_events_per_air[RiscvAirId::ShiftRight]);
     // Compute the memory local chip contribution.
-    cells += (num_events_per_air[RiscvAirId::MemoryLocal]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::MemoryLocal]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::MemoryLocal];
     max_height = max_height.max(num_events_per_air[RiscvAirId::MemoryLocal]);
     // Compute the branch chip contribution.
-    cells += (num_events_per_air[RiscvAirId::Branch]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::Branch]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::Branch];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Branch]);
     // Compute the jal chip contribution.
-    cells +=
-        (num_events_per_air[RiscvAirId::Jal]).next_power_of_two() * costs_per_air[&RiscvAirId::Jal];
+    cells += (num_events_per_air[RiscvAirId::Jal]).next_multiple_of(32)
+        * costs_per_air[&RiscvAirId::Jal];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Jal]);
     // Compute the jalr chip contribution.
-    cells += (num_events_per_air[RiscvAirId::Jalr]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::Jalr]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::Jalr];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Jalr]);
     // Compute the auipc chip contribution.
-    cells += (num_events_per_air[RiscvAirId::Auipc]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::Auipc]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::Auipc];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Auipc]);
     // Compute the memory instruction chip contribution.
-    cells += (num_events_per_air[RiscvAirId::LoadByte]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::LoadByte]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::LoadByte];
     max_height = max_height.max(num_events_per_air[RiscvAirId::LoadByte]);
-    cells += (num_events_per_air[RiscvAirId::LoadHalf]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::LoadHalf]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::LoadHalf];
     max_height = max_height.max(num_events_per_air[RiscvAirId::LoadHalf]);
-    cells += (num_events_per_air[RiscvAirId::LoadWord]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::LoadWord]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::LoadWord];
     max_height = max_height.max(num_events_per_air[RiscvAirId::LoadWord]);
-    cells += (num_events_per_air[RiscvAirId::LoadX0]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::LoadX0]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::LoadX0];
     max_height = max_height.max(num_events_per_air[RiscvAirId::LoadX0]);
-    cells += (num_events_per_air[RiscvAirId::StoreByte]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::StoreByte]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::StoreByte];
     max_height = max_height.max(num_events_per_air[RiscvAirId::StoreByte]);
-    cells += (num_events_per_air[RiscvAirId::StoreHalf]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::StoreHalf]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::StoreHalf];
     max_height = max_height.max(num_events_per_air[RiscvAirId::StoreHalf]);
-    cells += (num_events_per_air[RiscvAirId::StoreWord]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::StoreWord]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::StoreWord];
     max_height = max_height.max(num_events_per_air[RiscvAirId::StoreWord]);
 
     // Compute the syscall instruction chip contribution.
-    cells += (num_events_per_air[RiscvAirId::SyscallInstrs]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::SyscallInstrs]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::SyscallInstrs];
     max_height = max_height.max(num_events_per_air[RiscvAirId::SyscallInstrs]);
 
     // Compute the syscall core chip contribution.
-    cells += (num_events_per_air[RiscvAirId::SyscallCore]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::SyscallCore]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::SyscallCore];
     max_height = max_height.max(num_events_per_air[RiscvAirId::SyscallCore]);
 
     // Compute the global chip contribution.
-    cells += (num_events_per_air[RiscvAirId::Global]).next_power_of_two()
+    cells += (num_events_per_air[RiscvAirId::Global]).next_multiple_of(32)
         * costs_per_air[&RiscvAirId::Global];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Global]);
 

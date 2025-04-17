@@ -58,6 +58,8 @@ pub struct SplitOpts {
     pub ec_add_256bit: usize,
     /// The threshold for ec double 256bit events.
     pub ec_double_256bit: usize,
+    /// The threshold for fp operation events.
+    pub fp_operation_256bit: usize,
 }
 
 impl SplitOpts {
@@ -70,6 +72,7 @@ impl SplitOpts {
         Self {
             combine_memory_threshold: 1 << 17,
             deferred: deferred_split_threshold,
+            fp_operation_256bit: deferred_split_threshold * 2,
             ec_add_256bit: deferred_split_threshold * 64 / 65,
             ec_double_256bit: deferred_split_threshold * 64 / 33,
             keccak: 32 * deferred_split_threshold / 101,
