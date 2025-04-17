@@ -1,5 +1,6 @@
 pub mod algebra;
 pub mod basefold;
+pub mod challenger;
 pub mod dft;
 pub mod jagged;
 pub mod logup_gkr;

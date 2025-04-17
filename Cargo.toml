@@ -13,6 +13,7 @@ missing_docs = "warn"
 members = [
     "crates/air",
     "crates/basefold",
+    "crates/challenger",
     "crates/cuda",
     "crates/sys",
     "crates/dft",
@@ -47,6 +48,7 @@ csl-cuda = { path = "crates/cuda" }
 csl-dft = { path = "crates/dft" }
 csl-merkle-tree = { path = "crates/merkle-tree" }
 csl-basefold = { path = "crates/basefold" }
+csl-challenger = { path = "crates/challenger" }
 csl-jagged = { path = "crates/jagged" }
 csl-air = { path = "crates/air" }
 csl-zerocheck = { path = "crates/zerocheck" }

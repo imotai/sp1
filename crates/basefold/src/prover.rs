@@ -5,13 +5,11 @@ use csl_dft::SpparkDftBabyBear;
 use csl_merkle_tree::Poseidon2BabyBear16CudaProver;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
-use slop_basefold::{BasefoldConfig, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
-use slop_basefold_prover::{
-    BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver, GrindingPowProver,
-};
+use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+use slop_basefold_prover::{BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver};
 use slop_merkle_tree::{MerkleTreeTcs, Poseidon2BabyBearConfig};
 
-use crate::{CudaDftEncoder, FriCudaProver};
+use crate::{BasefoldCudaConfig, CudaDftEncoder, FriCudaProver, GrindingPowCudaProver};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Poseidon2BabyBear16BasefoldCudaProverComponents;
@@ -21,12 +19,12 @@ impl BasefoldProverComponents for Poseidon2BabyBear16BasefoldCudaProverComponent
     type EF = BinomialExtensionField<BabyBear, 4>;
     type A = TaskScope;
     type Tcs = MerkleTreeTcs<Poseidon2BabyBearConfig>;
-    type Challenger = <Poseidon2BabyBear16BasefoldConfig as BasefoldConfig>::Challenger;
+    type Challenger = <Poseidon2BabyBear16BasefoldConfig as BasefoldCudaConfig>::DeviceChallenger;
     type Config = Poseidon2BabyBear16BasefoldConfig;
     type Encoder = CudaDftEncoder<BabyBear, SpparkDftBabyBear>;
     type FriProver = FriCudaProver<Self::Encoder, Self::TcsProver>;
     type TcsProver = Poseidon2BabyBear16CudaProver;
-    type PowProver = GrindingPowProver;
+    type PowProver = GrindingPowCudaProver;
 }
 
 impl DefaultBasefoldProver for Poseidon2BabyBear16BasefoldCudaProverComponents {
@@ -35,7 +33,7 @@ impl DefaultBasefoldProver for Poseidon2BabyBear16BasefoldCudaProverComponents {
         let encoder = CudaDftEncoder { config: verifier.fri_config, dft };
         let fri_prover = FriCudaProver::<_, _>(PhantomData);
         let tcs_prover = Poseidon2BabyBear16CudaProver::default();
-        let pow_prover = GrindingPowProver;
+        let pow_prover = GrindingPowCudaProver;
         BasefoldProver { encoder, fri_prover, tcs_prover, pow_prover }
     }
 }

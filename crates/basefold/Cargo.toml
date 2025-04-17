@@ -11,6 +11,7 @@ categories.workspace = true
 csl-dft = { workspace = true }
 csl-cuda = { workspace = true }
 csl-merkle-tree = { workspace = true }
+csl-challenger = { workspace = true }
 
 slop-basefold = { workspace = true }
 slop-futures = { workspace = true }
@@ -24,8 +25,8 @@ slop-baby-bear = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-challenger = { workspace = true }
-
-
+slop-symmetric = { workspace = true }
+slop-poseidon2 = { workspace = true }
 serde = { workspace = true }
 itertools = { workspace = true }
 

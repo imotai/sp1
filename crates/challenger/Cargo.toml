@@ -1,0 +1,20 @@
+[package]
+name = "csl-challenger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+csl-cuda = { workspace = true }
+
+slop-alloc = { workspace = true }
+slop-algebra = { workspace = true }
+slop-challenger = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-baby-bear = { workspace = true }
+
+[lints]
+workspace = true
