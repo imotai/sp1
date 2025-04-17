@@ -178,28 +178,27 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         let mut row_counts = multilinears.iter().map(|x| x.num_real_entries()).collect::<Vec<_>>();
         let mut column_counts =
             multilinears.iter().map(|x| x.num_polynomials()).collect::<Vec<_>>();
-        // TODO: why is this here?
-        column_counts.push(1);
 
-        // Check the vality of the input multilinears.
+        // Check the validity of the input multilinears.
         for padded_mle in multilinears.iter() {
             // Check that the number of variables matches what the prover expects.
             assert_eq!(padded_mle.num_variables(), self.max_log_row_count as u32);
         }
 
-        // TODO: more comments
+        // To commit to the batch of padded Mles, the underlying PCS prover commits to the dense
+        // representation of all of these Mles (i.e. a single "giga" Mle consisting of all the
+        // entries of all the individual Mles),
+        // padding the total area to the next multiple of the stacking height.
         let next_multiple = multilinears
             .iter()
             .map(|mle| mle.num_real_entries() * mle.num_polynomials())
             .sum::<usize>()
-            .next_multiple_of(1 << self.log_stacking_height());
+            .next_multiple_of(1 << self.log_stacking_height())
+            // Need to pad to at least one column.
+            .max(1 << self.log_stacking_height());
 
-        let next_multiple = if next_multiple > 0 {
-            next_multiple
-        } else {
-            1 << self.stacked_pcs_prover.log_stacking_height
-        };
-
+        // Because of the padding in the stacked PCS, it's necessary to add a "dummy column" in the
+        // jagged commitment scheme to pad the area to the next multiple of the stacking height.
         row_counts.push(
             next_multiple
                 - multilinears
@@ -207,6 +206,8 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
                     .map(|mle| mle.num_real_entries() * mle.num_polynomials())
                     .sum::<usize>(),
         );
+        // Add a "dummy table" with one column to represent this padding.
+        column_counts.push(1);
 
         // Collect all the multilinears that have at least one non-zero entry into a commit message
         // for the dense PCS.
@@ -251,6 +252,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             .collect::<Vec<C::EF>>()
             .await;
 
+        // These are the points where the dummy columns were added during commitment.
         let insertion_points = prover_data
             .iter()
             .map(|data| data.column_counts.iter().sum::<usize>() - 1)
@@ -260,6 +262,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             })
             .collect::<Vec<_>>();
 
+        // Insert zero evaluations for the dummy columns at the appropriate points.
         for insertion_point in insertion_points.iter().rev().skip(1) {
             column_claims.insert(*insertion_point, C::EF::zero());
         }

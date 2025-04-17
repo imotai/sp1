@@ -2,6 +2,13 @@ use slop_algebra::{ExtensionField, Field};
 
 use crate::{full_geq, Mle, Point};
 
+/// A struct capturing a dense representation of a linear combination of a geq and eq polynomial,
+/// both with the same threshold and number of variables.
+///
+/// In terms of "guts", a `VirtualGeq` is a
+/// vector of length `2^num_vars` where the first `threshold` entries are zero, the next entry is
+/// `eq_coefficient + geq_coefficient`, and the rest are `geq_coefficient`. (In the edge case
+/// threshold == 2^num_vars, this means the vector consists of all zeroes.)
 #[derive(Debug, Copy, Clone)]
 pub struct VirtualGeq<F> {
     pub threshold: u32,
@@ -12,18 +19,26 @@ pub struct VirtualGeq<F> {
 impl<F: Field> VirtualGeq<F> {
     pub fn new(threshold: u32, geq_coefficient: F, eq_coefficient: F, num_vars: u32) -> Self {
         assert!(threshold <= (1 << num_vars));
-        Self { threshold, geq_coefficient, eq_coefficient, num_vars }
+        Self { threshold, eq_coefficient, geq_coefficient, num_vars }
     }
+
+    /// Fix last variable of the `VirtualGeq` polynomial.
     pub fn fix_last_variable<EF: ExtensionField<F>>(&self, alpha: EF) -> VirtualGeq<EF> {
+        // The new number of zeroes is half the old number of zeroes (rounded down).
         let new_threshold = self.threshold >> 1;
+        // The value above the threshold is unchanged.
         let new_geq_coefficient = self.geq_coefficient.into();
-        let new_eq_coefficient = if self.threshold & 1 == 0 { EF::one() - alpha } else { alpha }
-            * self.eq_coefficient
-            + if self.threshold & 1 == 0 {
-                EF::zero()
-            } else {
-                (alpha - EF::one()) * self.geq_coefficient
-            };
+        let new_eq_coefficient = if self.threshold & 1 == 0 {
+            // If there is an even number of zeroes, the geq polynomial folds to a new geq polynomial,
+            // and the only contribution is from the eq polynomial fixing the last variable.
+            (EF::one() - alpha) * self.eq_coefficient
+        } else {
+            // If there is an odd number of zeroes, there is the usual contribution from fixing the
+            // last variable of the eq polynomial, but also fixing the geq polynomial produces a
+            // value at the threshold index equal to the result of fixing last variable of the vector
+            // `[0, geq_coefficient`] to alpha.
+            alpha * (self.eq_coefficient + self.geq_coefficient) - self.geq_coefficient
+        };
 
         VirtualGeq {
             threshold: new_threshold,
@@ -33,6 +48,7 @@ impl<F: Field> VirtualGeq<F> {
         }
     }
 
+    /// Evaluate the virtual polynomial at an arbitrary extension field point.
     pub fn eval_at<EF: ExtensionField<F>>(&self, point: &Point<EF>) -> EF {
         if self.threshold == 1 << self.num_vars {
             return EF::zero();
@@ -43,6 +59,7 @@ impl<F: Field> VirtualGeq<F> {
         eq_eval * self.eq_coefficient + geq_eval * self.geq_coefficient
     }
 
+    /// Sum all entries in the virtual polynomial.
     pub fn sum(&self) -> F {
         F::from_canonical_usize((1 << self.num_vars) - self.threshold as usize)
             * self.geq_coefficient
@@ -58,6 +75,9 @@ impl<F: Field> VirtualGeq<F> {
         }
     }
 
+    /// "Index into" the virtual polynomial. The vector is length 2^num_vars, but we allow indexing
+    /// into the 2^{num_vars} entry, to represent a geq polynomial where the threshold is set its
+    /// maximum possible value.
     pub fn eval_at_usize(&self, index: usize) -> F {
         assert!(index <= (1 << self.num_vars));
         if index < self.threshold as usize {
