@@ -391,6 +391,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "389a099b34312839e16420d499a9cad9650541715937ffbdd40d36f49e77eeb3"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3893,7 +3906,6 @@ name = "sha"
 version = "1.1.0"
 dependencies = [
  "rand 0.8.5",
- "sha2 0.10.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha2 0.9.9",
  "sha3 0.10.6",
  "sp1-build",
@@ -4201,6 +4213,8 @@ name = "sp1-primitives"
 version = "4.2.0"
 dependencies = [
  "bincode",
+ "blake3",
+ "cfg-if",
  "hex",
  "lazy_static",
  "num-bigint 0.4.6",
