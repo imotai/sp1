@@ -24,8 +24,8 @@ use sp1_recursion_circuit::{
     InnerSC,
 };
 use sp1_stark::{
-    log2_ceil_usize, prover::MachineProvingKey, ChipDimensions, MachineConfig, MachineVerifyingKey,
-    ShardProof, DIGEST_SIZE,
+    prover::MachineProvingKey, ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof,
+    DIGEST_SIZE,
 };
 use thiserror::Error;
 
@@ -118,8 +118,6 @@ where
             self.preprocessed_chip_information.values()
         {
             inputs.push(BabyBear::from_canonical_usize(*height));
-            let log_height = log2_ceil_usize(*height);
-            inputs.push(BabyBear::from_canonical_usize(log_height));
         }
 
         poseidon2_hash(inputs)

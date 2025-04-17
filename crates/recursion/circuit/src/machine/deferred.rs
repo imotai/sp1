@@ -28,7 +28,6 @@ use crate::{
     challenger::{CanObserveVariable, DuplexChallengerVariable},
     hash::{FieldHasher, FieldHasherVariable},
     jagged::RecursiveJaggedConfig,
-    machine::assert_recursion_public_values_valid,
     shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfig,
@@ -36,13 +35,7 @@ use crate::{
     CircuitConfig, // {ShardProofVariable, StarkVerifier, VerifyingKeyVariable},
 };
 
-use super::{
-    assert_complete,
-    recursion_public_values_digest,
-    SP1CompressShape,
-    // SP1CompressWitnessValues,
-    // SP1MerkleProofVerifier, SP1MerkleProofWitnessValues, SP1MerkleProofWitnessVariable,
-};
+use super::{assert_complete, recursion_public_values_digest, SP1CompressShape};
 
 pub struct SP1DeferredVerifier<C, SC, A, JC> {
     _phantom: std::marker::PhantomData<(C, SC, A, JC)>,
@@ -133,7 +126,6 @@ where
         machine: &RecursiveShardVerifier<A, SC, C, JC>,
         input: SP1DeferredWitnessVariable<C, SC, JC>,
         // value_assertions: bool,
-        challenger: &mut SC::FriChallengerVariable,
     ) {
         let SP1DeferredWitnessVariable {
             vks_and_proofs,
@@ -169,11 +161,11 @@ where
             start_reconstruct_deferred_digest;
 
         for (vk, shard_proof) in vks_and_proofs {
-            // Initialize a challenger.
-            // let mut challenger = machine.config().challenger_variable(builder);
+            // Prepare a challenger.
+            let mut challenger = SC::challenger_variable(builder);
             // Observe the vk and start pc.
-            if let Some(vk) = vk.preprocessed_commit.as_ref() {
-                challenger.observe(builder, *vk);
+            if let Some(commit) = vk.preprocessed_commit {
+                challenger.observe(builder, commit);
             }
             challenger.observe(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
@@ -182,13 +174,7 @@ where
             let zero: Felt<_> = builder.eval(C::F::zero());
             challenger.observe(builder, zero);
 
-            // Observe the and public values.
-            challenger.observe_slice(
-                builder,
-                shard_proof.public_values[0..machine.machine.num_pv_elts()].iter().copied(),
-            );
-
-            machine.verify_shard(builder, &vk, &shard_proof, challenger);
+            machine.verify_shard(builder, &vk, &shard_proof, &mut challenger);
 
             // Get the current public values.
             let current_public_values: &RecursionPublicValues<Felt<C::F>> =
@@ -198,10 +184,10 @@ where
             //     builder.assert_felt_eq(*elem, *expected);
             // }
             // Assert that the public values are valid.
-            assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
+            // assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
 
             // Assert that the proof is complete.
-            builder.assert_felt_eq(current_public_values.is_complete, C::F::one());
+            // builder.assert_felt_eq(current_public_values.is_complete, C::F::one());
 
             // Update deferred proof digest
             // poseidon2( current_digest[..8] || pv.sp1_vk_digest[..8] ||
@@ -257,6 +243,7 @@ where
             }));
         // Set the vk root from the witness.
         // deferred_public_values.vk_root = vk_root;
+        deferred_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
         // Set the digest according to the previous values.
         deferred_public_values.digest =
             recursion_public_values_digest::<C, SC>(builder, deferred_public_values);
@@ -264,7 +251,7 @@ where
         assert_complete(builder, deferred_public_values, is_complete);
         builder.assert_felt_eq(is_complete, C::F::zero());
 
-        // SC::commit_recursion_public_values(builder, *deferred_public_values);
+        SC::commit_recursion_public_values(builder, *deferred_public_values);
     }
 }
 

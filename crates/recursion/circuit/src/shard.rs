@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    marker::PhantomData,
+};
 
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
@@ -25,8 +28,9 @@ use sp1_recursion_compiler::{
 };
 use sp1_recursion_executor::DIGEST_SIZE;
 use sp1_stark::{
-    air::MachineAir, septic_digest::SepticDigest, GenericVerifierPublicValuesConstraintFolder,
-    LogupGkrProof, Machine, MachineConfig, MachineRecord, ShardOpenedValues,
+    air::MachineAir, septic_digest::SepticDigest, ChipDimensions,
+    GenericVerifierPublicValuesConstraintFolder, LogupGkrProof, Machine, MachineConfig,
+    MachineRecord, ShardOpenedValues,
 };
 
 #[allow(clippy::type_complexity)]
@@ -62,6 +66,8 @@ pub struct MachineVerifyingKeyVariable<
     pub initial_global_cumulative_sum: SepticDigest<Felt<C::F>>,
     /// The preprocessed commitments.
     pub preprocessed_commit: Option<SC::DigestVariable>,
+    /// The preprocessed chip information.
+    pub preprocessed_chip_information: BTreeMap<String, ChipDimensions>,
 }
 impl<C, SC> MachineVerifyingKeyVariable<C, SC>
 where
@@ -84,6 +90,12 @@ where
         inputs.push(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
+        for ChipDimensions { height, num_polynomials: _ } in
+            self.preprocessed_chip_information.values()
+        {
+            let height = builder.eval(C::F::from_canonical_usize(*height));
+            inputs.push(height);
+        }
         // for domain in prep_domains {
         //     inputs.push(builder.eval(C::F::from_canonical_usize(domain.log_n)));
         //     let size = 1 << domain.log_n;

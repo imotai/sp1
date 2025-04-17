@@ -330,7 +330,13 @@ where
         let pc_start = self.pc_start.read(builder);
         let initial_global_cumulative_sum = self.initial_global_cumulative_sum.read(builder);
         let preprocessed_commit = self.preprocessed_commit.as_ref().map(|x| x.read(builder));
-        Self::WitnessVariable { pc_start, initial_global_cumulative_sum, preprocessed_commit }
+        let preprocessed_chip_information = self.preprocessed_chip_information.clone();
+        Self::WitnessVariable {
+            pc_start,
+            initial_global_cumulative_sum,
+            preprocessed_commit,
+            preprocessed_chip_information,
+        }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {

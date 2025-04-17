@@ -117,7 +117,7 @@ pub fn load_elf(path: &str) -> Result<Vec<u8>, std::io::Error> {
     Ok(elf_code)
 }
 
-pub fn words_to_bytes<T: Copy>(words: &[Word<T>]) -> Vec<T> {
+pub fn words_to_limbs<T: Copy>(words: &[Word<T>]) -> Vec<T> {
     words.iter().flat_map(|word| word.0).collect()
 }
 

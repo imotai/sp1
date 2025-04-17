@@ -28,7 +28,6 @@ use sp1_recursion_circuit::{
     },
     shard::RecursiveShardVerifier,
     witness::Witnessable,
-    BabyBearFriConfigVariable,
 };
 use sp1_recursion_compiler::{
     circuit::AsmCompiler,
@@ -43,7 +42,7 @@ use sp1_stark::{
     BabyBearPoseidon2, Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
-use crate::{shapes::SP1RecursionShape, utils::words_to_bytes, CompressAir, CoreSC, InnerSC};
+use crate::{shapes::SP1RecursionShape, utils::words_to_limbs, CompressAir, CoreSC, InnerSC};
 
 #[allow(clippy::type_complexity)]
 pub struct SP1RecursionProver<C: RecursionProverComponents> {
@@ -272,19 +271,8 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         input_read_span.exit();
         let verify_span = tracing::debug_span!("Verify deferred program").entered();
 
-        // TODO: trait-safe way to do this?
-        let mut challenger =
-            <BabyBearPoseidon2 as BabyBearFriConfigVariable<InnerConfig>>::challenger_variable(
-                &mut builder,
-            );
-
         // Verify the proof.
-        SP1DeferredVerifier::verify(
-            &mut builder,
-            &self.recursive_compress_verifier,
-            input,
-            &mut challenger, // self.vk_verification,
-        );
+        SP1DeferredVerifier::verify(&mut builder, &self.recursive_compress_verifier, input);
         verify_span.exit();
         let block = builder.into_root_block();
         operations_span.exit();
@@ -311,7 +299,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         for proof in deferred_proofs.iter() {
             let pv: &RecursionPublicValues<<CoreSC as JaggedConfig>::F> =
                 proof.proof.public_values.as_slice().borrow();
-            let committed_values_digest = words_to_bytes(&pv.committed_value_digest);
+            let committed_values_digest = words_to_limbs(&pv.committed_value_digest);
             digest = hash_deferred_proof(
                 &digest,
                 &pv.sp1_vk_digest,

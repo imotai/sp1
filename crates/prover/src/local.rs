@@ -438,8 +438,6 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let (deferred_inputs, deferred_digest) =
             self.get_deferred_inputs(&vk.vk, deferred_proofs, batch_size);
 
-        assert!(deferred_proofs.is_empty());
-
         let is_complete = shard_proofs.len() == 1 && deferred_proofs.is_empty();
         let core_inputs = self.get_recursion_core_inputs(
             vk,
@@ -649,7 +647,8 @@ struct ProveTask<C: SP1ProverComponents> {
 
 #[cfg(test)]
 pub mod tests {
-    #![allow(clippy::print_stdout)]
+
+    use slop_algebra::PrimeField32;
 
     use crate::components::CpuSP1ProverComponents;
     use crate::SP1ProverBuilder;
@@ -733,5 +732,101 @@ pub mod tests {
 
         test_e2e_prover::<CpuSP1ProverComponents>(prover, elf, SP1Stdin::default(), Test::Compress)
             .await
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_deferred_compress() -> Result<()> {
+        setup_logger();
+
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build();
+        let opts = LocalProverOpts::default();
+        let prover = Arc::new(LocalProver::new(sp1_prover, opts));
+
+        // Test program which proves the Keccak-256 hash of various inputs.
+        let keccak_elf = test_artifacts::KECCAK256_ELF;
+
+        // Test program which verifies proofs of a vkey and a list of committed inputs.
+        let verify_elf = test_artifacts::VERIFY_PROOF_ELF;
+
+        tracing::info!("setup keccak elf");
+        let (keccak_pk, keccak_program, keccak_vk) = prover.prover().core().setup(keccak_elf).await;
+
+        let keccak_pk = unsafe { keccak_pk.into_inner() };
+        let keccak_pk = Arc::new(keccak_pk);
+
+        tracing::info!("setup verify elf");
+        let (verify_pk, verify_program, verify_vk) = prover.prover().core().setup(verify_elf).await;
+
+        let verify_pk = unsafe { verify_pk.into_inner() };
+        let verify_pk = Arc::new(verify_pk);
+
+        tracing::info!("prove subproof 1");
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&1usize);
+        stdin.write(&vec![0u8, 0, 0]);
+        let deferred_proof_1 = prover
+            .clone()
+            .prove_core(keccak_pk.clone(), keccak_program.clone(), stdin, Default::default())
+            .await?;
+        let pv_1 = deferred_proof_1.public_values.as_slice().to_vec().clone();
+
+        // Generate a second proof of keccak of various inputs.
+        tracing::info!("prove subproof 2");
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&3usize);
+        stdin.write(&vec![0u8, 1, 2]);
+        stdin.write(&vec![2, 3, 4]);
+        stdin.write(&vec![5, 6, 7]);
+        let deferred_proof_2 =
+            prover.clone().prove_core(keccak_pk, keccak_program, stdin, Default::default()).await?;
+        let pv_2 = deferred_proof_2.public_values.as_slice().to_vec().clone();
+
+        // Generate recursive proof of first subproof.
+        tracing::info!("compress subproof 1");
+        let deferred_reduce_1 =
+            prover.clone().compress(&keccak_vk, deferred_proof_1, vec![]).await?;
+        prover.prover().verify_compressed(&deferred_reduce_1, &keccak_vk)?;
+
+        // Generate recursive proof of second subproof.
+        tracing::info!("compress subproof 2");
+        let deferred_reduce_2 =
+            prover.clone().compress(&keccak_vk, deferred_proof_2, vec![]).await?;
+        prover.prover().verify_compressed(&deferred_reduce_2, &keccak_vk)?;
+
+        // Run verify program with keccak vkey, subproofs, and their committed values.
+        let mut stdin = SP1Stdin::new();
+        let vkey_digest = keccak_vk.hash_babybear();
+        let vkey_digest: [u32; 8] = vkey_digest
+            .iter()
+            .map(|n| n.as_canonical_u32())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        stdin.write(&vkey_digest);
+        stdin.write(&vec![pv_1.clone(), pv_2.clone(), pv_2.clone()]);
+        stdin.write_proof(deferred_reduce_1.clone(), keccak_vk.vk.clone());
+        stdin.write_proof(deferred_reduce_2.clone(), keccak_vk.vk.clone());
+        stdin.write_proof(deferred_reduce_2.clone(), keccak_vk.vk.clone());
+
+        tracing::info!("proving verify program (core)");
+        let verify_proof =
+            prover.clone().prove_core(verify_pk, verify_program, stdin, Default::default()).await?;
+
+        // Generate recursive proof of verify program
+        tracing::info!("compress verify program");
+        let verify_reduce = prover
+            .clone()
+            .compress(
+                &verify_vk,
+                verify_proof,
+                vec![deferred_reduce_1, deferred_reduce_2.clone(), deferred_reduce_2],
+            )
+            .await?;
+
+        tracing::info!("verify verify program");
+        prover.prover().verify_compressed(&verify_reduce, &verify_vk)?;
+
+        Ok(())
     }
 }
