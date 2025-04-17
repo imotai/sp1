@@ -301,7 +301,7 @@ impl<C: BasefoldProverComponents> BasefoldProver<C> {
 
         let fri_config = self.encoder.config();
         let pow_bits = fri_config.proof_of_work_bits;
-        let pow_witness = self.pow_prover.grind(challenger, pow_bits);
+        let pow_witness = self.pow_prover.grind(challenger, pow_bits).await;
         // FRI Query Phase.
         let query_indices: Vec<usize> = (0..fri_config.num_queries)
             .map(|_| challenger.sample_bits(log_len as usize + fri_config.log_blowup()))
