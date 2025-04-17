@@ -1,12 +1,9 @@
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::ops::{Deref, DerefMut};
 
 use csl_cuda::{cuda_memory_info, TaskScope};
 use sp1_core_executor::SplitOpts;
 use sp1_prover::{components::SP1ProverComponents, local::LocalProverOpts, SP1ProverBuilder};
-use tokio::sync::Semaphore;
+use sp1_stark::prover::ProverSemaphore;
 
 use crate::{new_cuda_prover_sumcheck_eval, CudaSP1ProverComponents};
 
@@ -27,7 +24,7 @@ impl SP1CudaProverBuilder {
         let gpu_memory_gb: usize =
             (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
 
-        let prover_permits = Arc::new(Semaphore::new(1));
+        let prover_permits = ProverSemaphore::new(1);
 
         if gpu_memory_gb < 24 {
             panic!("Unsupported GPU memory: {}, must be at least 24GB", gpu_memory_gb);

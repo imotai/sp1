@@ -87,7 +87,6 @@ sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", b
 sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
-p3-uni-stark = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
 # slop-baby-bear = { path = "../slop/crates/baby-bear" }

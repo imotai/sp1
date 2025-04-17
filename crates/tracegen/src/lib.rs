@@ -18,13 +18,14 @@ use slop_alloc::CopyIntoBackend;
 use slop_baby_bear::BabyBear;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_tensor::TransposeBackend;
+use sp1_stark::prover::{PreprocessedData, ProverPermits};
 use sp1_stark::MachineRecord;
 use sp1_stark::{
     air::MachineAir,
     prover::{ShardData, TraceGenerator, Traces},
     Machine,
 };
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::oneshot;
 
 /// We currently only link to BabyBear-specialized trace generation FFI.
 pub(crate) type F = BabyBear;
@@ -61,8 +62,8 @@ where
         &self,
         program: Arc<<A as MachineAir<F>>::Program>,
         max_log_row_count: usize,
-        prover_permits: Arc<Semaphore>,
-    ) -> Traces<F, TaskScope> {
+        prover_permits: ProverPermits,
+    ) -> PreprocessedData<F, TaskScope> {
         // This function's contents are copied from the DefaultTraceGenerator.
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
         let (tx, rx) = oneshot::channel();
@@ -80,7 +81,7 @@ where
         });
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire_owned().await.unwrap();
+        let permit = prover_permits.acquire().await.unwrap();
 
         // Wait for the traces to be generated and copy them to the target backend.
         // Wait for traces.
@@ -96,15 +97,15 @@ where
             .await
             .into_iter()
             .collect::<BTreeMap<_, _>>();
-        drop(permit);
-        Traces { named_traces }
+        let preprocessed_traces = Traces { named_traces };
+        PreprocessedData { preprocessed_traces, permit }
     }
 
     async fn generate_main_traces(
         &self,
         record: <A as MachineAir<F>>::Record,
         max_log_row_count: usize,
-        prover_permits: Arc<Semaphore>,
+        prover_permits: ProverPermits,
     ) -> ShardData<F, A, TaskScope> {
         // Set of chips we need to generate traces for.
         let chip_set = self
@@ -156,7 +157,7 @@ where
             .collect::<BTreeMap<_, _>>();
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire_owned().await.unwrap();
+        let permit = prover_permits.acquire().await.unwrap();
 
         // Now that the permit is acquired, we can begin the following two tasks:
         // - Copying host traces to the device.
