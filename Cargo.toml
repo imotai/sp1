@@ -24,9 +24,10 @@ members = [
     "crates/prover",
     "crates/tracing",
     "crates/perf",
-    "crates/tracegen",
+    # "crates/tracegen",
     "crates/logup-gkr",
 ]
+exclude = ["crates/tracegen"]
 resolver = "2"
 
 [profile.dev]
@@ -55,7 +56,7 @@ csl-zerocheck = { path = "crates/zerocheck" }
 csl-tracing = { path = "crates/tracing" }
 csl-prover = { path = "crates/prover" }
 csl-perf = { path = "crates/perf" }
-csl-tracegen = { path = "crates/tracegen" }
+# csl-tracegen = { path = "crates/tracegen" }
 csl-logup-gkr = { path = "crates/logup-gkr" }
 
 # slop 

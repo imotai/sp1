@@ -40,12 +40,11 @@ pub async fn make_measurement(
     let _setup_time = time.elapsed();
 
     let pk = unsafe { pk.into_inner() };
-    let pk = Arc::new(pk);
 
     let time = Instant::now();
     let core_proof = prover
         .clone()
-        .prove_core(pk.clone(), program, stdin, SP1Context::default())
+        .prove_core(pk, program, stdin, SP1Context::default())
         .instrument(tracing::info_span!("prove core"))
         .await
         .unwrap();
