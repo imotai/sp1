@@ -82,15 +82,16 @@ pub async fn run_test_core(
     );
     let prover = CpuShardProver::new(verifier.clone());
     let setup_permit = ProverSemaphore::new(1);
-    let (pk, vk, _) = prover
-        .setup(runtime.program.clone(), setup_permit.pending())
+    let (pk, vk) = prover
+        .setup(runtime.program.clone(), setup_permit.clone())
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
+    let pk = unsafe { pk.into_inner() };
     let challenger = verifier.pcs_verifier.challenger();
     let (proof, _) = prove_core(
         verifier.clone(),
         Arc::new(prover),
-        Arc::new(pk),
+        pk,
         runtime.program.clone(),
         inputs,
         SP1CoreOpts::default(),

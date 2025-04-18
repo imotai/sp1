@@ -171,6 +171,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let prover = self.clone();
 
+        let program = Arc::new(program);
+
         // let (proofs_tx, mut proofs_rx) = mpsc::channel(self.prover_task_capacity);
         let shard_proofs = tokio::spawn(async move {
             let mut shard_proofs = Vec::new();
@@ -178,11 +180,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             loop {
                 tokio::select! {
                     Some(record) = records_rx.recv() => {
+                        let span = tracing::debug_span!("prove core shard").entered();
                         let handle = prover
                             .prover
                             .core()
-                            .prove_shard(pk.clone(), record)
-                            .instrument(tracing::debug_span!("prove core shard"));
+                            .prove_shard(pk.clone(), record);
+                        span.exit();
                         tasks.push_back(handle);
                     }
                     Some(result) = tasks.next() => {
@@ -201,7 +204,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let prover = self.clone();
         let inputs = stdin.clone();
         let output = tokio::spawn(async move {
-            prover.executor.execute(Arc::new(program), inputs, context, records_tx).await
+            prover.executor.execute(program, inputs, context, records_tx).await
         });
 
         // Wait for the executor to finish.
@@ -361,13 +364,14 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                             panic!("not implemented");
                         }
                         else {
+                        let span = tracing::debug_span!("prove compress shard").entered();
                         let handle = prover.prover().recursion().setup_and_prove_shard(record.program.clone(), None, record)
-                        .instrument(tracing::debug_span!("prove compress shard"))
                             .map_ok(move |(vk, proof)|  {
                             let proof = SP1ReduceProof { vk, proof };
 
                             RecursionProof { shard_range: range, proof }
                           });
+                          span.exit();
                           setup_and_prove_tasks.push(handle);
                         }
                     }
@@ -682,7 +686,6 @@ pub mod tests {
             .await;
 
         let pk = unsafe { pk.into_inner() };
-        let pk = Arc::new(pk);
 
         let core_proof = prover
             .clone()
@@ -753,13 +756,11 @@ pub mod tests {
         let (keccak_pk, keccak_program, keccak_vk) = prover.prover().core().setup(keccak_elf).await;
 
         let keccak_pk = unsafe { keccak_pk.into_inner() };
-        let keccak_pk = Arc::new(keccak_pk);
 
         tracing::info!("setup verify elf");
         let (verify_pk, verify_program, verify_vk) = prover.prover().core().setup(verify_elf).await;
 
         let verify_pk = unsafe { verify_pk.into_inner() };
-        let verify_pk = Arc::new(verify_pk);
 
         tracing::info!("prove subproof 1");
         let mut stdin = SP1Stdin::new();

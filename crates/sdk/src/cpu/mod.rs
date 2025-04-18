@@ -129,7 +129,6 @@ impl CpuProver {
 
         let SP1ProvingKey { pk, vk, .. } = pk;
 
-        let pk = Arc::new(pk);
         // Generate the core proof.
         let proof: SP1ProofWithMetadata<SP1CoreProofData> =
             self.prover.clone().prove_core(pk.clone(), program, stdin, context).await?;

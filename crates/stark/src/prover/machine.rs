@@ -5,6 +5,7 @@ use futures::{
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use thiserror::Error;
+use tracing::{Instrument, Span};
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -13,14 +14,13 @@ use slop_futures::{handle::TaskHandle, queue::WorkerQueue};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    air::MachineAir,
-    prover::CoreProofShape,
-    prover::{ProverPermit, ProverPermits},
-    Machine, MachineProof, MachineVerifier, MachineVerifierError, MachineVerifyingKey, ShardProof,
-    ShardVerifier, VerifierConstraintFolder,
+    air::MachineAir, prover::CoreProofShape, Machine, MachineProof, MachineVerifier,
+    MachineVerifierError, MachineVerifyingKey, ShardProof, ShardVerifier, VerifierConstraintFolder,
 };
 
-use super::{MachineProverComponents, MachineProvingKey, ProverSemaphore, ShardProver};
+use super::{
+    MachineProverComponents, MachineProvingKey, PreprocessedData, ProverSemaphore, ShardProver,
+};
 
 /// A builder for a machine prover.
 pub struct MachineProverBuilder<C: MachineProverComponents> {
@@ -73,9 +73,10 @@ struct SetupTask<C: MachineProverComponents> {
     program: Arc<C::Program>,
     vk: Option<MachineVerifyingKey<C::Config>>,
     output_tx: oneshot::Sender<
-        Result<(ProvingKey<C>, MachineVerifyingKey<C::Config>), MachineProverError>,
+        Result<(PreprocessedData<C>, MachineVerifyingKey<C::Config>), MachineProverError>,
     >,
     abort_registration: AbortRegistration,
+    span: Span,
 }
 
 struct ProveTask<C: MachineProverComponents> {
@@ -83,6 +84,7 @@ struct ProveTask<C: MachineProverComponents> {
     record: C::Record,
     proof_tx: oneshot::Sender<Result<ShardProof<C::Config>, MachineProverError>>,
     abort_registration: AbortRegistration,
+    span: Span,
 }
 
 #[allow(clippy::type_complexity)]
@@ -94,62 +96,16 @@ struct SetupAndProveTask<C: MachineProverComponents> {
         Result<(MachineVerifyingKey<C::Config>, ShardProof<C::Config>), MachineProverError>,
     >,
     abort_registration: AbortRegistration,
+    span: Span,
 }
 
-/// A proving key with a permit.
-pub struct ProvingKey<C: MachineProverComponents> {
-    /// The underlying proving key.
-    pk: MachineProvingKey<C>,
-    /// The permit for the prover.
-    permit: ProverPermit,
-}
-
-impl<C: MachineProverComponents> ProvingKey<C> {
-    /// Create a new proving key with a permit.
-    #[must_use]
-    #[inline]
-    pub fn new(pk: MachineProvingKey<C>, permit: ProverPermit) -> Self {
-        Self { pk, permit }
-    }
-
-    /// Get the underlying proving key.
-    ///
-    /// # Safety
-    /// the caller must ensure that the resource
-    #[must_use]
-    #[inline]
-    pub unsafe fn into_inner(self) -> MachineProvingKey<C> {
-        self.pk
-    }
-
-    /// Get the underlying proving key and permit.
-    ///
-    /// # Safety
-    /// todo
-    #[must_use]
-    #[inline]
-    pub unsafe fn into_parts(self) -> (MachineProvingKey<C>, ProverPermit) {
-        (self.pk, self.permit)
-    }
-}
 async fn setup_from_vk<C: MachineProverComponents>(
     prover: &ShardProver<C>,
     program: Arc<C::Program>,
     vk: Option<MachineVerifyingKey<C::Config>>,
-    prover_permits: ProverPermits,
-) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>, ProverPermit) {
-    if let Some(vk) = vk {
-        let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
-        prover
-            .setup_with_initial_global_cumulative_sum(
-                program,
-                initial_global_cumulative_sum,
-                prover_permits,
-            )
-            .await
-    } else {
-        prover.setup(program, prover_permits).await
-    }
+    prover_permits: ProverSemaphore,
+) -> (PreprocessedData<C>, MachineVerifyingKey<C::Config>) {
+    prover.setup_from_vk(program, vk, prover_permits).await
 }
 
 impl<C: MachineProverComponents> MachineProverBuilder<C> {
@@ -231,23 +187,22 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                     while let Some(task) = rx.recv().await {
                         match task {
                             Task::Setup(task) => {
-                                let SetupTask { program, vk, output_tx, abort_registration } = task;
+                                let SetupTask { program, vk, output_tx, abort_registration, span } =
+                                    task;
                                 let setup_result = Abortable::new(
-                                    setup_from_vk(&worker, program, vk, prover_permits.pending()),
+                                    setup_from_vk(&worker, program, vk, prover_permits.clone()),
                                     abort_registration,
                                 )
                                 .map_err(|_| MachineProverError::TaskAborted)
-                                .map_ok(|(pk, vk, permit)| {
-                                    let pk = ProvingKey { pk, permit };
-                                    (pk, vk)
-                                })
+                                .instrument(span)
                                 .await;
                                 // Send the output to the channel if it's still open, otherwise drop
                                 // it.
                                 output_tx.send(setup_result).ok();
                             }
                             Task::Prove(task) => {
-                                let ProveTask { pk, record, proof_tx, abort_registration } = task;
+                                let ProveTask { pk, record, proof_tx, abort_registration, span } =
+                                    task;
                                 let shard_proof_result = Abortable::new(
                                     async {
                                         // Create a challenger.
@@ -255,19 +210,21 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                                         // Observe the preprocessed information.
                                         pk.observe_into(&mut challenger);
                                         // Prove the shard.
-                                        worker
-                                            .prove_shard(
-                                                &pk,
+                                        let (proof, permit) = worker
+                                            .prove_shard_with_pk(
+                                                pk,
                                                 record,
-                                                prover_permits.pending(),
+                                                prover_permits.clone(),
                                                 &mut challenger,
                                             )
-                                            .await
+                                            .await;
+                                        drop(permit);
+                                        proof
                                     },
                                     abort_registration,
                                 )
                                 .map_err(|_| MachineProverError::TaskAborted)
-                                .map_ok(|(proof, _)| proof)
+                                .instrument(span)
                                 .await;
                                 proof_tx.send(shard_proof_result).ok();
                             }
@@ -278,35 +235,29 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                                     record,
                                     proof_tx,
                                     abort_registration,
+                                    span,
                                 } = task;
                                 let result = Abortable::new(
                                     async {
-                                        let (vk, shard_proof, _) = {
-                                            // Setup
-                                            let (pk, vk, permit) = setup_from_vk(
-                                                &worker,
+                                        // Create a challenger.
+                                        let mut challenger = verifier.challenger();
+                                        // Setup and prove the shard.
+                                        let (vk, shard_proof, permit) = worker
+                                            .setup_and_prove_shard(
                                                 program,
+                                                record,
                                                 vk,
-                                                prover_permits.pending(),
+                                                prover_permits.clone(),
+                                                &mut challenger,
                                             )
                                             .await;
-                                            // Create a challenger.
-                                            let mut challenger = verifier.challenger();
-                                            // Observe the preprocessed information.
-                                            pk.observe_into(&mut challenger);
-                                            // Prove the shard.
-                                            let permit = ProverPermits::ready(permit);
-                                            let (shard_proof, permit) = worker
-                                                .prove_shard(&pk, record, permit, &mut challenger)
-                                                .await;
-                                            drop(pk);
-                                            (vk, shard_proof, permit)
-                                        };
+                                        drop(permit);
                                         (vk, shard_proof)
                                     },
                                     abort_registration,
                                 )
                                 .map_err(|_| MachineProverError::TaskAborted)
+                                .instrument(span)
                                 .await;
                                 proof_tx.send(result).ok();
                             }
@@ -439,11 +390,14 @@ impl<C: MachineProverComponents> MachineProver<C> {
         &self,
         program: Arc<C::Program>,
         vk: Option<MachineVerifyingKey<C::Config>>,
-    ) -> TaskHandle<(ProvingKey<C>, MachineVerifyingKey<C::Config>), MachineProverError> {
+    ) -> TaskHandle<(PreprocessedData<C>, MachineVerifyingKey<C::Config>), MachineProverError> {
+        // Create a span for this task.
+        let span = tracing::Span::current();
+        // Create a channel for the output.
         let (output_tx, output_rx) = oneshot::channel();
         // Crate an abort handle for this task.
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let task = Task::Setup(SetupTask { program, vk, output_tx, abort_registration });
+        let task = Task::Setup(SetupTask { program, vk, output_tx, abort_registration, span });
         self.inner.task_tx.send(task).unwrap();
 
         TaskHandle::new(output_rx, abort_handle)
@@ -457,10 +411,14 @@ impl<C: MachineProverComponents> MachineProver<C> {
         pk: Arc<MachineProvingKey<C>>,
         record: C::Record,
     ) -> TaskHandle<ShardProof<C::Config>, MachineProverError> {
+        // Create a span for this task.
+        let span = tracing::Span::current();
+        // Create a channel for the output.
         let (output_tx, output_rx) = oneshot::channel();
         // Create an abortable task.
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let task = Task::Prove(ProveTask { pk, record, proof_tx: output_tx, abort_registration });
+        let task =
+            Task::Prove(ProveTask { pk, record, proof_tx: output_tx, abort_registration, span });
         // Since the prover is in scope, the channel should be open so we can unwrap the send error.
         self.inner.task_tx.send(task).unwrap();
         // Crate an abort handle for this task.
@@ -478,6 +436,9 @@ impl<C: MachineProverComponents> MachineProver<C> {
         record: C::Record,
     ) -> TaskHandle<(MachineVerifyingKey<C::Config>, ShardProof<C::Config>), MachineProverError>
     {
+        // Create a span for this task.
+        let span = tracing::Span::current();
+        // Create a channel for the output.
         let (output_tx, output_rx) = oneshot::channel();
         // Create an abortable task.
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
@@ -487,6 +448,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
             record,
             proof_tx: output_tx,
             abort_registration,
+            span,
         });
         // Since the prover is in scope, the channel should be open so we can unwrap the send error.
         self.inner.task_tx.send(task).unwrap();

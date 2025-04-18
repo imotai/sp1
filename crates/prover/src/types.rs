@@ -35,7 +35,7 @@ use crate::{
 };
 
 pub struct SP1ProvingKey {
-    pub pk: MachineProvingKey<<CpuSP1ProverComponents as SP1ProverComponents>::CoreComponents>,
+    pub pk: Arc<MachineProvingKey<<CpuSP1ProverComponents as SP1ProverComponents>::CoreComponents>>,
     pub elf: Arc<Vec<u8>>,
     /// Verifying key is also included as we need it for recursion
     pub vk: SP1VerifyingKey,

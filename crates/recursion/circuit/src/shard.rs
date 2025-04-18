@@ -405,7 +405,8 @@ mod tests {
     };
     use sp1_recursion_machine::test::run_recursion_test_machines;
     use sp1_stark::{
-        prover::CpuShardProver, prover::ProverSemaphore, MachineVerifier, ShardVerifier,
+        prover::{CpuShardProver, ProverSemaphore},
+        MachineVerifier, ShardVerifier,
     };
 
     use crate::{
@@ -447,8 +448,8 @@ mod tests {
         let program = Arc::new(Program::from(elf).unwrap());
         let prover = Arc::new(CpuShardProver::new(verifier.clone()));
 
-        let (pk, vk, _) = prover.setup(program.clone(), ProverSemaphore::new(1).pending()).await;
-        let pk = Arc::new(pk);
+        let (pk, vk) = prover.setup(program.clone(), ProverSemaphore::new(1)).await;
+        let pk = unsafe { pk.into_inner() };
         let (proof, _) = prove_core(
             verifier.clone(),
             prover,

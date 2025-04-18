@@ -8,7 +8,7 @@ use sp1_core_machine::riscv::RiscvAir;
 use sp1_stark::{
     prover::{
         CoreProofShape, MachineProver, MachineProverComponents, MachineProverError,
-        MachineProvingKey, ProvingKey,
+        MachineProvingKey, PreprocessedData,
     },
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
@@ -88,7 +88,7 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
 
     /// Setup the core prover
     #[must_use]
-    pub async fn setup(&self, elf: &[u8]) -> (ProvingKey<C>, C::Program, SP1VerifyingKey) {
+    pub async fn setup(&self, elf: &[u8]) -> (PreprocessedData<C>, C::Program, SP1VerifyingKey) {
         let program = <C as MachineProverComponents>::Program::from(elf).unwrap();
         let (pk, vk) = self.prover.setup(Arc::new(program.clone()), None).await.unwrap();
         (pk, program, SP1VerifyingKey { vk })

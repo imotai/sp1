@@ -25,15 +25,14 @@ use tracing::Instrument;
 
 use crate::{
     air::{MachineAir, MachineProgram},
-    prover::ProverPermit,
-    prover::{ZeroCheckPoly, ZerocheckAir},
+    prover::{ProverPermit, ProverSemaphore, ZeroCheckPoly, ZerocheckAir},
     septic_digest::SepticDigest,
     AirOpenedValues, Chip, ChipDimensions, ChipEvaluation, ChipOpenedValues, ChipStatistics,
     ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineConfig,
     MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
 
-use super::{ProverPermits, TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
+use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 
 /// The components of the machine prover.
 ///
@@ -119,9 +118,16 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
         + 'static;
 }
 
-/// A collection of traces.
-#[derive(Debug)]
-pub struct ShardData<F: Field, A, B: Backend> {
+/// A collection of main traces with a permit.
+pub struct ShardData<C: MachineProverComponents> {
+    /// The proving key.
+    pub pk: Arc<MachineProvingKey<C>>,
+    /// Main trace data
+    pub main_trace_data: MainTraceData<C::F, C::Air, C::B>,
+}
+
+/// The main traces for a program, with a permit.
+pub struct MainTraceData<F: Field, A: MachineAir<F>, B: Backend> {
     /// The traces.
     pub traces: Traces<F, B>,
     /// The public values.
@@ -132,13 +138,40 @@ pub struct ShardData<F: Field, A, B: Backend> {
     pub permit: ProverPermit,
 }
 
-/// The preprocessed data for a program.
-#[derive(Debug)]
-pub struct PreprocessedData<F: Field, B: Backend> {
+/// The total trace data for a shard.
+pub struct TraceData<F: Field, A: MachineAir<F>, B: Backend> {
+    /// The preprocessed traces.
+    pub preprocessed_traces: Traces<F, B>,
+    /// The main traces.
+    pub main_trace_data: MainTraceData<F, A, B>,
+}
+
+/// The preprocessed traces for a program.
+pub struct PreprocessedTraceData<F: Field, B: Backend> {
     /// The preprocessed traces.
     pub preprocessed_traces: Traces<F, B>,
     /// A permit for a prover resource.
     pub permit: ProverPermit,
+}
+
+/// The preprocessed data for a program.
+pub struct PreprocessedData<C: MachineProverComponents> {
+    /// The proving key.
+    pk: Arc<MachineProvingKey<C>>,
+    /// A permit for a prover resource.
+    pub permit: ProverPermit,
+}
+
+impl<C: MachineProverComponents> PreprocessedData<C> {
+    /// Unsafely take the inner proving key.
+    ///
+    /// # Safety
+    /// This is unsafe because the permit is dropped.
+    #[must_use]
+    #[inline]
+    pub unsafe fn into_inner(self) -> Arc<MachineProvingKey<C>> {
+        self.pk
+    }
 }
 
 /// A prover for the hypercube STARK, given a configuration.
@@ -189,8 +222,8 @@ impl<C: MachineProverComponents> ShardProver<C> {
     pub async fn setup(
         &self,
         program: Arc<C::Program>,
-        setup_permits: ProverPermits,
-    ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>, ProverPermit) {
+        setup_permits: ProverSemaphore,
+    ) -> (PreprocessedData<C>, MachineVerifyingKey<C::Config>) {
         let program_sent = program.clone();
         let initial_global_cumulative_sum =
             tokio::task::spawn_blocking(move || program_sent.initial_global_cumulative_sum())
@@ -204,21 +237,13 @@ impl<C: MachineProverComponents> ShardProver<C> {
         .await
     }
 
-    /// Setup from a program with a specific initial global cumulative sum.
-    pub async fn setup_with_initial_global_cumulative_sum(
+    /// Setup from preprocessed data and traces.
+    pub async fn setup_from_preprocessed_data_and_traces(
         &self,
-        program: Arc<C::Program>,
+        pc_start: C::F,
         initial_global_cumulative_sum: SepticDigest<C::F>,
-        setup_permits: ProverPermits,
-    ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>, ProverPermit) {
-        let pc_start = program.pc_start();
-        let preprocessed_data = self
-            .trace_generator
-            .generate_preprocessed_traces(program, self.max_log_row_count(), setup_permits)
-            .await;
-
-        let PreprocessedData { preprocessed_traces, permit } = preprocessed_data;
-
+        preprocessed_traces: Traces<C::F, C::B>,
+    ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
         let constraints_map = self
             .all_chips()
             .iter()
@@ -273,7 +298,35 @@ impl<C: MachineProverComponents> ShardProver<C> {
             preprocessed_chip_information,
         };
 
-        (pk, vk, permit)
+        (pk, vk)
+    }
+
+    /// Setup from a program with a specific initial global cumulative sum.
+    pub async fn setup_with_initial_global_cumulative_sum(
+        &self,
+        program: Arc<C::Program>,
+        initial_global_cumulative_sum: SepticDigest<C::F>,
+        setup_permits: ProverSemaphore,
+    ) -> (PreprocessedData<C>, MachineVerifyingKey<C::Config>) {
+        let pc_start = program.pc_start();
+        let preprocessed_data = self
+            .trace_generator
+            .generate_preprocessed_traces(program, self.max_log_row_count(), setup_permits)
+            .await;
+
+        let PreprocessedTraceData { preprocessed_traces, permit } = preprocessed_data;
+
+        let (pk, vk) = self
+            .setup_from_preprocessed_data_and_traces(
+                pc_start,
+                initial_global_cumulative_sum,
+                preprocessed_traces,
+            )
+            .await;
+
+        let pk = Arc::new(pk);
+
+        (PreprocessedData { pk, permit }, vk)
     }
 
     async fn commit_traces(
@@ -460,22 +513,107 @@ impl<C: MachineProverComponents> ShardProver<C> {
         (shard_open_values, partial_sumcheck_proof)
     }
 
-    /// Generate a proof for a given execution record.
-    pub async fn prove_shard(
+    /// Setup a shard, using a verifying key if provided.
+    pub async fn setup_from_vk(
         &self,
-        pk: &MachineProvingKey<C>,
+        program: Arc<C::Program>,
+        vk: Option<MachineVerifyingKey<C::Config>>,
+        prover_permits: ProverSemaphore,
+    ) -> (PreprocessedData<C>, MachineVerifyingKey<C::Config>) {
+        if let Some(vk) = vk {
+            let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
+            self.setup_with_initial_global_cumulative_sum(
+                program,
+                initial_global_cumulative_sum,
+                prover_permits,
+            )
+            .await
+        } else {
+            self.setup(program, prover_permits).await
+        }
+    }
+
+    /// Setup and prove a shard.
+    pub async fn setup_and_prove_shard(
+        &self,
+        program: Arc<C::Program>,
         record: C::Record,
-        prover_permits: ProverPermits,
+        vk: Option<MachineVerifyingKey<C::Config>>,
+        prover_permits: ProverSemaphore,
+        challenger: &mut C::Challenger,
+    ) -> (MachineVerifyingKey<C::Config>, ShardProof<C::Config>, ProverPermit) {
+        // Generate trace.
+        let trace_data = self
+            .trace_generator
+            .generate_traces(program.clone(), record, self.max_log_row_count(), prover_permits)
+            .instrument(tracing::debug_span!("generate main traces"))
+            .await;
+
+        // Get the initial global cumulative sum and pc start.
+        let pc_start = program.pc_start();
+        let initial_global_cumulative_sum = if let Some(vk) = vk {
+            vk.initial_global_cumulative_sum
+        } else {
+            tokio::task::spawn_blocking(move || program.initial_global_cumulative_sum())
+                .await
+                .unwrap()
+        };
+
+        let TraceData { preprocessed_traces, main_trace_data } = trace_data;
+
+        let (pk, vk) = self
+            .setup_from_preprocessed_data_and_traces(
+                pc_start,
+                initial_global_cumulative_sum,
+                preprocessed_traces,
+            )
+            .await;
+
+        let pk = Arc::new(pk);
+
+        // Observe the preprocessed information.
+        pk.observe_into(challenger);
+
+        let shard_data = ShardData { pk, main_trace_data };
+
+        let (shard_proof, permit) = self
+            .prove_shard_with_data(shard_data, challenger)
+            .instrument(tracing::debug_span!("prove shard with data"))
+            .await;
+
+        (vk, shard_proof, permit)
+    }
+
+    /// Prove a shard with a given proving key.
+    pub async fn prove_shard_with_pk(
+        &self,
+        pk: Arc<MachineProvingKey<C>>,
+        record: C::Record,
+        prover_permits: ProverSemaphore,
         challenger: &mut C::Challenger,
     ) -> (ShardProof<C::Config>, ProverPermit) {
         // Generate the traces.
-        let data = self
+        let main_trace_data = self
             .trace_generator
             .generate_main_traces(record, self.max_log_row_count(), prover_permits)
             .instrument(tracing::debug_span!("generate main traces"))
             .await;
 
-        let ShardData { traces, public_values, permit, shard_chips } = data;
+        let shard_data = ShardData { pk, main_trace_data };
+
+        self.prove_shard_with_data(shard_data, challenger)
+            .instrument(tracing::debug_span!("prove shard with data"))
+            .await
+    }
+
+    /// Generate a proof for a given execution record.
+    pub async fn prove_shard_with_data(
+        &self,
+        data: ShardData<C>,
+        challenger: &mut C::Challenger,
+    ) -> (ShardProof<C::Config>, ProverPermit) {
+        let ShardData { pk, main_trace_data } = data;
+        let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
 
         // Log the shard data.
 

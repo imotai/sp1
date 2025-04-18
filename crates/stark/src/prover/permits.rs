@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use thiserror::Error;
 use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
+use tracing::Span;
 
 /// A permit for the prover.
 #[derive(Debug)]
@@ -9,14 +10,10 @@ pub struct ProverPermit {
     /// The underlying permit.
     #[allow(dead_code)]
     permit: OwnedSemaphorePermit,
-}
-
-/// A prover permit that is either ready or waiting to be acquired.
-pub enum ProverPermits {
-    /// The permit is ready to be acquired.
-    Ready(ProverPermit),
-    /// The permit is waiting to be acquired.
-    Pending(ProverSemaphore),
+    /// The span for the permit lifetime.
+    span: Span,
+    /// The time the permit was acquired.
+    time: tokio::time::Instant,
 }
 
 /// A semaphore for the prover.
@@ -34,18 +31,13 @@ impl ProverSemaphore {
         Self { sem: Arc::new(Semaphore::new(max_permits)) }
     }
 
-    /// Get a pending prover permit.
-    #[must_use]
-    #[inline]
-    pub fn pending(&self) -> ProverPermits {
-        ProverPermits::Pending(self.clone())
-    }
-
     /// Acquire a permit.
     #[inline]
     pub async fn acquire(self) -> Result<ProverPermit, ProverAcquireError> {
+        let span = tracing::Span::current();
         let permit = self.sem.acquire_owned().await?;
-        Ok(ProverPermit { permit })
+        let time = tokio::time::Instant::now();
+        Ok(ProverPermit { permit, span, time })
     }
 }
 
@@ -54,27 +46,9 @@ impl ProverSemaphore {
 #[error("failed to acquire permit")]
 pub struct ProverAcquireError(#[from] AcquireError);
 
-impl ProverPermits {
-    /// Get a pending prover permit.
-    #[must_use]
-    #[inline]
-    pub fn pending(sem: ProverSemaphore) -> Self {
-        Self::Pending(sem)
-    }
-
-    /// Get a ready prover permit.
-    #[must_use]
-    #[inline]
-    pub fn ready(permit: ProverPermit) -> Self {
-        Self::Ready(permit)
-    }
-
-    /// Acquire a permit.
-    #[inline]
-    pub async fn acquire(self) -> Result<ProverPermit, ProverAcquireError> {
-        match self {
-            Self::Ready(permit) => Ok(permit),
-            Self::Pending(sem) => sem.acquire().await,
-        }
+impl Drop for ProverPermit {
+    fn drop(&mut self) {
+        let duration = self.time.elapsed();
+        tracing::debug!(parent: &self.span, "permit acquired for {:?} ", duration);
     }
 }

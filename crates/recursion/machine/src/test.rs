@@ -68,7 +68,6 @@ pub async fn run_test_recursion<const DEGREE: usize>(
         .unwrap();
     let pk = unsafe { pk.into_inner() };
     let mut shard_proofs = Vec::with_capacity(records.len());
-    let pk = Arc::new(pk);
     for record in records {
         let proof = prover.prove_shard(pk.clone(), record).await.unwrap();
         shard_proofs.push(proof);
