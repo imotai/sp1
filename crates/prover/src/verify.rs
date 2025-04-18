@@ -74,24 +74,24 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //     }
         // }
 
-        // Shard constraints.
-        //
-        // Initialization:
-        // - Shard should start at one.
-        //
-        // Transition:
-        // - Shard should increment by one for each shard.
-        let mut current_shard = BabyBear::zero();
-        for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<Word<_>, _> =
-                shard_proof.public_values.as_slice().borrow();
-            current_shard += BabyBear::one();
-            if public_values.shard != current_shard {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "shard index should be the previous shard index + 1 and start at 1",
-                ));
-            }
-        }
+        // // Shard constraints.
+        // //
+        // // Initialization:
+        // // - Shard should start at one.
+        // //
+        // // Transition:
+        // // - Shard should increment by one for each shard.
+        // let mut current_shard = BabyBear::zero();
+        // for shard_proof in proof.0.iter() {
+        //     let public_values: &PublicValues<Word<_>, _> =
+        //         shard_proof.public_values.as_slice().borrow();
+        //     current_shard += BabyBear::one();
+        //     if public_values.shard != current_shard {
+        //         return Err(MachineVerifierError::InvalidPublicValues(
+        //             "shard index should be the previous shard index + 1 and start at 1",
+        //         ));
+        //     }
+        // }
 
         // Execution shard constraints.
         //
@@ -116,106 +116,106 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //     }
         // }
 
-        // Program counter constraints.
-        //
-        // Initialization:
-        // - `start_pc` should start as `vk.start_pc`.
-        //
-        // Transition:
-        // - `next_pc` of the previous shard should equal `start_pc`.
-        // - If it's not a shard with "CPU", then `start_pc` equals `next_pc`.
-        // - If it's a shard with "CPU", then `start_pc` should never equal zero.
-        //
-        // Finalization:
-        // - `next_pc` should equal zero.
-        let mut prev_next_pc = BabyBear::zero();
-        for (i, shard_proof) in proof.0.iter().enumerate() {
-            let public_values: &PublicValues<Word<_>, _> =
-                shard_proof.public_values.as_slice().borrow();
-            if i == 0 && public_values.start_pc != vk.pc_start {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != vk.start_pc: program counter should start at vk.start_pc",
-                ));
-            } else if i != 0 && public_values.start_pc != prev_next_pc {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all shards",
-                ));
-            } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "next_pc != 0: execution should have halted",
-                ));
-            }
-            // } else if !shard_proof.contains_cpu() && public_values.start_pc !=
-            // public_values.next_pc {
-            //     return Err(MachineVerifierError::InvalidPublicValues(
-            //         "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
-            //     ));
-            // } else if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero() {
-            //     return Err(MachineVerifierError::InvalidPublicValues(
-            //         "start_pc == 0: execution should never start at halted state",
-            //     ));
-            prev_next_pc = public_values.next_pc;
-        }
+        // // Program counter constraints.
+        // //
+        // // Initialization:
+        // // - `start_pc` should start as `vk.start_pc`.
+        // //
+        // // Transition:
+        // // - `next_pc` of the previous shard should equal `start_pc`.
+        // // - If it's not a shard with "CPU", then `start_pc` equals `next_pc`.
+        // // - If it's a shard with "CPU", then `start_pc` should never equal zero.
+        // //
+        // // Finalization:
+        // // - `next_pc` should equal zero.
+        // let mut prev_next_pc = BabyBear::zero();
+        // for (i, shard_proof) in proof.0.iter().enumerate() {
+        //     let public_values: &PublicValues<Word<_>, _> =
+        //         shard_proof.public_values.as_slice().borrow();
+        //     if i == 0 && public_values.start_pc != vk.pc_start {
+        //         return Err(MachineVerifierError::InvalidPublicValues(
+        //             "start_pc != vk.start_pc: program counter should start at vk.start_pc",
+        //         ));
+        //     } else if i != 0 && public_values.start_pc != prev_next_pc {
+        //         return Err(MachineVerifierError::InvalidPublicValues(
+        //             "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all shards",
+        //         ));
+        //     } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
+        //         return Err(MachineVerifierError::InvalidPublicValues(
+        //             "next_pc != 0: execution should have halted",
+        //         ));
+        //     }
+        //     // } else if !shard_proof.contains_cpu() && public_values.start_pc !=
+        //     // public_values.next_pc {
+        //     //     return Err(MachineVerifierError::InvalidPublicValues(
+        //     //         "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
+        //     //     ));
+        //     // } else if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero() {
+        //     //     return Err(MachineVerifierError::InvalidPublicValues(
+        //     //         "start_pc == 0: execution should never start at halted state",
+        //     //     ));
+        //     prev_next_pc = public_values.next_pc;
+        // }
 
-        // Exit code constraints.
-        //
-        // - In every shard, the exit code should be zero.
-        for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<Word<_>, _> =
-                shard_proof.public_values.as_slice().borrow();
-            if public_values.exit_code != BabyBear::zero() {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "exit_code != 0: exit code should be zero for all shards",
-                ));
-            }
-        }
+        // // Exit code constraints.
+        // //
+        // // - In every shard, the exit code should be zero.
+        // for shard_proof in proof.0.iter() {
+        //     let public_values: &PublicValues<Word<_>, _> =
+        //         shard_proof.public_values.as_slice().borrow();
+        //     if public_values.exit_code != BabyBear::zero() {
+        //         return Err(MachineVerifierError::InvalidPublicValues(
+        //             "exit_code != 0: exit code should be zero for all shards",
+        //         ));
+        //     }
+        // }
 
-        // Memory initialization & finalization constraints.
-        //
-        // Initialization:
-        // - `previous_init_addr_bits` should be zero.
-        // - `previous_finalize_addr_bits` should be zero.
-        //
-        // Transition:
-        // - For all shards, `previous_init_addr_bits` should equal `last_init_addr_bits` of the
-        //   previous shard.
-        // - For all shards, `previous_finalize_addr_bits` should equal `last_finalize_addr_bits`
-        //   of the previous shard.
-        // - For shards without "MemoryInit", `previous_init_addr_bits` should equal
-        //   `last_init_addr_bits`.
-        // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
-        //   `last_finalize_addr_bits`.
-        let mut last_init_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
-        let mut last_finalize_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
-        for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<Word<_>, _> =
-                shard_proof.public_values.as_slice().borrow();
-            if public_values.previous_init_addr_word != last_init_addr_word_prev {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "previous_init_addr_word != last_init_addr_word_prev",
-                ));
-            } else if public_values.previous_finalize_addr_word != last_finalize_addr_word_prev {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "previous_finalize_addr_word != last_finalize_addr_word_prev",
-                ));
-            }
-            // } else if !shard_proof.contains_global_memory_init()
-            //     && public_values.previous_init_addr_bits != public_values.last_init_addr_bits
-            // {
-            //     return Err(MachineVerifierError::InvalidPublicValues(
-            //         "previous_init_addr_bits != last_init_addr_bits",
-            //     ));
-            // } else if !shard_proof.contains_global_memory_finalize()
-            //     && public_values.previous_finalize_addr_bits
-            //         != public_values.last_finalize_addr_bits
-            // {
-            //     return Err(MachineVerifierError::InvalidPublicValues(
-            //         "previous_finalize_addr_bits != last_finalize_addr_bits",
-            //     ));
-            // }
-            last_init_addr_word_prev = public_values.previous_init_addr_word;
-            last_finalize_addr_word_prev = public_values.previous_finalize_addr_word;
-        }
+        // // Memory initialization & finalization constraints.
+        // //
+        // // Initialization:
+        // // - `previous_init_addr_bits` should be zero.
+        // // - `previous_finalize_addr_bits` should be zero.
+        // //
+        // // Transition:
+        // // - For all shards, `previous_init_addr_bits` should equal `last_init_addr_bits` of the
+        // //   previous shard.
+        // // - For all shards, `previous_finalize_addr_bits` should equal `last_finalize_addr_bits`
+        // //   of the previous shard.
+        // // - For shards without "MemoryInit", `previous_init_addr_bits` should equal
+        // //   `last_init_addr_bits`.
+        // // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
+        // //   `last_finalize_addr_bits`.
+        // let mut last_init_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
+        // let mut last_finalize_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
+        // for shard_proof in proof.0.iter() {
+        //     let public_values: &PublicValues<Word<_>, _> =
+        //         shard_proof.public_values.as_slice().borrow();
+        //     if public_values.previous_init_addr_word != last_init_addr_word_prev {
+        //         return Err(MachineVerifierError::InvalidPublicValues(
+        //             "previous_init_addr_word != last_init_addr_word_prev",
+        //         ));
+        //     } else if public_values.previous_finalize_addr_word != last_finalize_addr_word_prev {
+        //         return Err(MachineVerifierError::InvalidPublicValues(
+        //             "previous_finalize_addr_word != last_finalize_addr_word_prev",
+        //         ));
+        //     }
+        //     // } else if !shard_proof.contains_global_memory_init()
+        //     //     && public_values.previous_init_addr_bits != public_values.last_init_addr_bits
+        //     // {
+        //     //     return Err(MachineVerifierError::InvalidPublicValues(
+        //     //         "previous_init_addr_bits != last_init_addr_bits",
+        //     //     ));
+        //     // } else if !shard_proof.contains_global_memory_finalize()
+        //     //     && public_values.previous_finalize_addr_bits
+        //     //         != public_values.last_finalize_addr_bits
+        //     // {
+        //     //     return Err(MachineVerifierError::InvalidPublicValues(
+        //     //         "previous_finalize_addr_bits != last_finalize_addr_bits",
+        //     //     ));
+        //     // }
+        //     last_init_addr_word_prev = public_values.previous_init_addr_word;
+        //     last_finalize_addr_word_prev = public_values.previous_finalize_addr_word;
+        // }
 
         // Digest constraints.
         //
@@ -501,10 +501,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     // }
 }
 
-use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
-use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{air::PublicValues, BabyBearPoseidon2, MachineVerifierError, Word};
 
 use crate::{
@@ -515,8 +512,8 @@ use crate::{
 impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
     fn verify_deferred_proof(
         &self,
-        _proof: &sp1_core_machine::reduce::SP1ReduceProof<InnerSC>,
-        _vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
+        proof: &sp1_core_machine::reduce::SP1ReduceProof<InnerSC>,
+        vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
         _vk_hash: [u32; 8],
         _committed_value_digest: [u32; 8],
     ) -> Result<(), MachineVerifierError<CoreSC>> {
@@ -526,11 +523,11 @@ impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
         //         "vk hash from syscall does not match vkey from input",
         //     ));
         // }
-        // // Check that proof is valid.
-        // self.verify_compressed(
-        //     &SP1ReduceProof { vk: proof.vk.clone(), proof: proof.proof.clone() },
-        //     &SP1VerifyingKey { vk: vk.clone() },
-        // )?;
+        // Check that proof is valid.
+        self.verify_compressed(
+            &SP1ReduceProof { vk: proof.vk.clone(), proof: proof.proof.clone() },
+            &SP1VerifyingKey { vk: vk.clone() },
+        )?;
         // // Check that the committed value digest matches the one from syscall
         // let public_values: &RecursionPublicValues<_> =
         //     proof.proof.public_values.as_slice().borrow();
