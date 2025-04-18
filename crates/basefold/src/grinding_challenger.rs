@@ -32,13 +32,12 @@ where
 {
     async fn grind_device(&mut self, bits: usize) -> Self::Witness {
         let cpu_challenger: DuplexChallenger<F, _> = self.clone().into();
-
         let handle = csl_cuda::spawn(move |t| async move {
             let mut result: Buffer<F, TaskScope> = Buffer::with_capacity_in(1, t.clone());
             let mut found_flag: Buffer<bool, TaskScope> = Buffer::with_capacity_in(1, t.clone());
             let mut gpu_challenger = t.into_device(cpu_challenger).await.unwrap();
-            let block_dim: usize = 256;
-            let grid_dim: usize = F::ORDER_U64.div_ceil(block_dim as u64) as usize;
+            let block_dim: usize = 512;
+            let grid_dim: usize = 1;
             let n = F::ORDER_U64;
             unsafe {
                 result.assume_init();
