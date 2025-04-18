@@ -22,7 +22,10 @@ use bn::Fr;
 use error::PlonkError;
 use sha2::{Digest, Sha256};
 
-use crate::{decode_sp1_vkey_hash, error::Error, hash_public_inputs};
+use crate::{
+    blake3_hash, constants::VK_HASH_PREFIX_LENGTH, decode_sp1_vkey_hash, error::Error,
+    hash_public_inputs, hash_public_inputs_with_fn,
+};
 /// A verifier for Plonk zero-knowledge proofs.
 #[derive(Debug)]
 pub struct PlonkVerifier;
@@ -54,8 +57,12 @@ impl PlonkVerifier {
         sp1_vkey_hash: &str,
         plonk_vk: &[u8],
     ) -> Result<(), PlonkError> {
+        if proof.len() < VK_HASH_PREFIX_LENGTH {
+            return Err(PlonkError::GeneralError(Error::InvalidData));
+        }
+
         // Hash the vk and get the first 4 bytes.
-        let plonk_vk_hash: [u8; 4] = Sha256::digest(plonk_vk)[..4]
+        let plonk_vk_hash: [u8; 4] = Sha256::digest(plonk_vk)[..VK_HASH_PREFIX_LENGTH]
             .try_into()
             .map_err(|_| PlonkError::GeneralError(Error::InvalidData))?;
 
@@ -64,15 +71,28 @@ impl PlonkVerifier {
         //
         // SP1 prepends the raw Plonk proof with the first 4 bytes of the plonk vkey to
         // facilitate this check.
-        if plonk_vk_hash != proof[..4] {
+        if plonk_vk_hash != proof[..VK_HASH_PREFIX_LENGTH] {
             return Err(PlonkError::PlonkVkeyHashMismatch);
         }
 
         let sp1_vkey_hash = decode_sp1_vkey_hash(sp1_vkey_hash)?;
 
-        Self::verify_gnark_proof(
-            &proof[4..],
+        // First, check if the public values hashed with SHA2 match the expected public values.
+        // If not, try hashing with Blake3. If both fail, return an error. We perform the checks
+        // sequentially to avoid calculating both hashes unless necessary.
+        if Self::verify_gnark_proof(
+            &proof[VK_HASH_PREFIX_LENGTH..],
             &[sp1_vkey_hash, hash_public_inputs(sp1_public_inputs)],
+            plonk_vk,
+        )
+        .is_ok()
+        {
+            return Ok(())
+        }
+
+        Self::verify_gnark_proof(
+            &proof[VK_HASH_PREFIX_LENGTH..],
+            &[sp1_vkey_hash, hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash)],
             plonk_vk,
         )
     }

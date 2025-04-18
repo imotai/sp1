@@ -2,7 +2,7 @@ use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
-use crate::events::FieldOperation;
+use crate::{events::FieldOperation, RiscvAirId};
 
 /// System Calls.
 ///
@@ -243,20 +243,68 @@ impl SyscallCode {
     #[must_use]
     pub fn fp_op_map(&self) -> FieldOperation {
         match self {
-            SyscallCode::BLS12381_FP_ADD
-            | SyscallCode::BLS12381_FP2_ADD
-            | SyscallCode::BN254_FP_ADD
-            | SyscallCode::BN254_FP2_ADD => FieldOperation::Add,
-            SyscallCode::BLS12381_FP_SUB
-            | SyscallCode::BLS12381_FP2_SUB
-            | SyscallCode::BN254_FP_SUB
-            | SyscallCode::BN254_FP2_SUB => FieldOperation::Sub,
-            SyscallCode::BLS12381_FP_MUL
-            | SyscallCode::BLS12381_FP2_MUL
-            | SyscallCode::BN254_FP_MUL
-            | SyscallCode::BN254_FP2_MUL => FieldOperation::Mul,
+            SyscallCode::BLS12381_FP_ADD |
+            SyscallCode::BLS12381_FP2_ADD |
+            SyscallCode::BN254_FP_ADD |
+            SyscallCode::BN254_FP2_ADD => FieldOperation::Add,
+            SyscallCode::BLS12381_FP_SUB |
+            SyscallCode::BLS12381_FP2_SUB |
+            SyscallCode::BN254_FP_SUB |
+            SyscallCode::BN254_FP2_SUB => FieldOperation::Sub,
+            SyscallCode::BLS12381_FP_MUL |
+            SyscallCode::BLS12381_FP2_MUL |
+            SyscallCode::BN254_FP_MUL |
+            SyscallCode::BN254_FP2_MUL => FieldOperation::Mul,
             _ => unreachable!(),
         }
+    }
+
+    /// Get the ID of the AIR used in the syscall implementation.
+    #[must_use]
+    pub fn as_air_id(self) -> Option<RiscvAirId> {
+        Some(match self {
+            SyscallCode::SHA_EXTEND => RiscvAirId::ShaExtend,
+            SyscallCode::SHA_COMPRESS => RiscvAirId::ShaCompress,
+            SyscallCode::ED_ADD => RiscvAirId::EdAddAssign,
+            SyscallCode::ED_DECOMPRESS => RiscvAirId::EdDecompress,
+            SyscallCode::KECCAK_PERMUTE => RiscvAirId::KeccakPermute,
+            SyscallCode::SECP256K1_ADD => RiscvAirId::Secp256k1AddAssign,
+            SyscallCode::SECP256K1_DOUBLE => RiscvAirId::Secp256k1DoubleAssign,
+            SyscallCode::SECP256K1_DECOMPRESS => RiscvAirId::Secp256k1Decompress,
+            SyscallCode::BN254_ADD => RiscvAirId::Bn254AddAssign,
+            SyscallCode::BN254_DOUBLE => RiscvAirId::Bn254DoubleAssign,
+            SyscallCode::BLS12381_DECOMPRESS => RiscvAirId::Bls12381Decompress,
+            SyscallCode::UINT256_MUL => RiscvAirId::Uint256MulMod,
+            SyscallCode::U256XU2048_MUL => RiscvAirId::U256XU2048Mul,
+            SyscallCode::BLS12381_ADD => RiscvAirId::Bls12381AddAssign,
+            SyscallCode::BLS12381_DOUBLE => RiscvAirId::Bls12381DoubleAssign,
+            SyscallCode::BLS12381_FP_ADD |
+            SyscallCode::BLS12381_FP_SUB |
+            SyscallCode::BLS12381_FP_MUL => RiscvAirId::Bls12381FpOpAssign,
+            SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
+                RiscvAirId::Bls12381Fp2AddSubAssign
+            }
+            SyscallCode::BLS12381_FP2_MUL => RiscvAirId::Bls12381Fp2MulAssign,
+            SyscallCode::BN254_FP_ADD | SyscallCode::BN254_FP_SUB | SyscallCode::BN254_FP_MUL => {
+                RiscvAirId::Bn254FpOpAssign
+            }
+            SyscallCode::BN254_FP2_ADD | SyscallCode::BN254_FP2_SUB => {
+                RiscvAirId::Bn254Fp2AddSubAssign
+            }
+            SyscallCode::BN254_FP2_MUL => RiscvAirId::Bn254Fp2MulAssign,
+            SyscallCode::SECP256R1_ADD => RiscvAirId::Secp256r1AddAssign,
+            SyscallCode::SECP256R1_DOUBLE => RiscvAirId::Secp256r1DoubleAssign,
+            SyscallCode::SECP256R1_DECOMPRESS => RiscvAirId::Secp256r1Decompress,
+            SyscallCode::HALT |
+            SyscallCode::WRITE |
+            SyscallCode::ENTER_UNCONSTRAINED |
+            SyscallCode::EXIT_UNCONSTRAINED |
+            SyscallCode::COMMIT |
+            SyscallCode::COMMIT_DEFERRED_PROOFS |
+            SyscallCode::VERIFY_SP1_PROOF |
+            SyscallCode::HINT_LEN |
+            SyscallCode::HINT_READ => return None,
+        })
     }
 }
 

@@ -19,6 +19,12 @@
         "-A",
         "incomplete-features"
     ],
+    "rust-analyzer.fmt.overrideCommand": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "--all"
+    ],
     "rust-analyzer.linkedProjects": [
         "Cargo.toml",
         "patch-testing/Cargo.toml",

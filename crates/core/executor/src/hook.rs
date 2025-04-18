@@ -3,7 +3,9 @@ use core::fmt::Debug;
 use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use hashbrown::HashMap;
-use sp1_curves::{edwards::ed25519::ed25519_sqrt, params::FieldParameters, BigUint, Integer, One};
+use sp1_curves::{
+    edwards::ed25519::ed25519_sqrt, params::FieldParameters, BigUint, Integer, One, Zero,
+};
 
 use crate::Executor;
 
@@ -79,6 +81,8 @@ impl Default for HookRegistry<'_> {
             (FD_RSA_MUL_MOD, hookify(hook_rsa_mul_mod)),
             (FD_BLS12_381_SQRT, hookify(bls::hook_bls12_381_sqrt)),
             (FD_BLS12_381_INVERSE, hookify(bls::hook_bls12_381_inverse)),
+            (FD_FP_SQRT, hookify(fp_ops::hook_fp_sqrt)),
+            (FD_FP_INV, hookify(fp_ops::hook_fp_inverse)),
         ]);
 
         Self { table }
@@ -106,7 +110,8 @@ pub struct HookEnv<'a, 'b: 'a> {
 
 /// The hook for the `ecrecover` patches.
 ///
-/// The input should be of the form [(`curve_id_u8` | `r_is_y_odd_u8` << 7) || `r` || `alpha`] where:
+/// The input should be of the form [(`curve_id_u8` | `r_is_y_odd_u8` << 7) || `r` || `alpha`]
+/// where:
 /// * `curve_id` is 1 for secp256k1 and 2 for secp256r1
 /// * `r_is_y_odd` is 0 if r is even and 1 if r is is odd
 /// * r is the x-coordinate of the point, which should be 32 bytes,
@@ -142,10 +147,10 @@ mod ecrecover {
     };
 
     pub(super) fn handle_secp256k1(r: [u8; 32], alpha: [u8; 32], r_y_is_odd: bool) -> Vec<Vec<u8>> {
-        use k256::elliptic_curve::ff::PrimeField;
-        use k256::FieldBytes as K256FieldBytes;
-        use k256::FieldElement as K256FieldElement;
-        use k256::Scalar as K256Scalar;
+        use k256::{
+            elliptic_curve::ff::PrimeField, FieldBytes as K256FieldBytes,
+            FieldElement as K256FieldElement, Scalar as K256Scalar,
+        };
 
         let r = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&r)).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
@@ -174,10 +179,10 @@ mod ecrecover {
     }
 
     pub(super) fn handle_secp256r1(r: [u8; 32], alpha: [u8; 32], r_y_is_odd: bool) -> Vec<Vec<u8>> {
-        use p256::elliptic_curve::ff::PrimeField;
-        use p256::FieldBytes as P256FieldBytes;
-        use p256::FieldElement as P256FieldElement;
-        use p256::Scalar as P256Scalar;
+        use p256::{
+            elliptic_curve::ff::PrimeField, FieldBytes as P256FieldBytes,
+            FieldElement as P256FieldElement, Scalar as P256Scalar,
+        };
 
         let r = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&r)).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
@@ -200,6 +205,249 @@ mod ecrecover {
             let root = qr.sqrt().expect("if alpha is not a square, then qr should be a square");
 
             vec![vec![0], root.to_bytes().to_vec()]
+        }
+    }
+}
+
+mod fp_ops {
+    use super::{pad_to_be, BigUint, HookEnv, One, Zero};
+
+    /// Compute the inverse of a field element.
+    ///
+    /// # Arguments:
+    /// * `buf` - The buffer containing the data needed to compute the inverse.
+    ///     - [ len || Element || Modulus ]
+    ///     - len is the u32 length of the element and modulus in big endian.
+    ///     - Element is the field element to compute the inverse of, interpreted as a big endian
+    ///       integer of `len` bytes.
+    ///
+    /// # Returns:
+    /// A single 32 byte vector containing the inverse.
+    ///
+    /// # Panics:
+    /// - If the buffer length is not valid.
+    /// - If the element is zero.
+    pub fn hook_fp_inverse(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
+        let len: usize = u32::from_be_bytes(buf[0..4].try_into().unwrap()) as usize;
+
+        assert!(buf.len() == 4 + 2 * len, "FpOp: Invalid buffer length");
+
+        let buf = &buf[4..];
+        let element = BigUint::from_bytes_be(&buf[..len]);
+        let modulus = BigUint::from_bytes_be(&buf[len..2 * len]);
+
+        assert!(!element.is_zero(), "FpOp: Inverse called with zero");
+
+        let inverse = element.modpow(&(&modulus - BigUint::from(2u64)), &modulus);
+
+        vec![pad_to_be(&inverse, len)]
+    }
+
+    /// Compute the square root of a field element.
+    ///
+    /// # Arguments:
+    /// * `buf` - The buffer containing the data needed to compute the square root.
+    ///     - [ len || Element || Modulus || NQR ]
+    ///     - len is the length of the element, modulus, and nqr in big endian.
+    ///     - Element is the field element to compute the square root of, interpreted as a big
+    ///       endian integer of `len` bytes.
+    ///     - Modulus is the modulus of the field, interpreted as a big endian integer of `len`
+    ///       bytes.
+    ///     - NQR is the non-quadratic residue of the field, interpreted as a big endian integer of
+    ///       `len` bytes.
+    ///
+    /// # Assumptions
+    /// - NQR is a non-quadratic residue of the field.
+    ///
+    /// # Returns:
+    /// [ `status_u8` || `root_bytes` ]
+    ///
+    /// If the status is 0, this is the root of NQR * element.
+    /// If the status is 1, this is the root of element.
+    ///
+    /// # Panics:
+    /// - If the buffer length is not valid.
+    /// - If the element is not less than the modulus.
+    /// - If the nqr is not less than the modulus.
+    /// - If the element is zero.
+    pub fn hook_fp_sqrt(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
+        let len: usize = u32::from_be_bytes(buf[0..4].try_into().unwrap()) as usize;
+
+        assert!(buf.len() == 4 + 3 * len, "FpOp: Invalid buffer length");
+
+        let buf = &buf[4..];
+        let element = BigUint::from_bytes_be(&buf[..len]);
+        let modulus = BigUint::from_bytes_be(&buf[len..2 * len]);
+        let nqr = BigUint::from_bytes_be(&buf[2 * len..3 * len]);
+
+        assert!(
+            element < modulus,
+            "Element is not less than modulus, the hook only accepts canonical representations"
+        );
+        assert!(
+            nqr < modulus,
+            "NQR is zero or non-canonical, the hook only accepts canonical representations"
+        );
+
+        // The sqrt of zero is zero.
+        if element.is_zero() {
+            return vec![vec![1], vec![0; len]];
+        }
+
+        // Compute the square root of the element using the general Tonelli-Shanks algorithm.
+        // The implementation can be used for any field as it is field-agnostic.
+        if let Some(root) = sqrt_fp(&element, &modulus, &nqr) {
+            vec![vec![1], pad_to_be(&root, len)]
+        } else {
+            let qr = (&nqr * &element) % &modulus;
+            let root = sqrt_fp(&qr, &modulus, &nqr).unwrap();
+
+            vec![vec![0], pad_to_be(&root, len)]
+        }
+    }
+
+    /// Compute the square root of a field element for some modulus.
+    ///
+    /// Requires a known non-quadratic residue of the field.
+    fn sqrt_fp(element: &BigUint, modulus: &BigUint, nqr: &BigUint) -> Option<BigUint> {
+        // If the prime field is of the form p = 3 mod 4, and `x` is a quadratic residue modulo `p`,
+        // then one square root of `x` is given by `x^(p+1 / 4) mod p`.
+        if modulus % BigUint::from(4u64) == BigUint::from(3u64) {
+            let maybe_root =
+                element.modpow(&((modulus + BigUint::from(1u64)) / BigUint::from(4u64)), modulus);
+
+            return Some(maybe_root).filter(|root| root * root % modulus == *element);
+        }
+
+        tonelli_shanks(element, modulus, nqr)
+    }
+
+    /// Compute the square root of a field element using the Tonelli-Shanks algorithm.
+    ///
+    /// # Arguments:
+    /// * `element` - The field element to compute the square root of.
+    /// * `modulus` - The modulus of the field.
+    /// * `nqr` - The non-quadratic residue of the field.
+    ///
+    /// # Assumptions:
+    /// - The element is a quadratic residue modulo the modulus.
+    ///
+    /// Ref: <https://en.wikipedia.org/wiki/Tonelli%E2%80%93Shanks_algorithm>
+    #[allow(clippy::many_single_char_names)]
+    fn tonelli_shanks(element: &BigUint, modulus: &BigUint, nqr: &BigUint) -> Option<BigUint> {
+        // First, compute the Legendre symbol of the element.
+        // If the symbol is not 1, then the element is not a quadratic residue.
+        if legendre_symbol(element, modulus) != BigUint::one() {
+            return None;
+        }
+
+        // Find the values of Q and S such that modulus - 1 = Q * 2^S.
+        let mut s = BigUint::zero();
+        let mut q = modulus - BigUint::one();
+        while &q % &BigUint::from(2u64) == BigUint::zero() {
+            s += BigUint::from(1u64);
+            q /= BigUint::from(2u64);
+        }
+
+        let z = nqr;
+        let mut c = z.modpow(&q, modulus);
+        let mut r = element.modpow(&((&q + BigUint::from(1u64)) / BigUint::from(2u64)), modulus);
+        let mut t = element.modpow(&q, modulus);
+        let mut m = s;
+
+        while t != BigUint::one() {
+            let mut i = BigUint::zero();
+            let mut tt = t.clone();
+            while tt != BigUint::one() {
+                tt = &tt * &tt % modulus;
+                i += BigUint::from(1u64);
+
+                if i == m {
+                    return None;
+                }
+            }
+
+            let b_pow =
+                BigUint::from(2u64).pow((&m - &i - BigUint::from(1u64)).try_into().unwrap());
+            let b = c.modpow(&b_pow, modulus);
+
+            r = &r * &b % modulus;
+            c = &b * &b % modulus;
+            t = &t * &c % modulus;
+            m = i;
+        }
+
+        Some(r)
+    }
+
+    /// Compute the Legendre symbol of a field element.
+    ///
+    /// This indicates if the element is a quadratic in the prime field.
+    ///
+    /// Ref: <https://en.wikipedia.org/wiki/Legendre_symbol>
+    fn legendre_symbol(element: &BigUint, modulus: &BigUint) -> BigUint {
+        assert!(!element.is_zero(), "FpOp: Legendre symbol of zero called.");
+
+        element.modpow(&((modulus - BigUint::one()) / BigUint::from(2u64)), modulus)
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+        use std::str::FromStr;
+
+        #[test]
+        fn test_legendre_symbol() {
+            // The modulus of the secp256k1 base field.
+            let modulus = BigUint::from_str(
+                "115792089237316195423570985008687907853269984665640564039457584007908834671663",
+            )
+            .unwrap();
+            let neg_1 = &modulus - BigUint::one();
+
+            let fixtures = [
+                (BigUint::from(4u64), BigUint::from(1u64)),
+                (BigUint::from(2u64), BigUint::from(1u64)),
+                (BigUint::from(3u64), neg_1.clone()),
+            ];
+
+            for (element, expected) in fixtures {
+                let result = legendre_symbol(&element, &modulus);
+                assert_eq!(result, expected);
+            }
+        }
+
+        #[test]
+        fn test_tonelli_shanks() {
+            // The modulus of the secp256k1 base field.
+            let p = BigUint::from_str(
+                "115792089237316195423570985008687907853269984665640564039457584007908834671663",
+            )
+            .unwrap();
+
+            let nqr = BigUint::from_str("3").unwrap();
+
+            let large_element = &p - BigUint::from(u16::MAX);
+            let square = &large_element * &large_element % &p;
+
+            let fixtures = [
+                (BigUint::from(2u64), true),
+                (BigUint::from(3u64), false),
+                (BigUint::from(4u64), true),
+                (square, true),
+            ];
+
+            for (element, expected) in fixtures {
+                let result = tonelli_shanks(&element, &p, &nqr);
+                if expected {
+                    assert!(result.is_some());
+
+                    let result = result.unwrap();
+                    assert!((&result * &result) % &p == element);
+                } else {
+                    assert!(result.is_none());
+                }
+            }
         }
     }
 }
@@ -264,11 +512,8 @@ pub fn hook_ed_decompress(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
 }
 
 mod bls {
-    use super::pad_to_be;
-    use super::{BigUint, HookEnv};
-    use sp1_curves::params::FieldParameters;
-    use sp1_curves::weierstrass::bls12_381::Bls12381BaseField;
-    use sp1_curves::Zero;
+    use super::{pad_to_be, BigUint, HookEnv};
+    use sp1_curves::{params::FieldParameters, weierstrass::bls12_381::Bls12381BaseField, Zero};
 
     /// A non-quadratic residue for the `12_381` base field in big endian.
     pub const NQR_BLS12_381: [u8; 48] = {
@@ -282,9 +527,12 @@ mod bls {
 
     /// Given a field element, in big endian, this function computes the square root.
     ///
-    /// - If the field element is the additive identity, this function returns `vec![vec![1], vec![0; 48]]`.
-    /// - If the field element is a quadratic residue, this function returns `vec![vec![1], vec![sqrt(fe)]  ]`.
-    /// - If the field element (fe) is not a quadratic residue, this function returns `vec![vec![0], vec![sqrt(``NQR_BLS12_381`` * fe)]]`.
+    /// - If the field element is the additive identity, this function returns `vec![vec![1],
+    ///   vec![0; 48]]`.
+    /// - If the field element is a quadratic residue, this function returns `vec![vec![1],
+    ///   vec![sqrt(fe)]  ]`.
+    /// - If the field element (fe) is not a quadratic residue, this function returns `vec![vec![0],
+    ///   vec![sqrt(``NQR_BLS12_381`` * fe)]]`.
     pub fn hook_bls12_381_sqrt(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let field_element = BigUint::from_bytes_be(&buf[..48]);
 
@@ -380,9 +628,13 @@ pub fn hook_rsa_mul_mod(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
 
 pub(crate) mod deprecated_hooks {
     use super::HookEnv;
-    use sp1_curves::k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-    use sp1_curves::k256::elliptic_curve::ops::Invert;
-    use sp1_curves::p256::ecdsa::Signature as p256Signature;
+    use sp1_curves::{
+        k256::{
+            ecdsa::{RecoveryId, Signature, VerifyingKey},
+            elliptic_curve::ops::Invert,
+        },
+        p256::ecdsa::Signature as p256Signature,
+    };
 
     /// Recovers the public key from the signature and message hash using the k256 crate.
     ///
@@ -390,8 +642,8 @@ pub(crate) mod deprecated_hooks {
     ///
     /// * `env` - The environment in which the hook is invoked.
     /// * `buf` - The buffer containing the signature and message hash.
-    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is the
-    ///       recovery ID.
+    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is
+    ///       the recovery ID.
     ///     - The message hash is 32 bytes.
     ///
     /// The result is returned as a pair of bytes, where the first 32 bytes are the X coordinate
@@ -412,7 +664,7 @@ pub(crate) mod deprecated_hooks {
         if let Some(sig_normalized) = sig.normalize_s() {
             sig = sig_normalized;
             recovery_id ^= 1;
-        };
+        }
         let recid = RecoveryId::from_byte(recovery_id).expect("Computed recovery ID is invalid!");
 
         let recovered_key = VerifyingKey::recover_from_prehash(&msg_hash[..], &sig, recid).unwrap();
@@ -451,12 +703,12 @@ pub(crate) mod deprecated_hooks {
     ///
     /// * `env` - The environment in which the hook is invoked.
     /// * `buf` - The buffer containing the signature and message hash.
-    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is the
-    ///       recovery ID.
+    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is
+    ///       the recovery ID.
     ///     - The message hash is 32 bytes.
     ///
-    /// The result is returned as a status and a pair of bytes, where the first 32 bytes are the X coordinate
-    /// and the second 32 bytes are the Y coordinate of the decompressed point.
+    /// The result is returned as a status and a pair of bytes, where the first 32 bytes are the X
+    /// coordinate and the second 32 bytes are the Y coordinate of the decompressed point.
     ///
     /// A status of 0 indicates that the public key could not be recovered.
     ///
@@ -479,7 +731,7 @@ pub(crate) mod deprecated_hooks {
         if let Some(sig_normalized) = sig.normalize_s() {
             sig = sig_normalized;
             recovery_id ^= 1;
-        };
+        }
         let recid = RecoveryId::from_byte(recovery_id)
             .expect("Computed recovery ID is invalid, this is a bug.");
 
@@ -507,8 +759,8 @@ pub(crate) mod deprecated_hooks {
     ///
     /// The result is either `0` if the point cannot be decompressed, or `1` if it can.
     ///
-    /// WARNING: This function merely hints at the validity of the compressed point. These values must
-    /// be constrained by the zkVM for correctness.
+    /// WARNING: This function merely hints at the validity of the compressed point. These values
+    /// must be constrained by the zkVM for correctness.
     #[must_use]
     pub fn hook_ed_decompress(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let Ok(point) = sp1_curves::curve25519_dalek::CompressedEdwardsY::from_slice(buf) else {

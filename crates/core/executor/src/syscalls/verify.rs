@@ -42,7 +42,7 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
                 });
         } else if rt.state.proof_stream_ptr == 1 {
             tracing::info!("Not verifying sub proof during runtime");
-        };
+        }
     }
 
     None

@@ -95,8 +95,6 @@ jobs:
           sudo apt-get install -y build-essential pkg-config libssl-dev git
 
       - name: "Install SP1"
-        env:
-          SP1UP_VERSION: ${{ github.ref_name == 'main' && 'latest' || github.ref_name }}
         run: |
           cd sp1up
           chmod +x sp1up
