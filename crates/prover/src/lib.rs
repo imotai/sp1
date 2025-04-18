@@ -1248,8 +1248,23 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         deferred_proofs: &[SP1ReduceProof<InnerSC>],
         batch_size: usize,
     ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
+        self.get_recursion_deferred_inputs_with_initial_digest(
+            vk,
+            deferred_proofs,
+            [BabyBear::zero(); 8],
+            batch_size,
+        )
+    }
+
+    pub fn get_recursion_deferred_inputs_with_initial_digest<'a>(
+        &'a self,
+        vk: &'a StarkVerifyingKey<CoreSC>,
+        deferred_proofs: &[SP1ReduceProof<InnerSC>],
+        initial_deferred_digest: [BabyBear; 8],
+        batch_size: usize,
+    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
         // Prepare the inputs for the deferred proofs recursive verification.
-        let mut deferred_digest = [Val::<CoreSC>::zero(); DIGEST_SIZE];
+        let mut deferred_digest = initial_deferred_digest;
         let mut deferred_inputs = Vec::new();
 
         for batch in deferred_proofs.chunks(batch_size) {
