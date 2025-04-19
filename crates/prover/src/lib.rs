@@ -23,7 +23,7 @@ pub mod utils;
 pub mod verify;
 
 use core::SP1CoreProver;
-use recursion::SP1RecursionProver;
+pub use recursion::SP1RecursionProver;
 use shapes::SP1RecursionShape;
 use sp1_core_executor::Program;
 use std::{collections::BTreeMap, sync::Arc};

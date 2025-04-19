@@ -1,6 +1,7 @@
 use slop_baby_bear::BabyBear;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_stark::prover::CoreProofShape;
+use sp1_recursion_circuit::dummy::dummy_shard_proof;
+use sp1_stark::{prover::CoreProofShape, BabyBearPoseidon2, ShardProof};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SP1RecursionShape {
@@ -9,6 +10,24 @@ pub struct SP1RecursionShape {
     pub max_log_row_count: usize,
     pub log_blowup: usize,
     pub log_stacking_height: usize,
+}
+
+pub fn dummy_shard_proof_from_shape(
+    shape: &SP1RecursionShape,
+) -> Vec<ShardProof<BabyBearPoseidon2>> {
+    shape
+        .proof_shapes
+        .iter()
+        .map(|core_shape| {
+            dummy_shard_proof(
+                core_shape.shard_chips.clone(),
+                shape.max_log_row_count,
+                shape.log_blowup,
+                shape.log_stacking_height,
+                &[core_shape.preprocessed_multiple, core_shape.main_multiple],
+            )
+        })
+        .collect()
 }
 
 // pub struct SP1ReduceShape {

@@ -198,6 +198,13 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                 }
             });
 
+            let num_rows_arms = variants.iter().map(|(variant_name, field)| {
+                let field_ty = &field.ty;
+                quote! {
+                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::num_rows(x, input)
+                }
+            });
+
             let machine_air = quote! {
                 impl #impl_generics sp1_stark::air::MachineAir<F> for #name #ty_generics #where_clause {
                     type Record = #execution_record_path;
@@ -262,6 +269,12 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                             #(#local_only_arms,)*
                         }
                     }
+
+                    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+                        match self {
+                            #(#num_rows_arms,)*
+                    }
+                }
                 }
             };
 

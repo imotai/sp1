@@ -170,21 +170,21 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //     }
         // }
 
-        // // Memory initialization & finalization constraints.
-        // //
-        // // Initialization:
-        // // - `previous_init_addr_bits` should be zero.
-        // // - `previous_finalize_addr_bits` should be zero.
-        // //
-        // // Transition:
-        // // - For all shards, `previous_init_addr_bits` should equal `last_init_addr_bits` of the
-        // //   previous shard.
-        // // - For all shards, `previous_finalize_addr_bits` should equal `last_finalize_addr_bits`
-        // //   of the previous shard.
-        // // - For shards without "MemoryInit", `previous_init_addr_bits` should equal
-        // //   `last_init_addr_bits`.
-        // // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
-        // //   `last_finalize_addr_bits`.
+        // Memory initialization & finalization constraints.
+        //
+        // Initialization:
+        // - `previous_init_addr_bits` should be zero.
+        // - `previous_finalize_addr_bits` should be zero.
+        //
+        // Transition:
+        // - For all shards, `previous_init_addr_bits` should equal `last_init_addr_bits` of the
+        //   previous shard.
+        // - For all shards, `previous_finalize_addr_bits` should equal `last_finalize_addr_bits`
+        //   of the previous shard.
+        // - For shards without "MemoryInit", `previous_init_addr_bits` should equal
+        //   `last_init_addr_bits`.
+        // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
+        //   `last_finalize_addr_bits`.
         // let mut last_init_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
         // let mut last_finalize_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
         // for shard_proof in proof.0.iter() {
