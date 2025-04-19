@@ -12,8 +12,7 @@ use std::{
 // use slop_baby_bear::BabyBear;
 // use slop_symmetric::CryptographicHasher;
 use sp1_core_executor::{Executor, Program, SP1CoreOpts};
-use sp1_core_machine::io::SP1Stdin; //reduce::SP1ReduceProof};
-use sp1_stark::Word;
+use sp1_core_machine::io::SP1Stdin;
 // use sp1_recursion_circuit::machine::RootPublicValues;
 // use sp1_recursion_core::{
 //     air::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH},
@@ -117,8 +116,8 @@ pub fn load_elf(path: &str) -> Result<Vec<u8>, std::io::Error> {
     Ok(elf_code)
 }
 
-pub fn words_to_limbs<T: Copy>(words: &[Word<T>]) -> Vec<T> {
-    words.iter().flat_map(|word| word.0).collect()
+pub fn words_to_bytes<T: Copy>(words: &[[T; 4]; 8]) -> Vec<T> {
+    words.iter().flat_map(|word| word.iter()).copied().collect()
 }
 
 /// Convert 8 BabyBear words into a Bn254Fr field element by shifting by 31 bits each time. The last

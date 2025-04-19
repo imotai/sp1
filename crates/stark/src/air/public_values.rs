@@ -8,7 +8,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use crate::{septic_curve::SepticCurve, septic_digest::SepticDigest, Word, PROOF_MAX_NUM_PVS};
 
 /// The number of non padded elements in the SP1 proofs public values vec.
-pub const SP1_PROOF_NUM_PV_ELTS: usize = size_of::<PublicValues<Word<u8>, u8>>();
+pub const SP1_PROOF_NUM_PV_ELTS: usize = size_of::<PublicValues<[u8; 4], Word<u8>, u8>>();
 
 /// The number of 32 bit words in the SP1 proof's committed value digest.
 pub const PV_DIGEST_NUM_WORDS: usize = 8;
@@ -19,9 +19,9 @@ pub const POSEIDON_NUM_WORDS: usize = 8;
 /// Stores all of a shard proof's public values.
 #[derive(Serialize, Deserialize, Clone, Copy, Default, Debug)]
 #[repr(C)]
-pub struct PublicValues<W, T> {
+pub struct PublicValues<W1, W2, T> {
     /// The hash of all the bytes that the guest program has written to public values.
-    pub committed_value_digest: [W; PV_DIGEST_NUM_WORDS],
+    pub committed_value_digest: [W1; PV_DIGEST_NUM_WORDS],
 
     /// The hash of all deferred proofs that have been witnessed in the VM. It will be rebuilt in
     /// recursive verification as the proofs get verified. The hash itself is a rolling poseidon2
@@ -47,16 +47,16 @@ pub struct PublicValues<W, T> {
     pub next_execution_shard: T,
 
     /// The largest address that is witnessed for initialization in the previous shard.
-    pub previous_init_addr_word: W,
+    pub previous_init_addr_word: W2,
 
     /// The largest address that is witnessed for initialization in the current shard.
-    pub last_init_addr_word: W,
+    pub last_init_addr_word: W2,
 
     /// The largest address that is witnessed for finalization in the previous shard.
-    pub previous_finalize_addr_word: W,
+    pub previous_finalize_addr_word: W2,
 
     /// The largest address that is witnessed for finalization in the current shard.
-    pub last_finalize_addr_word: W,
+    pub last_finalize_addr_word: W2,
 
     /// The last timestamp of the shard.
     pub last_timestamp: T,
@@ -76,19 +76,19 @@ pub struct PublicValues<W, T> {
     /// The global cumulative sum of the shard.
     pub global_cumulative_sum: SepticDigest<T>,
 
-    /// The empty values to ensure the size of the public values struct is a multiple of 7.
+    /// The empty values to ensure the size of the public values struct is a multiple of 8.
     pub empty: [T; 7],
 }
 
-impl PublicValues<u32, u32> {
+impl PublicValues<u32, u32, u32> {
     /// Convert the public values into a vector of field elements.  This function will pad the
     /// vector to the maximum number of public values.
     #[must_use]
     pub fn to_vec<F: AbstractField>(&self) -> Vec<F> {
         let mut ret = vec![F::zero(); PROOF_MAX_NUM_PVS];
 
-        let field_values = PublicValues::<Word<F>, F>::from(*self);
-        let ret_ref_mut: &mut PublicValues<Word<F>, F> = ret.as_mut_slice().borrow_mut();
+        let field_values = PublicValues::<[F; 4], Word<F>, F>::from(*self);
+        let ret_ref_mut: &mut PublicValues<[F; 4], Word<F>, F> = ret.as_mut_slice().borrow_mut();
         *ret_ref_mut = field_values;
         ret
     }
@@ -109,46 +109,44 @@ impl PublicValues<u32, u32> {
     }
 }
 
-impl<F: PrimeField32> PublicValues<Word<F>, F> {
+impl<F: PrimeField32> PublicValues<[F; 4], Word<F>, F> {
     /// Returns the commit digest as a vector of little-endian bytes.
     pub fn commit_digest_bytes(&self) -> Vec<u8> {
         self.committed_value_digest
             .iter()
-            .flat_map(|w| {
-                let limb0 = w[0].as_canonical_u32();
-                let limb1 = w[1].as_canonical_u32();
-                [(limb0 & 0xFF) as u8, (limb0 >> 8) as u8, (limb1 & 0xFF) as u8, (limb1 >> 8) as u8]
-            })
+            .flat_map(|w| w.iter().map(|f| f.as_canonical_u32() as u8))
             .collect_vec()
     }
 }
 
-impl<T: Clone> Borrow<PublicValues<Word<T>, T>> for [T] {
-    fn borrow(&self) -> &PublicValues<Word<T>, T> {
-        let size = std::mem::size_of::<PublicValues<Word<u8>, u8>>();
+impl<T: Clone> Borrow<PublicValues<[T; 4], Word<T>, T>> for [T] {
+    fn borrow(&self) -> &PublicValues<[T; 4], Word<T>, T> {
+        let size = std::mem::size_of::<PublicValues<[u8; 4], Word<u8>, u8>>();
         debug_assert!(self.len() >= size);
         let slice = &self[0..size];
-        let (prefix, shorts, _suffix) = unsafe { slice.align_to::<PublicValues<Word<T>, T>>() };
+        let (prefix, shorts, _suffix) =
+            unsafe { slice.align_to::<PublicValues<[T; 4], Word<T>, T>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &shorts[0]
     }
 }
 
-impl<T: Clone> BorrowMut<PublicValues<Word<T>, T>> for [T] {
-    fn borrow_mut(&mut self) -> &mut PublicValues<Word<T>, T> {
-        let size = std::mem::size_of::<PublicValues<Word<u8>, u8>>();
+impl<T: Clone> BorrowMut<PublicValues<[T; 4], Word<T>, T>> for [T] {
+    fn borrow_mut(&mut self) -> &mut PublicValues<[T; 4], Word<T>, T> {
+        let size = std::mem::size_of::<PublicValues<[u8; 4], Word<u8>, u8>>();
         debug_assert!(self.len() >= size);
         let slice = &mut self[0..size];
-        let (prefix, shorts, _suffix) = unsafe { slice.align_to_mut::<PublicValues<Word<T>, T>>() };
+        let (prefix, shorts, _suffix) =
+            unsafe { slice.align_to_mut::<PublicValues<[T; 4], Word<T>, T>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &mut shorts[0]
     }
 }
 
-impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F> {
-    fn from(value: PublicValues<u32, u32>) -> Self {
+impl<F: AbstractField> From<PublicValues<u32, u32, u32>> for PublicValues<[F; 4], Word<F>, F> {
+    fn from(value: PublicValues<u32, u32, u32>) -> Self {
         let PublicValues {
             committed_value_digest,
             deferred_proofs_digest,
@@ -171,8 +169,14 @@ impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F>
             ..
         } = value;
 
-        let committed_value_digest: [_; PV_DIGEST_NUM_WORDS] =
-            core::array::from_fn(|i| Word::from(committed_value_digest[i]));
+        let committed_value_digest: [_; PV_DIGEST_NUM_WORDS] = core::array::from_fn(|i| {
+            [
+                F::from_canonical_u32(committed_value_digest[i] & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 8) & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 16) & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 24) & 0xFF),
+            ]
+        });
 
         let deferred_proofs_digest: [_; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|i| F::from_canonical_u32(deferred_proofs_digest[i]));

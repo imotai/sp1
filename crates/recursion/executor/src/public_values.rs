@@ -78,7 +78,7 @@ impl<T: Clone> ChallengerPublicValues<T> {
 #[repr(C)]
 pub struct RecursionPublicValues<T> {
     /// The hash of all the bytes that the program has written to public values.
-    pub committed_value_digest: [Word<T>; PV_DIGEST_NUM_WORDS],
+    pub committed_value_digest: [[T; 4]; PV_DIGEST_NUM_WORDS],
 
     /// The hash of all deferred proofs that have been witnessed in the VM.
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],

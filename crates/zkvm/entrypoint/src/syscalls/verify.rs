@@ -40,16 +40,8 @@ pub fn syscall_verify_sp1_proof(vk_digest: &[u32; 8], pv_digest: &[u8; 32]) {
         let vk_digest_babybear =
             vk_digest.iter().map(|x| BabyBear::from_canonical_u32(*x)).collect::<Vec<_>>();
         // Remaining 32 elements are pv_digest converted from u8 to BabyBear
-        let pv_digest_babybear = pv_digest
-            .chunks_exact(2)
-            .map(|chunk| {
-                // The digest is given in big-endian order, so we need to reverse the order of the bytes
-                let top_byte = chunk[0] as u16;
-                let bottom_byte = chunk[1] as u16;
-                let value = top_byte << 8 + bottom_byte;
-                BabyBear::from_canonical_u16(value)
-            })
-            .collect::<Vec<_>>();
+        let pv_digest_babybear =
+            pv_digest.iter().map(|b| BabyBear::from_canonical_u8(*b)).collect::<Vec<_>>();
 
         *deferred_proofs_digest = hash_deferred_proof(
             deferred_proofs_digest,

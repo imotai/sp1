@@ -1059,31 +1059,31 @@ pub mod tests {
     //     }
     // }
 
-    //     // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
+    // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
     // first_row, last_row,     // and next_row constraints).
-    //     // #[test]
-    //     // fn core_air_cost_consistency() {
-    //     //     // Load air costs from file
-    //     //     let file =
-    // std::fs::File::open("../executor/src/artifacts/rv32im_costs.json").unwrap();     //
-    // let costs: HashMap<String, u64> = serde_json::from_reader(file).unwrap();     //     //
-    // Compare with costs computed by machine     //     let machine_costs =
-    // RiscvAir::<BabyBear>::costs();     //     assert_eq!(costs, machine_costs);
-    //     // }
-    //     #[test]
-    //     #[ignore]
-    //     fn write_core_air_costs() {
-    //         let costs = RiscvAir::<BabyBear>::costs();
-    //         println!("{:?}", costs);
-    //         // write to file
-    //         // Create directory if it doesn't exist
-    //         let dir = std::path::Path::new("../executor/src/artifacts");
-    //         if !dir.exists() {
-    //             std::fs::create_dir_all(dir).unwrap();
-    //         }
-    //         let file = std::fs::File::create(dir.join("rv32im_costs.json")).unwrap();
-    //         serde_json::to_writer_pretty(file, &costs).unwrap();
-    //     }
+    use hashbrown::HashMap;
+    #[test]
+    fn core_air_cost_consistency() {
+        // Load air costs from file
+        let file = std::fs::File::open("../executor/src/artifacts/rv32im_costs.json").unwrap();
+        let costs: HashMap<String, u64> = serde_json::from_reader(file).unwrap();
+        // Compare with costs computed by machine
+        let machine_costs = RiscvAir::<BabyBear>::costs();
+        assert_eq!(costs, machine_costs);
+    }
+    #[test]
+    #[ignore]
+    fn write_core_air_costs() {
+        let costs = RiscvAir::<BabyBear>::costs();
+        // write to file
+        // Create directory if it doesn't exist
+        let dir = std::path::Path::new("../executor/src/artifacts");
+        if !dir.exists() {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let file = std::fs::File::create(dir.join("rv32im_costs.json")).unwrap();
+        serde_json::to_writer_pretty(file, &costs).unwrap();
+    }
 
     //     #[test]
     //     fn test_simple_prove() {

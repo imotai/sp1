@@ -138,6 +138,13 @@ impl SyscallInstrsChip {
             cols.index_bitmap[digest_idx] = F::one();
         }
 
+        // If the syscall is `COMMIT`, set the expected public values digest and range check.
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) {
+            let digest_bytes = record.c.value().to_le_bytes();
+            cols.expected_public_values_digest = digest_bytes.map(F::from_canonical_u8);
+            blu.add_u8_range_checks(&digest_bytes);
+        }
+
         // For halt and commit deferred proofs syscalls, we need to baby bear range check one of
         // it's operands.
         if cols.is_halt == F::one() {

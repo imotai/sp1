@@ -2,7 +2,7 @@ use itertools::Itertools;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_PV_ELMS_TO_HASH};
-use sp1_stark::{air::PV_DIGEST_NUM_WORDS, Word};
+use sp1_stark::air::PV_DIGEST_NUM_WORDS;
 
 use crate::{hash::Posedion2BabyBearHasherVariable, CircuitConfig};
 
@@ -67,7 +67,7 @@ where
     let input = public_values
         .sp1_vk_digest
         .into_iter()
-        .chain(public_values.committed_value_digest.into_iter().flat_map(|word| word.0.into_iter()))
+        .chain(public_values.committed_value_digest.into_iter().flat_map(|word| word.into_iter()))
         .collect::<Vec<_>>();
     H::poseidon2_hash(builder, &input)
 }
@@ -83,7 +83,7 @@ impl<T> RootPublicValues<T> {
     }
 
     #[inline]
-    pub const fn committed_value_digest(&self) -> &[Word<T>; PV_DIGEST_NUM_WORDS] {
+    pub const fn committed_value_digest(&self) -> &[[T; 4]; PV_DIGEST_NUM_WORDS] {
         &self.inner.committed_value_digest
     }
 

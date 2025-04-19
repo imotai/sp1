@@ -1855,10 +1855,11 @@ impl<'a> Executor<'a> {
     /// # Errors
     ///
     /// This function will return an error if the program execution fails.
+    #[allow(clippy::type_complexity)]
     pub fn execute_state(
         &mut self,
         emit_global_memory_events: bool,
-    ) -> Result<(ExecutionState, PublicValues<u32, u32>, bool), ExecutionError> {
+    ) -> Result<(ExecutionState, PublicValues<u32, u32, u32>, bool), ExecutionError> {
         self.memory_checkpoint.clear();
         self.emit_global_memory_events = emit_global_memory_events;
 

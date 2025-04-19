@@ -84,8 +84,8 @@ pub fn felt_bytes_to_bn254_var<C: Config>(
 }
 
 #[allow(dead_code)]
-pub fn words_to_bytes<T: Copy>(words: &[Word<T>]) -> Vec<T> {
-    words.iter().flat_map(|w| w.0).collect::<Vec<_>>()
+pub fn words_to_bytes<T: Copy>(words: &[[T; 4]]) -> Vec<T> {
+    words.iter().flat_map(|w| w.iter()).copied().collect::<Vec<_>>()
 }
 
 #[cfg(test)]

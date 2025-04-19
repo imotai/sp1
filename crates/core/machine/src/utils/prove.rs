@@ -68,7 +68,7 @@ pub fn generate_records<F: PrimeField32>(
     record_gen_sync: Arc<TurnBasedSync>,
     checkpoints_rx: Arc<Mutex<Receiver<(usize, File, bool, u64)>>>,
     records_tx: Sender<ExecutionRecord>,
-    state: Arc<Mutex<PublicValues<u32, u32>>>,
+    state: Arc<Mutex<PublicValues<u32, u32, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     report_aggregate: Arc<Mutex<ExecutionReport>>,
     opts: SP1CoreOpts,
@@ -169,7 +169,8 @@ where
 
     let mut shard_proofs = BTreeMap::new();
     while let Some(proof) = proof_rx.recv().await {
-        let public_values: &PublicValues<Word<F>, F> = proof.public_values.as_slice().borrow();
+        let public_values: &PublicValues<[F; 4], Word<F>, F> =
+            proof.public_values.as_slice().borrow();
         shard_proofs.insert(public_values.shard, proof);
     }
     let shard_proofs = shard_proofs.into_values().collect();

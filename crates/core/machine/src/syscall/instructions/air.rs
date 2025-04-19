@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 
+use itertools::Itertools;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
@@ -33,7 +34,7 @@ where
 
         let public_values_slice: [AB::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
             core::array::from_fn(|i| builder.public_values()[i]);
-        let public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar> =
+        let public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar> =
             public_values_slice.as_slice().borrow();
 
         // Convert the syscall code to four bytes using the safe API.
@@ -212,7 +213,7 @@ impl SyscallInstrsChip {
         builder: &mut AB,
         prev_a_byte: &[AB::Expr; 4],
         local: &SyscallInstrColumns<AB::Var>,
-        commit_digest: [Word<AB::PublicVar>; PV_DIGEST_NUM_WORDS],
+        commit_digest: [[AB::PublicVar; 4]; PV_DIGEST_NUM_WORDS],
         deferred_proofs_digest: [AB::PublicVar; POSEIDON_NUM_WORDS],
     ) {
         let (is_commit, is_commit_deferred_proofs) =
@@ -254,7 +255,32 @@ impl SyscallInstrsChip {
         // since it's used during AIR compilation time to parse for all send/receives. Since
         // that interaction builder will ignore the other constraints of the air, it is safe
         // to not include the verification check of the expected public values digest word.
-        let expected_pv_digest_word = builder.index_word_array(&commit_digest, &local.index_bitmap);
+
+        // First, get the expected public value digest from the bitmap and public values.
+        let mut expected_pv_digest =
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()];
+        for i in 0..4 {
+            expected_pv_digest[i] = builder.index_array(
+                commit_digest.iter().map(|word| word[i]).collect_vec().as_slice(),
+                &local.index_bitmap,
+            );
+        }
+        // Then, combine the bytes into u16 Word form, which will be compared to `op_c` value.
+        let expected_pv_digest_word = Word([
+            expected_pv_digest[0].clone()
+                + expected_pv_digest[1].clone() * AB::F::from_canonical_u32(1 << 8),
+            expected_pv_digest[2].clone()
+                + expected_pv_digest[3].clone() * AB::F::from_canonical_u32(1 << 8),
+        ]);
+
+        // Assert that the expected public value digest are valid bytes.
+        builder.assert_bool(is_commit.clone());
+        for i in 0..4 {
+            builder
+                .when(is_commit.clone())
+                .assert_eq(expected_pv_digest[i].clone(), local.expected_public_values_digest[i]);
+        }
+        builder.slice_range_check_u8(&local.expected_public_values_digest, is_commit.clone());
 
         let digest_word = local.adapter.c();
 
@@ -284,7 +310,7 @@ impl SyscallInstrsChip {
         &self,
         builder: &mut AB,
         local: &SyscallInstrColumns<AB::Var>,
-        public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
     ) {
         // `next_pc` is constrained for the case where `is_halt` is true to be `0`
         builder.when(local.is_halt).assert_zero(local.next_pc);

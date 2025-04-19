@@ -283,7 +283,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
         let mut cumulative_sum = initial_global_cumulative_sum;
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<Word<_>, _> =
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
                 shard_proof.public_values.as_slice().borrow();
             cumulative_sum = cumulative_sum + public_values.global_cumulative_sum;
         }

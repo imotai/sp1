@@ -10,7 +10,6 @@ use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
 // use slop_commit::Mmcs;
 // use slop_matrix::dense::RowMajorMatrix;
-use sp1_primitives::consts::WORD_SIZE;
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS},
@@ -59,7 +58,7 @@ pub struct SP1DeferredWitnessValues<SC: BabyBearFriConfig + FieldHasher<BabyBear
     // pub vk_merkle_data: SP1MerkleProofWitnessValues<SC>,
     pub start_reconstruct_deferred_digest: [SC::F; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [SC::F; DIGEST_SIZE],
-    pub committed_value_digest: [Word<SC::F>; PV_DIGEST_NUM_WORDS],
+    pub committed_value_digest: [[SC::F; 4]; PV_DIGEST_NUM_WORDS],
     pub deferred_proofs_digest: [SC::F; POSEIDON_NUM_WORDS],
     pub end_pc: SC::F,
     pub end_shard: SC::F,
@@ -81,7 +80,7 @@ pub struct SP1DeferredWitnessVariable<
     // pub vk_merkle_data: SP1MerkleProofWitnessVariable<C, SC>,
     pub start_reconstruct_deferred_digest: [Felt<C::F>; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [Felt<C::F>; DIGEST_SIZE],
-    pub committed_value_digest: [Word<Felt<C::F>>; PV_DIGEST_NUM_WORDS],
+    pub committed_value_digest: [[Felt<C::F>; 4]; PV_DIGEST_NUM_WORDS],
     pub deferred_proofs_digest: [Felt<C::F>; POSEIDON_NUM_WORDS],
     pub end_pc: Felt<C::F>,
     pub end_shard: Felt<C::F>,
@@ -192,16 +191,16 @@ where
             // Update deferred proof digest
             // poseidon2( current_digest[..8] || pv.sp1_vk_digest[..8] ||
             // pv.committed_value_digest[..16] )
-            let mut inputs: [Felt<C::F>; 32] = array::from_fn(|_| builder.uninit());
+            let mut inputs: [Felt<C::F>; 48] = array::from_fn(|_| builder.uninit());
             inputs[0..DIGEST_SIZE].copy_from_slice(&reconstruct_deferred_digest);
 
             inputs[DIGEST_SIZE..DIGEST_SIZE + DIGEST_SIZE]
                 .copy_from_slice(&current_public_values.sp1_vk_digest);
 
             for j in 0..PV_DIGEST_NUM_WORDS {
-                for k in 0..WORD_SIZE {
+                for k in 0..4 {
                     let element = current_public_values.committed_value_digest[j][k];
-                    inputs[j * WORD_SIZE + k + 16] = element;
+                    inputs[j * 4 + k + 16] = element;
                 }
             }
             reconstruct_deferred_digest = SC::hash(builder, &inputs);

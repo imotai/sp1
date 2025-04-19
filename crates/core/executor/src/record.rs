@@ -100,7 +100,7 @@ pub struct ExecutionRecord {
     /// The global interaction event count.
     pub global_interaction_event_count: u32,
     /// The public values.
-    pub public_values: PublicValues<u32, u32>,
+    pub public_values: PublicValues<u32, u32, u32>,
     /// The next nonce to use for a new lookup.
     pub next_nonce: u64,
     /// The shape of the proof.
@@ -574,7 +574,7 @@ impl MachineRecord for ExecutionRecord {
     fn eval_public_values<AB: SP1AirBuilder>(builder: &mut AB) {
         let public_values_slice: [AB::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
             core::array::from_fn(|i| builder.public_values()[i]);
-        let public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar> =
+        let public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar> =
             public_values_slice.as_slice().borrow();
 
         Self::eval_state(public_values, builder);
@@ -604,7 +604,7 @@ impl ByteRecord for ExecutionRecord {
 
 impl ExecutionRecord {
     fn eval_state<AB: SP1AirBuilder>(
-        public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
         builder: &mut AB,
     ) {
         builder.send_state(
@@ -633,7 +633,7 @@ impl ExecutionRecord {
     }
 
     fn eval_global_sum<AB: SP1AirBuilder>(
-        public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
         builder: &mut AB,
     ) {
         let initial_sum = SepticDigest::<AB::F>::zero().0;
@@ -662,7 +662,7 @@ impl ExecutionRecord {
     }
 
     fn eval_global_memory_init<AB: SP1AirBuilder>(
-        public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
         builder: &mut AB,
     ) {
         builder.send(
@@ -690,7 +690,7 @@ impl ExecutionRecord {
     }
 
     fn eval_global_memory_finalize<AB: SP1AirBuilder>(
-        public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
         builder: &mut AB,
     ) {
         builder.send(

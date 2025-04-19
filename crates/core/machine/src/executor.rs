@@ -85,7 +85,7 @@ struct RecordTask {
     done: bool,
     program: Arc<Program>,
     record_gen_sync: Arc<TurnBasedSync>,
-    state: Arc<Mutex<PublicValues<u32, u32>>>,
+    state: Arc<Mutex<PublicValues<u32, u32, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     record_tx: mpsc::Sender<ExecutionRecord>,
     abort_handle: AbortHandle,
@@ -256,7 +256,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
 
                 // Initialize the record generation state.
                 let record_gen_sync = Arc::new(TurnBasedSync::new());
-                let state = Arc::new(Mutex::new(PublicValues::<u32, u32>::default().reset()));
+                let state = Arc::new(Mutex::new(PublicValues::<u32, u32, u32>::default().reset()));
                 let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
 
                 // Check if the task was aborted again.

@@ -134,10 +134,8 @@ where
         let mut exit_code: Felt<_> = builder.uninit();
 
         let mut execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut committed_value_digest: [Word<Felt<_>>; PV_DIGEST_NUM_WORDS] =
-            array::from_fn(|_| {
-                Word(array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() }))
-            });
+        let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
+            array::from_fn(|_| array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() }));
         let mut deferred_proofs_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut reconstruct_deferred_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
@@ -241,7 +239,7 @@ where
                     .iter_mut()
                     .zip_eq(current_public_values.committed_value_digest.iter())
                 {
-                    for (byte, current_byte) in word.0.iter_mut().zip_eq(current_word.0.iter()) {
+                    for (byte, current_byte) in word.iter_mut().zip_eq(current_word.iter()) {
                         *byte = *current_byte;
                     }
                 }
@@ -335,7 +333,7 @@ where
                     .iter_mut()
                     .zip_eq(current_public_values.committed_value_digest.iter())
                 {
-                    for (byte, current_byte) in word.0.iter_mut().zip_eq(current_word.0.iter()) {
+                    for (byte, current_byte) in word.iter_mut().zip_eq(current_word.iter()) {
                         *byte = *current_byte;
                     }
                 }

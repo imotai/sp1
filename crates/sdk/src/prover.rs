@@ -94,14 +94,14 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 
     match &bundle.proof {
         SP1Proof::Core(proof) => {
-            let public_values: &PublicValues<Word<_>, _> =
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
                 proof.last().unwrap().public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.
             let committed_value_digest_bytes = public_values
                 .committed_value_digest
                 .iter()
-                .flat_map(|w| w.0.iter().map(|x| x.as_canonical_u32() as u8))
+                .flat_map(|w| w.iter().map(|x| x.as_canonical_u32() as u8))
                 .collect_vec();
 
             // Make sure the committed value digest matches the public values hash.
@@ -117,14 +117,14 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 .map_err(SP1VerificationError::Core)
         }
         SP1Proof::Compressed(proof) => {
-            let public_values: &PublicValues<Word<_>, _> =
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
                 proof.proof.public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.
             let committed_value_digest_bytes = public_values
                 .committed_value_digest
                 .iter()
-                .flat_map(|w| w.0.iter().map(|x| x.as_canonical_u32() as u8))
+                .flat_map(|w| w.iter().map(|x| x.as_canonical_u32() as u8))
                 .collect_vec();
 
             // Make sure the committed value digest matches the public values hash.
