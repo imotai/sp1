@@ -103,6 +103,12 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
         // This is a no-op.
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.mem_var_events.len().div_ceil(NUM_VAR_MEM_ENTRIES_PER_ROW);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, None);
+        Some(padded_nb_rows)
+    }
+
     fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let mut rows = input

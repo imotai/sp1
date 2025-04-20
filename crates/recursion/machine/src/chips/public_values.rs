@@ -61,6 +61,10 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         NUM_PUBLIC_VALUES_PREPROCESSED_COLS
     }
 
+    fn num_rows(&self, _: &Self::Record) -> Option<usize> {
+        Some(16)
+    }
+
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         assert_eq!(
             std::any::TypeId::of::<F>(),

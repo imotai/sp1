@@ -100,6 +100,12 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
         "Mul".to_string()
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows =
+            next_multiple_of_32(input.mul_events.len(), input.fixed_log2_rows::<F, _>(self));
+        Some(nb_rows)
+    }
+
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
@@ -107,8 +113,7 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
     ) -> RowMajorMatrix<F> {
         // Generate the trace rows for each event.
         let nb_rows = input.mul_events.len();
-        let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        let padded_nb_rows = <MulChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_MUL_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 

@@ -23,6 +23,10 @@ impl<F: PrimeField32> MachineAir<F> for RangeChip<F> {
         "Range".to_string()
     }
 
+    fn num_rows(&self, _: &Self::Record) -> Option<usize> {
+        Some(NUM_ROWS)
+    }
+
     fn preprocessed_width(&self) -> usize {
         NUM_RANGE_PREPROCESSED_COLS
     }

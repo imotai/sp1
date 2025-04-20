@@ -23,6 +23,10 @@ impl<F: PrimeField32> MachineAir<F> for ByteChip<F> {
         "Byte".to_string()
     }
 
+    fn num_rows(&self, _: &Self::Record) -> Option<usize> {
+        Some(1 << 16)
+    }
+
     fn preprocessed_width(&self) -> usize {
         NUM_BYTE_PREPROCESSED_COLS
     }

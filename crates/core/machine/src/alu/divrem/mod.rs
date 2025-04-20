@@ -84,7 +84,7 @@ use crate::{
         AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned, MulOperation,
         U16MSBOperation,
     },
-    utils::pad_rows_fixed,
+    utils::{next_multiple_of_32, pad_rows_fixed},
 };
 
 /// The number of main trace columns for `DivRemChip`.
@@ -215,6 +215,12 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
     fn name(&self) -> String {
         "DivRem".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows =
+            next_multiple_of_32(input.divrem_events.len(), input.fixed_log2_rows::<F, _>(self));
+        Some(nb_rows)
     }
 
     fn generate_trace(
@@ -426,6 +432,8 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             || [F::zero(); NUM_DIVREM_COLS],
             input.fixed_log2_rows::<F, _>(self),
         );
+
+        assert_eq!(rows.len(), <DivRemChip as MachineAir<F>>::num_rows(self, input).unwrap());
 
         // Convert the trace to a row major matrix.
         let mut trace =

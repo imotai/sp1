@@ -19,7 +19,7 @@ use sp1_stark::air::{MachineAir, SP1AirBuilder};
 use crate::{
     adapter::{register::alu_type::ALUTypeReader, state::CPUState},
     operations::BitwiseU16Operation,
-    utils::pad_rows_fixed,
+    utils::{next_multiple_of_32, pad_rows_fixed},
 };
 
 /// The number of main trace columns for `BitwiseChip`.
@@ -61,6 +61,12 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
         "Bitwise".to_string()
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows =
+            next_multiple_of_32(input.bitwise_events.len(), input.fixed_log2_rows::<F, _>(self));
+        Some(nb_rows)
+    }
+
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
@@ -93,6 +99,8 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
             || [F::zero(); NUM_BITWISE_COLS],
             input.fixed_log2_rows::<F, _>(self),
         );
+
+        assert_eq!(rows.len(), <BitwiseChip as MachineAir<F>>::num_rows(self, input).unwrap());
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_BITWISE_COLS)

@@ -1,3 +1,4 @@
+use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
@@ -94,6 +95,13 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
 
     fn name(&self) -> String {
         "U256XU2048Mul".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::U256XU2048_MUL).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(

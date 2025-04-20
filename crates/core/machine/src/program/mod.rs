@@ -62,6 +62,13 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         NUM_PROGRAM_PREPROCESSED_COLS
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.program.instructions.len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         debug_assert!(
             !program.instructions.is_empty() || program.preprocessed_shape.is_some(),

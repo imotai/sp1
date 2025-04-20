@@ -1,11 +1,11 @@
 use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols};
 
+use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     operations::{field::range::FieldLtCols, IsZeroOperation},
     utils::{limbs_to_words, pad_rows_fixed, words_to_bytes_le, words_to_bytes_le_vec},
 };
-
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, One, Zero};
@@ -91,6 +91,13 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
 
     fn name(&self) -> String {
         "Uint256MulMod".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::UINT256_MUL).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(

@@ -8,7 +8,7 @@ use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
     operations::field::range::FieldLtCols,
-    utils::{limbs_to_words, zeroed_f_vec},
+    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -164,6 +164,19 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             CurveType::Bls12381 => "Bls12381AddAssign".to_string(),
             _ => panic!("Unsupported curve"),
         }
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match E::CURVE_TYPE {
+            CurveType::Secp256k1 => input.get_precompile_events(SyscallCode::SECP256K1_ADD).len(),
+            CurveType::Secp256r1 => input.get_precompile_events(SyscallCode::SECP256R1_ADD).len(),
+            CurveType::Bn254 => input.get_precompile_events(SyscallCode::BN254_ADD).len(),
+            CurveType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_ADD).len(),
+            _ => panic!("Unsupported curve"),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {

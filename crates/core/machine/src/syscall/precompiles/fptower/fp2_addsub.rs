@@ -1,13 +1,7 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    marker::PhantomData,
-    mem::size_of,
-};
-
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
-    utils::{limbs_to_words, zeroed_f_vec},
+    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -27,6 +21,11 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    marker::PhantomData,
+    mem::size_of,
+};
 use typenum::Unsigned;
 
 use crate::{
@@ -94,6 +93,16 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
             FieldType::Bn254 => "Bn254Fp2AddSubAssign".to_string(),
             FieldType::Bls12381 => "Bls12831Fp2AddSubAssign".to_string(),
         }
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match P::FIELD_TYPE {
+            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP2_ADD).len(),
+            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP2_ADD).len(),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {

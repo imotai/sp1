@@ -1,4 +1,4 @@
-use crate::{air::SP1CoreAirBuilder, memory::MemoryAccessCols};
+use crate::{air::SP1CoreAirBuilder, memory::MemoryAccessCols, utils::next_multiple_of_32};
 
 use super::{KeccakPermuteControlChip, STATE_NUM_WORDS};
 use core::borrow::Borrow;
@@ -72,6 +72,13 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             }
         }
         output.add_byte_lookup_events(blu_events);
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::KECCAK_PERMUTE).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(

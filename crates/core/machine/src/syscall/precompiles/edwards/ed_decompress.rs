@@ -1,7 +1,7 @@
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    utils::limbs_to_words,
+    utils::{limbs_to_words, next_multiple_of_32},
 };
 use core::{
     borrow::{Borrow, BorrowMut},
@@ -237,6 +237,13 @@ impl<F: PrimeField32, E: EdwardsParameters> MachineAir<F> for EdDecompressChip<E
 
     fn name(&self) -> String {
         "EdDecompress".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::ED_DECOMPRESS).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(

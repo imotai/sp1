@@ -4,10 +4,18 @@ use core::{
 };
 use std::fmt::Debug;
 
+use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
     utils::{limbs_to_words, zeroed_f_vec},
+};
+use crate::{
+    operations::field::{
+        field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
+        field_sqrt::FieldSqrtCols, range::FieldLtCols,
+    },
+    utils::{bytes_to_words_le_vec, pad_rows_fixed},
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -36,14 +44,6 @@ use sp1_stark::{
 };
 use std::marker::PhantomData;
 use typenum::Unsigned;
-
-use crate::{
-    operations::field::{
-        field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
-        field_sqrt::FieldSqrtCols, range::FieldLtCols,
-    },
-    utils::{bytes_to_words_le_vec, pad_rows_fixed},
-};
 
 pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDecompressCols<u8, P>>()
@@ -160,6 +160,24 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             CurveType::Bls12381 => "Bls12381Decompress".to_string(),
             _ => panic!("Unsupported curve"),
         }
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match E::CURVE_TYPE {
+            CurveType::Secp256k1 => {
+                input.get_precompile_events(SyscallCode::SECP256K1_DECOMPRESS).len()
+            }
+            CurveType::Secp256r1 => {
+                input.get_precompile_events(SyscallCode::SECP256R1_DECOMPRESS).len()
+            }
+            CurveType::Bls12381 => {
+                input.get_precompile_events(SyscallCode::BLS12381_DECOMPRESS).len()
+            }
+            _ => panic!("Unsupported curve"),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(
