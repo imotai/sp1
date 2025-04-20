@@ -19,34 +19,34 @@ use super::{MemoryAccessCols, NUM_MEM_ACCESS_COLS};
 pub const NUM_VAR_MEM_ENTRIES_PER_ROW: usize = 2;
 
 #[derive(Default)]
-pub struct MemoryChip<F> {
+pub struct MemoryVarChip<F> {
     _marker: PhantomData<F>,
 }
 
-pub const NUM_MEM_INIT_COLS: usize = core::mem::size_of::<MemoryCols<u8>>();
+pub const NUM_MEM_INIT_COLS: usize = core::mem::size_of::<MemoryVarCols<u8>>();
 
 #[derive(AlignedBorrow, Debug, Clone, Copy)]
 #[repr(C)]
-pub struct MemoryCols<F: Copy> {
+pub struct MemoryVarCols<F: Copy> {
     values: [Block<F>; NUM_VAR_MEM_ENTRIES_PER_ROW],
 }
 
 pub const NUM_MEM_PREPROCESSED_INIT_COLS: usize =
-    core::mem::size_of::<MemoryPreprocessedCols<u8>>();
+    core::mem::size_of::<MemoryVarPreprocessedCols<u8>>();
 
 #[derive(AlignedBorrow, Debug, Clone, Copy)]
 #[repr(C)]
-pub struct MemoryPreprocessedCols<F: Copy> {
+pub struct MemoryVarPreprocessedCols<F: Copy> {
     accesses: [MemoryAccessCols<F>; NUM_VAR_MEM_ENTRIES_PER_ROW],
 }
 
-impl<F: Send + Sync> BaseAir<F> for MemoryChip<F> {
+impl<F: Send + Sync> BaseAir<F> for MemoryVarChip<F> {
     fn width(&self) -> usize {
         NUM_MEM_INIT_COLS
     }
 }
 
-impl<F: PrimeField32> MachineAir<F> for MemoryChip<F> {
+impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
     type Record = ExecutionRecord<F>;
 
     type Program = RecursionProgram<F>;
@@ -110,7 +110,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryChip<F> {
             .chunks(NUM_VAR_MEM_ENTRIES_PER_ROW)
             .map(|row_events| {
                 let mut row = [F::zero(); NUM_MEM_INIT_COLS];
-                let cols: &mut MemoryCols<_> = row.as_mut_slice().borrow_mut();
+                let cols: &mut MemoryVarCols<_> = row.as_mut_slice().borrow_mut();
                 for (cell, vals) in zip(&mut cols.values, row_events) {
                     *cell = vals.inner;
                 }
@@ -134,17 +134,17 @@ impl<F: PrimeField32> MachineAir<F> for MemoryChip<F> {
     }
 }
 
-impl<AB> Air<AB> for MemoryChip<AB::F>
+impl<AB> Air<AB> for MemoryVarChip<AB::F>
 where
     AB: SP1RecursionAirBuilder + PairBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0);
-        let local: &MemoryCols<AB::Var> = (*local).borrow();
+        let local: &MemoryVarCols<AB::Var> = (*local).borrow();
         let prep = builder.preprocessed();
         let prep_local = prep.row_slice(0);
-        let prep_local: &MemoryPreprocessedCols<AB::Var> = (*prep_local).borrow();
+        let prep_local: &MemoryVarPreprocessedCols<AB::Var> = (*prep_local).borrow();
 
         for (value, access) in zip(local.values, prep_local.accesses) {
             builder.send_block(access.addr, value, access.mult);
@@ -172,7 +172,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let chip = MemoryChip::default();
+        let chip = MemoryVarChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values)

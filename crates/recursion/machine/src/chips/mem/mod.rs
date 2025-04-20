@@ -1,9 +1,9 @@
 pub mod constant;
 pub mod variable;
 
-pub use constant::MemoryChip as MemoryConstChip;
+pub use constant::MemoryConstChip;
 use sp1_recursion_executor::Address;
-pub use variable::MemoryChip as MemoryVarChip;
+pub use variable::MemoryVarChip;
 
 use sp1_derive::AlignedBorrow;
 

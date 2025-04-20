@@ -122,6 +122,7 @@ pub struct ExtAluInstr<F> {
 
 /// The inputs and outputs to the manual memory management/memory initialization table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C)]
 pub struct MemIo<V> {
     pub inner: V,
 }
@@ -206,6 +207,7 @@ pub struct PrefixSumChecksInstr<F> {
 
 /// The event encoding the inputs and outputs of an PrefixSumChecks operation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C)]
 pub struct PrefixSumChecksEvent<F> {
     pub x1: F,
     pub x2: Block<F>,
