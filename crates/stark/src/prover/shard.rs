@@ -7,7 +7,6 @@ use std::{
 
 use derive_where::derive_where;
 use itertools::Itertools;
-use p3_uni_stark::get_symbolic_constraints;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{AbstractField, ExtensionField, Field};
@@ -29,7 +28,7 @@ use crate::{
     septic_digest::SepticDigest,
     AirOpenedValues, Chip, ChipDimensions, ChipEvaluation, ChipOpenedValues, ChipStatistics,
     ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineConfig,
-    MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
+    MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof,
 };
 
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
@@ -244,21 +243,6 @@ impl<C: MachineProverComponents> ShardProver<C> {
         initial_global_cumulative_sum: SepticDigest<C::F>,
         preprocessed_traces: Traces<C::F, C::B>,
     ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
-        let constraints_map = self
-            .all_chips()
-            .iter()
-            .map(|chip| {
-                // Count the number of constraints.
-                let num_main_constraints = get_symbolic_constraints(
-                    chip.air.as_ref(),
-                    chip.preprocessed_width(),
-                    PROOF_MAX_NUM_PVS,
-                )
-                .len();
-                (chip.name(), num_main_constraints)
-            })
-            .collect::<BTreeMap<_, _>>();
-
         // Commit to the preprocessed traces, if there are any.
         let (preprocessed_commit, preprocessed_data) = if preprocessed_traces.len() > 0 {
             let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
@@ -288,7 +272,6 @@ impl<C: MachineProverComponents> ShardProver<C> {
             preprocessed_commit: preprocessed_commit.clone(),
             preprocessed_traces,
             preprocessed_data,
-            constraints_map,
         };
 
         let vk = MachineVerifyingKey {
@@ -344,17 +327,18 @@ impl<C: MachineProverComponents> ShardProver<C> {
         chips: &BTreeSet<Chip<C::F, C::Air>>,
         preprocessed_traces: Traces<C::F, C::B>,
         traces: Traces<C::F, C::B>,
-        constraints_map: &BTreeMap<String, usize>,
         batching_challenge: C::EF,
         gkr_opening_batch_randomness: C::EF,
         logup_evaluations: &LogUpEvaluations<C::EF>,
         public_values: Vec<C::F>,
         challenger: &mut C::Challenger,
     ) -> (ShardOpenedValues<C::F, C::EF>, PartialSumcheckProof<C::EF>) {
-        let max_num_constraints = itertools::max(constraints_map.values()).unwrap();
+        let max_num_constraints =
+            itertools::max(chips.iter().map(|chip| chip.num_constraints)).unwrap();
         let powers_of_challenge =
-            batching_challenge.powers().take(*max_num_constraints).collect::<Vec<_>>();
-        let airs = chips.iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
+            batching_challenge.powers().take(max_num_constraints).collect::<Vec<_>>();
+        let airs =
+            chips.iter().map(|chip| (chip.air.clone(), chip.num_constraints)).collect::<Vec<_>>();
 
         let public_values = Arc::new(public_values);
 
@@ -364,7 +348,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         let LogUpEvaluations { point: gkr_point, chip_openings } = logup_evaluations;
 
         let mut chip_heights = BTreeMap::new();
-        for air in airs.iter().cloned() {
+        for (air, num_constraints) in airs.iter().cloned() {
             let ChipEvaluation {
                 main_trace_evaluations: main_opening,
                 preprocessed_trace_evaluations: prep_opening,
@@ -384,12 +368,10 @@ impl<C: MachineProverComponents> ShardProver<C> {
             let dummy_preprocessed_trace = vec![C::F::zero(); preprocessed_width];
             let dummy_main_trace = vec![C::F::zero(); main_trace.num_polynomials()];
 
-            let chip_num_constraints = constraints_map[&name];
-
             // Calculate powers of alpha for constraint evaluation:
-            // 1. Generate sequence [α⁰, α¹, ..., α^(n-1)] where n = chip_num_constraints.
+            // 1. Generate sequence [α⁰, α¹, ..., α^(n-1)] where n = num_constraints.
             // 2. Reverse to [α^(n-1), ..., α¹, α⁰] to align with Horner's method in the verifier.
-            let mut chip_powers_of_alpha = powers_of_challenge[0..chip_num_constraints].to_vec();
+            let mut chip_powers_of_alpha = powers_of_challenge[0..num_constraints].to_vec();
             chip_powers_of_alpha.reverse();
 
             let mut folder = ConstraintSumcheckFolder {
@@ -483,7 +465,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         let shard_open_values = airs
             .into_iter()
             .zip_eq(component_poly_evals)
-            .map(|(air, evals)| {
+            .map(|((air, _), evals)| {
                 let (preprocessed_evals, main_evals) = evals.split_at(air.preprocessed_width());
 
                 // Observe the openings
@@ -669,7 +651,6 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 &shard_chips,
                 pk.preprocessed_traces.clone(),
                 traces,
-                &pk.constraints_map,
                 batching_challenge,
                 gkr_opening_batch_challenge,
                 &logup_gkr_proof.logup_evaluations,
@@ -774,8 +755,6 @@ pub struct MachineProvingKey<C: MachineProverComponents> {
     pub preprocessed_traces: Traces<C::F, C::B>,
     /// The pcs data for the preprocessed traces.
     pub preprocessed_data: Option<JaggedProverData<C::PcsProverComponents>>,
-    /// The number of total constraints for each chip.
-    pub constraints_map: BTreeMap<String, usize>,
 }
 
 impl<C: MachineProverComponents> MachineProvingKey<C> {

@@ -1,6 +1,6 @@
 use std::{fmt::Display, hash::Hash, sync::Arc};
 
-use p3_uni_stark::{get_max_constraint_degree, SymbolicAirBuilder};
+use p3_uni_stark::{get_max_constraint_degree, get_symbolic_constraints, SymbolicAirBuilder};
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{Field, PrimeField32};
 use slop_matrix::dense::RowMajorMatrix;
@@ -27,6 +27,8 @@ pub struct Chip<F: Field, A> {
     pub receives: Arc<Vec<Interaction<F>>>,
     /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
     pub log_quotient_degree: usize,
+    /// The total number of constraints in the chip.
+    pub num_constraints: usize,
 }
 
 impl<F: Field, A> Clone for Chip<F, A> {
@@ -36,6 +38,7 @@ impl<F: Field, A> Clone for Chip<F, A> {
             sends: self.sends.clone(),
             receives: self.receives.clone(),
             log_quotient_degree: self.log_quotient_degree,
+            num_constraints: self.num_constraints,
         }
     }
 }
@@ -103,11 +106,16 @@ where
         }
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
+        // Count the number of constraints.
+        // TODO: unify this with the constraint degree calculation.
+        let num_constraints =
+            get_symbolic_constraints(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS).len();
+
         let sends = Arc::new(sends);
         let receives = Arc::new(receives);
 
         let air = Arc::new(air);
-        Self { air, sends, receives, log_quotient_degree }
+        Self { air, sends, receives, log_quotient_degree, num_constraints }
     }
 
     /// Returns the number of interactions in the chip.
