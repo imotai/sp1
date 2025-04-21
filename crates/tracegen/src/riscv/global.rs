@@ -16,12 +16,12 @@ use sp1_stark::septic_curve::SepticCurve;
 use sp1_stark::septic_digest::SepticDigest;
 use sp1_stark::septic_extension::{SepticBlock, SepticExtension};
 
-use csl_cuda::TracegenCoreGlobalKernel;
+use csl_cuda::TracegenRiscvGlobalKernel;
 
 use crate::{CudaTracegenAir, F};
 
 impl CudaTracegenAir<F> for GlobalChip {
-    fn supports_device_tracegen(&self) -> bool {
+    fn supports_device_main_tracegen(&self) -> bool {
         true
     }
 
@@ -42,7 +42,7 @@ impl CudaTracegenAir<F> for GlobalChip {
         const NUM_GLOBAL_COLS: usize = size_of::<GlobalCols<u8>>();
 
         let height = <Self as MachineAir<F>>::num_rows(self, input)
-            .expect("<GlobalChip as MachineAir<BabyBear>>::num_rows() should be Some(_)");
+            .expect("num_rows(...) should be Some(_)");
 
         let mut trace = Tensor::<F, TaskScope>::zeros_in([NUM_GLOBAL_COLS, height], scope.clone());
 
@@ -55,14 +55,14 @@ impl CudaTracegenAir<F> for GlobalChip {
             // uintptr_t trace_height,
             // const csl_sys::GlobalInteractionEvent *events,
             // uintptr_t nb_events
-            let tracegen_core_global_args =
+            let tracegen_riscv_global_args =
                 args!(trace.as_mut_ptr(), height, events_device.as_ptr(), events.len());
             scope
                 .launch_kernel(
-                    TaskScope::tracegen_core_global_decompress_kernel(),
+                    TaskScope::tracegen_riscv_global_decompress_kernel(),
                     grid_dim,
                     BLOCK_DIM,
-                    &tracegen_core_global_args,
+                    &tracegen_riscv_global_args,
                     0,
                 )
                 .unwrap();
@@ -199,14 +199,14 @@ impl CudaTracegenAir<F> for GlobalChip {
             // uintptr_t trace_height,
             // const bb31_septic_curve_t *cumulative_sums,
             // uintptr_t nb_events
-            let tracegen_core_global_args =
+            let tracegen_riscv_global_args =
                 args!(trace.as_mut_ptr(), height, cumulative_sums.as_ptr(), events.len());
             scope
                 .launch_kernel(
-                    TaskScope::tracegen_core_global_finalize_kernel(),
+                    TaskScope::tracegen_riscv_global_finalize_kernel(),
                     grid_dim,
                     BLOCK_DIM,
-                    &tracegen_core_global_args,
+                    &tracegen_riscv_global_args,
                     0,
                 )
                 .unwrap();
@@ -264,7 +264,6 @@ mod tests {
     use sp1_core_machine::global::GlobalChip;
     use sp1_stark::air::MachineAir;
     use sp1_stark::MachineRecord;
-    use std::collections::BTreeSet;
 
     use crate::{CudaTracegenAir, F};
 
@@ -276,17 +275,17 @@ mod tests {
 
     async fn inner_test_global_generate_trace(scope: TaskScope) {
         let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
-        let global_interaction_events = (0..1000)
-            .map(|_| GlobalInteractionEvent {
-                // These seem to be the numerical bounds that make a `GlobalInteractionEvent` valid.
-                message: core::array::from_fn(|_| rng.gen::<F>().as_canonical_u32()),
-                is_receive: rng.gen(),
-                kind: rng.gen::<u8>() & ((u8::MAX - 1) >> 2),
-            })
-            .collect::<Vec<_>>();
+        let events = core::iter::repeat_with(|| GlobalInteractionEvent {
+            // These seem to be the numerical bounds that make a `GlobalInteractionEvent` valid.
+            message: core::array::from_fn(|_| rng.gen::<F>().as_canonical_u32()),
+            is_receive: rng.gen(),
+            kind: rng.gen_range(0..(1 << 6)),
+        })
+        .take(1000)
+        .collect::<Vec<_>>();
 
         let [shard, gpu_shard] = core::array::from_fn(|_| ExecutionRecord {
-            global_interaction_events: global_interaction_events.clone(),
+            global_interaction_events: events.clone(),
             ..Default::default()
         });
 
@@ -297,46 +296,13 @@ mod tests {
         let gpu_trace = chip
             .generate_trace_device(&gpu_shard, &mut ExecutionRecord::default(), &scope)
             .await
-            .expect("should copy events to device successfully");
+            .expect("should copy events to device successfully")
+            .to_host()
+            .await
+            .expect("should copy trace to host successfully")
+            .into_guts();
 
-        let gpu_trace =
-            gpu_trace.to_host().await.expect("should copy trace to host successfully").into_guts();
-
-        assert_eq!(gpu_trace.dimensions, trace.dimensions);
-
-        println!("{:?}", trace.dimensions);
-
-        let mut eventful_mismatched_columns = BTreeSet::new();
-        let mut padding_mismatched_columns = BTreeSet::new();
-        for row_idx in 0..trace.sizes()[0] {
-            let mut col_mismatches = BTreeSet::new();
-            for col_idx in 0..trace.sizes()[1] {
-                let actual = gpu_trace[[row_idx, col_idx]];
-                let expected = trace[[row_idx, col_idx]];
-                if actual != expected {
-                    println!(
-                        "mismatch on row {} col {}. actual: {:?} expected: {:?}",
-                        row_idx, col_idx, *actual, *expected
-                    );
-                    col_mismatches.insert(col_idx);
-                }
-            }
-            let event = global_interaction_events.get(row_idx);
-            if col_mismatches.is_empty() {
-                println!("row {row_idx} matches   . event: {:?}", event);
-            } else {
-                println!("row {row_idx} MISMATCHES. event: {:?}", event);
-            }
-            if event.is_some() {
-                eventful_mismatched_columns.extend(col_mismatches);
-            } else {
-                padding_mismatched_columns.extend(col_mismatches);
-            }
-        }
-        println!("eventful mismatched columns: {:?}", eventful_mismatched_columns);
-        println!("padding mismatched columns: {:?}", padding_mismatched_columns);
-
-        assert_eq!(gpu_trace, trace);
+        crate::tests::test_traces_eq(&trace, &gpu_trace, &events);
 
         assert_eq!(
             *gpu_shard.global_cumulative_sum.lock().unwrap(),

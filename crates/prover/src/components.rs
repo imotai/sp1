@@ -7,7 +7,7 @@ use csl_jagged::{
     Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval,
 };
 use csl_logup_gkr::LogupGkrCudaProverComponents;
-// use csl_tracegen::{CudaTraceGenerator, CudaTracegenAir};
+use csl_tracegen::{CudaTraceGenerator, CudaTracegenAir};
 use csl_zerocheck::ZerocheckEvalProgramProverData;
 use serde::{Deserialize, Serialize};
 use slop_algebra::extension::BinomialExtensionField;
@@ -19,7 +19,7 @@ use sp1_core_machine::riscv::RiscvAir;
 use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, ShrinkAir};
 use sp1_stark::{
     air::MachineAir,
-    prover::{DefaultTraceGenerator, MachineProverComponents, ShardProver, ZerocheckAir},
+    prover::{MachineProverComponents, ShardProver, ZerocheckAir},
     BabyBearPoseidon2, GkrProverImpl, ShardVerifier,
 };
 
@@ -49,7 +49,7 @@ type EF = BinomialExtensionField<BabyBear, 4>;
 impl<A> MachineProverComponents
     for CudaProverComponents<Poseidon2BabyBearJaggedCudaProverComponents, A>
 where
-    A: MachineAir<F> + ZerocheckAir<F, EF> + std::fmt::Debug,
+    A: CudaTracegenAir<F> + ZerocheckAir<F, EF> + std::fmt::Debug,
 {
     type F = F;
     type EF = EF;
@@ -66,7 +66,7 @@ where
 
     type Config = <Poseidon2BabyBearJaggedCudaProverComponents as JaggedProverComponents>::Config;
 
-    type TraceGenerator = DefaultTraceGenerator<F, A, TaskScope>;
+    type TraceGenerator = CudaTraceGenerator<F, A>;
 
     type ZerocheckProverData = ZerocheckEvalProgramProverData<Self::F, Self::EF, A>;
 
@@ -81,7 +81,7 @@ pub fn new_cuda_prover_sumcheck_eval<A>(
     scope: TaskScope,
 ) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponents, A>
 where
-    A: MachineAir<F>
+    A: CudaTracegenAir<F>
         + for<'a> BlockAir<SymbolicProverFolder<'a>>
         + ZerocheckAir<F, EF>
         + std::fmt::Debug,
@@ -89,7 +89,7 @@ where
     let ShardVerifier { pcs_verifier, machine } = verifier;
     let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
     let airs = machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
-    let trace_generator = DefaultTraceGenerator::new_in(machine, scope.clone());
+    let trace_generator = CudaTraceGenerator::new_in(machine, scope.clone());
     let zerocheck_data = ZerocheckEvalProgramProverData::new(&airs, scope);
     let logup_gkr_prover = LogupGkrCudaProverComponents::default_prover();
     CudaProver {
@@ -103,7 +103,7 @@ where
 impl<A> MachineProverComponents
     for CudaProverComponents<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval, A>
 where
-    A: MachineAir<F> + ZerocheckAir<F, EF> + std::fmt::Debug,
+    A: CudaTracegenAir<F> + ZerocheckAir<F, EF> + std::fmt::Debug,
 {
     type F = F;
     type EF = EF;
@@ -121,7 +121,7 @@ where
     type Config =
         <Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval as JaggedProverComponents>::Config;
 
-    type TraceGenerator = DefaultTraceGenerator<F, A, TaskScope>;
+    type TraceGenerator = CudaTraceGenerator<F, A>;
 
     type ZerocheckProverData = ZerocheckEvalProgramProverData<Self::F, Self::EF, A>;
 
@@ -136,7 +136,7 @@ pub fn new_cuda_prover_trivial_eval<A>(
     scope: TaskScope,
 ) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval, A>
 where
-    A: MachineAir<F>
+    A: CudaTracegenAir<F>
         + for<'a> BlockAir<SymbolicProverFolder<'a>>
         + ZerocheckAir<F, EF>
         + std::fmt::Debug,
@@ -144,7 +144,7 @@ where
     let ShardVerifier { pcs_verifier, machine } = verifier;
     let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
     let airs = machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
-    let trace_generator = DefaultTraceGenerator::new_in(machine, scope.clone());
+    let trace_generator = CudaTraceGenerator::new_in(machine, scope.clone());
     let zerocheck_data = ZerocheckEvalProgramProverData::new(&airs, scope);
     let logup_gkr_prover = LogupGkrCudaProverComponents::default_prover();
     CudaProver {

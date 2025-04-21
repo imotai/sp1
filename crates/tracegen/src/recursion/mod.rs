@@ -1,5 +1,143 @@
+mod alu_base;
+mod alu_ext;
+mod poseidon2_wide;
+mod prefix_sum_checks;
+mod select;
+
+use csl_cuda::TaskScope;
+use slop_alloc::mem::CopyError;
+use slop_multilinear::Mle;
 use sp1_recursion_machine::RecursionAir;
 
 use crate::{CudaTracegenAir, F};
 
-impl<const DEGREE: usize> CudaTracegenAir<F> for RecursionAir<F, DEGREE> {}
+impl<const DEGREE: usize> CudaTracegenAir<F> for RecursionAir<F, DEGREE> {
+    fn supports_device_preprocessed_tracegen(&self) -> bool {
+        match self {
+            Self::BaseAlu(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::ExtAlu(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::Poseidon2Wide(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::Select(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::PrefixSumChecks(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::PublicValues(_) => false,
+            // Other chips don't have `CudaTracegenAir` implemented yet.
+            _ => false,
+        }
+    }
+
+    async fn generate_preprocessed_trace_device(
+        &self,
+        program: &Self::Program,
+        scope: &TaskScope,
+    ) -> Result<Option<Mle<F, TaskScope>>, CopyError> {
+        match self {
+            Self::BaseAlu(chip) => chip.generate_preprocessed_trace_device(program, scope).await,
+            Self::ExtAlu(chip) => chip.generate_preprocessed_trace_device(program, scope).await,
+            Self::Poseidon2Wide(chip) => {
+                chip.generate_preprocessed_trace_device(program, scope).await
+            }
+            Self::Select(chip) => chip.generate_preprocessed_trace_device(program, scope).await,
+            Self::PrefixSumChecks(chip) => {
+                chip.generate_preprocessed_trace_device(program, scope).await
+            }
+            Self::PublicValues(_) => unimplemented!(),
+            // Other chips don't have `CudaTracegenAir` implemented yet.
+            _ => unimplemented!(),
+        }
+    }
+
+    fn supports_device_main_tracegen(&self) -> bool {
+        match self {
+            Self::BaseAlu(chip) => chip.supports_device_main_tracegen(),
+            Self::ExtAlu(chip) => chip.supports_device_main_tracegen(),
+            Self::Poseidon2Wide(chip) => chip.supports_device_main_tracegen(),
+            Self::Select(chip) => chip.supports_device_main_tracegen(),
+            Self::PrefixSumChecks(chip) => chip.supports_device_main_tracegen(),
+            Self::PublicValues(_) => false,
+            // Other chips don't have `CudaTracegenAir` implemented yet.
+            _ => false,
+        }
+    }
+
+    async fn generate_trace_device(
+        &self,
+        input: &Self::Record,
+        output: &mut Self::Record,
+        scope: &TaskScope,
+    ) -> Result<Mle<F, TaskScope>, CopyError> {
+        match self {
+            Self::BaseAlu(chip) => chip.generate_trace_device(input, output, scope).await,
+            Self::ExtAlu(chip) => chip.generate_trace_device(input, output, scope).await,
+            Self::Poseidon2Wide(chip) => chip.generate_trace_device(input, output, scope).await,
+            Self::Select(chip) => chip.generate_trace_device(input, output, scope).await,
+            Self::PrefixSumChecks(chip) => chip.generate_trace_device(input, output, scope).await,
+            Self::PublicValues(_) => unimplemented!(),
+            // Other chips don't have `CudaTracegenAir` implemented yet.
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use csl_cuda::TaskScope;
+
+    use rand::{rngs::StdRng, SeedableRng};
+
+    use slop_alloc::ToHost;
+    use slop_tensor::Tensor;
+
+    use sp1_recursion_executor::{
+        BasicBlock, Instruction, RawProgram, RecursionProgram, RootProgram, SeqBlock,
+    };
+    use sp1_stark::air::MachineAir;
+
+    use crate::{CudaTracegenAir, F};
+
+    pub async fn test_preprocessed_tracegen<A>(
+        chip: A,
+        mut make_instr: impl FnMut(&mut StdRng) -> Instruction<F>,
+        scope: TaskScope,
+    ) where
+        A: CudaTracegenAir<F> + MachineAir<F, Program = RecursionProgram<F>>,
+    {
+        let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
+
+        let instrs =
+            core::iter::repeat_with(|| make_instr(&mut rng)).take(1000).collect::<Vec<_>>();
+
+        // SAFETY: We don't actually execute the program, which requires that the invariants hold.
+        // We only generate preprocessed traces, which do not require that the invariants hold.
+        let program = unsafe {
+            RecursionProgram::new_unchecked(RootProgram {
+                inner: RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] },
+                total_memory: 0, // Will be filled in.
+                dummy_preprocessed_height: 0,
+                dummy_main_height: 0,
+            })
+        };
+
+        let trace = Tensor::<F>::from(
+            chip.generate_preprocessed_trace(&program)
+                .expect("should generate Some(preprocessed_trace)"),
+        );
+
+        let gpu_trace = chip
+            .generate_preprocessed_trace_device(&program, &scope)
+            .await
+            .expect("should copy events to device successfully")
+            .expect("should generate Some(preprocessed_trace)")
+            .to_host()
+            .await
+            .expect("should copy trace to host successfully")
+            .into_guts();
+
+        let Some(SeqBlock::Basic(BasicBlock { instrs })) =
+            program.into_inner().inner.seq_blocks.pop()
+        else {
+            unreachable!()
+        };
+
+        crate::tests::test_traces_eq(&trace, &gpu_trace, &instrs);
+    }
+}

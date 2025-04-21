@@ -66,12 +66,16 @@ fn cbindgen_builder() -> cbindgen::Builder {
             "p3-baby-bear",
             "sp1-core-machine",
             "sp1-core-executor",
+            "sp1-recursion-executor",
+            "sp1-recursion-machine",
         ])
         .with_parse_extra_bindings(&[
             "sp1-stark",
             "sp1-primitives",
             "p3-baby-bear",
             // TODO(tqn) I think this pulls in all the extern fns from this crate, which is undesirable.
+            "sp1-recursion-executor",
+            "sp1-recursion-machine",
             "sp1-core-machine",
         ])
         .rename_item("BabyBear", "BabyBearP3")
@@ -86,8 +90,27 @@ fn cbindgen_builder() -> cbindgen::Builder {
         // .include_item("MemoryInitializeFinalizeEvent")
         // .include_item("GlobalInteractionOperation")
         .include_item("GlobalInteractionEvent")
-        // .include_item("Poseidon2StateCols")
         .include_item("GlobalCols")
+        .include_item("MemoryAccessColsChips")
+        .include_item("Poseidon2Instr")
+        .include_item("Poseidon2PreprocessedColsWide")
+        .include_item("Poseidon2Event")
+        .include_item("SelectInstr")
+        .include_item("SelectPreprocessedCols")
+        .include_item("SelectEvent")
+        .include_item("SelectCols")
+        .include_item("BaseAluInstr")
+        .include_item("BaseAluAccessCols")
+        .include_item("BaseAluEvent")
+        .include_item("BaseAluValueCols")
+        .include_item("ExtAluInstr")
+        .include_item("ExtAluAccessCols")
+        .include_item("ExtAluEvent")
+        .include_item("ExtAluValueCols")
+        .include_item("PERMUTATION_WIDTH")
+        .include_item("PrefixSumChecksEvent")
+        .include_item("PrefixSumChecksCols")
+        // .include_item("Poseidon2StateCols")
         // .include_item("INTERACTION_KIND_GLOBAL")
         .with_namespace("csl_sys")
         .with_crate(env::var("CARGO_MANIFEST_DIR").unwrap())
@@ -194,7 +217,11 @@ fn main() {
                 }
             }
         }
-        Err(cbindgen::Error::ParseSyntaxError { .. }) => {} // Ignore parse errors so rust-analyzer can run.
+        Err(cbindgen::Error::ParseSyntaxError { .. }) => {
+            // Ignore parse errors in the build script.
+            // We let rust-analyzer/rustc run to report the syntax error with diagnostics.
+            return;
+        }
         Err(e) => panic!("{:?}", e),
     }
     build.include(out_include_dir);

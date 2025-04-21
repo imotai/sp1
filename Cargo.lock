@@ -810,6 +810,7 @@ dependencies = [
  "csl-cuda",
  "csl-jagged",
  "csl-logup-gkr",
+ "csl-tracegen",
  "csl-tracing",
  "csl-zerocheck",
  "itertools 0.14.0",
@@ -846,7 +847,35 @@ dependencies = [
  "slop-baby-bear",
  "sp1-core-executor",
  "sp1-core-machine",
+ "sp1-recursion-executor",
+ "sp1-recursion-machine",
  "which",
+]
+
+[[package]]
+name = "csl-tracegen"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "futures",
+ "rand 0.8.5",
+ "rayon",
+ "slop-air",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-baby-bear",
+ "slop-futures",
+ "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-symmetric",
+ "slop-tensor",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-primitives",
+ "sp1-recursion-executor",
+ "sp1-recursion-machine",
+ "sp1-stark",
+ "tokio",
 ]
 
 [[package]]

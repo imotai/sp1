@@ -13,6 +13,8 @@ slop-baby-bear = { workspace = true }
 [build-dependencies]
 sp1-core-executor = { workspace = true }
 sp1-core-machine = { workspace = true }
+sp1-recursion-executor = { workspace = true }
+sp1-recursion-machine = { workspace = true }
 cc = { workspace = true }
 which = { workspace = true }
 cbindgen = { workspace = true }

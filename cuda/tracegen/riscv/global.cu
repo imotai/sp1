@@ -130,7 +130,7 @@ __device__ void populate_global_interaction_dummy(csl_sys::GlobalInteractionOper
     poseidon2_wide::event_to_row(m_trial, input_row, 0, 1, true);
 }
 
-__global__ void core_global_generate_trace_decompress_kernel(
+__global__ void riscv_global_generate_trace_decompress_kernel(
     bb31_t *trace,
     uintptr_t trace_height,
     const csl_sys::GlobalInteractionEvent *events,
@@ -204,7 +204,7 @@ __global__ void core_global_generate_trace_decompress_kernel(
     }
 }
 
-__global__ void core_global_generate_trace_finalize_kernel(
+__global__ void riscv_global_generate_trace_finalize_kernel(
     bb31_t *trace,
     uintptr_t trace_height,
     const bb31_septic_curve_t *cumulative_sums,
@@ -285,12 +285,12 @@ __global__ void core_global_generate_trace_finalize_kernel(
 
 namespace csl_sys
 {
-    extern KernelPtr core_global_generate_trace_decompress_kernel()
+    extern KernelPtr riscv_global_generate_trace_decompress_kernel()
     {
-        return (KernelPtr)::core_global_generate_trace_decompress_kernel;
+        return (KernelPtr)::riscv_global_generate_trace_decompress_kernel;
     }
-    extern KernelPtr core_global_generate_trace_finalize_kernel()
+    extern KernelPtr riscv_global_generate_trace_finalize_kernel()
     {
-        return (KernelPtr)::core_global_generate_trace_finalize_kernel;
+        return (KernelPtr)::riscv_global_generate_trace_finalize_kernel;
     }
 }

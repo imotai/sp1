@@ -24,7 +24,7 @@ members = [
     "crates/prover",
     "crates/tracing",
     "crates/perf",
-    # "crates/tracegen",
+    "crates/tracegen",
     "crates/logup-gkr",
 ]
 exclude = ["crates/tracegen"]
@@ -56,7 +56,7 @@ csl-zerocheck = { path = "crates/zerocheck" }
 csl-tracing = { path = "crates/tracing" }
 csl-prover = { path = "crates/prover" }
 csl-perf = { path = "crates/perf" }
-# csl-tracegen = { path = "crates/tracegen" }
+csl-tracegen = { path = "crates/tracegen" }
 csl-logup-gkr = { path = "crates/logup-gkr" }
 
 # slop 
@@ -88,8 +88,11 @@ sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch =
 sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
+
+
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
 # slop-baby-bear = { path = "../slop/crates/baby-bear" }
@@ -119,9 +122,9 @@ sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "ta
 # sp1-prover = { path = "../sp1-wip/crates/prover" }
 # sp1-recursion-circuit = { path = "../sp1-wip/crates/recursion/circuit" }
 # sp1-recursion-compiler = { path = "../sp1-wip/crates/recursion/compiler" }
+# sp1-recursion-executor = { path = "../sp1-wip/crates/recursion/executor" }
 # sp1-recursion-machine = { path = "../sp1-wip/crates/recursion/machine" }
 # sp1-curves = { path = "../sp1-wip/crates/curves" }
-# sp1-recursion-executor = { path = "../sp1-wip/crates/recursion/executor" }
 
 # async/concurrency
 tokio = { version = "1.42.0" }
