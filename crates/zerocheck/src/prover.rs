@@ -241,8 +241,6 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         let mut output: Tensor<EF, TaskScope> =
             Tensor::with_sizes_in([3, grid_size_x * grid_size_y], backend.clone());
 
-        backend.synchronize().await.unwrap();
-
         let (preprocessed_ptr, preprocessed_width) =
             if let Some(preprocessed_rows) = interpolated_preprocessed_rows {
                 (preprocessed_rows.as_ptr(), preprocessed_rows.sizes()[1])
