@@ -6,6 +6,18 @@ const MAX_SHARD_SIZE: usize = 1 << 24;
 const MAX_SHARD_BATCH_SIZE: usize = 8;
 const MAX_DEFERRED_SPLIT_THRESHOLD: usize = 1 << 15;
 
+const ELEMENT_THRESHOLD: u64 = (1 << 29) - (1 << 27);
+const HEIGHT_THRESHOLD: u64 = 1 << 22;
+
+/// The threshold that determines when to split the shard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShardingThreshold {
+    /// The maximum number of elements in the trace.
+    pub element_threshold: u64,
+    /// The maximum number of rows for a single operation.
+    pub height_threshold: u64,
+}
+
 /// Options for the core prover.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SP1CoreOpts {
@@ -15,6 +27,8 @@ pub struct SP1CoreOpts {
     pub shard_batch_size: usize,
     /// Options for splitting deferred events.
     pub split_opts: SplitOpts,
+    /// The threshold that determines when to split the shard.
+    pub sharding_threshold: ShardingThreshold,
 }
 
 impl Default for SP1CoreOpts {
@@ -27,6 +41,14 @@ impl Default for SP1CoreOpts {
         let shard_size = env::var("SHARD_SIZE")
             .map_or_else(|_| MAX_SHARD_SIZE, |s| s.parse::<usize>().unwrap_or(MAX_SHARD_SIZE));
 
+        let element_threshold = env::var("ELEMENT_THRESHOLD")
+            .map_or_else(|_| ELEMENT_THRESHOLD, |s| s.parse::<u64>().unwrap_or(ELEMENT_THRESHOLD));
+
+        let height_threshold = env::var("HEIGHT_THRESHOLD")
+            .map_or_else(|_| HEIGHT_THRESHOLD, |s| s.parse::<u64>().unwrap_or(HEIGHT_THRESHOLD));
+
+        let sharding_threshold = ShardingThreshold { element_threshold, height_threshold };
+
         Self {
             shard_size,
             shard_batch_size: env::var("SHARD_BATCH_SIZE").map_or_else(
@@ -34,6 +56,7 @@ impl Default for SP1CoreOpts {
                 |s| s.parse::<usize>().unwrap_or(MAX_SHARD_BATCH_SIZE),
             ),
             split_opts: SplitOpts::new(split_threshold),
+            sharding_threshold,
         }
     }
 }

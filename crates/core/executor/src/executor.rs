@@ -31,7 +31,7 @@ use crate::{
     subproof::SubproofVerifier,
     syscalls::{get_syscall, SyscallCode, SyscallContext},
     ALUTypeRecord, ITypeRecord, Instruction, JTypeRecord, Opcode, Program, RTypeRecord, Register,
-    RiscvAirId, SP1CoreOpts,
+    RiscvAirId, SP1CoreOpts, ShardingThreshold,
 };
 
 /// The default increment for the program counter.  Is used for all instructions except
@@ -158,7 +158,7 @@ pub struct Executor<'a> {
     pub size_check_frequency: u64,
 
     /// The maximum trace size and table height to allow.
-    pub sharding_threshold: Option<(u64, u64)>,
+    pub sharding_threshold: Option<ShardingThreshold>,
 
     /// event counts for the current shard.
     pub event_counts: EnumMap<RiscvAirId, u64>,
@@ -394,7 +394,7 @@ impl<'a> Executor<'a> {
             local_memory_access: HashMap::new(),
             costs: costs.into_iter().map(|(k, v)| (k, v as u64)).collect(),
             size_check_frequency: 16,
-            sharding_threshold: Some((1 << 29, 1 << 22)),
+            sharding_threshold: Some(opts.sharding_threshold),
             event_counts: EnumMap::default(),
         }
     }
@@ -1792,7 +1792,9 @@ impl<'a> Executor<'a> {
                 );
 
                 // Check if the main trace area or table height is too large.
-                if let Some((element_threshold, height_threshold)) = self.sharding_threshold {
+                if let Some(ShardingThreshold { element_threshold, height_threshold }) =
+                    self.sharding_threshold
+                {
                     let padded_event_counts =
                         pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
                     let (padded_element_count, max_height) =
