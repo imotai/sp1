@@ -352,12 +352,12 @@ impl<C: MachineProverComponents> MachineProver<C> {
             .iter()
             .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
             .sum::<usize>()
-            .div_ceil(log_stacking_height);
+            .div_ceil(1 << log_stacking_height);
         let main_multiple = airs
             .iter()
             .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
             .sum::<usize>()
-            .div_ceil(log_stacking_height);
+            .div_ceil(1 << log_stacking_height);
         Some(CoreProofShape { shard_chips, preprocessed_multiple, main_multiple })
     }
 
