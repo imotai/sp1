@@ -2,14 +2,16 @@ use std::iter::once;
 
 use itertools::Itertools;
 use p3_air::AirBuilder;
-use p3_field::AbstractField;
+use p3_field::{AbstractField, Field};
 use sp1_core_executor::ByteOpcode;
 use sp1_stark::{
     air::{AirInteraction, BaseAirBuilder, ByteAirBuilder, InteractionScope},
     InteractionKind, Word,
 };
 
-use crate::memory::{MemoryAccessCols, MemoryAccessTimestamp};
+use crate::memory::{
+    MemoryAccessCols, MemoryAccessInShardCols, MemoryAccessInShardTimestamp, MemoryAccessTimestamp,
+};
 
 pub trait MemoryAirBuilder: BaseAirBuilder {
     /// Constrain a memory read, by using the read value as the write value.
@@ -94,6 +96,109 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         let prev_shard = mem_access.access_timestamp.prev_shard.clone().into();
         let prev_clk = mem_access.access_timestamp.prev_clk.clone().into();
         let prev_values = once(prev_shard)
+            .chain(once(prev_clk))
+            .chain(once(addr.clone()))
+            .chain(mem_access.prev_value.clone().map(Into::into))
+            .collect();
+        let current_values = once(shard)
+            .chain(once(clk))
+            .chain(once(addr.clone()))
+            .chain(write_value.map(Into::into))
+            .collect();
+
+        // The previous values get sent with multiplicity = 1, for "read".
+        self.send(
+            AirInteraction::new(prev_values, do_check.clone(), InteractionKind::Memory),
+            InteractionScope::Local,
+        );
+
+        // The current values get "received", i.e. multiplicity = -1
+        self.receive(
+            AirInteraction::new(current_values, do_check.clone(), InteractionKind::Memory),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Constrain a memory read, by using the read value as the write value.
+    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous
+    /// one. Used for cases where the previous shard is equal to the shard.
+    fn eval_memory_access_in_shard_read<E: Into<Self::Expr> + Clone>(
+        &mut self,
+        shard: impl Into<Self::Expr>,
+        clk: impl Into<Self::Expr>,
+        addr: impl Into<Self::Expr>,
+        mem_access: MemoryAccessInShardCols<E>,
+        do_check: impl Into<Self::Expr>,
+    ) {
+        let do_check: Self::Expr = do_check.into();
+        let shard: Self::Expr = shard.into();
+        let clk: Self::Expr = clk.into();
+
+        self.assert_bool(do_check.clone());
+        // Verify that the current memory access time is greater than the previous's.
+        self.eval_memory_access_in_shard_timestamp(
+            &mem_access.access_timestamp,
+            do_check.clone(),
+            clk.clone(),
+        );
+
+        // Add to the memory argument.
+        let addr = addr.into();
+
+        let prev_clk = mem_access.access_timestamp.prev_clk.clone().into();
+        let prev_values = once(shard.clone())
+            .chain(once(prev_clk))
+            .chain(once(addr.clone()))
+            .chain(mem_access.prev_value.clone().map(Into::into))
+            .collect();
+        let current_values = once(shard)
+            .chain(once(clk))
+            .chain(once(addr.clone()))
+            .chain(mem_access.prev_value.clone().map(Into::into))
+            .collect();
+
+        // The previous values get sent with multiplicity = 1, for "read".
+        self.send(
+            AirInteraction::new(prev_values, do_check.clone(), InteractionKind::Memory),
+            InteractionScope::Local,
+        );
+
+        // The current values get "received", i.e. multiplicity = -1
+        self.receive(
+            AirInteraction::new(current_values, do_check.clone(), InteractionKind::Memory),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Constrain a memory write, given the write value.
+    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous
+    /// one. Used for cases where the previous shard is equal to the shard.
+    fn eval_memory_access_in_shard_write<E: Into<Self::Expr> + Clone>(
+        &mut self,
+        shard: impl Into<Self::Expr>,
+        clk: impl Into<Self::Expr>,
+        addr: impl Into<Self::Expr>,
+        mem_access: MemoryAccessInShardCols<E>,
+        write_value: Word<impl Into<Self::Expr>>,
+        do_check: impl Into<Self::Expr>,
+    ) {
+        let do_check: Self::Expr = do_check.into();
+        let shard: Self::Expr = shard.into();
+        let clk: Self::Expr = clk.into();
+
+        self.assert_bool(do_check.clone());
+        // Verify that the current memory access time is greater than the previous's.
+        self.eval_memory_access_in_shard_timestamp(
+            &mem_access.access_timestamp,
+            do_check.clone(),
+            clk.clone(),
+        );
+
+        // Add to the memory argument.
+        let addr = addr.into();
+
+        let prev_clk = mem_access.access_timestamp.prev_clk.clone().into();
+        let prev_values = once(shard.clone())
             .chain(once(prev_clk))
             .chain(once(addr.clone()))
             .chain(mem_access.prev_value.clone().map(Into::into))
@@ -223,6 +328,40 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         self.send_byte(
             Self::Expr::from_canonical_u8(ByteOpcode::Range as u8),
             mem_access.diff_high_limb.clone(),
+            Self::Expr::from_canonical_u32(14),
+            Self::Expr::zero(),
+            do_check,
+        )
+    }
+
+    /// Verifies the in-shard memory access timestamp.
+    ///
+    /// This method verifies that the current memory access happened after the previous one's.
+    /// Specifically it will ensure that the current's clk val is greater than the previous's.
+    fn eval_memory_access_in_shard_timestamp(
+        &mut self,
+        mem_access: &MemoryAccessInShardTimestamp<impl Into<Self::Expr> + Clone>,
+        do_check: impl Into<Self::Expr>,
+        clk: impl Into<Self::Expr>,
+    ) {
+        let do_check: Self::Expr = do_check.into();
+
+        let diff_minus_one = clk.into() - mem_access.prev_clk.clone().into() - Self::Expr::one();
+        let diff_high_limb = (diff_minus_one.clone() - mem_access.diff_low_limb.clone().into())
+            * Self::F::from_canonical_u32(1 << 14).inverse();
+
+        // Send the range checks for the limbs.
+        self.send_byte(
+            Self::Expr::from_canonical_u8(ByteOpcode::Range as u8),
+            mem_access.diff_low_limb.clone(),
+            Self::Expr::from_canonical_u32(14),
+            Self::Expr::zero(),
+            do_check.clone(),
+        );
+
+        self.send_byte(
+            Self::Expr::from_canonical_u8(ByteOpcode::Range as u8),
+            diff_high_limb,
             Self::Expr::from_canonical_u32(14),
             Self::Expr::zero(),
             do_check,

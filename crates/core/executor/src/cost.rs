@@ -5,13 +5,13 @@ use crate::RiscvAirId;
 
 const BYTE_NUM_ROWS: u64 = 1 << 16;
 const RANGE_NUM_ROWS: u64 = 1 << 17;
-const MAX_PROGRAM_SIZE: u64 = 1 << 22;
 
 /// Estimates the LDE area.
 #[must_use]
 pub fn estimate_trace_elements(
     num_events_per_air: EnumMap<RiscvAirId, u64>,
     costs_per_air: &HashMap<RiscvAirId, u64>,
+    program_size: u64,
 ) -> (u64, u64) {
     let mut max_height = 0;
 
@@ -22,7 +22,10 @@ pub fn estimate_trace_elements(
     cells += RANGE_NUM_ROWS * costs_per_air[&RiscvAirId::Range];
 
     // Compute the program chip contribution.
-    cells += MAX_PROGRAM_SIZE * costs_per_air[&RiscvAirId::Program];
+    cells += program_size * costs_per_air[&RiscvAirId::Program];
+
+    // Compute the memory bump contribution.
+    cells += 32 * costs_per_air[&RiscvAirId::MemoryBump];
 
     // Compute the add chip contribution.
     cells += (num_events_per_air[RiscvAirId::Add]).next_multiple_of(32)

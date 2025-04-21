@@ -99,6 +99,8 @@ pub struct ExecutionRecord {
     pub global_cumulative_sum: Arc<Mutex<SepticDigest<u32>>>,
     /// The global interaction event count.
     pub global_interaction_event_count: u32,
+    /// Memory records with `prev_shard` different from `shard`.
+    pub shard_bump_memory_events: Vec<(MemoryRecordEnum, u32)>,
     /// The public values.
     pub public_values: PublicValues<u32, u32, u32>,
     /// The next nonce to use for a new lookup.
@@ -548,6 +550,7 @@ impl MachineRecord for ExecutionRecord {
         self.jalr_events.append(&mut other.jalr_events);
         self.auipc_events.append(&mut other.auipc_events);
         self.syscall_events.append(&mut other.syscall_events);
+        self.shard_bump_memory_events.append(&mut other.shard_bump_memory_events);
 
         self.precompile_events.append(&mut other.precompile_events);
 
@@ -609,7 +612,7 @@ impl ExecutionRecord {
     ) {
         builder.send_state(
             public_values.execution_shard,
-            AB::Expr::zero(),
+            AB::Expr::one(),
             public_values.start_pc,
             AB::Expr::one(),
         );
@@ -623,11 +626,12 @@ impl ExecutionRecord {
             public_values.next_execution_shard.into() - public_values.execution_shard.into();
         builder.assert_bool(increment_execution_shard.clone());
         builder.assert_zero(
-            public_values.last_timestamp.into()
+            (public_values.last_timestamp.into() - AB::Expr::one())
                 * (AB::Expr::one() - increment_execution_shard.clone()),
         );
         builder.assert_eq(
-            public_values.last_timestamp.into() * public_values.last_timestamp_inv.into(),
+            (public_values.last_timestamp.into() - AB::Expr::one())
+                * public_values.last_timestamp_inv.into(),
             increment_execution_shard,
         );
     }

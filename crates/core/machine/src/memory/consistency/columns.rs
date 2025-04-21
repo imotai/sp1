@@ -24,7 +24,7 @@ pub struct MemoryAccessTimestamp<T> {
     pub diff_high_limb: T,
 }
 
-/// New Memory Access Columns
+/// Memory Access Columns
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct MemoryAccessCols<T> {
@@ -32,10 +32,28 @@ pub struct MemoryAccessCols<T> {
     pub access_timestamp: MemoryAccessTimestamp<T>,
 }
 
-/// New Memory Access Columns for u8 limbs
+/// Memory Access Columns for u8 limbs
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct MemoryAccessColsU8<T> {
     pub memory_access: MemoryAccessCols<T>,
     pub prev_value_u8: U16toU8Operation<T>,
+}
+
+/// Memory Access Timestamp, when the shard and previous shard are known to be equal
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct MemoryAccessInShardTimestamp<T> {
+    /// The previous timestamp that this memory access is being read from.
+    pub prev_clk: T,
+    /// The difference in timestamp's least significant 14 bit limb.
+    pub diff_low_limb: T,
+}
+
+/// Memory Access Columns, when the shard and previous shard are known to be equal
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct MemoryAccessInShardCols<T> {
+    pub prev_value: Word<T>,
+    pub access_timestamp: MemoryAccessInShardTimestamp<T>,
 }

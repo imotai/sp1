@@ -10,7 +10,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 use crate::{
     air::{SP1CoreAirBuilder, WordAirBuilder},
     cpu::columns::InstructionCols,
-    memory::MemoryAccessCols,
+    memory::MemoryAccessInShardCols,
 };
 
 /// A set of columns to read operations with op_a and op_b being registers and op_c being an
@@ -19,10 +19,10 @@ use crate::{
 #[repr(C)]
 pub struct ITypeReader<T> {
     pub op_a: T,
-    pub op_a_memory: MemoryAccessCols<T>,
+    pub op_a_memory: MemoryAccessInShardCols<T>,
     pub op_a_0: T,
     pub op_b: T,
-    pub op_b_memory: MemoryAccessCols<T>,
+    pub op_b_memory: MemoryAccessInShardCols<T>,
     pub op_c_imm: Word<T>,
 }
 
@@ -81,7 +81,7 @@ impl<F: Field> ITypeReader<F> {
         builder.send_program(pc, instruction, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
-        builder.eval_memory_access_write(
+        builder.eval_memory_access_in_shard_write(
             shard.clone(),
             clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
             cols.op_a,
@@ -89,7 +89,7 @@ impl<F: Field> ITypeReader<F> {
             op_a_write_value,
             is_real.clone(),
         );
-        builder.eval_memory_access_read(
+        builder.eval_memory_access_in_shard_read(
             shard.clone(),
             clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
             cols.op_b,

@@ -26,7 +26,7 @@ use crate::{
             load_x0::LoadX0Chip,
         },
         store::{store_byte::StoreByteChip, store_half::StoreHalfChip, store_word::StoreWordChip},
-        MemoryChipType, MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW,
+        MemoryBumpChip, MemoryChipType, MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW,
     },
     range::{trace::NUM_ROWS as RANGE_CHIP_NUM_ROWS, RangeChip},
     syscall::{
@@ -142,6 +142,8 @@ pub enum RiscvAir<F: PrimeField32> {
     MemoryGlobalFinal(MemoryGlobalChip),
     /// A table for the local memory state.
     MemoryLocal(MemoryLocalChip),
+    /// A table for bumping memory timestamps.
+    MemoryBump(MemoryBumpChip),
     /// A table for all the syscall invocations.
     SyscallCore(SyscallChip),
     /// A table for all the precompile invocations.
@@ -448,6 +450,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         let syscall_instrs = Chip::new(RiscvAir::SyscallInstrs(SyscallInstrsChip::default()));
         chips.push(syscall_instrs.clone());
         core_chips.insert(syscall_instrs);
+
+        let memory_bump = Chip::new(RiscvAir::MemoryBump(MemoryBumpChip::new()));
+        chips.push(memory_bump.clone());
+        core_chips.insert(memory_bump);
 
         let memory_global_init = Chip::new(RiscvAir::MemoryGlobalInit(MemoryGlobalChip::new(
             MemoryChipType::Initialize,
@@ -759,6 +765,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(syscall_instrs.name(), syscall_instrs.cost());
         chips.push(syscall_instrs);
 
+        let memory_bump = Chip::new(RiscvAir::MemoryBump(MemoryBumpChip::new()));
+        costs.insert(memory_bump.name(), memory_bump.cost());
+        chips.push(memory_bump);
+
         let memory_global_init = Chip::new(RiscvAir::MemoryGlobalInit(MemoryGlobalChip::new(
             MemoryChipType::Initialize,
         )));
@@ -820,6 +830,7 @@ impl<F: PrimeField32> RiscvAir<F> {
                     .into_iter()
                     .count(),
             ),
+            (RiscvAirId::MemoryBump, record.shard_bump_memory_events.len()),
             (RiscvAirId::LoadByte, record.memory_load_byte_events.len()),
             (RiscvAirId::LoadHalf, record.memory_load_half_events.len()),
             (RiscvAirId::LoadWord, record.memory_load_word_events.len()),
@@ -890,6 +901,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::Jalr(JalrChip::default()),
             RiscvAir::SyscallInstrs(SyscallInstrsChip::default()),
             RiscvAir::MemoryLocal(MemoryLocalChip::new()),
+            RiscvAir::MemoryBump(MemoryBumpChip::new()),
             RiscvAir::Global(GlobalChip),
             RiscvAir::SyscallCore(SyscallChip::core()),
         ]
@@ -987,6 +999,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             Self::MemoryGlobalInit(_) => unreachable!("Invalid for memory init/final"),
             Self::MemoryGlobalFinal(_) => unreachable!("Invalid for memory init/final"),
             Self::MemoryLocal(_) => unreachable!("Invalid for memory local"),
+            Self::MemoryBump(_) => unreachable!("Invalid for memory bump"),
             Self::Global(_) => unreachable!("Invalid for global chip"),
             Self::Program(_) => unreachable!("Invalid for core chip"),
             Self::Mul(_) => unreachable!("Invalid for core chip"),

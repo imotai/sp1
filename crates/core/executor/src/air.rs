@@ -148,20 +148,23 @@ pub enum RiscvAirId {
     /// The syscall instructions chip.
     #[subenum(CoreAirId)]
     SyscallInstrs = 51,
+    /// The memory bump chip.
+    #[subenum(CoreAirId)]
+    MemoryBump = 52,
     /// The memory global init chip.
-    MemoryGlobalInit = 52,
+    MemoryGlobalInit = 53,
     /// The memory global finalize chip.
-    MemoryGlobalFinalize = 53,
+    MemoryGlobalFinalize = 54,
     /// The memory local chip.
     #[subenum(CoreAirId)]
-    MemoryLocal = 54,
+    MemoryLocal = 55,
     /// The global chip.
     #[subenum(CoreAirId)]
-    Global = 55,
+    Global = 56,
     /// The byte chip.
-    Byte = 56,
+    Byte = 57,
     /// The range chip.
-    Range = 57,
+    Range = 58,
 }
 
 impl RiscvAirId {
@@ -180,6 +183,7 @@ impl RiscvAirId {
             RiscvAirId::Lt,
             RiscvAirId::Auipc,
             RiscvAirId::MemoryLocal,
+            RiscvAirId::MemoryBump,
             RiscvAirId::LoadByte,
             RiscvAirId::LoadHalf,
             RiscvAirId::LoadWord,
@@ -254,6 +258,7 @@ impl RiscvAirId {
             Self::MemoryGlobalInit => "MemoryGlobalInit",
             Self::MemoryGlobalFinalize => "MemoryGlobalFinalize",
             Self::MemoryLocal => "MemoryLocal",
+            Self::MemoryBump => "MemoryBump",
             Self::Global => "Global",
             Self::Byte => "Byte",
             Self::Range => "Range",

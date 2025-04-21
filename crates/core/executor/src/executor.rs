@@ -71,6 +71,9 @@ pub struct Executor<'a> {
     /// The program.
     pub program: Arc<Program>,
 
+    /// The length of the program.
+    pub program_len: u64,
+
     /// The state of the execution.
     pub state: ExecutionState,
 
@@ -361,11 +364,13 @@ impl<'a> Executor<'a> {
         let costs: HashMap<RiscvAirId, usize> =
             costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v)).collect();
 
+        let program_len = program.instructions.len() as u64;
         Self {
             record: Box::new(record),
             records: vec![],
             state: ExecutionState::new(program.pc_start),
             program,
+            program_len,
             memory_accesses: MemoryAccessRecord::default(),
             shard_size: (opts.shard_size as u32) * 4,
             shard_batch_size: opts.shard_batch_size as u32,
@@ -1088,6 +1093,22 @@ impl<'a> Executor<'a> {
         self.record.exit_code = exit_code;
         self.record.cpu_event_count += 1;
 
+        if let Some(x) = self.memory_accesses.a {
+            if x.current_record().shard != x.previous_record().shard {
+                self.record.shard_bump_memory_events.push((x, instruction.op_a as u32));
+            }
+        }
+        if let Some(x) = self.memory_accesses.b {
+            if x.current_record().shard != x.previous_record().shard {
+                self.record.shard_bump_memory_events.push((x, instruction.op_b));
+            }
+        }
+        if let Some(x) = self.memory_accesses.c {
+            if x.current_record().shard != x.previous_record().shard {
+                self.record.shard_bump_memory_events.push((x, instruction.op_c));
+            }
+        }
+
         if instruction.is_alu_instruction() {
             self.emit_alu_event(instruction.opcode, a, b, c, record, op_a_0);
         } else if instruction.is_memory_load_instruction()
@@ -1775,7 +1796,7 @@ impl<'a> Executor<'a> {
                     let padded_event_counts =
                         pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
                     let (padded_element_count, max_height) =
-                        estimate_trace_elements(padded_event_counts, &self.costs);
+                        estimate_trace_elements(padded_event_counts, &self.costs, self.program_len);
 
                     if padded_element_count > element_threshold || max_height > height_threshold {
                         tracing::info!(
@@ -1792,7 +1813,7 @@ impl<'a> Executor<'a> {
                 self.state.current_shard = Shard::new(self.state.current_shard.get() + 1)
                     .expect("Shard number should not overflow");
                 self.record.last_timestamp = self.state.clk;
-                self.state.clk = 0;
+                self.state.clk = 1;
                 self.bump_record::<E>();
             }
         }
@@ -1926,7 +1947,7 @@ impl<'a> Executor<'a> {
     }
 
     fn initialize(&mut self) {
-        self.state.clk = 0;
+        self.state.clk = 1;
 
         tracing::debug!("loading memory image");
         for (&addr, value) in &self.program.memory_image {
@@ -2068,7 +2089,7 @@ impl<'a> Executor<'a> {
             } else {
                 record.public_values.start_pc = last_next_pc;
                 record.public_values.next_pc = last_next_pc;
-                record.public_values.last_timestamp = 0;
+                record.public_values.last_timestamp = 1;
                 record.public_values.exit_code = last_exit_code;
             }
         }
