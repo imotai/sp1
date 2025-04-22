@@ -294,13 +294,15 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // Verify the shard proofs.
-        for shard_proof in proof.0.iter() {
+        for (i, shard_proof) in proof.0.iter().enumerate() {
+            let span = tracing::debug_span!("Verify shard proof {}", i).entered();
             let mut challenger = self.core_prover.verifier().challenger();
             vk.observe_into(&mut challenger);
             self.core_prover
                 .verifier()
                 .verify_shard(vk, shard_proof, &mut challenger)
                 .map_err(MachineVerifierError::InvalidShardProof)?;
+            span.exit();
         }
 
         Ok(())

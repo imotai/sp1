@@ -347,17 +347,17 @@ impl<C: MachineProverComponents> MachineProver<C> {
         let airs = self.machine().chips();
         let shard_chips: BTreeSet<_> =
             airs.iter().filter(|air| air.included(record)).cloned().collect();
-        let shard_chips = self.machine().smallest_cluster(&shard_chips).cloned()?;
-        let preprocessed_multiple = airs
+        let preprocessed_multiple = shard_chips
             .iter()
             .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
             .sum::<usize>()
             .div_ceil(1 << log_stacking_height);
-        let main_multiple = airs
+        let main_multiple = shard_chips
             .iter()
             .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
             .sum::<usize>()
             .div_ceil(1 << log_stacking_height);
+        let shard_chips = self.machine().smallest_cluster(&shard_chips).cloned()?;
         Some(CoreProofShape { shard_chips, preprocessed_multiple, main_multiple })
     }
 

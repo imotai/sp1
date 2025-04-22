@@ -134,6 +134,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         base_recursion_provers: Vec<Arc<ShardProver<C::RecursionComponents>>>,
         recursion_prover_permits: Vec<ProverSemaphore>,
         nums_recursion_workers: Vec<usize>,
+        recursion_programs_cache_size: usize,
     ) -> Self {
         let core_verifier = C::core_verifier();
         let core_prover_builder = MachineProverBuilder::new(
@@ -152,7 +153,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         let mut builder = Self {
             core_prover_builder,
             recursion_prover_builder,
-            recursion_programs_cache_size: 1,
+            recursion_programs_cache_size,
             join_pk: BTreeMap::new(),
             recursion_programs: BTreeMap::new(),
         };
@@ -170,6 +171,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         recursion_prover: ShardProver<C::RecursionComponents>,
         recursion_prover_permit: ProverSemaphore,
         num_recursion_workers: usize,
+        recursion_programs_cache_size: usize,
     ) -> Self {
         Self::new_multi_permits(
             vec![Arc::new(core_prover)],
@@ -178,6 +180,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             vec![Arc::new(recursion_prover)],
             vec![recursion_prover_permit],
             vec![num_recursion_workers],
+            recursion_programs_cache_size,
         )
     }
 
@@ -225,7 +228,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
-    pub fn compress_cache_size(&mut self, compress_programs_cache_size: usize) -> &mut Self {
+    pub fn recursion_cache_size(&mut self, compress_programs_cache_size: usize) -> &mut Self {
         self.recursion_programs_cache_size = compress_programs_cache_size;
         self
     }
@@ -875,6 +878,7 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
 
         let num_core_workers = num_workers;
         let num_recursion_workers = num_workers;
+        let recursion_programs_cache_size = 5;
 
         SP1ProverBuilder::new_single_permit(
             cpu_shard_prover,
@@ -883,6 +887,7 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
             recursion_shard_prover,
             prover_permits,
             num_recursion_workers,
+            recursion_programs_cache_size,
         )
     }
 }

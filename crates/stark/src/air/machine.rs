@@ -29,7 +29,9 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
     /// A unique identifier for this AIR as part of a machine.
     fn name(&self) -> String;
 
-    /// The number of rows in the trace
+    /// The number of rows in the trace, if the chip is included.
+    ///
+    /// **Warning**:: if the chip is not included, `num_rows` is allowed to return anything.
     fn num_rows(&self, _input: &Self::Record) -> Option<usize> {
         None
     }

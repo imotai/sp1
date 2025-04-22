@@ -1,33 +1,92 @@
+use std::{
+    num::NonZero,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+};
+
+use lru::LruCache;
+use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_recursion_circuit::dummy::dummy_shard_proof;
-use sp1_stark::{prover::CoreProofShape, BabyBearPoseidon2, ShardProof};
+use sp1_recursion_circuit::{dummy::dummy_shard_proof, machine::SP1RecursionWitnessValues};
+use sp1_recursion_executor::RecursionProgram;
+use sp1_stark::prover::CoreProofShape;
 
+use crate::{CoreSC, SP1VerifyingKey};
+
+/// The shape of the recursion proof.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SP1RecursionShape {
-    // TODO: Add dummy vk somehow
     pub proof_shapes: Vec<CoreProofShape<BabyBear, RiscvAir<BabyBear>>>,
     pub max_log_row_count: usize,
     pub log_blowup: usize,
     pub log_stacking_height: usize,
 }
 
-pub fn dummy_shard_proof_from_shape(
-    shape: &SP1RecursionShape,
-) -> Vec<ShardProof<BabyBearPoseidon2>> {
-    shape
-        .proof_shapes
-        .iter()
-        .map(|core_shape| {
-            dummy_shard_proof(
-                core_shape.shard_chips.clone(),
-                shape.max_log_row_count,
-                shape.log_blowup,
-                shape.log_stacking_height,
-                &[core_shape.preprocessed_multiple, core_shape.main_multiple],
-            )
-        })
-        .collect()
+impl SP1RecursionShape {
+    pub fn dummy_input(&self, vk: SP1VerifyingKey) -> SP1RecursionWitnessValues<CoreSC> {
+        let shard_proofs = self
+            .proof_shapes
+            .iter()
+            .map(|core_shape| {
+                dummy_shard_proof(
+                    core_shape.shard_chips.clone(),
+                    self.max_log_row_count,
+                    self.log_blowup,
+                    self.log_stacking_height,
+                    &[core_shape.preprocessed_multiple, core_shape.main_multiple],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        SP1RecursionWitnessValues {
+            vk: vk.vk,
+            shard_proofs,
+            is_complete: false,
+            is_first_shard: false,
+            reconstruct_deferred_digest: [BabyBear::zero(); 8],
+        }
+    }
+}
+
+pub struct SP1RecursionCache {
+    lru: Arc<Mutex<LruCache<SP1RecursionShape, Arc<RecursionProgram<BabyBear>>>>>,
+    total_calls: AtomicUsize,
+    hits: AtomicUsize,
+}
+
+impl SP1RecursionCache {
+    pub fn new(size: usize) -> Self {
+        let size = NonZero::new(size).expect("size must be non-zero");
+        let lru = LruCache::new(size);
+        let lru = Arc::new(Mutex::new(lru));
+        Self { lru, total_calls: AtomicUsize::new(0), hits: AtomicUsize::new(0) }
+    }
+
+    pub fn get(&self, shape: &SP1RecursionShape) -> Option<Arc<RecursionProgram<BabyBear>>> {
+        self.total_calls.fetch_add(1, Ordering::Relaxed);
+        if let Some(program) = self.lru.lock().unwrap().get(shape).cloned() {
+            self.hits.fetch_add(1, Ordering::Relaxed);
+            Some(program)
+        } else {
+            None
+        }
+    }
+
+    pub fn push(&self, shape: SP1RecursionShape, program: Arc<RecursionProgram<BabyBear>>) {
+        self.lru.lock().unwrap().push(shape, program);
+    }
+
+    pub fn stats(&self) -> (usize, usize, f64) {
+        (
+            self.total_calls.load(Ordering::Relaxed),
+            self.hits.load(Ordering::Relaxed),
+            self.hits.load(Ordering::Relaxed) as f64
+                / self.total_calls.load(Ordering::Relaxed) as f64,
+        )
+    }
 }
 
 // pub struct SP1ReduceShape {

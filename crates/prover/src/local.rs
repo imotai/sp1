@@ -393,6 +393,14 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         // Populate the recursion proofs into the tree until a single range.
         while let Some(proof) = recursion_tree_rx.recv().await {
             if proof.is_complete(&full_range) {
+                let (cache_total_calls, cache_hits, cache_hit_rate) =
+                    self.prover.recursion().recursion_program_cache_stats();
+                tracing::debug!(
+                    "Recursion program cache stats: total calls: {}, hits: {}, hit rate: {}",
+                    cache_total_calls,
+                    cache_hits,
+                    cache_hit_rate
+                );
                 return Ok(proof.proof);
             }
 

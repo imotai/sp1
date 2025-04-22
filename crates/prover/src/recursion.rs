@@ -1,12 +1,5 @@
-use std::{
-    borrow::Borrow,
-    collections::BTreeMap,
-    marker::PhantomData,
-    num::NonZero,
-    sync::{Arc, Mutex},
-};
+use std::{borrow::Borrow, collections::BTreeMap, marker::PhantomData, sync::Arc};
 
-use lru::LruCache;
 use slop_baby_bear::BabyBear;
 use slop_futures::handle::TaskHandle;
 use slop_jagged::JaggedConfig;
@@ -42,14 +35,17 @@ use sp1_stark::{
     BabyBearPoseidon2, Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
-use crate::{shapes::SP1RecursionShape, utils::words_to_bytes, CompressAir, CoreSC, InnerSC};
+use crate::{
+    shapes::{SP1RecursionCache, SP1RecursionShape},
+    utils::words_to_bytes,
+    CompressAir, CoreSC, InnerSC,
+};
 
 #[allow(clippy::type_complexity)]
 pub struct SP1RecursionProver<C: RecursionProverComponents> {
     prover: MachineProver<C>,
     core_verifier: MachineVerifier<CoreSC, RiscvAir<BabyBear>>,
-    recursion_program_cache:
-        Arc<Mutex<LruCache<SP1RecursionShape, Arc<RecursionProgram<BabyBear>>>>>,
+    recursion_program_cache: SP1RecursionCache,
     recursive_core_verifier:
         RecursiveShardVerifier<RiscvAir<BabyBear>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
     recursive_compress_verifier: RecursiveShardVerifier<
@@ -183,12 +179,10 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         };
 
         // Instantiate the cache.
-        let mut recursion_program_cache =
-            LruCache::new(NonZero::new(recursion_programs_cache_size).unwrap());
+        let recursion_program_cache = SP1RecursionCache::new(recursion_programs_cache_size);
         for (shape, program) in recursion_programs {
             recursion_program_cache.push(shape, program);
         }
-        let recursion_program_cache = Arc::new(Mutex::new(recursion_program_cache));
 
         Self {
             prover,
@@ -243,10 +237,12 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
             log_blowup: self.core_verifier.fri_config().log_blowup,
             log_stacking_height: self.core_verifier.log_stacking_height() as usize,
         };
-        if let Some(program) = self.recursion_program_cache.lock().unwrap().get(&shape).cloned() {
+        if let Some(program) = self.recursion_program_cache.get(&shape) {
             return program.clone();
         }
-        recursion_program_from_input(&self.recursive_core_verifier, input)
+        let program = recursion_program_from_input(&self.recursive_core_verifier, input);
+        self.recursion_program_cache.push(shape, program.clone());
+        program
     }
 
     pub fn compress_program(
@@ -254,6 +250,10 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         input: &SP1CompressWitnessValues<InnerSC>,
     ) -> Arc<RecursionProgram<BabyBear>> {
         compress_program_from_input(&self.recursive_compress_verifier, input)
+    }
+
+    pub fn recursion_program_cache_stats(&self) -> (usize, usize, f64) {
+        self.recursion_program_cache.stats()
     }
 
     pub fn deferred_program(
@@ -319,8 +319,6 @@ fn recursion_program_from_input(
     >,
     input: &SP1RecursionWitnessValues<CoreSC>,
 ) -> Arc<RecursionProgram<BabyBear>> {
-    // let mut cache = self.lift_programs_lru.lock().unwrap_or_else(|e| e.into_inner());
-
     // Get the operations.
     let builder_span = tracing::debug_span!("build recursion program").entered();
     let mut builder = Builder::<InnerConfig>::default();
