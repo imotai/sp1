@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 
 use clap::ValueEnum;
 use csl_cuda::TaskScope;
@@ -26,7 +26,10 @@ pub async fn make_measurement(
     stage: Stage,
     t: TaskScope,
 ) -> Measurement {
-    let sp1_prover = SP1CudaProverBuilder::new(t.clone()).build();
+    let recursion_cache_size =
+        env::var("RECURSION_CACHE_SIZE").unwrap_or("5".to_string()).parse::<usize>().unwrap_or(5);
+    let sp1_prover =
+        SP1CudaProverBuilder::new(t.clone()).recursion_cache_size(recursion_cache_size).build();
     let opts = local_gpu_opts();
     let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 

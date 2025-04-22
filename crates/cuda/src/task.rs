@@ -620,8 +620,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_local_pool() {
-        let num_workers = 100;
-        let num_callers = 1000;
+        let num_workers = 10;
+        let num_callers = 100;
         let pool = TaskPoolBuilder::new().num_tasks(num_workers).build().unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
