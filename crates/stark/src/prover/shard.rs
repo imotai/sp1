@@ -524,22 +524,23 @@ impl<C: MachineProverComponents> ShardProver<C> {
         prover_permits: ProverSemaphore,
         challenger: &mut C::Challenger,
     ) -> (MachineVerifyingKey<C::Config>, ShardProof<C::Config>, ProverPermit) {
-        // Generate trace.
-        let trace_data = self
-            .trace_generator
-            .generate_traces(program.clone(), record, self.max_log_row_count(), prover_permits)
-            .instrument(tracing::debug_span!("generate main traces"))
-            .await;
-
         // Get the initial global cumulative sum and pc start.
         let pc_start = program.pc_start();
         let initial_global_cumulative_sum = if let Some(vk) = vk {
             vk.initial_global_cumulative_sum
         } else {
+            let program = program.clone();
             tokio::task::spawn_blocking(move || program.initial_global_cumulative_sum())
                 .await
                 .unwrap()
         };
+
+        // Generate trace.
+        let trace_data = self
+            .trace_generator
+            .generate_traces(program, record, self.max_log_row_count(), prover_permits)
+            .instrument(tracing::debug_span!("generate main traces"))
+            .await;
 
         let TraceData { preprocessed_traces, main_trace_data } = trace_data;
 
