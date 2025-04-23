@@ -6,7 +6,7 @@
 namespace scan_large
 {
     // TODO: make this a const parmaeter
-    const size_t SECTION_SIZE = 128;
+    const size_t SECTION_SIZE = 512;
 
     template <typename T>
     __device__ __inline__ void BrentKungScan(T *d_out, T *d_in, T *aux,

@@ -131,7 +131,7 @@ impl CudaTracegenAir<F> for GlobalChip {
         // Call the scan kernel.
         // TODO: make a nice scan API with a trait.
         {
-            const SCAN_KERNEL_LARGE_SECTION_SIZE: usize = 128;
+            const SCAN_KERNEL_LARGE_SECTION_SIZE: usize = 512;
             let d_out = cumulative_sums.as_mut_ptr();
             let d_in = accumulation_initial_digest_row_major.as_ptr();
             let n = height;
@@ -150,7 +150,7 @@ impl CudaTracegenAir<F> for GlobalChip {
                         .unwrap()
                 };
             } else {
-                let block_dim = 64;
+                let block_dim = SCAN_KERNEL_LARGE_SECTION_SIZE / 2;
                 let num_blocks = n.div_ceil(block_dim);
                 // Create `scan_values` as an array consisting of a single zero cell followed by
                 // `num_blocks` uninitialized cells.
