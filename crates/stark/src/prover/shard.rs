@@ -11,7 +11,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
-use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
+use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
@@ -73,8 +73,7 @@ pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
         + Send
         + Sync
         + 'static
-        + Clone
-        + Synchronizable;
+        + Clone;
 
     /// The machine configuration for which this prover can make proofs for.
     type Config: MachineConfig<

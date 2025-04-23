@@ -9,7 +9,6 @@ use itertools::Itertools;
 use slop_air::Air;
 use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
-use slop_challenger::Synchronizable;
 use slop_jagged::JaggedConfig;
 
 use serde::{Deserialize, Serialize};
@@ -115,7 +114,6 @@ where
         > + Send
         + Sync,
     C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<BabyBear>>,
-    SC::Challenger: Synchronizable,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
