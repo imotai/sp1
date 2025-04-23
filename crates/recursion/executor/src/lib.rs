@@ -1061,6 +1061,7 @@ where
         program: &RawProgram<Instruction<F>>,
         root_program: &Arc<RecursionProgram<F>>,
         mut witness_stream: Option<&mut VecDeque<Block<F>>>,
+        is_root: bool,
     ) -> Result<ExecutionRecord<F>, RuntimeError<F, EF>> {
         let fresh_record =
             || ExecutionRecord { program: Arc::clone(root_program), ..Default::default() };
@@ -1071,6 +1072,12 @@ where
             #[cfg(feature = "debug")]
             last_trace: None,
         };
+
+        if is_root {
+            if let Some(event_counts) = root_program.event_counts {
+                state.record.preallocate(event_counts)
+            }
+        }
 
         for block in &program.seq_blocks {
             match block {
@@ -1092,7 +1099,7 @@ where
                             .map(|subprogram| {
                                 // Witness stream may not be called inside parallel contexts to
                                 // avoid nondeterminism.
-                                Self::execute_raw(env, subprogram, root_program, None)
+                                Self::execute_raw(env, subprogram, root_program, None, false)
                             })
                             .try_reduce(fresh_record, |mut record, mut res| {
                                 record.append(&mut res);
@@ -1117,6 +1124,7 @@ where
                 &self.program.inner,
                 &self.program,
                 Some(&mut self.witness_stream),
+                true,
             )
         }?;
 

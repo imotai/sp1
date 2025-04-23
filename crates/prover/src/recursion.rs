@@ -225,6 +225,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
     pub fn recursion_program(
         &self,
         input: &SP1RecursionWitnessValues<CoreSC>,
+        compute_event_counts: bool,
     ) -> Arc<RecursionProgram<BabyBear>> {
         let proof_shapes = input
             .shard_proofs
@@ -240,7 +241,11 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         if let Some(program) = self.recursion_program_cache.get(&shape) {
             return program.clone();
         }
-        let program = recursion_program_from_input(&self.recursive_core_verifier, input);
+        let program = recursion_program_from_input(
+            &self.recursive_core_verifier,
+            input,
+            compute_event_counts,
+        );
         self.recursion_program_cache.push(shape, program.clone());
         program
     }
@@ -248,8 +253,9 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
     pub fn compress_program(
         &self,
         input: &SP1CompressWitnessValues<InnerSC>,
+        compute_event_counts: bool,
     ) -> Arc<RecursionProgram<BabyBear>> {
-        compress_program_from_input(&self.recursive_compress_verifier, input)
+        compress_program_from_input(&self.recursive_compress_verifier, input, compute_event_counts)
     }
 
     pub fn recursion_program_cache_stats(&self) -> (usize, usize, f64) {
@@ -259,6 +265,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
     pub fn deferred_program(
         &self,
         input: &SP1DeferredWitnessValues<InnerSC>,
+        compute_event_counts: bool,
     ) -> Arc<RecursionProgram<BabyBear>> {
         // Compile the program.
 
@@ -282,7 +289,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
 
         let compiler_span = tracing::debug_span!("compile deferred program").entered();
         let mut compiler = AsmCompiler::<InnerConfig>::default();
-        let program = compiler.compile(dsl_program);
+        let program = compiler.compile(dsl_program, compute_event_counts);
         // if let Some(recursion_shape_config) = &self.compress_shape_config {
         //     recursion_shape_config.fix_shape(&mut program);
         // }
@@ -318,6 +325,7 @@ fn recursion_program_from_input(
         JC<InnerConfig, CoreSC>,
     >,
     input: &SP1RecursionWitnessValues<CoreSC>,
+    compute_event_counts: bool,
 ) -> Arc<RecursionProgram<BabyBear>> {
     // Get the operations.
     let builder_span = tracing::debug_span!("build recursion program").entered();
@@ -333,7 +341,7 @@ fn recursion_program_from_input(
     // Compile the program.
     let compiler_span = tracing::debug_span!("compile recursion program").entered();
     let mut compiler = AsmCompiler::<InnerConfig>::default();
-    let program = compiler.compile(dsl_program);
+    let program = compiler.compile(dsl_program, compute_event_counts);
     // if let Some(inn_recursion_shape_config) = &self.compress_shape_config {
     //     inn_recursion_shape_config.fix_shape(&mut program);
     // }
@@ -353,6 +361,7 @@ pub fn compress_program_from_input(
     // vk_verification: bool,
     //TODO: Add VK verification back in
     input: &SP1CompressWitnessValues<InnerSC>,
+    compute_event_counts: bool,
 ) -> Arc<RecursionProgram<BabyBear>> {
     let builder_span = tracing::debug_span!("build compress program").entered();
     let mut builder = Builder::<InnerConfig>::default();
@@ -376,7 +385,7 @@ pub fn compress_program_from_input(
     // Compile the program.
     let compiler_span = tracing::debug_span!("compile compress program").entered();
     let mut compiler = AsmCompiler::<InnerConfig>::default();
-    let program = compiler.compile(dsl_program);
+    let program = compiler.compile(dsl_program, compute_event_counts);
     // if let Some(config) = config {
     //     config.fix_shape(&mut program);
     // }

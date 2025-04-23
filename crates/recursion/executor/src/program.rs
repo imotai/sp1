@@ -187,6 +187,7 @@ mod validation {
             total_memory: 0, // Will be filled in.
             dummy_preprocessed_height: 0,
             dummy_main_height: 0,
+            event_counts: None,
         }
         .validate()
     }
@@ -198,6 +199,7 @@ pub struct RootProgram<F> {
     pub total_memory: usize,
     pub dummy_preprocessed_height: usize,
     pub dummy_main_height: usize,
+    pub event_counts: Option<RecursionAirEventCount>,
 }
 
 // `Default` without bounds on the type parameter.
@@ -208,6 +210,7 @@ impl<F> Default for RootProgram<F> {
             total_memory: Default::default(),
             dummy_preprocessed_height: 0,
             dummy_main_height: 0,
+            event_counts: None,
         }
     }
 }

@@ -261,7 +261,10 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                                     let mut witness_stream = Vec::new();
                                     Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
                                     (
-                                        prover.prover().recursion().recursion_program(&input),
+                                        prover
+                                            .prover()
+                                            .recursion()
+                                            .recursion_program(&input, false),
                                         witness_stream,
                                     )
                                 }
@@ -269,7 +272,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                                     let mut witness_stream = Vec::new();
                                     Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
                                     (
-                                        prover.prover().recursion().deferred_program(&input),
+                                        prover.prover().recursion().deferred_program(&input, false),
                                         witness_stream,
                                     )
                                 }
@@ -282,7 +285,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                                     Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
 
                                     (
-                                        prover.prover().recursion().compress_program(&input),
+                                        prover.prover().recursion().compress_program(&input, false),
                                         witness_stream,
                                     )
                                 }

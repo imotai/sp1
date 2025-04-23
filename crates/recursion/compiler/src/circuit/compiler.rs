@@ -775,10 +775,19 @@ where
     /// Compile a `DslIrProgram` that is definitionally assumed to be well-formed.
     ///
     /// Returns a well-formed program.
-    pub fn compile(&mut self, program: DslIrProgram<C>) -> RecursionProgram<C::F> {
+    pub fn compile(
+        &mut self,
+        program: DslIrProgram<C>,
+        compute_event_counts: bool,
+    ) -> RecursionProgram<C::F> {
+        let mut inner = self.compile_inner(program.into_inner());
+        if compute_event_counts {
+            let event_counts = ExecutionRecord::<C::F>::compute_event_counts(inner.inner.iter());
+            inner.event_counts = Some(event_counts);
+        }
         // SAFETY: The compiler produces well-formed programs given a well-formed DSL input.
         // This is also a cryptographic requirement.
-        unsafe { RecursionProgram::new_unchecked(self.compile_inner(program.into_inner())) }
+        unsafe { RecursionProgram::new_unchecked(inner) }
     }
 
     /// Compile a root `DslIrBlock` that has not necessarily been validated.
@@ -837,6 +846,7 @@ where
             total_memory,
             dummy_preprocessed_height: 0,
             dummy_main_height: 0,
+            event_counts: None,
         }
     }
 }

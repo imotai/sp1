@@ -5,6 +5,7 @@ use std::{
 };
 
 use p3_field::{AbstractField, Field, PrimeField32};
+use serde::{Deserialize, Serialize};
 use sp1_stark::{air::SP1AirBuilder, MachineRecord, PROOF_MAX_NUM_PVS};
 
 use crate::{
@@ -112,9 +113,7 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
 }
 
 impl<F: Field> ExecutionRecord<F> {
-    pub fn preallocate(&mut self) {
-        let event_counts =
-            self.program.inner.iter().fold(RecursionAirEventCount::default(), Add::add);
+    pub fn preallocate(&mut self, event_counts: RecursionAirEventCount) {
         self.poseidon2_events.reserve(event_counts.poseidon2_wide_events);
         self.mem_var_events.reserve(event_counts.mem_var_events);
         self.base_alu_events.reserve(event_counts.base_alu_events);
@@ -123,9 +122,15 @@ impl<F: Field> ExecutionRecord<F> {
         self.select_events.reserve(event_counts.select_events);
         self.prefix_sum_checks_events.reserve(event_counts.prefix_sum_checks_events);
     }
+
+    pub fn compute_event_counts<'a>(
+        instrs: impl Iterator<Item = &'a Instruction<F>> + 'a,
+    ) -> RecursionAirEventCount {
+        instrs.fold(RecursionAirEventCount::default(), Add::add)
+    }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct RecursionAirEventCount {
     pub mem_const_events: usize,
     pub mem_var_events: usize,
