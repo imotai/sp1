@@ -65,11 +65,14 @@ impl<P, PW, M, const DIGEST_ELEMS: usize> TensorCsProver<CpuBackend>
 where
     P: PackedField,
     PW: PackedValue,
-    M: MerkleTreeConfig<Data = P::Scalar, Digest = [PW::Value; DIGEST_ELEMS]>,
-    M::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>,
+    M::Digest: Into<[PW::Value; DIGEST_ELEMS]> + From<[PW::Value; DIGEST_ELEMS]>,
+    M: MerkleTreeConfig<Data = P::Scalar>,
+    M::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>
+        + CryptographicHasher<P::Scalar, M::Digest>,
     M::Hasher: CryptographicHasher<P, [PW; DIGEST_ELEMS]>,
     M::Hasher: Sync,
-    M::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>,
+    M::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>
+        + PseudoCompressionFunction<M::Digest, 2>,
     M::Compressor: PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>,
     M::Compressor: Sync,
     PW::Value: Eq + std::fmt::Debug,
@@ -90,7 +93,9 @@ where
         T: OwnedBorrow<Tensor<P::Scalar, CpuBackend>>,
     {
         let tcs = self.tcs.clone();
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = tokio::sync::oneshot::channel::<
+            Result<([PW::Value; DIGEST_ELEMS], Self::ProverData), Self::ProverError>,
+        >();
         slop_futures::rayon::spawn(move || {
             let leaves_owned = tensors
                 .iter()
@@ -167,7 +172,8 @@ where
             let root = digests.digest_layers.last().unwrap()[0];
             tx.send(Ok((root, digests))).ok().unwrap();
         });
-        rx.await.unwrap()
+        let (a, b) = rx.await.unwrap()?;
+        Ok((a.into(), b))
     }
 
     async fn prove_openings_at_indices(
@@ -183,7 +189,7 @@ where
                     .iter()
                     .take(height)
                     .enumerate()
-                    .map(move |(i, layer)| layer[(idx >> i) ^ 1])
+                    .map(move |(i, layer)| layer[(idx >> i) ^ 1].into())
             })
             .collect::<Vec<_>>();
         let paths = Tensor::from(path_storage).reshape([indices.len(), height]);
@@ -197,11 +203,16 @@ impl<P, PW, M, const DIGEST_ELEMS: usize> ComputeTcsOpenings<CpuBackend>
 where
     P: PackedField,
     PW: PackedValue,
-    M: MerkleTreeConfig<Data = P::Scalar, Digest = [PW::Value; DIGEST_ELEMS]>,
-    M::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>,
+    M: MerkleTreeConfig<
+        Data = P::Scalar,
+        Digest: Into<[PW::Value; DIGEST_ELEMS]> + From<[PW::Value; DIGEST_ELEMS]>,
+    >,
+    M::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>
+        + CryptographicHasher<P::Scalar, M::Digest>,
     M::Hasher: CryptographicHasher<P, [PW; DIGEST_ELEMS]>,
     M::Hasher: Sync,
-    M::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>,
+    M::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>
+        + PseudoCompressionFunction<M::Digest, 2>,
     M::Compressor: PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>,
     M::Compressor: Sync,
     PW::Value: Eq + std::fmt::Debug,

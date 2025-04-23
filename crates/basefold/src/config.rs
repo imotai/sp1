@@ -4,9 +4,16 @@ use std::marker::PhantomData;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, TwoAdicField};
 use slop_baby_bear::BabyBear;
-use slop_challenger::{CanObserve, DuplexChallenger, FieldChallenger, GrindingChallenger};
+use slop_bn254::Bn254Fr;
+use slop_challenger::{
+    CanObserve, DuplexChallenger, FieldChallenger, GrindingChallenger, MultiField32Challenger,
+};
 use slop_commit::TensorCs;
-use slop_merkle_tree::{my_bb_16_perm, MerkleTreeTcs, Perm, Poseidon2BabyBearConfig};
+use slop_merkle_tree::{
+    my_bb_16_perm, outer_perm, MerkleTreeTcs, OuterPerm, Perm, Poseidon2BabyBearConfig,
+    Poseidon2Bn254Config, OUTER_CHALLENGER_RATE, OUTER_CHALLENGER_STATE_WIDTH, OUTER_DIGEST_SIZE,
+};
+use slop_symmetric::Hash;
 
 use crate::{BasefoldVerifier, FriConfig};
 
@@ -91,6 +98,19 @@ pub type Poseidon2BabyBear16BasefoldConfig = BasefoldConfigImpl<
     DuplexChallenger<BabyBear, Perm, 16, 8>,
 >;
 
+pub type Poseidon2Bn254FrBasefoldConfig = BasefoldConfigImpl<
+    BabyBear,
+    BinomialExtensionField<BabyBear, 4>,
+    MerkleTreeTcs<Poseidon2Bn254Config>,
+    MultiField32Challenger<
+        BabyBear,
+        Bn254Fr,
+        OuterPerm,
+        OUTER_CHALLENGER_STATE_WIDTH,
+        OUTER_CHALLENGER_RATE,
+    >,
+>;
+
 impl BasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
     type F = BabyBear;
     type EF = BinomialExtensionField<BabyBear, 4>;
@@ -110,6 +130,48 @@ impl DefaultBasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
     fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
         let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 100);
         let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
+        BasefoldVerifier::<Self> { fri_config, tcs }
+    }
+}
+
+impl BasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
+    type F = BabyBear;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+    type Commitment = Hash<BabyBear, Bn254Fr, OUTER_DIGEST_SIZE>;
+    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config>;
+    type Challenger = MultiField32Challenger<
+        BabyBear,
+        Bn254Fr,
+        OuterPerm,
+        OUTER_CHALLENGER_STATE_WIDTH,
+        OUTER_CHALLENGER_RATE,
+    >;
+
+    fn default_challenger(
+        _verifier: &BasefoldVerifier<Self>,
+    ) -> MultiField32Challenger<
+        BabyBear,
+        Bn254Fr,
+        OuterPerm,
+        OUTER_CHALLENGER_STATE_WIDTH,
+        OUTER_CHALLENGER_RATE,
+    > {
+        let default_perm = outer_perm();
+        MultiField32Challenger::<
+            BabyBear,
+            Bn254Fr,
+            OuterPerm,
+            OUTER_CHALLENGER_STATE_WIDTH,
+            OUTER_CHALLENGER_RATE,
+        >::new(default_perm)
+        .unwrap()
+    }
+}
+
+impl DefaultBasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
+    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
+        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 100);
+        let tcs = MerkleTreeTcs::<Poseidon2Bn254Config>::default();
         BasefoldVerifier::<Self> { fri_config, tcs }
     }
 }

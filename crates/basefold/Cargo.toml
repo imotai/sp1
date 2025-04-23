@@ -23,6 +23,7 @@ slop-symmetric = { workspace = true }
 slop-poseidon2 = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-dft = { workspace = true }
+slop-bn254 = { workspace = true }
 
 thiserror = "1.0"
 itertools = "0.12.0"

@@ -4,13 +4,13 @@ use slop_alloc::CpuBackend;
 use slop_baby_bear::BabyBear;
 use slop_basefold::{
     BasefoldConfig, BasefoldProof, BasefoldVerifier, DefaultBasefoldConfig,
-    Poseidon2BabyBear16BasefoldConfig,
+    Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig,
 };
 use slop_basefold_prover::{
     BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver,
-    Poseidon2BabyBear16BasefoldCpuProverComponents,
+    Poseidon2BabyBear16BasefoldCpuProverComponents, Poseidon2Bn254BasefoldCpuProverComponents,
 };
-use slop_challenger::{CanObserve, FieldChallenger, Synchronizable};
+use slop_challenger::{CanObserve, FieldChallenger};
 use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
 
 use crate::{
@@ -23,11 +23,24 @@ use crate::{
 pub type BabyBearPoseidon2 =
     JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, JaggedEvalSumcheckConfig<BabyBear>>;
 
+pub type Bn254JaggedConfig =
+    JaggedBasefoldConfig<Poseidon2Bn254FrBasefoldConfig, JaggedEvalSumcheckConfig<BabyBear>>;
+
 pub type BabyBearPoseidon2TrivialEval =
     JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, TrivialJaggedEvalConfig>;
 
 pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCpuProverComponents,
+    HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
+    JaggedEvalSumcheckProver<
+        BabyBear,
+        JaggedAssistSumAsPolyCPUImpl<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+        CpuBackend,
+    >,
+>;
+
+pub type Poseidon2Bn254JaggedCpuProverComponents = JaggedBasefoldProverComponents<
+    Poseidon2Bn254BasefoldCpuProverComponents,
     HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
     JaggedEvalSumcheckProver<
         BabyBear,
@@ -61,9 +74,8 @@ impl<Bpc, JaggedProver, EvalProver> JaggedProverComponents
 where
     Bpc: BasefoldProverComponents,
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
-    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>
-        + FieldChallenger<Bpc::F>
-        + Synchronizable,
+    Bpc::Challenger:
+        CanObserve<<Bpc::Config as BasefoldConfig>::Commitment> + FieldChallenger<Bpc::F>,
     JaggedProver: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
     EvalProver: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger>
         + 'static
@@ -103,7 +115,7 @@ where
     Bpc: BasefoldProverComponents + DefaultBasefoldProver,
     Bpc::Config: DefaultBasefoldConfig,
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
-    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment> + Synchronizable,
+    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>,
     JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
     E: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger> + Default,
 {
@@ -131,7 +143,7 @@ where
     Bpc: BasefoldProverComponents + DefaultBasefoldProver,
     Bpc::Config: DefaultBasefoldConfig,
     Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
-    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment> + Synchronizable,
+    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>,
     JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A> + Default,
     E: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger> + Default,
 {

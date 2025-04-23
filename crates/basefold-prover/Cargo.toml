@@ -26,6 +26,7 @@ slop-symmetric = { workspace = true }
 slop-maybe-rayon = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-fri = { workspace = true }
+slop-bn254 = { workspace = true }
 
 clap = { version = "4.5.9", features = ["derive", "env"] }
 itertools = "0.12.0"

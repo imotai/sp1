@@ -12,6 +12,7 @@ missing_docs = "warn"
 [workspace]
 members = [
     "crates/air",
+    "crates/bn254",
     "crates/basefold",
     "crates/algebra",
     "crates/basefold-prover",
@@ -51,6 +52,7 @@ debug-assertions = true
 
 [workspace.dependencies]
 p3-air = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-bn254-fr = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-field = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-commit = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-matrix = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
@@ -71,6 +73,7 @@ p3-fri = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config"
 
 #s slop
 slop-basefold = { path = "crates/basefold" }
+slop-bn254 = { path = "crates/bn254" }
 slop-algebra = { path = "crates/algebra" }
 slop-sumcheck = { path = "crates/sumcheck" }
 slop-multilinear = { path = "crates/multilinear" }

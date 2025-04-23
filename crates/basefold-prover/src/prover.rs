@@ -1,3 +1,5 @@
+use slop_basefold::Poseidon2Bn254FrBasefoldConfig;
+use slop_bn254::Bn254Fr;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -17,6 +19,7 @@ use slop_dft::p3::Radix2DitParallel;
 use slop_futures::OwnedBorrow;
 use slop_merkle_tree::{
     FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2BabyBear16Prover, Poseidon2BabyBearConfig,
+    Poseidon2Bn254Config, OUTER_DIGEST_SIZE,
 };
 use slop_multilinear::{
     Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MleFixedAtZeroBackend,
@@ -374,6 +377,23 @@ impl BasefoldProverComponents for Poseidon2BabyBear16BasefoldCpuProverComponents
     type PowProver = GrindingPowProver;
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
+pub struct Poseidon2Bn254BasefoldCpuProverComponents;
+
+impl BasefoldProverComponents for Poseidon2Bn254BasefoldCpuProverComponents {
+    type F = BabyBear;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+    type A = CpuBackend;
+    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config>;
+    type Challenger = <Poseidon2Bn254FrBasefoldConfig as BasefoldConfig>::Challenger;
+    type Config = Poseidon2Bn254FrBasefoldConfig;
+    type Encoder = CpuDftEncoder<BabyBear, Radix2DitParallel>;
+    type FriProver = FriCpuProver<Self::Encoder, Self::TcsProver>;
+    type TcsProver =
+        FieldMerkleTreeProver<BabyBear, Bn254Fr, Poseidon2Bn254Config, OUTER_DIGEST_SIZE>;
+    type PowProver = GrindingPowProver;
+}
+
 impl DefaultBasefoldProver for Poseidon2BabyBear16BasefoldCpuProverComponents {
     fn default_prover(
         verifier: &BasefoldVerifier<Poseidon2BabyBear16BasefoldConfig>,
@@ -391,6 +411,28 @@ impl DefaultBasefoldProver for Poseidon2BabyBear16BasefoldCpuProverComponents {
         >(PhantomData);
 
         let tcs_prover = Poseidon2BabyBear16Prover::default();
+        let pow_prover = GrindingPowProver;
+        BasefoldProver { encoder, fri_prover, tcs_prover, pow_prover }
+    }
+}
+
+impl DefaultBasefoldProver for Poseidon2Bn254BasefoldCpuProverComponents {
+    fn default_prover(
+        verifier: &BasefoldVerifier<Poseidon2Bn254FrBasefoldConfig>,
+    ) -> BasefoldProver<Self> {
+        let encoder =
+            CpuDftEncoder { config: verifier.fri_config, dft: Arc::new(Radix2DitParallel) };
+        let fri_prover = FriCpuProver::<
+            CpuDftEncoder<BabyBear, Radix2DitParallel>,
+            FieldMerkleTreeProver<BabyBear, Bn254Fr, Poseidon2Bn254Config, OUTER_DIGEST_SIZE>,
+        >(PhantomData);
+
+        let tcs_prover = FieldMerkleTreeProver::<
+            BabyBear,
+            Bn254Fr,
+            Poseidon2Bn254Config,
+            OUTER_DIGEST_SIZE,
+        >::default();
         let pow_prover = GrindingPowProver;
         BasefoldProver { encoder, fri_prover, tcs_prover, pow_prover }
     }
