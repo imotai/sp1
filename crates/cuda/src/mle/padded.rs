@@ -128,20 +128,17 @@ mod tests {
         let d_mle = padded_mle.clone();
 
         let point_ref = &point;
-        let (evals, fixed_evals) = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let d_mle = t.into_device(d_mle).await.unwrap();
-                let eval = d_mle.eval_at(point_ref).await;
-                (
-                    eval.into_evaluations().into_host().await.unwrap(),
-                    d_mle.fix_last_variable(alpha).await.into_host().await.unwrap(),
-                )
-            })
-            .await
-            .await
-            .unwrap();
+        let (evals, fixed_evals) = crate::run_in_place(|t| async move {
+            let d_mle = t.into_device(d_mle).await.unwrap();
+            let eval = d_mle.eval_at(point_ref).await;
+            (
+                eval.into_evaluations().into_host().await.unwrap(),
+                d_mle.fix_last_variable(alpha).await.into_host().await.unwrap(),
+            )
+        })
+        .await
+        .await
+        .unwrap();
 
         let evals = evals.as_slice().to_vec();
 
@@ -182,40 +179,37 @@ mod tests {
         let complete_point = random_point.iter().copied().chain(once(alpha)).collect::<Point<_>>();
 
         // Do all the fix last variables in parallel.
-        crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
+        crate::run_in_place(|t| async move {
+            let random_point = random_point.clone();
+            let mut handles = Vec::new();
+            for mle in mles.iter() {
                 let random_point = random_point.clone();
-                let mut handles = Vec::new();
-                for mle in mles.iter() {
-                    let random_point = random_point.clone();
-                    let mle = mle.to_device_in(&t).await.unwrap();
-                    let handle = t.spawn(move |s| async move {
-                        let mle = unsafe { mle.owned_unchecked_in(s.clone()) };
-                        let restriction = mle.fix_last_variable(alpha).await;
-                        let evals = restriction.eval_at(&random_point).await;
-                        evals.into_evaluations().into_host().await.unwrap()
-                    });
-                    handles.push(handle);
+                let mle = mle.to_device_in(&t).await.unwrap();
+                let handle = t.spawn(move |s| async move {
+                    let mle = unsafe { mle.owned_unchecked_in(s.clone()) };
+                    let restriction = mle.fix_last_variable(alpha).await;
+                    let evals = restriction.eval_at(&random_point).await;
+                    evals.into_evaluations().into_host().await.unwrap()
+                });
+                handles.push(handle);
+            }
+            let mut evals = Vec::new();
+            for handle in handles {
+                // Get the evals
+                let eval = handle.await.unwrap().unwrap();
+                evals.push(eval);
+            }
+            for (eval, mle) in evals.iter().zip(mles) {
+                let d_mle = mle.to_device_in(&t).await.unwrap();
+                let d_eval = d_mle.eval_at(&complete_point).await;
+                let h_eval = d_eval.into_evaluations().into_host().await.unwrap();
+                for (e, h_e) in eval.as_slice().iter().zip(h_eval.as_slice().iter()) {
+                    assert_eq!(e, h_e);
                 }
-                let mut evals = Vec::new();
-                for handle in handles {
-                    // Get the evals
-                    let eval = handle.await.unwrap().unwrap();
-                    evals.push(eval);
-                }
-                for (eval, mle) in evals.iter().zip(mles) {
-                    let d_mle = mle.to_device_in(&t).await.unwrap();
-                    let d_eval = d_mle.eval_at(&complete_point).await;
-                    let h_eval = d_eval.into_evaluations().into_host().await.unwrap();
-                    for (e, h_e) in eval.as_slice().iter().zip(h_eval.as_slice().iter()) {
-                        assert_eq!(e, h_e);
-                    }
-                }
-            })
-            .await
-            .await
-            .unwrap();
+            }
+        })
+        .await
+        .await
+        .unwrap();
     }
 }

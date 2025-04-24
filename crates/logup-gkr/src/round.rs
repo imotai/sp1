@@ -1068,8 +1068,6 @@ mod tests {
             assert_eq!(denominator_1_eval, d_1);
         })
         .await
-        .unwrap()
-        .await
         .unwrap();
     }
 
@@ -1197,8 +1195,6 @@ mod tests {
             assert_eq!(final_eval, expected_final_eval);
         })
         .await
-        .unwrap()
-        .await
         .unwrap();
     }
 
@@ -1299,8 +1295,6 @@ mod tests {
                 assert_eq!(*next_n, *n_0 * *d_1 + *n_1 * *d_0, "failed at index {}", i);
             }
         })
-        .await
-        .unwrap()
         .await
         .unwrap();
     }
@@ -1468,8 +1462,6 @@ mod tests {
                     + (round_proof.denominator_1 - round_proof.denominator_0) * last_coordinate;
             }
         })
-        .await
-        .unwrap()
         .await
         .unwrap();
     }

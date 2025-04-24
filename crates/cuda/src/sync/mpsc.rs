@@ -344,19 +344,17 @@ mod tests {
     #[tokio::test]
     async fn test_channel() {
         let pool = TaskPoolBuilder::new().num_tasks(10).build().unwrap();
-        let task_1 = pool.task().await.unwrap();
-        let task_2 = pool.task().await.unwrap();
         let chan = Channel::<Buffer<u8, TaskScope>>::new(10).unwrap();
         let (tx, mut rx) = chan.split();
 
         let (handle_1, handle_2) = tokio::join!(
-            task_1.run(|t| async move {
+            pool.run(|t| async move {
                 let mut buf = t.alloc::<u8>(1000000);
                 t.sleep(Duration::from_secs(2));
                 buf.write_bytes(1, buf.capacity()).unwrap();
                 tx.send(&t, buf).await.unwrap();
             }),
-            task_2.run(|t| async move {
+            pool.run(|t| async move {
                 let buf = rx.recv(&t).await.unwrap();
                 assert_eq!(buf.into_host().await.unwrap().into_vec(), vec![1; 1000000]);
             }),
@@ -368,22 +366,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_owned_channel() {
-        let task_1 = crate::task().await.unwrap();
-        let task_2 = crate::task().await.unwrap();
         let chan = Arc::new(OwnedChannel::<Buffer<u8, TaskScope>>::new(10).unwrap());
         let (tx, mut rx) = chan.split();
 
-        let handle_2 = tokio::spawn(task_2.run(|t| async move {
+        let handle_2 = crate::spawn(move |t| async move {
             let buf = rx.recv(&t).await.unwrap();
             assert_eq!(buf.into_host().await.unwrap().into_vec(), vec![1; 1000000]);
-        }));
+        });
 
-        let handle_1 = tokio::spawn(task_1.run(|t| async move {
+        let handle_1 = crate::spawn(|t| async move {
             let mut buf = t.alloc::<u8>(1000000);
             t.sleep(Duration::from_secs(2));
             buf.write_bytes(1, buf.capacity()).unwrap();
             tx.send(&t, buf).await.unwrap();
-        }));
+        });
 
         handle_1.await.unwrap();
         handle_2.await.unwrap();

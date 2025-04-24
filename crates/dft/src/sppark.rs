@@ -145,21 +145,16 @@ mod tests {
             let tensor_h = Tensor::<BabyBear>::rand(&mut rng, [d, batch_size]);
 
             let tensor_h_sent = tensor_h.clone();
-            let result = csl_cuda::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let tensor = t.into_device(tensor_h_sent).await.unwrap().transpose();
-                    let dft = SpparkDftBabyBear::default();
-                    let result = dft
-                        .coset_dft(&tensor, shift, log_blowup, DftOrdering::BitReversed, 1)
-                        .unwrap();
-                    let result = result.transpose();
-                    result.into_host().await.unwrap()
-                })
-                .await
-                .await
-                .unwrap();
+            let result = csl_cuda::spawn(move |t| async move {
+                let tensor = t.into_device(tensor_h_sent).await.unwrap().transpose();
+                let dft = SpparkDftBabyBear::default();
+                let result =
+                    dft.coset_dft(&tensor, shift, log_blowup, DftOrdering::BitReversed, 1).unwrap();
+                let result = result.transpose();
+                result.into_host().await.unwrap()
+            })
+            .await
+            .unwrap();
 
             let expected_result = p3_dft
                 .coset_dft(&tensor_h, shift, log_blowup, DftOrdering::BitReversed, 0)

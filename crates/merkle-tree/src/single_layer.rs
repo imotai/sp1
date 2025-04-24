@@ -296,31 +296,27 @@ mod tests {
 
         let host_prover = Poseidon2BabyBear16Prover::default();
         let (host_root, _) = host_prover.commit_tensors(host_tensors.clone()).await.unwrap();
-        csl_cuda::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let mut tensors = vec![];
-                for host_tensor in host_tensors {
-                    let host_tensor = Tensor::<BabyBear>::clone(&host_tensor);
-                    let tensor = t.into_device(host_tensor).await.unwrap().transpose();
-                    tensors.push(tensor);
-                }
-                let tensors = Message::<Tensor<BabyBear, TaskScope>>::from(tensors);
-                let prover = Poseidon2BabyBear16CudaProver::default();
-                let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+        csl_cuda::spawn(move |t| async move {
+            let mut tensors = vec![];
+            for host_tensor in host_tensors {
+                let host_tensor = Tensor::<BabyBear>::clone(&host_tensor);
+                let tensor = t.into_device(host_tensor).await.unwrap().transpose();
+                tensors.push(tensor);
+            }
+            let tensors = Message::<Tensor<BabyBear, TaskScope>>::from(tensors);
+            let prover = Poseidon2BabyBear16CudaProver::default();
+            let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
 
-                let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
-                let openings = prover.compute_openings_at_indices(tensors, &indices).await;
+            let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
+            let openings = prover.compute_openings_at_indices(tensors, &indices).await;
 
-                assert_eq!(host_root, root);
+            assert_eq!(host_root, root);
 
-                let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
-                let opening = TensorCsOpening { values: openings, proof };
-                tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
-            })
-            .await
-            .await
-            .unwrap();
+            let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
+            let opening = TensorCsOpening { values: openings, proof };
+            tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
+        })
+        .await
+        .unwrap();
     }
 }

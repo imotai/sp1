@@ -149,34 +149,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_poseidon2_wide_deg_3_generate_preprocessed_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(|scope| {
+        csl_cuda::spawn(move |scope| {
             crate::recursion::tests::test_preprocessed_tracegen(
                 Poseidon2WideChip::<3>,
                 make_poseidon2_instr,
                 scope,
             )
         })
-        .await;
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
     async fn test_poseidon2_wide_deg_9_generate_preprocessed_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(|scope| {
+        csl_cuda::spawn(move |scope| {
             crate::recursion::tests::test_preprocessed_tracegen(
                 Poseidon2WideChip::<9>,
                 make_poseidon2_instr,
                 scope,
             )
         })
-        .await;
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
     async fn test_poseidon2_wide_deg_3_generate_main_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(|scope| {
+        csl_cuda::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 Poseidon2WideChip::<3>,
                 |rng| {
@@ -190,13 +189,13 @@ mod tests {
                 scope,
             )
         })
-        .await;
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
     async fn test_poseidon2_wide_deg_9_generate_main_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(|scope| {
+        csl_cuda::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 Poseidon2WideChip::<9>,
                 |rng| {
@@ -210,6 +209,7 @@ mod tests {
                 scope,
             )
         })
-        .await;
+        .await
+        .unwrap();
     }
 }

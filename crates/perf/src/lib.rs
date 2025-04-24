@@ -28,8 +28,10 @@ pub async fn make_measurement(
 ) -> Measurement {
     let recursion_cache_size =
         env::var("RECURSION_CACHE_SIZE").unwrap_or("5".to_string()).parse::<usize>().unwrap_or(5);
-    let sp1_prover =
-        SP1CudaProverBuilder::new(t.clone()).recursion_cache_size(recursion_cache_size).build();
+    let sp1_prover = SP1CudaProverBuilder::new(t.clone())
+        .recursion_cache_size(recursion_cache_size)
+        .build()
+        .await;
     let opts = local_gpu_opts();
     let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 

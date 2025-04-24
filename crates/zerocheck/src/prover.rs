@@ -470,26 +470,22 @@ mod tests {
         let expected_y_2s = RowMajorMatrix::new(expected_y_2s, main_width).transpose().values;
         let expected_y_4s = RowMajorMatrix::new(expected_y_4s, main_width).transpose().values;
 
-        let interpolated_rows_host = csl_cuda::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let main_mle_device = t.into_device(main_mle).await.unwrap();
-                let interpolated_rows = interpolate_rows::<EF>(
-                    &main_mle_device,
-                    1..main_height.div_ceil(2),
-                    main_height.div_ceil(2),
-                );
-                let interpolated_rows_host = interpolated_rows.storage.into_host().await.unwrap();
-                Tensor::from(interpolated_rows_host).reshape([
-                    3,
-                    main_width,
-                    main_height.div_ceil(2) - 1,
-                ])
-            })
-            .await
-            .await
-            .unwrap();
+        let interpolated_rows_host = csl_cuda::spawn(move |t| async move {
+            let main_mle_device = t.into_device(main_mle).await.unwrap();
+            let interpolated_rows = interpolate_rows::<EF>(
+                &main_mle_device,
+                1..main_height.div_ceil(2),
+                main_height.div_ceil(2),
+            );
+            let interpolated_rows_host = interpolated_rows.storage.into_host().await.unwrap();
+            Tensor::from(interpolated_rows_host).reshape([
+                3,
+                main_width,
+                main_height.div_ceil(2) - 1,
+            ])
+        })
+        .await
+        .unwrap();
 
         let calculated_y_0s = interpolated_rows_host.get(0).unwrap().as_slice();
         let calculated_y_2s = interpolated_rows_host.get(1).unwrap().as_slice();

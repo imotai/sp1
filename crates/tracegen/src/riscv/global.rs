@@ -269,8 +269,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_global_generate_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(inner_test_global_generate_trace).await;
+        csl_cuda::spawn(inner_test_global_generate_trace).await.unwrap();
     }
 
     async fn inner_test_global_generate_trace(scope: TaskScope) {

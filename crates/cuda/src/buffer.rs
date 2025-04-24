@@ -134,8 +134,6 @@ mod tests {
             device_buffer.into_host().await.unwrap()
         })
         .await
-        .unwrap()
-        .await
         .unwrap();
 
         assert_eq!(buffer_back, buffer);
@@ -152,8 +150,6 @@ mod tests {
             let device_buffer = t.copy_from(small_buffer).await.unwrap();
             device_buffer.into_host().await.unwrap()
         })
-        .await
-        .unwrap()
         .await
         .unwrap();
 

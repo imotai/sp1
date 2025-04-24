@@ -238,71 +238,68 @@ mod tests {
                 })
                 .sum::<EF>();
 
-            crate::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    // let base = t.into_device(base).await.unwrap();
-                    // let ext = t.into_device(ext).await.unwrap();
-                    let base = stream::iter(base)
-                        .then(|mle| async { t.into_device(mle).await.unwrap() })
-                        .collect::<Vec<_>>()
-                        .await;
-                    let ext = stream::iter(ext)
-                        .then(|mle| async { t.into_device(mle).await.unwrap() })
-                        .collect::<Vec<_>>()
-                        .await;
-                    let base = LongMle::from_components(base, log_stacking_height);
-                    let ext = LongMle::from_components(ext, log_stacking_height);
-
-                    let product = HadamardProduct { base, ext };
-                    println!("product num_variables: {}", num_variables);
-
-                    let verifier = BasefoldVerifier::<C>::new(1);
-
-                    let mut challenger = verifier.challenger();
-
-                    let lambda: EF = challenger.sample();
-
-                    t.synchronize().await.unwrap();
-                    let time = tokio::time::Instant::now();
-                    let (proof, mut eval_claims) = reduce_sumcheck_to_evaluation::<F, EF, _>(
-                        vec![product.clone()],
-                        &mut challenger,
-                        vec![claim],
-                        1,
-                        lambda,
-                    )
+            crate::run_in_place(|t| async move {
+                // let base = t.into_device(base).await.unwrap();
+                // let ext = t.into_device(ext).await.unwrap();
+                let base = stream::iter(base)
+                    .then(|mle| async { t.into_device(mle).await.unwrap() })
+                    .collect::<Vec<_>>()
                     .await;
-                    t.synchronize().await.unwrap();
-                    println!(
-                        "time for partial sumcheck proof for {num_variables}: {:?}",
-                        time.elapsed()
-                    );
+                let ext = stream::iter(ext)
+                    .then(|mle| async { t.into_device(mle).await.unwrap() })
+                    .collect::<Vec<_>>()
+                    .await;
+                let base = LongMle::from_components(base, log_stacking_height);
+                let ext = LongMle::from_components(ext, log_stacking_height);
 
-                    let point = &proof.point_and_eval.0;
-                    let [exp_eval_base, exp_eval_ext] =
-                        eval_claims.pop().unwrap().try_into().unwrap();
+                let product = HadamardProduct { base, ext };
+                println!("product num_variables: {}", num_variables);
 
-                    let eval_ext = product.ext.eval_at(point).await;
-                    let eval_base = product.base.eval_at(point).await;
+                let verifier = BasefoldVerifier::<C>::new(1);
 
-                    assert_eq!(eval_ext, exp_eval_ext);
-                    assert_eq!(eval_base, exp_eval_base);
+                let mut challenger = verifier.challenger();
 
-                    // Check that the final claimed evaluation is the product of the two evaluations
-                    let claimed_eval = proof.point_and_eval.1;
-                    assert_eq!(claimed_eval, exp_eval_ext * exp_eval_base);
+                let lambda: EF = challenger.sample();
 
-                    let mut challenger = verifier.challenger();
-                    let _lambda: EF = challenger.sample();
-                    assert!(partially_verify_sumcheck_proof::<F, EF, _>(&proof, &mut challenger)
-                        .is_ok());
-                    assert_eq!(proof.univariate_polys.len(), num_variables as usize);
-                })
-                .await
-                .await
-                .unwrap();
+                t.synchronize().await.unwrap();
+                let time = tokio::time::Instant::now();
+                let (proof, mut eval_claims) = reduce_sumcheck_to_evaluation::<F, EF, _>(
+                    vec![product.clone()],
+                    &mut challenger,
+                    vec![claim],
+                    1,
+                    lambda,
+                )
+                .await;
+                t.synchronize().await.unwrap();
+                println!(
+                    "time for partial sumcheck proof for {num_variables}: {:?}",
+                    time.elapsed()
+                );
+
+                let point = &proof.point_and_eval.0;
+                let [exp_eval_base, exp_eval_ext] = eval_claims.pop().unwrap().try_into().unwrap();
+
+                let eval_ext = product.ext.eval_at(point).await;
+                let eval_base = product.base.eval_at(point).await;
+
+                assert_eq!(eval_ext, exp_eval_ext);
+                assert_eq!(eval_base, exp_eval_base);
+
+                // Check that the final claimed evaluation is the product of the two evaluations
+                let claimed_eval = proof.point_and_eval.1;
+                assert_eq!(claimed_eval, exp_eval_ext * exp_eval_base);
+
+                let mut challenger = verifier.challenger();
+                let _lambda: EF = challenger.sample();
+                assert!(
+                    partially_verify_sumcheck_proof::<F, EF, _>(&proof, &mut challenger).is_ok()
+                );
+                assert_eq!(proof.univariate_polys.len(), num_variables as usize);
+            })
+            .await
+            .await
+            .unwrap();
         }
     }
 }

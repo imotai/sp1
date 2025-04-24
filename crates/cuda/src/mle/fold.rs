@@ -84,17 +84,14 @@ mod tests {
 
         let folded_mle_host = mle.fold(beta).await;
 
-        let folded_mle_cuda = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let mle = t.into_device(mle).await.unwrap();
-                let folded_mle_cuda = mle.fold(beta).await;
-                folded_mle_cuda.into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let folded_mle_cuda = crate::run_in_place(|t| async move {
+            let mle = t.into_device(mle).await.unwrap();
+            let folded_mle_cuda = mle.fold(beta).await;
+            folded_mle_cuda.into_host().await.unwrap()
+        })
+        .await
+        .await
+        .unwrap();
 
         for (val, exp) in
             folded_mle_host.guts().as_slice().iter().zip(folded_mle_cuda.guts().as_slice())

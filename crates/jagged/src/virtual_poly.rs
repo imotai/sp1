@@ -485,133 +485,121 @@ mod tests {
             // Begin the commit rounds
             let mut challenger = jagged_verifier.challenger();
 
-            csl_cuda::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let mut prover_data = Rounds::new();
-                    let mut commitments = Rounds::new();
+            csl_cuda::run_in_place(|t| async move {
+                let mut prover_data = Rounds::new();
+                let mut commitments = Rounds::new();
 
-                    let rounds = stream::iter(round_mles.into_iter())
-                        .then(|round| {
-                            stream::iter(round.into_iter())
-                                .then(|mle| async { t.into_device(mle).await.unwrap() })
-                                .collect::<Vec<_>>()
+                let rounds = stream::iter(round_mles.into_iter())
+                    .then(|round| {
+                        stream::iter(round.into_iter())
+                            .then(|mle| async { t.into_device(mle).await.unwrap() })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Rounds<_>>()
+                    .await;
+
+                let mut commit_time = Duration::ZERO;
+                for round in rounds.iter() {
+                    t.synchronize().await.unwrap();
+                    let start = tokio::time::Instant::now();
+                    let (commit, data) =
+                        jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
+                    commit_time += start.elapsed();
+                    challenger.observe(commit);
+                    prover_data.push(data);
+                    commitments.push(commit);
+                }
+                println!(
+                    "commit_time for total_number_of_variables: {:?}, commit_time: {:?}",
+                    total_number_of_variables, commit_time
+                );
+
+                let num_col_variables = prover_data
+                    .iter()
+                    .map(|data| data.column_counts.iter().sum::<usize>())
+                    .sum::<usize>()
+                    .next_power_of_two()
+                    .ilog2();
+
+                let row_data =
+                    prover_data.iter().map(|data| data.row_counts.clone()).collect::<Rounds<_>>();
+                let column_data = prover_data
+                    .iter()
+                    .map(|data| data.column_counts.clone())
+                    .collect::<Rounds<_>>();
+
+                // Collect the jagged polynomial parameters.
+                let params = JaggedLittlePolynomialProverParams::new(
+                    prover_data
+                        .iter()
+                        .flat_map(|data| {
+                            data.row_counts
+                                .iter()
+                                .copied()
+                                .zip(data.column_counts.iter().copied())
+                                .flat_map(|(row_count, column_count)| {
+                                    std::iter::repeat(row_count).take(column_count)
+                                })
                         })
-                        .collect::<Rounds<_>>()
-                        .await;
+                        .collect(),
+                    max_log_row_count as usize,
+                );
 
-                    let mut commit_time = Duration::ZERO;
-                    for round in rounds.iter() {
-                        t.synchronize().await.unwrap();
-                        let start = tokio::time::Instant::now();
-                        let (commit, data) =
-                            jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
-                        commit_time += start.elapsed();
-                        challenger.observe(commit);
-                        prover_data.push(data);
-                        commitments.push(commit);
-                    }
-                    println!(
-                        "commit_time for total_number_of_variables: {:?}, commit_time: {:?}",
-                        total_number_of_variables, commit_time
-                    );
+                let z_row = challenger.sample_point::<EF>(max_log_row_count);
+                let z_col = challenger.sample_point::<EF>(num_col_variables);
 
-                    let num_col_variables = prover_data
-                        .iter()
-                        .map(|data| data.column_counts.iter().sum::<usize>())
-                        .sum::<usize>()
-                        .next_power_of_two()
-                        .ilog2();
+                let z_row = t.into_device(z_row).await.unwrap();
+                let z_col = t.into_device(z_col).await.unwrap();
 
-                    let row_data = prover_data
-                        .iter()
-                        .map(|data| data.row_counts.clone())
-                        .collect::<Rounds<_>>();
-                    let column_data = prover_data
-                        .iter()
-                        .map(|data| data.column_counts.clone())
-                        .collect::<Rounds<_>>();
+                let all_mles = prover_data
+                    .iter()
+                    .map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
+                    .collect::<Rounds<_>>();
 
-                    // Collect the jagged polynomial parameters.
-                    let params = JaggedLittlePolynomialProverParams::new(
-                        prover_data
-                            .iter()
-                            .flat_map(|data| {
-                                data.row_counts
-                                    .iter()
-                                    .copied()
-                                    .zip(data.column_counts.iter().copied())
-                                    .flat_map(|(row_count, column_count)| {
-                                        std::iter::repeat(row_count).take(column_count)
-                                    })
-                            })
-                            .collect(),
-                        max_log_row_count as usize,
-                    );
+                let hadamard_poly = hadamard_prover
+                    .jagged_sumcheck_poly(
+                        all_mles.clone(),
+                        &params,
+                        row_data.clone(),
+                        column_data.clone(),
+                        &z_row,
+                        &z_col,
+                    )
+                    .await;
 
-                    let z_row = challenger.sample_point::<EF>(max_log_row_count);
-                    let z_col = challenger.sample_point::<EF>(num_col_variables);
+                let virtual_poly = virtual_prover
+                    .jagged_sumcheck_poly(all_mles, &params, row_data, column_data, &z_row, &z_col)
+                    .await;
 
-                    let z_row = t.into_device(z_row).await.unwrap();
-                    let z_col = t.into_device(z_col).await.unwrap();
+                // Get the sum as poly value with the zero claim (it's not correct but we only
+                // want to test the function itself)
+                let sum_as_poly_hadamard =
+                    hadamard_poly.sum_as_poly_in_last_t_variables(Some(EF::zero()), 1).await;
 
-                    let all_mles = prover_data
-                        .iter()
-                        .map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
-                        .collect::<Rounds<_>>();
+                let sum_as_poly_virtual =
+                    virtual_poly.sum_as_poly_in_last_t_variables(Some(EF::zero()), 1).await;
 
-                    let hadamard_poly = hadamard_prover
-                        .jagged_sumcheck_poly(
-                            all_mles.clone(),
-                            &params,
-                            row_data.clone(),
-                            column_data.clone(),
-                            &z_row,
-                            &z_col,
-                        )
-                        .await;
+                assert_eq!(sum_as_poly_hadamard, sum_as_poly_virtual);
 
-                    let virtual_poly = virtual_prover
-                        .jagged_sumcheck_poly(
-                            all_mles,
-                            &params,
-                            row_data,
-                            column_data,
-                            &z_row,
-                            &z_col,
-                        )
-                        .await;
+                // Test restrict last variable
+                let alpha = challenger.sample_ext_element::<EF>();
+                let eval_point = challenger.sample_point::<EF>(total_number_of_variables - 1);
 
-                    // Get the sum as poly value with the zero claim (it's not correct but we only
-                    // want to test the function itself)
-                    let sum_as_poly_hadamard =
-                        hadamard_poly.sum_as_poly_in_last_t_variables(Some(EF::zero()), 1).await;
+                let restricted_virtual = virtual_poly.fix_t_variables(alpha, 1).await;
+                let restricted_hadamard = hadamard_poly.fix_t_variables(alpha, 1).await;
 
-                    let sum_as_poly_virtual =
-                        virtual_poly.sum_as_poly_in_last_t_variables(Some(EF::zero()), 1).await;
+                // Evaluate the restricted polynomials
+                let hadamard_base_eval = restricted_hadamard.base.eval_at(&eval_point).await;
+                let virtual_base_eval = restricted_virtual.base.eval_at(&eval_point).await;
+                assert_eq!(hadamard_base_eval, virtual_base_eval);
 
-                    assert_eq!(sum_as_poly_hadamard, sum_as_poly_virtual);
-
-                    // Test restrict last variable
-                    let alpha = challenger.sample_ext_element::<EF>();
-                    let eval_point = challenger.sample_point::<EF>(total_number_of_variables - 1);
-
-                    let restricted_virtual = virtual_poly.fix_t_variables(alpha, 1).await;
-                    let restricted_hadamard = hadamard_poly.fix_t_variables(alpha, 1).await;
-
-                    // Evaluate the restricted polynomials
-                    let hadamard_base_eval = restricted_hadamard.base.eval_at(&eval_point).await;
-                    let virtual_base_eval = restricted_virtual.base.eval_at(&eval_point).await;
-                    assert_eq!(hadamard_base_eval, virtual_base_eval);
-
-                    let hadamard_ext_eval = restricted_hadamard.ext.eval_at(&eval_point).await;
-                    let virtual_ext_eval = restricted_virtual.ext.eval_at(&eval_point).await;
-                    assert_eq!(hadamard_ext_eval, virtual_ext_eval);
-                })
-                .await
-                .await
-                .unwrap();
+                let hadamard_ext_eval = restricted_hadamard.ext.eval_at(&eval_point).await;
+                let virtual_ext_eval = restricted_virtual.ext.eval_at(&eval_point).await;
+                assert_eq!(hadamard_ext_eval, virtual_ext_eval);
+            })
+            .await
+            .await
+            .unwrap();
         }
     }
 }

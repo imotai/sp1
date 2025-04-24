@@ -233,25 +233,22 @@ mod tests {
         let d_mle = mle.clone();
 
         let random_point_ref = &random_point;
-        let evals = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let d_mle = t.into_device(d_mle).await.unwrap();
-                let restriction = d_mle.fix_last_variable(alpha).await;
-                restriction
-                    .eval_at(&random_point_ref.copy_into(&t))
-                    .await
-                    .into_evaluations()
-                    .into_host()
-                    .await
-                    .unwrap()
-            })
-            .await
-            .await
-            .unwrap()
-            .into_buffer()
-            .into_vec();
+        let evals = crate::run_in_place(|t| async move {
+            let d_mle = t.into_device(d_mle).await.unwrap();
+            let restriction = d_mle.fix_last_variable(alpha).await;
+            restriction
+                .eval_at(&random_point_ref.copy_into(&t))
+                .await
+                .into_evaluations()
+                .into_host()
+                .await
+                .unwrap()
+        })
+        .await
+        .await
+        .unwrap()
+        .into_buffer()
+        .into_vec();
 
         let restriction = mle.fix_last_variable(alpha).await;
         let host_evals = restriction.eval_at(&random_point).await.to_vec();
@@ -280,44 +277,41 @@ mod tests {
         // Do all the fix last variables in parallel.
 
         // let random_point_ref = &random_point;
-        crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                // let random_point = random_point.to_device_in(&t).await.unwrap();
+        crate::run_in_place(|t| async move {
+            // let random_point = random_point.to_device_in(&t).await.unwrap();
+            let random_point = random_point.clone();
+            let mut handles = Vec::new();
+            for mle in mles.iter().cloned() {
                 let random_point = random_point.clone();
-                let mut handles = Vec::new();
-                for mle in mles.iter().cloned() {
-                    let random_point = random_point.clone();
-                    let mle = mle.into_device_in(&t).await.unwrap();
-                    let handle = t.spawn(move |s| async move {
-                        let mle = unsafe { mle.send_to_scope(&s) };
-                        let restriction = mle.fix_last_variable(alpha).await;
-                        let random_point = random_point.to_device_in(&s).await.unwrap();
-                        let evals = restriction.eval_at(&random_point).await;
-                        evals.into_evaluations().into_host().await.unwrap()
-                    });
-                    handles.push(handle);
+                let mle = mle.into_device_in(&t).await.unwrap();
+                let handle = t.spawn(move |s| async move {
+                    let mle = unsafe { mle.send_to_scope(&s) };
+                    let restriction = mle.fix_last_variable(alpha).await;
+                    let random_point = random_point.to_device_in(&s).await.unwrap();
+                    let evals = restriction.eval_at(&random_point).await;
+                    evals.into_evaluations().into_host().await.unwrap()
+                });
+                handles.push(handle);
+            }
+            let mut evals = Vec::new();
+            for handle in handles {
+                // Get the evals
+                let eval = handle.await.unwrap().unwrap();
+                evals.push(eval);
+            }
+            let complete_point = complete_point.to_device_in(&t).await.unwrap();
+            for (eval, mle) in evals.iter().zip(mles) {
+                let d_mle = mle.into_device_in(&t).await.unwrap();
+                let d_eval = d_mle.eval_at(&complete_point).await;
+                let h_eval = d_eval.into_evaluations().into_host().await.unwrap();
+                for (e, h_e) in eval.as_slice().iter().zip(h_eval.as_slice().iter()) {
+                    assert_eq!(e, h_e);
                 }
-                let mut evals = Vec::new();
-                for handle in handles {
-                    // Get the evals
-                    let eval = handle.await.unwrap().unwrap();
-                    evals.push(eval);
-                }
-                let complete_point = complete_point.to_device_in(&t).await.unwrap();
-                for (eval, mle) in evals.iter().zip(mles) {
-                    let d_mle = mle.into_device_in(&t).await.unwrap();
-                    let d_eval = d_mle.eval_at(&complete_point).await;
-                    let h_eval = d_eval.into_evaluations().into_host().await.unwrap();
-                    for (e, h_e) in eval.as_slice().iter().zip(h_eval.as_slice().iter()) {
-                        assert_eq!(e, h_e);
-                    }
-                }
-            })
-            .await
-            .await
-            .unwrap();
+            }
+        })
+        .await
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -337,21 +331,18 @@ mod tests {
 
         let mle_evals: Padding<F, CpuBackend> =
             Padding::Generic(Arc::new(vec![F::one(), F::two()].into()));
-        let evals = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let d_padded_mle = PaddedMle::padded(
-                    Arc::new(t.into_device(mle).await.unwrap()),
-                    17,
-                    t.copy_to(&mle_evals).await.unwrap(),
-                );
-                let restriction = d_padded_mle.fix_last_variable(alpha).await;
-                restriction.inner().clone().unwrap().into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let evals = crate::run_in_place(|t| async move {
+            let d_padded_mle = PaddedMle::padded(
+                Arc::new(t.into_device(mle).await.unwrap()),
+                17,
+                t.copy_to(&mle_evals).await.unwrap(),
+            );
+            let restriction = d_padded_mle.fix_last_variable(alpha).await;
+            restriction.inner().clone().unwrap().into_host().await.unwrap()
+        })
+        .await
+        .await
+        .unwrap();
 
         let restriction = padded_mle.fix_last_variable(alpha).await.inner().clone();
 
@@ -384,21 +375,18 @@ mod tests {
 
         let padded_evals: Padding<F, CpuBackend> =
             Padding::Generic(Arc::new(vec![F::one(), F::two()].into()));
-        let device_evals = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let d_padded_mle = PaddedMle::padded(
-                    Arc::new(t.into_device(mle).await.unwrap()),
-                    17,
-                    t.copy_to(&padded_evals).await.unwrap(),
-                );
-                let restriction = d_padded_mle.eval_at(&point).await;
-                restriction.to_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let device_evals = crate::run_in_place(|t| async move {
+            let d_padded_mle = PaddedMle::padded(
+                Arc::new(t.into_device(mle).await.unwrap()),
+                17,
+                t.copy_to(&padded_evals).await.unwrap(),
+            );
+            let restriction = d_padded_mle.eval_at(&point).await;
+            restriction.to_host().await.unwrap()
+        })
+        .await
+        .await
+        .unwrap();
 
         let host_evals = padded_mle.eval_at(&point_clone).await;
 
@@ -418,25 +406,22 @@ mod tests {
         let d_mle = mle.clone();
 
         let random_point_ref = &random_point;
-        let evals = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let mut d_mle = t.into_device(d_mle).await.unwrap();
-                d_mle.fix_last_variable_in_place(alpha).await;
-                d_mle
-                    .eval_at(&random_point_ref.copy_into(&t))
-                    .await
-                    .into_evaluations()
-                    .into_host()
-                    .await
-                    .unwrap()
-            })
-            .await
-            .await
-            .unwrap()
-            .into_buffer()
-            .into_vec();
+        let evals = crate::run_in_place(|t| async move {
+            let mut d_mle = t.into_device(d_mle).await.unwrap();
+            d_mle.fix_last_variable_in_place(alpha).await;
+            d_mle
+                .eval_at(&random_point_ref.copy_into(&t))
+                .await
+                .into_evaluations()
+                .into_host()
+                .await
+                .unwrap()
+        })
+        .await
+        .await
+        .unwrap()
+        .into_buffer()
+        .into_vec();
 
         let restriction = mle.fix_last_variable(alpha).await;
         let host_evals = restriction.eval_at(&random_point).await.to_vec();

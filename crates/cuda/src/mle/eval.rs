@@ -173,21 +173,18 @@ mod tests {
 
         let d_mle = mle.clone();
 
-        let point_ref = &point;
-        let evals = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let d_point = point_ref.copy_into(&t);
-                let d_mle = t.into_device(d_mle).await.unwrap();
-                let eval = d_mle.eval_at(&d_point).await;
-                eval.into_evaluations().into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap()
-            .into_buffer()
-            .into_vec();
+        let point_ref = point.clone();
+        let evals = crate::run_in_place(|t| async move {
+            let d_point = point_ref.copy_into(&t);
+            let d_mle = t.into_device(d_mle).await.unwrap();
+            let eval = d_mle.eval_at(&d_point).await;
+            eval.into_evaluations().into_host().await.unwrap()
+        })
+        .await
+        .await
+        .unwrap()
+        .into_buffer()
+        .into_vec();
 
         let host_evals = mle.eval_at(&point).await.to_vec();
         assert_eq!(evals, host_evals);
@@ -205,18 +202,15 @@ mod tests {
 
         for threshold in 0..1 << num_variables {
             let point_ref = &point;
-            let eval = crate::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let partial_geq = partial_geq::<F>(threshold, num_variables as usize, &t).await;
-                    let d_point = point_ref.copy_into(&t);
-                    let eval = Mle::new(partial_geq).eval_at(&d_point).await;
-                    eval.into_evaluations().into_host().await.unwrap()
-                })
-                .await
-                .await
-                .unwrap();
+            let eval = crate::run_in_place(|t| async move {
+                let partial_geq = partial_geq::<F>(threshold, num_variables as usize, &t).await;
+                let d_point = point_ref.copy_into(&t);
+                let eval = Mle::new(partial_geq).eval_at(&d_point).await;
+                eval.into_evaluations().into_host().await.unwrap()
+            })
+            .await
+            .await
+            .unwrap();
 
             let copied_eval = eval.into_host().await.unwrap();
 

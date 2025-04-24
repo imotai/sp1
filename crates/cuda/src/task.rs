@@ -18,6 +18,7 @@ use csl_sys::runtime::{
     cuda_device_get_mem_pool, cuda_mem_pool_set_release_threshold, CudaDevice, CudaMemPool,
     CudaStreamHandle, Dim3, KernelPtr,
 };
+use futures::{future::MapOkOrElse, TryFutureExt};
 use pin_project::pin_project;
 use slop_alloc::{
     mem::{CopyDirection, CopyError, DeviceMemory},
@@ -51,31 +52,75 @@ pub(crate) fn global_task_pool() -> &'static Arc<TaskPool> {
     GLOBAL_TASK_POOL.get_or_init(|| Arc::new(TaskPoolBuilder::new().build().unwrap()))
 }
 
-/// Acquires a task from the global task pool.
-pub async fn task() -> Result<OwnedTask, SpawnError> {
-    let pool = global_task_pool();
-    let task = pool.task().await?;
-    Ok(task)
+// /// Acquires a task from the global task pool.
+// pub async fn task() -> Result<OwnedTask, SpawnError> {
+//     let pool = global_task_pool();
+//     let task = pool.task().await?;
+//     Ok(task)
+// }
+
+pub struct SpawnHandle<T> {
+    handle: JoinHandle<Result<T, CudaError>>,
 }
 
-pub fn spawn<F, Fut>(f: F) -> JoinHandle<TaskHandle<Fut::Output>>
+impl<T> SpawnHandle<T> {
+    pub fn abort(&self) {
+        self.handle.abort();
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum SpawnError {
+    #[error("join handle panicked with error: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
+    #[error("cuda error: {0}")]
+    CudaError(#[from] CudaError),
+    #[error("failed to acquire a task from the pool")]
+    TaskSpawnError(#[from] TaskSpawnError),
+}
+
+fn map_ok_value<T>(e: Result<T, CudaError>) -> Result<T, SpawnError> {
+    e.map_err(SpawnError::CudaError)
+}
+
+fn map_err_value<T>(e: tokio::task::JoinError) -> Result<T, SpawnError> {
+    Err(SpawnError::JoinError(e))
+}
+
+impl<T> IntoFuture for SpawnHandle<T> {
+    type Output = Result<T, SpawnError>;
+
+    type IntoFuture = MapOkOrElse<
+        JoinHandle<Result<T, CudaError>>,
+        fn(Result<T, CudaError>) -> Result<T, SpawnError>,
+        fn(tokio::task::JoinError) -> Result<T, SpawnError>,
+    >;
+
+    fn into_future(self) -> Self::IntoFuture {
+        self.handle.map_ok_or_else(map_err_value, map_ok_value)
+    }
+}
+
+pub fn spawn<F, Fut>(f: F) -> SpawnHandle<Fut::Output>
 where
     F: FnOnce(TaskScope) -> Fut + Send + 'static,
     Fut: Future + Send + 'static,
     Fut::Output: Send + 'static,
 {
-    tokio::spawn(async move {
-        let task = task().await.unwrap();
-        task.run(f).await
-    })
+    let pool = global_task_pool();
+    pool.spawn(f)
 }
 
-/// Attempts to get a task from the global task pool.
+/// Run a task on the task pool.
 ///
-/// This function will not block, and will return an error if no task is currently available.
-pub fn try_get_task() -> Result<OwnedTask, TrySpawnError> {
+/// The future returned by this function will wait for the task to finish.
+pub async fn run_in_place<F, Fut, R>(f: F) -> TaskHandle<R>
+where
+    F: FnOnce(TaskScope) -> Fut,
+    Fut: Future<Output = R>,
+{
     let pool = global_task_pool();
-    pool.try_get_task()
+    pool.run(f).await
 }
 
 #[derive(Debug, Clone, Error)]
@@ -178,7 +223,7 @@ pub struct TaskPool {
     inner: Arc<WorkerQueue<Task>>,
 }
 
-pub struct OwnedTask {
+struct OwnedTask {
     inner: Worker<Task>,
 }
 
@@ -190,7 +235,7 @@ impl std::fmt::Debug for OwnedTask {
 
 #[derive(Debug, Error)]
 #[error("failed to acquire a task from the pool")]
-pub enum SpawnError {
+pub enum TaskSpawnError {
     AcquireError(#[from] AcquireWorkerError),
 }
 
@@ -201,18 +246,53 @@ pub enum TrySpawnError {
 }
 
 impl TaskPool {
-    /// Get a task from the task pool.
-    pub async fn task(&self) -> Result<OwnedTask, SpawnError> {
-        let worker = self.inner.clone().pop().await.map_err(SpawnError::AcquireError)?;
+    // /// Get a task from the task pool.
+    // async fn task(&self) -> Result<OwnedTask, TaskSpawnError> {
+    //     let worker = self.inner.clone().pop().await.map_err(TaskSpawnError::AcquireError)?;
+    //     Ok(OwnedTask { inner: worker })
+    // }
+
+    async fn task(inner: Arc<WorkerQueue<Task>>) -> Result<OwnedTask, TaskSpawnError> {
+        let worker = inner.clone().pop().await.map_err(TaskSpawnError::AcquireError)?;
         Ok(OwnedTask { inner: worker })
     }
 
-    /// Get a task from the task pool.
+    // /// Get a task from the task pool.
+    // ///
+    // /// This function will block the current thread until a task becomes available.
+    // fn try_get_task(&self) -> Result<OwnedTask, TrySpawnError> {
+    //     let task = self.inner.clone().try_pop().map_err(TrySpawnError::TryAcquireError)?;
+    //     Ok(OwnedTask { inner: task })
+    // }
+
+    /// Spawn a task on the task pool.
     ///
-    /// This function will block the current thread until a task becomes available.
-    pub fn try_get_task(&self) -> Result<OwnedTask, TrySpawnError> {
-        let task = self.inner.clone().try_pop().map_err(TrySpawnError::TryAcquireError)?;
-        Ok(OwnedTask { inner: task })
+    /// This function will not block the current thread.
+    pub fn spawn<F, Fut>(&self, f: F) -> SpawnHandle<Fut::Output>
+    where
+        F: FnOnce(TaskScope) -> Fut + Send + 'static,
+        Fut: Future + Send + 'static,
+        Fut::Output: Send + 'static,
+    {
+        let queue = self.inner.clone();
+        let handle = tokio::spawn(async move {
+            let task = TaskPool::task(queue).await.expect("failed to acquire a task from the pool");
+            task.run(f).await.await
+        });
+        SpawnHandle { handle }
+    }
+
+    /// Run a task on the task pool.
+    ///
+    /// The future returned by this function will wait for the task to finish.
+    pub async fn run<F, Fut, R>(&self, f: F) -> TaskHandle<R>
+    where
+        F: FnOnce(TaskScope) -> Fut,
+        Fut: Future<Output = R>,
+    {
+        let queue = self.inner.clone();
+        let task = TaskPool::task(queue).await.expect("failed to acquire a task from the pool");
+        task.run(f).await
     }
 }
 
@@ -403,6 +483,10 @@ impl TaskScope {
         TaskPool { inner: self.0.upgrade().unwrap().inner.owner().clone() }
     }
 
+    fn owner_queue(&self) -> Arc<WorkerQueue<Task>> {
+        self.0.upgrade().unwrap().inner.owner().clone()
+    }
+
     pub fn spawn<F, Fut>(&self, f: F) -> JoinHandle<Result<Fut::Output, CudaError>>
     where
         F: FnOnce(TaskScope) -> Fut + Send + 'static,
@@ -411,7 +495,7 @@ impl TaskScope {
     {
         let parent = self.clone();
         tokio::spawn(async move {
-            let task = parent.owner().task().await.unwrap();
+            let task = TaskPool::task(parent.owner_queue()).await.unwrap();
             unsafe {
                 // Use the task's end event to synchronize the parent task.
                 // This is safe because this is the first time this task is being run so we know
@@ -505,24 +589,30 @@ impl DeviceMemory for TaskScope {
 }
 
 impl OwnedTask {
-    pub fn is_finished(&self) -> Result<bool, CudaError> {
+    fn is_finished(&self) -> Result<bool, CudaError> {
         self.inner.end_event.query().map(|()| true).or_else(|e| match e {
             CudaError::NotReady => Ok(false),
             e => Err(e),
         })
     }
 
-    pub async fn run<F, Fut, R>(self, f: F) -> TaskHandle<R>
+    async fn run<F, Fut, R>(self, f: F) -> TaskHandle<R>
     where
         F: FnOnce(TaskScope) -> Fut,
         Fut: Future<Output = R>,
-        R: Send,
     {
         let strong_ptr = Arc::new(self);
         let scope = TaskScope(Arc::downgrade(&strong_ptr));
         let value = f(scope.clone()).await;
         unsafe { scope.stream.record_unchecked(&scope.end_event).unwrap() };
-        TaskHandle { _task: strong_ptr, scope, value }
+        TaskHandle { task: strong_ptr, scope, value }
+    }
+}
+
+impl StreamRef for OwnedTask {
+    #[inline]
+    unsafe fn stream(&self) -> &CudaStream {
+        self.inner.stream()
     }
 }
 
@@ -536,7 +626,7 @@ impl IntoFuture for TaskScope {
 }
 
 pub struct TaskHandle<T> {
-    _task: Arc<OwnedTask>,
+    task: Arc<OwnedTask>,
     scope: TaskScope,
     value: T,
 }
@@ -555,12 +645,16 @@ impl<T> TaskHandle<T> {
             Ok(value)
         }
     }
+
+    pub fn is_finished(&self) -> Result<bool, CudaError> {
+        self.task.is_finished()
+    }
 }
 
 #[pin_project]
 pub struct StreamHandleFuture<T> {
     #[pin]
-    callback: StreamCallbackFuture<TaskScope>,
+    callback: StreamCallbackFuture<Arc<OwnedTask>>,
     value: MaybeUninit<T>,
 }
 
@@ -588,7 +682,7 @@ impl<T> IntoFuture for TaskHandle<T> {
     #[inline]
     fn into_future(self) -> Self::IntoFuture {
         StreamHandleFuture {
-            callback: self.scope.into_future(),
+            callback: StreamCallbackFuture::new(self.task),
             value: MaybeUninit::new(self.value),
         }
     }
@@ -596,26 +690,12 @@ impl<T> IntoFuture for TaskHandle<T> {
 
 #[cfg(test)]
 mod tests {
-    use slop_alloc::{Buffer, IntoHost};
 
     use crate::TaskPoolBuilder;
 
     #[tokio::test]
     async fn test_global_task_pool() {
-        let task = crate::task().await.unwrap();
-        task.run(|_| async {}).await;
-    }
-
-    #[tokio::test]
-    async fn test_async_task_buffer() {
-        let task = crate::task().await.unwrap();
-        let values = vec![1, 2, 3, 4, 5];
-        let handle =
-            task.run(|t| async move { t.into_device(Buffer::from(values)).await.unwrap() }).await;
-
-        let buffer = handle.await.unwrap();
-        let values_back = buffer.into_host().await.unwrap().into_vec();
-        assert_eq!(values_back, vec![1, 2, 3, 4, 5]);
+        crate::spawn(|_| async {}).await.unwrap();
     }
 
     #[tokio::test]
@@ -625,19 +705,16 @@ mod tests {
         let pool = TaskPoolBuilder::new().num_tasks(num_workers).build().unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut handles = Vec::new();
         for _ in 0..num_callers {
             let pool = pool.clone();
             let tx = tx.clone();
-            tokio::task::spawn(async move {
-                let task = pool.task().await.unwrap();
-                task.run(|_| async move {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-                    tx.send(true).unwrap();
-                })
-                .await
-                .await
-                .unwrap();
+            let handle = pool.spawn(|_| async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                tx.send(true).unwrap();
             });
+
+            handles.push(handle);
         }
         drop(tx);
 
@@ -646,6 +723,11 @@ mod tests {
             assert!(flag);
             count += 1;
         }
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
         assert_eq!(count, num_callers);
     }
 }

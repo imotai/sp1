@@ -130,8 +130,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_base_alu_generate_preprocessed_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(|scope| {
+        csl_cuda::spawn(|scope| {
             crate::recursion::tests::test_preprocessed_tracegen(
                 BaseAluChip,
                 |rng| {
@@ -154,13 +153,13 @@ mod tests {
                 scope,
             )
         })
-        .await;
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
     async fn test_base_alu_generate_main_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(|scope| {
+        csl_cuda::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 BaseAluChip,
                 |rng| {
@@ -181,6 +180,7 @@ mod tests {
                 scope,
             )
         })
-        .await;
+        .await
+        .unwrap();
     }
 }

@@ -99,17 +99,13 @@ mod tests {
         ] {
             let tensor = Tensor::<u32>::rand(&mut rng, [height, width]);
             let transposed_expected = tensor.transpose();
-            let transposed = crate::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let tensor = t.into_device(tensor).await.unwrap();
-                    let transposed = tensor.transpose();
-                    transposed.into_host().await.unwrap()
-                })
-                .await
-                .await
-                .unwrap();
+            let transposed = crate::spawn(move |t| async move {
+                let tensor = t.into_device(tensor).await.unwrap();
+                let transposed = tensor.transpose();
+                transposed.into_host().await.unwrap()
+            })
+            .await
+            .unwrap();
 
             for (val, expected) in
                 transposed.as_buffer().iter().zip(transposed_expected.as_buffer().iter())

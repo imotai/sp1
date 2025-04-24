@@ -196,6 +196,16 @@ impl StreamRef for CudaStream {
     }
 }
 
+impl<S> StreamRef for Arc<S>
+where
+    S: StreamRef + ?Sized,
+{
+    #[inline]
+    unsafe fn stream(&self) -> &CudaStream {
+        self.as_ref().stream()
+    }
+}
+
 impl<S> StreamCallbackFuture<S> {
     /// Creates a new future that completes once the GPU has completed
     /// all work queued in `stream` so far.
@@ -211,8 +221,9 @@ impl<S> StreamCallbackFuture<S> {
             waker: None,
         }));
 
-        // 2) Convert Arc to a raw pointer for CUDA
-        let ptr = Arc::as_ptr(&shared) as *mut c_void;
+        // 2) Convert Arc to a raw pointer for CUDA, leaking one Arc so  that the context is not
+        //    dropped before the callback is called.
+        let ptr = Arc::into_raw(shared.clone()) as *mut c_void;
 
         // 3) Enqueue the callback on the given stream
         //    This means "when the GPU finishes all prior tasks in `stream`,
@@ -238,7 +249,7 @@ where
     S: StreamRef,
 {
     // Convert the raw pointer back to our Arc<Mutex<CallbackState>>
-    let shared = &*(user_data as *const Mutex<CallbackState<S>>);
+    let shared = Arc::<Mutex<CallbackState<S>>>::from_raw(user_data as *const _);
     let mut state = shared.lock().unwrap();
 
     // Mark GPU done

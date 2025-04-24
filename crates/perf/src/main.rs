@@ -68,8 +68,6 @@ async fn main() {
             move |t| async move { make_measurement(&name, &elf, stdin, stage, t).await },
         )
         .await
-        .unwrap()
-        .await
         .unwrap();
     println!("{}", measurement);
 }

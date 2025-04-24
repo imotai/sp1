@@ -144,18 +144,14 @@ mod tests {
 
             let tensor_sent = tensor.clone();
             let scalars_sent = scalars.clone();
-            let inner_product = crate::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                    let device_scalars = t.into_device(scalars_sent).await.unwrap();
-                    let inner_product = device_tensor.dot(&device_scalars, 1).await;
-                    inner_product.into_host().await.unwrap()
-                })
-                .await
-                .await
-                .unwrap();
+            let inner_product = crate::spawn(|t| async move {
+                let device_tensor = t.into_device(tensor_sent).await.unwrap();
+                let device_scalars = t.into_device(scalars_sent).await.unwrap();
+                let inner_product = device_tensor.dot(&device_scalars, 1).await;
+                inner_product.into_host().await.unwrap()
+            })
+            .await
+            .unwrap();
 
             assert_eq!(inner_product.sizes(), [num_summands]);
             for i in 0..num_summands {
@@ -186,18 +182,14 @@ mod tests {
 
             let tensor_sent = tensor.clone();
             let scalars_sent = scalars.clone();
-            let inner_product = crate::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                    let device_scalars = t.into_device(scalars_sent).await.unwrap();
-                    let inner_product = device_tensor.dot(&device_scalars, 1).await;
-                    inner_product.into_host().await.unwrap()
-                })
-                .await
-                .await
-                .unwrap();
+            let inner_product = crate::spawn(|t| async move {
+                let device_tensor = t.into_device(tensor_sent).await.unwrap();
+                let device_scalars = t.into_device(scalars_sent).await.unwrap();
+                let inner_product = device_tensor.dot(&device_scalars, 1).await;
+                inner_product.into_host().await.unwrap()
+            })
+            .await
+            .unwrap();
 
             assert_eq!(inner_product.sizes(), [num_summands]);
             for i in 0..num_summands {
@@ -229,27 +221,23 @@ mod tests {
 
                 let tensor_sent = tensor.clone();
                 let scalars_sent = scalars.clone();
-                let inner_product = crate::task()
-                    .await
-                    .unwrap()
-                    .run(|t| async move {
-                        let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                        let device_scalars = t.into_device(scalars_sent).await.unwrap();
-                        t.synchronize_blocking().unwrap();
-                        let time = std::time::Instant::now();
-                        let inner_product = device_tensor.dot(&device_scalars, 1).await;
-                        t.synchronize_blocking().unwrap();
-                        println!(
-                            "Dot time for size {}, num_summands: {}, time: {:?}",
-                            size,
-                            num_summands,
-                            time.elapsed()
-                        );
-                        inner_product.into_host().await.unwrap()
-                    })
-                    .await
-                    .await
-                    .unwrap();
+                let inner_product = crate::spawn(move |t| async move {
+                    let device_tensor = t.into_device(tensor_sent).await.unwrap();
+                    let device_scalars = t.into_device(scalars_sent).await.unwrap();
+                    t.synchronize_blocking().unwrap();
+                    let time = std::time::Instant::now();
+                    let inner_product = device_tensor.dot(&device_scalars, 1).await;
+                    t.synchronize_blocking().unwrap();
+                    println!(
+                        "Dot time for size {}, num_summands: {}, time: {:?}",
+                        size,
+                        num_summands,
+                        time.elapsed()
+                    );
+                    inner_product.into_host().await.unwrap()
+                })
+                .await
+                .unwrap();
 
                 assert_eq!(inner_product.sizes(), [num_summands]);
                 for i in 0..num_summands {
@@ -280,18 +268,14 @@ mod tests {
 
         let tensor = host_tensor.clone();
         let scalars = host_scalars.clone();
-        let dot = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let tensor = t.into_device(tensor).await.unwrap();
-                let scalars = t.into_device(scalars).await.unwrap();
-                let dot = tensor.dot(&scalars, 0).await;
-                dot.into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let dot = crate::spawn(|t| async move {
+            let tensor = t.into_device(tensor).await.unwrap();
+            let scalars = t.into_device(scalars).await.unwrap();
+            let dot = tensor.dot(&scalars, 0).await;
+            dot.into_host().await.unwrap()
+        })
+        .await
+        .unwrap();
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
@@ -315,18 +299,14 @@ mod tests {
 
         let tensor = host_tensor.clone();
         let scalars = host_scalars.clone();
-        let dot = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let tensor = t.into_device(tensor).await.unwrap();
-                let scalars = t.into_device(scalars).await.unwrap();
-                let dot = tensor.dot(&scalars, 0).await;
-                dot.into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let dot = crate::spawn(|t| async move {
+            let tensor = t.into_device(tensor).await.unwrap();
+            let scalars = t.into_device(scalars).await.unwrap();
+            let dot = tensor.dot(&scalars, 0).await;
+            dot.into_host().await.unwrap()
+        })
+        .await
+        .unwrap();
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
@@ -350,18 +330,14 @@ mod tests {
 
         let tensor = host_tensor.clone();
         let scalars = host_scalars.clone();
-        let dot = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let tensor = t.into_device(tensor).await.unwrap();
-                let scalars = t.into_device(scalars).await.unwrap();
-                let dot = tensor.dot(&scalars, 0).await;
-                dot.into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let dot = crate::spawn(|t| async move {
+            let tensor = t.into_device(tensor).await.unwrap();
+            let scalars = t.into_device(scalars).await.unwrap();
+            let dot = tensor.dot(&scalars, 0).await;
+            dot.into_host().await.unwrap()
+        })
+        .await
+        .unwrap();
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {

@@ -133,73 +133,70 @@ mod tests {
             let mut challenger = jagged_verifier.challenger();
 
             let eval_point_host = eval_point.clone();
-            let (commitments, evaluation_claims, proof) = csl_cuda::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let mut prover_data = Rounds::new();
-                    let mut commitments = Rounds::new();
+            let (commitments, evaluation_claims, proof) = csl_cuda::run_in_place(|t| async move {
+                let mut prover_data = Rounds::new();
+                let mut commitments = Rounds::new();
 
-                    let rounds = stream::iter(round_mles.into_iter())
-                        .then(|round| {
-                            stream::iter(round.into_iter())
-                                .then(|mle| async { t.into_device(mle).await.unwrap() })
-                                .collect::<Vec<_>>()
-                        })
-                        .collect::<Rounds<_>>()
-                        .await;
+                let rounds = stream::iter(round_mles.into_iter())
+                    .then(|round| {
+                        stream::iter(round.into_iter())
+                            .then(|mle| async { t.into_device(mle).await.unwrap() })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Rounds<_>>()
+                    .await;
 
-                    let mut commit_time = Duration::ZERO;
-                    for round in rounds.iter() {
-                        t.synchronize().await.unwrap();
-                        let start = tokio::time::Instant::now();
-                        let (commit, data) =
-                            jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
-                        commit_time += start.elapsed();
-                        challenger.observe(commit);
-                        prover_data.push(data);
-                        commitments.push(commit);
-                    }
-                    println!(
-                        "commit_time for total_number_of_variables: {:?}, commit_time: {:?}",
-                        total_number_of_variables, commit_time
-                    );
-
-                    let evaluation_claims = stream::iter(rounds.iter())
-                        .then(|round| {
-                            stream::iter(round.iter())
-                                .then(|mle| mle.eval_at(&eval_point))
-                                .collect::<Evaluations<_, _>>()
-                        })
-                        .collect::<Rounds<_>>()
-                        .await;
-
+                let mut commit_time = Duration::ZERO;
+                for round in rounds.iter() {
                     t.synchronize().await.unwrap();
                     let start = tokio::time::Instant::now();
-                    let proof = jagged_prover
-                        .prove_trusted_evaluations(
-                            eval_point.clone(),
-                            evaluation_claims.clone(),
-                            prover_data,
-                            &mut challenger,
-                        )
-                        .await
-                        .ok()
-                        .unwrap();
-                    let proof_time = start.elapsed();
-                    println!(
-                        "proof_time for total_number_of_variables: {:?}, proof_time: {:?}",
-                        total_number_of_variables, proof_time
-                    );
-                    let evaluation_claims = stream::iter(evaluation_claims.into_iter())
-                        .then(|e| async move { e.into_host().await.unwrap() })
-                        .collect::<Rounds<_>>()
-                        .await;
-                    (commitments, evaluation_claims, proof)
-                })
-                .await
-                .await
-                .unwrap();
+                    let (commit, data) =
+                        jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
+                    commit_time += start.elapsed();
+                    challenger.observe(commit);
+                    prover_data.push(data);
+                    commitments.push(commit);
+                }
+                println!(
+                    "commit_time for total_number_of_variables: {:?}, commit_time: {:?}",
+                    total_number_of_variables, commit_time
+                );
+
+                let evaluation_claims = stream::iter(rounds.iter())
+                    .then(|round| {
+                        stream::iter(round.iter())
+                            .then(|mle| mle.eval_at(&eval_point))
+                            .collect::<Evaluations<_, _>>()
+                    })
+                    .collect::<Rounds<_>>()
+                    .await;
+
+                t.synchronize().await.unwrap();
+                let start = tokio::time::Instant::now();
+                let proof = jagged_prover
+                    .prove_trusted_evaluations(
+                        eval_point.clone(),
+                        evaluation_claims.clone(),
+                        prover_data,
+                        &mut challenger,
+                    )
+                    .await
+                    .ok()
+                    .unwrap();
+                let proof_time = start.elapsed();
+                println!(
+                    "proof_time for total_number_of_variables: {:?}, proof_time: {:?}",
+                    total_number_of_variables, proof_time
+                );
+                let evaluation_claims = stream::iter(evaluation_claims.into_iter())
+                    .then(|e| async move { e.into_host().await.unwrap() })
+                    .collect::<Rounds<_>>()
+                    .await;
+                (commitments, evaluation_claims, proof)
+            })
+            .await
+            .await
+            .unwrap();
 
             let mut challenger = jagged_verifier.challenger();
             for commitment in commitments.iter() {

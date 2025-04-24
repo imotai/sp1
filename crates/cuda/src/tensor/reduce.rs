@@ -246,17 +246,13 @@ mod tests {
             let tensor = Tensor::<BabyBear>::rand(&mut rng, [num_summands, size]);
 
             let tensor_sent = tensor.clone();
-            let sum_tensor = crate::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                    let sums = device_tensor.sum(1).await;
-                    sums.into_host().await.unwrap()
-                })
-                .await
-                .await
-                .unwrap();
+            let sum_tensor = crate::spawn(|t| async move {
+                let device_tensor = t.into_device(tensor_sent).await.unwrap();
+                let sums = device_tensor.sum(1).await;
+                sums.into_host().await.unwrap()
+            })
+            .await
+            .unwrap();
 
             assert_eq!(sum_tensor.sizes(), [num_summands]);
             for i in 0..num_summands {
@@ -278,17 +274,13 @@ mod tests {
         let tensor = Tensor::<EF>::rand(&mut rng, [num_summands, size]);
 
         let tensor_sent = tensor.clone();
-        let sum_tensor = crate::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                let sums = device_tensor.sum(1).await;
-                sums.into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let sum_tensor = crate::spawn(|t| async move {
+            let device_tensor = t.into_device(tensor_sent).await.unwrap();
+            let sums = device_tensor.sum(1).await;
+            sums.into_host().await.unwrap()
+        })
+        .await
+        .unwrap();
 
         assert_eq!(sum_tensor.sizes(), [num_summands]);
         for i in 0..num_summands {

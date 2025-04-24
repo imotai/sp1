@@ -83,73 +83,69 @@ mod tests {
 
             let mut challenger = verifier.challenger();
 
-            let point_ref = &point;
-            let (commitments, proof, eval_claims) = csl_cuda::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let mut round_mles = vec![];
-                    for round in round_mles_host {
-                        let mut mles = vec![];
-                        for mle in round {
-                            let mle = t.into_device(mle).await.unwrap();
-                            mles.push(mle.clone());
-                        }
-                        let mles = Message::<Mle<BabyBear, TaskScope>>::from(mles);
-                        round_mles.push(mles);
+            let point_ref = point.clone();
+            let (commitments, proof, eval_claims) = csl_cuda::spawn(move |t| async move {
+                let mut round_mles = vec![];
+                for round in round_mles_host {
+                    let mut mles = vec![];
+                    for mle in round {
+                        let mle = t.into_device(mle).await.unwrap();
+                        mles.push(mle.clone());
                     }
-                    let rounds = Rounds { rounds: round_mles };
+                    let mles = Message::<Mle<BabyBear, TaskScope>>::from(mles);
+                    round_mles.push(mles);
+                }
+                let rounds = Rounds { rounds: round_mles };
 
-                    let mut commitments = vec![];
-                    let mut prover_data = Rounds::new();
-                    let mut eval_claims = Rounds::new();
-                    let d_point = point_ref.copy_into(&t);
-                    let mut commit_time = Duration::ZERO;
-                    for mles in rounds.iter() {
-                        t.synchronize().await.unwrap();
-                        let time = std::time::Instant::now();
-                        let (commitment, data) =
-                            prover.commit_multilinears(mles.clone()).await.unwrap();
-                        t.synchronize().await.unwrap();
-                        commit_time += time.elapsed();
-                        challenger.observe(commitment);
-                        commitments.push(commitment);
-                        prover_data.push(data);
-                        let evaluations = stream::iter(mles.iter())
-                            .then(|mle| mle.eval_at(&d_point))
-                            .collect::<Evaluations<_, _>>()
-                            .await;
-                        eval_claims.push(evaluations);
-                    }
-                    t.synchronize().await.unwrap();
-                    println!("commit time for {} variables: {:?}", num_variables, commit_time);
-
+                let mut commitments = vec![];
+                let mut prover_data = Rounds::new();
+                let mut eval_claims = Rounds::new();
+                let d_point = point_ref.copy_into(&t);
+                let mut commit_time = Duration::ZERO;
+                for mles in rounds.iter() {
                     t.synchronize().await.unwrap();
                     let time = std::time::Instant::now();
-                    let proof = prover
-                        .prove_trusted_evaluations(
-                            point_ref.clone(),
-                            rounds,
-                            eval_claims.clone(),
-                            prover_data,
-                            &mut challenger,
-                        )
-                        .await
-                        .unwrap();
-
+                    let (commitment, data) =
+                        prover.commit_multilinears(mles.clone()).await.unwrap();
                     t.synchronize().await.unwrap();
-                    println!("proof time for {} variables: {:?}", num_variables, time.elapsed());
+                    commit_time += time.elapsed();
+                    challenger.observe(commitment);
+                    commitments.push(commitment);
+                    prover_data.push(data);
+                    let evaluations = stream::iter(mles.iter())
+                        .then(|mle| mle.eval_at(&d_point))
+                        .collect::<Evaluations<_, _>>()
+                        .await;
+                    eval_claims.push(evaluations);
+                }
+                t.synchronize().await.unwrap();
+                println!("commit time for {} variables: {:?}", num_variables, commit_time);
 
-                    let mut eval_claims_host = vec![];
-                    for eval_claim in eval_claims {
-                        let eval_claim = eval_claim.into_host().await.unwrap();
-                        eval_claims_host.push(eval_claim.clone());
-                    }
-                    (commitments, proof, eval_claims_host)
-                })
-                .await
-                .await
-                .unwrap();
+                t.synchronize().await.unwrap();
+                let time = std::time::Instant::now();
+                let proof = prover
+                    .prove_trusted_evaluations(
+                        point_ref.clone(),
+                        rounds,
+                        eval_claims.clone(),
+                        prover_data,
+                        &mut challenger,
+                    )
+                    .await
+                    .unwrap();
+
+                t.synchronize().await.unwrap();
+                println!("proof time for {} variables: {:?}", num_variables, time.elapsed());
+
+                let mut eval_claims_host = vec![];
+                for eval_claim in eval_claims {
+                    let eval_claim = eval_claim.into_host().await.unwrap();
+                    eval_claims_host.push(eval_claim.clone());
+                }
+                (commitments, proof, eval_claims_host)
+            })
+            .await
+            .unwrap();
 
             let mut challenger = verifier.challenger();
             for commitment in commitments.iter() {
@@ -227,102 +223,94 @@ mod tests {
             let mut batch_evaluations = Rounds::new();
             let point = Point::<EF>::rand(&mut rng, total_number_of_variables);
 
-            csl_cuda::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let (batch_point, stack_point) =
-                        point.split_at(point.dimension() - log_stacking_height);
-                    let mut round_mles = vec![];
-                    for round in round_mles_host {
-                        let mut mles = vec![];
-                        for mle in round {
-                            let mle = t.into_device(mle).await.unwrap();
-                            mles.push(mle.clone());
-                        }
-                        let mles = Message::<Mle<BabyBear, TaskScope>>::from(mles);
-                        round_mles.push(mles);
+            csl_cuda::spawn(move |t| async move {
+                let (batch_point, stack_point) =
+                    point.split_at(point.dimension() - log_stacking_height);
+                let mut round_mles = vec![];
+                for round in round_mles_host {
+                    let mut mles = vec![];
+                    for mle in round {
+                        let mle = t.into_device(mle).await.unwrap();
+                        mles.push(mle.clone());
                     }
-                    let round_mles = Rounds { rounds: round_mles };
+                    let mles = Message::<Mle<BabyBear, TaskScope>>::from(mles);
+                    round_mles.push(mles);
+                }
+                let round_mles = Rounds { rounds: round_mles };
 
-                    let stack_point_device = t.to_device(&stack_point).await.unwrap();
+                let stack_point_device = t.to_device(&stack_point).await.unwrap();
 
-                    let mut commit_time = Duration::ZERO;
-                    for mles in round_mles.iter() {
-                        t.synchronize().await.unwrap();
-                        let time = std::time::Instant::now();
-                        let (commitment, data) =
-                            prover.commit_multilinears(mles.clone()).await.unwrap();
-                        t.synchronize().await.unwrap();
-                        commit_time += time.elapsed();
-                        challenger.observe(commitment);
-                        commitments.push(commitment);
-                        let evaluations =
-                            prover.round_batch_evaluations(&stack_point_device, &data).await;
-                        prover_data.push(data);
-                        batch_evaluations.push(evaluations);
-                    }
-                    println!(
-                        "commit time for {} variables: {:?}",
-                        total_number_of_variables, commit_time
-                    );
-
-                    let mut host_batch_evaluations = Rounds::new();
-                    for round_evals in batch_evaluations.iter() {
-                        let mut host_round_evals = vec![];
-                        for eval in round_evals.iter() {
-                            host_round_evals.push(eval.to_host().await.unwrap());
-                        }
-                        let host_round_evals = Evaluations::new(host_round_evals);
-                        host_batch_evaluations.push(host_round_evals);
-                    }
-
-                    // Interpolate the batch evaluations as a multilinear polynomial.
-                    let batch_evaluations_mle = host_batch_evaluations
-                        .iter()
-                        .flatten()
-                        .flatten()
-                        .cloned()
-                        .collect::<Mle<_>>();
-                    // Verify that the climed evaluations matched the interpolated evaluations.
-                    let eval_claim = batch_evaluations_mle.eval_at(&batch_point).await[0];
-
+                let mut commit_time = Duration::ZERO;
+                for mles in round_mles.iter() {
                     t.synchronize().await.unwrap();
                     let time = std::time::Instant::now();
-                    let proof = prover
-                        .prove_trusted_evaluation(
-                            point.clone(),
-                            eval_claim,
-                            prover_data,
-                            batch_evaluations,
-                            &mut challenger,
-                        )
-                        .await
-                        .unwrap();
+                    let (commitment, data) =
+                        prover.commit_multilinears(mles.clone()).await.unwrap();
                     t.synchronize().await.unwrap();
-                    println!(
-                        "proof time for {} variables: {:?}",
-                        total_number_of_variables,
-                        time.elapsed()
-                    );
+                    commit_time += time.elapsed();
+                    challenger.observe(commitment);
+                    commitments.push(commitment);
+                    let evaluations =
+                        prover.round_batch_evaluations(&stack_point_device, &data).await;
+                    prover_data.push(data);
+                    batch_evaluations.push(evaluations);
+                }
+                println!(
+                    "commit time for {} variables: {:?}",
+                    total_number_of_variables, commit_time
+                );
 
-                    let mut challenger = verifier.pcs_verifier.challenger();
-                    for commitment in commitments.iter() {
-                        challenger.observe(*commitment);
+                let mut host_batch_evaluations = Rounds::new();
+                for round_evals in batch_evaluations.iter() {
+                    let mut host_round_evals = vec![];
+                    for eval in round_evals.iter() {
+                        host_round_evals.push(eval.to_host().await.unwrap());
                     }
-                    verifier
-                        .verify_trusted_evaluation(
-                            &commitments,
-                            &point,
-                            &proof,
-                            eval_claim,
-                            &mut challenger,
-                        )
-                        .unwrap();
-                })
-                .await
-                .await
-                .unwrap();
+                    let host_round_evals = Evaluations::new(host_round_evals);
+                    host_batch_evaluations.push(host_round_evals);
+                }
+
+                // Interpolate the batch evaluations as a multilinear polynomial.
+                let batch_evaluations_mle =
+                    host_batch_evaluations.iter().flatten().flatten().cloned().collect::<Mle<_>>();
+                // Verify that the climed evaluations matched the interpolated evaluations.
+                let eval_claim = batch_evaluations_mle.eval_at(&batch_point).await[0];
+
+                t.synchronize().await.unwrap();
+                let time = std::time::Instant::now();
+                let proof = prover
+                    .prove_trusted_evaluation(
+                        point.clone(),
+                        eval_claim,
+                        prover_data,
+                        batch_evaluations,
+                        &mut challenger,
+                    )
+                    .await
+                    .unwrap();
+                t.synchronize().await.unwrap();
+                println!(
+                    "proof time for {} variables: {:?}",
+                    total_number_of_variables,
+                    time.elapsed()
+                );
+
+                let mut challenger = verifier.pcs_verifier.challenger();
+                for commitment in commitments.iter() {
+                    challenger.observe(*commitment);
+                }
+                verifier
+                    .verify_trusted_evaluation(
+                        &commitments,
+                        &point,
+                        &proof,
+                        eval_claim,
+                        &mut challenger,
+                    )
+                    .unwrap();
+            })
+            .await
+            .unwrap();
         }
     }
 }

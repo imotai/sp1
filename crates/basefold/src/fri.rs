@@ -370,37 +370,33 @@ mod tests {
             )
             .await;
 
-        let (batch_mle, batch_codeword, eval_claim) = csl_cuda::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let mut mles = vec![];
-                let mut codewords = vec![];
-                let mut eval_claims = vec![];
-                for mle in host_mles {
-                    mles.push(t.into_device(mle).await.unwrap());
-                }
-                for codeword in host_codewords {
-                    let codeword = t.into_device(codeword).await.unwrap();
-                    assert_eq!(codeword.data.sizes()[1], codeword_size);
-                    codewords.push(codeword);
-                }
-                for eval_claim in host_eval_claims {
-                    eval_claims.push(t.into_device(eval_claim).await.unwrap());
-                }
-                let mles = Message::<Mle<BabyBear, TaskScope>>::from(mles);
-                let codewords = Message::<RsCodeWord<BabyBear, TaskScope>>::from(codewords);
-                let (batch_mle, batch_codeword, eval_claim) = cuda_prover
-                    .fri_prover
-                    .batch(batching_challenge, mles, codewords, eval_claims, &cuda_prover.encoder)
-                    .await;
-                let batch_mle = batch_mle.into_host().await.unwrap();
-                let batch_codeword = batch_codeword.into_host().await.unwrap();
-                (batch_mle, batch_codeword, eval_claim)
-            })
-            .await
-            .await
-            .unwrap();
+        let (batch_mle, batch_codeword, eval_claim) = csl_cuda::spawn(move |t| async move {
+            let mut mles = vec![];
+            let mut codewords = vec![];
+            let mut eval_claims = vec![];
+            for mle in host_mles {
+                mles.push(t.into_device(mle).await.unwrap());
+            }
+            for codeword in host_codewords {
+                let codeword = t.into_device(codeword).await.unwrap();
+                assert_eq!(codeword.data.sizes()[1], codeword_size);
+                codewords.push(codeword);
+            }
+            for eval_claim in host_eval_claims {
+                eval_claims.push(t.into_device(eval_claim).await.unwrap());
+            }
+            let mles = Message::<Mle<BabyBear, TaskScope>>::from(mles);
+            let codewords = Message::<RsCodeWord<BabyBear, TaskScope>>::from(codewords);
+            let (batch_mle, batch_codeword, eval_claim) = cuda_prover
+                .fri_prover
+                .batch(batching_challenge, mles, codewords, eval_claims, &cuda_prover.encoder)
+                .await;
+            let batch_mle = batch_mle.into_host().await.unwrap();
+            let batch_codeword = batch_codeword.into_host().await.unwrap();
+            (batch_mle, batch_codeword, eval_claim)
+        })
+        .await
+        .unwrap();
 
         // Compare the results of the host and cuda provers.
         for (exp, val) in
@@ -461,10 +457,8 @@ mod tests {
                 .unwrap();
 
             let mut challenger = verifier.challenger();
-            let (beta, folded_mle, folded_codeword, commit, _, _) = csl_cuda::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
+            let (beta, folded_mle, folded_codeword, commit, _, _) =
+                csl_cuda::spawn(move |t| async move {
                     let initial_mle = t.into_device(initial_mle).await.unwrap();
                     let initial_codeword = t.into_device(initial_codeword.clone()).await.unwrap();
                     let (beta, folded_mle, folded_codeword, commit, leaves, prover_data) =
@@ -483,7 +477,6 @@ mod tests {
                     let folded_codeword_to_host = folded_codeword.into_host().await.unwrap();
                     (beta, folded_mle_to_host, folded_codeword_to_host, commit, leaves, prover_data)
                 })
-                .await
                 .await
                 .unwrap();
 

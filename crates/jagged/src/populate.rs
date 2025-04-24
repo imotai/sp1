@@ -163,27 +163,24 @@ mod tests {
 
         let devide_generator = CudaJaggedMleGenerator;
         let device_paramerters = params.clone();
-        let device_jagged_polynomial = csl_cuda::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let z_row = t.to_device(&z_row).await.unwrap();
-                let z_col = t.to_device(&z_col).await.unwrap();
-                let device_jagged_polynomial = devide_generator
-                    .partial_jagged_multilinear(
-                        &device_paramerters,
-                        row_counts,
-                        column_counts,
-                        &z_row,
-                        &z_col,
-                        1,
-                    )
-                    .await;
-                device_jagged_polynomial.into_host().await.unwrap()
-            })
-            .await
-            .await
-            .unwrap();
+        let device_jagged_polynomial = csl_cuda::run_in_place(|t| async move {
+            let z_row = t.to_device(&z_row).await.unwrap();
+            let z_col = t.to_device(&z_col).await.unwrap();
+            let device_jagged_polynomial = devide_generator
+                .partial_jagged_multilinear(
+                    &device_paramerters,
+                    row_counts,
+                    column_counts,
+                    &z_row,
+                    &z_col,
+                    1,
+                )
+                .await;
+            device_jagged_polynomial.into_host().await.unwrap()
+        })
+        .await
+        .await
+        .unwrap();
 
         for (host_component, device_component) in host_jagged_polynomial
             .into_components()

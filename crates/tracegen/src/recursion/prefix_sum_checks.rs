@@ -69,8 +69,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_prefix_sum_checks_generate_main_trace() {
-        let task = csl_cuda::task().await.unwrap();
-        task.run(|scope| {
+        csl_cuda::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 PrefixSumChecksChip,
                 |rng| PrefixSumChecksEvent {
@@ -91,6 +90,7 @@ mod tests {
                 scope,
             )
         })
-        .await;
+        .await
+        .unwrap();
     }
 }

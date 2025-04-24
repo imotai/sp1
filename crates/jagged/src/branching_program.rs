@@ -138,10 +138,8 @@ mod tests {
             cpu_transition_results.push(bit_state_results);
         }
 
-        let gpu_transition_results: Buffer<usize, CpuBackend> = csl_cuda::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
+        let gpu_transition_results: Buffer<usize, CpuBackend> =
+            csl_cuda::run_in_place(|t| async move {
                 unsafe {
                     // The +1 is for the FAIL state.
                     let mut gpu_transition_results: Tensor<usize, TaskScope> =
@@ -278,99 +276,95 @@ mod tests {
         // the round number == -1).
         let lambdas = vec![EF::zero(), EF::two().inverse()];
 
-        let bp_results_host = csl_cuda::task()
-            .await
-            .unwrap()
-            .run(|t| async move {
-                let curr_prefix_sum_values = curr_prefix_sum_points
-                    .iter()
-                    .flat_map(|x| x.values().clone().into_vec())
-                    .collect::<Vec<_>>();
-                let next_prefix_sum_values = next_prefix_sum_points
-                    .iter()
-                    .flat_map(|x| x.values().clone().into_vec())
-                    .collect::<Vec<_>>();
+        let bp_results_host = csl_cuda::run_in_place(|t| async move {
+            let curr_prefix_sum_values = curr_prefix_sum_points
+                .iter()
+                .flat_map(|x| x.values().clone().into_vec())
+                .collect::<Vec<_>>();
+            let next_prefix_sum_values = next_prefix_sum_points
+                .iter()
+                .flat_map(|x| x.values().clone().into_vec())
+                .collect::<Vec<_>>();
 
-                let mut curr_prefix_sum_tensor: Tensor<F> = curr_prefix_sum_values.into();
-                curr_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
-                let curr_prefix_sum_tensor_transposed = curr_prefix_sum_tensor.transpose();
+            let mut curr_prefix_sum_tensor: Tensor<F> = curr_prefix_sum_values.into();
+            curr_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
+            let curr_prefix_sum_tensor_transposed = curr_prefix_sum_tensor.transpose();
 
-                let mut next_prefix_sum_tensor: Tensor<F> = next_prefix_sum_values.into();
-                next_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
-                let next_prefix_sum_tensor_transposed = next_prefix_sum_tensor.transpose();
+            let mut next_prefix_sum_tensor: Tensor<F> = next_prefix_sum_values.into();
+            next_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
+            let next_prefix_sum_tensor_transposed = next_prefix_sum_tensor.transpose();
 
-                let curr_prefix_sums_device =
-                    t.into_device(curr_prefix_sum_tensor_transposed).await.unwrap();
-                let next_prefix_sums_device =
-                    t.into_device(next_prefix_sum_tensor_transposed).await.unwrap();
+            let curr_prefix_sums_device =
+                t.into_device(curr_prefix_sum_tensor_transposed).await.unwrap();
+            let next_prefix_sums_device =
+                t.into_device(next_prefix_sum_tensor_transposed).await.unwrap();
 
-                let z_row_device = t.into_device(z_row_point).await.unwrap();
-                let z_index_device = t.into_device(z_index_point).await.unwrap();
+            let z_row_device = t.into_device(z_row_point).await.unwrap();
+            let z_index_device = t.into_device(z_index_point).await.unwrap();
 
-                let empty_buffer = Buffer::<EF, TaskScope>::with_capacity_in(0, t.clone());
-                let empty_point: Point<EF, TaskScope> = Point::new(empty_buffer);
+            let empty_buffer = Buffer::<EF, TaskScope>::with_capacity_in(0, t.clone());
+            let empty_point: Point<EF, TaskScope> = Point::new(empty_buffer);
 
-                let lambdas_tensor: Tensor<EF> = lambdas.into();
-                let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
+            let lambdas_tensor: Tensor<EF> = lambdas.into();
+            let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
 
-                let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
-                let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
+            let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
+            let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
 
-                let intermediate_eq_full_evals_tensor: Tensor<EF> =
-                    intermediate_eq_full_evals.into();
-                let intermediate_eq_full_evals_device =
-                    t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
+            let intermediate_eq_full_evals_tensor: Tensor<EF> = intermediate_eq_full_evals.into();
+            let intermediate_eq_full_evals_device =
+                t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
 
-                t.synchronize().await.unwrap();
-                let time = std::time::Instant::now();
+            t.synchronize().await.unwrap();
+            let time = std::time::Instant::now();
 
-                let _bp_results_device = branching_program(
-                    &curr_prefix_sums_device,
-                    &next_prefix_sums_device,
-                    PREFIX_SUM_LENGTH,
-                    &empty_point,
-                    &empty_point,
-                    &z_row_device,
-                    &z_index_device,
-                    num_columns,
-                    -1,
-                    &lambdas_device,
-                    &z_col_eq_vals_device,
-                    &intermediate_eq_full_evals_device,
-                )
-                .await;
+            let _bp_results_device = branching_program(
+                &curr_prefix_sums_device,
+                &next_prefix_sums_device,
+                PREFIX_SUM_LENGTH,
+                &empty_point,
+                &empty_point,
+                &z_row_device,
+                &z_index_device,
+                num_columns,
+                -1,
+                &lambdas_device,
+                &z_col_eq_vals_device,
+                &intermediate_eq_full_evals_device,
+            )
+            .await;
 
-                t.synchronize().await.unwrap();
-                println!("warmup time: {:?}", time.elapsed());
+            t.synchronize().await.unwrap();
+            println!("warmup time: {:?}", time.elapsed());
 
-                t.synchronize().await.unwrap();
-                let time = std::time::Instant::now();
+            t.synchronize().await.unwrap();
+            let time = std::time::Instant::now();
 
-                let bp_results_device = branching_program(
-                    &curr_prefix_sums_device,
-                    &next_prefix_sums_device,
-                    PREFIX_SUM_LENGTH,
-                    &empty_point,
-                    &empty_point,
-                    &z_row_device,
-                    &z_index_device,
-                    num_columns,
-                    -1,
-                    &lambdas_device,
-                    &z_col_eq_vals_device,
-                    &intermediate_eq_full_evals_device,
-                )
-                .await;
+            let bp_results_device = branching_program(
+                &curr_prefix_sums_device,
+                &next_prefix_sums_device,
+                PREFIX_SUM_LENGTH,
+                &empty_point,
+                &empty_point,
+                &z_row_device,
+                &z_index_device,
+                num_columns,
+                -1,
+                &lambdas_device,
+                &z_col_eq_vals_device,
+                &intermediate_eq_full_evals_device,
+            )
+            .await;
 
-                t.synchronize().await.unwrap();
-                println!("branching program time: {:?}", time.elapsed());
+            t.synchronize().await.unwrap();
+            println!("branching program time: {:?}", time.elapsed());
 
-                let bp_results = bp_results_device.storage.into_host().await.unwrap();
-                bp_results.into_vec()
-            })
-            .await
-            .await
-            .unwrap();
+            let bp_results = bp_results_device.storage.into_host().await.unwrap();
+            bp_results.into_vec()
+        })
+        .await
+        .await
+        .unwrap();
 
         assert_eq!(bp_results_host, vec![expected_result, expected_result]);
     }
@@ -441,89 +435,86 @@ mod tests {
                 }
             }
 
-            let bp_results_device = csl_cuda::task()
-                .await
-                .unwrap()
-                .run(|t| async move {
-                    let curr_prefix_sum_values = curr_prefix_sum_points
-                        .iter()
-                        .flat_map(|x| x.values().clone().into_vec())
-                        .collect::<Vec<_>>();
-                    let next_prefix_sum_values = next_prefix_sum_points
-                        .iter()
-                        .flat_map(|x| x.values().clone().into_vec())
-                        .collect::<Vec<_>>();
+            let bp_results_device = csl_cuda::run_in_place(|t| async move {
+                let curr_prefix_sum_values = curr_prefix_sum_points
+                    .iter()
+                    .flat_map(|x| x.values().clone().into_vec())
+                    .collect::<Vec<_>>();
+                let next_prefix_sum_values = next_prefix_sum_points
+                    .iter()
+                    .flat_map(|x| x.values().clone().into_vec())
+                    .collect::<Vec<_>>();
 
-                    let mut curr_prefix_sum_tensor: Tensor<F> = curr_prefix_sum_values.into();
-                    curr_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
-                    let curr_prefix_sum_tensor_transposed = curr_prefix_sum_tensor.transpose();
+                let mut curr_prefix_sum_tensor: Tensor<F> = curr_prefix_sum_values.into();
+                curr_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
+                let curr_prefix_sum_tensor_transposed = curr_prefix_sum_tensor.transpose();
 
-                    let mut next_prefix_sum_tensor: Tensor<F> = next_prefix_sum_values.into();
-                    next_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
-                    let next_prefix_sum_tensor_transposed = next_prefix_sum_tensor.transpose();
+                let mut next_prefix_sum_tensor: Tensor<F> = next_prefix_sum_values.into();
+                next_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
+                let next_prefix_sum_tensor_transposed = next_prefix_sum_tensor.transpose();
 
-                    let curr_prefix_sums_device =
-                        t.into_device(curr_prefix_sum_tensor_transposed).await.unwrap();
-                    let next_prefix_sums_device =
-                        t.into_device(next_prefix_sum_tensor_transposed).await.unwrap();
+                let curr_prefix_sums_device =
+                    t.into_device(curr_prefix_sum_tensor_transposed).await.unwrap();
+                let next_prefix_sums_device =
+                    t.into_device(next_prefix_sum_tensor_transposed).await.unwrap();
 
-                    let z_row_device = t.into_device(z_row_point).await.unwrap();
-                    let z_index_device = t.into_device(z_index_point).await.unwrap();
+                let z_row_device = t.into_device(z_row_point).await.unwrap();
+                let z_index_device = t.into_device(z_index_point).await.unwrap();
 
-                    let (current_prefix_sum_rho_point, next_prefix_sum_rho_point): (
-                        Point<EF>,
-                        Point<EF>,
-                    ) = if round_num < PREFIX_SUM_LENGTH {
-                        (Vec::new().into(), rhos.clone())
-                    } else {
-                        let current_prefix_sum_rho_point_dim = round_num - PREFIX_SUM_LENGTH;
-                        rhos.split_at(current_prefix_sum_rho_point_dim)
-                    };
+                let (current_prefix_sum_rho_point, next_prefix_sum_rho_point): (
+                    Point<EF>,
+                    Point<EF>,
+                ) = if round_num < PREFIX_SUM_LENGTH {
+                    (Vec::new().into(), rhos.clone())
+                } else {
+                    let current_prefix_sum_rho_point_dim = round_num - PREFIX_SUM_LENGTH;
+                    rhos.split_at(current_prefix_sum_rho_point_dim)
+                };
 
-                    let lambdas_tensor: Tensor<EF> = lambdas.into();
-                    let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
+                let lambdas_tensor: Tensor<EF> = lambdas.into();
+                let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
 
-                    let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
-                    let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
+                let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
+                let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
 
-                    t.synchronize().await.unwrap();
-                    let time = std::time::Instant::now();
+                t.synchronize().await.unwrap();
+                let time = std::time::Instant::now();
 
-                    let current_prefix_sum_rho_device =
-                        t.into_device(current_prefix_sum_rho_point.clone()).await.unwrap();
-                    let next_prefix_sum_rho_device =
-                        t.into_device(next_prefix_sum_rho_point.clone()).await.unwrap();
+                let current_prefix_sum_rho_device =
+                    t.into_device(current_prefix_sum_rho_point.clone()).await.unwrap();
+                let next_prefix_sum_rho_device =
+                    t.into_device(next_prefix_sum_rho_point.clone()).await.unwrap();
 
-                    let intermediate_eq_full_evals_tensor: Tensor<EF> =
-                        intermediate_eq_full_evals.into();
-                    let intermediate_eq_full_evals_device =
-                        t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
+                let intermediate_eq_full_evals_tensor: Tensor<EF> =
+                    intermediate_eq_full_evals.into();
+                let intermediate_eq_full_evals_device =
+                    t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
 
-                    let bp_results_device = branching_program(
-                        &curr_prefix_sums_device,
-                        &next_prefix_sums_device,
-                        PREFIX_SUM_LENGTH,
-                        &current_prefix_sum_rho_device,
-                        &next_prefix_sum_rho_device,
-                        &z_row_device,
-                        &z_index_device,
-                        num_columns,
-                        round_num.try_into().unwrap(),
-                        &lambdas_device,
-                        &z_col_eq_vals_device,
-                        &intermediate_eq_full_evals_device,
-                    )
-                    .await;
+                let bp_results_device = branching_program(
+                    &curr_prefix_sums_device,
+                    &next_prefix_sums_device,
+                    PREFIX_SUM_LENGTH,
+                    &current_prefix_sum_rho_device,
+                    &next_prefix_sum_rho_device,
+                    &z_row_device,
+                    &z_index_device,
+                    num_columns,
+                    round_num.try_into().unwrap(),
+                    &lambdas_device,
+                    &z_col_eq_vals_device,
+                    &intermediate_eq_full_evals_device,
+                )
+                .await;
 
-                    t.synchronize().await.unwrap();
-                    println!("branching program time: {:?}", time.elapsed());
+                t.synchronize().await.unwrap();
+                println!("branching program time: {:?}", time.elapsed());
 
-                    let bp_results_device = bp_results_device.storage.into_host().await.unwrap();
-                    bp_results_device.into_vec()
-                })
-                .await
-                .await
-                .unwrap();
+                let bp_results_device = bp_results_device.storage.into_host().await.unwrap();
+                bp_results_device.into_vec()
+            })
+            .await
+            .await
+            .unwrap();
 
             assert_eq!(bp_results_device, expected_results);
         }

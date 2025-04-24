@@ -112,8 +112,8 @@ pub(crate) mod tests {
             RecursionProgram::new_unchecked(RootProgram {
                 inner: RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] },
                 total_memory: 0, // Will be filled in.
-                dummy_preprocessed_height: 0,
-                dummy_main_height: 0,
+                shape: None,
+                event_counts: None,
             })
         };
 

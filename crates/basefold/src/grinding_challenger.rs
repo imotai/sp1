@@ -54,8 +54,7 @@ where
             }
             result
         });
-        let result_handle = handle.await.unwrap();
-        let result = result_handle.await.unwrap();
+        let result = handle.await.unwrap();
         let cpu_result = result.into_host().await.unwrap();
         let result = cpu_result.first().unwrap();
         // Check the witness. This is necessary, because it changes the internal state of the

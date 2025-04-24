@@ -29,7 +29,7 @@ impl<F: Field, EF: ExtensionField<F>> JaggedAssistSumAsPolyGPUImpl<F, EF> {
         next_prefix_sum_rho: Point<EF>,
         intermediate_eq_full_evals: Vec<EF>,
     ) -> (Point<EF, TaskScope>, Point<EF, TaskScope>, Tensor<EF, TaskScope>) {
-        csl_cuda::spawn(move |t| async move {
+        csl_cuda::run_in_place(|t| async move {
             let current_prefix_sum_rho_device =
                 t.into_device(current_prefix_sum_rho).await.unwrap();
             let next_prefix_sum_rho_device = t.into_device(next_prefix_sum_rho).await.unwrap();
@@ -46,7 +46,6 @@ impl<F: Field, EF: ExtensionField<F>> JaggedAssistSumAsPolyGPUImpl<F, EF> {
             )
         })
         .await
-        .unwrap()
         .await
         .unwrap()
     }
@@ -66,7 +65,7 @@ where
     where
         TaskScope: Backend,
     {
-        csl_cuda::spawn(move |t| async move {
+        csl_cuda::run_in_place(|t| async move {
             let z_row_device = t.into_device(z_row).await.unwrap();
             let z_index_device = t.into_device(z_index).await.unwrap();
 
@@ -116,7 +115,6 @@ where
             }
         })
         .await
-        .unwrap()
         .await
         .unwrap()
     }
