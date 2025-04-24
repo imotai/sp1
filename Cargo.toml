@@ -62,6 +62,7 @@ csl-logup-gkr = { path = "crates/logup-gkr" }
 # slop 
 slop-air = { git = "https://github.com/succinctlabs/slop" }
 slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
+slop-bn254 = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
 slop-dft = { git = "https://github.com/succinctlabs/slop" }
@@ -92,10 +93,10 @@ sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", 
 sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "tamir/gkr-unified-clean" }
 
-
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
 # slop-baby-bear = { path = "../slop/crates/baby-bear" }
+# slop-bn254 = { path = "../slop/crates/bn254" }
 # slop-basefold = { path = "../slop/crates/basefold" }
 # slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
 # slop-dft = { path = "../slop/crates/dft" }

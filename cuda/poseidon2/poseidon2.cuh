@@ -1,6 +1,7 @@
 #pragma once
 
 #include "poseidon2_bb31_16.cuh"
+#include "poseidon2_bn254_3.cuh"
 
 namespace poseidon2
 {
@@ -270,7 +271,44 @@ namespace poseidon2
         }
     };
 
+    template<typename Params, typename Hasher_t, typename P_t, int R>
+    struct MultiFieldHasherState: public HasherState<Params, Hasher_t> {
+        using F_t = typename Params::F_t;
+
+        static_assert(
+            std::is_same<F_t, bn254_t>::value,
+            "MultiFieldHasherState only supports bb31 reduction to bn254"
+        );
+        static_assert(
+            std::is_same<P_t, bb31_t>::value,
+            "MultiFieldHasherState only supports bb31 reduction to bn254"
+        );
+
+        P_t overhang[R];
+        size_t overhangSize;
+
+        __device__ MultiFieldHasherState() :
+            HasherState<Params, Hasher_t>(),
+            overhangSize(0) {}
+
+        __device__ void finalize(Hasher_t hasher, F_t out[Params::DIGEST_WIDTH]) {
+            if (overhangSize > 0) {
+                F_t value = poseidon2_bn254_3::reduceBabyBear(
+                    overhang,
+                    nullptr,
+                    overhangSize,
+                    0,
+                    1,
+                    0
+                );
+                absorb(hasher, &value, 1);
+            }
+            HasherState<Params, Hasher_t>::finalize(hasher, out);
+        }
+    };
+
     using BabyBearHasher = StaticHasher<poseidon2_bb31_16::BabyBear>;
+    using Bn254Hasher = DynamicHasher<poseidon2_bn254_3::Bn254>;
 
     class BabyBearHasherState : public HasherState<poseidon2_bb31_16::BabyBear, BabyBearHasher>
     {
@@ -289,5 +327,26 @@ namespace poseidon2
                 this);
         }
     };
+
+    class Bn254HasherState:
+        public MultiFieldHasherState<
+            poseidon2_bn254_3::Bn254,
+            Bn254Hasher,
+            bb31_t,
+            8> {
+    public:
+        __device__ void
+        absorbRow(Bn254Hasher hasher, bb31_t* in, int rowIdx, size_t width, size_t height) {
+            poseidon2_bn254_3::absorbRow<
+                Bn254Hasher,
+                MultiFieldHasherState<
+                    poseidon2_bn254_3::Bn254,
+                    Bn254Hasher,
+                    bb31_t,
+                    8>>(hasher, in, rowIdx, width, height, this);
+        }
+    };
+
+
 
 } // namespace poseidon2

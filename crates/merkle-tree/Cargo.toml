@@ -20,7 +20,9 @@ slop-alloc = { workspace = true }
 slop-tensor = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-baby-bear = { workspace = true }
+slop-bn254 = { workspace = true }
 slop-commit = { workspace = true }
+slop-algebra = { workspace = true }
 slop-merkle-tree = { workspace = true }
 
 thiserror = { workspace = true }

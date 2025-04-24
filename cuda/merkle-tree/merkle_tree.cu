@@ -1,20 +1,18 @@
-#include "poseidon2_bb31_16.cuh"
-#include "poseidon2.cuh"
-#include "poseidon2_baby_bear.cuh"
 #include <stdio.h>
+#include "../poseidon2/poseidon2_bb31_16.cuh"
+#include "../poseidon2/poseidon2.cuh"
+#include "../poseidon2/poseidon2_bn254_3.cuh"
 
-using HashParams = poseidon2_bb31_16::BabyBear;
-using HasherState_t = poseidon2::BabyBearHasherState;
-
+template<typename Hasher_t, typename HashParams, typename HasherState_t>
 __global__ void
-leafHashPoseidon2BabyBear16(
+leafHash(
+    Hasher_t hasher,
     bb31_t **inputs,
-    bb31_t (*digests)[HashParams::DIGEST_WIDTH],
+    typename HashParams::F_t (*digests)[HashParams::DIGEST_WIDTH],
     size_t *widths,
     size_t num_inputs,
     size_t tree_height)
 {
-    poseidon2::BabyBearHasher hasher;
     HasherState_t state;
 
     size_t matrixHeight = 1 << tree_height;
@@ -29,17 +27,22 @@ leafHashPoseidon2BabyBear16(
     }
 }
 
-extern "C" void *leaf_hash_poseidon_2_baby_bear_16_kernel()
+extern "C" void *leaf_hash_merkle_tree_baby_bear_16_kernel()
 {
-    return (void *)leafHashPoseidon2BabyBear16;
+    return (void *)leafHash<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
 }
 
-__global__ void compressPoseidon2BabyBear16(
-    bb31_t (*digests)[HashParams::DIGEST_WIDTH],
+extern "C" void *leaf_hash_merkle_tree_bn254_kernel()
+{
+    return (void *)leafHash<poseidon2::Bn254Hasher, poseidon2_bn254_3::Bn254, poseidon2::Bn254HasherState>;
+}
+
+template<typename Hasher_t, typename HashParams, typename HasherState_t>
+__global__ void compress(
+    Hasher_t hasher,
+    typename HashParams::F_t (*digests)[HashParams::DIGEST_WIDTH],
     size_t layer_height)
 {
-    poseidon2::BabyBearHasher hasher;
-
     size_t layerLength = 1 << layer_height;
     for (int i = (blockIdx.x * blockDim.x) + threadIdx.x; i < layerLength; i += blockDim.x * gridDim.x)
     {
@@ -50,16 +53,24 @@ __global__ void compressPoseidon2BabyBear16(
     }
 }
 
-extern "C" void *compress_poseidon_2_baby_bear_16_kernel()
+extern "C" void *compress_merkle_tree_baby_bear_16_kernel()
 {
-    return (void *)compressPoseidon2BabyBear16;
+    return (void *)compress<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
 }
 
-__global__ void computePathsBabyBear16(
-    bb31_t (*paths)[HashParams::DIGEST_WIDTH],
+extern "C" void *compress_merkle_tree_bn254_kernel()
+{
+    return (void *)compress<poseidon2::Bn254Hasher, poseidon2_bn254_3::Bn254, poseidon2::Bn254HasherState>;
+}
+
+
+
+template<typename Hasher_t, typename HashParams, typename HasherState_t>
+__global__ void computePaths(
+    typename HashParams::F_t (*paths)[HashParams::DIGEST_WIDTH],
     size_t *indices,
     size_t numIndices,
-    bb31_t (*digests)[HashParams::DIGEST_WIDTH],
+    typename HashParams::F_t (*digests)[HashParams::DIGEST_WIDTH],
     size_t tree_height)
 {
     for (int i = (blockIdx.x * blockDim.x) + threadIdx.x; i < numIndices; i += blockDim.x * gridDim.x)
@@ -69,8 +80,8 @@ __global__ void computePathsBabyBear16(
         {
             size_t siblingIdx = ((idx - 1) ^ 1) + 1;
             size_t parentIdx = (idx - 1) >> 1;
-            bb31_t *digest = digests[siblingIdx];
-            bb31_t *path_digest = paths[i * tree_height + k];
+            typename HashParams::F_t *digest = digests[siblingIdx];
+            typename HashParams::F_t *path_digest = paths[i * tree_height + k];
 #pragma unroll
             for (int j = 0; j < HashParams::DIGEST_WIDTH; j++)
             {
@@ -81,12 +92,20 @@ __global__ void computePathsBabyBear16(
     }
 }
 
-extern "C" void *compute_paths_poseidon_2_baby_bear_16_kernel()
+
+extern "C" void *compute_paths_merkle_tree_baby_bear_16_kernel()
 {
-    return (void *)computePathsBabyBear16;
+    return (void *)computePaths<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
 }
 
-__global__ void computeOpeningsBabyBear16(
+extern "C" void *compute_paths_merkle_tree_bn254_kernel()
+{
+    return (void *)computePaths<poseidon2::Bn254Hasher, poseidon2_bn254_3::Bn254, poseidon2::Bn254HasherState>;
+}
+
+
+template<typename Hasher_t, typename HashParams, typename HasherState_t>
+__global__ void computeOpenings(
     bb31_t **__restrict__ inputs,
     bb31_t *__restrict__ outputs,
     size_t *indices,
@@ -113,7 +132,12 @@ __global__ void computeOpeningsBabyBear16(
     }
 }
 
-extern "C" void *compute_openings_poseidon_2_baby_bear_16_kernel()
+extern "C" void *compute_openings_merkle_tree_baby_bear_16_kernel()
 {
-    return (void *)computeOpeningsBabyBear16;
+    return (void *)computeOpenings<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
+}
+
+extern "C" void *compute_openings_merkle_tree_bn254_kernel()
+{
+    return (void *)computeOpenings<poseidon2::Bn254Hasher, poseidon2_bn254_3::Bn254, poseidon2::Bn254HasherState>;
 }

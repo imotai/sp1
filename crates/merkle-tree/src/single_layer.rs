@@ -4,25 +4,33 @@ use csl_cuda::DeviceCopy;
 use csl_cuda::{
     args,
     sys::{
-        poseidon2::{
-            compress_poseidon_2_baby_bear_16_kernel,
-            compute_openings_poseidon_2_baby_bear_16_kernel,
-            compute_paths_poseidon_2_baby_bear_16_kernel, leaf_hash_poseidon_2_baby_bear_16_kernel,
+        merkle_tree::{
+            compress_merkle_tree_baby_bear_16_kernel, compress_merkle_tree_bn254_kernel,
+            compute_openings_merkle_tree_baby_bear_16_kernel,
+            compute_openings_merkle_tree_bn254_kernel,
+            compute_paths_merkle_tree_baby_bear_16_kernel, compute_paths_merkle_tree_bn254_kernel,
+            leaf_hash_merkle_tree_baby_bear_16_kernel, leaf_hash_merkle_tree_bn254_kernel,
         },
         runtime::{Dim3, KernelPtr},
     },
     CudaError, TaskScope,
 };
+use slop_algebra::{AbstractField, Field};
+use slop_alloc::CpuBackend;
 use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
+use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
 use slop_commit::{ComputeTcsOpenings, Message, TensorCsProver};
 use slop_futures::OwnedBorrow;
 use slop_merkle_tree::{
-    MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2BabyBearConfig,
+    bn254_poseidon2_rc3, MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof,
+    Poseidon2BabyBearConfig, Poseidon2Bn254Config,
 };
 use slop_tensor::Tensor;
 use thiserror::Error;
 
 use crate::tree::MerkleTree;
+use crate::MerkleTreeHasher;
 
 /// # Safety
 ///
@@ -40,8 +48,14 @@ pub unsafe trait MerkeTreeSingleLayerKernels<M: MerkleTreeConfig>:
     fn compute_openings_kernel() -> KernelPtr;
 }
 
+pub trait Hasher<F: Field, const WIDTH: usize>: 'static + Send + Sync {
+    fn hasher() -> MerkleTreeHasher<F, CpuBackend, WIDTH>;
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MerkleTreeSingleLayerProver<K, M>(PhantomData<(K, M)>);
+pub struct MerkleTreeSingleLayerProver<F: Field, K, H, M, const WIDTH: usize>(
+    PhantomData<(K, H, M, F)>,
+);
 
 #[derive(Debug, Clone, Copy, Error)]
 pub enum SingleLayerMerkleTreeProverError {
@@ -51,11 +65,13 @@ pub enum SingleLayerMerkleTreeProverError {
     Copy(#[from] CopyError),
 }
 
-impl<K, M> TensorCsProver<TaskScope> for MerkleTreeSingleLayerProver<K, M>
+impl<F: Field, K, H, M, const WIDTH: usize> TensorCsProver<TaskScope>
+    for MerkleTreeSingleLayerProver<F, K, H, M, WIDTH>
 where
     M: MerkleTreeConfig,
     M::Digest: Copy,
     K: MerkeTreeSingleLayerKernels<M>,
+    H: Hasher<F, WIDTH>,
 {
     type Cs = MerkleTreeTcs<M>;
     type ProverError = SingleLayerMerkleTreeProverError;
@@ -72,6 +88,9 @@ where
         T: OwnedBorrow<Tensor<M::Data, TaskScope>>,
     {
         // assert_eq!(tensors.len(), 1, "Only one tensor is supported");
+        let scope = tensors[0].borrow().backend();
+        let hasher = H::hasher();
+        let hasher_device = scope.to_device(&hasher).await.unwrap();
         let height = tensors[0].borrow().sizes()[1].ilog2() as usize;
         let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) = tensors
             .iter()
@@ -82,7 +101,6 @@ where
                 (tensor.as_ptr(), tensor.sizes()[0])
             })
             .unzip();
-        let scope = tensors[0].borrow().backend();
         let num_inputs = tensors.len();
         let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
         tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host)?;
@@ -97,6 +115,7 @@ where
             let block_dim = 256;
             let grid_dim = (1usize << height).div_ceil(block_dim);
             let args = args!(
+                hasher_device.as_raw(),
                 tensor_ptrs.as_ptr(),
                 tree.digests.as_mut_ptr(),
                 widths.as_ptr(),
@@ -110,7 +129,7 @@ where
         for k in (0..height).rev() {
             let block_dim: Dim3 = (128u32, 4, 1).into();
             let grid_dim: Dim3 = ((1u32 << k).div_ceil(block_dim.x), 1, num_inputs as u32).into();
-            let args = args!(tree.digests.as_mut_ptr(), k);
+            let args = args!(hasher_device.as_raw(), tree.digests.as_mut_ptr(), k);
             unsafe {
                 scope.launch_kernel(K::compress_layer_kernel(), grid_dim, block_dim, &args, 0)?;
             }
@@ -156,12 +175,14 @@ where
     }
 }
 
-impl<M, K> ComputeTcsOpenings<TaskScope> for MerkleTreeSingleLayerProver<K, M>
+impl<F: Field, M, K, H, const WIDTH: usize> ComputeTcsOpenings<TaskScope>
+    for MerkleTreeSingleLayerProver<F, K, H, M, WIDTH>
 where
     M: MerkleTreeConfig,
     M::Data: DeviceCopy,
     M::Digest: DeviceCopy,
     K: MerkeTreeSingleLayerKernels<M>,
+    H: Hasher<F, WIDTH>,
 {
     async fn compute_openings_at_indices<T>(
         &self,
@@ -245,28 +266,104 @@ where
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Poseidon2BabyBear16Kernels;
 
-pub type Poseidon2BabyBear16CudaProver =
-    MerkleTreeSingleLayerProver<Poseidon2BabyBear16Kernels, Poseidon2BabyBearConfig>;
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2Bn254Kernels;
+
+pub type Poseidon2BabyBear16CudaProver = MerkleTreeSingleLayerProver<
+    BabyBear,
+    Poseidon2BabyBear16Kernels,
+    Poseidon2BabyBear16Hasher,
+    Poseidon2BabyBearConfig,
+    16,
+>;
+
+pub type Poseidon2Bn254CudaProver = MerkleTreeSingleLayerProver<
+    Bn254Fr,
+    Poseidon2Bn254Kernels,
+    Poseidon2Bn254Hasher,
+    Poseidon2Bn254Config,
+    3,
+>;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2BabyBear16Hasher;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2Bn254Hasher;
+
+impl Hasher<BabyBear, 16> for Poseidon2BabyBear16Hasher {
+    fn hasher() -> MerkleTreeHasher<BabyBear, CpuBackend, 16> {
+        MerkleTreeHasher::default()
+    }
+}
+
+impl Hasher<Bn254Fr, 3> for Poseidon2Bn254Hasher {
+    fn hasher() -> MerkleTreeHasher<Bn254Fr, CpuBackend, 3> {
+        let (internal_round_constants, external_round_constants, diffusion_matrix_m1) =
+            poseidon2_bn254_3_constants();
+        MerkleTreeHasher::new(
+            internal_round_constants.into(),
+            external_round_constants.into(),
+            diffusion_matrix_m1.into(),
+            Bn254Fr::one(),
+        )
+    }
+}
+
+pub fn poseidon2_bn254_3_constants() -> (Vec<Bn254Fr>, Vec<[Bn254Fr; 3]>, Vec<Bn254Fr>) {
+    const ROUNDS_F: usize = 8;
+    const ROUNDS_P: usize = 56;
+    let mut round_constants = bn254_poseidon2_rc3();
+    let internal_start = ROUNDS_F / 2;
+    let internal_end = (ROUNDS_F / 2) + ROUNDS_P;
+    let internal_round_constants =
+        round_constants.drain(internal_start..internal_end).map(|vec| vec[0]).collect::<Vec<_>>();
+    let external_round_constants = round_constants;
+    let diffusion_matrix_m1 = [Bn254Fr::one(), Bn254Fr::one(), Bn254Fr::two()].to_vec();
+    (internal_round_constants, external_round_constants, diffusion_matrix_m1)
+}
 
 unsafe impl MerkeTreeSingleLayerKernels<Poseidon2BabyBearConfig> for Poseidon2BabyBear16Kernels {
     #[inline]
     fn leaf_hash_kernel() -> KernelPtr {
-        unsafe { leaf_hash_poseidon_2_baby_bear_16_kernel() }
+        unsafe { leaf_hash_merkle_tree_baby_bear_16_kernel() }
     }
 
     #[inline]
     fn compress_layer_kernel() -> KernelPtr {
-        unsafe { compress_poseidon_2_baby_bear_16_kernel() }
+        unsafe { compress_merkle_tree_baby_bear_16_kernel() }
     }
 
     #[inline]
     fn compute_paths_kernel() -> KernelPtr {
-        unsafe { compute_paths_poseidon_2_baby_bear_16_kernel() }
+        unsafe { compute_paths_merkle_tree_baby_bear_16_kernel() }
     }
 
     #[inline]
     fn compute_openings_kernel() -> KernelPtr {
-        unsafe { compute_openings_poseidon_2_baby_bear_16_kernel() }
+        unsafe { compute_openings_merkle_tree_baby_bear_16_kernel() }
+    }
+}
+
+unsafe impl MerkeTreeSingleLayerKernels<Poseidon2Bn254Config> for Poseidon2Bn254Kernels {
+    #[inline]
+    fn leaf_hash_kernel() -> KernelPtr {
+        unsafe { leaf_hash_merkle_tree_bn254_kernel() }
+    }
+
+    #[inline]
+    fn compress_layer_kernel() -> KernelPtr {
+        unsafe { compress_merkle_tree_bn254_kernel() }
+    }
+
+    #[inline]
+    fn compute_paths_kernel() -> KernelPtr {
+        unsafe { compute_paths_merkle_tree_bn254_kernel() }
+    }
+
+    #[inline]
+    fn compute_openings_kernel() -> KernelPtr {
+        unsafe { compute_openings_merkle_tree_bn254_kernel() }
     }
 }
 
@@ -274,13 +371,17 @@ unsafe impl MerkeTreeSingleLayerKernels<Poseidon2BabyBearConfig> for Poseidon2Ba
 mod tests {
     use rand::{thread_rng, Rng};
     use slop_baby_bear::BabyBear;
+    use slop_bn254::Bn254Fr;
     use slop_commit::{TensorCs, TensorCsOpening};
-    use slop_merkle_tree::Poseidon2BabyBear16Prover;
+    use slop_merkle_tree::{FieldMerkleTreeProver, Poseidon2BabyBear16Prover};
 
     use super::*;
 
+    pub type Poseidon2Bn254Prover =
+        FieldMerkleTreeProver<BabyBear, Bn254Fr, Poseidon2Bn254Config, 1>;
+
     #[tokio::test]
-    async fn test_merkle_proof() {
+    async fn test_merkle_proof_baby_bear() {
         let mut rng = thread_rng();
 
         let height = 1 << 12;
@@ -313,6 +414,47 @@ mod tests {
             assert_eq!(host_root, root);
 
             let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
+            let opening = TensorCsOpening { values: openings, proof };
+            tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_merkle_proof_bn254() {
+        let mut rng = thread_rng();
+
+        let height = 1 << 12;
+
+        let num_indices = 50;
+        let widths = [10, 20, 30, 5, 140];
+
+        let host_tensors = widths
+            .into_iter()
+            .map(|width| Tensor::<BabyBear>::rand(&mut rng, [height, width]))
+            .collect::<Message<_>>();
+        let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect::<Vec<_>>();
+
+        let host_prover = Poseidon2Bn254Prover::default();
+        let (host_root, _) = host_prover.commit_tensors(host_tensors.clone()).await.unwrap();
+        csl_cuda::spawn(move |t| async move {
+            let mut tensors = vec![];
+            for host_tensor in host_tensors {
+                let host_tensor = Tensor::<BabyBear>::clone(&host_tensor);
+                let tensor = t.into_device(host_tensor).await.unwrap().transpose();
+                tensors.push(tensor);
+            }
+            let tensors = Message::<Tensor<BabyBear, TaskScope>>::from(tensors);
+            let prover = Poseidon2Bn254CudaProver::default();
+            let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+
+            let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
+            let openings = prover.compute_openings_at_indices(tensors, &indices).await;
+
+            assert_eq!(host_root, root);
+
+            let tcs = MerkleTreeTcs::<Poseidon2Bn254Config>::default();
             let opening = TensorCsOpening { values: openings, proof };
             tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
         })
