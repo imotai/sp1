@@ -73,6 +73,13 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
         NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS
     }
 
+    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
+        if let Some(shape) = program.shape.as_ref() {
+            return Some(next_multiple_of_32(instrs_len, shape.height(self)));
+        }
+        Some(next_multiple_of_32(instrs_len, None))
+    }
+
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
@@ -124,11 +131,12 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
             rows.extend(row_add);
         });
 
+        let height = self.preprocessed_num_rows(program, rows.len()).unwrap();
         // Pad the trace to a power of two.
         pad_rows_fixed(
             &mut rows,
             || [BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS],
-            None,
+            Some(height),
         );
 
         let trace = RowMajorMatrix::new(
@@ -143,8 +151,9 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         let events = &input.prefix_sum_checks_events;
-        Some(next_multiple_of_32(events.len(), None))
+        Some(next_multiple_of_32(events.len(), height))
     }
 
     #[instrument(name = "generate prefix sum checks trace", level = "debug", skip_all, fields(rows = input.prefix_sum_checks_events.len()))]
@@ -183,7 +192,8 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
                 .collect_vec();
 
         // Pad the trace to a power of two.
-        pad_rows_fixed(&mut rows, || [BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_COLS], None);
+        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
+        pad_rows_fixed(&mut rows, || [BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_COLS], height);
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(

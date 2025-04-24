@@ -3,21 +3,18 @@ pub use riscv_chips::*;
 use core::fmt;
 use std::collections::BTreeSet;
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_field::PrimeField32;
-use sp1_core_executor::{
-    events::PrecompileLocalMemory, syscalls::SyscallCode, ExecutionRecord, Program, RiscvAirId,
-};
+use sp1_core_executor::{ExecutionRecord, RiscvAirId};
 use sp1_curves::weierstrass::{bls12_381::Bls12381BaseField, bn254::Bn254BaseField};
 use sp1_stark::{
     air::{InteractionScope, MachineAir, SP1_PROOF_NUM_PV_ELTS},
-    Chip, InteractionKind, Machine, MachineShape,
+    Chip, Machine, MachineShape,
 };
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
-    bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{AuipcChip, BranchChip, JalChip, JalrChip},
     global::GlobalChip,
     memory::{
@@ -28,7 +25,7 @@ use crate::{
         store::{store_byte::StoreByteChip, store_half::StoreHalfChip, store_word::StoreWordChip},
         MemoryBumpChip, MemoryChipType, MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW,
     },
-    range::{trace::NUM_ROWS as RANGE_CHIP_NUM_ROWS, RangeChip},
+    range::RangeChip,
     syscall::{
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
@@ -801,15 +798,6 @@ impl<F: PrimeField32> RiscvAir<F> {
         (chips, costs)
     }
 
-    /// Get the heights of the preprocessed chips for a given program.
-    pub(crate) fn preprocessed_heights(program: &Program) -> Vec<(RiscvAirId, usize)> {
-        vec![
-            (RiscvAirId::Program, program.instructions.len()),
-            (RiscvAirId::Byte, BYTE_CHIP_NUM_ROWS),
-            (RiscvAirId::Range, RANGE_CHIP_NUM_ROWS),
-        ]
-    }
-
     /// Get the heights of the chips for a given execution record.
     pub fn core_heights(record: &ExecutionRecord) -> Vec<(RiscvAirId, usize)> {
         vec![
@@ -846,183 +834,6 @@ impl<F: PrimeField32> RiscvAir<F> {
             (RiscvAirId::SyscallCore, record.syscall_events.len()),
             (RiscvAirId::SyscallInstrs, record.syscall_events.len()),
         ]
-    }
-
-    pub(crate) fn memory_heights(record: &ExecutionRecord) -> Vec<(RiscvAirId, usize)> {
-        vec![
-            (RiscvAirId::MemoryGlobalInit, record.global_memory_initialize_events.len()),
-            (RiscvAirId::MemoryGlobalFinalize, record.global_memory_finalize_events.len()),
-            (
-                RiscvAirId::Global,
-                record.global_memory_finalize_events.len()
-                    + record.global_memory_initialize_events.len(),
-            ),
-        ]
-    }
-
-    pub(crate) fn precompile_heights(
-        &self,
-        record: &ExecutionRecord,
-    ) -> Option<(usize, usize, usize)> {
-        record
-            .precompile_events
-            .get_events(self.syscall_code())
-            .filter(|events| !events.is_empty())
-            .map(|events| {
-                (
-                    events.len() * self.rows_per_event(),
-                    events.get_local_mem_events().into_iter().count(),
-                    record.global_interaction_events.len(),
-                )
-            })
-    }
-
-    pub(crate) fn get_all_core_airs() -> Vec<Self> {
-        vec![
-            RiscvAir::Add(AddChip::default()),
-            RiscvAir::Addi(AddiChip::default()),
-            RiscvAir::Sub(SubChip::default()),
-            RiscvAir::Bitwise(BitwiseChip::default()),
-            RiscvAir::Mul(MulChip::default()),
-            RiscvAir::DivRem(DivRemChip::default()),
-            RiscvAir::Lt(LtChip::default()),
-            RiscvAir::ShiftLeft(ShiftLeft::default()),
-            RiscvAir::ShiftRight(ShiftRightChip::default()),
-            RiscvAir::LoadByte(LoadByteChip::default()),
-            RiscvAir::LoadHalf(LoadHalfChip::default()),
-            RiscvAir::LoadWord(LoadWordChip::default()),
-            RiscvAir::LoadX0(LoadX0Chip::default()),
-            RiscvAir::StoreByte(StoreByteChip::default()),
-            RiscvAir::StoreHalf(StoreHalfChip::default()),
-            RiscvAir::StoreWord(StoreWordChip::default()),
-            RiscvAir::AUIPC(AuipcChip::default()),
-            RiscvAir::Branch(BranchChip::default()),
-            RiscvAir::Jal(JalChip::default()),
-            RiscvAir::Jalr(JalrChip::default()),
-            RiscvAir::SyscallInstrs(SyscallInstrsChip::default()),
-            RiscvAir::MemoryLocal(MemoryLocalChip::new()),
-            RiscvAir::MemoryBump(MemoryBumpChip::new()),
-            RiscvAir::Global(GlobalChip),
-            RiscvAir::SyscallCore(SyscallChip::core()),
-        ]
-    }
-
-    pub(crate) fn memory_init_final_airs() -> Vec<Self> {
-        vec![
-            RiscvAir::MemoryGlobalInit(MemoryGlobalChip::new(MemoryChipType::Initialize)),
-            RiscvAir::MemoryGlobalFinal(MemoryGlobalChip::new(MemoryChipType::Finalize)),
-            RiscvAir::Global(GlobalChip),
-        ]
-    }
-
-    pub(crate) fn precompile_airs_with_memory_events_per_row() -> Vec<(Self, usize)> {
-        let mut airs: HashSet<_> = Self::get_airs_and_costs().0.into_iter().collect();
-
-        // Remove the core airs.
-        for core_air in Self::get_all_core_airs() {
-            airs.remove(&core_air);
-        }
-
-        // Remove the memory init/finalize airs.
-        for memory_air in Self::memory_init_final_airs() {
-            airs.remove(&memory_air);
-        }
-
-        // Remove the syscall, program, and byte lookup airs.
-        airs.remove(&Self::SyscallPrecompile(SyscallChip::precompile()));
-        airs.remove(&Self::Program(ProgramChip::default()));
-        airs.remove(&Self::ByteLookup(ByteChip::default()));
-        airs.remove(&Self::RangeLookup(RangeChip::default()));
-
-        airs.into_iter()
-            .map(|air| {
-                let chip = Chip::new(air);
-                let local_mem_events_per_row: usize = chip
-                    .sends()
-                    .iter()
-                    .chain(chip.receives())
-                    .filter(|interaction| {
-                        interaction.kind == InteractionKind::Memory
-                            && interaction.scope == InteractionScope::Local
-                    })
-                    .count();
-
-                (chip.into_inner().unwrap(), local_mem_events_per_row)
-            })
-            .collect()
-    }
-
-    pub(crate) fn rows_per_event(&self) -> usize {
-        match self {
-            Self::Sha256Compress(_) => 80,
-            Self::Sha256Extend(_) => 48,
-            Self::KeccakP(_) => 24,
-            _ => 1,
-        }
-    }
-
-    pub(crate) fn syscall_code(&self) -> SyscallCode {
-        match self {
-            Self::Bls12381Add(_) => SyscallCode::BLS12381_ADD,
-            Self::Bn254Add(_) => SyscallCode::BN254_ADD,
-            Self::Bn254Double(_) => SyscallCode::BN254_DOUBLE,
-            Self::Bn254Fp(_) => SyscallCode::BN254_FP_ADD,
-            Self::Bn254Fp2AddSub(_) => SyscallCode::BN254_FP2_ADD,
-            Self::Bn254Fp2Mul(_) => SyscallCode::BN254_FP2_MUL,
-            Self::Ed25519Add(_) => SyscallCode::ED_ADD,
-            Self::Ed25519Decompress(_) => SyscallCode::ED_DECOMPRESS,
-            Self::KeccakP(_) => SyscallCode::KECCAK_PERMUTE,
-            Self::KeccakPControl(_) => SyscallCode::KECCAK_PERMUTE,
-            Self::Secp256k1Add(_) => SyscallCode::SECP256K1_ADD,
-            Self::Secp256k1Double(_) => SyscallCode::SECP256K1_DOUBLE,
-            Self::Secp256r1Add(_) => SyscallCode::SECP256R1_ADD,
-            Self::Secp256r1Double(_) => SyscallCode::SECP256R1_DOUBLE,
-            Self::Sha256Compress(_) => SyscallCode::SHA_COMPRESS,
-            Self::Sha256CompressControl(_) => SyscallCode::SHA_COMPRESS,
-            Self::Sha256Extend(_) => SyscallCode::SHA_EXTEND,
-            Self::Sha256ExtendControl(_) => SyscallCode::SHA_EXTEND,
-            Self::Uint256Mul(_) => SyscallCode::UINT256_MUL,
-            Self::U256x2048Mul(_) => SyscallCode::U256XU2048_MUL,
-            Self::Bls12381Decompress(_) => SyscallCode::BLS12381_DECOMPRESS,
-            Self::K256Decompress(_) => SyscallCode::SECP256K1_DECOMPRESS,
-            Self::P256Decompress(_) => SyscallCode::SECP256R1_DECOMPRESS,
-            Self::Bls12381Double(_) => SyscallCode::BLS12381_DOUBLE,
-            Self::Bls12381Fp(_) => SyscallCode::BLS12381_FP_ADD,
-            Self::Bls12381Fp2Mul(_) => SyscallCode::BLS12381_FP2_MUL,
-            Self::Bls12381Fp2AddSub(_) => SyscallCode::BLS12381_FP2_ADD,
-            Self::Add(_) => unreachable!("Invalid for core chip"),
-            Self::Addi(_) => unreachable!("Invalid for core chip"),
-            Self::Sub(_) => unreachable!("Invalid for core chip"),
-            Self::Bitwise(_) => unreachable!("Invalid for core chip"),
-            Self::DivRem(_) => unreachable!("Invalid for core chip"),
-            // Self::Cpu(_) => unreachable!("Invalid for core chip"),
-            Self::MemoryGlobalInit(_) => unreachable!("Invalid for memory init/final"),
-            Self::MemoryGlobalFinal(_) => unreachable!("Invalid for memory init/final"),
-            Self::MemoryLocal(_) => unreachable!("Invalid for memory local"),
-            Self::MemoryBump(_) => unreachable!("Invalid for memory bump"),
-            Self::Global(_) => unreachable!("Invalid for global chip"),
-            Self::Program(_) => unreachable!("Invalid for core chip"),
-            Self::Mul(_) => unreachable!("Invalid for core chip"),
-            Self::Lt(_) => unreachable!("Invalid for core chip"),
-            Self::ShiftRight(_) => unreachable!("Invalid for core chip"),
-            Self::ShiftLeft(_) => unreachable!("Invalid for core chip"),
-            Self::LoadByte(_) => unreachable!("Invalid for memory chip"),
-            Self::LoadHalf(_) => unreachable!("Invalid for memory chip"),
-            Self::LoadWord(_) => unreachable!("Invalid for memory chip"),
-            Self::LoadX0(_) => unreachable!("Invalid for memory chip"),
-            Self::StoreByte(_) => unreachable!("Invalid for memory chip"),
-            Self::StoreHalf(_) => unreachable!("Invalid for memory chip"),
-            Self::StoreWord(_) => unreachable!("Invalid for memory chip"),
-            Self::AUIPC(_) => unreachable!("Invalid for auipc chip"),
-            Self::Branch(_) => unreachable!("Invalid for branch chip"),
-            Self::Jal(_) => unreachable!("Invalid for jal chip"),
-            Self::Jalr(_) => unreachable!("Invalid for jalr chip"),
-            Self::SyscallInstrs(_) => unreachable!("Invalid for syscall instr chip"),
-            Self::ByteLookup(_) => unreachable!("Invalid for core chip"),
-            Self::RangeLookup(_) => unreachable!("Invalid for core chip"),
-            Self::SyscallCore(_) => unreachable!("Invalid for core chip"),
-            Self::SyscallPrecompile(_) => unreachable!("Invalid for syscall precompile chip"),
-        }
     }
 }
 

@@ -267,7 +267,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
-    pub fn build(&mut self) -> SP1Prover<C> {
+    pub async fn build(&mut self) -> SP1Prover<C> {
         let core_prover = self.core_prover_builder.build();
         let core_verifier = core_prover.verifier().shard_verifier().clone();
         let core_prover = SP1CoreProver::new(core_prover);
@@ -279,7 +279,8 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             recursion_prover,
             self.recursion_programs_cache_size,
             recursion_programs,
-        );
+        )
+        .await;
         SP1Prover { core_prover, recursion_prover }
     }
 }

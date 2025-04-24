@@ -841,13 +841,7 @@ where
             ));
         });
 
-        RootProgram {
-            inner: program,
-            total_memory,
-            dummy_preprocessed_height: 0,
-            dummy_main_height: 0,
-            event_counts: None,
-        }
+        RootProgram { inner: program, total_memory, shape: None, event_counts: None }
     }
 }
 

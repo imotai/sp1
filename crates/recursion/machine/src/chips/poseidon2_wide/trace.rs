@@ -29,8 +29,9 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         let events = &input.poseidon2_events;
-        Some(next_multiple_of_32(events.len(), None))
+        Some(next_multiple_of_32(events.len(), height))
     }
 
     #[instrument(name = "generate poseidon2 wide trace", level = "debug", skip_all, fields(rows = input.poseidon2_events.len()))]
@@ -99,8 +100,9 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         PREPROCESSED_POSEIDON2_WIDTH
     }
 
-    fn preprocessed_num_rows(&self, _program: &Self::Program, instrs_len: usize) -> Option<usize> {
-        Some(next_multiple_of_32(instrs_len, None))
+    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
+        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
+        Some(next_multiple_of_32(instrs_len, height))
     }
 
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {

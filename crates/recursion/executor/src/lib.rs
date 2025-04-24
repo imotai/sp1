@@ -5,6 +5,7 @@ mod opcode;
 mod program;
 mod public_values;
 mod record;
+pub mod shape;
 
 pub use public_values::PV_DIGEST_NUM_WORDS;
 

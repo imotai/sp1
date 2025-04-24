@@ -279,7 +279,14 @@ impl Prover<CpuSP1ProverComponents> for CpuProver {
 
 impl Default for CpuProver {
     fn default() -> Self {
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        // TODO: this is a hack for not using async. Canonicalize the prover startup as an async
+        // function.
+        tokio::spawn(async move {
+            let prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
+            tx.send(prover).ok();
+        });
+        let sp1_prover = rx.blocking_recv().unwrap();
         let opts = LocalProverOpts::default();
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
         Self { prover, mock: false }

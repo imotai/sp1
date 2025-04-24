@@ -55,8 +55,9 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
         SELECT_PREPROCESSED_COLS
     }
 
-    fn preprocessed_num_rows(&self, _program: &Self::Program, instrs_len: usize) -> Option<usize> {
-        Some(next_multiple_of_32(instrs_len, None))
+    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
+        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
+        Some(next_multiple_of_32(instrs_len, height))
     }
 
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
@@ -104,8 +105,9 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         let events = &input.select_events;
-        Some(next_multiple_of_32(events.len(), None))
+        Some(next_multiple_of_32(events.len(), height))
     }
 
     fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {

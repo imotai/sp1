@@ -36,7 +36,6 @@ use sp1_stark::{
     BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
 };
 use tokio::sync::mpsc;
-use tracing::Instrument;
 
 use crate::{
     components::SP1ProverComponents, error::SP1ProverError, recursion::SP1RecursionProver, CoreSC,
@@ -254,26 +253,25 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             tokio::task::spawn_blocking(move || {
                 while let Some(task) = executor_rx.blocking_recv() {
                     let ExecuteTask { input, range } = task;
-                    let (program, witness_stream) =
+                    let (program, witness_stream, keys) =
                         tracing::debug_span!("get program and witness stream").in_scope(|| {
-                            match input {
+                            match &input {
                                 SP1CircuitWitness::Core(input) => {
                                     let mut witness_stream = Vec::new();
                                     Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
                                     (
-                                        prover
-                                            .prover()
-                                            .recursion()
-                                            .recursion_program(&input, false),
+                                        prover.prover().recursion().recursion_program(input, false),
                                         witness_stream,
+                                        None,
                                     )
                                 }
                                 SP1CircuitWitness::Deferred(input) => {
                                     let mut witness_stream = Vec::new();
                                     Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
                                     (
-                                        prover.prover().recursion().deferred_program(&input, false),
+                                        prover.prover().recursion().deferred_program(input, false),
                                         witness_stream,
+                                        prover.prover().recursion().deferred_keys(),
                                     )
                                 }
                                 SP1CircuitWitness::Compress(input) => {
@@ -285,8 +283,9 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                                     Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
 
                                     (
-                                        prover.prover().recursion().compress_program(&input, false),
+                                        prover.prover().recursion().compress_program(input, false),
                                         witness_stream,
+                                        prover.prover().recursion().reduce_keys(2),
                                     )
                                 }
                             }
@@ -319,7 +318,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                             .generate_dependencies(&mut records, None)
                     });
                     let record = records.pop().unwrap();
-                    let prove_task = ProveTask { keys: None, range, record };
+
+                    let prove_task = ProveTask { keys, range, record };
                     prove_task_tx.send(prove_task).unwrap();
                 }
             });
@@ -357,14 +357,14 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     Some(task) = prove_task_rx.recv() => {
                         let ProveTask { keys, range, record } = task;
                         if let Some((pk, vk)) = keys {
+                            let span = tracing::debug_span!("prove compress shard").entered();
                             let handle = prover.prover().recursion().prove_shard(pk, record)
-                            .instrument(tracing::debug_span!("prove compress shard"))
                             .map_ok(move |proof|{
                                 let proof = SP1ReduceProof { vk, proof };
                                 RecursionProof { shard_range: range, proof }
                             });
                             prove_tasks.push(handle);
-                            panic!("not implemented");
+                            span.exit();
                         }
                         else {
                         let span = tracing::debug_span!("prove compress shard").entered();
@@ -678,6 +678,7 @@ struct ProveTask<C: SP1ProverComponents> {
 
 #[cfg(test)]
 pub mod tests {
+    use tracing::Instrument;
 
     use slop_algebra::PrimeField32;
 
@@ -756,7 +757,7 @@ pub mod tests {
         let elf = test_artifacts::SSZ_WITHDRAWALS_ELF;
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build();
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
         let opts = LocalProverOpts::default();
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
@@ -769,7 +770,7 @@ pub mod tests {
     async fn test_deferred_compress() -> Result<()> {
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build();
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
         let opts = LocalProverOpts::default();
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 

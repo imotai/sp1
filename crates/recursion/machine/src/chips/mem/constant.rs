@@ -57,6 +57,29 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
         NUM_MEM_PREPROCESSED_INIT_COLS
     }
 
+    fn preprocessed_num_rows(&self, program: &Self::Program, _instrs_len: usize) -> Option<usize> {
+        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
+        let instr_len = program
+            .inner
+            .iter()
+            .filter_map(|instruction| match instruction {
+                Instruction::Mem(MemInstr { addrs, vals, mult, kind }) => {
+                    let mult = mult.to_owned();
+                    let mult = match kind {
+                        MemAccessKind::Read => -mult,
+                        MemAccessKind::Write => mult,
+                    };
+
+                    Some((vals.inner, MemoryAccessCols { addr: addrs.inner, mult }))
+                }
+                _ => None,
+            })
+            .chunks(NUM_CONST_MEM_ENTRIES_PER_ROW)
+            .into_iter()
+            .count();
+        Some(next_multiple_of_32(instr_len, height))
+    }
+
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         let mut rows = program
             .inner
@@ -85,8 +108,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
             })
             .collect::<Vec<_>>();
 
+        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
         // Pad the rows to the next power of two.
-        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_PREPROCESSED_INIT_COLS], None);
+        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_PREPROCESSED_INIT_COLS], height);
 
         // Convert the trace to a row major matrix.
         let trace = RowMajorMatrix::new(
@@ -102,8 +126,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         let num_rows = input.mem_const_count.div_ceil(NUM_CONST_MEM_ENTRIES_PER_ROW);
-        let padded_nb_rows = next_multiple_of_32(num_rows, None);
+        let padded_nb_rows = next_multiple_of_32(num_rows, height);
         Some(padded_nb_rows)
     }
 
@@ -114,7 +139,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
             std::iter::repeat([F::zero(); NUM_MEM_INIT_COLS]).take(num_rows).collect::<Vec<_>>();
 
         // Pad the rows to the next power of two.
-        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_INIT_COLS], None);
+        let padded_nb_rows = self.num_rows(input);
+        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_INIT_COLS], padded_nb_rows);
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_MEM_INIT_COLS)

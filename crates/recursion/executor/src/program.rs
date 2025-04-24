@@ -1,8 +1,8 @@
-use crate::*;
+use crate::{shape::RecursionShape, *};
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
 use sp1_stark::{air::MachineProgram, septic_digest::SepticDigest};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 pub use basic_block::BasicBlock;
 pub use raw::RawProgram;
@@ -57,6 +57,12 @@ impl<F> Deref for RecursionProgram<F> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<F> DerefMut for RecursionProgram<F> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -185,8 +191,7 @@ mod validation {
         RootProgram {
             inner: RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] },
             total_memory: 0, // Will be filled in.
-            dummy_preprocessed_height: 0,
-            dummy_main_height: 0,
+            shape: None,
             event_counts: None,
         }
         .validate()
@@ -197,8 +202,7 @@ mod validation {
 pub struct RootProgram<F> {
     pub inner: raw::RawProgram<Instruction<F>>,
     pub total_memory: usize,
-    pub dummy_preprocessed_height: usize,
-    pub dummy_main_height: usize,
+    pub shape: Option<RecursionShape<F>>,
     pub event_counts: Option<RecursionAirEventCount>,
 }
 
@@ -208,8 +212,7 @@ impl<F> Default for RootProgram<F> {
         Self {
             inner: Default::default(),
             total_memory: Default::default(),
-            dummy_preprocessed_height: 0,
-            dummy_main_height: 0,
+            shape: None,
             event_counts: None,
         }
     }

@@ -64,23 +64,17 @@ pub fn pad_rows_fixed<R: Clone>(
     rows.resize(next_multiple_of_32(nb_rows, size_log2), dummy_row);
 }
 
-/// Returns the next power of two that is >= `n` and >= 16. If `fixed_power` is set, it will return
-/// `2^fixed_power` after checking that `n <= 2^fixed_power`.
-pub fn next_multiple_of_32(n: usize, fixed_power: Option<usize>) -> usize {
-    match fixed_power {
-        Some(power) => {
-            let padded_nb_rows = 1 << power;
-            if n * 2 < padded_nb_rows {
-                tracing::debug!(
-                    "fixed log2 rows can be potentially reduced: got {}, expected {}",
-                    n,
-                    padded_nb_rows
-                );
+/// Returns the internal value of the option if it is set, otherwise returns the next multiple of
+/// 32.
+#[track_caller]
+#[inline]
+pub fn next_multiple_of_32(n: usize, fixed_height: Option<usize>) -> usize {
+    match fixed_height {
+        Some(height) => {
+            if n > height {
+                panic!("fixed height is too small: got height {} for number of rows {}", height, n);
             }
-            if n > padded_nb_rows {
-                panic!("fixed log2 rows is too small: got {}, expected {}", n, padded_nb_rows);
-            }
-            padded_nb_rows
+            height
         }
         None => {
             let mut padded_nb_rows = n.next_multiple_of(32);

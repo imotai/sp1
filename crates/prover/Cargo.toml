@@ -21,6 +21,7 @@ sp1-recursion-gnark-ffi = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-stark = { workspace = true }
 slop-alloc = { workspace = true }
+slop-air = { workspace = true }
 slop-jagged = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-basefold = { workspace = true }

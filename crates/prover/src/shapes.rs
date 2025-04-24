@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     num::NonZero,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -7,14 +8,28 @@ use std::{
 };
 
 use lru::LruCache;
+use serde::{Deserialize, Serialize};
+use slop_air::BaseAir;
 use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_recursion_circuit::{dummy::dummy_shard_proof, machine::SP1RecursionWitnessValues};
-use sp1_recursion_executor::RecursionProgram;
-use sp1_stark::prover::CoreProofShape;
+use sp1_recursion_circuit::{
+    dummy::{dummy_shard_proof, dummy_vk},
+    machine::{SP1CompressWitnessValues, SP1RecursionWitnessValues},
+};
+use sp1_recursion_executor::{shape::RecursionShape, RecursionProgram};
+use sp1_recursion_machine::chips::{
+    alu_base::BaseAluChip,
+    alu_ext::ExtAluChip,
+    mem::{MemoryConstChip, MemoryVarChip},
+    poseidon2_wide::Poseidon2WideChip,
+    prefix_sum_checks::PrefixSumChecksChip,
+    public_values::PublicValuesChip,
+    select::SelectChip,
+};
+use sp1_stark::{air::MachineAir, prover::CoreProofShape, Chip};
 
-use crate::{CoreSC, SP1VerifyingKey};
+use crate::{CompressAir, CoreSC, InnerSC, SP1VerifyingKey};
 
 /// The shape of the recursion proof.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -89,9 +104,73 @@ impl SP1RecursionCache {
     }
 }
 
-// pub struct SP1ReduceShape {
-//     pub proof_shapes: Vec<OrderedShape>,
-// }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SP1ReduceShape {
+    pub shape: RecursionShape<BabyBear>,
+}
+
+impl Default for SP1ReduceShape {
+    fn default() -> Self {
+        // A default shape that seems to fit the current prover configuration and adrity 2
+        // reduction.
+        //
+        // TODO: a script to select the mininmal shape, given a core machine configuration and
+        // desired arity.
+        let shape = [
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 103168),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 259968),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 60832),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 143712),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 60000),
+            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
+            (CompressAir::<BabyBear>::Select(SelectChip), 403200),
+            (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
+        ]
+        .into_iter()
+        .collect();
+
+        Self { shape }
+    }
+}
+
+impl SP1ReduceShape {
+    pub fn dummy_input(
+        &self,
+        arity: usize,
+        chips: BTreeSet<Chip<BabyBear, CompressAir<BabyBear>>>,
+        max_log_row_count: usize,
+        log_blowup: usize,
+        log_stacking_height: usize,
+    ) -> SP1CompressWitnessValues<InnerSC> {
+        let preprocessed_chip_information = self.shape.preprocessed_chip_information(&chips);
+        let dummy_vk = dummy_vk(preprocessed_chip_information);
+
+        let preprocessed_multiple = chips
+            .iter()
+            .map(|chip| self.shape.height(chip).unwrap() * chip.preprocessed_width())
+            .sum::<usize>()
+            .div_ceil(1 << log_stacking_height);
+
+        let main_multiple = chips
+            .iter()
+            .map(|chip| self.shape.height(chip).unwrap() * chip.width())
+            .sum::<usize>()
+            .div_ceil(1 << log_stacking_height);
+
+        let dummy_proof = dummy_shard_proof(
+            chips,
+            max_log_row_count,
+            log_blowup,
+            log_stacking_height,
+            &[preprocessed_multiple, main_multiple],
+        );
+
+        let vks_and_proofs =
+            (0..arity).map(|_| (dummy_vk.clone(), dummy_proof.clone())).collect::<Vec<_>>();
+
+        SP1CompressWitnessValues { vks_and_proofs, is_complete: false }
+    }
+}
 
 // use std::{
 //     // collections::{BTreeMap, BTreeSet, HashSet},

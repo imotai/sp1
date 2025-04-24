@@ -1,11 +1,17 @@
-use std::{borrow::Borrow, collections::BTreeMap, marker::PhantomData, sync::Arc};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet},
+    marker::PhantomData,
+    sync::Arc,
+};
 
+use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
 use slop_futures::handle::TaskHandle;
 use slop_jagged::JaggedConfig;
 use sp1_core_executor::SP1ReduceProof;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_primitives::hash_deferred_proof;
+use sp1_primitives::{consts::WORD_SIZE, hash_deferred_proof};
 use sp1_recursion_circuit::{
     basefold::{
         stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
@@ -31,12 +37,14 @@ use sp1_recursion_executor::{
     ExecutionRecord, RecursionProgram, RecursionPublicValues, DIGEST_SIZE,
 };
 use sp1_stark::{
+    air::{POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     prover::{MachineProver, MachineProverComponents, MachineProverError, MachineProvingKey},
     BabyBearPoseidon2, Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
+    Word,
 };
 
 use crate::{
-    shapes::{SP1RecursionCache, SP1RecursionShape},
+    shapes::{SP1RecursionCache, SP1RecursionShape, SP1ReduceShape},
     utils::words_to_bytes,
     CompressAir, CoreSC, InnerSC,
 };
@@ -46,6 +54,11 @@ pub struct SP1RecursionProver<C: RecursionProverComponents> {
     prover: MachineProver<C>,
     core_verifier: MachineVerifier<CoreSC, RiscvAir<BabyBear>>,
     recursion_program_cache: SP1RecursionCache,
+    reduce_shape: SP1ReduceShape,
+    reduce_program: Option<Arc<RecursionProgram<BabyBear>>>,
+    deferred_program: Option<Arc<RecursionProgram<BabyBear>>>,
+    deferred_keys: Option<(Arc<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>)>,
+    reduce_keys: Option<(Arc<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>)>,
     recursive_core_verifier:
         RecursiveShardVerifier<RiscvAir<BabyBear>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
     recursive_compress_verifier: RecursiveShardVerifier<
@@ -100,7 +113,7 @@ impl<C> RecursionProverComponents for C where
 }
 
 impl<C: RecursionProverComponents> SP1RecursionProver<C> {
-    pub fn new(
+    pub async fn new(
         core_verifier: ShardVerifier<CoreSC, RiscvAir<BabyBear>>,
         prover: MachineProver<C>,
         recursion_programs_cache_size: usize,
@@ -184,12 +197,44 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
             recursion_program_cache.push(shape, program);
         }
 
+        let reduce_shape = SP1ReduceShape::default();
+
+        // Make the reduce program and proving key.
+        let dummy_input = dummy_reduce_input(&prover, &reduce_shape, 2);
+        let mut program =
+            compress_program_from_input(&recursive_compress_verifier, &dummy_input, true);
+        program.shape = Some(reduce_shape.shape.clone());
+        let program = Arc::new(program);
+
+        // Make the reduce keys.
+        let (pk, vk) = prover.setup(program.clone(), None).await.unwrap();
+        let pk = unsafe { pk.into_inner() };
+        let reduce_keys = Some((pk, vk));
+        let reduce_program = Some(program);
+
+        //  Make the deferred program and proving key.
+        let program = dummy_deferred_input(&prover, &reduce_shape);
+        let mut program = deferred_program_from_input(&recursive_compress_verifier, &program, true);
+        program.shape = Some(reduce_shape.shape.clone());
+        let program = Arc::new(program);
+
+        // Make the deferred keys.
+        let (pk, vk) = prover.setup(program.clone(), None).await.unwrap();
+        let pk = unsafe { pk.into_inner() };
+        let deferred_keys = Some((pk, vk));
+        let deferred_program = Some(program);
+
         Self {
             prover,
             core_verifier: MachineVerifier::new(core_verifier),
             recursive_core_verifier,
             recursive_compress_verifier,
             recursion_program_cache,
+            reduce_shape,
+            reduce_keys,
+            reduce_program,
+            deferred_program,
+            deferred_keys,
         }
     }
 
@@ -241,11 +286,13 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         if let Some(program) = self.recursion_program_cache.get(&shape) {
             return program.clone();
         }
-        let program = recursion_program_from_input(
+        let mut program = recursion_program_from_input(
             &self.recursive_core_verifier,
             input,
             compute_event_counts,
         );
+        program.shape = Some(self.reduce_shape.shape.clone());
+        let program = Arc::new(program);
         self.recursion_program_cache.push(shape, program.clone());
         program
     }
@@ -255,11 +302,28 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         input: &SP1CompressWitnessValues<InnerSC>,
         compute_event_counts: bool,
     ) -> Arc<RecursionProgram<BabyBear>> {
-        compress_program_from_input(&self.recursive_compress_verifier, input, compute_event_counts)
+        if let Some(program) = self.reduce_program.as_ref() {
+            return program.clone();
+        }
+        let mut program = compress_program_from_input(
+            &self.recursive_compress_verifier,
+            input,
+            compute_event_counts,
+        );
+        program.shape = Some(self.reduce_shape.shape.clone());
+        Arc::new(program)
     }
 
     pub fn recursion_program_cache_stats(&self) -> (usize, usize, f64) {
         self.recursion_program_cache.stats()
+    }
+
+    #[inline]
+    #[allow(clippy::type_complexity)]
+    pub fn deferred_keys(
+        &self,
+    ) -> Option<(Arc<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>)> {
+        self.deferred_keys.clone()
     }
 
     pub fn deferred_program(
@@ -267,35 +331,26 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         input: &SP1DeferredWitnessValues<InnerSC>,
         compute_event_counts: bool,
     ) -> Arc<RecursionProgram<BabyBear>> {
-        // Compile the program.
+        if let Some(program) = self.deferred_program.as_ref() {
+            return program.clone();
+        }
+        let mut program = deferred_program_from_input(
+            &self.recursive_compress_verifier,
+            input,
+            compute_event_counts,
+        );
+        program.shape = Some(self.reduce_shape.shape.clone());
+        Arc::new(program)
+    }
 
-        // Get the operations.
-        let operations_span =
-            tracing::debug_span!("get operations for the deferred program").entered();
-        let mut builder = Builder::<InnerConfig>::default();
-        let input_read_span = tracing::debug_span!("Read input values").entered();
-        let input = input.read(&mut builder);
-        input_read_span.exit();
-        let verify_span = tracing::debug_span!("Verify deferred program").entered();
-
-        // Verify the proof.
-        SP1DeferredVerifier::verify(&mut builder, &self.recursive_compress_verifier, input);
-        verify_span.exit();
-        let block = builder.into_root_block();
-        operations_span.exit();
-        // SAFETY: The circuit is well-formed. It does not use synchronization primitives
-        // (or possibly other means) to violate the invariants.
-        let dsl_program = unsafe { DslIrProgram::new_unchecked(block) };
-
-        let compiler_span = tracing::debug_span!("compile deferred program").entered();
-        let mut compiler = AsmCompiler::<InnerConfig>::default();
-        let program = compiler.compile(dsl_program, compute_event_counts);
-        // if let Some(recursion_shape_config) = &self.compress_shape_config {
-        //     recursion_shape_config.fix_shape(&mut program);
-        // }
-        let program = Arc::new(program);
-        compiler_span.exit();
-        program
+    #[inline]
+    #[allow(clippy::type_complexity)]
+    pub fn reduce_keys(
+        &self,
+        arity: usize,
+    ) -> Option<(Arc<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>)> {
+        debug_assert_eq!(arity, 2);
+        self.reduce_keys.clone()
     }
 
     pub fn hash_deferred_proofs(
@@ -326,7 +381,7 @@ fn recursion_program_from_input(
     >,
     input: &SP1RecursionWitnessValues<CoreSC>,
     compute_event_counts: bool,
-) -> Arc<RecursionProgram<BabyBear>> {
+) -> RecursionProgram<BabyBear> {
     // Get the operations.
     let builder_span = tracing::debug_span!("build recursion program").entered();
     let mut builder = Builder::<InnerConfig>::default();
@@ -345,12 +400,47 @@ fn recursion_program_from_input(
     // if let Some(inn_recursion_shape_config) = &self.compress_shape_config {
     //     inn_recursion_shape_config.fix_shape(&mut program);
     // }
-    let program = Arc::new(program);
     compiler_span.exit();
     program
 }
 
-pub fn compress_program_from_input(
+fn deferred_program_from_input(
+    recursion_verifier: &RecursiveShardVerifier<
+        CompressAir<InnerVal>,
+        InnerSC,
+        InnerConfig,
+        JC<InnerConfig, InnerSC>,
+    >,
+    // vk_verification: bool,
+    //TODO: Add VK verification back in
+    input: &SP1DeferredWitnessValues<InnerSC>,
+    compute_event_counts: bool,
+) -> RecursionProgram<BabyBear> {
+    // Get the operations.
+    let operations_span = tracing::debug_span!("get operations for the deferred program").entered();
+    let mut builder = Builder::<InnerConfig>::default();
+    let input_read_span = tracing::debug_span!("Read input values").entered();
+    let input = input.read(&mut builder);
+    input_read_span.exit();
+    let verify_span = tracing::debug_span!("Verify deferred program").entered();
+
+    // Verify the proof.
+    SP1DeferredVerifier::verify(&mut builder, recursion_verifier, input);
+    verify_span.exit();
+    let block = builder.into_root_block();
+    operations_span.exit();
+    // SAFETY: The circuit is well-formed. It does not use synchronization primitives
+    // (or possibly other means) to violate the invariants.
+    let dsl_program = unsafe { DslIrProgram::new_unchecked(block) };
+
+    let compiler_span = tracing::debug_span!("compile deferred program").entered();
+    let mut compiler = AsmCompiler::<InnerConfig>::default();
+    let program = compiler.compile(dsl_program, compute_event_counts);
+    compiler_span.exit();
+    program
+}
+
+fn compress_program_from_input(
     // config: Option<&RecursionShapeConfig<BabyBear, CompressAir<BabyBear>>>,
     recursion_verifier: &RecursiveShardVerifier<
         CompressAir<InnerVal>,
@@ -362,7 +452,7 @@ pub fn compress_program_from_input(
     //TODO: Add VK verification back in
     input: &SP1CompressWitnessValues<InnerSC>,
     compute_event_counts: bool,
-) -> Arc<RecursionProgram<BabyBear>> {
+) -> RecursionProgram<BabyBear> {
     let builder_span = tracing::debug_span!("build compress program").entered();
     let mut builder = Builder::<InnerConfig>::default();
     // read the input.
@@ -386,10 +476,67 @@ pub fn compress_program_from_input(
     let compiler_span = tracing::debug_span!("compile compress program").entered();
     let mut compiler = AsmCompiler::<InnerConfig>::default();
     let program = compiler.compile(dsl_program, compute_event_counts);
-    // if let Some(config) = config {
-    //     config.fix_shape(&mut program);
-    // }
     compiler_span.exit();
+    program
+}
 
-    Arc::new(program)
+// fn dummy_reduce_program(arity: yusi)
+
+fn dummy_reduce_input<C: RecursionProverComponents>(
+    prover: &MachineProver<C>,
+    shape: &SP1ReduceShape,
+    arity: usize,
+) -> SP1CompressWitnessValues<InnerSC> {
+    let chips = prover
+        .verifier()
+        .shard_verifier()
+        .machine()
+        .chips()
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    let max_log_row_count = prover.verifier().max_log_row_count();
+    let log_blowup = prover.verifier().fri_config().log_blowup();
+    let log_stacking_height = prover.verifier().log_stacking_height() as usize;
+
+    shape.dummy_input(arity, chips, max_log_row_count, log_blowup, log_stacking_height)
+}
+
+fn dummy_deferred_input<C: RecursionProverComponents>(
+    prover: &MachineProver<C>,
+    shape: &SP1ReduceShape,
+) -> SP1DeferredWitnessValues<InnerSC> {
+    let chips = prover
+        .verifier()
+        .shard_verifier()
+        .machine()
+        .chips()
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    let max_log_row_count = prover.verifier().max_log_row_count();
+    let log_blowup = prover.verifier().fri_config().log_blowup();
+    let log_stacking_height = prover.verifier().log_stacking_height() as usize;
+
+    let compress_input =
+        shape.dummy_input(1, chips, max_log_row_count, log_blowup, log_stacking_height);
+
+    let SP1CompressWitnessValues { vks_and_proofs, .. } = compress_input;
+
+    SP1DeferredWitnessValues {
+        vks_and_proofs,
+        // pub vk_merkle_data: SP1MerkleProofWitnessValues<SC>,
+        start_reconstruct_deferred_digest: [BabyBear::zero(); POSEIDON_NUM_WORDS],
+        sp1_vk_digest: [BabyBear::zero(); DIGEST_SIZE],
+        committed_value_digest: [[BabyBear::zero(); 4]; PV_DIGEST_NUM_WORDS],
+        deferred_proofs_digest: [BabyBear::zero(); POSEIDON_NUM_WORDS],
+        end_pc: BabyBear::zero(),
+        end_shard: BabyBear::zero(),
+        end_execution_shard: BabyBear::zero(),
+        init_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
+        finalize_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
+        is_complete: false,
+    }
 }

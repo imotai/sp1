@@ -58,6 +58,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
         NUM_MEM_PREPROCESSED_INIT_COLS
     }
 
+    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
+        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
+        Some(next_multiple_of_32(instrs_len, height))
+    }
+
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         // Allocating an intermediate `Vec` is faster.
         let accesses = program
@@ -86,7 +91,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
             .collect::<Vec<_>>();
 
         let nb_rows = accesses.len().div_ceil(NUM_VAR_MEM_ENTRIES_PER_ROW);
-        let padded_nb_rows = next_multiple_of_32(nb_rows, None);
+        let padded_nb_rows = self.preprocessed_num_rows(program, nb_rows).unwrap();
         let mut values = vec![F::zero(); padded_nb_rows * NUM_MEM_PREPROCESSED_INIT_COLS];
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
@@ -104,8 +109,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        // if let Some(shape) = input.program.shape.as_ref() {
+        //     Some(shape.height(self).expect("chip mot included"))
+        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         let nb_rows = input.mem_var_events.len().div_ceil(NUM_VAR_MEM_ENTRIES_PER_ROW);
-        let padded_nb_rows = next_multiple_of_32(nb_rows, None);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, height);
         Some(padded_nb_rows)
     }
 
@@ -124,8 +132,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
             })
             .collect::<Vec<_>>();
 
+        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         // Pad the rows to the next power of two.
-        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_INIT_COLS], None);
+        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_INIT_COLS], height);
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_MEM_INIT_COLS)

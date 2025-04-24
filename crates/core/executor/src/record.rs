@@ -15,7 +15,6 @@ use std::{
     borrow::Borrow,
     iter::once,
     mem::take,
-    str::FromStr,
     sync::{Arc, Mutex},
 };
 
@@ -344,12 +343,10 @@ impl ExecutionRecord {
 
     /// Return the number of rows needed for a chip, according to the proof shape specified in the
     /// struct.
-    pub fn fixed_log2_rows<F: PrimeField, A: MachineAir<F>>(&self, air: &A) -> Option<usize> {
-        self.shape.as_ref().map(|shape| {
-            shape
-                .log2_height(&RiscvAirId::from_str(&air.name()).unwrap())
-                .unwrap_or_else(|| panic!("Chip {} not found in specified shape", air.name()))
-        })
+    ///
+    /// **deprecated**: TODO: remove this method.
+    pub fn fixed_log2_rows<F: PrimeField, A: MachineAir<F>>(&self, _air: &A) -> Option<usize> {
+        None
     }
 
     /// Determines whether the execution record contains CPU events.

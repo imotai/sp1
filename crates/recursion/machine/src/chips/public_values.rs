@@ -62,7 +62,11 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
     }
 
     fn num_rows(&self, _: &Self::Record) -> Option<usize> {
-        Some(16)
+        Some(1 << PUB_VALUES_LOG_HEIGHT)
+    }
+
+    fn preprocessed_num_rows(&self, _program: &Self::Program, _instrs_len: usize) -> Option<usize> {
+        Some(1 << PUB_VALUES_LOG_HEIGHT)
     }
 
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
@@ -113,7 +117,7 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         pad_rows_fixed(
             &mut rows,
             || [BabyBear::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS],
-            Some(PUB_VALUES_LOG_HEIGHT),
+            self.preprocessed_num_rows(program, commit_pv_hash_instrs.len()),
         );
 
         let trace = RowMajorMatrix::new(
@@ -166,7 +170,7 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         pad_rows_fixed(
             &mut rows,
             || [BabyBear::zero(); NUM_PUBLIC_VALUES_COLS],
-            Some(PUB_VALUES_LOG_HEIGHT),
+            self.num_rows(input),
         );
 
         // Convert the trace to a row major matrix.
@@ -309,7 +313,7 @@ mod tests {
         pad_rows_fixed(
             &mut rows,
             || [F::zero(); NUM_PUBLIC_VALUES_COLS],
-            Some(PUB_VALUES_LOG_HEIGHT),
+            Some(1 << PUB_VALUES_LOG_HEIGHT),
         );
 
         RowMajorMatrix::new(rows.into_iter().flatten().collect(), NUM_PUBLIC_VALUES_COLS)
@@ -361,7 +365,7 @@ mod tests {
         pad_rows_fixed(
             &mut rows,
             || [F::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS],
-            Some(PUB_VALUES_LOG_HEIGHT),
+            Some(1 << PUB_VALUES_LOG_HEIGHT),
         );
 
         RowMajorMatrix::new(
