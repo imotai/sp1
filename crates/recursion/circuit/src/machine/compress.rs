@@ -14,7 +14,7 @@ use slop_algebra::AbstractField;
 use slop_jagged::JaggedConfig;
 
 use serde::{Deserialize, Serialize};
-use sp1_recursion_compiler::ir::{Builder, Felt};
+use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 
 use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 
@@ -144,26 +144,32 @@ where
         let mut init_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut finalize_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
 
-        // Verify proofs, check consistency, and aggregate public values.
-        for (i, (vk, shard_proof)) in vks_and_proofs.into_iter().enumerate() {
-            // Verify the shard proof.
+        // Verify the shard proofs.
+        // Verification of proofs can be done in parallel but the aggregation/consistency checks
+        // must be done sequentially.
+        vks_and_proofs.iter().ir_par_map_collect::<Vec<_>, _, _>(
+            builder,
+            |builder, (vk, shard_proof)| {
+                // Prepare a challenger.
+                let mut challenger = SC::challenger_variable(builder);
 
-            // Prepare a challenger.
-            let mut challenger = SC::challenger_variable(builder);
+                // Observe the vk and start pc.
+                if let Some(vk) = vk.preprocessed_commit.as_ref() {
+                    challenger.observe(builder, *vk)
+                }
+                challenger.observe(builder, vk.pc_start);
+                challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
+                challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
+                // Observe the padding.
+                let zero: Felt<_> = builder.eval(C::F::zero());
+                challenger.observe(builder, zero);
+                // Verify the shard proof.
+                machine.verify_shard(builder, vk, shard_proof, &mut challenger);
+            },
+        );
 
-            // Observe the vk and start pc.
-            if let Some(vk) = vk.preprocessed_commit.as_ref() {
-                challenger.observe(builder, *vk)
-            }
-            challenger.observe(builder, vk.pc_start);
-            challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
-            challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
-            // Observe the padding.
-            let zero: Felt<_> = builder.eval(C::F::zero());
-            challenger.observe(builder, zero);
-            // Verify the shard proof.
-            machine.verify_shard(builder, &vk, &shard_proof, &mut challenger);
-
+        // Check consistency and aggregate public values.
+        for (i, (_, shard_proof)) in vks_and_proofs.into_iter().enumerate() {
             // Get the current public values.
             let current_public_values: &RecursionPublicValues<Felt<C::F>> =
                 shard_proof.public_values.as_slice().borrow();
