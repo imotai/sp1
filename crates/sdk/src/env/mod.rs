@@ -11,14 +11,14 @@ use anyhow::Result;
 use prove::EnvProveBuilder;
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{components::CpuProverComponents, SP1Prover, SP1ProvingKey, SP1VerifyingKey};
+use sp1_prover::{components::CpuSP1ProverComponents, SP1Prover, SP1ProvingKey, SP1VerifyingKey};
 
 use super::{Prover, SP1VerificationError};
 #[cfg(feature = "network")]
 use crate::network::builder::NetworkProverBuilder;
 use crate::{
     cpu::{execute::CpuExecuteBuilder, CpuProver},
-    cuda::CudaProver,
+    // cuda::CudaProver,
     utils::check_release_build,
     SP1ProofMode, SP1ProofWithPublicValues,
 };
@@ -28,7 +28,7 @@ use crate::{
 ///
 /// The environment variables are described in [`EnvProver::new`].
 pub struct EnvProver {
-    pub(crate) prover: Box<dyn Prover<CpuProverComponents>>,
+    pub(crate) prover: Box<dyn Prover<CpuSP1ProverComponents>>,
 }
 
 impl EnvProver {

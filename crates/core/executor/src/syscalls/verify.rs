@@ -30,14 +30,13 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
         rt.state.proof_stream_ptr += 1;
         let vkey_bytes: [u32; 8] = vkey.try_into().unwrap();
         let pv_digest_bytes: [u32; 8] = pv_digest.try_into().unwrap();
-        if let Some(verifier) = rt.subproof_verifier {
+        if let Some(verifier) = rt.subproof_verifier.as_ref() {
             verifier
                 .verify_deferred_proof(proof, proof_vk, vkey_bytes, pv_digest_bytes)
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|_| {
                     panic!(
-                        "Failed to verify proof {proof_index} with digest {}: {}",
+                        "Failed to verify proof {proof_index} with digest {}:",
                         hex::encode(bytemuck::cast_slice(&pv_digest_bytes)),
-                        e
                     )
                 });
         } else if rt.state.proof_stream_ptr == 1 {

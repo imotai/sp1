@@ -1,9 +1,8 @@
-use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::WORD_SIZE;
+use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::air::WordAirBuilder;
@@ -14,22 +13,6 @@ use crate::air::WordAirBuilder;
 pub struct Add4Operation<T> {
     /// The result of `a + b + c + d`.
     pub value: Word<T>,
-
-    /// Indicates if the carry for the `i`th digit is 0.
-    pub is_carry_0: Word<T>,
-
-    /// Indicates if the carry for the `i`th digit is 1.
-    pub is_carry_1: Word<T>,
-
-    /// Indicates if the carry for the `i`th digit is 2.
-    pub is_carry_2: Word<T>,
-
-    /// Indicates if the carry for the `i`th digit is 3. The carry when adding 4 words is at most
-    /// 3.
-    pub is_carry_3: Word<T>,
-
-    /// The carry for the `i`th digit.
-    pub carry: Word<T>,
 }
 
 impl<F: Field> Add4Operation<F> {
@@ -43,107 +26,65 @@ impl<F: Field> Add4Operation<F> {
         d_u32: u32,
     ) -> u32 {
         let expected = a_u32.wrapping_add(b_u32).wrapping_add(c_u32).wrapping_add(d_u32);
+        let expected_limbs = u32_to_u16_limbs(expected);
         self.value = Word::from(expected);
-        let a = a_u32.to_le_bytes();
-        let b = b_u32.to_le_bytes();
-        let c = c_u32.to_le_bytes();
-        let d = d_u32.to_le_bytes();
+        let a = u32_to_u16_limbs(a_u32);
+        let b = u32_to_u16_limbs(b_u32);
+        let c = u32_to_u16_limbs(c_u32);
+        let d = u32_to_u16_limbs(d_u32);
 
-        let base = 256;
-        let mut carry = [0u8, 0u8, 0u8, 0u8];
+        let base = 65536u32;
+        let mut carry_limbs = [0u8; WORD_SIZE];
+        let mut carry = 0;
         for i in 0..WORD_SIZE {
-            let mut res = (a[i] as u32) + (b[i] as u32) + (c[i] as u32) + (d[i] as u32);
-            if i > 0 {
-                res += carry[i - 1] as u32;
-            }
-            carry[i] = (res / base) as u8;
-            self.is_carry_0[i] = F::from_bool(carry[i] == 0);
-            self.is_carry_1[i] = F::from_bool(carry[i] == 1);
-            self.is_carry_2[i] = F::from_bool(carry[i] == 2);
-            self.is_carry_3[i] = F::from_bool(carry[i] == 3);
-            self.carry[i] = F::from_canonical_u8(carry[i]);
-            debug_assert!(carry[i] <= 3);
-            debug_assert_eq!(self.value[i], F::from_canonical_u32(res % base));
+            carry = ((a[i] as u32) + (b[i] as u32) + (c[i] as u32) + (d[i] as u32) + carry
+                - expected_limbs[i] as u32)
+                / base;
+            carry_limbs[i] = carry as u8;
         }
 
         // Range check.
-        {
-            record.add_u8_range_checks(&a);
-            record.add_u8_range_checks(&b);
-            record.add_u8_range_checks(&c);
-            record.add_u8_range_checks(&d);
-            record.add_u8_range_checks(&expected.to_le_bytes());
-        }
+        record.add_u16_range_checks(&expected_limbs);
+        record.add_u8_range_checks(&carry_limbs);
         expected
     }
 
+    /// Evaluate the add4 operation.
+    /// Assumes that `a`, `b`, `c`, `d` are valid `Word`s of two u16 limbs.
+    /// Constrains that `is_real` is boolean.
+    /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a + b + c +
+    /// d`.
     #[allow(clippy::too_many_arguments)]
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
-        a: Word<AB::Var>,
-        b: Word<AB::Var>,
-        c: Word<AB::Var>,
-        d: Word<AB::Var>,
+        a: Word<AB::Expr>,
+        b: Word<AB::Expr>,
+        c: Word<AB::Expr>,
+        d: Word<AB::Expr>,
         is_real: AB::Var,
         cols: Add4Operation<AB::Var>,
     ) {
-        // Range check each byte.
-        {
-            builder.slice_range_check_u8(&a.0, is_real);
-            builder.slice_range_check_u8(&b.0, is_real);
-            builder.slice_range_check_u8(&c.0, is_real);
-            builder.slice_range_check_u8(&d.0, is_real);
-            builder.slice_range_check_u8(&cols.value.0, is_real);
-        }
-
         builder.assert_bool(is_real);
-        let mut builder_is_real = builder.when(is_real);
 
-        // Each value in is_carry_{0,1,2,3} is 0 or 1, and exactly one of them is 1 per digit.
-        {
-            for i in 0..WORD_SIZE {
-                builder_is_real.assert_bool(cols.is_carry_0[i]);
-                builder_is_real.assert_bool(cols.is_carry_1[i]);
-                builder_is_real.assert_bool(cols.is_carry_2[i]);
-                builder_is_real.assert_bool(cols.is_carry_3[i]);
-                builder_is_real.assert_eq(
-                    cols.is_carry_0[i] +
-                        cols.is_carry_1[i] +
-                        cols.is_carry_2[i] +
-                        cols.is_carry_3[i],
-                    AB::Expr::one(),
-                );
-            }
+        let base = AB::F::from_canonical_u32(1 << 16);
+        let mut carry_limbs = [AB::Expr::zero(), AB::Expr::zero()];
+        let mut carry = AB::Expr::zero(); // Initialize carry to zero
+
+        // The set of constraints are
+        //  - carry is initialized to zero
+        //  - 2^16 * carry_next + value[i] = a[i] + b[i] + c[i] + d[i] + carry
+        //  - 0 <= carry < 2^8
+        //  - 0 <= value[i] < 2^16
+        // Since the carries are bounded by 2^8, no BabyBear overflows are possible.
+        // The maximum carry possible is less than 2^8, so the circuit is complete.
+        for i in 0..WORD_SIZE {
+            carry = (a[i].clone() + b[i].clone() + c[i].clone() + d[i].clone() - cols.value[i]
+                + carry)
+                * base.inverse();
+            carry_limbs[i] = carry.clone();
         }
-
-        // Calculates carry from is_carry_{0,1,2,3}.
-        {
-            let one = AB::Expr::one();
-            let two = AB::F::from_canonical_u32(2);
-            let three = AB::F::from_canonical_u32(3);
-
-            for i in 0..WORD_SIZE {
-                builder_is_real.assert_eq(
-                    cols.carry[i],
-                    cols.is_carry_1[i] * one.clone() +
-                        cols.is_carry_2[i] * two +
-                        cols.is_carry_3[i] * three,
-                );
-            }
-        }
-
-        // Compare the sum and summands by looking at carry.
-        {
-            let base = AB::F::from_canonical_u32(256);
-            // For each limb, assert that difference between the carried result and the non-carried
-            // result is the product of carry and base.
-            for i in 0..WORD_SIZE {
-                let mut overflow = a[i] + b[i] + c[i] + d[i] - cols.value[i];
-                if i > 0 {
-                    overflow = overflow.clone() + cols.carry[i - 1].into();
-                }
-                builder_is_real.assert_eq(cols.carry[i] * base, overflow.clone());
-            }
-        }
+        // Range check each limb.
+        builder.slice_range_check_u16(&cols.value.0, is_real);
+        builder.slice_range_check_u8(&carry_limbs, is_real);
     }
 }

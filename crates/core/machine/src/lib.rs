@@ -14,18 +14,20 @@
 )]
 #![warn(unused_extern_crates)]
 
+pub mod adapter;
 pub mod air;
 pub mod alu;
 pub mod bytes;
 pub mod control_flow;
 pub mod cpu;
+pub mod executor;
 pub mod global;
 pub mod io;
 pub mod memory;
 pub mod operations;
 pub mod program;
+pub mod range;
 pub mod riscv;
-pub mod shape;
 #[cfg(feature = "sys")]
 pub mod sys;
 pub mod syscall;
@@ -47,15 +49,15 @@ pub mod programs {
         use sp1_core_executor::{Instruction, Opcode, Program};
 
         pub use test_artifacts::{
-            FIBONACCI_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF, SSZ_WITHDRAWALS_ELF,
-            U256XU2048_MUL_ELF,
+            FIBONACCI_ELF, KECCAK_PERMUTE_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF,
+            SSZ_WITHDRAWALS_ELF, U256XU2048_MUL_ELF,
         };
 
         #[must_use]
         pub fn simple_program() -> Program {
             let instructions = vec![
-                Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-                Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
+                Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+                Instruction::new(Opcode::ADDI, 30, 0, 37, false, true),
                 Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
             ];
             Program::new(instructions, 0, 0)
@@ -111,6 +113,16 @@ pub mod programs {
             Program::from(SSZ_WITHDRAWALS_ELF).unwrap()
         }
 
+        /// Get the keccak permute program.
+        ///
+        /// # Panics
+        ///
+        /// This function will panic if the program fails to load.
+        #[must_use]
+        pub fn keccak_permute_program() -> Program {
+            Program::from(KECCAK_PERMUTE_ELF).unwrap()
+        }
+
         /// Get the panic program.
         ///
         /// # Panics
@@ -125,7 +137,7 @@ pub mod programs {
         #[allow(clippy::unreadable_literal)]
         pub fn simple_memory_program() -> Program {
             let instructions = vec![
-                Instruction::new(Opcode::ADD, 29, 0, 0x12348765, false, true),
+                Instruction::new(Opcode::ADDI, 29, 0, 0x12348765, false, true),
                 // SW and LW
                 Instruction::new(Opcode::SW, 29, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LW, 28, 0, 0x27654320, false, true),
@@ -144,7 +156,7 @@ pub mod programs {
                 Instruction::new(Opcode::LH, 19, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LH, 18, 0, 0x27654322, false, true),
                 // SB
-                Instruction::new(Opcode::ADD, 17, 0, 0x38276525, false, true),
+                Instruction::new(Opcode::ADDI, 17, 0, 0x38276525, false, true),
                 // Save the value 0x12348765 into address 0x43627530
                 Instruction::new(Opcode::SW, 29, 0, 0x43627530, false, true),
                 Instruction::new(Opcode::SB, 17, 0, 0x43627530, false, true),

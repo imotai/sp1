@@ -1,13 +1,16 @@
-use chips::poseidon2_skinny::WIDTH;
+// use chips::poseidon2_skinny::WIDTH;
+use cfg_if::cfg_if;
 use core::fmt::Debug;
 use instruction::{
     FieldEltType, HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr, PrintInstr,
 };
 use itertools::Itertools;
 use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField64, TwoAdicField};
-use sp1_recursion_core::{
-    air::{Block, RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS},
-    BaseAluInstr, BaseAluOpcode,
+#[cfg(feature = "debug")]
+use sp1_core_machine::utils::SpanBuilder;
+use sp1_recursion_executor::{
+    BaseAluInstr, BaseAluOpcode, Block, RecursionPublicValues, PERMUTATION_WIDTH,
+    RECURSIVE_PROOF_NUM_PV_ELTS,
 };
 use sp1_stark::septic_curve::SepticCurve;
 use std::{
@@ -17,20 +20,20 @@ use std::{
 };
 use vec_map::VecMap;
 
-use sp1_recursion_core::*;
+use sp1_recursion_executor::*;
 
 use crate::prelude::*;
 
 /// The backend for the circuit compiler.
 #[derive(Debug, Clone, Default)]
 pub struct AsmCompiler<C: Config> {
-    pub next_addr: C::F,
+    next_addr: C::F,
     /// Map the frame pointers of the variables to the "physical" addresses.
-    pub virtual_to_physical: VecMap<Address<C::F>>,
+    virtual_to_physical: VecMap<Address<C::F>>,
     /// Map base or extension field constants to "physical" addresses and mults.
-    pub consts: HashMap<Imm<C::F, C::EF>, (Address<C::F>, C::F)>,
+    consts: HashMap<Imm<C::F, C::EF>, (Address<C::F>, C::F)>,
     /// Map each "physical" address to its read count.
-    pub addr_to_mult: VecMap<C::F>,
+    addr_to_mult: VecMap<C::F>,
 }
 
 impl<C: Config> AsmCompiler<C>
@@ -249,15 +252,15 @@ where
     #[inline(always)]
     fn poseidon2_permute(
         &mut self,
-        dst: [impl Reg<C>; WIDTH],
-        src: [impl Reg<C>; WIDTH],
+        dst: [impl Reg<C>; PERMUTATION_WIDTH],
+        src: [impl Reg<C>; PERMUTATION_WIDTH],
     ) -> Instruction<C::F> {
         Instruction::Poseidon2(Box::new(Poseidon2Instr {
             addrs: Poseidon2Io {
                 input: src.map(|r| r.read(self)),
                 output: dst.map(|r| r.write(self)),
             },
-            mults: [C::F::zero(); WIDTH],
+            mults: [C::F::zero(); PERMUTATION_WIDTH],
         }))
     }
 
@@ -384,6 +387,36 @@ where
                 alpha_pow: alpha_pows.into_iter().map(|e| e.read(self)).collect(),
             },
             acc_mult: C::F::zero(),
+        }))
+    }
+
+    fn prefix_sum_checks(
+        &mut self,
+        zero: Felt<C::F>,
+        one: Ext<C::F, C::EF>,
+        accs: Vec<Ext<C::F, C::EF>>,
+        field_accs: Vec<Felt<C::F>>,
+        x1: Vec<Felt<C::F>>,
+        x2: Vec<Ext<C::F, C::EF>>,
+    ) -> Instruction<C::F> {
+        // First, write to the addresses in `accs`.
+        let acc_write_addrs: Vec<_> = accs.clone().into_iter().map(|r| r.write(self)).collect();
+        let field_acc_write_addrs = field_accs.clone().into_iter().map(|r| r.write(self)).collect();
+        // Then, read from the addresses in `accs`.
+        let _: Vec<_> = accs.iter().take(accs.len() - 1).map(|r| r.read(self)).collect();
+        let _: Vec<_> =
+            field_accs.iter().take(field_accs.len() - 1).map(|r| r.read(self)).collect();
+        Instruction::PrefixSumChecks(Box::new(PrefixSumChecksInstr {
+            addrs: PrefixSumChecksIo {
+                zero: zero.read(self),
+                one: one.read(self),
+                x1: x1.into_iter().map(|r| r.read(self)).collect(),
+                x2: x2.into_iter().map(|r| r.read(self)).collect(),
+                accs: acc_write_addrs,
+                field_accs: field_acc_write_addrs,
+            },
+            acc_mults: vec![C::F::zero(); accs.len()],
+            field_acc_mults: vec![C::F::zero(); field_accs.len()],
         }))
     }
 
@@ -541,6 +574,9 @@ where
             }
             DslIr::CircuitV2FriFold(data) => f(self.fri_fold(data.0, data.1)),
             DslIr::CircuitV2BatchFRI(data) => f(self.batch_fri(data.0, data.1, data.2, data.3)),
+            DslIr::CircuitV2PrefixSumChecks(data) => {
+                f(self.prefix_sum_checks(data.0, data.1, data.2, data.3, data.4, data.5))
+            }
             DslIr::CircuitV2CommitPublicValues(public_values) => {
                 f(self.commit_public_values(&public_values))
             }
@@ -553,7 +589,6 @@ where
             DslIr::PrintV(dst) => f(self.print_f(dst)),
             DslIr::PrintF(dst) => f(self.print_f(dst)),
             DslIr::PrintE(dst) => f(self.print_e(dst)),
-            #[cfg(feature = "debug")]
             DslIr::DebugBacktrace(trace) => f(Instruction::DebugBacktrace(trace)),
             DslIr::CircuitV2HintFelts(output, len) => f(self.hint(output, len)),
             DslIr::CircuitV2HintExts(output, len) => f(self.hint(output, len)),
@@ -568,10 +603,14 @@ where
     }
 
     /// A raw program (algebraic data type of instructions), not yet backfilled.
+    /// The parameter `cycle_tracker` is enabled with the `debug` feature.
+    /// The cycle tracker cannot be a field of `self` because of the consumer
+    /// passed to `compile_one`, which exclusively borrows `self`.
     fn compile_raw_program(
         &mut self,
         block: DslIrBlock<C>,
         instrs_prefix: Vec<SeqBlock<Instruction<C::F>>>,
+        #[cfg(feature = "debug")] cycle_tracker: &mut SpanBuilder<Cow<'static, str>, &'static str>,
     ) -> RawProgram<Instruction<C::F>> {
         // Consider refactoring the builder to use an AST instead of a list of operations.
         // Possible to remove address translation at this step.
@@ -585,17 +624,40 @@ where
                     seq_blocks.push(SeqBlock::Parallel(
                         par_blocks
                             .into_iter()
-                            .map(|b| self.compile_raw_program(b, vec![]))
+                            .map(|b| {
+                                cfg_if! {
+                                    if #[cfg(feature = "debug")] {
+                                        self.compile_raw_program(b, vec![], cycle_tracker)
+                                    } else {
+                                        self.compile_raw_program(b, vec![])
+                                    }
+                                }
+                            })
                             .collect(),
                     ))
                 }
                 op => {
                     let bb = maybe_bb.get_or_insert_with(Default::default);
                     self.compile_one(op, |item| match item {
-                        Ok(instr) => bb.instrs.push(instr),
+                        Ok(instr) => {
+                            #[cfg(feature = "debug")]
+                            {
+                                cycle_tracker.item(instr_name(&instr));
+                            }
+                            bb.instrs.push(instr)
+                        }
+                        #[cfg(not(feature = "debug"))]
                         Err(
                             CompileOneErr::CycleTrackerEnter(_) | CompileOneErr::CycleTrackerExit,
                         ) => (),
+                        #[cfg(feature = "debug")]
+                        Err(CompileOneErr::CycleTrackerEnter(name)) => {
+                            cycle_tracker.enter(name);
+                        }
+                        #[cfg(feature = "debug")]
+                        Err(CompileOneErr::CycleTrackerExit) => {
+                            cycle_tracker.exit().unwrap();
+                        }
                         Err(CompileOneErr::Unsupported(instr)) => {
                             panic!("unsupported instruction: {instr:?}")
                         }
@@ -678,6 +740,18 @@ where
                     } = instr.as_mut();
                     backfill((acc_mult, acc));
                 }
+                Instruction::PrefixSumChecks(instr) => {
+                    let PrefixSumChecksInstr {
+                        addrs: PrefixSumChecksIo { accs, field_accs, .. },
+                        acc_mults,
+                        field_acc_mults,
+                    } = instr.as_mut();
+                    acc_mults.iter_mut().zip(accs).for_each(|(mult, addr)| backfill((mult, addr)));
+                    field_acc_mults
+                        .iter_mut()
+                        .zip(field_accs)
+                        .for_each(|(mult, addr)| backfill((mult, addr)));
+                }
                 Instruction::HintExt2Felts(HintExt2FeltsInstr { output_addrs_mults, .. }) => {
                     output_addrs_mults.iter_mut().for_each(|(addr, mult)| backfill((mult, addr)));
                 }
@@ -690,8 +764,7 @@ where
                 // Instructions that do not write to memory.
                 Instruction::Mem(MemInstr { kind: MemAccessKind::Read, .. }) |
                 Instruction::CommitPublicValues(_) |
-                Instruction::Print(_) => (),
-                #[cfg(feature = "debug")]
+                Instruction::Print(_) |
                 Instruction::DebugBacktrace(_) => (),
             }
         }
@@ -703,18 +776,40 @@ where
     ///
     /// Returns a well-formed program.
     pub fn compile(&mut self, program: DslIrProgram<C>) -> RecursionProgram<C::F> {
+        let inner = self.compile_inner(program.into_inner());
         // SAFETY: The compiler produces well-formed programs given a well-formed DSL input.
         // This is also a cryptographic requirement.
-        unsafe { RecursionProgram::new_unchecked(self.compile_inner(program.into_inner())) }
+        unsafe { RecursionProgram::new_unchecked(inner) }
     }
 
     /// Compile a root `DslIrBlock` that has not necessarily been validated.
     ///
     /// Returns a program that may be ill-formed.
     pub fn compile_inner(&mut self, root_block: DslIrBlock<C>) -> RootProgram<C::F> {
-        // Prefix an empty basic block to be later filled in by constants.
         let mut program = tracing::debug_span!("compile raw program").in_scope(|| {
-            self.compile_raw_program(root_block, vec![SeqBlock::Basic(BasicBlock::default())])
+            // Prefix an empty basic block in the argument to `compile_raw_program`.
+            // Later, we will fill it with constants.
+            // When the debug feature is enabled, perform cycle tracking.
+            cfg_if! {
+                if #[cfg(feature = "debug")] {
+                    let mut cycle_tracker = SpanBuilder::new(Cow::Borrowed("cycle_tracker"));
+                    let program = self.compile_raw_program(
+                        root_block,
+                        vec![SeqBlock::Basic(BasicBlock::default())],
+                        &mut cycle_tracker,
+                    );
+                    let cycle_tracker_root_span = cycle_tracker.finish().unwrap();
+                    for line in cycle_tracker_root_span.lines() {
+                        tracing::info!("{}", line);
+                    }
+                    program
+                } else {
+                    self.compile_raw_program(
+                        root_block,
+                        vec![SeqBlock::Basic(BasicBlock::default())],
+                    )
+                }
+            }
         });
         let total_memory = self.addr_to_mult.len() + self.consts.len();
         tracing::debug_span!("backfill mult").in_scope(|| self.backfill_all(program.iter_mut()));
@@ -738,7 +833,32 @@ where
             ));
         });
 
-        RootProgram { inner: program, total_memory, shape: None }
+        let (analyzed, counts) = program.analyze();
+
+        RootProgram { inner: analyzed, total_memory, shape: None, event_counts: counts }
+    }
+}
+
+/// Used for cycle tracking.
+#[cfg(feature = "debug")]
+const fn instr_name<F>(instr: &Instruction<F>) -> &'static str {
+    match instr {
+        Instruction::BaseAlu(_) => "BaseAlu",
+        Instruction::ExtAlu(_) => "ExtAlu",
+        Instruction::Mem(_) => "Mem",
+        Instruction::Poseidon2(_) => "Poseidon2",
+        Instruction::Select(_) => "Select",
+        Instruction::ExpReverseBitsLen(_) => "ExpReverseBitsLen",
+        Instruction::HintBits(_) => "HintBits",
+        Instruction::FriFold(_) => "FriFold",
+        Instruction::BatchFRI(_) => "BatchFRI",
+        Instruction::PrefixSumChecks(_) => "PrefixSumChecks",
+        Instruction::Print(_) => "Print",
+        Instruction::HintExt2Felts(_) => "HintExt2Felts",
+        Instruction::Hint(_) => "Hint",
+        Instruction::HintAddCurve(_) => "HintAddCurve",
+        Instruction::CommitPublicValues(_) => "CommitPublicValues",
+        Instruction::DebugBacktrace(_) => "DebugBacktrace",
     }
 }
 
@@ -890,31 +1010,29 @@ mod tests {
 
     use std::{collections::VecDeque, io::BufRead, iter::zip, sync::Arc};
 
-    use p3_baby_bear::DiffusionMatrixBabyBear;
-    use p3_field::{Field, PrimeField32};
+    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use p3_field::extension::BinomialExtensionField;
     use p3_symmetric::{CryptographicHasher, Permutation};
     use rand::{rngs::StdRng, Rng, SeedableRng};
+    use slop_merkle_tree::{my_bb_16_perm, DefaultMerkleTreeConfig, Poseidon2BabyBearConfig};
 
-    use sp1_core_machine::utils::{run_test_machine, setup_logger};
-    use sp1_recursion_core::{machine::RecursionAir, Runtime};
-    use sp1_stark::{
-        baby_bear_poseidon2::BabyBearPoseidon2, inner_perm, BabyBearPoseidon2Inner, InnerHash,
-        StarkGenericConfig,
-    };
+    // use sp1_core_machine::utils::{run_test_machine};
+    use p3_field::PrimeField32;
+    use sp1_core_machine::utils::setup_logger;
+    use sp1_recursion_executor::Runtime;
 
     use crate::circuit::{AsmBuilder, AsmConfig, CircuitV2Builder};
 
     use super::*;
 
-    type SC = BabyBearPoseidon2;
-    type F = <SC as StarkGenericConfig>::Val;
-    type EF = <SC as StarkGenericConfig>::Challenge;
+    // type SC = BabyBearPoseidon2;
+    type F = BabyBear;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+    // type EF = <SC as StarkGenericConfig>::Challenge;
     fn test_block(block: DslIrBlock<AsmConfig<F, EF>>) {
         test_block_with_runner(block, |program| {
-            let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(
-                program,
-                BabyBearPoseidon2Inner::new().perm,
-            );
+            let mut runtime =
+                Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
             runtime.run().unwrap();
             runtime.record
         });
@@ -926,26 +1044,26 @@ mod tests {
     ) {
         let mut compiler = super::AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let record = run(program.clone());
+        let _ = run(program.clone());
 
         // Run with the poseidon2 wide chip.
-        let wide_machine =
-            RecursionAir::<_, 3>::machine_wide_with_all_chips(BabyBearPoseidon2::default());
-        let (pk, vk) = wide_machine.setup(&program);
-        let result = run_test_machine(vec![record.clone()], wide_machine, pk, vk);
-        if let Err(e) = result {
-            panic!("Verification failed: {:?}", e);
-        }
+        // let wide_machine =
+        //     RecursionAir::<_, 3>::machine_wide_with_all_chips(BabyBearPoseidon2::default());
+        // let (pk, vk) = wide_machine.setup(&program);
+        // let result = run_test_machine(vec![record.clone()], wide_machine, pk, vk);
+        // if let Err(e) = result {
+        //     panic!("Verification failed: {:?}", e);
+        // }
 
         // Run with the poseidon2 skinny chip.
-        let skinny_machine = RecursionAir::<_, 9>::machine_skinny_with_all_chips(
-            BabyBearPoseidon2::ultra_compressed(),
-        );
-        let (pk, vk) = skinny_machine.setup(&program);
-        let result = run_test_machine(vec![record.clone()], skinny_machine, pk, vk);
-        if let Err(e) = result {
-            panic!("Verification failed: {:?}", e);
-        }
+        // let skinny_machine = RecursionAir::<_, 9>::machine_skinny_with_all_chips(
+        //     BabyBearPoseidon2::ultra_compressed(),
+        // );
+        // let (pk, vk) = skinny_machine.setup(&program);
+        // let result = run_test_machine(vec![record.clone()], skinny_machine, pk, vk);
+        // if let Err(e) = result {
+        //     panic!("Verification failed: {:?}", e);
+        // }
     }
 
     #[test]
@@ -954,14 +1072,14 @@ mod tests {
 
         let mut builder = AsmBuilder::<F, EF>::default();
         let mut rng = StdRng::seed_from_u64(0xCAFEDA7E)
-            .sample_iter::<[F; WIDTH], _>(rand::distributions::Standard);
+            .sample_iter::<[F; PERMUTATION_WIDTH], _>(rand::distributions::Standard);
         for _ in 0..100 {
-            let input_1: [F; WIDTH] = rng.next().unwrap();
-            let output_1 = inner_perm().permute(input_1);
+            let input_1: [F; PERMUTATION_WIDTH] = rng.next().unwrap();
+            let output_1 = my_bb_16_perm().permute(input_1);
 
             let input_1_felts = input_1.map(|x| builder.eval(x));
             let output_1_felts = builder.poseidon2_permute_v2(input_1_felts);
-            let expected: [Felt<_>; WIDTH] = output_1.map(|x| builder.eval(x));
+            let expected: [Felt<_>; PERMUTATION_WIDTH] = output_1.map(|x| builder.eval(x));
             for (lhs, rhs) in output_1_felts.into_iter().zip(expected) {
                 builder.assert_felt_eq(lhs, rhs);
             }
@@ -972,8 +1090,7 @@ mod tests {
 
     #[test]
     fn test_poseidon2_hash() {
-        let perm = inner_perm();
-        let hasher = InnerHash::new(perm.clone());
+        let hasher = Poseidon2BabyBearConfig::default_hasher_and_compressor().0;
 
         let input: [F; 26] = [
             F::from_canonical_u32(0),
@@ -1167,10 +1284,8 @@ mod tests {
         builder.cycle_tracker_v2_exit();
 
         test_block_with_runner(builder.into_root_block(), |program| {
-            let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(
-                program,
-                BabyBearPoseidon2Inner::new().perm,
-            );
+            let mut runtime =
+                Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
             runtime.debug_stdout = Box::new(&mut buf);
             runtime.run().unwrap();
             runtime.record

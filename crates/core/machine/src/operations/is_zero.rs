@@ -10,7 +10,7 @@ use sp1_derive::AlignedBorrow;
 
 use sp1_stark::air::SP1AirBuilder;
 
-/// A set of columns needed to compute whether the given word is 0.
+/// A set of columns needed to compute whether the given input is 0.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct IsZeroOperation<T> {
@@ -39,13 +39,15 @@ impl<F: Field> IsZeroOperation<F> {
         (a == F::zero()) as u32
     }
 
+    /// Evaluate the `IsZeroOperation` on the given inputs.
+    /// If `is_real` is non-zero, it constrains that the result is `a == 0`.
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
         a: AB::Expr,
         cols: IsZeroOperation<AB::Var>,
         is_real: AB::Expr,
     ) {
-        let one: AB::Expr = AB::F::one().into();
+        let one: AB::Expr = AB::Expr::one();
 
         // 1. Input == 0 => is_zero = 1 regardless of the inverse.
         // 2. Input != 0

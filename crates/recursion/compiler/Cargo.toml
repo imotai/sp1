@@ -14,21 +14,24 @@ p3-bn254-fr = { workspace = true }
 p3-baby-bear = { workspace = true }
 p3-field = { workspace = true }
 p3-symmetric = { workspace = true }
+slop-merkle-tree = { workspace = true }
 
 sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }
-sp1-recursion-core = { workspace = true }
+sp1-recursion-executor = { workspace = true }
 sp1-recursion-derive = { workspace = true }
+sp1-recursion-machine = { workspace = true, features = ["sys"] }
 sp1-stark = { workspace = true }
 
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-backtrace = { version = "0.3.71", optional = true }
+backtrace = "0.3.71"
 tracing = { workspace = true }
 vec_map = "0.8.2"
+cfg-if = "1.0.0"
 
 [dev-dependencies]
-sp1-recursion-core = { path = "../core", features = ["program_validation"] }
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 p3-challenger = { workspace = true }
 p3-dft = { workspace = true }
 p3-merkle-tree = { workspace = true }
@@ -36,8 +39,8 @@ rand = "0.8.5"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 
 [features]
-default = ["debug"]
-debug = ["sp1-recursion-core/debug", "dep:backtrace"]
+# Enables cycle tracking and adds backtraces for circuit IR assertions.
+debug = ["sp1-recursion-executor/debug"]
 
 [lints]
 workspace = true

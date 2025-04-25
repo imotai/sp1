@@ -36,9 +36,10 @@ pub(crate) fn block_on<T>(fut: impl std::future::Future<Output = T>) -> T {
     }
 }
 
-/// Check that SP1 SDK was built in release mode. Ensures that the prover and executor
-/// will be performant, which is important for benchmarking.
-pub(crate) fn check_release_build() {
-    #[cfg(debug_assertions)]
-    panic!("sp1-sdk must be built in release mode, please compile with the --release flag.");
-}
+// Re-enable when the EnvProver is reimplemented.
+// /// Check that SP1 SDK was built in release mode. Ensures that the prover and executor
+// /// will be performant, which is important for benchmarking.
+// pub(crate) fn check_release_build() {
+//     #[cfg(debug_assertions)]
+//     panic!("sp1-sdk must be built in release mode, please compile with the --release flag.");
+// }

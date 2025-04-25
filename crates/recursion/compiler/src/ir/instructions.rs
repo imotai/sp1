@@ -3,9 +3,8 @@ use std::{
     ops::{Deref, Range},
 };
 
-#[cfg(feature = "debug")]
 use backtrace::Backtrace;
-use sp1_recursion_core::air::RecursionPublicValues;
+use sp1_recursion_executor::RecursionPublicValues;
 use sp1_stark::septic_curve::SepticCurve;
 
 use super::{
@@ -302,6 +301,18 @@ pub enum DslIr<C: Config> {
     CircuitV2BatchFRI(
         Box<(Ext<C::F, C::EF>, Vec<Ext<C::F, C::EF>>, Vec<Ext<C::F, C::EF>>, Vec<Felt<C::F>>)>,
     ),
+    /// Executes full lagrange eval as well as computes field element that corresponds to input bit
+    /// representation.
+    CircuitV2PrefixSumChecks(
+        Box<(
+            Felt<C::F>,
+            Ext<C::F, C::EF>,
+            Vec<Ext<C::F, C::EF>>,
+            Vec<Felt<C::F>>,
+            Vec<Felt<C::F>>,
+            Vec<Ext<C::F, C::EF>>,
+        )>,
+    ),
     /// Select's a variable based on a condition. (select(cond, true_val, false_val) => output).
     /// Should only be used when target is a gnark circuit.
     CircuitSelectV(Var<C::N>, Var<C::N>, Var<C::N>, Var<C::N>),
@@ -336,7 +347,6 @@ pub enum DslIr<C: Config> {
     Parallel(Vec<DslIrBlock<C>>),
 
     /// Pass a backtrace for debugging.
-    #[cfg(feature = "debug")]
     DebugBacktrace(Backtrace),
 }
 

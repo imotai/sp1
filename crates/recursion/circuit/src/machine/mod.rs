@@ -14,8 +14,14 @@ pub use core::*;
 pub use deferred::*;
 pub use public_values::*;
 pub use root::*;
-pub use vkey_proof::*;
-pub use wrap::*;
+// pub use vkey_proof::*;
+// pub use wrap::*;
 
 #[allow(unused_imports)]
 pub use witness::*;
+
+use crate::InnerSC;
+use slop_jagged::JaggedConfig;
+
+pub type InnerVal = <InnerSC as JaggedConfig>::F;
+pub type InnerChallenge = <InnerSC as JaggedConfig>::EF;

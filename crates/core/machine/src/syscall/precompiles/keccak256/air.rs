@@ -2,18 +2,17 @@ use core::borrow::Borrow;
 
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
-use p3_keccak_air::{KeccakAir, NUM_KECCAK_COLS, NUM_ROUNDS, U64_LIMBS};
+use p3_keccak_air::{NUM_ROUNDS, U64_LIMBS};
 use p3_matrix::Matrix;
-use sp1_core_executor::syscalls::SyscallCode;
-use sp1_stark::air::{InteractionScope, SP1AirBuilder, SubAirBuilder};
+use sp1_stark::{
+    air::{AirInteraction, InteractionScope, SP1AirBuilder},
+    InteractionKind,
+};
 
 use super::{
     columns::{KeccakMemCols, NUM_KECCAK_MEM_COLS},
-    KeccakPermuteChip, STATE_NUM_WORDS, STATE_SIZE,
-};
-use crate::{
-    air::{MemoryAirBuilder, WordAirBuilder},
-    memory::MemoryCols,
+    constants::rc_value_bit,
+    KeccakPermuteChip, BITS_PER_LIMB,
 };
 
 impl<F> BaseAir<F> for KeccakPermuteChip {
@@ -29,183 +28,255 @@ where
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
 
-        let (local, next) = (main.row_slice(0), main.row_slice(1));
+        let local = main.row_slice(0);
         let local: &KeccakMemCols<AB::Var> = (*local).borrow();
-        let next: &KeccakMemCols<AB::Var> = (*next).borrow();
 
-        let first_step = local.keccak.step_flags[0];
-        let final_step = local.keccak.step_flags[NUM_ROUNDS - 1];
-        let not_final_step = AB::Expr::one() - final_step;
+        builder.assert_bool(local.is_real);
 
-        // Constrain memory in the first and last cycles.
-        builder.assert_eq((first_step + final_step) * local.is_real, local.do_memory_check);
+        // Keccak AIRs from Plonky3.
+        let andn_gen = |a: AB::Expr, b: AB::Expr| b.clone() - a * b;
+        let xor_gen = |a: AB::Expr, b: AB::Expr| a.clone() + b.clone() - a * b.double();
+        let xor3_gen = |a: AB::Expr, b: AB::Expr, c: AB::Expr| xor_gen(a, xor_gen(b, c));
 
-        // Constrain memory
-        for i in 0..STATE_NUM_WORDS as u32 {
-            // At the first cycle, verify that the memory has not changed since it's a memory read.
-            builder.when(local.keccak.step_flags[0] * local.is_real).assert_word_eq(
-                *local.state_mem[i as usize].value(),
-                *local.state_mem[i as usize].prev_value(),
-            );
+        // Flag constraints.
+        let mut sum_flags = AB::Expr::zero();
+        let mut computed_index = AB::Expr::zero();
+        for i in 0..NUM_ROUNDS {
+            builder.assert_bool(local.keccak.step_flags[i]);
+            sum_flags = sum_flags.clone() + local.keccak.step_flags[i];
+            computed_index = computed_index.clone()
+                + AB::Expr::from_canonical_u32(i as u32) * local.keccak.step_flags[i];
+        }
+        builder.assert_one(sum_flags);
+        builder.when(local.is_real).assert_eq(computed_index, local.index);
 
-            builder.eval_memory_access(
-                local.shard,
-                local.clk + final_step, // The clk increments by 1 after a final step
-                local.state_addr + AB::Expr::from_canonical_u32(i * 4),
-                &local.state_mem[i as usize],
-                local.do_memory_check,
-            );
+        // C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
+        for x in 0..5 {
+            for z in 0..64 {
+                builder.assert_bool(local.keccak.c[x][z]);
+                let xor = xor3_gen(
+                    local.keccak.c[x][z].into(),
+                    local.keccak.c[(x + 4) % 5][z].into(),
+                    local.keccak.c[(x + 1) % 5][(z + 63) % 64].into(),
+                );
+                let c_prime = local.keccak.c_prime[x][z];
+                builder.assert_eq(c_prime, xor);
+            }
         }
 
-        // Receive the syscall in the first row of each 24-cycle
-        builder.assert_eq(local.receive_ecall, first_step * local.is_real);
-        builder.receive_syscall(
-            local.shard,
-            local.clk,
-            AB::F::from_canonical_u32(SyscallCode::KECCAK_PERMUTE.syscall_id()),
-            local.state_addr,
-            AB::Expr::zero(),
-            local.receive_ecall,
+        // Check that the input limbs are consistent with A' and D.
+        // A[x, y, z] = xor(A'[x, y, z], D[x, y, z])
+        //            = xor(A'[x, y, z], C[x - 1, z], C[x + 1, z - 1])
+        //            = xor(A'[x, y, z], C[x, z], C'[x, z]).
+        // The last step is valid based on the identity we checked above.
+        // It isn't required, but makes this check a bit cleaner.
+        for y in 0..5 {
+            for x in 0..5 {
+                let get_bit = |z| {
+                    let a_prime: AB::Var = local.keccak.a_prime[y][x][z];
+                    let c: AB::Var = local.keccak.c[x][z];
+                    let c_prime: AB::Var = local.keccak.c_prime[x][z];
+                    xor3_gen(a_prime.into(), c.into(), c_prime.into())
+                };
+
+                for limb in 0..U64_LIMBS {
+                    let a_limb = local.keccak.a[y][x][limb];
+                    let computed_limb = (limb * BITS_PER_LIMB..(limb + 1) * BITS_PER_LIMB)
+                        .rev()
+                        .fold(AB::Expr::zero(), |acc, z| {
+                            builder.assert_bool(local.keccak.a_prime[y][x][z]);
+                            acc.double() + get_bit(z)
+                        });
+                    builder.assert_eq(computed_limb, a_limb);
+                }
+            }
+        }
+
+        // xor_{i=0}^4 A'[x, i, z] = C'[x, z], so for each x, z,
+        // diff * (diff - 2) * (diff - 4) = 0, where
+        // diff = sum_{i=0}^4 A'[x, i, z] - C'[x, z]
+        for x in 0..5 {
+            for z in 0..64 {
+                let sum: AB::Expr = (0..5).map(|y| local.keccak.a_prime[y][x][z].into()).sum();
+                let diff = sum - local.keccak.c_prime[x][z];
+                let four = AB::Expr::from_canonical_u8(4);
+                builder
+                    .assert_zero(diff.clone() * (diff.clone() - AB::Expr::two()) * (diff - four));
+            }
+        }
+
+        // A''[x, y] = xor(B[x, y], andn(B[x + 1, y], B[x + 2, y])).
+        for y in 0..5 {
+            for x in 0..5 {
+                let get_bit = |z| {
+                    let andn = andn_gen(
+                        local.keccak.b((x + 1) % 5, y, z).into(),
+                        local.keccak.b((x + 2) % 5, y, z).into(),
+                    );
+                    xor_gen(local.keccak.b(x, y, z).into(), andn)
+                };
+
+                for limb in 0..U64_LIMBS {
+                    let computed_limb = (limb * BITS_PER_LIMB..(limb + 1) * BITS_PER_LIMB)
+                        .rev()
+                        .fold(AB::Expr::zero(), |acc, z| acc.double() + get_bit(z));
+                    builder.assert_eq(computed_limb, local.keccak.a_prime_prime[y][x][limb]);
+                }
+            }
+        }
+
+        // A'''[0, 0] = A''[0, 0] XOR RC
+        for limb in 0..U64_LIMBS {
+            let computed_a_prime_prime_0_0_limb = (limb * BITS_PER_LIMB
+                ..(limb + 1) * BITS_PER_LIMB)
+                .rev()
+                .fold(AB::Expr::zero(), |acc, z| {
+                    builder.assert_bool(local.keccak.a_prime_prime_0_0_bits[z]);
+                    acc.double() + local.keccak.a_prime_prime_0_0_bits[z]
+                });
+            let a_prime_prime_0_0_limb = local.keccak.a_prime_prime[0][0][limb];
+            builder.assert_eq(computed_a_prime_prime_0_0_limb, a_prime_prime_0_0_limb);
+        }
+
+        let get_xored_bit = |i| {
+            let mut rc_bit_i = AB::Expr::zero();
+            for r in 0..NUM_ROUNDS {
+                let this_round = local.keccak.step_flags[r];
+                let this_round_constant = AB::Expr::from_canonical_u8(rc_value_bit(r, i));
+                rc_bit_i = rc_bit_i.clone() + this_round * this_round_constant;
+            }
+
+            xor_gen(local.keccak.a_prime_prime_0_0_bits[i].into(), rc_bit_i)
+        };
+
+        for limb in 0..U64_LIMBS {
+            let a_prime_prime_prime_0_0_limb = local.keccak.a_prime_prime_prime_0_0_limbs[limb];
+            let computed_a_prime_prime_prime_0_0_limb = (limb * BITS_PER_LIMB
+                ..(limb + 1) * BITS_PER_LIMB)
+                .rev()
+                .fold(AB::Expr::zero(), |acc, z| acc.double() + get_xored_bit(z));
+            builder.assert_eq(computed_a_prime_prime_prime_0_0_limb, a_prime_prime_prime_0_0_limb);
+        }
+
+        // Receive state.
+        builder.receive(
+            AirInteraction::new(
+                vec![local.shard, local.clk, local.state_addr, local.index]
+                    .into_iter()
+                    .chain(
+                        local.keccak.a.into_iter().flat_map(|two_d| {
+                            two_d.into_iter().flat_map(|one_d| one_d.into_iter())
+                        }),
+                    )
+                    .map(Into::into)
+                    .collect(),
+                local.is_real.into(),
+                InteractionKind::Keccak,
+            ),
             InteractionScope::Local,
         );
 
-        // Constrain that the inputs stay the same throughout the 24 rows of each cycle
-        let mut transition_builder = builder.when_transition();
-        let mut transition_not_final_builder = transition_builder.when(not_final_step);
-        transition_not_final_builder.assert_eq(local.shard, next.shard);
-        transition_not_final_builder.assert_eq(local.clk, next.clk);
-        transition_not_final_builder.assert_eq(local.state_addr, next.state_addr);
-        transition_not_final_builder.assert_eq(local.is_real, next.is_real);
-
-        // The last row must be nonreal because NUM_ROUNDS is not a power of 2. This constraint
-        // ensures that the table does not end abruptly.
-        builder.when_last_row().assert_zero(local.is_real);
-
-        // Verify that local.a values are equal to the memory values in the 0 and 23rd rows of each
-        // cycle Memory values are 32 bit values (encoded as 4 8-bit columns).
-        // local.a values are 64 bit values (encoded as 4 16-bit columns).
-        let expr_2_pow_8 = AB::Expr::from_canonical_u32(2u32.pow(8));
-        for i in 0..STATE_SIZE as u32 {
-            // Interpret u32 memory words as u16 limbs
-            let least_sig_word = local.state_mem[(i * 2) as usize].value();
-            let most_sig_word = local.state_mem[(i * 2 + 1) as usize].value();
-            let memory_limbs = [
-                least_sig_word[0] + least_sig_word[1] * expr_2_pow_8.clone(),
-                least_sig_word[2] + least_sig_word[3] * expr_2_pow_8.clone(),
-                most_sig_word[0] + most_sig_word[1] * expr_2_pow_8.clone(),
-                most_sig_word[2] + most_sig_word[3] * expr_2_pow_8.clone(),
-            ];
-
-            let y_idx = i / 5;
-            let x_idx = i % 5;
-
-            // On a first step row, verify memory matches with local.p3_keccak_cols.a
-            let a_value_limbs = local.keccak.a[y_idx as usize][x_idx as usize];
-            for i in 0..U64_LIMBS {
-                builder
-                    .when(first_step * local.is_real)
-                    .assert_eq(memory_limbs[i].clone(), a_value_limbs[i]);
-            }
-
-            // On a final step row, verify memory matches with
-            // local.p3_keccak_cols.a_prime_prime_prime
-            for i in 0..U64_LIMBS {
-                builder.when(final_step * local.is_real).assert_eq(
-                    memory_limbs[i].clone(),
-                    local.keccak.a_prime_prime_prime(y_idx as usize, x_idx as usize, i),
-                )
-            }
-        }
-
-        // Range check all the values in `state_mem` to be bytes.
-        for i in 0..STATE_NUM_WORDS {
-            builder.slice_range_check_u8(&local.state_mem[i].value().0, local.do_memory_check);
-        }
-
-        let mut sub_builder =
-            SubAirBuilder::<AB, KeccakAir, AB::Var>::new(builder, 0..NUM_KECCAK_COLS);
-
-        // Eval the plonky3 keccak air
-        self.p3_keccak.eval(&mut sub_builder);
+        // Send state.
+        builder.send(
+            AirInteraction::new(
+                vec![
+                    local.shard.into(),
+                    local.clk.into(),
+                    local.state_addr.into(),
+                    local.index + AB::Expr::one(),
+                ]
+                .into_iter()
+                .chain((0..5).flat_map(|y| {
+                    (0..5).flat_map(move |x| {
+                        (0..4).map(move |limb| local.keccak.a_prime_prime_prime(y, x, limb).into())
+                    })
+                }))
+                .collect(),
+                local.is_real.into(),
+                InteractionKind::Keccak,
+            ),
+            InteractionScope::Local,
+        );
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::{
-        io::SP1Stdin,
-        riscv::RiscvAir,
-        utils::{prove_core, setup_logger},
-    };
-    use sp1_primitives::io::SP1PublicValues;
+// #[cfg(test)]
+// mod test {
+//     use crate::{
+//         io::SP1Stdin,
+//         riscv::RiscvAir,
+//         utils::{prove_core, setup_logger},
+//     };
+//     use sp1_primitives::io::SP1PublicValues;
 
-    use rand::{Rng, SeedableRng};
-    use sp1_core_executor::{Program, SP1Context};
-    use sp1_stark::{
-        baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
-        StarkGenericConfig,
-    };
-    use test_artifacts::KECCAK256_ELF;
-    use tiny_keccak::Hasher;
+//     use rand::{Rng, SeedableRng};
+//     use sp1_core_executor::{Program, SP1Context};
+//     use sp1_stark::{
+//         baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
+//         StarkGenericConfig,
+//     };
+//     use test_artifacts::KECCAK256_ELF;
+//     use tiny_keccak::Hasher;
 
-    const NUM_TEST_CASES: usize = 45;
+//     const NUM_TEST_CASES: usize = 45;
 
-    #[test]
-    #[ignore]
-    fn test_keccak_random() {
-        setup_logger();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-        let mut inputs = Vec::<Vec<u8>>::new();
-        let mut outputs = Vec::<[u8; 32]>::new();
-        for len in 0..NUM_TEST_CASES {
-            let bytes = (0..len * 71).map(|_| rng.gen::<u8>()).collect::<Vec<_>>();
-            inputs.push(bytes.clone());
+//     #[test]
+//     #[ignore]
+//     fn test_keccak_random() {
+//         setup_logger();
+//         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+//         let mut inputs = Vec::<Vec<u8>>::new();
+//         let mut outputs = Vec::<[u8; 32]>::new();
+//         for len in 0..NUM_TEST_CASES {
+//             let bytes = (0..len * 71).map(|_| rng.gen::<u8>()).collect::<Vec<_>>();
+//             inputs.push(bytes.clone());
 
-            let mut keccak = tiny_keccak::Keccak::v256();
-            keccak.update(&bytes);
-            let mut hash = [0u8; 32];
-            keccak.finalize(&mut hash);
-            outputs.push(hash);
-        }
+//             let mut keccak = tiny_keccak::Keccak::v256();
+//             keccak.update(&bytes);
+//             let mut hash = [0u8; 32];
+//             keccak.finalize(&mut hash);
+//             outputs.push(hash);
+//         }
 
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&NUM_TEST_CASES);
-        for input in inputs.iter() {
-            stdin.write(&input);
-        }
+//         let mut stdin = SP1Stdin::new();
+//         stdin.write(&NUM_TEST_CASES);
+//         for input in inputs.iter() {
+//             stdin.write(&input);
+//         }
 
-        let config = BabyBearPoseidon2::new();
+//         let config = BabyBearPoseidon2::new();
 
-        let program = Program::from(KECCAK256_ELF).unwrap();
-        let opts = SP1CoreOpts::default();
-        let machine = RiscvAir::machine(config);
-        let prover = CpuProver::new(machine);
-        let (pk, vk) = prover.setup(&program);
-        let (proof, public_values, _) = prove_core::<_, _>(
-            &prover,
-            &pk,
-            &vk,
-            program,
-            &stdin,
-            opts,
-            SP1Context::default(),
-            None,
-            None,
-        )
-        .unwrap();
-        let mut public_values = SP1PublicValues::from(&public_values);
+//         let program = Program::from(KECCAK256_ELF).unwrap();
+//         let opts = SP1CoreOpts::default();
+//         let machine = RiscvAir::machine(config);
+//         let prover = CpuProver::new(machine);
+//         let (pk, vk) = prover.setup(&program);
+//         let (proof, public_values, _) = prove_core::<_, _>(
+//             &prover,
+//             &pk,
+//             &vk,
+//             program,
+//             &stdin,
+//             opts,
+//             SP1Context::default(),
+//             None,
+//             None,
+//         )
+//         .unwrap();
+//         let mut public_values = SP1PublicValues::from(&public_values);
 
-        let config = BabyBearPoseidon2::new();
-        let mut challenger = config.challenger();
-        let machine = RiscvAir::machine(config);
-        let (_, vk) = machine.setup(&Program::from(KECCAK256_ELF).unwrap());
-        let _ =
-            tracing::info_span!("verify").in_scope(|| machine.verify(&vk, &proof, &mut challenger));
+//         let config = BabyBearPoseidon2::new();
+//         let mut challenger = config.challenger();
+//         let machine = RiscvAir::machine(config);
+//         let (_, vk) = machine.setup(&Program::from(KECCAK256_ELF).unwrap());
+//         let _ =
+//             tracing::info_span!("verify").in_scope(|| machine.verify(&vk, &proof, &mut
+// challenger));
 
-        for i in 0..NUM_TEST_CASES {
-            let expected = outputs.get(i).unwrap();
-            let actual = public_values.read::<[u8; 32]>();
-            assert_eq!(expected, &actual);
-        }
-    }
-}
+//         for i in 0..NUM_TEST_CASES {
+//             let expected = outputs.get(i).unwrap();
+//             let actual = public_values.read::<[u8; 32]>();
+//             assert_eq!(expected, &actual);
+//         }
+//     }
+// }

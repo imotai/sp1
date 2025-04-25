@@ -273,6 +273,12 @@ impl<F: Field> From<Felt<F>> for SymbolicFelt<F> {
     }
 }
 
+impl<F: Field> From<&Felt<F>> for SymbolicFelt<F> {
+    fn from(f: &Felt<F>) -> Self {
+        SymbolicFelt::Val(*f)
+    }
+}
+
 impl<F: Field, EF: ExtensionField<F>> From<Ext<F, EF>> for SymbolicExt<F, EF> {
     fn from(e: Ext<F, EF>) -> Self {
         e.to_operand().symbolic()

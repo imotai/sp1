@@ -1,10 +1,10 @@
 //! A septic extension with an irreducible polynomial `z^7 - 2z - 5`.
 use num_bigint::BigUint;
 use num_traits::One;
-use p3_field::{
+use serde::{Deserialize, Serialize};
+use slop_algebra::{
     AbstractExtensionField, AbstractField, ExtensionField, Field, Packable, PrimeField32,
 };
-use serde::{Deserialize, Serialize};
 use std::{
     array,
     fmt::Display,
@@ -682,8 +682,8 @@ impl<F: PrimeField32> SepticExtension<F> {
     /// Returns whether the extension field element viewed as an y-coordinate of a digest represents
     /// a send interaction.
     pub fn is_send(&self) -> bool {
-        F::ORDER_U32.div_ceil(2) <= self.0[6].as_canonical_u32() &&
-            self.0[6].as_canonical_u32() <= (F::ORDER_U32 - 1)
+        F::ORDER_U32.div_ceil(2) <= self.0[6].as_canonical_u32()
+            && self.0[6].as_canonical_u32() <= (F::ORDER_U32 - 1)
     }
 
     /// Returns whether the extension field element viewed as an y-coordinate of a digest cannot
@@ -826,7 +826,7 @@ impl<T> IntoIterator for SepticBlock<T> {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use p3_baby_bear::BabyBear;
+    use slop_baby_bear::BabyBear;
 
     use super::*;
 

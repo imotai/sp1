@@ -47,24 +47,25 @@ impl Instruction {
     pub const fn is_alu_instruction(&self) -> bool {
         matches!(
             self.opcode,
-            Opcode::ADD |
-                Opcode::SUB |
-                Opcode::XOR |
-                Opcode::OR |
-                Opcode::AND |
-                Opcode::SLL |
-                Opcode::SRL |
-                Opcode::SRA |
-                Opcode::SLT |
-                Opcode::SLTU |
-                Opcode::MUL |
-                Opcode::MULH |
-                Opcode::MULHU |
-                Opcode::MULHSU |
-                Opcode::DIV |
-                Opcode::DIVU |
-                Opcode::REM |
-                Opcode::REMU
+            Opcode::ADD
+                | Opcode::ADDI
+                | Opcode::SUB
+                | Opcode::XOR
+                | Opcode::OR
+                | Opcode::AND
+                | Opcode::SLL
+                | Opcode::SRL
+                | Opcode::SRA
+                | Opcode::SLT
+                | Opcode::SLTU
+                | Opcode::MUL
+                | Opcode::MULH
+                | Opcode::MULHU
+                | Opcode::MULHSU
+                | Opcode::DIV
+                | Opcode::DIVU
+                | Opcode::REM
+                | Opcode::REMU
         )
     }
 
@@ -104,6 +105,20 @@ impl Instruction {
     #[inline]
     pub const fn is_jump_instruction(&self) -> bool {
         matches!(self.opcode, Opcode::JAL | Opcode::JALR)
+    }
+
+    /// Returns if the instruction is a jal instruction.
+    #[must_use]
+    #[inline]
+    pub const fn is_jal_instruction(&self) -> bool {
+        matches!(self.opcode, Opcode::JAL)
+    }
+
+    /// Returns if the instruction is a jalr instruction.
+    #[must_use]
+    #[inline]
+    pub const fn is_jalr_instruction(&self) -> bool {
+        matches!(self.opcode, Opcode::JALR)
     }
 
     /// Returns if the instruction is an auipc instruction.

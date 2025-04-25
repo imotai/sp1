@@ -9,8 +9,8 @@ use anyhow::Result;
 use prove::CudaProveBuilder;
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_cuda::SP1CudaProver;
-use sp1_prover::{components::CpuProverComponents, SP1Prover};
+// use sp1_cuda::SP1CudaProver;
+// use sp1_prover::{components::CpuProverComponents, SP1Prover};
 
 use crate::{
     cpu::execute::CpuExecuteBuilder, install::try_install_circuit_artifacts, Prover, SP1Proof,
@@ -19,8 +19,8 @@ use crate::{
 
 /// A prover that uses the CPU for execution and the CUDA for proving.
 pub struct CudaProver {
-    pub(crate) cpu_prover: SP1Prover<CpuProverComponents>,
-    pub(crate) cuda_prover: SP1CudaProver,
+    // pub(crate) cpu_prover: SP1Prover<CpuProverComponents>,
+    // pub(crate) cuda_prover: SP1CudaProver,
 }
 
 impl CudaProver {

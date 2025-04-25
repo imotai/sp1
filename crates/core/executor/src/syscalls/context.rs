@@ -4,7 +4,8 @@ use hashbrown::HashMap;
 
 use crate::{
     events::{
-        MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent,
+        LogicalShard, MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent,
+        Shard, SyscallEvent,
     },
     ExecutionRecord, Executor, ExecutorConfig, ExecutorMode, Register,
 };
@@ -16,7 +17,7 @@ use super::SyscallCode;
 #[allow(dead_code)]
 pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The current shard.
-    pub current_shard: u32,
+    pub lshard: LogicalShard,
     /// The clock cycle.
     pub clk: u32,
     /// The next program counter.
@@ -26,23 +27,23 @@ pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The runtime.
     pub rt: &'a mut Executor<'b>,
     /// The local memory access events for the syscall.
-    pub local_memory_access: HashMap<u32, MemoryLocalEvent>,
+    pub local_memory_access: Option<HashMap<u32, MemoryLocalEvent>>,
     /// Phantom data.
     pub _phantom: PhantomData<E>,
 }
 
 impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Create a new [`SyscallContext`].
-    pub fn new(runtime: &'a mut Executor<'b>) -> Self {
-        let current_shard = runtime.shard();
+    pub fn new(runtime: &'a mut Executor<'b>, external: bool) -> Self {
+        let lshard = LogicalShard::new(runtime.shard(), external);
         let clk = runtime.state.clk;
         Self {
-            current_shard,
+            lshard,
             clk,
             next_pc: runtime.state.pc.wrapping_add(4),
             exit_code: 0,
             rt: runtime,
-            local_memory_access: HashMap::new(),
+            local_memory_access: external.then_some(HashMap::new()),
             _phantom: PhantomData,
         }
     }
@@ -67,20 +68,22 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
 
     /// Get the current shard.
     #[must_use]
-    pub fn current_shard(&self) -> u32 {
-        self.rt.state.current_shard
+    pub fn shard(&self) -> Shard {
+        self.lshard.shard()
+    }
+
+    /// Get the current logical shard.
+    #[must_use]
+    pub fn lshard(&self) -> LogicalShard {
+        self.lshard
     }
 
     /// Read a word from memory.
     ///
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mr(&mut self, addr: u32) -> (MemoryReadRecord, u32) {
-        let record = self.rt.mr::<E>(
-            addr,
-            self.current_shard,
-            self.clk,
-            Some(&mut self.local_memory_access),
-        );
+        let record =
+            self.rt.mr::<E>(addr, self.lshard(), self.clk, self.local_memory_access.as_mut());
         (record, record.value)
     }
 
@@ -102,13 +105,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     ///
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mw(&mut self, addr: u32, value: u32) -> MemoryWriteRecord {
-        self.rt.mw::<E>(
-            addr,
-            value,
-            self.current_shard,
-            self.clk,
-            Some(&mut self.local_memory_access),
-        )
+        self.rt.mw::<E>(addr, value, self.lshard(), self.clk, self.local_memory_access.as_mut())
     }
 
     /// Write a slice of words to memory.
@@ -125,9 +122,9 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     pub fn rr_traced(&mut self, register: Register) -> (MemoryReadRecord, u32) {
         let record = self.rt.rr_traced::<E>(
             register,
-            self.current_shard,
+            self.lshard(),
             self.clk,
-            Some(&mut self.local_memory_access),
+            self.local_memory_access.as_mut(),
         );
         (record, record.value)
     }
@@ -137,9 +134,9 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
         let record = self.rt.rw_traced::<E>(
             register,
             value,
-            self.current_shard,
+            self.lshard(),
             self.clk,
-            Some(&mut self.local_memory_access),
+            self.local_memory_access.as_mut(),
         );
         (record, record.value)
     }
@@ -148,12 +145,12 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     pub fn postprocess(&mut self) -> Vec<MemoryLocalEvent> {
         let mut syscall_local_mem_events = Vec::new();
 
-        if !E::UNCONSTRAINED {
-            if E::MODE == ExecutorMode::Trace {
-                // Will need to transfer the existing memory local events in the executor to it's
-                // record, and return all the syscall memory local events.  This is similar
-                // to what `bump_record` does.
-                for (addr, event) in self.local_memory_access.drain() {
+        if E::MODE == ExecutorMode::Trace && !E::UNCONSTRAINED {
+            // Will need to transfer the existing memory local events in the executor to it's
+            // record, and return all the syscall memory local events.  This is similar
+            // to what `bump_record` does.
+            if let Some(local_memory_access) = self.local_memory_access.as_mut() {
+                for (addr, event) in local_memory_access.drain() {
                     let local_mem_access = self.rt.local_memory_access.remove(&addr);
 
                     if let Some(local_mem_access) = local_mem_access {
@@ -162,16 +159,6 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
 
                     syscall_local_mem_events.push(event);
                 }
-            }
-            if let Some(estimator) = &mut self.rt.record_estimator {
-                let original_len = estimator.current_touched_compressed_addresses.len();
-                // Remove addresses from the main set that were touched in the precompile.
-                estimator.current_touched_compressed_addresses =
-                    core::mem::take(&mut estimator.current_touched_compressed_addresses) -
-                        &estimator.current_precompile_touched_compressed_addresses;
-                // Add the number of addresses that were removed from the main set.
-                estimator.current_local_mem +=
-                    original_len - estimator.current_touched_compressed_addresses.len();
             }
         }
 

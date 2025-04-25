@@ -6,7 +6,6 @@ use anyhow::Result;
 use sp1_core_executor::{IoWriter, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_prover::SP1ProvingKey;
-use sp1_stark::{SP1CoreOpts, SP1ProverOpts};
 
 use super::CpuProver;
 use crate::{SP1ProofMode, SP1ProofWithPublicValues};
@@ -15,18 +14,16 @@ use crate::{SP1ProofMode, SP1ProofWithPublicValues};
 ///
 /// This builder provides a typed interface for configuring the SP1 RISC-V prover. The builder is
 /// used for only the [`crate::cpu::CpuProver`] client type.
-pub struct CpuProveBuilder<'a> {
-    pub(crate) prover: &'a CpuProver,
+pub struct CpuProveBuilder {
+    pub(crate) prover: CpuProver,
     pub(crate) mode: SP1ProofMode,
-    pub(crate) context_builder: SP1ContextBuilder<'a>,
-    pub(crate) pk: &'a SP1ProvingKey,
+    pub(crate) context_builder: SP1ContextBuilder<'static>,
+    pub(crate) pk: SP1ProvingKey,
     pub(crate) stdin: SP1Stdin,
-    pub(crate) core_opts: SP1CoreOpts,
-    pub(crate) recursion_opts: SP1CoreOpts,
     pub(crate) mock: bool,
 }
 
-impl<'a> CpuProveBuilder<'a> {
+impl CpuProveBuilder {
     /// Set the proof kind to [`SP1ProofKind::Core`] mode.
     ///
     /// # Details
@@ -41,8 +38,8 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).core().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).core().run().await;
     /// ```
     #[must_use]
     pub fn core(mut self) -> Self {
@@ -65,8 +62,8 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).compressed().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).compressed().run().await;
     /// ```
     #[must_use]
     pub fn compressed(mut self) -> Self {
@@ -90,8 +87,8 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).plonk().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).plonk().run().await;
     /// ```
     #[must_use]
     pub fn plonk(mut self) -> Self {
@@ -113,8 +110,8 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).groth16().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).groth16().run().await;
     /// ```
     #[must_use]
     pub fn groth16(mut self) -> Self {
@@ -135,8 +132,8 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).mode(SP1ProofMode::Groth16).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).mode(SP1ProofMode::Groth16).run().await;
     /// ```
     #[must_use]
     pub fn mode(mut self, mode: SP1ProofMode) -> Self {
@@ -144,54 +141,54 @@ impl<'a> CpuProveBuilder<'a> {
         self
     }
 
-    /// Set the shard size for proving.
-    ///
-    /// # Details
-    /// The value should be 2^16, 2^17, ..., 2^22. You must be careful to set this value
-    /// correctly, as it will affect the memory usage of the prover and the recursion/verification
-    /// complexity. By default, the value is set to some predefined values that are optimized for
-    /// performance based on the available amount of RAM on the system.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).shard_size(1 << 16).run();
-    /// ```
-    #[must_use]
-    pub fn shard_size(mut self, value: usize) -> Self {
-        assert!(value.is_power_of_two(), "shard size must be a power of 2");
-        self.core_opts.shard_size = value;
-        self
-    }
+    // /// Set the shard size for proving.
+    // ///
+    // /// # Details
+    // /// The value should be 2^16, 2^17, ..., 2^22. You must be careful to set this value
+    // /// correctly, as it will affect the memory usage of the prover and the recursion/verification
+    // /// complexity. By default, the value is set to some predefined values that are optimized for
+    // /// performance based on the available amount of RAM on the system.
+    // ///
+    // /// # Example
+    // /// ```rust,no_run
+    // /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    // ///
+    // /// let elf = &[1, 2, 3];
+    // /// let stdin = SP1Stdin::new();
+    // ///
+    // /// let client = ProverClient::builder().cpu().build();
+    // /// let (pk, vk) = client.setup(elf).await;
+    // /// let builder = client.prove(pk, stdin).shard_size(1 << 16).run();
+    // /// ```
+    // #[must_use]
+    // pub fn shard_size(mut self, value: usize) -> Self {
+    //     assert!(value.is_power_of_two(), "shard size must be a power of 2");
+    //     self.core_opts.shard_size = value;
+    //     self
+    // }
 
-    /// Set the shard batch size for proving.
-    ///
-    /// # Details
-    /// This is the number of shards that are processed in a single batch in the prover. You should
-    /// probably not change this value unless you know what you are doing.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).shard_batch_size(4).run();
-    /// ```
-    #[must_use]
-    pub fn shard_batch_size(mut self, value: usize) -> Self {
-        self.core_opts.shard_batch_size = value;
-        self
-    }
+    // /// Set the shard batch size for proving.
+    // ///
+    // /// # Details
+    // /// This is the number of shards that are processed in a single batch in the prover. You should
+    // /// probably not change this value unless you know what you are doing.
+    // ///
+    // /// # Example
+    // /// ```rust,no_run
+    // /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    // ///
+    // /// let elf = &[1, 2, 3];
+    // /// let stdin = SP1Stdin::new();
+    // ///
+    // /// let client = ProverClient::builder().cpu().build();
+    // /// let (pk, vk) = client.setup(elf).await;
+    // /// let builder = client.prove(pk, stdin).shard_batch_size(4).run();
+    // /// ```
+    // #[must_use]
+    // pub fn shard_batch_size(mut self, value: usize) -> Self {
+    //     self.core_opts.shard_batch_size = value;
+    //     self
+    // }
 
     /// Set the maximum number of cpu cycles to use for execution.
     ///
@@ -207,8 +204,8 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).cycle_limit(1000000).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).cycle_limit(1000000).run();
     /// ```
     #[must_use]
     pub fn cycle_limit(mut self, cycle_limit: u64) -> Self {
@@ -235,8 +232,8 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).deferred_proof_verification(false).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).deferred_proof_verification(false).run();
     /// ```
     #[must_use]
     pub fn deferred_proof_verification(mut self, value: bool) -> Self {
@@ -259,7 +256,7 @@ impl<'a> CpuProveBuilder<'a> {
     /// client.execute(elf, &stdin).stdout(&mut stdout).run();
     /// ```
     #[must_use]
-    pub fn stdout<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
+    pub fn stdout<W: IoWriter>(mut self, writer: &'static mut W) -> Self {
         self.context_builder.stdout(writer);
         self
     }
@@ -279,7 +276,7 @@ impl<'a> CpuProveBuilder<'a> {
     /// client.execute(elf, &stdin).stderr(&mut stderr).run();
     /// ```````
     #[must_use]
-    pub fn stderr<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
+    pub fn stderr<W: IoWriter>(mut self, writer: &'static mut W) -> Self {
         self.context_builder.stderr(writer);
         self
     }
@@ -298,14 +295,12 @@ impl<'a> CpuProveBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run().unwrap();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).run().await.unwrap();
     /// ```
-    pub fn run(self) -> Result<SP1ProofWithPublicValues> {
+    pub async fn run(self) -> Result<SP1ProofWithPublicValues> {
         // Get the arguments.
-        let Self { prover, mode, pk, stdin, mut context_builder, core_opts, recursion_opts, mock } =
-            self;
-        let opts = SP1ProverOpts { core_opts, recursion_opts };
+        let Self { prover, mode, pk, stdin, mut context_builder, mock } = self;
         let context = context_builder.build();
 
         // Dump the program and stdin to files for debugging if `SP1_DUMP` is set.
@@ -313,9 +308,9 @@ impl<'a> CpuProveBuilder<'a> {
 
         // Run the prover.
         if mock {
-            prover.mock_prove_impl(pk, &stdin, context, mode)
+            prover.mock_prove_impl(pk, stdin, context, mode)
         } else {
-            prover.prove_impl(pk, &stdin, opts, context, mode)
+            prover.prove_impl(pk, stdin, context, mode).await
         }
     }
 }

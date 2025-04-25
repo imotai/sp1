@@ -10,24 +10,25 @@ pub use config::*;
 mod tests {
     use std::sync::Arc;
 
-    use p3_baby_bear::DiffusionMatrixBabyBear;
-    use p3_field::AbstractField;
+    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use p3_field::{extension::BinomialExtensionField, AbstractField};
 
-    use sp1_core_machine::utils::run_test_machine;
-    use sp1_recursion_core::{machine::RecursionAir, Runtime, RuntimeError};
-    use sp1_stark::{BabyBearPoseidon2Inner, StarkGenericConfig};
+    // use sp1_core_machine::utils::run_test_machine;
+    // use sp1_recursion_core::{machine::RecursionAir, Runtime, RuntimeError};
+    use slop_merkle_tree::my_bb_16_perm;
+    use sp1_recursion_executor::{Runtime, RuntimeError};
 
     use crate::{
         circuit::{AsmBuilder, AsmCompiler, CircuitV2Builder},
         ir::*,
     };
 
-    const DEGREE: usize = 3;
+    // const DEGREE: usize = 3;
 
-    type SC = BabyBearPoseidon2Inner;
-    type F = <SC as StarkGenericConfig>::Val;
-    type EF = <SC as StarkGenericConfig>::Challenge;
-    type A = RecursionAir<F, DEGREE>;
+    // type SC = BabyBearPoseidon2Inner;
+    type F = BabyBear;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+    // type A = RecursionAir<F, DEGREE>;
 
     #[test]
     fn test_io() {
@@ -54,7 +55,7 @@ mod tests {
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), SC::new().perm);
+            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
         runtime.witness_stream = [
             vec![F::one().into(), F::one().into(), F::two().into()],
             vec![F::zero().into(), F::one().into(), F::two().into()],
@@ -65,13 +66,14 @@ mod tests {
         .into();
         runtime.run().unwrap();
 
-        let machine = A::compress_machine(SC::new());
+        // let machine = A::compress_machine(SC::new());
 
-        let (pk, vk) = machine.setup(&program);
-        let result =
-            run_test_machine(vec![runtime.record], machine, pk, vk.clone()).expect("should verify");
+        // let (pk, vk) = machine.setup(&program);
+        // let result =
+        //     run_test_machine(vec![runtime.record], machine, pk, vk.clone()).expect("should
+        // verify");
 
-        tracing::info!("num shard proofs: {}", result.shard_proofs.len());
+        // tracing::info!("num shard proofs: {}", result.shard_proofs.len());
     }
 
     #[test]
@@ -92,7 +94,7 @@ mod tests {
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), SC::new().perm);
+            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
         runtime.witness_stream =
             [vec![F::one().into(), F::one().into(), F::two().into()]].concat().into();
 

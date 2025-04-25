@@ -6,89 +6,127 @@ use std::{
 };
 
 use itertools::Itertools;
-use p3_baby_bear::BabyBear;
-use p3_commit::Mmcs;
-use p3_field::AbstractField;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_air::Air;
+use slop_algebra::AbstractField;
+use slop_baby_bear::BabyBear;
+use slop_jagged::JaggedConfig;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use sp1_core_machine::{
-    cpu::MAX_CPU_LOG_DEGREE,
+    // cpu::MAX_CPU_LOG_DEGREE,
     riscv::{RiscvAir, MAX_LOG_NUMBER_OF_SHARDS},
 };
 
-use sp1_recursion_core::air::PV_DIGEST_NUM_WORDS;
+use sp1_recursion_executor::PV_DIGEST_NUM_WORDS;
 use sp1_stark::{
-    air::{InteractionScope, MachineAir, PublicValues, POSEIDON_NUM_WORDS},
-    baby_bear_poseidon2::BabyBearPoseidon2,
-    shape::OrderedShape,
-    Dom, StarkMachine, Word,
+    air::{PublicValues, POSEIDON_NUM_WORDS},
+    Word,
 };
 
-use sp1_stark::{ShardProof, StarkGenericConfig, StarkVerifyingKey};
+use sp1_stark::{MachineConfig, MachineVerifyingKey, ShardProof};
 
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Config, Felt, SymbolicFelt},
 };
 
-use sp1_recursion_core::{
-    air::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS},
-    DIGEST_SIZE,
-};
+use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, RECURSIVE_PROOF_NUM_PV_ELTS};
 
 use crate::{
+    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::{CanObserveVariable, DuplexChallengerVariable},
+    jagged::RecursiveJaggedConfig,
     machine::{assert_complete, recursion_public_values_digest},
-    stark::{dummy_vk_and_shard_proof, ShardProofVariable, StarkVerifier},
-    BabyBearFriConfig, BabyBearFriConfigVariable, CircuitConfig, VerifyingKeyVariable,
+    shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
+    zerocheck::RecursiveVerifierConstraintFolder,
+    BabyBearFriConfig, BabyBearFriConfigVariable, CircuitConfig, InnerSC,
 };
 
 pub struct SP1RecursionWitnessVariable<
-    C: CircuitConfig<F = BabyBear>,
+    C: CircuitConfig<F = BabyBear, EF = crate::EF>,
     SC: BabyBearFriConfigVariable<C>,
+    JC: RecursiveJaggedConfig<
+        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+    >,
 > {
-    pub vk: VerifyingKeyVariable<C, SC>,
-    pub shard_proofs: Vec<ShardProofVariable<C, SC>>,
+    pub vk: MachineVerifyingKeyVariable<C, SC>,
+    pub shard_proofs: Vec<ShardProofVariable<C, SC, JC>>,
     pub reconstruct_deferred_digest: [Felt<C::F>; DIGEST_SIZE],
     pub is_complete: Felt<C::F>,
     pub is_first_shard: Felt<C::F>,
-    pub vk_root: [Felt<C::F>; DIGEST_SIZE],
+    // pub vk_root: [Felt<C::F>; DIGEST_SIZE],
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "ShardProof<SC>: Serialize, Dom<SC>: Serialize"))]
-#[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>, Dom<SC>: DeserializeOwned"))]
-pub struct SP1RecursionWitnessValues<SC: StarkGenericConfig> {
-    pub vk: StarkVerifyingKey<SC>,
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound(serialize = "ShardProof<SC>: Serialize"))]
+#[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>"))]
+pub struct SP1RecursionWitnessValues<SC: MachineConfig> {
+    pub vk: MachineVerifyingKey<SC>,
     pub shard_proofs: Vec<ShardProof<SC>>,
     pub is_complete: bool,
     pub is_first_shard: bool,
-    pub vk_root: [SC::Val; DIGEST_SIZE],
-    pub reconstruct_deferred_digest: [SC::Val; 8],
+    // pub vk_root: [SC::F; DIGEST_SIZE],
+    pub reconstruct_deferred_digest: [SC::F; 8],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1RecursionShape {
-    pub proof_shapes: Vec<OrderedShape>,
-    pub is_complete: bool,
-}
+// impl<SC: BabyBearFriConfig + Send + Sync> SP1RecursionWitnessValues<SC> {
+//     pub fn shape(&self) -> SP1RecursionShape {
+//         let proof_shapes = self.shard_proofs.iter().map(|proof| proof.shape()).collect();
+
+//         SP1RecursionShape { proof_shapes, is_complete: self.is_complete }
+//     }
+// }
+
+// impl SP1RecursionWitnessValues<BabyBearPoseidon2> {
+//     pub fn dummy(
+//         machine: &MachineVerifier<BabyBearPoseidon2, RiscvAir<BabyBear>>,
+//         shape: &SP1RecursionShape,
+//     ) -> Self {
+//         let (mut vks, shard_proofs): (Vec<_>, Vec<_>) =
+//             shape.proof_shapes.iter().map(|shape| dummy_vk_and_shard_proof(machine,
+// shape)).unzip();         let vk = vks.pop().unwrap();
+//         Self {
+//             vk,
+//             shard_proofs,
+//             reconstruct_deferred_digest: [BabyBear::zero(); DIGEST_SIZE],
+//             is_complete: shape.is_complete,
+//             is_first_shard: false,
+//             vk_root: [BabyBear::zero(); DIGEST_SIZE],
+//         }
+//     }
+// }
 
 /// A program for recursively verifying a batch of SP1 proofs.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1RecursiveVerifier<C: Config, SC: BabyBearFriConfig> {
-    _phantom: PhantomData<(C, SC)>,
+pub struct SP1RecursiveVerifier<C: Config, SC: BabyBearFriConfig, JC: RecursiveJaggedConfig> {
+    _phantom: PhantomData<(C, SC, JC)>,
 }
 
-impl<C, SC> SP1RecursiveVerifier<C, SC>
+type InnerVal = <InnerSC as JaggedConfig>::F;
+type InnerChallenge = <InnerSC as JaggedConfig>::EF;
+
+impl<C, SC, JC> SP1RecursiveVerifier<C, SC, JC>
 where
     SC: BabyBearFriConfigVariable<
-        C,
-        FriChallengerVariable = DuplexChallengerVariable<C>,
-        DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
+            C,
+            FriChallengerVariable = DuplexChallengerVariable<C>,
+            DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
+        > + Send
+        + Sync,
+    C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<BabyBear>>,
+    JC: RecursiveJaggedConfig<
+        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
-    C: CircuitConfig<F = SC::Val, EF = SC::Challenge, Bit = Felt<BabyBear>>,
-    <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
+    SC: BabyBearFriConfigVariable<C> + MachineConfig,
+    JC: RecursiveJaggedConfig<
+        F = C::F,
+        EF = C::EF,
+        Circuit = C,
+        Commitment = SC::DigestVariable,
+        Challenger = SC::FriChallengerVariable,
+        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
+        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+    >,
 {
     /// Verify a batch of SP1 shard proofs and aggregate their public values.
     ///
@@ -118,16 +156,18 @@ where
     /// as the one witnessed here.
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &StarkMachine<SC, RiscvAir<SC::Val>>,
-        input: SP1RecursionWitnessVariable<C, SC>,
-    ) {
+        machine: &RecursiveShardVerifier<RiscvAir<<SC as JaggedConfig>::F>, SC, C, JC>,
+        input: SP1RecursionWitnessVariable<C, SC, JC>,
+    ) where
+        RiscvAir<<SC as JaggedConfig>::F>: for<'b> Air<RecursiveVerifierConstraintFolder<'b, C>>,
+    {
         // Read input.
         let SP1RecursionWitnessVariable {
             vk,
             shard_proofs,
             is_complete,
             is_first_shard,
-            vk_root,
+            // vk_root,
             reconstruct_deferred_digest,
         } = input;
 
@@ -144,21 +184,21 @@ where
         let mut current_pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize memory initialization and finalization variables.
-        let mut initial_previous_init_addr_bits: [Felt<_>; 32] =
+        let mut initial_previous_init_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut initial_previous_finalize_addr_bits: [Felt<_>; 32] =
+        let mut initial_previous_finalize_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_init_addr_bits: [Felt<_>; 32] =
+        let mut current_init_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_finalize_addr_bits: [Felt<_>; 32] =
+        let mut current_finalize_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize the exit code variable.
         let mut exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize the public values digest.
-        let mut committed_value_digest: [Word<Felt<_>>; PV_DIGEST_NUM_WORDS] =
-            array::from_fn(|_| Word(array::from_fn(|_| builder.uninit())));
+        let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
+            array::from_fn(|_| array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() }));
 
         // Initialize the deferred proofs digest.
         let mut deferred_proofs_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
@@ -170,17 +210,14 @@ where
         // Assert that the number of proofs is not zero.
         assert!(!shard_proofs.is_empty());
 
-        // Initialize a flag to denote the first (if any) CPU shard.
-        let mut cpu_shard_seen = false;
-
         // Verify proofs.
         for (i, shard_proof) in shard_proofs.into_iter().enumerate() {
-            let contains_cpu = shard_proof.contains_cpu();
-            let contains_memory_init = shard_proof.contains_memory_init();
-            let contains_memory_finalize = shard_proof.contains_memory_finalize();
+            // let contains_cpu = shard_proof.contains_cpu();
+            // let contains_memory_init = shard_proof.contains_memory_init();
+            // let contains_memory_finalize = shard_proof.contains_memory_finalize();
 
             // Get the public values.
-            let public_values: &PublicValues<Word<Felt<_>>, Felt<_>> =
+            let public_values: &PublicValues<[Felt<_>; 4], Word<Felt<_>>, Felt<_>> =
                 shard_proof.public_values.as_slice().borrow();
 
             // If this is the first proof in the batch, initialize the variables.
@@ -198,21 +235,23 @@ where
                 current_pc = public_values.start_pc;
 
                 // Memory initialization & finalization.
-                for ((bit, pub_bit), first_bit) in current_init_addr_bits
+                for ((limb, pub_limb), first_limb) in current_init_addr_word
+                    .0
                     .iter_mut()
-                    .zip(public_values.previous_init_addr_bits.iter())
-                    .zip(initial_previous_init_addr_bits.iter_mut())
+                    .zip(public_values.previous_init_addr_word.0.iter())
+                    .zip(initial_previous_init_addr_word.0.iter_mut())
                 {
-                    *bit = *pub_bit;
-                    *first_bit = *pub_bit;
+                    *limb = *pub_limb;
+                    *first_limb = *pub_limb;
                 }
-                for ((bit, pub_bit), first_bit) in current_finalize_addr_bits
+                for ((limb, pub_limb), first_limb) in current_finalize_addr_word
+                    .0
                     .iter_mut()
-                    .zip(public_values.previous_finalize_addr_bits.iter())
-                    .zip(initial_previous_finalize_addr_bits.iter_mut())
+                    .zip(public_values.previous_finalize_addr_word.0.iter())
+                    .zip(initial_previous_finalize_addr_word.0.iter_mut())
                 {
-                    *bit = *pub_bit;
-                    *first_bit = *pub_bit;
+                    *limb = *pub_limb;
+                    *first_limb = *pub_limb;
                 }
 
                 // Exit code.
@@ -223,7 +262,7 @@ where
                     .iter_mut()
                     .zip_eq(public_values.committed_value_digest.iter())
                 {
-                    for (byte, first_byte) in word.0.iter_mut().zip_eq(first_word.0.iter()) {
+                    for (byte, first_byte) in word.iter_mut().zip_eq(first_word.iter()) {
                         *byte = *first_byte;
                     }
                 }
@@ -266,12 +305,24 @@ where
                     vk.initial_global_cumulative_sum,
                 ));
 
-                // Assert that `init_addr_bits` and `finalize_addr_bits` are zero for the first
-                for bit in current_init_addr_bits.iter() {
-                    builder.assert_felt_eq(is_first_shard * *bit, C::F::zero());
+                // If it's the first shard, the execution shard should be 1.
+                builder.assert_felt_eq(
+                    is_first_shard * (initial_execution_shard - C::F::one()),
+                    C::F::zero(),
+                );
+                // If it's the first shard, it must be a CPU shard, so the next execution shard must
+                // be 2.
+                builder.assert_felt_eq(
+                    is_first_shard * (public_values.next_execution_shard - C::F::two()),
+                    C::F::zero(),
+                );
+
+                // Assert that `init_addr_word` and `finalize_addr_word` are zero for the first
+                for limb in current_init_addr_word.0.iter() {
+                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
                 }
-                for bit in current_finalize_addr_bits.iter() {
-                    builder.assert_felt_eq(is_first_shard * *bit, C::F::zero());
+                for limb in current_finalize_addr_word.0.iter() {
+                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
                 }
             }
 
@@ -279,12 +330,18 @@ where
             //
             // Do not verify the cumulative sum here, since the permutation challenge is shared
             // between all shards.
+            let not_cpu_shard: Felt<_> = builder.eval(
+                SymbolicFelt::one()
+                    - (public_values.next_execution_shard - public_values.execution_shard),
+            );
 
             // Prepare a challenger.
-            let mut challenger = machine.config().challenger_variable(builder);
+            let mut challenger = SC::challenger_variable(builder);
 
             // Observe the vk and start pc.
-            challenger.observe(builder, vk.commitment);
+            if let Some(commit) = vk.preprocessed_commit {
+                challenger.observe(builder, commit);
+            }
             challenger.observe(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
@@ -292,28 +349,12 @@ where
             let zero: Felt<_> = builder.eval(C::F::zero());
             challenger.observe(builder, zero);
 
-            // Observe the public values.
-            challenger.observe_slice(
-                builder,
-                shard_proof.public_values[0..machine.num_pv_elts()].iter().copied(),
-            );
-            tracing::debug_span!("verify shard").in_scope(|| {
-                StarkVerifier::verify_shard(builder, &vk, machine, &mut challenger, &shard_proof)
-            });
-
-            let chips = machine.shard_chips_ordered(&shard_proof.chip_ordering).collect::<Vec<_>>();
+            tracing::debug_span!("verify shard")
+                .in_scope(|| machine.verify_shard(builder, &vk, &shard_proof, &mut challenger));
 
             // Assert that first shard has a "CPU". Equivalently, assert that if the shard does
             // not have a "CPU", then the current shard is not 1.
-            if !contains_cpu {
-                builder.assert_felt_ne(current_shard, C::F::one());
-            }
-
-            // CPU log degree bound check constraints (this assertion is made in compile time).
-            if shard_proof.contains_cpu() {
-                let log_degree_cpu = shard_proof.log_degree_cpu();
-                assert!(log_degree_cpu <= MAX_CPU_LOG_DEGREE);
-            }
+            builder.assert_felt_ne(not_cpu_shard * current_shard, C::F::one());
 
             // Shard constraints.
             {
@@ -326,21 +367,8 @@ where
 
             // Execution shard constraints.
             {
-                // If the shard has a "CPU" chip, then the execution shard should be incremented by
-                // 1.
-                if contains_cpu {
-                    // If this is the first time we've seen the CPU, we initialize the initial and
-                    // current execution shards.
-                    if !cpu_shard_seen {
-                        initial_execution_shard = public_values.execution_shard;
-                        current_execution_shard = initial_execution_shard;
-                        cpu_shard_seen = true;
-                    }
-
-                    builder.assert_felt_eq(current_execution_shard, public_values.execution_shard);
-
-                    current_execution_shard = builder.eval(current_execution_shard + C::F::one());
-                }
+                builder.assert_felt_eq(current_execution_shard, public_values.execution_shard);
+                current_execution_shard = public_values.next_execution_shard;
             }
 
             // Program counter constraints.
@@ -348,14 +376,11 @@ where
                 // Assert that the start_pc of the proof is equal to the current pc.
                 builder.assert_felt_eq(current_pc, public_values.start_pc);
 
-                // If it's not a shard with "CPU", then assert that the start_pc equals the
-                // next_pc.
-                if !contains_cpu {
-                    builder.assert_felt_eq(public_values.start_pc, public_values.next_pc);
-                } else {
-                    // If it's a shard with "CPU", then assert that the start_pc is not zero.
-                    builder.assert_felt_ne(public_values.start_pc, C::F::zero());
-                }
+                // If it's not a CPU shard, then assert that the start_pc equals the next_pc.
+                builder.assert_felt_eq(
+                    not_cpu_shard * (public_values.start_pc - public_values.next_pc),
+                    C::F::zero(),
+                );
 
                 // Update current_pc to be the end_pc of the current proof.
                 current_pc = public_values.next_pc;
@@ -369,58 +394,40 @@ where
 
             // Memory initialization & finalization constraints.
             {
-                // Assert that the MemoryInitialize address bits match the current loop variable.
-                for (bit, current_bit) in current_init_addr_bits
+                // Assert that the MemoryInitialize address limbs match the current loop variable.
+                for (limb, current_limb) in current_init_addr_word
+                    .0
                     .iter()
-                    .zip_eq(public_values.previous_init_addr_bits.iter())
+                    .zip_eq(public_values.previous_init_addr_word.0.iter())
                 {
-                    builder.assert_felt_eq(*bit, *current_bit);
+                    builder.assert_felt_eq(*limb, *current_limb);
                 }
 
-                // Assert that the MemoryFinalize address bits match the current loop variable.
-                for (bit, current_bit) in current_finalize_addr_bits
+                // Assert that the MemoryFinalize address limbs match the current loop variable.
+                for (limb, current_limb) in current_finalize_addr_word
+                    .0
                     .iter()
-                    .zip_eq(public_values.previous_finalize_addr_bits.iter())
+                    .zip_eq(public_values.previous_finalize_addr_word.0.iter())
                 {
-                    builder.assert_felt_eq(*bit, *current_bit);
+                    builder.assert_felt_eq(*limb, *current_limb);
                 }
 
-                // Assert that if MemoryInit is not present, then the address bits are the same.
-                if !contains_memory_init {
-                    for (prev_bit, last_bit) in public_values
-                        .previous_init_addr_bits
-                        .iter()
-                        .zip_eq(public_values.last_init_addr_bits.iter())
-                    {
-                        builder.assert_felt_eq(*prev_bit, *last_bit);
-                    }
-                }
-
-                // Assert that if MemoryFinalize is not present, then the address bits are the
-                // same.
-                if !contains_memory_finalize {
-                    for (prev_bit, last_bit) in public_values
-                        .previous_finalize_addr_bits
-                        .iter()
-                        .zip_eq(public_values.last_finalize_addr_bits.iter())
-                    {
-                        builder.assert_felt_eq(*prev_bit, *last_bit);
-                    }
-                }
-
-                // Update the MemoryInitialize address bits.
-                for (bit, pub_bit) in
-                    current_init_addr_bits.iter_mut().zip(public_values.last_init_addr_bits.iter())
-                {
-                    *bit = *pub_bit;
-                }
-
-                // Update the MemoryFinalize address bits.
-                for (bit, pub_bit) in current_finalize_addr_bits
+                // Update the MemoryInitialize address limbs.
+                for (limb, pub_limb) in current_init_addr_word
+                    .0
                     .iter_mut()
-                    .zip(public_values.last_finalize_addr_bits.iter())
+                    .zip(public_values.last_init_addr_word.0.iter())
                 {
-                    *bit = *pub_bit;
+                    *limb = *pub_limb;
+                }
+
+                // Update the MemoryFinalize address limbs.
+                for (limb, pub_limb) in current_finalize_addr_word
+                    .0
+                    .iter_mut()
+                    .zip(public_values.last_finalize_addr_word.0.iter())
+                {
+                    *limb = *pub_limb;
                 }
             }
 
@@ -455,14 +462,11 @@ where
                 }
 
                 // If it's not a shard with "CPU", then the committed value digest shouldn't change.
-                if !contains_cpu {
-                    for (word_d, pub_word_d) in committed_value_digest
-                        .iter()
-                        .zip(public_values.committed_value_digest.iter())
-                    {
-                        for (d, pub_d) in word_d.0.iter().zip(pub_word_d.0.iter()) {
-                            builder.assert_felt_eq(*d, *pub_d);
-                        }
+                for (word_d, pub_word_d) in
+                    committed_value_digest.iter().zip(public_values.committed_value_digest.iter())
+                {
+                    for (d, pub_d) in word_d.iter().zip(pub_word_d.iter()) {
+                        builder.assert_felt_eq(not_cpu_shard * (*d - *pub_d), C::F::zero());
                     }
                 }
 
@@ -471,7 +475,7 @@ where
                     .iter_mut()
                     .zip(public_values.committed_value_digest.iter())
                 {
-                    for (d, pub_d) in word_d.0.iter_mut().zip(pub_word_d.0.iter()) {
+                    for (d, pub_d) in word_d.iter_mut().zip(pub_word_d.iter()) {
                         *d = *pub_d;
                     }
                 }
@@ -505,13 +509,10 @@ where
 
                 // If it's not a shard with "CPU", then the deferred proofs digest should not
                 // change.
-                if !contains_cpu {
-                    for (d, pub_d) in deferred_proofs_digest
-                        .iter()
-                        .zip(public_values.deferred_proofs_digest.iter())
-                    {
-                        builder.assert_felt_eq(*d, *pub_d);
-                    }
+                for (d, pub_d) in
+                    deferred_proofs_digest.iter().zip(public_values.deferred_proofs_digest.iter())
+                {
+                    builder.assert_felt_eq(not_cpu_shard * (*d - *pub_d), C::F::zero());
                 }
 
                 // Update the deferred proofs digest.
@@ -525,11 +526,7 @@ where
             // We add the global cumulative sums of the global chips.
             // Note that we constrain that the non-global chips have zero global cumulative sum in
             // `verify_shard`.
-            for (chip, values) in chips.iter().zip(shard_proof.opened_values.chips.iter()) {
-                if chip.commit_scope() == InteractionScope::Global {
-                    global_cumulative_sums.push(values.global_cumulative_sum);
-                }
-            }
+            global_cumulative_sums.push(public_values.global_cumulative_sum);
         }
 
         // We sum the digests in `global_cumulative_sums` to get the overall global cumulative sum.
@@ -556,21 +553,18 @@ where
             recursion_public_values.next_shard = current_shard;
             recursion_public_values.start_execution_shard = initial_execution_shard;
             recursion_public_values.next_execution_shard = current_execution_shard;
-            recursion_public_values.previous_init_addr_bits = initial_previous_init_addr_bits;
-            recursion_public_values.last_init_addr_bits = current_init_addr_bits;
-            recursion_public_values.previous_finalize_addr_bits =
-                initial_previous_finalize_addr_bits;
-            recursion_public_values.last_finalize_addr_bits = current_finalize_addr_bits;
+            recursion_public_values.previous_init_addr_word = initial_previous_init_addr_word;
+            recursion_public_values.last_init_addr_word = current_init_addr_word;
+            recursion_public_values.previous_finalize_addr_word =
+                initial_previous_finalize_addr_word;
+            recursion_public_values.last_finalize_addr_word = current_finalize_addr_word;
             recursion_public_values.sp1_vk_digest = vk_digest;
             recursion_public_values.global_cumulative_sum = global_cumulative_sum;
             recursion_public_values.start_reconstruct_deferred_digest = reconstruct_deferred_digest;
             recursion_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
             recursion_public_values.exit_code = exit_code;
             recursion_public_values.is_complete = is_complete;
-            // Set the contains an execution shard flag.
-            recursion_public_values.contains_execution_shard =
-                builder.eval(C::F::from_bool(cpu_shard_seen));
-            recursion_public_values.vk_root = vk_root;
+            recursion_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
 
             // Calculate the digest and set it in the public values.
             recursion_public_values.digest =
@@ -580,38 +574,5 @@ where
 
             SC::commit_recursion_public_values(builder, *recursion_public_values);
         }
-    }
-}
-
-impl<SC: BabyBearFriConfig> SP1RecursionWitnessValues<SC> {
-    pub fn shape(&self) -> SP1RecursionShape {
-        let proof_shapes = self.shard_proofs.iter().map(|proof| proof.shape()).collect();
-
-        SP1RecursionShape { proof_shapes, is_complete: self.is_complete }
-    }
-}
-
-impl SP1RecursionWitnessValues<BabyBearPoseidon2> {
-    pub fn dummy(
-        machine: &StarkMachine<BabyBearPoseidon2, RiscvAir<BabyBear>>,
-        shape: &SP1RecursionShape,
-    ) -> Self {
-        let (mut vks, shard_proofs): (Vec<_>, Vec<_>) =
-            shape.proof_shapes.iter().map(|shape| dummy_vk_and_shard_proof(machine, shape)).unzip();
-        let vk = vks.pop().unwrap();
-        Self {
-            vk,
-            shard_proofs,
-            reconstruct_deferred_digest: [BabyBear::zero(); DIGEST_SIZE],
-            is_complete: shape.is_complete,
-            is_first_shard: false,
-            vk_root: [BabyBear::zero(); DIGEST_SIZE],
-        }
-    }
-}
-
-impl From<OrderedShape> for SP1RecursionShape {
-    fn from(proof_shape: OrderedShape) -> Self {
-        Self { proof_shapes: vec![proof_shape], is_complete: false }
     }
 }

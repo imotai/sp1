@@ -3,8 +3,8 @@ use std::{
     ops::{Deref, Range},
 };
 
-use p3_air::{AirBuilder, BaseAir};
-use p3_matrix::Matrix;
+use slop_air::{AirBuilder, BaseAir};
+use slop_matrix::Matrix;
 
 /// A submatrix of a matrix.  The matrix will contain a subset of the columns of `self.inner`.
 pub struct SubMatrixRowSlices<M: Matrix<T>, T: Send + Sync> {

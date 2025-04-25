@@ -25,7 +25,7 @@ use std::{
 pub struct NetworkProveBuilder<'a> {
     pub(crate) prover: &'a NetworkProver,
     pub(crate) mode: SP1ProofMode,
-    pub(crate) pk: &'a SP1ProvingKey,
+    pub(crate) pk: SP1ProvingKey,
     pub(crate) stdin: SP1Stdin,
     pub(crate) timeout: Option<Duration>,
     pub(crate) strategy: FulfillmentStrategy,
@@ -50,8 +50,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).core().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).core().run();
     /// ```
     #[must_use]
     pub fn core(mut self) -> Self {
@@ -74,8 +74,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).compressed().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).compressed().run().await;
     /// ```
     #[must_use]
     pub fn compressed(mut self) -> Self {
@@ -99,8 +99,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).plonk().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).plonk().run().await;
     /// ```
     #[must_use]
     pub fn plonk(mut self) -> Self {
@@ -122,8 +122,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).groth16().run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).groth16().run().await;
     /// ```
     #[must_use]
     pub fn groth16(mut self) -> Self {
@@ -144,8 +144,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).mode(SP1ProofMode::Groth16).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).mode(SP1ProofMode::Groth16).run().await;
     /// ```
     #[must_use]
     pub fn mode(mut self, mode: SP1ProofMode) -> Self {
@@ -168,8 +168,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).timeout(Duration::from_secs(60)).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).timeout(Duration::from_secs(60)).run().await;
     /// ```
     #[must_use]
     pub fn timeout(mut self, timeout: Duration) -> Self {
@@ -193,8 +193,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).skip_simulation(true).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).skip_simulation(true).run();
     /// ```
     #[must_use]
     pub fn skip_simulation(mut self, skip_simulation: bool) -> Self {
@@ -215,8 +215,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).strategy(FulfillmentStrategy::Hosted).run().unwrap();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).strategy(FulfillmentStrategy::Hosted).run().unwrap();
     /// ```
     #[must_use]
     pub fn strategy(mut self, strategy: FulfillmentStrategy) -> Self {
@@ -243,9 +243,9 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
+    /// let (pk, vk) = client.setup(elf).await;
     /// let proof = client
-    ///     .prove(&pk, &stdin)
+    ///     .prove(pk, stdin)
     ///     .cycle_limit(1_000_000) // Set 1M cycle limit.
     ///     .skip_simulation(true) // Skip simulation since the limit is set manually.
     ///     .run()
@@ -328,8 +328,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let request_id = client.prove(&pk, &stdin).request().unwrap();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let request_id = client.prove(pk, stdin).request().unwrap();
     /// ```
     pub fn request(self) -> Result<B256> {
         block_on(self.request_async())
@@ -351,21 +351,33 @@ impl NetworkProveBuilder<'_> {
     ///     let stdin = SP1Stdin::new();
     ///
     ///     let client = ProverClient::builder().network().build();
-    ///     let (pk, vk) = client.setup(elf);
-    ///     let request_id = client.prove(&pk, &stdin).request_async().await.unwrap();
+    ///     let (pk, vk) = client.setup(elf).await;
+    ///     let request_id = client.prove(pk, stdin).request_async().await.unwrap();
     /// })
     /// ```
     pub async fn request_async(self) -> Result<B256> {
-        self.prover
+        let Self {
+            prover,
+            mode,
+            pk,
+            stdin,
+            timeout,
+            strategy,
+            skip_simulation,
+            cycle_limit,
+            gas_limit,
+            tee_2fa: _,
+        } = self;
+        prover
             .request_proof_impl(
-                self.pk,
-                &self.stdin,
-                self.mode,
-                self.strategy,
-                self.timeout,
-                self.skip_simulation,
-                self.cycle_limit,
-                self.gas_limit,
+                &pk,
+                &stdin,
+                mode,
+                strategy,
+                timeout,
+                skip_simulation,
+                cycle_limit,
+                gas_limit,
             )
             .await
     }
@@ -384,8 +396,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run().unwrap();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).run().unwrap();
     /// ```
     pub fn run(self) -> Result<SP1ProofWithPublicValues> {
         block_on(self.run_async())
@@ -404,10 +416,22 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run_async();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).run_async();
     /// ```
     pub async fn run_async(mut self) -> Result<SP1ProofWithPublicValues> {
+        let NetworkProveBuilder {
+            prover,
+            mode,
+            pk,
+            stdin,
+            timeout,
+            strategy,
+            skip_simulation,
+            cycle_limit,
+            gas_limit,
+            tee_2fa,
+        } = self;
         // Check for deprecated environment variable
         if let Ok(val) = std::env::var("SKIP_SIMULATION") {
             eprintln!(
@@ -416,19 +440,19 @@ impl NetworkProveBuilder<'_> {
             self.skip_simulation = matches!(val.to_lowercase().as_str(), "true" | "1");
         }
 
-        sp1_dump(&self.pk.elf, &self.stdin);
+        sp1_dump(&pk.elf, &stdin);
 
-        self.prover
+        prover
             .prove_impl(
-                self.pk,
-                &self.stdin,
-                self.mode,
-                self.strategy,
-                self.timeout,
-                self.skip_simulation,
-                self.cycle_limit,
-                self.gas_limit,
-                self.tee_2fa,
+                pk,
+                stdin,
+                mode,
+                strategy,
+                timeout,
+                skip_simulation,
+                cycle_limit,
+                gas_limit,
+                tee_2fa,
             )
             .await
     }

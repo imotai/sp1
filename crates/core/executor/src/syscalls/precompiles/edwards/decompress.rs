@@ -49,7 +49,7 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
     let x_memory_records_vec = rt.mw_slice(slice_ptr, &decompressed_x_words);
     let x_memory_records: [MemoryWriteRecord; 8] = x_memory_records_vec.try_into().unwrap();
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = EdDecompressEvent {
         shard,
         clk: start_clk,
@@ -62,7 +62,7 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
         local_mem_access: rt.postprocess(),
     };
     let syscall_event =
-        rt.rt.syscall_event(start_clk, None, None, syscall_code, arg1, sign, rt.next_pc);
+        rt.rt.syscall_event(start_clk, syscall_code, arg1, sign, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, PrecompileEvent::EdDecompress(event));
     None
 }

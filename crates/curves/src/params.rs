@@ -6,11 +6,11 @@ use std::{
 
 use serde::{de::DeserializeOwned, Serialize};
 
+use sp1_primitives::polynomial::Polynomial;
 use typenum::{Unsigned, U2, U4};
 
 use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
 use num::BigUint;
-use sp1_stark::air::Polynomial;
 
 use p3_field::Field;
 

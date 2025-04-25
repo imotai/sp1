@@ -25,11 +25,11 @@ reqwest = { version = "0.12.12", default-features = false, features = [
 anyhow = "1.0.83"
 sp1-prover = { workspace = true }
 sp1-core-machine = { workspace = true }
-sp1-cuda = { workspace = true }
+# sp1-cuda = { workspace = true }
 sp1-build = { workspace = true }
 futures = "0.3.30"
 bincode = "1.3.3"
-tokio = { version = "1.44.2", features = ["full"], optional = true }
+tokio = { workspace = true }
 p3-field = { workspace = true }
 p3-baby-bear = { workspace = true }
 p3-fri = { workspace = true }
@@ -39,8 +39,8 @@ hex = "0.4.3"
 dirs = "5.0.1"
 tempfile = "3.10.1"
 cfg-if = "1.0"
-strum = "0.26.3"
-strum_macros = "0.26.4"
+strum = { workspace = true }
+strum_macros = { workspace = true }
 thiserror = "1.0.63"
 hashbrown = { workspace = true }
 sp1-core-executor = { workspace = true }
@@ -56,10 +56,10 @@ backoff = { version = "0.4", features = ["tokio"], optional = true }
 
 # TEE Dependencies
 k256 = { version = "0.13.3", features = ["serde"] } # Signing
-eventsource-stream = { version = "0.2.0" } # SSE Extenstion for reqwest
+eventsource-stream = { version = "0.2.0" }          # SSE Extenstion for reqwest
 
 [dev-dependencies]
-test-artifacts = { path = "../test-artifacts" }
+test-artifacts = { workspace = true }
 tokio-test = { version = "0.4" }
 
 [features]
@@ -73,7 +73,6 @@ network = [
   "dep:alloy-signer",
   "dep:alloy-signer-local",
   "dep:alloy-primitives",
-  "dep:tokio",
   "dep:alloy-signer",
   "dep:reqwest",
   "dep:twirp",

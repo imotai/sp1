@@ -1,11 +1,11 @@
 use itertools::Itertools;
-use p3_baby_bear::BabyBear;
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
+use slop_baby_bear::BabyBear;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Config, Felt},
 };
-use sp1_recursion_core::air::RecursionPublicValues;
+use sp1_recursion_executor::RecursionPublicValues;
 
 /// Assertions on recursion public values which represent a complete proof.
 ///
@@ -25,7 +25,6 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
         start_reconstruct_deferred_digest,
         end_reconstruct_deferred_digest,
         global_cumulative_sum,
-        contains_execution_shard,
         ..
     } = public_values;
 
@@ -42,8 +41,6 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
     // shard that contains CPU.
     builder.assert_felt_ne(is_complete * *next_shard, C::F::one());
 
-    // Assert that that an execution shard is present.
-    builder.assert_felt_eq(is_complete * (*contains_execution_shard - C::F::one()), C::F::zero());
     // Assert that the start execution shard is equal to 1.
     builder.assert_felt_eq(is_complete * (*start_execution_shard - C::F::one()), C::F::zero());
 

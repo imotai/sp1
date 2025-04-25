@@ -3,23 +3,32 @@ use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
 use p3_field::{AbstractField, PrimeField};
 use sp1_stark::{
-    air::{MachineAir, PublicValues},
+    air::{
+        AirInteraction, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
+        SP1_PROOF_NUM_PV_ELTS,
+    },
+    septic_digest::SepticDigest,
     shape::Shape,
-    MachineRecord, SP1CoreOpts, SplitOpts,
+    InteractionKind, MachineRecord, Word,
 };
-use std::{mem::take, str::FromStr, sync::Arc};
+use std::{
+    borrow::Borrow,
+    iter::once,
+    mem::take,
+    sync::{Arc, Mutex},
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     events::{
-        AUIPCEvent, AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CpuEvent,
-        GlobalInteractionEvent, JumpEvent, MemInstrEvent, MemoryInitializeFinalizeEvent,
-        MemoryLocalEvent, MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SyscallEvent,
+        AUIPCEvent, AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent,
+        JumpEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
+        MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SyscallEvent,
     },
     program::Program,
     syscalls::SyscallCode,
-    RiscvAirId,
+    RetainedEventsPreset, RiscvAirId, SplitOpts,
 };
 
 /// A record of the execution of a program.
@@ -29,32 +38,48 @@ use crate::{
 pub struct ExecutionRecord {
     /// The program.
     pub program: Arc<Program>,
-    /// A trace of the CPU events which get emitted during execution.
-    pub cpu_events: Vec<CpuEvent>,
+    /// The number of CPU related events.
+    pub cpu_event_count: u32,
     /// A trace of the ADD, and ADDI events.
-    pub add_events: Vec<AluEvent>,
+    pub add_events: Vec<(AluEvent, RTypeRecord)>,
+    /// A trace of the ADDI events.
+    pub addi_events: Vec<(AluEvent, ITypeRecord)>,
     /// A trace of the MUL events.
-    pub mul_events: Vec<AluEvent>,
+    pub mul_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SUB events.
-    pub sub_events: Vec<AluEvent>,
+    pub sub_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the XOR, XORI, OR, ORI, AND, and ANDI events.
-    pub bitwise_events: Vec<AluEvent>,
+    pub bitwise_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SLL and SLLI events.
-    pub shift_left_events: Vec<AluEvent>,
+    pub shift_left_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SRL, SRLI, SRA, and SRAI events.
-    pub shift_right_events: Vec<AluEvent>,
+    pub shift_right_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the DIV, DIVU, REM, and REMU events.
-    pub divrem_events: Vec<AluEvent>,
+    pub divrem_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SLT, SLTI, SLTU, and SLTIU events.
-    pub lt_events: Vec<AluEvent>,
-    /// A trace of the memory instructions.
-    pub memory_instr_events: Vec<MemInstrEvent>,
+    pub lt_events: Vec<(AluEvent, ALUTypeRecord)>,
+    /// A trace of load byte instructions.
+    pub memory_load_byte_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of load half instructions.
+    pub memory_load_half_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of load word instructions.
+    pub memory_load_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of load instructions with `op_a = x0`.
+    pub memory_load_x0_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of store byte instructions.
+    pub memory_store_byte_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of store half instructions.
+    pub memory_store_half_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of store word instructions.
+    pub memory_store_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of the AUIPC events.
-    pub auipc_events: Vec<AUIPCEvent>,
+    pub auipc_events: Vec<(AUIPCEvent, JTypeRecord)>,
     /// A trace of the branch events.
-    pub branch_events: Vec<BranchEvent>,
-    /// A trace of the jump events.
-    pub jump_events: Vec<JumpEvent>,
+    pub branch_events: Vec<(BranchEvent, ITypeRecord)>,
+    /// A trace of the JAL events.
+    pub jal_events: Vec<(JumpEvent, JTypeRecord)>,
+    /// A trace of the JALR events.
+    pub jalr_events: Vec<(JumpEvent, ITypeRecord)>,
     /// A trace of the byte lookups that are needed.
     pub byte_lookups: HashMap<ByteLookupEvent, usize>,
     /// A trace of the precompile events.
@@ -66,17 +91,31 @@ pub struct ExecutionRecord {
     /// A trace of all the shard's local memory events.
     pub cpu_local_memory_access: Vec<MemoryLocalEvent>,
     /// A trace of all the syscall events.
-    pub syscall_events: Vec<SyscallEvent>,
+    pub syscall_events: Vec<(SyscallEvent, RTypeRecord)>,
     /// A trace of all the global interaction events.
     pub global_interaction_events: Vec<GlobalInteractionEvent>,
+    /// The global culmulative sum.
+    pub global_cumulative_sum: Arc<Mutex<SepticDigest<u32>>>,
+    /// The global interaction event count.
+    pub global_interaction_event_count: u32,
+    /// Memory records with `prev_shard` different from `shard`.
+    pub shard_bump_memory_events: Vec<(MemoryRecordEnum, u32)>,
     /// The public values.
-    pub public_values: PublicValues<u32, u32>,
+    pub public_values: PublicValues<u32, u32, u32>,
     /// The next nonce to use for a new lookup.
     pub next_nonce: u64,
     /// The shape of the proof.
     pub shape: Option<Shape<RiscvAirId>>,
     /// The predicted counts of the proof.
     pub counts: Option<EnumMap<RiscvAirId, u64>>,
+    /// The final timestamp of the shard.
+    pub last_timestamp: u32,
+    /// The start program counter.
+    pub start_pc: Option<u32>,
+    /// The final program counter.
+    pub next_pc: u32,
+    /// The exit code.
+    pub exit_code: u32,
 }
 
 impl ExecutionRecord {
@@ -91,9 +130,20 @@ impl ExecutionRecord {
     /// Note: we usually defer events that would increase the recursion cost significantly if
     /// included in every shard.
     #[must_use]
-    pub fn defer(&mut self) -> ExecutionRecord {
+    pub fn defer<'a>(
+        &mut self,
+        retain_presets: impl IntoIterator<Item = &'a RetainedEventsPreset>,
+    ) -> ExecutionRecord {
         let mut execution_record = ExecutionRecord::new(self.program.clone());
         execution_record.precompile_events = std::mem::take(&mut self.precompile_events);
+
+        // Take back the events that should be retained.
+        self.precompile_events.events.extend(
+            retain_presets.into_iter().flat_map(RetainedEventsPreset::syscall_codes).filter_map(
+                |code| execution_record.precompile_events.events.remove(code).map(|x| (*code, x)),
+            ),
+        );
+
         execution_record.global_memory_initialize_events =
             std::mem::take(&mut self.global_memory_initialize_events);
         execution_record.global_memory_finalize_events =
@@ -108,7 +158,7 @@ impl ExecutionRecord {
     /// they can all be packed into the already existing last record.
     pub fn split(
         &mut self,
-        last: bool,
+        done: bool,
         last_record: Option<&mut ExecutionRecord>,
         opts: SplitOpts,
     ) -> Vec<ExecutionRecord> {
@@ -121,11 +171,33 @@ impl ExecutionRecord {
                 SyscallCode::KECCAK_PERMUTE => opts.keccak,
                 SyscallCode::SHA_EXTEND => opts.sha_extend,
                 SyscallCode::SHA_COMPRESS => opts.sha_compress,
+                SyscallCode::SECP256K1_ADD
+                | SyscallCode::SECP256R1_ADD
+                | SyscallCode::BN254_ADD
+                | SyscallCode::ED_ADD
+                | SyscallCode::SECP256K1_DECOMPRESS
+                | SyscallCode::SECP256R1_DECOMPRESS
+                | SyscallCode::ED_DECOMPRESS => opts.ec_add_256bit,
+                SyscallCode::SECP256K1_DOUBLE
+                | SyscallCode::SECP256R1_DOUBLE
+                | SyscallCode::BN254_DOUBLE => opts.ec_double_256bit,
+                SyscallCode::BN254_FP_ADD
+                | SyscallCode::BN254_FP_SUB
+                | SyscallCode::BN254_FP_MUL => opts.fp_operation_256bit,
+                SyscallCode::BN254_FP2_ADD
+                | SyscallCode::BN254_FP2_SUB
+                | SyscallCode::BN254_FP2_MUL => opts.fp2_operation_256bit,
+                SyscallCode::BLS12381_FP_ADD
+                | SyscallCode::BLS12381_FP_SUB
+                | SyscallCode::BLS12381_FP_MUL => opts.fp_operation_384bit,
+                SyscallCode::BLS12381_FP2_ADD
+                | SyscallCode::BLS12381_FP2_SUB
+                | SyscallCode::BLS12381_FP2_MUL => opts.fp2_operation_384bit,
                 _ => opts.deferred,
             };
 
             let chunks = events.chunks_exact(threshold);
-            if last {
+            if done {
                 let remainder = chunks.remainder().to_vec();
                 if !remainder.is_empty() {
                     let mut execution_record = ExecutionRecord::new(self.program.clone());
@@ -145,7 +217,7 @@ impl ExecutionRecord {
             shards.append(&mut event_shards);
         }
 
-        if last {
+        if done {
             self.global_memory_initialize_events.sort_by_key(|event| event.addr);
             self.global_memory_finalize_events.sort_by_key(|event| event.addr);
 
@@ -161,8 +233,8 @@ impl ExecutionRecord {
                 &mut blank_record
             };
 
-            let mut init_addr_bits = [0; 32];
-            let mut finalize_addr_bits = [0; 32];
+            let mut init_addr_word = 0;
+            let mut finalize_addr_word = 0;
             for mem_chunks in self
                 .global_memory_initialize_events
                 .chunks(opts.memory)
@@ -176,21 +248,18 @@ impl ExecutionRecord {
                     EitherOrBoth::Right(mem_finalize_chunk) => ([].as_slice(), mem_finalize_chunk),
                 };
                 last_record_ref.global_memory_initialize_events.extend_from_slice(mem_init_chunk);
-                last_record_ref.public_values.previous_init_addr_bits = init_addr_bits;
+                last_record_ref.public_values.previous_init_addr_word = init_addr_word;
                 if let Some(last_event) = mem_init_chunk.last() {
-                    let last_init_addr_bits = core::array::from_fn(|i| (last_event.addr >> i) & 1);
-                    init_addr_bits = last_init_addr_bits;
+                    init_addr_word = last_event.addr;
                 }
-                last_record_ref.public_values.last_init_addr_bits = init_addr_bits;
+                last_record_ref.public_values.last_init_addr_word = init_addr_word;
 
                 last_record_ref.global_memory_finalize_events.extend_from_slice(mem_finalize_chunk);
-                last_record_ref.public_values.previous_finalize_addr_bits = finalize_addr_bits;
+                last_record_ref.public_values.previous_finalize_addr_word = finalize_addr_word;
                 if let Some(last_event) = mem_finalize_chunk.last() {
-                    let last_finalize_addr_bits =
-                        core::array::from_fn(|i| (last_event.addr >> i) & 1);
-                    finalize_addr_bits = last_finalize_addr_bits;
+                    finalize_addr_word = last_event.addr;
                 }
-                last_record_ref.public_values.last_finalize_addr_bits = finalize_addr_bits;
+                last_record_ref.public_values.last_finalize_addr_word = finalize_addr_word;
 
                 if !pack_memory_events_into_last_record {
                     // If not packing memory events into the last record, add 'last_record_ref'
@@ -208,18 +277,16 @@ impl ExecutionRecord {
 
     /// Return the number of rows needed for a chip, according to the proof shape specified in the
     /// struct.
-    pub fn fixed_log2_rows<F: PrimeField, A: MachineAir<F>>(&self, air: &A) -> Option<usize> {
-        self.shape.as_ref().map(|shape| {
-            shape
-                .log2_height(&RiscvAirId::from_str(&air.name()).unwrap())
-                .unwrap_or_else(|| panic!("Chip {} not found in specified shape", air.name()))
-        })
+    ///
+    /// **deprecated**: TODO: remove this method.
+    pub fn fixed_log2_rows<F: PrimeField, A: MachineAir<F>>(&self, _air: &A) -> Option<usize> {
+        None
     }
 
     /// Determines whether the execution record contains CPU events.
     #[must_use]
     pub fn contains_cpu(&self) -> bool {
-        !self.cpu_events.is_empty()
+        self.cpu_event_count > 0
     }
 
     #[inline]
@@ -264,12 +331,86 @@ pub struct MemoryAccessRecord {
     pub memory: Option<MemoryRecordEnum>,
 }
 
-impl MachineRecord for ExecutionRecord {
-    type Config = SP1CoreOpts;
+/// Memory record where all three operands are registers.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct RTypeRecord {
+    /// The register `op_a` record.
+    pub a: MemoryRecordEnum,
+    /// The register `op_b` record.
+    pub b: MemoryRecordEnum,
+    /// The register `op_c` record.
+    pub c: MemoryRecordEnum,
+}
 
+impl From<MemoryAccessRecord> for RTypeRecord {
+    fn from(value: MemoryAccessRecord) -> Self {
+        Self {
+            a: value.a.expect("expected MemoryRecord for op_a in RTypeRecord"),
+            b: value.b.expect("expected MemoryRecord for op_b in RTypeRecord"),
+            c: value.c.expect("expected MemoryRecord for op_c in RTypeRecord"),
+        }
+    }
+}
+
+/// Memory record where the first two operands are registers.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ITypeRecord {
+    /// The register `op_a` record.
+    pub a: MemoryRecordEnum,
+    /// The register `op_b` record.
+    pub b: MemoryRecordEnum,
+}
+
+impl From<MemoryAccessRecord> for ITypeRecord {
+    fn from(value: MemoryAccessRecord) -> Self {
+        debug_assert!(value.c.is_none());
+        Self {
+            a: value.a.expect("expected MemoryRecord for op_a in ITypeRecord"),
+            b: value.b.expect("expected MemoryRecord for op_b in ITypeRecord"),
+        }
+    }
+}
+
+/// Memory record where only one operand is a register.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct JTypeRecord {
+    /// The register `op_a` record.
+    pub a: MemoryRecordEnum,
+}
+
+impl From<MemoryAccessRecord> for JTypeRecord {
+    fn from(value: MemoryAccessRecord) -> Self {
+        debug_assert!(value.b.is_none());
+        debug_assert!(value.c.is_none());
+        Self { a: value.a.expect("expected MemoryRecord for op_a in JTypeRecord") }
+    }
+}
+
+/// Memory record where only the first two operands are known to be registers, but the third isn't.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ALUTypeRecord {
+    /// The register `op_a` record.
+    pub a: MemoryRecordEnum,
+    /// The register `op_b` record.
+    pub b: MemoryRecordEnum,
+    /// The register `op_c` record.
+    pub c: Option<MemoryRecordEnum>,
+}
+
+impl From<MemoryAccessRecord> for ALUTypeRecord {
+    fn from(value: MemoryAccessRecord) -> Self {
+        Self {
+            a: value.a.expect("expected MemoryRecord for op_a in ALUTypeRecord"),
+            b: value.b.expect("expected MemoryRecord for op_b in ALUTypeRecord"),
+            c: value.c,
+        }
+    }
+}
+
+impl MachineRecord for ExecutionRecord {
     fn stats(&self) -> HashMap<String, usize> {
         let mut stats = HashMap::new();
-        stats.insert("cpu_events".to_string(), self.cpu_events.len());
+        stats.insert("cpu_events".to_string(), self.cpu_event_count as usize);
         stats.insert("add_events".to_string(), self.add_events.len());
         stats.insert("mul_events".to_string(), self.mul_events.len());
         stats.insert("sub_events".to_string(), self.sub_events.len());
@@ -278,9 +419,16 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("shift_right_events".to_string(), self.shift_right_events.len());
         stats.insert("divrem_events".to_string(), self.divrem_events.len());
         stats.insert("lt_events".to_string(), self.lt_events.len());
-        stats.insert("memory_instructions_events".to_string(), self.memory_instr_events.len());
+        stats.insert("load_byte_events".to_string(), self.memory_load_byte_events.len());
+        stats.insert("load_half_events".to_string(), self.memory_load_half_events.len());
+        stats.insert("load_word_events".to_string(), self.memory_load_word_events.len());
+        stats.insert("load_x0_events".to_string(), self.memory_load_x0_events.len());
+        stats.insert("store_byte_events".to_string(), self.memory_store_byte_events.len());
+        stats.insert("store_half_events".to_string(), self.memory_store_half_events.len());
+        stats.insert("store_word_events".to_string(), self.memory_store_word_events.len());
         stats.insert("branch_events".to_string(), self.branch_events.len());
-        stats.insert("jump_events".to_string(), self.jump_events.len());
+        stats.insert("jal_events".to_string(), self.jal_events.len());
+        stats.insert("jalr_events".to_string(), self.jalr_events.len());
         stats.insert("auipc_events".to_string(), self.auipc_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
@@ -296,7 +444,7 @@ impl MachineRecord for ExecutionRecord {
             self.global_memory_finalize_events.len(),
         );
         stats.insert("local_memory_access_events".to_string(), self.cpu_local_memory_access.len());
-        if !self.cpu_events.is_empty() {
+        if self.contains_cpu() {
             stats.insert("byte_lookups".to_string(), self.byte_lookups.len());
         }
         // Filter out the empty events.
@@ -305,7 +453,14 @@ impl MachineRecord for ExecutionRecord {
     }
 
     fn append(&mut self, other: &mut ExecutionRecord) {
-        self.cpu_events.append(&mut other.cpu_events);
+        self.cpu_event_count += other.cpu_event_count;
+        other.cpu_event_count = 0;
+        self.public_values.global_count += other.public_values.global_count;
+        other.public_values.global_count = 0;
+        self.public_values.global_init_count += other.public_values.global_init_count;
+        other.public_values.global_init_count = 0;
+        self.public_values.global_finalize_count += other.public_values.global_finalize_count;
+        other.public_values.global_finalize_count = 0;
         self.add_events.append(&mut other.add_events);
         self.sub_events.append(&mut other.sub_events);
         self.mul_events.append(&mut other.mul_events);
@@ -314,11 +469,19 @@ impl MachineRecord for ExecutionRecord {
         self.shift_right_events.append(&mut other.shift_right_events);
         self.divrem_events.append(&mut other.divrem_events);
         self.lt_events.append(&mut other.lt_events);
-        self.memory_instr_events.append(&mut other.memory_instr_events);
+        self.memory_load_byte_events.append(&mut other.memory_load_byte_events);
+        self.memory_load_half_events.append(&mut other.memory_load_half_events);
+        self.memory_load_word_events.append(&mut other.memory_load_word_events);
+        self.memory_load_x0_events.append(&mut other.memory_load_x0_events);
+        self.memory_store_byte_events.append(&mut other.memory_store_byte_events);
+        self.memory_store_half_events.append(&mut other.memory_store_half_events);
+        self.memory_store_word_events.append(&mut other.memory_store_word_events);
         self.branch_events.append(&mut other.branch_events);
-        self.jump_events.append(&mut other.jump_events);
+        self.jal_events.append(&mut other.jal_events);
+        self.jalr_events.append(&mut other.jalr_events);
         self.auipc_events.append(&mut other.auipc_events);
         self.syscall_events.append(&mut other.syscall_events);
+        self.shard_bump_memory_events.append(&mut other.shard_bump_memory_events);
 
         self.precompile_events.append(&mut other.precompile_events);
 
@@ -336,7 +499,22 @@ impl MachineRecord for ExecutionRecord {
 
     /// Retrieves the public values.  This method is needed for the `MachineRecord` trait, since
     fn public_values<F: AbstractField>(&self) -> Vec<F> {
-        self.public_values.to_vec()
+        let mut public_values = self.public_values;
+        public_values.global_cumulative_sum = *self.global_cumulative_sum.lock().unwrap();
+        public_values.to_vec()
+    }
+
+    /// Constrains the public values.
+    fn eval_public_values<AB: SP1AirBuilder>(builder: &mut AB) {
+        let public_values_slice: [AB::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
+            core::array::from_fn(|i| builder.public_values()[i]);
+        let public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar> =
+            public_values_slice.as_slice().borrow();
+
+        Self::eval_state(public_values, builder);
+        Self::eval_global_sum(public_values, builder);
+        Self::eval_global_memory_init(public_values, builder);
+        Self::eval_global_memory_finalize(public_values, builder);
     }
 }
 
@@ -355,5 +533,122 @@ impl ByteRecord for ExecutionRecord {
                 *self.byte_lookups.entry(*blu_event).or_insert(0) += count;
             }
         }
+    }
+}
+
+impl ExecutionRecord {
+    fn eval_state<AB: SP1AirBuilder>(
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        builder: &mut AB,
+    ) {
+        builder.send_state(
+            public_values.execution_shard,
+            AB::Expr::one(),
+            public_values.start_pc,
+            AB::Expr::one(),
+        );
+        builder.receive_state(
+            public_values.execution_shard,
+            public_values.last_timestamp,
+            public_values.next_pc,
+            AB::Expr::one(),
+        );
+        let increment_execution_shard =
+            public_values.next_execution_shard.into() - public_values.execution_shard.into();
+        builder.assert_bool(increment_execution_shard.clone());
+        builder.assert_zero(
+            (public_values.last_timestamp.into() - AB::Expr::one())
+                * (AB::Expr::one() - increment_execution_shard.clone()),
+        );
+        builder.assert_eq(
+            (public_values.last_timestamp.into() - AB::Expr::one())
+                * public_values.last_timestamp_inv.into(),
+            increment_execution_shard,
+        );
+    }
+
+    fn eval_global_sum<AB: SP1AirBuilder>(
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        builder: &mut AB,
+    ) {
+        let initial_sum = SepticDigest::<AB::F>::zero().0;
+        builder.send(
+            AirInteraction::new(
+                once(AB::Expr::zero())
+                    .chain(initial_sum.x.0.into_iter().map(Into::into))
+                    .chain(initial_sum.y.0.into_iter().map(Into::into))
+                    .collect(),
+                AB::Expr::one(),
+                InteractionKind::GlobalAccumulation,
+            ),
+            InteractionScope::Local,
+        );
+        builder.receive(
+            AirInteraction::new(
+                once(public_values.global_count.into())
+                    .chain(public_values.global_cumulative_sum.0.x.0.map(Into::into))
+                    .chain(public_values.global_cumulative_sum.0.y.0.map(Into::into))
+                    .collect(),
+                AB::Expr::one(),
+                InteractionKind::GlobalAccumulation,
+            ),
+            InteractionScope::Local,
+        );
+    }
+
+    fn eval_global_memory_init<AB: SP1AirBuilder>(
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        builder: &mut AB,
+    ) {
+        builder.send(
+            AirInteraction::new(
+                once(AB::Expr::zero())
+                    .chain(public_values.previous_init_addr_word.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                AB::Expr::one(),
+                InteractionKind::MemoryGlobalInitControl,
+            ),
+            InteractionScope::Local,
+        );
+        builder.receive(
+            AirInteraction::new(
+                once(public_values.global_init_count.into())
+                    .chain(public_values.last_init_addr_word.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                AB::Expr::one(),
+                InteractionKind::MemoryGlobalInitControl,
+            ),
+            InteractionScope::Local,
+        );
+    }
+
+    fn eval_global_memory_finalize<AB: SP1AirBuilder>(
+        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        builder: &mut AB,
+    ) {
+        builder.send(
+            AirInteraction::new(
+                once(AB::Expr::zero())
+                    .chain(public_values.previous_finalize_addr_word.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                AB::Expr::one(),
+                InteractionKind::MemoryGlobalFinalizeControl,
+            ),
+            InteractionScope::Local,
+        );
+        builder.receive(
+            AirInteraction::new(
+                once(public_values.global_finalize_count.into())
+                    .chain(public_values.last_finalize_addr_word.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                AB::Expr::one(),
+                InteractionKind::MemoryGlobalFinalizeControl,
+            ),
+            InteractionScope::Local,
+        );
     }
 }

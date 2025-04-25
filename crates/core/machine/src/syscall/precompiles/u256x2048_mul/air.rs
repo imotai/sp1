@@ -1,26 +1,28 @@
+use crate::utils::next_multiple_of_32;
 use crate::{
-    air::MemoryAirBuilder,
-    memory::{value_as_limbs, MemoryCols, MemoryReadCols, MemoryWriteCols},
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    memory::{MemoryAccessCols, MemoryAccessColsU8},
     operations::field::field_op::FieldOpCols,
-    utils::{limbs_from_access, pad_rows_fixed, words_to_bytes_le},
+    utils::{limbs_to_words, pad_rows_fixed, words_to_bytes_le},
 };
-
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteRecord, FieldOperation, PrecompileEvent},
+    events::{ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program, Register,
 };
 use sp1_curves::{
-    params::{NumLimbs, NumWords},
+    params::{Limbs, NumLimbs, NumWords},
     uint256::U256Field,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder},
+    air::{InteractionScope, MachineAir, SP1AirBuilder},
     MachineRecord,
 };
 use std::{
@@ -64,14 +66,16 @@ pub struct U256x2048MulCols<T> {
     pub lo_ptr: T,
     pub hi_ptr: T,
 
-    pub lo_ptr_memory: MemoryReadCols<T>,
-    pub hi_ptr_memory: MemoryReadCols<T>,
+    pub lo_ptr_memory: MemoryAccessCols<T>,
+    pub lo_ptr_memory_value: T,
+    pub hi_ptr_memory: MemoryAccessCols<T>,
+    pub hi_ptr_memory_value: T,
 
     // Memory columns.
-    pub a_memory: [MemoryReadCols<T>; WORDS_FIELD_ELEMENT],
-    pub b_memory: [MemoryReadCols<T>; WORDS_FIELD_ELEMENT * 8],
-    pub lo_memory: [MemoryWriteCols<T>; WORDS_FIELD_ELEMENT * 8],
-    pub hi_memory: [MemoryWriteCols<T>; WORDS_FIELD_ELEMENT],
+    pub a_memory: [MemoryAccessColsU8<T>; WORDS_FIELD_ELEMENT],
+    pub b_memory: [MemoryAccessColsU8<T>; WORDS_FIELD_ELEMENT * 8],
+    pub lo_memory: [MemoryAccessCols<T>; WORDS_FIELD_ELEMENT * 8],
+    pub hi_memory: [MemoryAccessCols<T>; WORDS_FIELD_ELEMENT],
 
     // Output values. We compute (x * y) % 2^2048 and (x * y) / 2^2048.
     pub a_mul_b1: FieldOpCols<T, U256Field>,
@@ -91,6 +95,13 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
 
     fn name(&self) -> String {
         "U256XU2048Mul".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::U256XU2048_MUL).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(
@@ -127,30 +138,38 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                         cols.hi_ptr = F::from_canonical_u32(event.hi_ptr);
 
                         // Populate memory accesses for lo_ptr and hi_ptr.
+                        let lo_ptr_memory_record = MemoryRecordEnum::Read(event.lo_ptr_memory);
+                        let current_lo_ptr_memory_record = lo_ptr_memory_record.current_record();
+                        cols.lo_ptr_memory_value =
+                            F::from_canonical_u32(current_lo_ptr_memory_record.value);
+                        let hi_ptr_memory_record = MemoryRecordEnum::Read(event.hi_ptr_memory);
+                        let current_hi_ptr_memory_record = hi_ptr_memory_record.current_record();
+                        cols.hi_ptr_memory_value =
+                            F::from_canonical_u32(current_hi_ptr_memory_record.value);
                         cols.lo_ptr_memory
-                            .populate(event.lo_ptr_memory, &mut new_byte_lookup_events);
+                            .populate(lo_ptr_memory_record, &mut new_byte_lookup_events);
                         cols.hi_ptr_memory
-                            .populate(event.hi_ptr_memory, &mut new_byte_lookup_events);
+                            .populate(hi_ptr_memory_record, &mut new_byte_lookup_events);
 
                         // Populate memory columns.
                         for i in 0..WORDS_FIELD_ELEMENT {
-                            cols.a_memory[i]
-                                .populate(event.a_memory_records[i], &mut new_byte_lookup_events);
+                            let record = MemoryRecordEnum::Read(event.a_memory_records[i]);
+                            cols.a_memory[i].populate(record, &mut new_byte_lookup_events);
                         }
 
                         for i in 0..WORDS_FIELD_ELEMENT * 8 {
-                            cols.b_memory[i]
-                                .populate(event.b_memory_records[i], &mut new_byte_lookup_events);
+                            let record = MemoryRecordEnum::Read(event.b_memory_records[i]);
+                            cols.b_memory[i].populate(record, &mut new_byte_lookup_events);
                         }
 
                         for i in 0..WORDS_FIELD_ELEMENT * 8 {
-                            cols.lo_memory[i]
-                                .populate(event.lo_memory_records[i], &mut new_byte_lookup_events);
+                            let record = MemoryRecordEnum::Write(event.lo_memory_records[i]);
+                            cols.lo_memory[i].populate(record, &mut new_byte_lookup_events);
                         }
 
                         for i in 0..WORDS_FIELD_ELEMENT {
-                            cols.hi_memory[i]
-                                .populate(event.hi_memory_records[i], &mut new_byte_lookup_events);
+                            let record = MemoryRecordEnum::Write(event.hi_memory_records[i]);
+                            cols.hi_memory[i].populate(record, &mut new_byte_lookup_events);
                         }
 
                         let a = BigUint::from_bytes_le(&words_to_bytes_le::<32>(&event.a));
@@ -274,64 +293,55 @@ where
         );
 
         // Evaluate that the lo_ptr and hi_ptr are read from the correct memory locations.
-        builder.eval_memory_access(
+        builder.eval_memory_access_read(
             local.shard,
             local.clk.into(),
             AB::Expr::from_canonical_u32(LO_REGISTER),
-            &local.lo_ptr_memory,
+            local.lo_ptr_memory,
             local.is_real,
         );
 
-        builder.eval_memory_access(
+        builder.eval_memory_access_read(
             local.shard,
             local.clk.into(),
             AB::Expr::from_canonical_u32(HI_REGISTER),
-            &local.hi_ptr_memory,
+            local.hi_ptr_memory,
             local.is_real,
         );
 
         // Evaluate the memory accesses for a_memory and b_memory.
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
             local.a_ptr,
-            &local.a_memory,
+            &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
 
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
             local.b_ptr,
-            &local.b_memory,
+            &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
 
-        // Evaluate the memory accesses for lo_memory and hi_memory.
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
-            local.lo_ptr,
-            &local.lo_memory,
-            local.is_real,
-        );
-
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
-            local.hi_ptr,
-            &local.hi_memory,
-            local.is_real,
-        );
-
-        let a_limbs =
-            limbs_from_access::<AB::Var, <U256Field as NumLimbs>::Limbs, _>(&local.a_memory);
+        let a_limbs_vec = builder.generate_limbs(&local.a_memory, local.is_real.into());
+        let a_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(a_limbs_vec.try_into().expect("failed to convert limbs"));
 
         // Iterate through chunks of 8 for b_memory and convert each chunk to its limbs.
-        let b_limb_array = local
+        let b_limb_array: Vec<Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs>> = local
             .b_memory
             .chunks(8)
-            .map(limbs_from_access::<AB::Var, <U256Field as NumLimbs>::Limbs, _>)
+            .map(|access| {
+                Limbs(
+                    builder
+                        .generate_limbs(access, local.is_real.into())
+                        .try_into()
+                        .expect("failed to convert limbs"),
+                )
+            })
             .collect::<Vec<_>>();
 
         let mut coeff_2_256 = Vec::new();
@@ -372,30 +382,35 @@ where
             );
         }
 
-        // Assert that the correct result is being written to hi_memory.
-        builder
-            .when(local.is_real)
-            .assert_all_eq(outputs[outputs.len() - 1].carry, value_as_limbs(&local.hi_memory));
-
-        // Loop through chunks of 8 for lo_memory and assert that each chunk is equal to
-        // corresponding result of outputs.
+        // Evaluate the memory accesses for lo_memory and hi_memory.
+        let mut result_words = Vec::new();
         for i in 0..8 {
-            builder.when(local.is_real).assert_all_eq(
-                outputs[i].result,
-                value_as_limbs(
-                    &local.lo_memory[i * WORDS_FIELD_ELEMENT..(i + 1) * WORDS_FIELD_ELEMENT],
-                ),
-            );
+            let output_words = limbs_to_words::<AB>(outputs[i].result.0.to_vec());
+            result_words.extend(output_words);
         }
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk.into() + AB::Expr::one(),
+            local.lo_ptr,
+            &local.lo_memory,
+            result_words,
+            local.is_real,
+        );
+
+        let output_carry_words = limbs_to_words::<AB>(outputs[outputs.len() - 1].carry.0.to_vec());
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk.into() + AB::Expr::one(),
+            local.hi_ptr,
+            &local.hi_memory,
+            output_carry_words,
+            local.is_real,
+        );
 
         // Constrain that the lo_ptr is the value of lo_ptr_memory.
-        builder
-            .when(local.is_real)
-            .assert_eq(local.lo_ptr, local.lo_ptr_memory.value().reduce::<AB>());
+        builder.when(local.is_real).assert_eq(local.lo_ptr, local.lo_ptr_memory_value);
 
         // Constrain that the hi_ptr is the value of hi_ptr_memory.
-        builder
-            .when(local.is_real)
-            .assert_eq(local.hi_ptr, local.hi_ptr_memory.value().reduce::<AB>());
+        builder.when(local.is_real).assert_eq(local.hi_ptr, local.hi_ptr_memory_value);
     }
 }

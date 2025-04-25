@@ -1,4 +1,6 @@
-//! Utilities for working with shapes.
+//! Utilities for working with shapes
+
+// TODO: Depracate the rest of this module.
 
 mod cluster;
 mod ordered;
@@ -7,13 +9,13 @@ pub use cluster::*;
 pub use ordered::*;
 
 use itertools::Itertools;
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 
 use std::{fmt::Debug, hash::Hash, str::FromStr};
 
 use hashbrown::{hash_map::IntoIter, HashMap, HashSet};
-use p3_field::PrimeField;
 use serde::{Deserialize, Serialize};
+use slop_algebra::PrimeField;
 
 use crate::air::MachineAir;
 

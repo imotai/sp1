@@ -82,14 +82,14 @@ pub trait WordAirBuilder: ByteAirBuilder {
     /// Check that each limb of the given slice is a u16.
     fn slice_range_check_u16(
         &mut self,
-        input: &[impl Into<Self::Expr> + Copy],
+        input: &[impl Into<Self::Expr> + Clone],
         mult: impl Into<Self::Expr> + Clone,
     ) {
         input.iter().for_each(|limb| {
             self.send_byte(
-                Self::Expr::from_canonical_u8(ByteOpcode::U16Range as u8),
-                *limb,
-                Self::Expr::zero(),
+                Self::Expr::from_canonical_u8(ByteOpcode::Range as u8),
+                limb.clone(),
+                Self::Expr::from_canonical_u32(16),
                 Self::Expr::zero(),
                 mult.clone(),
             );

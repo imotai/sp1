@@ -4,10 +4,10 @@ use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 
 use crate::{
-    memory::MemoryReadWriteCols,
+    memory::MemoryAccessCols,
     operations::{
-        Add5Operation, AddOperation, AndOperation, FixedRotateRightOperation, NotOperation,
-        XorOperation,
+        Add5Operation, AddOperation, AndU16Operation, FixedRotateRightOperation, NotU16Operation,
+        XorU16Operation,
     },
 };
 
@@ -29,7 +29,7 @@ pub struct ShaCompressCols<T> {
     pub w_ptr: T,
     pub h_ptr: T,
 
-    pub start: T,
+    pub index: T,
 
     /// Which cycle within the octet we are currently processing.
     pub octet: [T; 8],
@@ -42,7 +42,11 @@ pub struct ShaCompressCols<T> {
 
     /// Memory access. During init and compression, this is read only. During finalize, this is
     /// used to write the result into memory.
-    pub mem: MemoryReadWriteCols<T>,
+    pub mem: MemoryAccessCols<T>,
+
+    /// The write value to the memory.
+    pub mem_value: Word<T>,
+
     /// Current memory address being written/read. During init and finalize, this is A-H. During
     /// compression, this is w[i] being read only.
     pub mem_addr: T,
@@ -62,15 +66,15 @@ pub struct ShaCompressCols<T> {
     pub e_rr_6: FixedRotateRightOperation<T>,
     pub e_rr_11: FixedRotateRightOperation<T>,
     pub e_rr_25: FixedRotateRightOperation<T>,
-    pub s1_intermediate: XorOperation<T>,
+    pub s1_intermediate: XorU16Operation<T>,
     /// `S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)`.
-    pub s1: XorOperation<T>,
+    pub s1: XorU16Operation<T>,
 
-    pub e_and_f: AndOperation<T>,
-    pub e_not: NotOperation<T>,
-    pub e_not_and_g: AndOperation<T>,
+    pub e_and_f: AndU16Operation<T>,
+    pub e_not: NotU16Operation<T>,
+    pub e_not_and_g: AndU16Operation<T>,
     /// `ch := (e and f) xor ((not e) and g)`.
-    pub ch: XorOperation<T>,
+    pub ch: XorU16Operation<T>,
 
     /// `temp1 := h + S1 + ch + k[i] + w[i]`.
     pub temp1: Add5Operation<T>,
@@ -78,16 +82,16 @@ pub struct ShaCompressCols<T> {
     pub a_rr_2: FixedRotateRightOperation<T>,
     pub a_rr_13: FixedRotateRightOperation<T>,
     pub a_rr_22: FixedRotateRightOperation<T>,
-    pub s0_intermediate: XorOperation<T>,
+    pub s0_intermediate: XorU16Operation<T>,
     /// `S0 := (a rightrotate 2) xor (a rightrotate 13) xor (a rightrotate 22)`.
-    pub s0: XorOperation<T>,
+    pub s0: XorU16Operation<T>,
 
-    pub a_and_b: AndOperation<T>,
-    pub a_and_c: AndOperation<T>,
-    pub b_and_c: AndOperation<T>,
-    pub maj_intermediate: XorOperation<T>,
+    pub a_and_b: AndU16Operation<T>,
+    pub a_and_c: AndU16Operation<T>,
+    pub b_and_c: AndU16Operation<T>,
+    pub maj_intermediate: XorU16Operation<T>,
     /// `maj := (a and b) xor (a and c) xor (b and c)`.
-    pub maj: XorOperation<T>,
+    pub maj: XorU16Operation<T>,
 
     /// `temp2 := S0 + maj`.
     pub temp2: AddOperation<T>,

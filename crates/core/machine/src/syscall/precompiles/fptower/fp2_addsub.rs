@@ -1,10 +1,8 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    marker::PhantomData,
-    mem::size_of,
+use crate::{
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    memory::MemoryAccessColsU8,
+    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
-
-use crate::{air::MemoryAirBuilder, utils::zeroed_f_vec};
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, Zero};
@@ -12,7 +10,7 @@ use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, FieldOperation, PrecompileEvent},
+    events::{ByteLookupEvent, ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -21,13 +19,18 @@ use sp1_curves::{
     weierstrass::{FieldType, FpOpField},
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder};
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    marker::PhantomData,
+    mem::size_of,
+};
 use typenum::Unsigned;
 
 use crate::{
-    memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
     operations::field::{field_op::FieldOpCols, range::FieldLtCols},
-    utils::{limbs_from_prev_access, pad_rows_fixed, words_to_bytes_le_vec},
+    utils::{pad_rows_fixed, words_to_bytes_le_vec},
 };
 
 pub const fn num_fp2_addsub_cols<P: FpOpField>() -> usize {
@@ -44,8 +47,8 @@ pub struct Fp2AddSubAssignCols<T, P: FpOpField> {
     pub is_add: T,
     pub x_ptr: T,
     pub y_ptr: T,
-    pub x_access: GenericArray<MemoryWriteCols<T>, P::WordsCurvePoint>,
-    pub y_access: GenericArray<MemoryReadCols<T>, P::WordsCurvePoint>,
+    pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
+    pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub(crate) c0: FieldOpCols<T, P>,
     pub(crate) c1: FieldOpCols<T, P>,
     pub(crate) c0_range: FieldLtCols<T, P>,
@@ -90,6 +93,16 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
             FieldType::Bn254 => "Bn254Fp2AddSubAssign".to_string(),
             FieldType::Bls12381 => "Bls12381Fp2AddSubAssign".to_string(),
         }
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match P::FIELD_TYPE {
+            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP2_ADD).len(),
+            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP2_ADD).len(),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
@@ -143,10 +156,12 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
 
             // Populate the memory access columns.
             for i in 0..cols.y_access.len() {
-                cols.y_access[i].populate(event.y_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
+                cols.y_access[i].populate(record, &mut new_byte_lookup_events);
             }
             for i in 0..cols.x_access.len() {
-                cols.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
+                cols.x_access[i].populate(record, &mut new_byte_lookup_events);
             }
             rows.push(row);
         }
@@ -231,11 +246,22 @@ where
 
         let num_words_field_element = <P as NumLimbs>::Limbs::USIZE / 4;
 
-        let p_x = limbs_from_prev_access(&local.x_access[0..num_words_field_element]);
-        let p_y = limbs_from_prev_access(&local.x_access[num_words_field_element..]);
-
-        let q_x = limbs_from_prev_access(&local.y_access[0..num_words_field_element]);
-        let q_y = limbs_from_prev_access(&local.y_access[num_words_field_element..]);
+        let p_x_limbs = builder
+            .generate_limbs(&local.x_access[0..num_words_field_element], local.is_real.into());
+        let p_x: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
+        let q_x_limbs = builder
+            .generate_limbs(&local.y_access[0..num_words_field_element], local.is_real.into());
+        let q_x: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(q_x_limbs.try_into().expect("failed to convert limbs"));
+        let p_y_limbs = builder
+            .generate_limbs(&local.x_access[num_words_field_element..], local.is_real.into());
+        let p_y: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
+        let q_y_limbs = builder
+            .generate_limbs(&local.y_access[num_words_field_element..], local.is_real.into());
+        let q_y: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(q_y_limbs.try_into().expect("failed to convert limbs"));
 
         let modulus_coeffs =
             P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
@@ -267,29 +293,28 @@ where
             );
         }
 
-        builder.when(local.is_real).assert_all_eq(
-            local.c0.result,
-            value_as_limbs(&local.x_access[0..num_words_field_element]),
-        );
-        builder.when(local.is_real).assert_all_eq(
-            local.c1.result,
-            value_as_limbs(&local.x_access[num_words_field_element..]),
-        );
+        let c0_result_words = limbs_to_words::<AB>(local.c0.result.0.to_vec());
+        let c1_result_words = limbs_to_words::<AB>(local.c1.result.0.to_vec());
+
+        let result_words = c0_result_words.into_iter().chain(c1_result_words).collect_vec();
+
         local.c0_range.eval(builder, &local.c0.result, &p_modulus, local.is_real);
         local.c1_range.eval(builder, &local.c1.result, &p_modulus, local.is_real);
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_read(
             local.shard,
-            local.clk.into(),
+            local.clk,
             local.y_ptr,
-            &local.y_access,
+            &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
-        builder.eval_memory_access_slice(
+
+        // We read p at +1 since p, q could be the same.
+        builder.eval_memory_access_slice_write(
             local.shard,
-            local.clk + AB::F::from_canonical_u32(1), /* We read p at +1 since p, q could be the
-                                                       * same. */
+            local.clk + AB::F::from_canonical_u32(1),
             local.x_ptr,
-            &local.x_access,
+            &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
             local.is_real,
         );
 

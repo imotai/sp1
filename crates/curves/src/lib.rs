@@ -46,7 +46,7 @@ pub use k256;
 pub use p256;
 
 use params::{FieldParameters, NumWords};
-use sp1_primitives::consts::WORD_SIZE;
+use sp1_primitives::consts::WORD_BYTE_SIZE;
 use std::{
     fmt::{Debug, Display, Formatter, Result},
     ops::{Add, Neg},
@@ -57,7 +57,7 @@ pub use num::{BigUint, Integer, One, Zero};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub const NUM_WORDS_FIELD_ELEMENT: usize = 8;
-pub const NUM_BYTES_FIELD_ELEMENT: usize = NUM_WORDS_FIELD_ELEMENT * WORD_SIZE;
+pub const NUM_BYTES_FIELD_ELEMENT: usize = NUM_WORDS_FIELD_ELEMENT * WORD_BYTE_SIZE;
 pub const COMPRESSED_POINT_BYTES: usize = 32;
 
 /// Number of words needed to represent a point on an elliptic curve. This is twice the number of

@@ -127,7 +127,7 @@ pub fn create_ec_add_event<E: EllipticCurve, Ex: ExecutorConfig>(
     let p_memory_records = rt.mw_slice(p_ptr, &result_words);
 
     EllipticCurveAddEvent {
-        shard: rt.current_shard(),
+        shard: rt.shard().get(),
         clk: start_clk,
         p_ptr,
         p,
@@ -167,7 +167,7 @@ pub fn create_ec_double_event<E: EllipticCurve, Ex: ExecutorConfig>(
     let p_memory_records = rt.mw_slice(p_ptr, &result_words);
 
     EllipticCurveDoubleEvent {
-        shard: rt.current_shard(),
+        shard: rt.shard().get(),
         clk: start_clk,
         p_ptr,
         p,
@@ -215,7 +215,7 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
     let y_memory_records = rt.mw_slice(slice_ptr, &y_words);
 
     EllipticCurveDecompressEvent {
-        shard: rt.current_shard(),
+        shard: rt.shard().get(),
         clk: start_clk,
         ptr: slice_ptr,
         sign_bit: sign_bit != 0,

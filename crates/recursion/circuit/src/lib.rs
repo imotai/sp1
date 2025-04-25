@@ -1,103 +1,90 @@
-//! Copied from [`sp1_recursion_program`].
-
 use challenger::{
     CanCopyChallenger, CanObserveVariable, DuplexChallengerVariable, FieldChallengerVariable,
-    MultiField32ChallengerVariable, SpongeChallengerShape,
+    MultiField32ChallengerVariable,
 };
 use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
 use itertools::izip;
-use p3_bn254_fr::Bn254Fr;
-use p3_field::AbstractField;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_algebra::AbstractField;
+use slop_bn254::Bn254Fr;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},
-    ir::{Builder, Config, DslIr, Ext, Felt, SymbolicFelt, Var, Variable},
+    ir::{Builder, Config, DslIr, Ext, Felt, SymbolicExt, SymbolicFelt, Var, Variable},
 };
+use sp1_recursion_executor::RecursionPublicValues;
 use std::iter::{repeat, zip};
-
-mod types;
-
-pub mod challenger;
-pub mod constraints;
-pub mod domain;
-pub mod fri;
-pub mod hash;
-pub mod machine;
-pub mod merkle_tree;
-pub mod stark;
-pub(crate) mod utils;
-pub mod witness;
-
-use sp1_stark::{
-    baby_bear_poseidon2::{BabyBearPoseidon2, ValMmcs},
-    StarkGenericConfig,
-};
-pub use types::*;
-
-use p3_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
-use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_dft::Radix2DitParallel;
-use p3_fri::{FriConfig, TwoAdicFriPcs};
-use sp1_recursion_core::{
-    air::RecursionPublicValues,
-    stark::{BabyBearPoseidon2Outer, OuterValMmcs},
-    D,
-};
-
-use p3_baby_bear::BabyBear;
 use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
-type EF = <BabyBearPoseidon2 as StarkGenericConfig>::Challenge;
+use slop_basefold::{
+    BasefoldConfig, BasefoldProof, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig,
+    Poseidon2Bn254FrBasefoldConfig,
+};
+use slop_commit::TensorCs;
+use slop_merkle_tree::{
+    MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
+};
+use sp1_stark::{shape::OrderedShape, BabyBearPoseidon2, Bn254JaggedConfig};
+pub mod basefold;
+pub mod challenger;
+pub mod dummy;
+pub mod hash;
+pub mod jagged;
+pub mod logup_gkr;
+pub mod machine;
+pub mod shard;
+pub mod sumcheck;
+mod symbolic;
+pub mod utils;
+pub mod witness;
+pub mod zerocheck;
+pub const D: usize = 4;
+use p3_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
+use slop_baby_bear::BabyBear;
+use slop_jagged::JaggedConfig;
 
-pub type PcsConfig<C> = FriConfig<
-    ExtensionMmcs<
-        <C as StarkGenericConfig>::Val,
-        <C as StarkGenericConfig>::Challenge,
-        <C as BabyBearFriConfig>::ValMmcs,
-    >,
->;
+type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
 
-pub type FriMmcs<C> = ExtensionMmcs<BabyBear, EF, <C as BabyBearFriConfig>::ValMmcs>;
+pub type InnerSC = BabyBearPoseidon2;
+
+pub trait AsRecursive<C: CircuitConfig> {
+    type Recursive;
+}
 
 pub trait BabyBearFriConfig:
-    StarkGenericConfig<
-    Val = BabyBear,
-    Challenge = EF,
+    JaggedConfig<
+    F = BabyBear,
+    EF = EF,
+    Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
+    BatchPcsProof = BasefoldProof<Self::BasefoldConfig>,
     Challenger = Self::FriChallenger,
-    Pcs = TwoAdicFriPcs<
-        BabyBear,
-        Radix2DitParallel,
-        Self::ValMmcs,
-        ExtensionMmcs<BabyBear, EF, Self::ValMmcs>,
-    >,
+    BatchPcsVerifier = BasefoldVerifier<Self::BasefoldConfig>,
 >
 {
-    type ValMmcs: Mmcs<BabyBear, ProverData<RowMajorMatrix<BabyBear>> = Self::RowMajorProverData>
-        + Send
-        + Sync;
-    type RowMajorProverData: Clone + Send + Sync;
-    type FriChallenger: CanObserve<<Self::ValMmcs as Mmcs<BabyBear>>::Commitment>
+    type BasefoldConfig: BasefoldConfig<
+        F = BabyBear,
+        EF = EF,
+        Tcs = MerkleTreeTcs<Self::MerkleTreeConfig>,
+        Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
+        Challenger = Self::FriChallenger,
+    >;
+    type MerkleTreeConfig: MerkleTreeConfig<Data = BabyBear>;
+    type FriChallenger: CanObserve<<Self::BasefoldConfig as BasefoldConfig>::Commitment>
         + CanSample<EF>
         + GrindingChallenger<Witness = BabyBear>
         + FieldChallenger<BabyBear>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>>;
-
-    fn challenger_shape(challenger: &Self::FriChallenger) -> SpongeChallengerShape;
 }
 
 pub trait BabyBearFriConfigVariable<C: CircuitConfig<F = BabyBear>>:
-    BabyBearFriConfig + FieldHasherVariable<C> + Posedion2BabyBearHasherVariable<C>
+    BabyBearFriConfig + FieldHasherVariable<C> + Posedion2BabyBearHasherVariable<C> + Send + Sync
 {
     type FriChallengerVariable: FieldChallengerVariable<C, <C as CircuitConfig>::Bit>
         + CanObserveVariable<C, <Self as FieldHasherVariable<C>>::DigestVariable>
         + CanCopyChallenger<C>;
 
     /// Get a new challenger corresponding to the given config.
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable;
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable;
 
     fn commit_recursion_public_values(
         builder: &mut Builder<C>,
@@ -143,6 +130,13 @@ pub trait CircuitConfig: Config {
         p_at_zs: Vec<Ext<Self::F, Self::EF>>,
         p_at_xs: Vec<Felt<Self::F>>,
     ) -> Ext<Self::F, Self::EF>;
+
+    #[allow(clippy::type_complexity)]
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        x1: Vec<Felt<Self::F>>,
+        x2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>);
 
     fn num2bits(
         builder: &mut Builder<Self>,
@@ -214,7 +208,18 @@ impl CircuitConfig for InnerConfig {
         input: Felt<<Self as Config>::F>,
         power_bits: Vec<Felt<<Self as Config>::F>>,
     ) -> Felt<<Self as Config>::F> {
-        builder.exp_reverse_bits_v2(input, power_bits)
+        let mut result = builder.constant(Self::F::one());
+        let mut power_f = input;
+        let bit_len = power_bits.len();
+
+        for i in 1..=bit_len {
+            let index = bit_len - i;
+            let bit = power_bits[index];
+            let prod: Felt<_> = builder.eval(result * power_f);
+            result = builder.eval(bit * prod + (SymbolicFelt::one() - bit) * result);
+            power_f = builder.eval(power_f * power_f);
+        }
+        result
     }
 
     fn batch_fri(
@@ -224,6 +229,14 @@ impl CircuitConfig for InnerConfig {
         p_at_xs: Vec<Felt<<Self as Config>::F>>,
     ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
         builder.batch_fri_v2(alpha_pows, p_at_zs, p_at_xs)
+    }
+
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        x1: Vec<Felt<Self::F>>,
+        x2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
+        builder.prefix_sum_checks_v2(x1, x2)
     }
 
     fn num2bits(
@@ -330,7 +343,6 @@ impl CircuitConfig for WrapConfig {
         input: Felt<<Self as Config>::F>,
         power_bits: Vec<Felt<<Self as Config>::F>>,
     ) -> Felt<<Self as Config>::F> {
-        // builder.exp_reverse_bits_v2(input, power_bits)
         let mut result = builder.constant(Self::F::one());
         let mut power_f = input;
         let bit_len = power_bits.len();
@@ -351,7 +363,6 @@ impl CircuitConfig for WrapConfig {
         p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
         p_at_xs: Vec<Felt<<Self as Config>::F>>,
     ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        // builder.batch_fri_v2(alpha_pows, p_at_zs, p_at_xs)
         // Initialize the `acc` to zero.
         let mut acc: Ext<_, _> = builder.uninit();
         builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::zero()));
@@ -368,6 +379,29 @@ impl CircuitConfig for WrapConfig {
             acc = temp_3;
         }
         acc
+    }
+
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        point_1: Vec<Felt<Self::F>>,
+        point_2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
+        // builder.lagrange_eval_v2(x1, x2)
+        let mut acc: Ext<_, _> = builder.uninit();
+        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
+        let mut acc_felt: Felt<_> = builder.uninit();
+        builder.push_op(DslIr::ImmF(acc_felt, Self::F::zero()));
+        for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
+            let prod = builder.uninit();
+            builder.push_op(DslIr::MulEF(prod, x2, x1));
+            let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
+            acc = builder.eval(acc * lagrange_term);
+            // Only need felt of first half of point_1 (current prefix sum).
+            if i < point_1.len() / 2 {
+                acc_felt = builder.eval(x1 + acc_felt * SymbolicFelt::from_canonical_u32(2));
+            }
+        }
+        (acc, acc_felt)
     }
 
     fn num2bits(
@@ -505,6 +539,28 @@ impl CircuitConfig for OuterConfig {
         acc
     }
 
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        point_1: Vec<Felt<Self::F>>,
+        point_2: Vec<Ext<Self::F, Self::EF>>,
+    ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
+        let mut acc: Ext<_, _> = builder.uninit();
+        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
+        let mut acc_felt: Felt<_> = builder.uninit();
+        builder.push_op(DslIr::ImmF(acc_felt, Self::F::zero()));
+        for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
+            let prod = builder.uninit();
+            builder.push_op(DslIr::MulEF(prod, x2, x1));
+            let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
+            acc = builder.eval(acc * lagrange_term);
+            // Only need felt of first half of point_1 (current prefix sum).
+            if i < point_1.len() / 2 {
+                acc_felt = builder.eval(x1 + acc_felt * SymbolicFelt::from_canonical_u32(2));
+            }
+        }
+        (acc, acc_felt)
+    }
+
     fn num2bits(
         builder: &mut Builder<Self>,
         num: Felt<<Self as Config>::F>,
@@ -578,36 +634,9 @@ impl CircuitConfig for OuterConfig {
 }
 
 impl BabyBearFriConfig for BabyBearPoseidon2 {
-    type ValMmcs = ValMmcs;
-    type FriChallenger = <Self as StarkGenericConfig>::Challenger;
-    type RowMajorProverData = <ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>> {
-        self.pcs().fri_config()
-    }
-
-    fn challenger_shape(challenger: &Self::FriChallenger) -> SpongeChallengerShape {
-        SpongeChallengerShape {
-            input_buffer_len: challenger.input_buffer.len(),
-            output_buffer_len: challenger.output_buffer.len(),
-        }
-    }
-}
-
-impl BabyBearFriConfig for BabyBearPoseidon2Outer {
-    type ValMmcs = OuterValMmcs;
-    type FriChallenger = <Self as StarkGenericConfig>::Challenger;
-
-    type RowMajorProverData =
-        <OuterValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>> {
-        self.pcs().fri_config()
-    }
-
-    fn challenger_shape(_challenger: &Self::FriChallenger) -> SpongeChallengerShape {
-        unimplemented!("Shape not supported for outer fri challenger");
-    }
+    type BasefoldConfig = Poseidon2BabyBear16BasefoldConfig;
+    type MerkleTreeConfig = Poseidon2BabyBearConfig;
+    type FriChallenger = <Self as JaggedConfig>::Challenger;
 }
 
 impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVariable<C>
@@ -615,7 +644,7 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
 {
     type FriChallengerVariable = DuplexChallengerVariable<C>;
 
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable {
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
         DuplexChallengerVariable::new(builder)
     }
 
@@ -627,12 +656,18 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
     }
 }
 
+impl BabyBearFriConfig for Bn254JaggedConfig {
+    type BasefoldConfig = Poseidon2Bn254FrBasefoldConfig;
+    type MerkleTreeConfig = Poseidon2Bn254Config;
+    type FriChallenger = <Self as JaggedConfig>::Challenger;
+}
+
 impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFriConfigVariable<C>
-    for BabyBearPoseidon2Outer
+    for Bn254JaggedConfig
 {
     type FriChallengerVariable = MultiField32ChallengerVariable<C>;
 
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable {
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
         MultiField32ChallengerVariable::new(builder)
     }
 
@@ -649,4 +684,22 @@ impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFr
         let vkey_hash = felts_to_bn254_var(builder, &public_values.sp1_vk_digest);
         builder.commit_vkey_hash_circuit(vkey_hash);
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SP1CompressShape {
+    proof_shapes: Vec<OrderedShape>,
+}
+
+/// The shape of the compress proof with vk validation proofs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SP1CompressWithVkeyShape {
+    pub compress_shape: SP1CompressShape,
+    pub merkle_tree_height: usize,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct SP1DeferredShape {
+    inner: SP1CompressShape,
+    height: usize,
 }

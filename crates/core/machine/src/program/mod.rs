@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::{
     air::ProgramAirBuilder,
-    utils::{next_power_of_two, pad_rows_fixed, zeroed_f_vec},
+    utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
 };
 use p3_air::{Air, BaseAir, PairBuilder};
 use p3_field::PrimeField32;
@@ -62,6 +62,13 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         NUM_PROGRAM_PREPROCESSED_COLS
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.program.instructions.len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         debug_assert!(
             !program.instructions.is_empty() || program.preprocessed_shape.is_some(),
@@ -70,7 +77,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // Generate the trace rows for each event.
         let nb_rows = program.instructions.len();
         let size_log2 = program.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_PROGRAM_PREPROCESSED_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
@@ -80,15 +87,33 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             .par_bridge()
             .for_each(|(i, rows)| {
                 rows.chunks_mut(NUM_PROGRAM_PREPROCESSED_COLS).enumerate().for_each(|(j, row)| {
-                    let idx = i * chunk_size + j;
-
-                    if idx < nb_rows {
-                        let cols: &mut ProgramPreprocessedCols<F> = row.borrow_mut();
-                        let instruction = &program.instructions[idx];
-                        let pc = program.pc_base + (idx as u32 * 4);
-                        cols.pc = F::from_canonical_u32(pc);
-                        cols.instruction.populate(instruction);
+                    let mut idx = i * chunk_size + j;
+                    if idx >= nb_rows {
+                        idx = 0;
                     }
+                    let cols: &mut ProgramPreprocessedCols<F> = row.borrow_mut();
+                    let mut instruction = program.instructions[idx];
+                    let pc = program.pc_base + (idx as u32 * 4);
+                    cols.pc = F::from_canonical_u32(pc);
+                    if instruction.is_branch_instruction() {
+                        instruction.op_c = pc.wrapping_add(instruction.op_c);
+                        debug_assert!(instruction.op_c < (1 << 31) - (1 << 27) + 1);
+                    }
+                    if instruction.is_jal_instruction() {
+                        instruction.op_b = pc.wrapping_add(instruction.op_b);
+                        instruction.op_c = pc.wrapping_add(4);
+                        debug_assert!(instruction.op_b < (1 << 31) - (1 << 27) + 1);
+                        if instruction.op_a == 0 {
+                            instruction.op_c = 0;
+                        }
+                    }
+                    if instruction.is_auipc_instruction() {
+                        instruction.op_b = pc.wrapping_add(instruction.op_b);
+                        if instruction.op_a == 0 {
+                            instruction.op_b = 0;
+                        }
+                    }
+                    cols.instruction.populate(&instruction);
                 });
             });
 
@@ -110,8 +135,88 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // Collect the number of times each instruction is called from the cpu events.
         // Store it as a map of PC -> count.
         let mut instruction_counts = HashMap::new();
-        input.cpu_events.iter().for_each(|event| {
-            let pc = event.pc;
+        input.add_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.addi_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.sub_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.bitwise_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.mul_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.divrem_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.lt_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.shift_left_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.shift_right_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.branch_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_load_byte_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_load_half_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_load_word_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_load_x0_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_store_byte_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_store_half_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_store_word_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.jal_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.jalr_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.auipc_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.syscall_events.iter().for_each(|event| {
+            let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
 
@@ -192,8 +297,8 @@ mod tests {
         //     addi x30, x0, 37
         //     add x31, x30, x29
         let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
+            Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+            Instruction::new(Opcode::ADDI, 30, 0, 37, false, true),
             Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
         ];
         let shard = ExecutionRecord {

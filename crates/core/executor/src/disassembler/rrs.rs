@@ -114,7 +114,7 @@ impl InstructionProcessor for InstructionTranspiler {
     }
 
     fn process_addi(&mut self, dec_insn: IType) -> Self::InstructionResult {
-        Instruction::from_i_type(Opcode::ADD, &dec_insn)
+        Instruction::from_i_type(Opcode::ADDI, &dec_insn)
     }
 
     fn process_sub(&mut self, dec_insn: RType) -> Self::InstructionResult {
@@ -259,9 +259,8 @@ impl InstructionProcessor for InstructionTranspiler {
     fn process_lui(&mut self, dec_insn: UType) -> Self::InstructionResult {
         // LUI instructions are handled in a special way inside the zkVM.
         //
-        // Notably, LUI instructions are converted to an SLL instruction with `imm_b` and `imm_c`
-        // turned on. Additionally the `op_c` should be set to 12.
-        Instruction::new(Opcode::ADD, dec_insn.rd as u8, 0, dec_insn.imm as u32, true, true)
+        // To avoid ADD opcode having two immediate operands, we use register x0 as our `op_b`.
+        Instruction::new(Opcode::ADDI, dec_insn.rd as u8, 0, dec_insn.imm as u32, false, true)
     }
 
     /// AUIPC instructions have the third operand set to imm << 12.
