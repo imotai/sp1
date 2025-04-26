@@ -54,7 +54,8 @@ impl SP1CudaProverBuilder {
 
         let core_prover_permit = prover_permits.clone();
         let recursion_prover_permit = prover_permits.clone();
-        let recursion_program_cache_size = 0;
+        let recursion_program_cache_size = 4;
+        let max_reduce_arity = 4;
 
         let inner = SP1ProverBuilder::new_single_permit(
             core_prover,
@@ -64,6 +65,7 @@ impl SP1CudaProverBuilder {
             recursion_prover_permit,
             num_recursion_workers,
             recursion_program_cache_size,
+            max_reduce_arity,
         );
 
         Self { inner }

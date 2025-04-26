@@ -1,4 +1,4 @@
-use std::{env, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use clap::ValueEnum;
 use csl_cuda::TaskScope;
@@ -13,6 +13,9 @@ pub use report::{write_measurements_to_csv, Measurement};
 
 mod report;
 
+pub const FIBONACCI_LONG_ELF: &[u8] =
+    include_bytes!("../../prover/programs/fibonacci/riscv32im-succinct-zkvm-elf");
+
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Stage {
     Core,
@@ -26,10 +29,10 @@ pub async fn make_measurement(
     stage: Stage,
     t: TaskScope,
 ) -> Measurement {
-    let recursion_cache_size =
-        env::var("RECURSION_CACHE_SIZE").unwrap_or("5".to_string()).parse::<usize>().unwrap_or(5);
+    let recursion_cache_size = 5;
     let sp1_prover = SP1CudaProverBuilder::new(t.clone())
         .recursion_cache_size(recursion_cache_size)
+        .max_reduce_arity(4)
         .build()
         .await;
     let opts = local_gpu_opts();
