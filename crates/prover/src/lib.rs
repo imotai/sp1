@@ -122,6 +122,7 @@ pub struct SP1ProverBuilder<C: SP1ProverComponents> {
     core_prover_builder: MachineProverBuilder<C::CoreComponents>,
     recursion_prover_builder: MachineProverBuilder<C::RecursionComponents>,
     recursion_programs_cache_size: usize,
+    max_reduce_arity: usize,
     join_pk: BTreeMap<SP1RecursionShape, Arc<MachineProvingKey<C::RecursionComponents>>>,
     recursion_programs: BTreeMap<SP1RecursionShape, Arc<RecursionProgram<BabyBear>>>,
 }
@@ -135,6 +136,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         recursion_prover_permits: Vec<ProverSemaphore>,
         nums_recursion_workers: Vec<usize>,
         recursion_programs_cache_size: usize,
+        max_reduce_arity: usize,
     ) -> Self {
         let core_verifier = C::core_verifier();
         let core_prover_builder = MachineProverBuilder::new(
@@ -156,6 +158,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             recursion_programs_cache_size,
             join_pk: BTreeMap::new(),
             recursion_programs: BTreeMap::new(),
+            max_reduce_arity,
         };
 
         let _ = builder.num_core_workers_per_kind(nums_core_workers);
@@ -172,6 +175,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         recursion_prover_permit: ProverSemaphore,
         num_recursion_workers: usize,
         recursion_programs_cache_size: usize,
+        max_reduce_arity: usize,
     ) -> Self {
         Self::new_multi_permits(
             vec![Arc::new(core_prover)],
@@ -181,7 +185,13 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             vec![recursion_prover_permit],
             vec![num_recursion_workers],
             recursion_programs_cache_size,
+            max_reduce_arity,
         )
+    }
+
+    pub fn max_reduce_arity(&mut self, max_reduce_arity: usize) -> &mut Self {
+        self.max_reduce_arity = max_reduce_arity;
+        self
     }
 
     /// Set the number of workers for a given base kind.
@@ -279,6 +289,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             recursion_prover,
             self.recursion_programs_cache_size,
             recursion_programs,
+            self.max_reduce_arity,
         )
         .await;
         SP1Prover { core_prover, recursion_prover }
@@ -880,6 +891,7 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
         let num_core_workers = num_workers;
         let num_recursion_workers = num_workers;
         let recursion_programs_cache_size = 5;
+        let max_reduce_arity = 2;
 
         SP1ProverBuilder::new_single_permit(
             cpu_shard_prover,
@@ -889,6 +901,7 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
             prover_permits,
             num_recursion_workers,
             recursion_programs_cache_size,
+            max_reduce_arity,
         )
     }
 }

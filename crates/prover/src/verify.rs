@@ -74,24 +74,24 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //     }
         // }
 
-        // // Shard constraints.
-        // //
-        // // Initialization:
-        // // - Shard should start at one.
-        // //
-        // // Transition:
-        // // - Shard should increment by one for each shard.
-        // let mut current_shard = BabyBear::zero();
-        // for shard_proof in proof.0.iter() {
-        //     let public_values: &PublicValues<Word<_>, _> =
-        //         shard_proof.public_values.as_slice().borrow();
-        //     current_shard += BabyBear::one();
-        //     if public_values.shard != current_shard {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "shard index should be the previous shard index + 1 and start at 1",
-        //         ));
-        //     }
-        // }
+        // Shard constraints.
+        //
+        // Initialization:
+        // - Shard should start at one.
+        //
+        // Transition:
+        // - Shard should increment by one for each shard.
+        let mut current_shard = BabyBear::zero();
+        for shard_proof in proof.0.iter() {
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
+                shard_proof.public_values.as_slice().borrow();
+            current_shard += BabyBear::one();
+            if public_values.shard != current_shard {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "shard index should be the previous shard index + 1 and start at 1",
+                ));
+            }
+        }
 
         // Execution shard constraints.
         //
@@ -295,7 +295,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         // Verify the shard proofs.
         for (i, shard_proof) in proof.0.iter().enumerate() {
-            let span = tracing::debug_span!("Verify shard proof {}", i).entered();
+            let span = tracing::debug_span!("Verify shard proof", i).entered();
             let mut challenger = self.core_prover.verifier().challenger();
             vk.observe_into(&mut challenger);
             self.core_prover
@@ -503,6 +503,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     // }
 }
 
+use slop_algebra::AbstractField;
+use slop_baby_bear::BabyBear;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
 use sp1_stark::{air::PublicValues, BabyBearPoseidon2, MachineVerifierError, Word};
 

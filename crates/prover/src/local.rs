@@ -3,15 +3,10 @@ use futures::{
     stream::{FuturesOrdered, FuturesUnordered},
 };
 use slop_futures::queue::WorkerQueue;
-use slop_jagged::JaggedConfig;
-use slop_merkle_tree::my_bb_16_perm;
 use sp1_recursion_circuit::{
     machine::{SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues},
-    witness::Witnessable,
     InnerSC,
 };
-use sp1_recursion_compiler::config::InnerConfig;
-use sp1_recursion_executor::Runtime;
 use std::{
     collections::{BTreeMap, VecDeque},
     env,
@@ -35,12 +30,11 @@ use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
     BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
 };
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
     components::SP1ProverComponents, error::SP1ProverError, recursion::SP1RecursionProver, CoreSC,
-    HashableKey, SP1CircuitWitness, SP1CoreProof, SP1CoreProofData, SP1Prover,
-    SP1RecursionProverError, SP1VerifyingKey,
+    HashableKey, SP1CircuitWitness, SP1CoreProof, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -49,8 +43,6 @@ pub struct LocalProverOpts {
     pub records_capacity_buffer: usize,
     pub num_record_workers: usize,
     pub num_recursion_executors: usize,
-    pub recursion_batch_size: usize,
-    pub reduce_batch_size: usize,
 }
 
 impl Default for LocalProverOpts {
@@ -69,32 +61,13 @@ impl Default for LocalProverOpts {
             .parse::<usize>()
             .unwrap_or(DEFAULT_NUM_RECORD_WORKERS);
 
-        const DEFAULT_REDUCE_BATCH_SIZE: usize = 2;
-        let reduce_batch_size = env::var("SP1_PROVER_REDUCE_BATCH_SIZE")
-            .unwrap_or_else(|_| DEFAULT_REDUCE_BATCH_SIZE.to_string())
-            .parse::<usize>()
-            .unwrap_or(DEFAULT_REDUCE_BATCH_SIZE);
-
         const DEFAULT_NUM_RECURSION_EXECUTORS: usize = 16;
         let num_recursion_executors = env::var("SP1_PROVER_NUM_RECURSION_EXECUTORS")
             .unwrap_or_else(|_| DEFAULT_NUM_RECURSION_EXECUTORS.to_string())
             .parse::<usize>()
             .unwrap_or(DEFAULT_NUM_RECURSION_EXECUTORS);
 
-        const DEFAULT_RECURSION_BATCH_SIZE: usize = 1;
-        let recursion_batch_size = env::var("SP1_PROVER_RECURSION_BATCH_SIZE")
-            .unwrap_or_else(|_| DEFAULT_RECURSION_BATCH_SIZE.to_string())
-            .parse::<usize>()
-            .unwrap_or(DEFAULT_RECURSION_BATCH_SIZE);
-
-        Self {
-            core_opts,
-            records_capacity_buffer,
-            num_record_workers,
-            num_recursion_executors,
-            reduce_batch_size,
-            recursion_batch_size,
-        }
+        Self { core_opts, records_capacity_buffer, num_record_workers, num_recursion_executors }
     }
 }
 
@@ -112,12 +85,15 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let records_task_capacity =
             prover.core().num_prover_workers() * opts.records_capacity_buffer;
         let executor = MachineExecutorBuilder::new(opts.core_opts, opts.num_record_workers).build();
+
+        let reduce_batch_size = prover.recursion().max_reduce_arity();
+        let recursion_batch_size = prover.recursion().recursion_batch_size();
         Self {
             prover,
             executor,
             records_task_capacity,
-            reduce_batch_size: opts.reduce_batch_size,
-            recursion_batch_size: opts.recursion_batch_size,
+            reduce_batch_size,
+            recursion_batch_size,
             num_recursion_executors: opts.num_recursion_executors,
         }
     }
@@ -236,8 +212,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         proof: SP1CoreProof,
         deferred_proofs: Vec<SP1ReduceProof<InnerSC>>,
     ) -> Result<SP1ReduceProof<InnerSC>, SP1ProverError> {
-        // Initialize the recursion tree.
-        let mut recursion_tree = RecursionTree::new();
+        // Initialize the recursion tree channels.
         let (recursion_tree_tx, mut recursion_tree_rx) =
             mpsc::unbounded_channel::<RecursionProof>();
 
@@ -253,72 +228,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             tokio::task::spawn_blocking(move || {
                 while let Some(task) = executor_rx.blocking_recv() {
                     let ExecuteTask { input, range } = task;
-                    let (program, witness_stream, keys) =
-                        tracing::debug_span!("get program and witness stream").in_scope(|| {
-                            match &input {
-                                SP1CircuitWitness::Core(input) => {
-                                    let mut witness_stream = Vec::new();
-                                    Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
-                                    (
-                                        prover.prover().recursion().recursion_program(input, false),
-                                        witness_stream,
-                                        None,
-                                    )
-                                }
-                                SP1CircuitWitness::Deferred(input) => {
-                                    let mut witness_stream = Vec::new();
-                                    Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
-                                    (
-                                        prover.prover().recursion().deferred_program(input, false),
-                                        witness_stream,
-                                        prover.prover().recursion().deferred_keys(),
-                                    )
-                                }
-                                SP1CircuitWitness::Compress(input) => {
-                                    let mut witness_stream = Vec::new();
-
-                                    // TODO: Add Merkle tree logic back in.
-                                    // let input_with_merkle = self.make_merkle_proofs(input);
-
-                                    Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
-
-                                    (
-                                        prover.prover().recursion().compress_program(input, false),
-                                        witness_stream,
-                                        prover.prover().recursion().reduce_keys(2),
-                                    )
-                                }
-                            }
-                        });
-
-                    // Execute the runtime.
-                    let record = tracing::debug_span!("execute runtime").in_scope(|| {
-                        let mut runtime = Runtime::<
-                            <InnerSC as JaggedConfig>::F,
-                            <InnerSC as JaggedConfig>::EF,
-                            _,
-                        >::new(
-                            program.clone(), my_bb_16_perm()
-                        );
-                        runtime.witness_stream = witness_stream.into();
-                        runtime
-                            .run()
-                            .map_err(|e| SP1RecursionProverError::RuntimeError(e.to_string()))
-                            .unwrap();
-                        runtime.record
-                    });
-
-                    // Generate the dependencies.
-                    let mut records = vec![record];
-                    tracing::debug_span!("generate dependencies").in_scope(|| {
-                        prover
-                            .prover()
-                            .recursion()
-                            .machine()
-                            .generate_dependencies(&mut records, None)
-                    });
-                    let record = records.pop().unwrap();
-
+                    let keys = prover.prover().recursion().keys(&input);
+                    let record = prover.prover().recursion().execute(&input).unwrap();
                     let prove_task = ProveTask { keys, range, record };
                     prove_task_tx.send(prove_task).unwrap();
                 }
@@ -337,6 +248,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let full_range = 0..inputs.len();
 
+        // Spawn the recursion tasks for the core shards.
         let executors = recursion_executors.clone();
         tokio::spawn(async move {
             for (i, input) in inputs.into_iter().enumerate() {
@@ -349,6 +261,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         // Spawn the prover controller task
         let prover = self.clone();
+        let tree_tx = recursion_tree_tx.clone();
         tokio::spawn(async move {
             let mut setup_and_prove_tasks = FuturesUnordered::new();
             let mut prove_tasks = FuturesUnordered::new();
@@ -380,11 +293,11 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     }
                     Some(result) = setup_and_prove_tasks.next() => {
                         let proof = result.unwrap();
-                        recursion_tree_tx.send(proof).unwrap();
+                        tree_tx.send(proof).unwrap();
                     }
                     Some(result) = prove_tasks.next() => {
                         let proof = result.unwrap();
-                        recursion_tree_tx.send(proof).unwrap();
+                        tree_tx.send(proof).unwrap();
                     }
                     else => {
                         break;
@@ -393,9 +306,16 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             }
         });
 
-        // Populate the recursion proofs into the tree until a single range.
-        while let Some(proof) = recursion_tree_rx.recv().await {
-            if proof.is_complete(&full_range) {
+        // Reduce the proofs in the tree.
+        let mut reduce_batch_size = self.reduce_batch_size;
+        let mut full_range = full_range;
+        while reduce_batch_size > 1 {
+            let mut recursion_tree = RecursionTree::new(reduce_batch_size);
+            let proofs = recursion_tree
+                .reduce_proofs(&full_range, &mut recursion_tree_rx, recursion_executors.clone())
+                .await
+                .unwrap();
+            if reduce_batch_size == 2 {
                 let (cache_total_calls, cache_hits, cache_hit_rate) =
                     self.prover.recursion().recursion_program_cache_stats();
                 tracing::debug!(
@@ -404,39 +324,17 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     cache_hits,
                     cache_hit_rate
                 );
-                return Ok(proof.proof);
+                return Ok(proofs[0].clone());
             }
-
-            // Check if there is a neighboring range.
-            if let Some(sibling) = recursion_tree.sibling(&proof) {
-                let proofs = match sibling {
-                    Sibling::Left(mut proofs) => {
-                        proofs.push_back(proof);
-                        proofs
-                    }
-                    Sibling::Right(mut proofs) => {
-                        proofs.push_front(proof);
-                        proofs
-                    }
-                };
-
-                if proofs.len() >= self.reduce_batch_size {
-                    // Compress all the proofs into a single proof.
-                    let (range, input) = proofs.into_witness(&full_range);
-                    let input = SP1CircuitWitness::Compress(input);
-                    // Wait for an executor to be available.
-                    let executor = recursion_executors.clone().pop().await.unwrap();
-                    executor.send(ExecuteTask { input, range }).unwrap();
-                } else {
-                    recursion_tree.insert(proofs);
-                }
-            } else {
-                // If there is no neighboring range, add the proof to the tree.
-                let RecursionProof { shard_range, proof } = proof;
-                let proofs = RangeProofs::new(shard_range, VecDeque::from([proof]));
-                recursion_tree.insert(proofs);
+            full_range = 0..proofs.len();
+            reduce_batch_size /= 2;
+            // Split the proof into tasks and send them
+            for (i, proof) in proofs.into_iter().enumerate() {
+                let proof = RecursionProof { shard_range: i..i + 1, proof };
+                recursion_tree_tx.send(proof).unwrap();
             }
         }
+        drop(recursion_tree_tx);
 
         Err(SP1ProverError::RecursionProverError(MachineProverError::ProverClosed))
     }
@@ -565,11 +463,9 @@ impl<C: SP1ProverComponents> SubproofVerifier for LocalProver<C> {
 }
 
 pub struct RecursionTree {
-    map: BTreeMap<StartRange, RangeProofs>,
+    map: BTreeMap<usize, RangeProofs>,
+    batch_size: usize,
 }
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
-struct StartRange(usize);
 
 #[derive(Clone, Debug)]
 struct RangeProofs {
@@ -582,16 +478,40 @@ impl RangeProofs {
         Self { shard_range, proofs }
     }
 
-    pub fn push_front(&mut self, proof: RecursionProof) {
-        debug_assert_eq!(proof.shard_range.end, self.shard_range.start);
+    pub fn push_right(&mut self, proof: RecursionProof) {
+        assert_eq!(proof.shard_range.end, self.shard_range.start);
         self.shard_range = proof.shard_range.start..self.shard_range.end;
         self.proofs.push_front(proof.proof);
     }
 
-    pub fn push_back(&mut self, proof: RecursionProof) {
-        debug_assert_eq!(proof.shard_range.start, self.shard_range.end);
+    pub fn push_left(&mut self, proof: RecursionProof) {
+        assert_eq!(proof.shard_range.start, self.shard_range.end);
         self.shard_range = self.shard_range.start..proof.shard_range.end;
         self.proofs.push_back(proof.proof);
+    }
+
+    pub fn split_off(&mut self, at: usize) -> Option<Self> {
+        if at >= self.proofs.len() {
+            return None;
+        }
+        let proofs = self.proofs.split_off(at);
+        let end_point = std::cmp::min(self.shard_range.end, self.shard_range.start + at);
+        let split_range = end_point..self.shard_range.end;
+        self.shard_range = self.shard_range.start..end_point;
+        Some(Self { shard_range: split_range, proofs })
+    }
+
+    pub fn push_both(&mut self, middle: RecursionProof, right: Self) {
+        assert_eq!(middle.shard_range.start, self.shard_range.end);
+        assert_eq!(right.shard_range.start, middle.shard_range.end);
+        // Push the middle to the queue.
+        self.proofs.push_back(middle.proof);
+        // Append the right proofs to the queue.
+        for proof in right.proofs {
+            self.proofs.push_back(proof);
+        }
+        // Update the shard range.
+        self.shard_range = self.shard_range.start..right.shard_range.end;
     }
 
     pub fn len(&self) -> usize {
@@ -615,35 +535,106 @@ impl RangeProofs {
 
 impl RecursionTree {
     /// Create a new recursion tree.
-    fn new() -> Self {
-        Self { map: BTreeMap::new() }
+    fn new(batch_size: usize) -> Self {
+        Self { map: BTreeMap::new(), batch_size }
     }
 
     /// Insert a new range of proofs into the tree.
     fn insert(&mut self, proofs: RangeProofs) {
-        let start_range = StartRange(proofs.shard_range.start);
-        self.map.insert(start_range, proofs);
+        self.map.insert(proofs.shard_range.start, proofs);
     }
 
     /// Get the sibling of a proof.
     fn sibling(&mut self, proof: &RecursionProof) -> Option<Sibling> {
-        // Check for a right sibling.
-        if let Some(proofs) = self.map.remove(&StartRange(proof.shard_range.end)) {
-            return Some(Sibling::Right(proofs));
-        }
-        // Iterate over smaller ranges.
-        if let Some(previous) =
-            self.map.range(StartRange(0)..StartRange(proof.shard_range.start)).next_back()
-        {
+        // Check for a left sibling
+        if let Some(previous) = self.map.range(0..proof.shard_range.start).next_back() {
             let (start, proofs) = previous;
-            let start = start.clone();
+            let start = *start;
             let proofs = proofs.clone();
+
             if proofs.shard_range.end == proof.shard_range.start {
-                let sibling = self.map.remove(&start).unwrap();
-                return Some(Sibling::Left(sibling));
+                let left = self.map.remove(&start).unwrap();
+                // Check for a right sibling.
+                if let Some(right) = self.map.remove(&proof.shard_range.end) {
+                    return Some(Sibling::Both(left, right));
+                } else {
+                    return Some(Sibling::Left(left));
+                }
             }
         }
+        // If there is no left sibling, check for a right sibling.
+        if let Some(right) = self.map.remove(&proof.shard_range.end) {
+            return Some(Sibling::Right(right));
+        }
+
+        // No sibling found.
         None
+    }
+
+    async fn reduce_proofs(
+        &mut self,
+        full_range: &Range<usize>,
+        proofs_rx: &mut UnboundedReceiver<RecursionProof>,
+        recursion_executors: Arc<WorkerQueue<UnboundedSender<ExecuteTask>>>,
+    ) -> Result<Vec<SP1ReduceProof<InnerSC>>, SP1ProverError> {
+        // Populate the recursion proofs into the tree until we reach the reduce batch size.
+        while let Some(proof) = proofs_rx.recv().await {
+            if proof.is_complete(full_range) {
+                return Ok(vec![proof.proof]);
+            }
+
+            // Check if there is a neighboring range.
+            if let Some(sibling) = self.sibling(&proof) {
+                let mut proofs = match sibling {
+                    Sibling::Left(mut proofs) => {
+                        proofs.push_left(proof);
+                        proofs
+                    }
+                    Sibling::Right(mut proofs) => {
+                        proofs.push_right(proof);
+                        proofs
+                    }
+                    Sibling::Both(mut proofs, right) => {
+                        proofs.push_both(proof, right);
+                        proofs
+                    }
+                };
+
+                // Check for proofs to split and put back the reminder.
+                let split = proofs.split_off(self.batch_size);
+                if let Some(split) = split {
+                    self.insert(split);
+                }
+
+                if proofs.is_complete(full_range) {
+                    return Ok(proofs.proofs.into_iter().collect());
+                }
+
+                if proofs.len() > self.batch_size {
+                    tracing::error!("Proofs are larger than the batch size: {:?}", proofs.len());
+                    panic!("Proofs are larger than the batch size: {:?}", proofs.len());
+                }
+
+                if proofs.len() == self.batch_size {
+                    // Compress all the proofs into a single proof.
+                    let (range, input) = proofs.into_witness(full_range);
+                    let input = SP1CircuitWitness::Compress(input);
+                    // Wait for an executor to be available.
+                    let executor = recursion_executors.clone().pop().await.unwrap();
+                    executor.send(ExecuteTask { input, range }).ok();
+                } else {
+                    self.insert(proofs);
+                }
+            } else {
+                // If there is no neighboring range, add the proof to the tree.
+                let RecursionProof { shard_range, proof } = proof;
+                let mut queue = VecDeque::with_capacity(self.batch_size);
+                queue.push_back(proof);
+                let proofs = RangeProofs::new(shard_range, queue);
+                self.insert(proofs);
+            }
+        }
+        Err(SP1ProverError::RecursionProverError(MachineProverError::ProverClosed))
     }
 }
 
@@ -662,6 +653,7 @@ impl RecursionProof {
 enum Sibling {
     Left(RangeProofs),
     Right(RangeProofs),
+    Both(RangeProofs, RangeProofs),
 }
 
 struct ExecuteTask {

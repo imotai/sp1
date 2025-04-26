@@ -26,6 +26,10 @@ impl<F> RecursionShape<F> {
         self.heights.get(&air.name()).copied()
     }
 
+    pub fn height_of_name(&self, name: &str) -> Option<usize> {
+        self.heights.get(name).copied()
+    }
+
     pub fn insert<A>(&mut self, air: &A, height: usize)
     where
         F: Field,
