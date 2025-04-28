@@ -55,13 +55,13 @@ impl Default for LocalProverOpts {
             .parse::<usize>()
             .unwrap_or(DEFAULT_RECORDS_CAPACITY_BUFFER);
 
-        const DEFAULT_NUM_RECORD_WORKERS: usize = 8;
+        const DEFAULT_NUM_RECORD_WORKERS: usize = 2;
         let num_record_workers = env::var("SP1_PROVER_NUM_RECORD_WORKERS")
             .unwrap_or_else(|_| DEFAULT_NUM_RECORD_WORKERS.to_string())
             .parse::<usize>()
             .unwrap_or(DEFAULT_NUM_RECORD_WORKERS);
 
-        const DEFAULT_NUM_RECURSION_EXECUTORS: usize = 16;
+        const DEFAULT_NUM_RECURSION_EXECUTORS: usize = 4;
         let num_recursion_executors = env::var("SP1_PROVER_NUM_RECURSION_EXECUTORS")
             .unwrap_or_else(|_| DEFAULT_NUM_RECURSION_EXECUTORS.to_string())
             .parse::<usize>()
