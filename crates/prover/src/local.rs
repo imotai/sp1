@@ -30,7 +30,10 @@ use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
     BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
 };
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{
+    mpsc::{self, UnboundedReceiver, UnboundedSender},
+    Semaphore,
+};
 
 use crate::{
     components::SP1ProverComponents, error::SP1ProverError, recursion::SP1RecursionProver, CoreSC,
@@ -41,6 +44,7 @@ use crate::{
 pub struct LocalProverOpts {
     pub core_opts: SP1CoreOpts,
     pub records_capacity_buffer: usize,
+    pub prover_task_capacity_buffer: usize,
     pub num_record_workers: usize,
     pub num_recursion_executors: usize,
 }
@@ -55,6 +59,12 @@ impl Default for LocalProverOpts {
             .parse::<usize>()
             .unwrap_or(DEFAULT_RECORDS_CAPACITY_BUFFER);
 
+        const DEFAULT_PROVER_TASK_CAPACITY_BUFFER: usize = 2;
+        let prover_task_capacity_buffer = env::var("SP1_PROVER_PROVER_TASK_CAPACITY_BUFFER")
+            .unwrap_or_else(|_| DEFAULT_PROVER_TASK_CAPACITY_BUFFER.to_string())
+            .parse::<usize>()
+            .unwrap_or(DEFAULT_PROVER_TASK_CAPACITY_BUFFER);
+
         const DEFAULT_NUM_RECORD_WORKERS: usize = 2;
         let num_record_workers = env::var("SP1_PROVER_NUM_RECORD_WORKERS")
             .unwrap_or_else(|_| DEFAULT_NUM_RECORD_WORKERS.to_string())
@@ -67,7 +77,13 @@ impl Default for LocalProverOpts {
             .parse::<usize>()
             .unwrap_or(DEFAULT_NUM_RECURSION_EXECUTORS);
 
-        Self { core_opts, records_capacity_buffer, num_record_workers, num_recursion_executors }
+        Self {
+            core_opts,
+            records_capacity_buffer,
+            prover_task_capacity_buffer,
+            num_record_workers,
+            num_recursion_executors,
+        }
     }
 }
 
@@ -75,6 +91,7 @@ pub struct LocalProver<C: SP1ProverComponents> {
     prover: SP1Prover<C>,
     executor: MachineExecutor<BabyBear>,
     records_task_capacity: usize,
+    prover_task_capacity: usize,
     reduce_batch_size: usize,
     recursion_batch_size: usize,
     num_recursion_executors: usize,
@@ -84,6 +101,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     pub fn new(prover: SP1Prover<C>, opts: LocalProverOpts) -> Self {
         let records_task_capacity =
             prover.core().num_prover_workers() * opts.records_capacity_buffer;
+        let prover_task_capacity =
+            prover.core().num_prover_workers() * opts.prover_task_capacity_buffer;
         let executor = MachineExecutorBuilder::new(opts.core_opts, opts.num_record_workers).build();
 
         let reduce_batch_size = prover.recursion().max_reduce_arity();
@@ -92,6 +111,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             prover,
             executor,
             records_task_capacity,
+            prover_task_capacity,
             reduce_batch_size,
             recursion_batch_size,
             num_recursion_executors: opts.num_recursion_executors,
@@ -148,13 +168,17 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let program = Arc::new(program);
 
-        // let (proofs_tx, mut proofs_rx) = mpsc::channel(self.prover_task_capacity);
+        let prover_task_capacity = prover.prover_task_capacity;
         let shard_proofs = tokio::spawn(async move {
             let mut shard_proofs = Vec::new();
             let mut tasks = FuturesOrdered::new();
+            let prover_spawn_permits = Semaphore::new(prover_task_capacity);
+            let mut permits = Vec::with_capacity(prover_task_capacity);
             loop {
                 tokio::select! {
-                    Some(record) = records_rx.recv() => {
+                    Ok((permit, Some(record))) = prover_spawn_permits.acquire()
+                        .and_then(|permit|
+                            records_rx.recv().map(|record| Ok((permit, record)))) => {
                         let span = tracing::debug_span!("prove core shard").entered();
                         let handle = prover
                             .prover
@@ -162,10 +186,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                             .prove_shard(pk.clone(), record);
                         span.exit();
                         tasks.push_back(handle);
+                        permits.push(permit);
                     }
                     Some(result) = tasks.next() => {
                         let proof = result.map_err(SP1ProverError::CoreProverError)?;
                         shard_proofs.push(proof);
+                        permits.pop();
                     }
                     else => {
                         break;
