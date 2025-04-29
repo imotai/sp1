@@ -345,9 +345,9 @@ checksum = "7575182f7272186991736b70173b0ea045398f984bf5ebbb3804736ce1330c9d"
 
 [[package]]
 name = "bytemuck"
-version = "1.22.0"
+version = "1.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6b1fc10dbac614ebc03540c9dbd60e83887fda27794998c6528f1782047d540"
+checksum = "9134a6ef01ce4b366b50689c94f82c14bc72bc5d0386829828a2e2752ef7958c"
 
 [[package]]
 name = "byteorder"
@@ -3841,7 +3841,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3879,7 +3879,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -3939,7 +3939,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -3960,7 +3960,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -3969,7 +3969,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "bincode",
  "hex",
@@ -3987,7 +3987,7 @@ dependencies = [
 [[package]]
 name = "sp1-prover"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4038,7 +4038,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-circuit"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "derive-where",
  "hashbrown 0.14.5",
@@ -4088,7 +4088,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-compiler"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -4112,7 +4112,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-derive"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -4121,7 +4121,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-executor"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "backtrace",
  "cbindgen",
@@ -4165,7 +4165,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-gnark-ffi"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4190,7 +4190,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-machine"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "cbindgen",
  "cc",
@@ -4228,7 +4228,7 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "4.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3fcb446ff9e0ebd3ff88d2ff3357ef77750e095b"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#b30ea4c4c83083d378c3028db50462b06ae3e481"
 dependencies = [
  "arrayref",
  "derive-where",
