@@ -243,7 +243,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         preprocessed_traces: Traces<C::F, C::B>,
     ) -> (MachineProvingKey<C>, MachineVerifyingKey<C::Config>) {
         // Commit to the preprocessed traces, if there are any.
-        let (preprocessed_commit, preprocessed_data) = if preprocessed_traces.len() > 0 {
+        let (preprocessed_commit, preprocessed_data) = if !preprocessed_traces.is_empty() {
             let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
             let (commit, data) = self.pcs_prover.commit_multilinears(message).await.unwrap();
 

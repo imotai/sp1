@@ -361,7 +361,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
         Some(CoreProofShape { shard_chips, preprocessed_multiple, main_multiple })
     }
 
-    /// Given a proof, compute its shape.
+    // / Given a proof, compute its shape.
     // pub fn shape_from_proof(&self, proof: &ShardProof<C::Config>) -> CoreProofShape<C::F, C::Air>
     // {     let shard_chips = self
     //         .machine()

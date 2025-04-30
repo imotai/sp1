@@ -40,7 +40,7 @@ impl SubproofVerifier for NoOpSubproofVerifier {
 
 // Implement subproof verifier for pointer types
 
-impl<'a, V> SubproofVerifier for &'a V
+impl<V> SubproofVerifier for &'_ V
 where
     V: SubproofVerifier + ?Sized,
 {

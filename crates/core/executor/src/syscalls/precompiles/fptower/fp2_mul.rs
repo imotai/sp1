@@ -82,6 +82,6 @@ pub(crate) fn fp2_mul_syscall<P: FpOpField, E: ExecutorConfig>(
             syscall_event,
             PrecompileEvent::Bls12381Fp2Mul(event),
         ),
-    };
+    }
     None
 }

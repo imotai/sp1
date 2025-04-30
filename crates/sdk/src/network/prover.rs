@@ -235,11 +235,11 @@ impl NetworkProver {
 
         // Log the request.
         log::info!("Requesting proof:");
-        log::info!("├─ Cycle limit: {}", cycle_limit);
-        log::info!("├─ Proof mode: {:?}", mode);
-        log::info!("├─ Strategy: {:?}", strategy);
-        log::info!("├─ Timeout: {} seconds", timeout_secs);
-        log::info!("└─ Circuit version: {}", SP1_CIRCUIT_VERSION);
+        log::info!("├─ Cycle limit: {cycle_limit}");
+        log::info!("├─ Proof mode: {mode:?}");
+        log::info!("├─ Strategy: {strategy:?}");
+        log::info!("├─ Timeout: {timeout_secs} seconds");
+        log::info!("└─ Circuit version: {SP1_CIRCUIT_VERSION}");
 
         // Request the proof.
         let response = self
@@ -258,13 +258,10 @@ impl NetworkProver {
         // Log the request ID and transaction hash.
         let tx_hash = B256::from_slice(&response.tx_hash);
         let request_id = B256::from_slice(&response.body.unwrap().request_id);
-        log::info!("Created request {} in transaction {:?}", request_id, tx_hash);
+        log::info!("Created request {request_id} in transaction {tx_hash}");
 
         if self.client.rpc_url == DEFAULT_NETWORK_RPC_URL {
-            log::info!(
-                "View request status at: https://network.succinct.xyz/request/{}",
-                request_id
-            );
+            log::info!("View request status at: https://network.succinct.xyz/request/{request_id}");
         }
 
         Ok(request_id)

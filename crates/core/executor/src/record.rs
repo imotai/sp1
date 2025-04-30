@@ -259,6 +259,15 @@ impl ExecutionRecord {
                 SyscallCode::BN254_FP_ADD
                 | SyscallCode::BN254_FP_SUB
                 | SyscallCode::BN254_FP_MUL => opts.fp_operation_256bit,
+                SyscallCode::BN254_FP2_ADD
+                | SyscallCode::BN254_FP2_SUB
+                | SyscallCode::BN254_FP2_MUL => opts.fp2_operation_256bit,
+                SyscallCode::BLS12381_FP_ADD
+                | SyscallCode::BLS12381_FP_SUB
+                | SyscallCode::BLS12381_FP_MUL => opts.fp_operation_384bit,
+                SyscallCode::BLS12381_FP2_ADD
+                | SyscallCode::BLS12381_FP2_SUB
+                | SyscallCode::BLS12381_FP2_MUL => opts.fp2_operation_384bit,
                 _ => opts.deferred,
             };
 

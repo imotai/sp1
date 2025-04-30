@@ -93,13 +93,11 @@ where
 
                     if is_transient {
                         log::warn!(
-                            "Transient transport error when {}: {}, retrying...",
-                            operation_name,
-                            error_msg
+                            "Transient transport error when {operation_name}: {error_msg}, retrying...",
                         );
                         Err(BackoffError::transient(e))
                     } else {
-                        log::error!("Permanent error when {}: {}", operation_name, error_msg);
+                        log::error!("Permanent error when {operation_name}: {error_msg}");
                         Err(BackoffError::permanent(e))
                     }
                 }

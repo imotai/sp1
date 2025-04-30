@@ -425,11 +425,10 @@ impl<AB: BaseAirBuilder + AirBuilderWithPublicValues> SP1AirBuilder for AB {}
 impl<SC: StarkGenericConfig> EmptyMessageBuilder for ProverConstraintFolder<'_, SC> {}
 impl<SC: StarkGenericConfig> EmptyMessageBuilder for VerifierConstraintFolder<'_, SC> {}
 impl<
-        'a,
         F: Field,
         K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
         EF: Field + Mul<K, Output = EF>,
-    > EmptyMessageBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+    > EmptyMessageBuilder for ConstraintSumcheckFolder<'_, F, K, EF>
 {
 }
 impl<F: Field> EmptyMessageBuilder for SymbolicAirBuilder<F> {}

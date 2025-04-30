@@ -24,7 +24,6 @@ use super::{SyscallCode, SyscallContext};
 /// If the fd matches a hook in the hook registry, invoke the hook.
 ///
 /// Else, log a warning.
-
 #[allow(clippy::pedantic)]
 pub fn write_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,

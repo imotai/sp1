@@ -83,6 +83,12 @@ pub struct SplitOpts {
     pub ec_double_256bit: usize,
     /// The threshold for fp operation events.
     pub fp_operation_256bit: usize,
+    /// The threshold for fp2 operation events.
+    pub fp2_operation_256bit: usize,
+    /// The threshold for fp operation 384bit events.
+    pub fp_operation_384bit: usize,
+    /// The threshold for fp2 operation 384bit events.
+    pub fp2_operation_384bit: usize,
 }
 
 impl SplitOpts {
@@ -98,10 +104,13 @@ impl SplitOpts {
             fp_operation_256bit: deferred_split_threshold * 2,
             ec_add_256bit: deferred_split_threshold * 64 / 65,
             ec_double_256bit: deferred_split_threshold * 64 / 33,
-            keccak: 32 * deferred_split_threshold / 101,
+            keccak: 32 * deferred_split_threshold / 150,
             sha_extend: 64 * deferred_split_threshold / 129,
             sha_compress: 32 * deferred_split_threshold / 80,
             memory: 32 * deferred_split_threshold,
+            fp2_operation_256bit: deferred_split_threshold,
+            fp_operation_384bit: deferred_split_threshold,
+            fp2_operation_384bit: deferred_split_threshold / 2,
         }
     }
 }

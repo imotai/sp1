@@ -1495,7 +1495,7 @@ impl<'a> Executor<'a> {
                 self.memory_accesses,
                 exit_code,
             );
-        };
+        }
 
         // Update the program counter.
         self.state.pc = next_pc;
@@ -2331,6 +2331,7 @@ mod tests {
     fn _assert_send<T: Send>() {}
 
     /// Runtime needs to be Send so we can use it across async calls.
+    #[allow(clippy::used_underscore_items)]
     fn _assert_runtime_is_send() {
         _assert_send::<Executor>();
     }

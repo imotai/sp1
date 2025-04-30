@@ -54,7 +54,7 @@ pub const CORE_LOG_BLOWUP: usize = 1;
 pub type InnerSC = BabyBearPoseidon2;
 pub const COMPRESS_LOG_BLOWUP: usize = 1;
 
-/// The configuration for the outer prover.
+// The configuration for the outer prover.
 // pub type OuterSC = BabyBearPoseidon2Outer;
 
 // pub type DeviceProvingKey<C> = <<C as SP1ProverComponents>::CoreProver as MachineProver<
@@ -73,45 +73,6 @@ pub const REDUCE_BATCH_SIZE: usize = 2;
 pub type CompressAir<F> = RecursionAir<F, COMPRESS_DEGREE>;
 pub type ShrinkAir<F> = RecursionAir<F, SHRINK_DEGREE>;
 pub type WrapAir<F> = RecursionAir<F, WRAP_DEGREE>;
-
-/// A end-to-end for the SP1 RISC-V zkVM.
-///
-/// This object coordinates the proving along all the steps: core, compression, shrinkage, and
-/// wrapping.
-// pub struct SP1Prover<C: SP1ProverComponents = CpuProverComponents> {
-//     /// The core prover.
-//     pub core_prover: C::CoreProver,
-//     /// The compress prover (for both lift and join).
-//     pub compress_prover: C::CompressProver,
-//     /// The shrink prover.
-//     pub shrink_prover: C::ShrinkProver,
-//     /// The wrap prover.
-//     pub wrap_prover: C::WrapProver,
-//     /// The cache of compiled recursion programs.
-//     pub lift_programs_lru: Mutex<LruCache<SP1RecursionShape, Arc<RecursionProgram<BabyBear>>>>,
-//     /// The number of cache misses for recursion programs.
-//     pub lift_cache_misses: AtomicUsize,
-//     /// The cache of compiled compression programs.
-//     pub join_programs_map: BTreeMap<SP1CompressWithVkeyShape, Arc<RecursionProgram<BabyBear>>>,
-//     /// The number of cache misses for compression programs.
-//     pub join_cache_misses: AtomicUsize,
-//     /// The root of the allowed recursion verification keys.
-//     pub recursion_vk_root: <InnerSC as FieldHasher<BabyBear>>::Digest,
-//     /// The allowed VKs and their corresponding indices.
-//     pub recursion_vk_map: BTreeMap<<InnerSC as FieldHasher<BabyBear>>::Digest, usize>,
-//     /// The Merkle tree for the allowed VKs.
-//     pub recursion_vk_tree: MerkleTree<BabyBear, InnerSC>,
-//     /// The core shape configuration.
-//     pub core_shape_config: Option<CoreShapeConfig<BabyBear>>,
-//     /// The recursion shape configuration.
-//     pub compress_shape_config: Option<RecursionShapeConfig<BabyBear, CompressAir<BabyBear>>>,
-//     /// The program for wrapping.
-//     pub wrap_program: OnceLock<Arc<RecursionProgram<BabyBear>>>,
-//     /// The verifying key for wrapping.
-//     pub wrap_vk: OnceLock<StarkVerifyingKey<OuterSC>>,
-//     /// Whether to verify verification keys.
-//     pub vk_verification: bool,
-// }
 
 pub struct SP1Prover<C: SP1ProverComponents> {
     core_prover: SP1CoreProver<C::CoreComponents>,
@@ -297,96 +258,6 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
 }
 
 impl<C: SP1ProverComponents> SP1Prover<C> {
-    // /// Initializes a new [SP1Prover].
-    // #[instrument(name = "initialize prover", level = "debug", skip_all)]
-    // pub fn new() -> Self {
-    //     Self::uninitialized()
-    // }
-
-    /// Creates a new [SP1Prover] with lazily initialized components.
-    // pub fn uninitialized() -> Self {
-    // Initialize the provers.
-    // let core_machine = RiscvAir::machine();
-    // let core_prover = ShardProver::<C::CoreComponents>::new(core_machine);
-
-    // let compress_machine = CompressAir::compress_machine(InnerSC::default());
-    // let compress_prover = C::CompressProver::new(compress_machine);
-
-    // let shrink_machine = ShrinkAir::shrink_machine(InnerSC::compressed());
-    // let shrink_prover = C::ShrinkProver::new(shrink_machine);
-
-    // let wrap_machine = WrapAir::wrap_machine(OuterSC::default());
-    // let wrap_prover = C::WrapProver::new(wrap_machine);
-
-    // let core_cache_size = NonZeroUsize::new(
-    //     env::var("PROVER_CORE_CACHE_SIZE")
-    //         .unwrap_or_else(|_| CORE_CACHE_SIZE.to_string())
-    //         .parse()
-    //         .unwrap_or(CORE_CACHE_SIZE),
-    // )
-    // .expect("PROVER_CORE_CACHE_SIZE must be a non-zero usize");
-
-    // let core_shape_config = env::var("FIX_CORE_SHAPES")
-    //     .map(|v| v.eq_ignore_ascii_case("true"))
-    //     .unwrap_or(true)
-    //     .then_some(CoreShapeConfig::default());
-
-    // let recursion_shape_config = env::var("FIX_RECURSION_SHAPES")
-    //     .map(|v| v.eq_ignore_ascii_case("true"))
-    //     .unwrap_or(true)
-    //     .then_some(RecursionShapeConfig::default());
-
-    // let vk_verification =
-    //     env::var("VERIFY_VK").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(true);
-    // tracing::info!("vk verification: {}", vk_verification);
-
-    // Read the shapes from the shapes directory and deserialize them into memory.
-    // let allowed_vk_map: BTreeMap<[BabyBear; DIGEST_SIZE], usize> = if vk_verification {
-    //     bincode::deserialize(include_bytes!(concat!(env!("OUT_DIR"), "/vk_map.bin"))).unwrap()
-    // } else {
-    //     bincode::deserialize(include_bytes!("vk_map_dummy.bin")).unwrap()
-    // };
-
-    // let (root, merkle_tree) = MerkleTree::commit(allowed_vk_map.keys().copied().collect());
-
-    // let mut compress_programs = BTreeMap::new();
-    // let program_cache_disabled = env::var("SP1_DISABLE_PROGRAM_CACHE")
-    //     .map(|v| v.eq_ignore_ascii_case("true"))
-    //     .unwrap_or(false);
-    // if !program_cache_disabled {
-    //     if let Some(config) = &recursion_shape_config {
-    //         SP1ProofShape::generate_compress_shapes(config, REDUCE_BATCH_SIZE).for_each(
-    //             |shape| {
-    //                 let compress_shape = SP1CompressWithVkeyShape {
-    //                     compress_shape: shape.into(),
-    //                     merkle_tree_height: merkle_tree.height,
-    //                 };
-    //                 let input = SP1CompressWithVKeyWitnessValues::dummy(
-    //                     compress_prover.machine(),
-    //                     &compress_shape,
-    //                 );
-    //                 let program = compress_program_from_input::<C>(
-    //                     recursion_shape_config.as_ref(),
-    //                     &compress_prover,
-    //                     vk_verification,
-    //                     &input,
-    //                 );
-    //                 let program = Arc::new(program);
-    //                 compress_programs.insert(compress_shape, program);
-    //             },
-    //         );
-    //     }
-    // }
-
-    // Self {
-    //     core_prover: todo!(),
-    //     compress_prover: todo!(),
-    //     core_verifier: todo!(),
-    //     recursion_verifier: todo!(),
-    //     recursion_stark_verifier: todo!(),
-    // }
-    // }
-
     // TODO: hide behind builder pattern
     pub fn new(
         core_prover: SP1CoreProver<C::CoreComponents>,

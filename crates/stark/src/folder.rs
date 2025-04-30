@@ -382,11 +382,10 @@ impl<
 }
 
 impl<
-        'a,
         F: Field,
         K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
         EF: Field + Mul<K, Output = EF> + ExtensionField<F> + AbstractExtensionField<K> + From<K>,
-    > ExtensionBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+    > ExtensionBuilder for ConstraintSumcheckFolder<'_, F, K, EF>
 {
     type EF = EF;
 
@@ -438,11 +437,10 @@ impl<
 }
 
 impl<
-        'a,
         F: Field,
         K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
         EF: Field + Mul<K, Output = EF>,
-    > PairBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
+    > PairBuilder for ConstraintSumcheckFolder<'_, F, K, EF>
 {
     fn preprocessed(&self) -> Self::M {
         self.preprocessed
@@ -450,11 +448,10 @@ impl<
 }
 
 impl<
-        'a,
         F: Field,
         K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
         EF: Field + Mul<K, Output = EF>,
-    > AirBuilderWithPublicValues for ConstraintSumcheckFolder<'a, F, K, EF>
+    > AirBuilderWithPublicValues for ConstraintSumcheckFolder<'_, F, K, EF>
 {
     type PublicVar = Self::F;
 

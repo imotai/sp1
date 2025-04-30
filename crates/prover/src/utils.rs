@@ -22,7 +22,7 @@ use sp1_core_machine::io::SP1Stdin;
 
 use crate::SP1CoreProofData;
 
-/// Get the SP1 vkey BabyBear Poseidon2 digest this reduce proof is representing.
+// / Get the SP1 vkey BabyBear Poseidon2 digest this reduce proof is representing.
 // pub fn sp1_vkey_digest_babybear(proof: &SP1ReduceProof<BabyBearPoseidon2Outer>) -> [BabyBear; 8]
 // {     let proof = &proof.proof;
 //     let pv: &RecursionPublicValues<BabyBear> = proof.public_values.as_slice().borrow();
@@ -120,8 +120,8 @@ pub fn words_to_bytes<T: Copy>(words: &[[T; 4]; 8]) -> Vec<T> {
     words.iter().flat_map(|word| word.iter()).copied().collect()
 }
 
-/// Convert 8 BabyBear words into a Bn254Fr field element by shifting by 31 bits each time. The last
-/// word becomes the least significant bits.
+// / Convert 8 BabyBear words into a Bn254Fr field element by shifting by 31 bits each time. The last
+// / word becomes the least significant bits.
 // pub fn babybears_to_bn254(digest: &[BabyBear; 8]) -> Bn254Fr {
 //     let mut result = Bn254Fr::zero();
 //     for word in digest.iter() {
@@ -133,8 +133,8 @@ pub fn words_to_bytes<T: Copy>(words: &[[T; 4]; 8]) -> Vec<T> {
 //     result
 // }
 
-/// Convert 32 BabyBear bytes into a Bn254Fr field element. The first byte's most significant 3 bits
-/// (which would become the 3 most significant bits) are truncated.
+// / Convert 32 BabyBear bytes into a Bn254Fr field element. The first byte's most significant 3 bits
+// / (which would become the 3 most significant bits) are truncated.
 // pub fn babybear_bytes_to_bn254(bytes: &[BabyBear; 32]) -> Bn254Fr {
 //     let mut result = Bn254Fr::zero();
 //     for (i, byte) in bytes.iter().enumerate() {

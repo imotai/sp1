@@ -132,7 +132,7 @@ impl<F: Field> Interaction<F> {
                     multiplicity_eval += preprocessed.as_ref().unwrap()[*i].into() * weight;
                 }
                 PairCol::Main(i) => multiplicity_eval += main[*i].into() * weight,
-            };
+            }
         }
 
         let mut fingerprint_eval =
