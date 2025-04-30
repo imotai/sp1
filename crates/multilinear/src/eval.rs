@@ -14,6 +14,11 @@ pub trait MleEvaluationBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
         mle: &Tensor<F, Self>,
         point: &Point<EF, Self>,
     ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
+
+    fn eval_mle_at_eq(
+        mle: &Tensor<F, Self>,
+        eq: &Tensor<EF, Self>,
+    ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
 }
 
 pub trait HostEvaluationBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
@@ -48,6 +53,11 @@ where
         let partial_lagrange = Self::partial_lagrange(point).await;
         // Evaluate the mle via a dot product with the partial lagrange polynomial.
         mle.dot(&partial_lagrange, 0).await
+    }
+
+    async fn eval_mle_at_eq(mle: &Tensor<F, Self>, eq: &Tensor<EF, Self>) -> Tensor<EF, Self> {
+        // Evaluate the mle via a dot product with the eq polynomial.
+        mle.dot(eq, 0).await
     }
 }
 

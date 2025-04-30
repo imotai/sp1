@@ -157,6 +157,17 @@ impl<F, A: Backend> Mle<F, A> {
         MleEval::new(evaluations)
     }
 
+    /// Evaluates the MLE at a given eq.
+    #[inline]
+    pub async fn eval_at_eq<EF: AbstractExtensionField<F>>(&self, eq: &Mle<EF, A>) -> MleEval<EF, A>
+    where
+        F: AbstractField,
+        A: MleEvaluationBackend<F, EF>,
+    {
+        let evaluations = A::eval_mle_at_eq(&self.guts, &eq.guts).await;
+        MleEval::new(evaluations)
+    }
+
     /// Compute the random linear combination of the even and odd coefficients of `vals`.
     ///
     /// This is used in the `Basefold` PCS.
