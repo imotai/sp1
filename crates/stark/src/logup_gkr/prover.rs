@@ -10,7 +10,8 @@ use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, CanCopyFromRef, CanCopyIntoRef, CpuBackend, ToHost};
 use slop_challenger::FieldChallenger;
 use slop_multilinear::{
-    Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, Point, PointBackend,
+    Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, PartialLagrangeBackend,
+    Point, PointBackend,
 };
 use slop_tensor::AddAssignBackend;
 
@@ -79,6 +80,7 @@ pub trait LogUpGkrProverComponents: 'static + Send + Sync {
         + MleEvaluationBackend<Self::F, Self::EF>
         + MleEvaluationBackend<Self::EF, Self::EF>
         + MleEvaluationBackend<Self::F, Self::F>
+        + PartialLagrangeBackend<Self::EF>
         + PointBackend<Self::EF>
         + AddAssignBackend<Self::EF>
         + CanCopyIntoRef<Mle<Self::EF, Self::B>, CpuBackend, Output = Mle<Self::EF>>;
@@ -218,10 +220,11 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
 
         // Follow the GKR protocol layer by layer.
         let first_point = numerator.backend().copy_to(&first_eval_point).await.unwrap();
+        let first_point_eq = Mle::partial_lagrange(&first_point).await;
         let first_numerator_eval =
-            numerator.eval_at(&first_point).await.to_host().await.unwrap()[0];
+            numerator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
         let first_denominator_eval =
-            denominator.eval_at(&first_point).await.to_host().await.unwrap()[0];
+            denominator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
 
         let (eval_point, round_proofs) = self
             .prove_gkr_circuit(
@@ -238,16 +241,19 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
 
         let trace_dimension = traces.values().next().unwrap().num_variables();
         let eval_point = eval_point.last_k(trace_dimension as usize);
+        let eval_point_b = numerator.backend().copy_to(&eval_point).await.unwrap();
+        let eval_point_eq = Mle::partial_lagrange(&eval_point_b).await;
 
         for chip in chips.iter() {
             let name = chip.name();
             let main_trace = traces.get(&name).unwrap();
             let preprocessed_trace = preprocessed_traces.get(&name);
 
-            let main_evaluation = main_trace.eval_at(&eval_point).await;
-            let preprocessed_evaluation =
-                OptionFuture::from(preprocessed_trace.as_ref().map(|t| t.eval_at(&eval_point)))
-                    .await;
+            let main_evaluation = main_trace.eval_at_eq(&eval_point, &eval_point_eq).await;
+            let preprocessed_evaluation = OptionFuture::from(
+                preprocessed_trace.as_ref().map(|t| t.eval_at_eq(&eval_point, &eval_point_eq)),
+            )
+            .await;
             let main_evaluation = main_evaluation.to_host().await.unwrap();
             let preprocessed_evaluation = OptionFuture::from(
                 preprocessed_evaluation.as_ref().map(|e| async { e.to_host().await.unwrap() }),

@@ -530,6 +530,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
         } else {
             let program = program.clone();
             tokio::task::spawn_blocking(move || program.initial_global_cumulative_sum())
+                .instrument(tracing::debug_span!("initial_global_cumulative_sum"))
                 .await
                 .unwrap()
         };
@@ -549,6 +550,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
                 initial_global_cumulative_sum,
                 preprocessed_traces,
             )
+            .instrument(tracing::debug_span!("setup_from_preprocessed_data_and_traces"))
             .await;
 
         let pk = Arc::new(pk);

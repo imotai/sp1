@@ -8,6 +8,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
+use tracing::Instrument;
 
 use slop_algebra::Field;
 use slop_alloc::{Backend, CanCopyFrom, CpuBackend, GLOBAL_CPU_BACKEND};
@@ -158,7 +159,11 @@ where
         let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire().await.unwrap();
+        let permit = prover_permits
+            .acquire()
+            .instrument(tracing::debug_span!("acquire prover"))
+            .await
+            .unwrap();
         // Copy the traces to the target backend.
 
         // Make the padded traces.
@@ -224,7 +229,11 @@ where
         let named_preprocessed_traces = rx.await.unwrap();
 
         // Wait for a permit to be available to copy the traces to the target backend.
-        let permit = setup_permits.acquire().await.unwrap();
+        let permit = setup_permits
+            .acquire()
+            .instrument(tracing::debug_span!("acquire setup"))
+            .await
+            .unwrap();
 
         // Wait for the device to be available.
         let named_traces =
@@ -303,7 +312,11 @@ where
             .collect::<BTreeMap<_, _>>();
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire().await.unwrap();
+        let permit = prover_permits
+            .acquire()
+            .instrument(tracing::debug_span!("acquire prover"))
+            .await
+            .unwrap();
 
         // Copy the preprocessed traces to the target backend.
         let preprocessed_traces =

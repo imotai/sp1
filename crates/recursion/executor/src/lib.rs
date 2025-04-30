@@ -706,8 +706,8 @@ where
                 let in1 = memory.mr_unchecked(addrs.in1).val;
                 let in2 = memory.mr_unchecked(addrs.in2).val;
                 // Do the computation.
-                let in1_ef = EF::from_base_slice(&in1.0);
-                let in2_ef = EF::from_base_slice(&in2.0);
+                let in1_ef = EF::from_base_fn(|i| in1.0[i]);
+                let in2_ef = EF::from_base_fn(|i| in2.0[i]);
                 let out_ef = match opcode {
                     ExtAluOpcode::AddE => in1_ef + in2_ef,
                     ExtAluOpcode::SubE => in1_ef - in2_ef,
@@ -1094,19 +1094,28 @@ where
                     }
                 }
                 SeqBlock::Parallel(vec) => {
-                    state.record.append(
-                        &mut vec
+                    tracing::debug_span!("parallel", len = vec.len()).in_scope(|| {
+                        let span = tracing::Span::current();
+                        let mut result = vec
                             .par_iter()
                             .map(|subprogram| {
-                                // Witness stream may not be called inside parallel contexts to
-                                // avoid nondeterminism.
-                                Self::execute_raw(env, subprogram, root_program, None, false)
+                                tracing::debug_span!(parent: &span, "block").in_scope(|| {
+                                    // Witness stream may not be called inside parallel contexts to
+                                    // avoid nondeterminism.
+                                    Self::execute_raw(env, subprogram, root_program, None, false)
+                                })
                             })
                             .try_reduce(fresh_record, |mut record, mut res| {
-                                record.append(&mut res);
+                                tracing::debug_span!(parent: &span, "append").in_scope(|| {
+                                    record.append(&mut res);
+                                });
                                 Ok(record)
-                            })?,
-                    );
+                            })?;
+                        tracing::debug_span!(parent: &span, "append_result").in_scope(|| {
+                            state.record.append(&mut result);
+                        });
+                        Ok::<_, RuntimeError<F, EF>>(())
+                    })?;
                 }
             }
         }

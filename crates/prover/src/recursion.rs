@@ -363,7 +363,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         match input {
             SP1CircuitWitness::Core(_) => None,
             SP1CircuitWitness::Deferred(_) => self.deferred_keys(),
-            SP1CircuitWitness::Compress(input) => self.reduce_keys(input),
+            SP1CircuitWitness::Compress(input) => self.reduce_keys(input.vks_and_proofs.len()),
         }
     }
 
@@ -433,9 +433,8 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
     #[allow(clippy::type_complexity)]
     pub fn reduce_keys(
         &self,
-        input: &SP1CompressWitnessValues<InnerSC>,
+        arity: usize,
     ) -> Option<(Arc<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>)> {
-        let arity = input.vks_and_proofs.len();
         self.reduce_keys.get(&arity).cloned()
     }
 

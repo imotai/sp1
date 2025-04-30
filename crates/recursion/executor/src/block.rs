@@ -27,7 +27,7 @@ impl<T> Block<T> {
         T: Field,
         E: ExtensionField<T>,
     {
-        E::from_base_slice(&self.0)
+        E::from_base_fn(|i| self.0[i])
     }
 }
 
