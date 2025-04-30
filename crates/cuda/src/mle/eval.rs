@@ -90,6 +90,10 @@ where
         let eq = Self::partial_lagrange(point).await;
         mle.dot(&eq, 1).await
     }
+
+    async fn eval_mle_at_eq(mle: &Tensor<F, Self>, eq: &Tensor<EF, Self>) -> Tensor<EF, Self> {
+        mle.dot(eq, 1).await
+    }
 }
 
 unsafe impl PartialLagrangeKernel<BabyBear> for TaskScope {

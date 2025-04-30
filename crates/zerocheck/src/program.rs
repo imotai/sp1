@@ -139,15 +139,32 @@ where
     type Output = EvalProgram<F, EF, TaskScope>;
 
     async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        let (
+            constraint_indices,
+            operations,
+            operations_indices,
+            f_constants,
+            f_constants_indices,
+            ef_constants,
+            ef_constants_indices,
+        ) = tokio::join!(
+            async { self.constraint_indices.copy_to_backend(backend).await.unwrap() },
+            async { self.operations.copy_to_backend(backend).await.unwrap() },
+            async { self.operations_indices.copy_to_backend(backend).await.unwrap() },
+            async { self.f_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.f_constants_indices.copy_to_backend(backend).await.unwrap() },
+            async { self.ef_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.ef_constants_indices.copy_to_backend(backend).await.unwrap() },
+        );
         Ok(EvalProgram {
-            constraint_indices: self.constraint_indices.copy_to_backend(backend).await?,
-            operations: self.operations.copy_to_backend(backend).await?,
-            operations_indices: self.operations_indices.copy_to_backend(backend).await?,
             f_ctr: self.f_ctr,
-            f_constants: self.f_constants.copy_to_backend(backend).await?,
-            f_constants_indices: self.f_constants_indices.copy_to_backend(backend).await?,
-            ef_constants: self.ef_constants.copy_to_backend(backend).await?,
-            ef_constants_indices: self.ef_constants_indices.copy_to_backend(backend).await?,
+            constraint_indices,
+            operations,
+            operations_indices,
+            f_constants,
+            f_constants_indices,
+            ef_constants,
+            ef_constants_indices,
         })
     }
 }

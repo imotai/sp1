@@ -63,6 +63,7 @@ where
             Padding::Constant((value, num_polys, _)) => {
                 Padding::Constant((*value, *num_polys, backend.clone()))
             }
+            Padding::Zero((num_polys, _)) => Padding::Zero((*num_polys, backend.clone())),
         };
         let num_variables = self.num_variables();
         let backend = backend.clone();

@@ -24,6 +24,7 @@ use sp1_stark::{
     Machine,
 };
 use sp1_stark::{Chip, MachineRecord};
+use tracing::{debug_span, instrument, Instrument};
 
 /// We currently only link to BabyBear-specialized trace generation FFI.
 pub(crate) type F = BabyBear;
@@ -61,6 +62,7 @@ where
     TaskScope: TransposeBackend<F>,
 {
     /// TODO(tqn) documentation
+    #[instrument(skip_all, level = "debug")]
     fn host_preprocessed_tracegen(
         &self,
         program: Arc<<A as MachineAir<F>>::Program>,
@@ -89,6 +91,7 @@ where
         HostPhaseTracegen { device_airs, host_traces }
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn device_preprocessed_tracegen(
         &self,
         program: Arc<<A as MachineAir<F>>::Program>,
@@ -133,6 +136,7 @@ where
     }
 
     /// TODO(tqn) documentation
+    #[instrument(skip_all, level = "debug")]
     fn host_main_tracegen(
         &self,
         record: Arc<<A as MachineAir<F>>::Record>,
@@ -196,6 +200,7 @@ where
         )
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn device_main_tracegen(
         &self,
         max_log_row_count: usize,
@@ -282,7 +287,7 @@ where
         let host_phase_tracegen = self.host_preprocessed_tracegen(Arc::clone(&program));
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire().await.unwrap();
+        let permit = prover_permits.acquire().instrument(debug_span!("acquire")).await.unwrap();
 
         // Now that the permit is acquired, we can begin the following two tasks:
         // - Copying host traces to the device.
@@ -306,7 +311,7 @@ where
             self.host_main_tracegen(Arc::clone(&record), max_log_row_count);
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire().await.unwrap();
+        let permit = prover_permits.acquire().instrument(debug_span!("acquire")).await.unwrap();
 
         // Now that the permit is acquired, we can begin the following two tasks:
         // - Copying host traces to the device.
@@ -334,7 +339,7 @@ where
             self.host_main_tracegen(Arc::clone(&record), max_log_row_count);
 
         // Wait for a prover to be available.
-        let permit = prover_permits.acquire().await.unwrap();
+        let permit = prover_permits.acquire().instrument(debug_span!("acquire")).await.unwrap();
 
         // Now that the permit is acquired, we can begin the following two tasks:
         // - Copying host traces to the device.

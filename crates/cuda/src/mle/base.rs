@@ -105,6 +105,7 @@ impl<F: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Padding<F, TaskSc
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((value, num_polys, *backend)))
             }
+            Padding::Zero((num_polys, _)) => Ok(Padding::Zero((num_polys, *backend))),
         }
     }
 }
@@ -131,6 +132,7 @@ impl<F: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Padding<F, CpuBac
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((value, num_polys, backend.clone())))
             }
+            Padding::Zero((num_polys, _)) => Ok(Padding::Zero((num_polys, backend.clone()))),
         }
     }
 }
@@ -156,6 +158,7 @@ impl<F: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Padding<F, TaskScop
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((*value, *num_polys, *backend)))
             }
+            Padding::Zero((num_polys, _)) => Ok(Padding::Zero((*num_polys, *backend))),
         }
     }
 }
@@ -182,6 +185,7 @@ impl<F: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Padding<F, CpuBacke
             Padding::Constant((value, num_polys, _)) => {
                 Ok(Padding::Constant((*value, *num_polys, backend.clone())))
             }
+            Padding::Zero((num_polys, _)) => Ok(Padding::Zero((*num_polys, backend.clone()))),
         }
     }
 }
