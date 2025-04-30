@@ -43,7 +43,7 @@ impl SP1CudaProverBuilder {
         );
 
         if cpu_memory_gb <= 20 {
-            num_prover_workers = 2;
+            num_prover_workers = 1;
         }
 
         // Log the memory on CPU and GPU.
