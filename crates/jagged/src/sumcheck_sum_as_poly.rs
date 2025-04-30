@@ -65,6 +65,11 @@ where
     where
         TaskScope: Backend,
     {
+        // *Warning*
+        // This is a hack to get around the fact that the TaskScope is not available from the prover
+        // and needs to be spawned. The issue here is that the task sciope should not live beyond
+        // the execution, but nothing really enforces this. It should be fixed in the future, but
+        // for now this hack should suffice since tasks are owned.
         csl_cuda::run_in_place(|t| async move {
             let z_row_device = t.into_device(z_row).await.unwrap();
             let z_index_device = t.into_device(z_index).await.unwrap();

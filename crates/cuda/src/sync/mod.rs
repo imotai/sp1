@@ -1,5 +1,5 @@
 pub mod mpsc;
-use slop_algebra::extension::BinomialExtensionField;
+use slop_algebra::{extension::BinomialExtensionField, UnivariatePolynomial};
 use slop_alloc::{Buffer, CpuBackend};
 use slop_baby_bear::BabyBear;
 use slop_tensor::Tensor;
@@ -38,6 +38,13 @@ impl<T> CudaSend for Tensor<T, TaskScope> {
 }
 
 impl<T> CudaSend for Tensor<T, CpuBackend> {
+    #[inline]
+    unsafe fn send_to_scope(self, _scope: &TaskScope) -> Self {
+        self
+    }
+}
+
+impl<T: CudaSend> CudaSend for UnivariatePolynomial<T> {
     #[inline]
     unsafe fn send_to_scope(self, _scope: &TaskScope) -> Self {
         self

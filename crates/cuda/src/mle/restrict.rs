@@ -296,7 +296,7 @@ mod tests {
             let mut evals = Vec::new();
             for handle in handles {
                 // Get the evals
-                let eval = handle.await.unwrap().unwrap();
+                let eval = handle.await.unwrap();
                 evals.push(eval);
             }
             let complete_point = complete_point.to_device_in(&t).await.unwrap();

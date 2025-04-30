@@ -52,13 +52,6 @@ pub(crate) fn global_task_pool() -> &'static Arc<TaskPool> {
     GLOBAL_TASK_POOL.get_or_init(|| Arc::new(TaskPoolBuilder::new().build().unwrap()))
 }
 
-// /// Acquires a task from the global task pool.
-// pub async fn task() -> Result<OwnedTask, SpawnError> {
-//     let pool = global_task_pool();
-//     let task = pool.task().await?;
-//     Ok(task)
-// }
-
 pub struct SpawnHandle<T> {
     handle: JoinHandle<Result<T, CudaError>>,
 }
@@ -487,25 +480,42 @@ impl TaskScope {
         self.0.upgrade().unwrap().inner.owner().clone()
     }
 
-    pub fn spawn<F, Fut>(&self, f: F) -> JoinHandle<Result<Fut::Output, CudaError>>
+    /// Spawns a new task from the current task pool.
+    ///
+    /// The task starting point will have a "happens before" relationship with the current task when
+    /// the spawn is called. The handle can be used to wait for the child task to finish.
+    pub fn spawn<F, Fut>(&self, f: F) -> SpawnHandle<Fut::Output>
     where
         F: FnOnce(TaskScope) -> Fut + Send + 'static,
         Fut: Future + Send + 'static,
         Fut::Output: CudaSend + 'static,
     {
         let parent = self.clone();
-        tokio::spawn(async move {
-            let task = TaskPool::task(parent.owner_queue()).await.unwrap();
-            unsafe {
-                // Use the task's end event to synchronize the parent task.
-                // This is safe because this is the first time this task is being run so we know
-                // there are no other copies that record anything on this event at the same time.
-                parent.stream.record_unchecked(&task.inner.end_event)?;
-                task.inner.stream.wait_unchecked(&task.inner.end_event)?
-            };
-            let handle = task.run(f).await;
-            handle.join(&parent)
-        })
+        let handle = tokio::spawn(async move { parent.run_in_place(f).await });
+        SpawnHandle { handle }
+    }
+
+    /// Runs a task in place in a new stream.
+    ///
+    /// Awaiting this task will peform the device calls and synchronize the end of this task to
+    /// the parent, but does not do host synchronization.
+    pub async fn run_in_place<F, Fut>(&self, f: F) -> Result<Fut::Output, CudaError>
+    where
+        F: FnOnce(TaskScope) -> Fut,
+        Fut: Future,
+        Fut::Output: CudaSend,
+    {
+        let parent = self.clone();
+        let task = TaskPool::task(parent.owner_queue()).await.unwrap();
+        unsafe {
+            // Use the task's end event to synchronize the parent task.
+            // This is safe because this is the first time this task is being run so we know
+            // there are no other copies that record anything on this event at the same time.
+            parent.stream.record_unchecked(&task.inner.end_event)?;
+            task.inner.stream.wait_unchecked(&task.inner.end_event)?
+        };
+        let handle = task.run(f).await;
+        handle.join(&parent)
     }
 }
 

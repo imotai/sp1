@@ -24,6 +24,7 @@ slop-futures = { workspace = true }
 sp1-stark = { workspace = true }
 tokio = { workspace = true }
 itertools = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }

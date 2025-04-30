@@ -196,7 +196,7 @@ mod tests {
             let mut evals = Vec::new();
             for handle in handles {
                 // Get the evals
-                let eval = handle.await.unwrap().unwrap();
+                let eval = handle.await.unwrap();
                 evals.push(eval);
             }
             for (eval, mle) in evals.iter().zip(mles) {

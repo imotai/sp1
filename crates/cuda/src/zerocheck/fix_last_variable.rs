@@ -37,7 +37,7 @@ where
     let scope = poly.main_columns.backend().clone();
     let original_scope = scope.clone();
     scope
-        .spawn(move |s| async move {
+        .run_in_place(move |s| async move {
             let t = original_scope;
             let main_columns = unsafe { main_columns.owned_unchecked_in(s.clone()) };
             let preprocessed_columns =
@@ -56,7 +56,6 @@ where
             tx.send((preprocessed_columns, main_columns)).unwrap();
         })
         .await
-        .unwrap()
         .unwrap();
     let (preprocessed_columns, main_columns) = rx.await.unwrap();
 

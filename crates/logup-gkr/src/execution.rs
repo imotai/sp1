@@ -6,6 +6,8 @@ use std::{
     sync::Arc,
 };
 
+use futures::{prelude::*, stream::FuturesUnordered};
+
 use csl_cuda::{
     args,
     sys::{
@@ -149,7 +151,7 @@ where
         const INTERACTION_STRIDE: usize = 4;
 
         let mut interaction_offset = 0;
-        let mut handles = Vec::with_capacity(input_data.interactions.len());
+        let handles = FuturesUnordered::new();
         for ((name, interactions), dimension) in input_data.interactions.iter().zip_eq(dimensions) {
             let trace = input_data.traces.get(name).unwrap().clone();
             let preprocessed_trace = input_data.preprocessed_traces.get(name).cloned();
@@ -161,7 +163,7 @@ where
             let mut interaction_data = unsafe { interaction_data.owned_unchecked() };
             let mut numerator = unsafe { numerator.owned_unchecked() };
             let mut denominator = unsafe { denominator.owned_unchecked() };
-            let handle = backend.spawn(move |s| async move {
+            let handle = backend.run_in_place(move |s| async move {
                 let real_height = trace.num_real_entries();
                 assert_eq!(real_height % 2, 0);
                 let is_padding = real_height == 0;
@@ -216,9 +218,7 @@ where
             interaction_offset += num_interactions;
         }
 
-        for handle in handles {
-            handle.await.unwrap().unwrap();
-        }
+        handles.collect::<Vec<_>>().await;
 
         unsafe {
             interaction_data.assume_init();

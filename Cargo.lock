@@ -742,6 +742,7 @@ name = "csl-logup-gkr"
 version = "1.2.0"
 dependencies = [
  "csl-cuda",
+ "futures",
  "itertools 0.14.0",
  "rand 0.8.5",
  "rayon",
