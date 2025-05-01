@@ -172,16 +172,28 @@ impl<F: Field> Interactions<F, TaskScope> {
 impl<F: Field> CopyToBackend<TaskScope, CpuBackend> for Interactions<F, CpuBackend> {
     type Output = Interactions<F, TaskScope>;
     async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let device_values_ptr = self.values_ptr.copy_to_backend(backend).await?;
-        let device_multiplicities_ptr = self.multiplicities_ptr.copy_to_backend(backend).await?;
-        let device_values_col_weights_ptr =
-            self.values_col_weights_ptr.copy_to_backend(backend).await?;
-        let device_values_col_weights = self.values_col_weights.copy_to_backend(backend).await?;
-        let device_values_constants = self.values_constants.copy_to_backend(backend).await?;
-        let device_mult_col_weights = self.mult_col_weights.copy_to_backend(backend).await?;
-        let device_mult_constants = self.mult_constants.copy_to_backend(backend).await?;
-        let device_arg_indices = self.arg_indices.copy_to_backend(backend).await?;
-        let device_is_send = self.is_send.copy_to_backend(backend).await?;
+        let (
+            device_values_ptr,
+            device_multiplicities_ptr,
+            device_values_col_weights_ptr,
+            device_values_col_weights,
+            device_values_constants,
+            device_mult_col_weights,
+            device_mult_constants,
+            device_arg_indices,
+            device_is_send,
+        ) = tokio::join!(
+            async { self.values_ptr.copy_to_backend(backend).await.unwrap() },
+            async { self.multiplicities_ptr.copy_to_backend(backend).await.unwrap() },
+            async { self.values_col_weights_ptr.copy_to_backend(backend).await.unwrap() },
+            async { self.values_col_weights.copy_to_backend(backend).await.unwrap() },
+            async { self.values_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.mult_col_weights.copy_to_backend(backend).await.unwrap() },
+            async { self.mult_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.arg_indices.copy_to_backend(backend).await.unwrap() },
+            async { self.is_send.copy_to_backend(backend).await.unwrap() },
+        );
+
         let num_interactions = self.num_interactions;
 
         Ok(Interactions {

@@ -67,9 +67,11 @@ impl<F: Field, const WIDTH: usize> CopyToBackend<TaskScope, CpuBackend>
         &self,
         backend: &TaskScope,
     ) -> Result<Self::Output, slop_alloc::mem::CopyError> {
-        let internal_constants = self.internal_constants.copy_to_backend(backend).await?;
-        let external_constants = self.external_constants.copy_to_backend(backend).await?;
-        let diffusion_matrix = self.diffusion_matrix.copy_to_backend(backend).await?;
+        let (internal_constants, external_constants, diffusion_matrix) = tokio::join!(
+            async { self.internal_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.external_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.diffusion_matrix.copy_to_backend(backend).await.unwrap() },
+        );
         Ok(MerkleTreeHasher {
             internal_constants,
             external_constants,
@@ -88,9 +90,11 @@ impl<F: Field, const WIDTH: usize> CopyToBackend<CpuBackend, TaskScope>
         &self,
         backend: &CpuBackend,
     ) -> Result<Self::Output, slop_alloc::mem::CopyError> {
-        let internal_constants = self.internal_constants.copy_to_backend(backend).await?;
-        let external_constants = self.external_constants.copy_to_backend(backend).await?;
-        let diffusion_matrix = self.diffusion_matrix.copy_to_backend(backend).await?;
+        let (internal_constants, external_constants, diffusion_matrix) = tokio::join!(
+            async { self.internal_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.external_constants.copy_to_backend(backend).await.unwrap() },
+            async { self.diffusion_matrix.copy_to_backend(backend).await.unwrap() },
+        );
         Ok(MerkleTreeHasher {
             internal_constants,
             external_constants,
