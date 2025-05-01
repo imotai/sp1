@@ -4,7 +4,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
 
 use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_alloc::{HasBackend, ToHost};
+use slop_alloc::mem::CopyError;
+use slop_alloc::{Buffer, HasBackend, ToHost};
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::{Message, Rounds};
 use slop_multilinear::{
@@ -29,6 +30,7 @@ pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
     MleBaseBackend<F>
     + MleBaseBackend<EF>
     + MleEvaluationBackend<F, EF>
+    + MleEvaluationBackend<EF, EF>
     + FixedRateInterleaveBackend<F>
     + ComponentPolyEvalBackend<HadamardProduct<F, EF, Self>, EF>
     + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
@@ -44,6 +46,7 @@ where
     A: MleBaseBackend<F>
         + MleBaseBackend<EF>
         + MleEvaluationBackend<F, EF>
+        + MleEvaluationBackend<EF, EF>
         + FixedRateInterleaveBackend<F>
         + ComponentPolyEvalBackend<HadamardProduct<F, EF, Self>, EF>
         + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
@@ -137,6 +140,8 @@ pub enum JaggedProverError<C: JaggedProverComponents> {
     BatchPcsProverError(
         StackedPcsProverError<<C::BatchPcsProver as MultilinearPcsProver>::ProverError>,
     ),
+    #[error("copy error")]
+    CopyError(#[from] CopyError),
 }
 
 pub trait DefaultJaggedProver: JaggedProverComponents {
@@ -244,29 +249,28 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         let z_row = eval_point;
 
-        // Collect the claims for the different polynomials.
-        let mut column_claims = stream::iter(evaluation_claims.iter().flatten())
-            .then(|evals| evals.to_host())
-            .flat_map(|evals| stream::iter(evals.unwrap()))
-            .collect::<Vec<C::EF>>()
-            .await;
+        let backend = prover_data[0].stacked_pcs_prover_data.interleaved_mles[0].backend().clone();
 
-        // These are the points where the dummy columns were added during commitment.
-        let insertion_points = prover_data
+        // First, allocate a buffer for all of the column claims on device.
+        let total_column_claims = evaluation_claims
             .iter()
-            .map(|data| data.column_counts.iter().sum::<usize>() - 1)
-            .scan(0, |state, x| {
-                *state += x;
-                Some(*state)
-            })
-            .collect::<Vec<_>>();
+            .map(|evals| evals.iter().map(|evals| evals.num_polynomials()).sum::<usize>())
+            .sum::<usize>();
 
-        // Insert zero evaluations for the dummy columns at the appropriate points.
-        for insertion_point in insertion_points.iter().rev().skip(1) {
-            column_claims.insert(*insertion_point, C::EF::zero());
+        let total_len = total_column_claims + evaluation_claims.len();
+
+        let mut column_claims: Buffer<C::EF, C::A> =
+            Buffer::with_capacity_in(total_len, backend.clone());
+
+        // Then, copy the column claims from the evaluation claims into the buffer, inserting extra
+        // zeros for the dummy columns.
+        for column_claim_round in evaluation_claims.into_iter() {
+            for column_claim in column_claim_round.into_iter() {
+                column_claims
+                    .extend_from_device_slice(column_claim.into_evaluations().as_buffer())?;
+            }
+            column_claims.extend_from_host_slice(&[C::EF::zero()])?;
         }
-
-        column_claims.resize(column_claims.len().next_power_of_two(), C::EF::zero());
 
         assert!(prover_data
             .iter()
@@ -296,8 +300,6 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         );
 
         // Generate the jagged sumcheck proof.
-        let backend = prover_data[0].stacked_pcs_prover_data.interleaved_mles[0].backend().clone();
-
         let z_row_backend = z_row.copy_into(&backend);
         let z_col_backend = z_col.copy_into(&backend);
 
@@ -320,8 +322,12 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
         // table claims.
-        let column_claims = Mle::from(column_claims);
-        let sumcheck_claim = column_claims.eval_at(&z_col).await[0];
+
+        let column_claims: Mle<C::EF, C::A> = Mle::from_buffer(column_claims);
+
+        let sumcheck_claims = column_claims.eval_at(&z_col_backend).await;
+        let sumcheck_claims_host = sumcheck_claims.to_host().await.unwrap();
+        let sumcheck_claim = sumcheck_claims_host[0];
 
         let (sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
             vec![sumcheck_poly],

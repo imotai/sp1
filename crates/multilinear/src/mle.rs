@@ -47,6 +47,25 @@ impl<F, A: Backend> Mle<F, A> {
         Self { guts }
     }
 
+    /// Creates a new MLE from a buffer, assumed to be a single polynomial.
+    #[inline]
+    pub fn from_buffer(buffer: Buffer<F, A>) -> Self
+    where
+        F: AbstractField,
+        A: MleBaseBackend<F>,
+    {
+        // First, we need to convert the buffer into an arbitrary 2 dimensional tensor.
+        let size = buffer.len();
+        let mut tensor = Tensor::from(buffer).reshape([size, 1]);
+
+        // Then, we need to convert the tensor into the correct shape, which is determined by the
+        // backend.
+        let dim_0 = A::num_polynomials(&tensor);
+        let dim_1 = A::num_non_zero_entries(&tensor);
+        tensor.reshape_in_place([dim_1, dim_0]);
+        Self::new(tensor)
+    }
+
     #[inline]
     pub fn backend(&self) -> &A {
         self.guts.backend()
