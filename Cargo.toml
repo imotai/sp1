@@ -27,7 +27,6 @@ members = [
     "crates/tracegen",
     "crates/logup-gkr",
 ]
-exclude = ["crates/tracegen"]
 resolver = "2"
 
 [profile.dev]
