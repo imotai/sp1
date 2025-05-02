@@ -87,7 +87,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                 .syscall_events
                 .iter()
                 .map(|(event, _)| event)
-                .filter(|e| e.syscall_code.should_send() == 1)
+                .filter(|e| e.should_send)
                 .copied()
                 .collect::<Vec<_>>(),
             SyscallShardKind::Precompile => &input
@@ -99,7 +99,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
 
         let events = events
             .iter()
-            .filter(|e| e.syscall_code.should_send() == 1)
+            .filter(|e| e.should_send)
             .map(|event| GlobalInteractionEvent {
                 message: [event.shard, event.clk, event.syscall_id, event.arg1, event.arg2, 0, 0],
                 is_receive: self.shard_kind == SyscallShardKind::Precompile,
@@ -115,7 +115,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                 .syscall_events
                 .iter()
                 .map(|(event, _)| event)
-                .filter(|e| e.syscall_code.should_send() == 1)
+                .filter(|e| e.should_send)
                 .copied()
                 .collect::<Vec<_>>(),
             SyscallShardKind::Precompile => &input
@@ -153,7 +153,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                 .syscall_events
                 .par_iter()
                 .map(|(event, _)| event)
-                .filter(|event| event.syscall_code.should_send() == 1)
+                .filter(|e| e.should_send)
                 .map(|event| row_fn(event, false))
                 .collect::<Vec<_>>(),
             SyscallShardKind::Precompile => input
@@ -184,7 +184,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                         .syscall_events
                         .iter()
                         .map(|(event, _)| event)
-                        .filter(|e| e.syscall_code.should_send() == 1)
+                        .filter(|e| e.should_send)
                         .take(1)
                         .count()
                         > 0

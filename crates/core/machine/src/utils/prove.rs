@@ -77,7 +77,7 @@ pub fn generate_records<F: PrimeField32>(
         let received = { checkpoints_rx.lock().unwrap().blocking_recv() };
         if let Some((index, mut checkpoint, done, _)) = received {
             let (mut records, report) = tracing::debug_span!("trace checkpoint")
-                .in_scope(|| trace_checkpoint(program.clone(), &checkpoint, opts));
+                .in_scope(|| trace_checkpoint(program.clone(), &checkpoint, opts.clone()));
 
             // Trace the checkpoint and reconstruct the execution records.
             *report_aggregate.lock().unwrap() += report;
@@ -106,7 +106,7 @@ pub fn generate_records<F: PrimeField32>(
             // Defer events that are too expensive to include in every shard.
             let mut deferred = deferred.lock().unwrap();
             for record in records.iter_mut() {
-                deferred.append(&mut record.defer());
+                deferred.append(&mut record.defer(&[]));
             }
 
             // See if any deferred shards are ready to be committed to.
@@ -200,7 +200,8 @@ where
     let num_trace_gen_workers = 4;
     let (records_tx, mut records_rx) = mpsc::channel::<ExecutionRecord>(num_record_workers);
 
-    let machine_executor = MachineExecutorBuilder::<F>::new(opts, num_record_workers).build();
+    let machine_executor =
+        MachineExecutorBuilder::<F>::new(opts.clone(), num_record_workers).build();
 
     let prover_permits = ProverSemaphore::new(opts.shard_batch_size);
     let prover = MachineProverBuilder::<PC>::new(verifier, vec![prover_permits], vec![prover])

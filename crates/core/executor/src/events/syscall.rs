@@ -19,6 +19,8 @@ pub struct SyscallEvent {
     pub clk: u32,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
+    /// Whether this syscall should be sent.
+    pub should_send: bool,
     /// The syscall code.
     pub syscall_code: SyscallCode,
     /// The syscall id.

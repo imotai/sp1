@@ -134,7 +134,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
             let (tx, mut rx) = mpsc::unbounded_channel::<RecordTask>();
             record_worker_channels.push(tx);
             let machine = self.machine.clone();
-            let opts = self.opts;
+            let opts = self.opts.clone();
             tokio::task::spawn_blocking(move || {
                 while let Some(task) = rx.blocking_recv() {
                     let RecordTask {
@@ -151,8 +151,10 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                     if abort_handle.is_aborted() {
                         continue;
                     }
-                    let (mut records, _) = tracing::debug_span!("trace checkpoint")
-                        .in_scope(|| trace_checkpoint(program.clone(), &checkpoint_file, opts));
+                    let (mut records, _) =
+                        tracing::debug_span!("trace checkpoint").in_scope(|| {
+                            trace_checkpoint(program.clone(), &checkpoint_file, opts.clone())
+                        });
 
                     checkpoint_file
                         .seek(SeekFrom::Start(0))
@@ -182,7 +184,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                     // Defer events that are too expensive to include in every shard.
                     let mut deferred = deferred.lock().unwrap();
                     for record in records.iter_mut() {
-                        deferred.append(&mut record.defer());
+                        deferred.append(&mut record.defer(&opts.retained_events_presets));
                     }
 
                     // See if any deferred shards are ready to be committed to.
@@ -235,7 +237,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
         });
 
         // Spawn the checkpoint generation task.
-        let opts = self.opts;
+        let opts = self.opts.clone();
         tokio::task::spawn_blocking(move || {
             'task_loop: while let Some(task) = task_rx.blocking_recv() {
                 let ExecuteTask {
@@ -266,7 +268,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                 }
 
                 // Setup the runtime.
-                let mut runtime = Executor::with_context(program.clone(), opts, context);
+                let mut runtime = Executor::with_context(program.clone(), opts.clone(), context);
                 runtime.write_vecs(&stdin.buffer);
                 for proof in stdin.proofs.iter() {
                     let (proof, vk) = proof.clone();

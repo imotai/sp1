@@ -20,15 +20,15 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{program::Program, Opcode};
 use crate::{
     events::{
         AUIPCEvent, AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent,
         JumpEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
         MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SyscallEvent,
     },
+    program::Program,
     syscalls::SyscallCode,
-    RiscvAirId, SplitOpts,
+    Opcode, RetainedEventsPreset, RiscvAirId, SplitOpts,
 };
 
 /// A record of the execution of a program.
@@ -216,9 +216,20 @@ impl ExecutionRecord {
     /// Note: we usually defer events that would increase the recursion cost significantly if
     /// included in every shard.
     #[must_use]
-    pub fn defer(&mut self) -> ExecutionRecord {
+    pub fn defer<'a>(
+        &mut self,
+        retain_presets: impl IntoIterator<Item = &'a RetainedEventsPreset>,
+    ) -> ExecutionRecord {
         let mut execution_record = ExecutionRecord::new(self.program.clone());
         execution_record.precompile_events = std::mem::take(&mut self.precompile_events);
+
+        // Take back the events that should be retained.
+        self.precompile_events.events.extend(
+            retain_presets.into_iter().flat_map(RetainedEventsPreset::syscall_codes).filter_map(
+                |code| execution_record.precompile_events.events.remove(code).map(|x| (*code, x)),
+            ),
+        );
+
         execution_record.global_memory_initialize_events =
             std::mem::take(&mut self.global_memory_initialize_events);
         execution_record.global_memory_finalize_events =

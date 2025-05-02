@@ -40,7 +40,7 @@ use crate::{
     HashableKey, SP1CircuitWitness, SP1CoreProof, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct LocalProverOpts {
     pub core_opts: SP1CoreOpts,
     pub records_capacity_buffer: usize,
@@ -696,6 +696,7 @@ struct ProveTask<C: SP1ProverComponents> {
 
 #[cfg(test)]
 pub mod tests {
+    use sp1_core_executor::RetainedEventsPreset;
     use tracing::Instrument;
 
     use slop_algebra::PrimeField32;
@@ -776,7 +777,13 @@ pub mod tests {
         setup_logger();
 
         let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
-        let opts = LocalProverOpts::default();
+        let opts = LocalProverOpts {
+            core_opts: SP1CoreOpts {
+                retained_events_presets: [RetainedEventsPreset::Sha256].into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
         test_e2e_prover::<CpuSP1ProverComponents>(prover, elf, SP1Stdin::default(), Test::Compress)

@@ -39,6 +39,7 @@ mod record;
 mod reduce;
 mod register;
 mod report;
+mod retain;
 mod state;
 pub mod subproof;
 pub mod syscalls;
@@ -57,6 +58,7 @@ pub use record::*;
 pub use reduce::*;
 pub use register::*;
 pub use report::*;
+pub use retain::*;
 pub use state::*;
 pub use utils::*;
 

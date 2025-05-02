@@ -27,15 +27,15 @@ pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The runtime.
     pub rt: &'a mut Executor<'b>,
     /// The local memory access events for the syscall.
-    pub local_memory_access: HashMap<u32, MemoryLocalEvent>,
+    pub local_memory_access: Option<HashMap<u32, MemoryLocalEvent>>,
     /// Phantom data.
     pub _phantom: PhantomData<E>,
 }
 
 impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Create a new [`SyscallContext`].
-    pub fn new(runtime: &'a mut Executor<'b>) -> Self {
-        let lshard = LogicalShard::new(runtime.shard(), true);
+    pub fn new(runtime: &'a mut Executor<'b>, external: bool) -> Self {
+        let lshard = LogicalShard::new(runtime.shard(), external);
         let clk = runtime.state.clk;
         Self {
             lshard,
@@ -43,7 +43,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
             next_pc: runtime.state.pc.wrapping_add(4),
             exit_code: 0,
             rt: runtime,
-            local_memory_access: HashMap::new(),
+            local_memory_access: external.then_some(HashMap::new()),
             _phantom: PhantomData,
         }
     }
@@ -83,7 +83,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mr(&mut self, addr: u32) -> (MemoryReadRecord, u32) {
         let record =
-            self.rt.mr::<E>(addr, self.lshard(), self.clk, Some(&mut self.local_memory_access));
+            self.rt.mr::<E>(addr, self.lshard(), self.clk, self.local_memory_access.as_mut());
         (record, record.value)
     }
 
@@ -105,7 +105,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     ///
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mw(&mut self, addr: u32, value: u32) -> MemoryWriteRecord {
-        self.rt.mw::<E>(addr, value, self.lshard(), self.clk, Some(&mut self.local_memory_access))
+        self.rt.mw::<E>(addr, value, self.lshard(), self.clk, self.local_memory_access.as_mut())
     }
 
     /// Write a slice of words to memory.
@@ -124,7 +124,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
             register,
             self.lshard(),
             self.clk,
-            Some(&mut self.local_memory_access),
+            self.local_memory_access.as_mut(),
         );
         (record, record.value)
     }
@@ -136,7 +136,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
             value,
             self.lshard(),
             self.clk,
-            Some(&mut self.local_memory_access),
+            self.local_memory_access.as_mut(),
         );
         (record, record.value)
     }
@@ -149,14 +149,16 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
             // Will need to transfer the existing memory local events in the executor to it's
             // record, and return all the syscall memory local events.  This is similar
             // to what `bump_record` does.
-            for (addr, event) in self.local_memory_access.drain() {
-                let local_mem_access = self.rt.local_memory_access.remove(&addr);
+            if let Some(local_memory_access) = self.local_memory_access.as_mut() {
+                for (addr, event) in local_memory_access.drain() {
+                    let local_mem_access = self.rt.local_memory_access.remove(&addr);
 
-                if let Some(local_mem_access) = local_mem_access {
-                    self.rt.record.cpu_local_memory_access.push(local_mem_access);
+                    if let Some(local_mem_access) = local_mem_access {
+                        self.rt.record.cpu_local_memory_access.push(local_mem_access);
+                    }
+
+                    syscall_local_mem_events.push(event);
                 }
-
-                syscall_local_mem_events.push(event);
             }
         }
 

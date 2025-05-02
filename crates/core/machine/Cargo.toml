@@ -79,13 +79,13 @@ sp1-core-executor = { workspace = true }
 test-artifacts = { workspace = true }
 tokio = { workspace = true }
 slop-air = { workspace = true }
-slop-alloc = {workspace = true}
+slop-alloc = { workspace = true }
 slop-baby-bear = { workspace = true }
-slop-algebra = {workspace = true}
-slop-multilinear = {workspace = true}
-slop-matrix = {workspace = true}
-slop-sumcheck = {workspace = true}
-slop-basefold = {workspace = true}
+slop-algebra = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-matrix = { workspace = true }
+slop-sumcheck = { workspace = true }
+slop-basefold = { workspace = true }
 
 [build-dependencies]
 sp1-stark = { workspace = true }

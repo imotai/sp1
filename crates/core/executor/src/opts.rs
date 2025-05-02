@@ -1,6 +1,8 @@
-use std::env;
+use std::{collections::HashSet, env};
 
 use serde::{Deserialize, Serialize};
+
+use crate::RetainedEventsPreset;
 
 const MAX_SHARD_SIZE: usize = 1 << 24;
 const MAX_SHARD_BATCH_SIZE: usize = 8;
@@ -19,7 +21,7 @@ pub struct ShardingThreshold {
 }
 
 /// Options for the core prover.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SP1CoreOpts {
     /// The size of a shard in terms of cycles.
     pub shard_size: usize,
@@ -29,6 +31,8 @@ pub struct SP1CoreOpts {
     pub split_opts: SplitOpts,
     /// The threshold that determines when to split the shard.
     pub sharding_threshold: ShardingThreshold,
+    /// Preset collections of events to retain in a shard instead of deferring.
+    pub retained_events_presets: HashSet<RetainedEventsPreset>,
 }
 
 impl Default for SP1CoreOpts {
@@ -57,6 +61,7 @@ impl Default for SP1CoreOpts {
             ),
             split_opts: SplitOpts::new(split_threshold),
             sharding_threshold,
+            retained_events_presets: HashSet::new(),
         }
     }
 }

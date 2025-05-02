@@ -7,6 +7,7 @@ use crate::profiler::Profiler;
 use clap::ValueEnum;
 use enum_map::EnumMap;
 use hashbrown::HashMap;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::air::PublicValues;
@@ -31,7 +32,7 @@ use crate::{
     subproof::SubproofVerifier,
     syscalls::{get_syscall, SyscallCode, SyscallContext},
     ALUTypeRecord, ITypeRecord, Instruction, JTypeRecord, Opcode, Program, RTypeRecord, Register,
-    RiscvAirId, SP1CoreOpts, ShardingThreshold,
+    RetainedEventsPreset, RiscvAirId, SP1CoreOpts, ShardingThreshold,
 };
 
 /// The default increment for the program counter.  Is used for all instructions except
@@ -159,6 +160,9 @@ pub struct Executor<'a> {
 
     /// The maximum trace size and table height to allow.
     pub sharding_threshold: Option<ShardingThreshold>,
+
+    /// Syscalls that have been overridden to be internal instead of external.
+    pub internal_syscalls_override: Vec<SyscallCode>,
 
     /// event counts for the current shard.
     pub event_counts: EnumMap<RiscvAirId, u64>,
@@ -365,6 +369,16 @@ impl<'a> Executor<'a> {
             costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v)).collect();
 
         let program_len = program.instructions.len() as u64;
+
+        let internal_syscalls_override = opts
+            .retained_events_presets
+            .iter()
+            .flat_map(RetainedEventsPreset::syscall_codes)
+            .copied()
+            .unique()
+            .sorted()
+            .collect();
+
         Self {
             record: Box::new(record),
             records: vec![],
@@ -386,7 +400,6 @@ impl<'a> Executor<'a> {
             print_report: false,
             subproof_verifier: context.subproof_verifier,
             hook_registry,
-            opts,
             max_cycles: context.max_cycles,
             deferred_proof_verification: context.deferred_proof_verification.into(),
             memory_checkpoint: Memory::default(),
@@ -396,6 +409,8 @@ impl<'a> Executor<'a> {
             size_check_frequency: 16,
             sharding_threshold: Some(opts.sharding_threshold),
             event_counts: EnumMap::default(),
+            internal_syscalls_override,
+            opts,
         }
     }
 
@@ -1318,12 +1333,16 @@ impl<'a> Executor<'a> {
         next_pc: u32,
         exit_code: u32,
     ) -> SyscallEvent {
+        // should_send: if the syscall is usually sent and it is not manually set as internal.
+        let should_send = (syscall_code.should_send() != 0)
+            && !self.internal_syscalls_override.contains(&syscall_code);
         SyscallEvent {
             pc: self.state.pc,
             next_pc,
             shard: self.shard().get(),
             clk,
             op_a_0,
+            should_send,
             syscall_code,
             syscall_id: syscall_code.syscall_id(),
             arg1,
@@ -1698,7 +1717,8 @@ impl<'a> Executor<'a> {
         }
 
         let syscall_impl = get_syscall(syscall)?;
-        let mut precompile_rt: SyscallContext<'_, '_, E> = SyscallContext::new(self);
+        let external = !self.internal_syscalls_override.contains(&syscall);
+        let mut precompile_rt: SyscallContext<'_, '_, E> = SyscallContext::new(self, external);
         let (a, precompile_next_pc, precompile_cycles, returned_exit_code) = {
             // Executing a syscall optionally returns a value to write to the t0
             // register. If it returns None, we just keep the
