@@ -62,7 +62,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
         let instr_len = program
             .inner
             .iter()
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::Mem(MemInstr { addrs, vals, mult, kind }) => {
                     let mult = mult.to_owned();
                     let mult = match kind {
@@ -84,7 +84,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
         let mut rows = program
             .inner
             .iter()
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::Mem(MemInstr { addrs, vals, mult, kind }) => {
                     let mult = mult.to_owned();
                     let mult = match kind {

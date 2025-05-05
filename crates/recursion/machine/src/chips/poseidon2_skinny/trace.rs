@@ -101,18 +101,19 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2SkinnyChip
             "generate_preprocessed_trace only supports BabyBear field"
         );
 
-        let instructions = program.inner.iter().filter_map(|instruction| match instruction {
-            Poseidon2(instr) => Some(unsafe {
-                std::mem::transmute::<
-                    &Box<Poseidon2SkinnyInstr<F>>,
-                    &Box<Poseidon2SkinnyInstr<BabyBear>>,
-                >(instr)
-            }),
-            _ => None,
-        });
+        let instructions =
+            program.inner.iter().filter_map(|instruction| match instruction.inner() {
+                Poseidon2(instr) => Some(unsafe {
+                    std::mem::transmute::<
+                        &Box<Poseidon2SkinnyInstr<F>>,
+                        &Box<Poseidon2SkinnyInstr<BabyBear>>,
+                    >(instr)
+                }),
+                _ => None,
+            });
 
         let num_instructions =
-            program.inner.iter().filter(|instr| matches!(instr, Poseidon2(_))).count();
+            program.inner.iter().filter(|instr| matches!(instr.inner(), Poseidon2(_))).count();
         let mut rows = vec![
             [BabyBear::zero(); PREPROCESSED_POSEIDON2_WIDTH];
             num_instructions * (NUM_EXTERNAL_ROUNDS + 3)
@@ -311,13 +312,14 @@ mod tests {
     ) -> RowMajorMatrix<BabyBear> {
         type F = BabyBear;
 
-        let instructions = program.inner.iter().filter_map(|instruction| match instruction {
-            Poseidon2(instr) => Some(instr),
-            _ => None,
-        });
+        let instructions =
+            program.inner.iter().filter_map(|instruction| match instruction.inner() {
+                Poseidon2(instr) => Some(instr),
+                _ => None,
+            });
 
         let num_instructions =
-            program.inner.iter().filter(|instr| matches!(instr, Poseidon2(_))).count();
+            program.inner.iter().filter(|instr| matches!(instr.inner(), Poseidon2(_))).count();
         let mut rows = vec![
             [F::zero(); PREPROCESSED_POSEIDON2_WIDTH];
             num_instructions * (NUM_EXTERNAL_ROUNDS + 3)

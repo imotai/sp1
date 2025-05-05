@@ -141,10 +141,10 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
     }
 
     pub fn heights(program: &RecursionProgram<F>) -> Vec<(String, usize)> {
-        let heights = program
-            .inner
-            .iter()
-            .fold(RecursionAirEventCount::default(), |heights, instruction| heights + instruction);
+        let heights =
+            program.inner.iter().fold(RecursionAirEventCount::default(), |heights, instruction| {
+                heights + instruction.inner()
+            });
 
         [
             (

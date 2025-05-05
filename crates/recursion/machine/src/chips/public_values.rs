@@ -81,7 +81,7 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
             .inner
             .iter()
             .filter_map(|instruction| {
-                if let Instruction::CommitPublicValues(instr) = instruction {
+                if let Instruction::CommitPublicValues(instr) = instruction.inner() {
                     Some(unsafe {
                         std::mem::transmute::<
                             &Box<CommitPublicValuesInstr<F>>,
@@ -338,7 +338,7 @@ mod tests {
             .inner
             .iter()
             .filter_map(|instruction| {
-                if let Instruction::CommitPublicValues(instr) = instruction {
+                if let Instruction::CommitPublicValues(instr) = instruction.inner() {
                     Some(instr)
                 } else {
                     None

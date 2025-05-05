@@ -93,7 +93,7 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
                 program
                     .inner
                     .iter()
-                    .filter_map(|instruction| match instruction {
+                    .filter_map(|instruction| match instruction.inner() {
                         Instruction::BaseAlu(x) => Some(x),
                         _ => None,
                     })
@@ -254,7 +254,7 @@ mod tests {
         let instrs = program
             .inner
             .iter()
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::BaseAlu(x) => Some(x),
                 _ => None,
             })

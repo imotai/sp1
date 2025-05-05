@@ -95,7 +95,7 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
                 program
                     .inner
                     .iter()
-                    .filter_map(|instruction| match instruction {
+                    .filter_map(|instruction| match instruction.inner() {
                         Instruction::PrefixSumChecks(x) => Some(x),
                         _ => None,
                     })

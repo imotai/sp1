@@ -240,7 +240,7 @@ impl SP1ReduceShape {
         let mut arity = 0;
         for possible_arity in 1.. {
             let input = prover.dummy_reduce_input_with_shape(possible_arity, self);
-            let program = prover.compress_program_from_input(&input, false);
+            let program = prover.compress_program_from_input(&input);
             let program = Arc::new(program);
             let is_compatible = self.check_compatibility(program, prover.machine().clone()).await;
             if !is_compatible {

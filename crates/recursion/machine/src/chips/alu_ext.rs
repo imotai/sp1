@@ -93,7 +93,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ExtAluChip {
                 program
                     .inner
                     .iter()
-                    .filter_map(|instruction| match instruction {
+                    .filter_map(|instruction| match instruction.inner() {
                         Instruction::ExtAlu(x) => Some(x),
                         _ => None,
                     })
@@ -263,7 +263,7 @@ mod tests {
         let instrs = program
             .inner
             .iter()
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::ExtAlu(x) => Some(x),
                 _ => None,
             })

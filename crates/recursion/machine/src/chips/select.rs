@@ -72,7 +72,7 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
                 program
                     .inner
                     .iter()
-                    .filter_map(|instruction| match instruction {
+                    .filter_map(|instruction| match instruction.inner() {
                         Instruction::Select(x) => Some(x),
                         _ => None,
                     })
@@ -261,7 +261,7 @@ mod tests {
         let instrs = program
             .inner
             .iter()
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::Select(x) => Some(x),
                 _ => None,
             })

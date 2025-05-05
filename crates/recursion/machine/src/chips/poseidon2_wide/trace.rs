@@ -117,7 +117,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
             program
                 .inner
                 .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
-                .filter_map(|instruction| match instruction {
+                .filter_map(|instruction| match instruction.inner() {
                     Poseidon2(instr) => Some(unsafe {
                         std::mem::transmute::<
                             &Poseidon2SkinnyInstr<F>,
@@ -225,7 +225,7 @@ mod tests {
         let instrs = program
             .inner
             .iter()
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Poseidon2(instr) => Some(instr.as_ref()),
                 _ => None,
             })

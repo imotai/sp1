@@ -212,7 +212,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         for arity in 1..=max_reduce_arity {
             let dummy_input = dummy_reduce_input(&prover, &reduce_shape, arity);
             let mut program =
-                compress_program_from_input(&recursive_compress_verifier, &dummy_input, true);
+                compress_program_from_input(&recursive_compress_verifier, &dummy_input);
             program.shape = Some(reduce_shape.shape.clone());
             let program = Arc::new(program);
 
@@ -225,7 +225,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
 
         //  Make the deferred program and proving key.
         let program = dummy_deferred_input(&prover, &reduce_shape);
-        let mut program = deferred_program_from_input(&recursive_compress_verifier, &program, true);
+        let mut program = deferred_program_from_input(&recursive_compress_verifier, &program);
         program.shape = Some(reduce_shape.shape.clone());
         let program = Arc::new(program);
 
@@ -293,7 +293,6 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
     pub fn recursion_program(
         &self,
         input: &SP1RecursionWitnessValues<CoreSC>,
-        compute_event_counts: bool,
     ) -> Arc<RecursionProgram<BabyBear>> {
         let proof_shapes = input
             .shard_proofs
@@ -309,11 +308,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
         if let Some(program) = self.recursion_program_cache.get(&shape) {
             return program.clone();
         }
-        let mut program = recursion_program_from_input(
-            &self.recursive_core_verifier,
-            input,
-            compute_event_counts,
-        );
+        let mut program = recursion_program_from_input(&self.recursive_core_verifier, input);
         program.shape = Some(self.reduce_shape.shape.clone());
         let program = Arc::new(program);
         self.recursion_program_cache.push(shape, program.clone());
@@ -337,9 +332,8 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
     pub(crate) fn compress_program_from_input(
         &self,
         input: &SP1CompressWitnessValues<InnerSC>,
-        compute_event_counts: bool,
     ) -> RecursionProgram<BabyBear> {
-        compress_program_from_input(&self.recursive_compress_verifier, input, compute_event_counts)
+        compress_program_from_input(&self.recursive_compress_verifier, input)
     }
 
     pub fn dummy_reduce_input(&self, arity: usize) -> SP1CompressWitnessValues<InnerSC> {
@@ -377,7 +371,7 @@ impl<C: RecursionProverComponents> SP1RecursionProver<C> {
                     SP1CircuitWitness::Core(input) => {
                         let mut witness_stream = Vec::new();
                         Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
-                        (self.recursion_program(input, false), witness_stream)
+                        (self.recursion_program(input), witness_stream)
                     }
                     SP1CircuitWitness::Deferred(input) => {
                         let mut witness_stream = Vec::new();
@@ -465,7 +459,6 @@ fn recursion_program_from_input(
         JC<InnerConfig, CoreSC>,
     >,
     input: &SP1RecursionWitnessValues<CoreSC>,
-    compute_event_counts: bool,
 ) -> RecursionProgram<BabyBear> {
     // Get the operations.
     let builder_span = tracing::debug_span!("build recursion program").entered();
@@ -481,7 +474,7 @@ fn recursion_program_from_input(
     // Compile the program.
     let compiler_span = tracing::debug_span!("compile recursion program").entered();
     let mut compiler = AsmCompiler::<InnerConfig>::default();
-    let program = compiler.compile(dsl_program, compute_event_counts);
+    let program = compiler.compile(dsl_program);
     compiler_span.exit();
     program
 }
@@ -496,7 +489,6 @@ fn deferred_program_from_input(
     // vk_verification: bool,
     //TODO: Add VK verification back in
     input: &SP1DeferredWitnessValues<InnerSC>,
-    compute_event_counts: bool,
 ) -> RecursionProgram<BabyBear> {
     // Get the operations.
     let operations_span = tracing::debug_span!("get operations for the deferred program").entered();
@@ -517,7 +509,7 @@ fn deferred_program_from_input(
 
     let compiler_span = tracing::debug_span!("compile deferred program").entered();
     let mut compiler = AsmCompiler::<InnerConfig>::default();
-    let program = compiler.compile(dsl_program, compute_event_counts);
+    let program = compiler.compile(dsl_program);
     compiler_span.exit();
     program
 }
@@ -532,7 +524,6 @@ fn compress_program_from_input(
     // vk_verification: bool,
     //TODO: Add VK verification back in
     input: &SP1CompressWitnessValues<InnerSC>,
-    compute_event_counts: bool,
 ) -> RecursionProgram<BabyBear> {
     let builder_span = tracing::debug_span!("build compress program").entered();
     let mut builder = Builder::<InnerConfig>::default();
@@ -556,7 +547,7 @@ fn compress_program_from_input(
     // Compile the program.
     let compiler_span = tracing::debug_span!("compile compress program").entered();
     let mut compiler = AsmCompiler::<InnerConfig>::default();
-    let program = compiler.compile(dsl_program, compute_event_counts);
+    let program = compiler.compile(dsl_program);
     compiler_span.exit();
     program
 }

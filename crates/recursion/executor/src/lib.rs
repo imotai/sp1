@@ -1,3 +1,4 @@
+pub mod analyzed;
 mod block;
 pub mod instruction;
 mod memory;
@@ -7,6 +8,7 @@ mod public_values;
 mod record;
 pub mod shape;
 
+pub use analyzed::AnalyzedInstruction;
 pub use public_values::PV_DIGEST_NUM_WORDS;
 
 // Avoid triggering annoying branch of thiserror derive macro.
@@ -34,6 +36,7 @@ use sp1_stark::{septic_curve::SepticCurve, septic_extension::SepticExtension, Ma
 use std::{
     array,
     borrow::Borrow,
+    cell::UnsafeCell,
     collections::VecDeque,
     fmt::Debug,
     io::{stdout, Write},
@@ -42,6 +45,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use thiserror::Error;
+use tracing::debug_span;
 
 /// The heap pointer address.
 pub const HEAP_PTR: i32 = -4;
@@ -667,11 +671,15 @@ where
     /// initialized.
     unsafe fn execute_one(
         state: &mut ExecState<F, Diffusion>,
+        record: &UnsafeRecord<F>,
         witness_stream: Option<&mut VecDeque<Block<F>>>,
-        instruction: &Instruction<F>,
+        analyzed_instruction: &AnalyzedInstruction<F>,
     ) -> Result<(), RuntimeError<F, EF>> {
         let ExecEnv { memory, perm, debug_stdout } = state.env;
-        let record = &mut state.record;
+        let instruction = &analyzed_instruction.inner;
+        let offset = analyzed_instruction.offset;
+
+        // let record = &mut state.record;
         match *instruction {
             Instruction::BaseAlu(ref instr @ BaseAluInstr { opcode, mult: _, addrs }) => {
                 let in1 = memory.mr_unchecked(addrs.in1).val[0];
@@ -700,7 +708,12 @@ where
                     },
                 };
                 memory.mw_unchecked(addrs.out, Block::from(out));
-                record.base_alu_events.push(BaseAluEvent { out, in1, in2 });
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.base_alu_events[offset].as_ptr()).write(BaseAluEvent {
+                    out,
+                    in1,
+                    in2,
+                });
             }
             Instruction::ExtAlu(ref instr @ ExtAluInstr { opcode, mult: _, addrs }) => {
                 let in1 = memory.mr_unchecked(addrs.in1).val;
@@ -732,26 +745,29 @@ where
                 };
                 let out = Block::from(out_ef.as_base_slice());
                 memory.mw_unchecked(addrs.out, out);
-                record.ext_alu_events.push(ExtAluEvent { out, in1, in2 });
+
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.ext_alu_events[offset].as_ptr()).write(ExtAluEvent {
+                    out,
+                    in1,
+                    in2,
+                });
             }
             Instruction::Mem(MemInstr {
                 addrs: MemIo { inner: addr },
                 vals: MemIo { inner: val },
                 mult: _,
                 kind,
-            }) => {
-                match kind {
-                    MemAccessKind::Read => {
-                        let mem_entry = memory.mr_unchecked(addr);
-                        assert_eq!(
-                            mem_entry.val, val,
-                            "stored memory value should be the specified value"
-                        );
-                    }
-                    MemAccessKind::Write => memory.mw_unchecked(addr, val),
+            }) => match kind {
+                MemAccessKind::Read => {
+                    let mem_entry = memory.mr_unchecked(addr);
+                    assert_eq!(
+                        mem_entry.val, val,
+                        "stored memory value should be the specified value"
+                    );
                 }
-                record.mem_const_count += 1;
-            }
+                MemAccessKind::Write => memory.mw_unchecked(addr, val),
+            },
             Instruction::Poseidon2(ref instr) => {
                 let Poseidon2Instr { addrs: Poseidon2Io { input, output }, mults: _ } =
                     instr.as_ref();
@@ -761,9 +777,10 @@ where
                 perm_output.iter().zip(output).for_each(|(&val, addr)| {
                     memory.mw_unchecked(*addr, Block::from(val));
                 });
-                record
-                    .poseidon2_events
-                    .push(Poseidon2Event { input: in_vals, output: perm_output });
+
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.poseidon2_events[offset].as_ptr())
+                    .write(Poseidon2Event { input: in_vals, output: perm_output });
             }
             Instruction::Select(SelectInstr {
                 addrs: SelectIo { bit, out1, out2, in1, in2 },
@@ -777,13 +794,15 @@ where
                 let out2_val = bit * in1 + (F::one() - bit) * in2;
                 memory.mw_unchecked(out1, Block::from(out1_val));
                 memory.mw_unchecked(out2, Block::from(out2_val));
-                record.select_events.push(SelectEvent {
+
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.select_events[offset].as_ptr()).write(SelectEvent {
                     bit,
                     out1: out1_val,
                     out2: out2_val,
                     in1,
                     in2,
-                })
+                });
             }
             Instruction::ExpReverseBitsLen(ExpReverseBitsInstr {
                 addrs: ExpReverseBitsIo { base, ref exp, result },
@@ -799,11 +818,10 @@ where
                 let out =
                     base_val.exp_u64(reverse_bits_len(exp_val as usize, exp_bits.len()) as u64);
                 memory.mw_unchecked(result, Block::from(out));
-                record.exp_reverse_bits_len_events.push(ExpReverseBitsEvent {
-                    result: out,
-                    base: base_val,
-                    exp: exp_bits,
-                });
+
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.exp_reverse_bits_len_events[offset].as_ptr())
+                    .write(ExpReverseBitsEvent { result: out, base: base_val, exp: exp_bits });
             }
             Instruction::HintBits(HintBitsInstr { ref output_addrs_mults, input_addr }) => {
                 let num = memory.mr_unchecked(input_addr).val[0].as_canonical_u32();
@@ -811,10 +829,16 @@ where
                 let bits = (0..output_addrs_mults.len())
                     .map(|i| Block::from(F::from_canonical_u32((num >> i) & 1)))
                     .collect::<Vec<_>>();
+
                 // Write the bits to the array at dst.
-                for (bit, &(addr, _mult)) in bits.into_iter().zip(output_addrs_mults) {
+                for (i, (bit, &(addr, _mult))) in
+                    bits.into_iter().zip(output_addrs_mults).enumerate()
+                {
                     memory.mw_unchecked(addr, bit);
-                    record.mem_var_events.push(MemEvent { inner: bit });
+
+                    // Write the event to the record.
+                    UnsafeCell::raw_get(record.mem_var_events[offset + i].as_ptr())
+                        .write(MemEvent { inner: bit });
                 }
             }
             Instruction::HintAddCurve(ref instr) => {
@@ -842,15 +866,18 @@ where
                 let point2 = SepticCurve { x: input2_x, y: input2_y };
                 let output = point1.add_incomplete(point2);
 
-                for (val, &(addr, _mult)) in output.x.0.into_iter().zip(output_x_addrs_mults.iter())
+                for (i, (val, &(addr, _mult))) in output
+                    .x
+                    .0
+                    .into_iter()
+                    .zip(output_x_addrs_mults.iter())
+                    .chain(output.y.0.into_iter().zip(output_y_addrs_mults.iter()))
+                    .enumerate()
                 {
                     memory.mw_unchecked(addr, Block::from(val));
-                    record.mem_var_events.push(MemEvent { inner: Block::from(val) });
-                }
-                for (val, &(addr, _mult)) in output.y.0.into_iter().zip(output_y_addrs_mults.iter())
-                {
-                    memory.mw_unchecked(addr, Block::from(val));
-                    record.mem_var_events.push(MemEvent { inner: Block::from(val) });
+
+                    UnsafeCell::raw_get(record.mem_var_events[offset + i].as_ptr())
+                        .write(MemEvent { inner: Block::from(val) });
                 }
             }
             Instruction::FriFold(ref instr) => {
@@ -907,21 +934,23 @@ where
                         Block::from(new_alpha_pow.as_base_slice()),
                     );
 
-                    record.fri_fold_events.push(FriFoldEvent {
-                        base_single: FriFoldBaseIo { x },
-                        ext_single: FriFoldExtSingleIo {
-                            z: Block::from(z.as_base_slice()),
-                            alpha: Block::from(alpha.as_base_slice()),
+                    UnsafeCell::raw_get(record.fri_fold_events[offset + m].as_ptr()).write(
+                        FriFoldEvent {
+                            base_single: FriFoldBaseIo { x },
+                            ext_single: FriFoldExtSingleIo {
+                                z: Block::from(z.as_base_slice()),
+                                alpha: Block::from(alpha.as_base_slice()),
+                            },
+                            ext_vec: FriFoldExtVecIo {
+                                mat_opening: Block::from(p_at_x.as_base_slice()),
+                                ps_at_z: Block::from(p_at_z.as_base_slice()),
+                                alpha_pow_input: Block::from(alpha_pow.as_base_slice()),
+                                ro_input: Block::from(ro.as_base_slice()),
+                                alpha_pow_output: Block::from(new_alpha_pow.as_base_slice()),
+                                ro_output: Block::from(new_ro.as_base_slice()),
+                            },
                         },
-                        ext_vec: FriFoldExtVecIo {
-                            mat_opening: Block::from(p_at_x.as_base_slice()),
-                            ps_at_z: Block::from(p_at_z.as_base_slice()),
-                            alpha_pow_input: Block::from(alpha_pow.as_base_slice()),
-                            ro_input: Block::from(ro.as_base_slice()),
-                            alpha_pow_output: Block::from(new_alpha_pow.as_base_slice()),
-                            ro_output: Block::from(new_ro.as_base_slice()),
-                        },
-                    });
+                    );
                 }
             }
             Instruction::BatchFRI(ref instr) => {
@@ -947,14 +976,18 @@ where
 
                 for m in 0..p_at_zs.len() {
                     acc += alpha_pows[m] * (p_at_zs[m] - EF::from_base(p_at_xs[m]));
-                    record.batch_fri_events.push(BatchFRIEvent {
-                        base_vec: BatchFRIBaseVecIo { p_at_x: p_at_xs[m] },
-                        ext_single: BatchFRIExtSingleIo { acc: Block::from(acc.as_base_slice()) },
-                        ext_vec: BatchFRIExtVecIo {
-                            p_at_z: Block::from(p_at_zs[m].as_base_slice()),
-                            alpha_pow: Block::from(alpha_pows[m].as_base_slice()),
+                    UnsafeCell::raw_get(record.batch_fri_events[offset + m].as_ptr()).write(
+                        BatchFRIEvent {
+                            base_vec: BatchFRIBaseVecIo { p_at_x: p_at_xs[m] },
+                            ext_single: BatchFRIExtSingleIo {
+                                acc: Block::from(acc.as_base_slice()),
+                            },
+                            ext_vec: BatchFRIExtVecIo {
+                                p_at_z: Block::from(p_at_zs[m].as_base_slice()),
+                                alpha_pow: Block::from(alpha_pows[m].as_base_slice()),
+                            },
                         },
-                    });
+                    );
                 }
 
                 memory.mw_unchecked(ext_single_addrs.acc, Block::from(acc.as_base_slice()));
@@ -978,17 +1011,20 @@ where
                     let lagrange_term = EF::one() - x1_f[m] - x2_ef[m] + product + product;
                     let new_field_acc = x1_f[m] + field_acc * F::from_canonical_u32(2);
                     let new_acc = acc * lagrange_term;
-                    record.prefix_sum_checks_events.push(PrefixSumChecksEvent {
-                        zero,
-                        one: Block::from(one.as_base_slice()),
-                        x1: x1_f[m],
-                        x2: Block::from(x2_ef[m].as_base_slice()),
-                        prod: Block::from(product.as_base_slice()),
-                        acc: Block::from(acc.as_base_slice()),
-                        new_acc: Block::from(new_acc.as_base_slice()),
-                        field_acc,
-                        new_field_acc,
-                    });
+
+                    UnsafeCell::raw_get(record.prefix_sum_checks_events[offset + m].as_ptr())
+                        .write(PrefixSumChecksEvent {
+                            zero,
+                            one: Block::from(one.as_base_slice()),
+                            x1: x1_f[m],
+                            x2: Block::from(x2_ef[m].as_base_slice()),
+                            prod: Block::from(product.as_base_slice()),
+                            acc: Block::from(acc.as_base_slice()),
+                            new_acc: Block::from(new_acc.as_base_slice()),
+                            field_acc,
+                            new_field_acc,
+                        });
+
                     acc = new_acc;
                     field_acc = new_field_acc;
                     memory.mw_unchecked(accs[m], Block::from(acc.as_base_slice()));
@@ -999,12 +1035,16 @@ where
                 let pv_addrs = instr.pv_addrs.as_array();
                 let pv_values: [F; RECURSIVE_PROOF_NUM_PV_ELTS] =
                     array::from_fn(|i| memory.mr_unchecked(pv_addrs[i]).val[0]);
-                record.public_values = *pv_values.as_slice().borrow();
-                record
-                    .commit_pv_hash_events
-                    .push(CommitPublicValuesEvent { public_values: record.public_values });
-            }
 
+                // Write the public values to the record.
+                UnsafeCell::raw_get(record.public_values.as_ptr())
+                    .write(*pv_values.as_slice().borrow());
+
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.commit_pv_hash_events[offset].as_ptr()).write(
+                    CommitPublicValuesEvent { public_values: *pv_values.as_slice().borrow() },
+                );
+            }
             Instruction::Print(PrintInstr { ref field_elt_type, addr }) => match field_elt_type {
                 FieldEltType::Base => {
                     let f = memory.mr_unchecked(addr).val[0];
@@ -1019,10 +1059,13 @@ where
             Instruction::HintExt2Felts(HintExt2FeltsInstr { output_addrs_mults, input_addr }) => {
                 let fs = memory.mr_unchecked(input_addr).val;
                 // Write the bits to the array at dst.
-                for (f, (addr, _mult)) in fs.into_iter().zip(output_addrs_mults) {
+                for (i, (f, (addr, _mult))) in fs.into_iter().zip(output_addrs_mults).enumerate() {
                     let felt = Block::from(f);
                     memory.mw_unchecked(addr, felt);
-                    record.mem_var_events.push(MemEvent { inner: felt });
+
+                    // Write the event to the record.
+                    UnsafeCell::raw_get(record.mem_var_events[offset + i].as_ptr())
+                        .write(MemEvent { inner: felt });
                 }
             }
             Instruction::Hint(HintInstr { ref output_addrs_mults }) => {
@@ -1032,11 +1075,15 @@ where
                 if witness_stream.len() < output_addrs_mults.len() {
                     return Err(RuntimeError::EmptyWitnessStream);
                 }
+
                 let witness = witness_stream.drain(0..output_addrs_mults.len());
-                for (&(addr, _mult), val) in zip(output_addrs_mults, witness) {
+                for (i, (&(addr, _mult), val)) in zip(output_addrs_mults, witness).enumerate() {
                     // Inline [`Self::mw`] to mutably borrow multiple fields of `self`.
                     memory.mw_unchecked(addr, val);
-                    record.mem_var_events.push(MemEvent { inner: val });
+
+                    // Write the event to the record.
+                    UnsafeCell::raw_get(record.mem_var_events[offset + i].as_ptr())
+                        .write(MemEvent { inner: val });
                 }
             }
             Instruction::DebugBacktrace(ref backtrace) => {
@@ -1054,72 +1101,62 @@ where
         Ok(())
     }
 
+    unsafe fn execute_raw(
+        env: &ExecEnv<F, Diffusion>,
+        root_program: &Arc<RecursionProgram<F>>,
+        witness_stream: Option<&mut VecDeque<Block<F>>>,
+    ) -> Result<ExecutionRecord<F>, RuntimeError<F, EF>> {
+        let root_record = UnsafeRecord::<F>::new(root_program.event_counts);
+        debug_span!("root").in_scope(|| {
+            Self::execute_raw_inner(env, &root_program.inner, witness_stream, &root_record)
+        })?;
+
+        // SAFETY: `root_record` has been populated by the runtime.
+        let record = root_record.into_record(Arc::clone(root_program), 0);
+        Ok(record)
+    }
+
     /// # Safety
     ///
     /// This function makes the same safety assumptions as [`RecursionProgram::new_unchecked`].
-    unsafe fn execute_raw(
+    unsafe fn execute_raw_inner(
         env: &ExecEnv<F, Diffusion>,
-        program: &RawProgram<Instruction<F>>,
-        root_program: &Arc<RecursionProgram<F>>,
+        program: &RawProgram<AnalyzedInstruction<F>>,
         mut witness_stream: Option<&mut VecDeque<Block<F>>>,
-        is_root: bool,
-    ) -> Result<ExecutionRecord<F>, RuntimeError<F, EF>> {
-        let fresh_record =
-            || ExecutionRecord { program: Arc::clone(root_program), ..Default::default() };
-
+        record: &UnsafeRecord<F>,
+    ) -> Result<(), RuntimeError<F, EF>> {
         let mut state = ExecState {
             env: env.clone(),
-            record: fresh_record(),
             #[cfg(feature = "debug")]
             last_trace: None,
         };
 
-        if is_root {
-            if let Some(event_counts) = root_program.event_counts {
-                state.record.preallocate(event_counts)
-            }
-        }
-
         for block in &program.seq_blocks {
             match block {
                 SeqBlock::Basic(basic_block) => {
-                    for instruction in &basic_block.instrs {
+                    for analyzed_instruction in &basic_block.instrs {
                         unsafe {
                             Self::execute_one(
                                 &mut state,
+                                record,
                                 witness_stream.as_deref_mut(),
-                                instruction,
+                                analyzed_instruction,
                             )
                         }?;
                     }
                 }
                 SeqBlock::Parallel(vec) => {
-                    tracing::debug_span!("parallel", len = vec.len()).in_scope(|| {
-                        let span = tracing::Span::current();
-                        let mut result = vec
-                            .par_iter()
-                            .map(|subprogram| {
-                                tracing::debug_span!(parent: &span, "block").in_scope(|| {
-                                    // Witness stream may not be called inside parallel contexts to
-                                    // avoid nondeterminism.
-                                    Self::execute_raw(env, subprogram, root_program, None, false)
-                                })
-                            })
-                            .try_reduce(fresh_record, |mut record, mut res| {
-                                tracing::debug_span!(parent: &span, "append").in_scope(|| {
-                                    record.append(&mut res);
-                                });
-                                Ok(record)
-                            })?;
-                        tracing::debug_span!(parent: &span, "append_result").in_scope(|| {
-                            state.record.append(&mut result);
-                        });
-                        Ok::<_, RuntimeError<F, EF>>(())
+                    let span = debug_span!("parallel");
+                    let _guard = span.enter();
+                    vec.par_iter().try_for_each(|subprogram| {
+                        let _guard = debug_span!(parent: &span, "subprogram").entered();
+                        Self::execute_raw_inner(env, subprogram, None, record)
                     })?;
                 }
             }
         }
-        Ok(state.record)
+
+        Ok(())
     }
 
     /// Run the program.
@@ -1131,10 +1168,8 @@ where
                     perm: self.perm.as_ref().unwrap(),
                     debug_stdout: &Mutex::new(&mut self.debug_stdout),
                 },
-                &self.program.inner,
                 &self.program,
                 Some(&mut self.witness_stream),
-                true,
             )
         }?;
 
@@ -1146,7 +1181,7 @@ where
 
 struct ExecState<'a, 'b, F, Diffusion> {
     pub env: ExecEnv<'a, 'b, F, Diffusion>,
-    pub record: ExecutionRecord<F>,
+    // pub record: Arc<UnsafeRecord<F>>,
     #[cfg(feature = "debug")]
     pub last_trace: Option<Trace>,
 }
@@ -1176,13 +1211,13 @@ where
     fn clone(&self) -> Self {
         let Self {
             env,
-            record,
+            // record,
             #[cfg(feature = "debug")]
             last_trace,
         } = self;
         Self {
             env: env.clone(),
-            record: record.clone(),
+            // record: record.clone(),
             #[cfg(feature = "debug")]
             last_trace: last_trace.clone(),
         }
@@ -1191,12 +1226,12 @@ where
     fn clone_from(&mut self, source: &Self) {
         let Self {
             env,
-            record,
+            // record,
             #[cfg(feature = "debug")]
             last_trace,
         } = self;
         env.clone_from(&source.env);
-        record.clone_from(&source.record);
+        // record.clone_from(&source.record);
         #[cfg(feature = "debug")]
         last_trace.clone_from(&source.last_trace);
     }

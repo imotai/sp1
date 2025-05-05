@@ -1,4 +1,4 @@
-use crate::{shape::RecursionShape, *};
+use crate::{analyzed::AnalyzedInstruction, shape::RecursionShape, *};
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
 use sp1_stark::{air::MachineProgram, septic_digest::SepticDigest};
@@ -36,6 +36,8 @@ impl<F> RecursionProgram<F> {
     ///           `RawProgram`.
     ///     - For consecutive `SeqBlock`s, each element of the first one's `O` happens before the
     ///       second one's `I`.
+    ///
+    /// - The last condition is the event count analysis is done correctly see [`crate::analyzed`].
     pub unsafe fn new_unchecked(program: RootProgram<F>) -> Self {
         Self(program)
     }
@@ -136,14 +138,14 @@ mod validation {
 
     fn try_written_addrs<F: PrimeField32>(
         readable_addrs: SmallVec<[&RangeSetBlaze<u32>; 3]>,
-        program: &RawProgram<Instruction<F>>,
+        program: &RawProgram<AnalyzedInstruction<F>>,
     ) -> Result<RangeSetBlaze<u32>, Box<StructureError<F>>> {
         let mut written_addrs = RangeSetBlaze::<u32>::new();
         for block in &program.seq_blocks {
             match block {
                 SeqBlock::Basic(basic_block) => {
                     for instr in &basic_block.instrs {
-                        let (inputs, outputs) = instr.io_addrs();
+                        let (inputs, outputs) = instr.inner.io_addrs();
                         inputs.into_iter().try_for_each(|i| {
                             let i_u32 = i.0.as_canonical_u32();
                             iter::once(&written_addrs)
@@ -153,7 +155,7 @@ mod validation {
                                 .ok_or_else(|| {
                                     Box::new(StructureError::ReadFromUninit {
                                         addr: i,
-                                        instr: instr.clone(),
+                                        instr: instr.inner.clone(),
                                     })
                                 })
                         })?;
@@ -188,22 +190,20 @@ mod validation {
     pub fn linear_program<F: PrimeField32>(
         instrs: Vec<Instruction<F>>,
     ) -> Result<RecursionProgram<F>, Box<StructureError<F>>> {
-        RootProgram {
-            inner: RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] },
-            total_memory: 0, // Will be filled in.
-            shape: None,
-            event_counts: None,
-        }
-        .validate()
+        let (analyzed, counts) =
+            RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] }.analyze();
+
+        RootProgram { inner: analyzed, total_memory: 0, shape: None, event_counts: counts }
+            .validate()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RootProgram<F> {
-    pub inner: raw::RawProgram<Instruction<F>>,
+    pub inner: raw::RawProgram<AnalyzedInstruction<F>>,
     pub total_memory: usize,
     pub shape: Option<RecursionShape<F>>,
-    pub event_counts: Option<RecursionAirEventCount>,
+    pub event_counts: RecursionAirEventCount,
 }
 
 // `Default` without bounds on the type parameter.
@@ -213,7 +213,7 @@ impl<F> Default for RootProgram<F> {
             inner: Default::default(),
             total_memory: Default::default(),
             shape: None,
-            event_counts: None,
+            event_counts: Default::default(),
         }
     }
 }
