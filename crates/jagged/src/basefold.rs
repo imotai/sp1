@@ -29,6 +29,7 @@ pub type Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval = JaggedBasefold
 mod tests {
     use std::{sync::Arc, time::Duration};
 
+    use csl_tracing::init_tracer;
     use futures::prelude::*;
     use rand::{thread_rng, Rng};
     use serial_test::serial;
@@ -47,6 +48,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_jagged_basefold() {
+        init_tracer();
         let log_blowup = 1;
 
         type JC = BabyBearPoseidon2TrivialEval;
@@ -89,9 +91,10 @@ mod tests {
             let lde_area = ((1 << (total_number_of_variables + log_blowup))
                 * std::mem::size_of::<F>()) as f64
                 / 1e9;
-            println!(
+            tracing::info!(
                 "lde_area for total_number_of_variables: {:?}, lde_area: {:2}",
-                total_number_of_variables, lde_area
+                total_number_of_variables,
+                lde_area
             );
 
             assert!(row_counts.len() == column_counts.len());
@@ -157,9 +160,10 @@ mod tests {
                     prover_data.push(data);
                     commitments.push(commit);
                 }
-                println!(
+                tracing::info!(
                     "commit_time for total_number_of_variables: {:?}, commit_time: {:?}",
-                    total_number_of_variables, commit_time
+                    total_number_of_variables,
+                    commit_time
                 );
 
                 let evaluation_claims = stream::iter(rounds.iter())
@@ -184,9 +188,10 @@ mod tests {
                     .ok()
                     .unwrap();
                 let proof_time = start.elapsed();
-                println!(
+                tracing::info!(
                     "proof_time for total_number_of_variables: {:?}, proof_time: {:?}",
-                    total_number_of_variables, proof_time
+                    total_number_of_variables,
+                    proof_time
                 );
                 let evaluation_claims = stream::iter(evaluation_claims.into_iter())
                     .then(|e| async move { e.into_host().await.unwrap() })
