@@ -12,7 +12,7 @@ pub struct AnalyzedInstruction<F> {
 }
 
 impl<F> AnalyzedInstruction<F> {
-    const fn new(inner: Instruction<F>, offset: usize) -> Self {
+    pub const fn new(inner: Instruction<F>, offset: usize) -> Self {
         Self { inner, offset }
     }
 
