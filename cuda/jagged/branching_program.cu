@@ -75,32 +75,29 @@ __device__ void computePartialLagrange(
     EF point_3,
     EF *output) 
 {
-    EF point_0_vals[2] = {(EF::one() - point_0), point_0};
-    EF point_1_vals[2] = {(EF::one() - point_1), point_1};
-    EF point_2_vals[2] = {(EF::one() - point_2), point_2};
-    EF point_3_vals[2] = {(EF::one() - point_3), point_3};
 
-    // Memoize two values.
+    EF point_0_vals[2] = {(EF::one() - point_0), point_0};
+    // Memoize the two-variable eq.
     EF two_vals_memoized[4];
     for (uint8_t i = 0; i < 2; i++) {
-        for (uint8_t j = 0; j < 2; j++) {
-            two_vals_memoized[i * 2 + j] = point_0_vals[i] * point_1_vals[j];
-        }
+        EF prod = point_0_vals[i] * point_1;
+        two_vals_memoized[i * 2 + 1] = prod;
+        two_vals_memoized[i * 2] = point_0_vals[i]-prod;
     }
 
-    // Memoize three values.
+    // Memoize three-variate eq.
     EF three_vals_memoized[8];
     for (uint8_t i = 0; i < 4; i++) {
-        for (uint8_t j = 0; j < 2; j++) {
-            three_vals_memoized[i * 2 + j] = two_vals_memoized[i] * point_2_vals[j];
-        }
+        EF prod = two_vals_memoized[i] * point_2;
+        three_vals_memoized[i * 2 + 1] = prod;
+        three_vals_memoized[i * 2] = two_vals_memoized[i]-prod;
     }
 
     // Write the output values.
     for (uint8_t i = 0; i < 8; i++) {
-        for (uint8_t j = 0; j < 2; j++) {
-            output[i * 2 + j] = three_vals_memoized[i] * point_3_vals[j];
-        }
+        EF prod = three_vals_memoized[i] * point_3;
+        output[i * 2 + 1] = prod;
+        output[i * 2] = three_vals_memoized[i]-prod;
     }
 }
 

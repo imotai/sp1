@@ -10,6 +10,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - ".github/workflows/**"
+      - "cuda/**"
   merge_group:
 
 concurrency:
