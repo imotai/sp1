@@ -88,7 +88,7 @@ pub(crate) mod tests {
     use slop_tensor::Tensor;
 
     use sp1_recursion_executor::{
-        BasicBlock, Instruction, RawProgram, RecursionProgram, RootProgram, SeqBlock,
+        AnalyzedInstruction, BasicBlock, RawProgram, RecursionProgram, RootProgram, SeqBlock,
     };
     use sp1_stark::air::MachineAir;
 
@@ -96,7 +96,7 @@ pub(crate) mod tests {
 
     pub async fn test_preprocessed_tracegen<A>(
         chip: A,
-        mut make_instr: impl FnMut(&mut StdRng) -> Instruction<F>,
+        mut make_instr: impl FnMut(&mut StdRng) -> AnalyzedInstruction<F>,
         scope: TaskScope,
     ) where
         A: CudaTracegenAir<F> + MachineAir<F, Program = RecursionProgram<F>>,
@@ -113,7 +113,7 @@ pub(crate) mod tests {
                 inner: RawProgram { seq_blocks: vec![SeqBlock::Basic(BasicBlock { instrs })] },
                 total_memory: 0, // Will be filled in.
                 shape: None,
-                event_counts: None,
+                event_counts: Default::default(),
             })
         };
 

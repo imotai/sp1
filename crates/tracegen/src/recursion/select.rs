@@ -24,7 +24,7 @@ impl CudaTracegenAir<F> for SelectChip {
         let instrs = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::Select(instr) => Some(*instr),
                 _ => None,
             })
@@ -121,7 +121,8 @@ mod tests {
 
     use slop_algebra::{AbstractField, Field};
     use sp1_recursion_executor::{
-        Address, ExecutionRecord, Instruction, SelectEvent, SelectInstr, SelectIo,
+        Address, AnalyzedInstruction, ExecutionRecord, Instruction, SelectEvent, SelectInstr,
+        SelectIo,
     };
     use sp1_recursion_machine::chips::select::SelectChip;
 
@@ -133,17 +134,20 @@ mod tests {
             crate::recursion::tests::test_preprocessed_tracegen(
                 SelectChip,
                 |rng| {
-                    Instruction::Select(SelectInstr {
-                        addrs: SelectIo {
-                            bit: Address(rng.gen()),
-                            out1: Address(rng.gen()),
-                            out2: Address(rng.gen()),
-                            in1: Address(rng.gen()),
-                            in2: Address(rng.gen()),
-                        },
-                        mult1: rng.gen(),
-                        mult2: rng.gen(),
-                    })
+                    AnalyzedInstruction::new(
+                        Instruction::Select(SelectInstr {
+                            addrs: SelectIo {
+                                bit: Address(rng.gen()),
+                                out1: Address(rng.gen()),
+                                out2: Address(rng.gen()),
+                                in1: Address(rng.gen()),
+                                in2: Address(rng.gen()),
+                            },
+                            mult1: rng.gen(),
+                            mult2: rng.gen(),
+                        }),
+                        rng.gen(),
+                    )
                 },
                 scope,
             )

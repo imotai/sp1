@@ -44,9 +44,9 @@ fn get_program_and_input(program: String) -> (Vec<u8>, SP1Stdin) {
     let stdin = std::fs::read(stdin_path).unwrap();
     let stdin: SP1Stdin = bincode::deserialize(&stdin).unwrap();
 
-    // remove the files
-    std::fs::remove_file(program_path).unwrap();
-    std::fs::remove_file(stdin_path).unwrap();
+    // // remove the files
+    // std::fs::remove_file(program_path).unwrap();
+    // std::fs::remove_file(stdin_path).unwrap();
 
     (program, stdin)
 }

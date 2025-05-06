@@ -26,7 +26,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
         let instrs = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::Poseidon2(instr) => Some(**instr),
                 _ => None,
             })
@@ -130,21 +130,24 @@ mod tests {
     use slop_symmetric::Permutation;
 
     use sp1_recursion_executor::{
-        Address, ExecutionRecord, Instruction, Poseidon2Event, Poseidon2Instr, Poseidon2Io,
-        PERMUTATION_WIDTH,
+        Address, AnalyzedInstruction, ExecutionRecord, Instruction, Poseidon2Event, Poseidon2Instr,
+        Poseidon2Io, PERMUTATION_WIDTH,
     };
     use sp1_recursion_machine::chips::poseidon2_wide::Poseidon2WideChip;
 
     use crate::F;
 
-    fn make_poseidon2_instr(rng: &mut StdRng) -> Instruction<F> {
-        Instruction::Poseidon2(Box::new(Poseidon2Instr {
-            addrs: Poseidon2Io {
-                input: rng.gen::<[F; PERMUTATION_WIDTH]>().map(Address),
-                output: rng.gen::<[F; PERMUTATION_WIDTH]>().map(Address),
-            },
-            mults: rng.gen(),
-        }))
+    fn make_poseidon2_instr(rng: &mut StdRng) -> AnalyzedInstruction<F> {
+        AnalyzedInstruction::new(
+            Instruction::Poseidon2(Box::new(Poseidon2Instr {
+                addrs: Poseidon2Io {
+                    input: rng.gen::<[F; PERMUTATION_WIDTH]>().map(Address),
+                    output: rng.gen::<[F; PERMUTATION_WIDTH]>().map(Address),
+                },
+                mults: rng.gen(),
+            })),
+            rng.gen(),
+        )
     }
 
     #[tokio::test]

@@ -24,7 +24,7 @@ impl CudaTracegenAir<F> for BaseAluChip {
         let instrs = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::BaseAlu(instr) => Some(*instr),
                 _ => None,
             })
@@ -122,7 +122,8 @@ mod tests {
 
     use slop_algebra::{AbstractField, Field};
     use sp1_recursion_executor::{
-        Address, BaseAluEvent, BaseAluInstr, BaseAluIo, BaseAluOpcode, ExecutionRecord, Instruction,
+        Address, AnalyzedInstruction, BaseAluEvent, BaseAluInstr, BaseAluIo, BaseAluOpcode,
+        ExecutionRecord, Instruction,
     };
     use sp1_recursion_machine::chips::alu_base::BaseAluChip;
 
@@ -140,15 +141,18 @@ mod tests {
                         2 => BaseAluOpcode::MulF,
                         _ => BaseAluOpcode::DivF,
                     };
-                    Instruction::BaseAlu(BaseAluInstr {
-                        opcode,
-                        mult: rng.gen(),
-                        addrs: BaseAluIo {
-                            out: Address(rng.gen()),
-                            in1: Address(rng.gen()),
-                            in2: Address(rng.gen()),
-                        },
-                    })
+                    AnalyzedInstruction::new(
+                        Instruction::BaseAlu(BaseAluInstr {
+                            opcode,
+                            mult: rng.gen(),
+                            addrs: BaseAluIo {
+                                out: Address(rng.gen()),
+                                in1: Address(rng.gen()),
+                                in2: Address(rng.gen()),
+                            },
+                        }),
+                        rng.gen(),
+                    )
                 },
                 scope,
             )

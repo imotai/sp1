@@ -24,7 +24,7 @@ impl CudaTracegenAir<F> for ExtAluChip {
         let instrs = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
-            .filter_map(|instruction| match instruction {
+            .filter_map(|instruction| match instruction.inner() {
                 Instruction::ExtAlu(instr) => Some(*instr),
                 _ => None,
             })
@@ -123,8 +123,8 @@ mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::{AbstractExtensionField, AbstractField, Field};
     use sp1_recursion_executor::{
-        Address, Block, ExecutionRecord, ExtAluEvent, ExtAluInstr, ExtAluIo, ExtAluOpcode,
-        Instruction,
+        Address, AnalyzedInstruction, Block, ExecutionRecord, ExtAluEvent, ExtAluInstr, ExtAluIo,
+        ExtAluOpcode, Instruction,
     };
     use sp1_recursion_machine::chips::alu_ext::ExtAluChip;
 
@@ -144,15 +144,18 @@ mod tests {
                         2 => ExtAluOpcode::MulE,
                         _ => ExtAluOpcode::DivE,
                     };
-                    Instruction::ExtAlu(ExtAluInstr {
-                        opcode,
-                        mult: rng.gen(),
-                        addrs: ExtAluIo {
-                            out: Address(rng.gen()),
-                            in1: Address(rng.gen()),
-                            in2: Address(rng.gen()),
-                        },
-                    })
+                    AnalyzedInstruction::new(
+                        Instruction::ExtAlu(ExtAluInstr {
+                            opcode,
+                            mult: rng.gen(),
+                            addrs: ExtAluIo {
+                                out: Address(rng.gen()),
+                                in1: Address(rng.gen()),
+                                in2: Address(rng.gen()),
+                            },
+                        }),
+                        rng.gen(),
+                    )
                 },
                 scope,
             )
