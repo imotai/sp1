@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use itertools::Itertools;
 use slop_merkle_tree::{MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2BabyBearConfig};
 use slop_tensor::Tensor;
-use sp1_recursion_compiler::ir::{Builder, Felt};
+use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 use sp1_stark::BabyBearPoseidon2;
 
 use crate::{basefold::merkle_tree::verify, hash::FieldHasherVariable, AsRecursive, CircuitConfig};
@@ -61,15 +61,24 @@ where
         indices: &[Vec<Self::Bit>],
         opening: &RecursiveTensorCsOpening<Self>,
     ) {
-        for (i, (index, path)) in indices.iter().zip_eq(opening.proof.paths.split()).enumerate() {
-            // Collect the lead slices of the claimed values.
-            let claimed_values_slices = opening.values.get(i).unwrap().as_slice().to_vec();
+        let chunk_size = indices.len().div_ceil(8);
+        indices
+            .iter()
+            .zip_eq(opening.proof.paths.split())
+            .chunks(chunk_size)
+            .into_iter()
+            .enumerate()
+            .ir_par_map_collect::<Vec<_>, _, _>(builder, |builder, (i, chunk)| {
+                for (j, (index, path)) in chunk.into_iter().enumerate() {
+                    let claimed_values_slices =
+                        opening.values.get(i * chunk_size + j).unwrap().as_slice().to_vec();
 
-            let path = path.as_slice().to_vec();
-            let digest = M::hash(builder, &claimed_values_slices);
+                    let path = path.as_slice().to_vec();
+                    let digest = M::hash(builder, &claimed_values_slices);
 
-            verify::<C, M>(builder, path, index.to_vec(), digest, *commit);
-        }
+                    verify::<C, M>(builder, path, index.to_vec(), digest, *commit);
+                }
+            });
     }
 }
 
