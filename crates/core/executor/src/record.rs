@@ -244,7 +244,7 @@ impl ExecutionRecord {
     /// they can all be packed into the already existing last record.
     pub fn split(
         &mut self,
-        last: bool,
+        done: bool,
         last_record: Option<&mut ExecutionRecord>,
         opts: SplitOpts,
     ) -> Vec<ExecutionRecord> {
@@ -283,7 +283,7 @@ impl ExecutionRecord {
             };
 
             let chunks = events.chunks_exact(threshold);
-            if last {
+            if done {
                 let remainder = chunks.remainder().to_vec();
                 if !remainder.is_empty() {
                     let mut execution_record = ExecutionRecord::new(self.program.clone());
@@ -303,7 +303,7 @@ impl ExecutionRecord {
             shards.append(&mut event_shards);
         }
 
-        if last {
+        if done {
             self.global_memory_initialize_events.sort_by_key(|event| event.addr);
             self.global_memory_finalize_events.sort_by_key(|event| event.addr);
 

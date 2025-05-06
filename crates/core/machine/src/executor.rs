@@ -81,6 +81,7 @@ pub struct ExecutionOutput {
 
 struct RecordTask {
     index: usize,
+    global_clk: u64,
     checkpoint_file: File,
     done: bool,
     program: Arc<Program>,
@@ -139,6 +140,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                 while let Some(task) = rx.blocking_recv() {
                     let RecordTask {
                         index,
+                        global_clk,
                         mut checkpoint_file,
                         done,
                         program,
@@ -187,8 +189,18 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         deferred.append(&mut record.defer(&opts.retained_events_presets));
                     }
 
+                    let can_pack_global_memory = done
+                    && global_clk < 1 << 21 // TODO(tqn) what is this constant???
+                    && deferred.global_memory_initialize_events.len()
+                        < opts.split_opts.combine_memory_threshold
+                    && deferred.global_memory_finalize_events.len()
+                        < opts.split_opts.combine_memory_threshold;
+
+                    let last_record =
+                        if can_pack_global_memory { records.last_mut() } else { None };
+
                     // See if any deferred shards are ready to be committed to.
-                    let mut deferred = deferred.split(done, None, opts.split_opts);
+                    let mut deferred = deferred.split(done, last_record, opts.split_opts);
                     log::info!("deferred {} records", deferred.len());
 
                     // Update the public values & prover state for the shards which do not
@@ -288,6 +300,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                             // Create a new record generation task.
                             let record_task = RecordTask {
                                 index,
+                                global_clk: runtime.state.global_clk,
                                 checkpoint_file,
                                 done,
                                 program: program.clone(),
