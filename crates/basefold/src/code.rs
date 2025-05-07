@@ -24,8 +24,7 @@ impl<F: TwoAdicField> FriConfig<F> {
 
     pub fn auto(log_blowup: usize, bits_of_security: usize) -> Self {
         assert_eq!(bits_of_security, 100);
-        assert_eq!(log_blowup, 1);
-        let num_queries = 100;
+        let num_queries = 100 / log_blowup;
         let proof_of_work_bits = 16;
         Self::new(log_blowup, num_queries, proof_of_work_bits)
     }
