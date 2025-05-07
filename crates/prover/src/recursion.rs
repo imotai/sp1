@@ -53,8 +53,8 @@ use crate::{
 #[allow(clippy::type_complexity)]
 pub struct SP1RecursionProver<C: RecursionProverComponents> {
     prover: MachineProver<C>,
-    core_verifier: MachineVerifier<CoreSC, RiscvAir<BabyBear>>,
-    recursion_program_cache: SP1RecursionCache,
+    pub(crate) core_verifier: MachineVerifier<CoreSC, RiscvAir<BabyBear>>,
+    pub(crate) recursion_program_cache: SP1RecursionCache,
     reduce_shape: SP1ReduceShape,
     reduce_programs: BTreeMap<usize, Arc<RecursionProgram<BabyBear>>>,
     reduce_keys: BTreeMap<usize, (Arc<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>)>,

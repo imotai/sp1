@@ -1,3 +1,4 @@
+use crate::SP1RecursionShape;
 use futures::{
     prelude::*,
     stream::{FuturesOrdered, FuturesUnordered},
@@ -7,6 +8,7 @@ use sp1_recursion_circuit::{
     machine::{SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues},
     InnerSC,
 };
+use sp1_stark::ChipDimensions;
 use std::{
     collections::{BTreeMap, VecDeque},
     env,
@@ -159,6 +161,26 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         stdin: SP1Stdin,
         mut context: SP1Context<'static>,
     ) -> Result<SP1CoreProof, SP1ProverError> {
+        let dummy_vk = MachineVerifyingKey::<CoreSC> {
+            pc_start: pk.pc_start,
+            initial_global_cumulative_sum: pk.initial_global_cumulative_sum,
+            preprocessed_commit: Some([BabyBear::zero(); 8]),
+            preprocessed_chip_information: pk
+                .preprocessed_traces
+                .named_traces
+                .iter()
+                .map(|(name, trace)| {
+                    (
+                        name.clone(),
+                        ChipDimensions {
+                            height: trace.num_real_entries(),
+                            num_polynomials: trace.num_polynomials(),
+                        },
+                    )
+                })
+                .collect(),
+        };
+
         context.subproof_verifier = Some(Arc::new(self.clone()));
 
         let (records_tx, mut records_rx) =
@@ -170,6 +192,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let prover_task_capacity = prover.prover_task_capacity;
         let shard_proofs = tokio::spawn(async move {
+            let mut shape_count = 0;
             let mut shard_proofs = Vec::new();
             let mut tasks = FuturesOrdered::new();
             let prover_spawn_permits = Semaphore::new(prover_task_capacity);
@@ -180,6 +203,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                         .and_then(|permit|
                             records_rx.recv().map(|record| Ok((permit, record)))) => {
                         let span = tracing::debug_span!("prove core shard").entered();
+                        let shape = prover.prover.core().core_shape_from_record(&record).unwrap();
+
                         let handle = prover
                             .prover
                             .core()
@@ -187,6 +212,22 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                         span.exit();
                         tasks.push_back(handle);
                         permits.push(permit);
+
+                        if shape_count < 3 {
+                            let prover = prover.clone();
+                            let dummy_vk = dummy_vk.clone();
+                            tokio::spawn(async move {
+                                let recursion_shape = SP1RecursionShape {
+                                    proof_shapes: vec![shape],
+                                    max_log_row_count: prover.prover.recursion_prover.core_verifier.max_log_row_count(),
+                                    log_blowup: prover.prover.recursion_prover.core_verifier.fri_config().log_blowup,
+                                    log_stacking_height: prover.prover.recursion_prover.core_verifier.log_stacking_height() as usize,
+                                };
+                                let witness = recursion_shape.dummy_input(SP1VerifyingKey { vk: dummy_vk } );
+                                prover.prover.recursion_prover.recursion_program(&witness);
+                            });
+                            shape_count += 1;
+                        }
                     }
                     Some(result) = tasks.next() => {
                         let proof = result.map_err(SP1ProverError::CoreProverError)?;
