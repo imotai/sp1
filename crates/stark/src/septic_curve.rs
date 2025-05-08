@@ -98,9 +98,9 @@ impl<F: Field> SepticCurve<F> {
 impl<F: AbstractField> SepticCurve<F> {
     /// Evaluates the curve formula x^3 + 2x + 26z^5
     pub fn curve_formula(x: SepticExtension<F>) -> SepticExtension<F> {
-        x.cube() +
-            x * F::two() +
-            SepticExtension::from_base_slice(&[
+        x.cube()
+            + x * F::two()
+            + SepticExtension::from_base_slice(&[
                 F::zero(),
                 F::zero(),
                 F::zero(),
@@ -170,8 +170,8 @@ impl<F: AbstractField> SepticCurve<F> {
         p2: SepticCurve<F>,
         p3: SepticCurve<F>,
     ) -> SepticExtension<F> {
-        (p1.x.clone() + p2.x.clone() + p3.x) * (p2.x.clone() - p1.x.clone()).square() -
-            (p2.y - p1.y).square()
+        (p1.x.clone() + p2.x.clone() + p3.x) * (p2.x.clone() - p1.x.clone()).square()
+            - (p2.y - p1.y).square()
     }
 
     /// Given three points p1, p2, p3, the function is zero if and only if p3.y == (p1 + p2).y
@@ -181,8 +181,8 @@ impl<F: AbstractField> SepticCurve<F> {
         p2: SepticCurve<F>,
         p3: SepticCurve<F>,
     ) -> SepticExtension<F> {
-        (p1.y.clone() + p3.y.clone()) * (p2.x.clone() - p1.x.clone()) -
-            (p2.y - p1.y.clone()) * (p1.x - p3.x)
+        (p1.y.clone() + p3.y.clone()) * (p2.x.clone() - p1.x.clone())
+            - (p2.y - p1.y.clone()) * (p1.x - p3.x)
     }
 }
 
@@ -317,12 +317,12 @@ mod tests {
         let start = Instant::now();
         for i in 0..(D as usize) {
             assert!(
-                SepticCurve::<BabyBear>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i]) ==
-                    SepticExtension::<BabyBear>::zero()
+                SepticCurve::<BabyBear>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
+                    == SepticExtension::<BabyBear>::zero()
             );
             assert!(
-                SepticCurve::<BabyBear>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i]) ==
-                    SepticExtension::<BabyBear>::zero()
+                SepticCurve::<BabyBear>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
+                    == SepticExtension::<BabyBear>::zero()
             );
         }
         println!("Time elapsed: {:?}", start.elapsed());

@@ -145,10 +145,10 @@ impl CpuProveBuilder {
     // ///
     // /// # Details
     // /// The value should be 2^16, 2^17, ..., 2^22. You must be careful to set this value
-    // /// correctly, as it will affect the memory usage of the prover and the recursion/verification
-    // /// complexity. By default, the value is set to some predefined values that are optimized for
-    // /// performance based on the available amount of RAM on the system.
-    // ///
+    // /// correctly, as it will affect the memory usage of the prover and the
+    // recursion/verification /// complexity. By default, the value is set to some predefined
+    // values that are optimized for /// performance based on the available amount of RAM on the
+    // system. ///
     // /// # Example
     // /// ```rust,no_run
     // /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
@@ -170,8 +170,8 @@ impl CpuProveBuilder {
     // /// Set the shard batch size for proving.
     // ///
     // /// # Details
-    // /// This is the number of shards that are processed in a single batch in the prover. You should
-    // /// probably not change this value unless you know what you are doing.
+    // /// This is the number of shards that are processed in a single batch in the prover. You
+    // should /// probably not change this value unless you know what you are doing.
     // ///
     // /// # Example
     // /// ```rust,no_run

@@ -1,9 +1,8 @@
-use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
     operations::field::field_op::FieldOpCols,
-    utils::{limbs_to_words, pad_rows_fixed, words_to_bytes_le},
+    utils::{limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le},
 };
 use itertools::Itertools;
 use num::{BigUint, One, Zero};

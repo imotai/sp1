@@ -255,9 +255,9 @@ pub fn trace_checkpoint(
     let pv = records.last().unwrap().public_values;
 
     // Handle the case where the COMMIT happens across the last two shards.
-    if !done &&
-        (pv.committed_value_digest.iter().any(|v| *v != 0) ||
-            pv.deferred_proofs_digest.iter().any(|v| *v != 0))
+    if !done
+        && (pv.committed_value_digest.iter().any(|v| *v != 0)
+            || pv.deferred_proofs_digest.iter().any(|v| *v != 0))
     {
         // We turn off the `print_report` flag to avoid modifying the report.
         runtime.print_report = false;

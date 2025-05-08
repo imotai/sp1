@@ -186,8 +186,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                         .map(|(event, _)| event)
                         .filter(|e| e.should_send)
                         .take(1)
-                        .count() >
-                        0
+                        .count()
+                        > 0
                 }
                 SyscallShardKind::Precompile => {
                     !shard.precompile_events.is_empty()

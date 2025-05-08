@@ -3,8 +3,10 @@
 //! This module provides an implementation of the [`crate::Prover`] trait that can generate proofs
 //! on a remote RPC server.
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use super::prove::NetworkProveBuilder;
 use crate::{
@@ -26,8 +28,9 @@ use alloy_primitives::{Address, B256};
 use anyhow::{Context, Result};
 use sp1_core_executor::{SP1Context, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::local::LocalProver;
-use sp1_prover::{components::CpuSP1ProverComponents, HashableKey, SP1_CIRCUIT_VERSION};
+use sp1_prover::{
+    components::CpuSP1ProverComponents, local::LocalProver, HashableKey, SP1_CIRCUIT_VERSION,
+};
 
 use crate::network::tee::client::Client as TeeClient;
 
@@ -287,7 +290,9 @@ impl NetworkProver {
         tracing::info!("Created request {request_id} in transaction {tx_hash}");
 
         if self.client.rpc_url == DEFAULT_NETWORK_RPC_URL {
-            tracing::info!("View request status at: https://network.succinct.xyz/request/{request_id}");
+            tracing::info!(
+                "View request status at: https://network.succinct.xyz/request/{request_id}"
+            );
         }
 
         Ok(request_id)
@@ -506,7 +511,8 @@ impl Prover<CpuSP1ProverComponents> for NetworkProver {
             None,
             None,
             false,
-        ).await
+        )
+        .await
     }
 
     fn verify(

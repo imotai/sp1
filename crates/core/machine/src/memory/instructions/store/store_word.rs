@@ -6,11 +6,13 @@ use std::{
     mem::size_of,
 };
 
-use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
-use crate::air::SP1CoreAirBuilder;
-use crate::memory::MemoryAccessCols;
-use crate::operations::AddressOperation;
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::{
+    adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessCols,
+    operations::AddressOperation,
+    utils::{next_multiple_of_32, zeroed_f_vec},
+};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_field::{AbstractField, PrimeField32};

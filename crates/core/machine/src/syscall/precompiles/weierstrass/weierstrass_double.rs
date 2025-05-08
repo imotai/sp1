@@ -4,12 +4,11 @@ use core::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::operations::field::{field_op::FieldOpCols, range::FieldLtCols};
-use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
-    utils::{limbs_to_words, zeroed_f_vec},
+    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
+    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -206,10 +205,10 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 // The blu map stores shard -> map(byte lookup event -> multiplicity).
                 let mut blu = Vec::new();
                 ops.iter().for_each(|(_, op)| match op {
-                    PrecompileEvent::Secp256k1Double(event) |
-                    PrecompileEvent::Secp256r1Double(event) |
-                    PrecompileEvent::Bn254Double(event) |
-                    PrecompileEvent::Bls12381Double(event) => {
+                    PrecompileEvent::Secp256k1Double(event)
+                    | PrecompileEvent::Secp256r1Double(event)
+                    | PrecompileEvent::Bn254Double(event)
+                    | PrecompileEvent::Bls12381Double(event) => {
                         let mut row = zeroed_f_vec(num_cols);
                         let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> =
                             row.as_mut_slice().borrow_mut();
@@ -273,10 +272,10 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                     let mut new_byte_lookup_events = Vec::new();
                     let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> = row.borrow_mut();
                     match &events[idx].1 {
-                        PrecompileEvent::Secp256k1Double(event) |
-                        PrecompileEvent::Secp256r1Double(event) |
-                        PrecompileEvent::Bn254Double(event) |
-                        PrecompileEvent::Bls12381Double(event) => {
+                        PrecompileEvent::Secp256k1Double(event)
+                        | PrecompileEvent::Secp256r1Double(event)
+                        | PrecompileEvent::Bn254Double(event)
+                        | PrecompileEvent::Bls12381Double(event) => {
                             Self::populate_row(event, cols, &mut new_byte_lookup_events);
                         }
                         _ => unreachable!(),

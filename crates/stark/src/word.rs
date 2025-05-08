@@ -53,7 +53,7 @@ impl<F: Field> Word<F> {
     pub fn to_u32(&self) -> u32 {
         let low = self.0[0].to_string().parse::<u16>().unwrap();
         let high = self.0[1].to_string().parse::<u16>().unwrap();
-        (high as u32) << 16 | (low as u32)
+        ((high as u32) << 16) | (low as u32)
     }
 }
 

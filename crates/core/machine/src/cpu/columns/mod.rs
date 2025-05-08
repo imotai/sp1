@@ -55,11 +55,10 @@ pub struct CpuCols<T: Copy> {
     /// The number of extra cycles to add to the clk for a syscall instruction.
     pub num_extra_cycles: T,
 
-    /// Operand values, either from registers or immediate values.
+    // /// Operand values, either from registers or immediate values.
     // pub op_a_access: MemoryReadWriteCols<T>,
     // pub op_b_access: MemoryReadCols<T>,
     // pub op_c_access: MemoryReadCols<T>,
-
     /// Selector to label whether this row is a non padded row.
     pub is_real: T,
 }

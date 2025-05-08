@@ -758,8 +758,7 @@ pub mod tests {
 
     use slop_algebra::PrimeField32;
 
-    use crate::components::CpuSP1ProverComponents;
-    use crate::SP1ProverBuilder;
+    use crate::{components::CpuSP1ProverComponents, SP1ProverBuilder};
 
     use super::*;
 
@@ -826,7 +825,6 @@ pub mod tests {
 
     /// Tests an end-to-end workflow of proving a program across the entire proof generation
     /// pipeline.
-    ///
     #[tokio::test]
     #[serial]
     async fn test_e2e() -> Result<()> {

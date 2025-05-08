@@ -257,10 +257,10 @@ where
             let mulh: AB::Expr = AB::F::from_canonical_u32(Opcode::MULH as u32).into();
             let mulhu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHU as u32).into();
             let mulhsu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHSU as u32).into();
-            local.is_mul * mul +
-                local.is_mulh * mulh +
-                local.is_mulhu * mulhu +
-                local.is_mulhsu * mulhsu
+            local.is_mul * mul
+                + local.is_mulh * mulh
+                + local.is_mulhu * mulhu
+                + local.is_mulhsu * mulhsu
         };
 
         // Constrain the state of the CPU.

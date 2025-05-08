@@ -4,18 +4,16 @@ use core::{
 };
 use std::fmt::Debug;
 
-use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    utils::{limbs_to_words, zeroed_f_vec},
-};
-use crate::{
     operations::field::{
         field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
         field_sqrt::FieldSqrtCols, range::FieldLtCols,
     },
-    utils::{bytes_to_words_le_vec, pad_rows_fixed},
+    utils::{
+        bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
+    },
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -329,8 +327,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
 
 impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassDecompressChip<E> {
     fn width(&self) -> usize {
-        num_weierstrass_decompress_cols::<E::BaseField>() +
-            match self.sign_rule {
+        num_weierstrass_decompress_cols::<E::BaseField>()
+            + match self.sign_rule {
                 SignChoiceRule::LeastSignificantBit => 0,
                 SignChoiceRule::Lexicographic => {
                     size_of::<LexicographicChoiceCols<u8, E::BaseField>>()
@@ -437,8 +435,9 @@ where
 
                 // Get the choice columns from the row slice
                 let choice_cols: &LexicographicChoiceCols<AB::Var, E::BaseField> = (*local_slice)
-                    [weierstrass_cols..
-                        weierstrass_cols + size_of::<LexicographicChoiceCols<u8, E::BaseField>>()]
+                    [weierstrass_cols
+                        ..weierstrass_cols
+                            + size_of::<LexicographicChoiceCols<u8, E::BaseField>>()]
                     .borrow();
 
                 // Assert that the flags are booleans.

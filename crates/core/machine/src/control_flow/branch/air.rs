@@ -40,20 +40,20 @@ where
         builder.assert_bool(local.is_bge);
         builder.assert_bool(local.is_bltu);
         builder.assert_bool(local.is_bgeu);
-        let is_real = local.is_beq +
-            local.is_bne +
-            local.is_blt +
-            local.is_bge +
-            local.is_bltu +
-            local.is_bgeu;
+        let is_real = local.is_beq
+            + local.is_bne
+            + local.is_blt
+            + local.is_bge
+            + local.is_bltu
+            + local.is_bgeu;
         builder.assert_bool(is_real.clone());
 
-        let opcode = local.is_beq * Opcode::BEQ.as_field::<AB::F>() +
-            local.is_bne * Opcode::BNE.as_field::<AB::F>() +
-            local.is_blt * Opcode::BLT.as_field::<AB::F>() +
-            local.is_bge * Opcode::BGE.as_field::<AB::F>() +
-            local.is_bltu * Opcode::BLTU.as_field::<AB::F>() +
-            local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
+        let opcode = local.is_beq * Opcode::BEQ.as_field::<AB::F>()
+            + local.is_bne * Opcode::BNE.as_field::<AB::F>()
+            + local.is_blt * Opcode::BLT.as_field::<AB::F>()
+            + local.is_bge * Opcode::BGE.as_field::<AB::F>()
+            + local.is_bltu * Opcode::BLTU.as_field::<AB::F>()
+            + local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
 
         // Constrain the state of the CPU.
         // The `next_pc` is constrained by the AIR.

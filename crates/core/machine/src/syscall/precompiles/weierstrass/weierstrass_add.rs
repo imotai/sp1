@@ -197,10 +197,10 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 // The blu map stores shard -> map(byte lookup event -> multiplicity).
                 let mut blu = Vec::new();
                 ops.iter().for_each(|(_, op)| match op {
-                    PrecompileEvent::Secp256k1Add(event) |
-                    PrecompileEvent::Secp256r1Add(event) |
-                    PrecompileEvent::Bn254Add(event) |
-                    PrecompileEvent::Bls12381Add(event) => {
+                    PrecompileEvent::Secp256k1Add(event)
+                    | PrecompileEvent::Secp256r1Add(event)
+                    | PrecompileEvent::Bn254Add(event)
+                    | PrecompileEvent::Bls12381Add(event) => {
                         let mut row = zeroed_f_vec(num_cols);
                         let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> =
                             row.as_mut_slice().borrow_mut();
@@ -258,10 +258,10 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                     let mut new_byte_lookup_events = Vec::new();
                     let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> = row.borrow_mut();
                     match &events[idx].1 {
-                        PrecompileEvent::Secp256k1Add(event) |
-                        PrecompileEvent::Secp256r1Add(event) |
-                        PrecompileEvent::Bn254Add(event) |
-                        PrecompileEvent::Bls12381Add(event) => {
+                        PrecompileEvent::Secp256k1Add(event)
+                        | PrecompileEvent::Secp256r1Add(event)
+                        | PrecompileEvent::Bn254Add(event)
+                        | PrecompileEvent::Bls12381Add(event) => {
                             Self::populate_row(event, cols, &mut new_byte_lookup_events);
                         }
                         _ => unreachable!(),

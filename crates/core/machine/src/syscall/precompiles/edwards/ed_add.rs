@@ -4,11 +4,10 @@ use core::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
-    utils::limbs_to_words,
+    utils::{limbs_to_words, next_multiple_of_32},
 };
 use hashbrown::HashMap;
 use itertools::Itertools;

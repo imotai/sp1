@@ -70,8 +70,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
             .iter()
             // .par_bridge() // Using `rayon` here provides a big speedup. TODO put rayon back
             .flat_map(|instruction| match instruction.inner() {
-                Instruction::Hint(HintInstr { output_addrs_mults }) |
-                Instruction::HintBits(HintBitsInstr {
+                Instruction::Hint(HintInstr { output_addrs_mults })
+                | Instruction::HintBits(HintBitsInstr {
                     output_addrs_mults,
                     input_addr: _, // No receive interaction for the hint operation
                 }) => output_addrs_mults.iter().collect(),

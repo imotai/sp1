@@ -136,8 +136,8 @@ impl SyscallInstrsChip {
 
         // If the syscall is `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and
         // digest word.
-        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) ||
-            syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
+            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
         {
             let digest_idx = record.b.value() as usize;
             cols.index_bitmap[digest_idx] = F::one();

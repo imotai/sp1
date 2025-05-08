@@ -202,8 +202,8 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
         // TODO:  Fix this.
 
         assert!(
-            shard.get_precompile_events(SyscallCode::BN254_FP_SUB).is_empty() &&
-                shard.get_precompile_events(SyscallCode::BLS12381_FP_SUB).is_empty()
+            shard.get_precompile_events(SyscallCode::BN254_FP_SUB).is_empty()
+                && shard.get_precompile_events(SyscallCode::BLS12381_FP_SUB).is_empty()
         );
 
         if let Some(shape) = shard.shape.as_ref() {

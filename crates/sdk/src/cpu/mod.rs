@@ -13,7 +13,6 @@ use execute::CpuExecuteBuilder;
 use prove::CpuProveBuilder;
 use sp1_core_executor::{SP1Context, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::local::{LocalProver, LocalProverOpts};
 use sp1_prover::{
     components::CpuSP1ProverComponents,
     // verify::{verify_groth16_bn254_public_inputs, verify_plonk_bn254_public_inputs},
@@ -22,11 +21,15 @@ use sp1_prover::{
     SP1CoreProofData,
     SP1ProofWithMetadata,
 };
-use sp1_prover::{SP1ProverBuilder, SP1ProvingKey};
+use sp1_prover::{
+    local::{LocalProver, LocalProverOpts},
+    SP1ProverBuilder, SP1ProvingKey,
+};
 
-use crate::prover::verify_proof;
-use crate::SP1VerificationError;
-use crate::{Prover, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1VerifyingKey};
+use crate::{
+    prover::verify_proof, Prover, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
+    SP1VerificationError, SP1VerifyingKey,
+};
 
 /// A prover that uses the CPU to execute and prove programs.
 #[derive(Clone)]
@@ -166,8 +169,8 @@ impl CpuProver {
                 //     try_install_circuit_artifacts("groth16")
                 // };
 
-                // let proof = self.prover.wrap_groth16_bn254(outer_proof, &groth16_bn254_artifacts);
-                // Ok(SP1ProofWithPublicValues::new(
+                // let proof = self.prover.wrap_groth16_bn254(outer_proof,
+                // &groth16_bn254_artifacts); Ok(SP1ProofWithPublicValues::new(
                 //     SP1Proof::Groth16(proof),
                 //     public_values,
                 //     self.version().to_string(),
