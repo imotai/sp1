@@ -1,9 +1,11 @@
 use challenger::{
     CanCopyChallenger, CanObserveVariable, DuplexChallengerVariable, FieldChallengerVariable,
+    MultiField32ChallengerVariable,
 };
 use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
 use itertools::izip;
 use slop_algebra::AbstractField;
+use slop_bn254::Bn254Fr;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},
@@ -11,13 +13,17 @@ use sp1_recursion_compiler::{
 };
 use sp1_recursion_executor::RecursionPublicValues;
 use std::iter::{repeat, zip};
+use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
 use slop_basefold::{
     BasefoldConfig, BasefoldProof, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig,
+    Poseidon2Bn254FrBasefoldConfig,
 };
 use slop_commit::TensorCs;
-use slop_merkle_tree::{MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig};
-use sp1_stark::{shape::OrderedShape, BabyBearPoseidon2};
+use slop_merkle_tree::{
+    MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
+};
+use sp1_stark::{shape::OrderedShape, BabyBearPoseidon2, Bn254JaggedConfig};
 pub mod basefold;
 pub mod challenger;
 pub mod dummy;
@@ -28,6 +34,7 @@ pub mod machine;
 pub mod shard;
 pub mod sumcheck;
 mod symbolic;
+pub mod utils;
 pub mod witness;
 pub mod zerocheck;
 pub const D: usize = 4;
@@ -646,6 +653,36 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
         public_values: RecursionPublicValues<Felt<<C>::F>>,
     ) {
         builder.commit_public_values_v2(public_values);
+    }
+}
+
+impl BabyBearFriConfig for Bn254JaggedConfig {
+    type BasefoldConfig = Poseidon2Bn254FrBasefoldConfig;
+    type MerkleTreeConfig = Poseidon2Bn254Config;
+    type FriChallenger = <Self as JaggedConfig>::Challenger;
+}
+
+impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFriConfigVariable<C>
+    for Bn254JaggedConfig
+{
+    type FriChallengerVariable = MultiField32ChallengerVariable<C>;
+
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
+        MultiField32ChallengerVariable::new(builder)
+    }
+
+    fn commit_recursion_public_values(
+        builder: &mut Builder<C>,
+        public_values: RecursionPublicValues<Felt<<C>::F>>,
+    ) {
+        let committed_values_digest_bytes_felts: [Felt<_>; 32] =
+            words_to_bytes(&public_values.committed_value_digest).try_into().unwrap();
+        let committed_values_digest_bytes: Var<_> =
+            felt_bytes_to_bn254_var(builder, &committed_values_digest_bytes_felts);
+        builder.commit_committed_values_digest_circuit(committed_values_digest_bytes);
+
+        let vkey_hash = felts_to_bn254_var(builder, &public_values.sp1_vk_digest);
+        builder.commit_vkey_hash_circuit(vkey_hash);
     }
 }
 
