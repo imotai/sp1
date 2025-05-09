@@ -5047,7 +5047,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-build"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -5058,7 +5058,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-core-executor"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -5101,7 +5101,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-core-machine"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -5170,7 +5170,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-curves"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -5191,7 +5191,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-derive"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -5199,14 +5199,14 @@ dependencies = [
 
 [[package]]
 name = "sp1-helper"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "sp1-build",
 ]
 
 [[package]]
 name = "sp1-lib"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "bincode",
  "elliptic-curve",
@@ -5216,7 +5216,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-primitives"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "bincode",
  "blake3",
@@ -5235,7 +5235,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-prover"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5288,7 +5288,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-circuit"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "bincode",
  "derive-where",
@@ -5346,7 +5346,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-compiler"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -5374,7 +5374,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-derive"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -5382,7 +5382,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-executor"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "backtrace",
  "cbindgen",
@@ -5426,7 +5426,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-gnark-ffi"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5450,7 +5450,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-machine"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "cbindgen",
  "cc",
@@ -5487,7 +5487,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-sdk"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "alloy-primitives",
  "alloy-signer",
@@ -5534,7 +5534,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-stark"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "arrayref",
  "derive-where",
@@ -5578,7 +5578,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-zkvm"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -5778,7 +5778,7 @@ dependencies = [
 
 [[package]]
 name = "test-artifacts"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "sp1-build",
 ]

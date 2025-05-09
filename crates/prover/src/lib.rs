@@ -612,6 +612,71 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 //     proof
 // }
 
+// pub fn recursion_program(
+//     &self,
+//     input: &SP1RecursionWitnessValues<CoreSC>,
+// ) -> Arc<RecursionProgram<BabyBear>> {
+//     // Check if the program is in the cache.
+//     let mut cache = self.lift_programs_lru.lock().unwrap_or_else(|e| e.into_inner());
+//     let shape = input.shape();
+//     let program = cache.get(&shape).cloned();
+//     drop(cache);
+//     match program {
+//         Some(program) => program,
+//         None => {
+//             let misses = self.lift_cache_misses.fetch_add(1, Ordering::Relaxed);
+//             tracing::debug!("core cache miss, misses: {}", misses);
+//             // Get the operations.
+//             let builder_span = tracing::debug_span!("build recursion program").entered();
+//             let mut builder = Builder::<InnerConfig>::default();
+
+//             let input =
+//                 tracing::debug_span!("read input").in_scope(|| input.read(&mut builder));
+//             tracing::debug_span!("verify").in_scope(|| {
+//                 SP1RecursiveVerifier::verify(&mut builder, self.core_prover.machine(), input)
+//             });
+//             let block =
+//                 tracing::debug_span!("build block").in_scope(|| builder.into_root_block());
+//             builder_span.exit();
+//             // SAFETY: The circuit is well-formed. It does not use synchronization primitives
+//             // (or possibly other means) to violate the invariants.
+//             let dsl_program = unsafe { DslIrProgram::new_unchecked(block) };
+
+//             // Compile the program.
+//             let compiler_span = tracing::debug_span!("compile recursion program").entered();
+//             let mut compiler = AsmCompiler::<InnerConfig>::default();
+//             let mut program = compiler.compile(dsl_program);
+//             if let Some(inn_recursion_shape_config) = &self.compress_shape_config {
+//                 inn_recursion_shape_config.fix_shape(&mut program);
+//             }
+//             let program = Arc::new(program);
+//             compiler_span.exit();
+
+//             // Insert the program into the cache.
+//             let mut cache = self.lift_programs_lru.lock().unwrap_or_else(|e| e.into_inner());
+//             cache.put(shape, program.clone());
+//             drop(cache);
+//             program
+//         }
+//     }
+// }
+
+// pub fn compress_program(
+//     &self,
+//     input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
+// ) -> Arc<RecursionProgram<BabyBear>> {
+//     self.join_programs_map.get(&input.shape()).cloned().unwrap_or_else(|| {
+//         tracing::warn!("join program not found in map, recomputing join program.");
+//         // Get the operations.
+//         Arc::new(compress_program_from_input::<C>(
+//             self.compress_shape_config.as_ref(),
+//             &self.compress_prover,
+//             self.vk_verification,
+//             input,
+//         ))
+//     })
+// }
+
 // pub fn shrink_program(
 //     &self,
 //     shrink_shape: RecursionShape,

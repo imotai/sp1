@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-lib"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "bincode",
  "elliptic-curve",
@@ -636,7 +636,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-primitives"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "bincode",
  "blake3",
@@ -654,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-zkvm"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "cfg-if",
  "getrandom",
