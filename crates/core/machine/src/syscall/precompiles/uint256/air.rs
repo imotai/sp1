@@ -1,24 +1,21 @@
-use crate::{
-    memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::FieldOpCols,
-};
+use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols};
 
 use crate::{
-    air::MemoryAirBuilder,
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
     operations::{field::range::FieldLtCols, IsZeroOperation},
     utils::{
-        limbs_from_access, limbs_from_prev_access, pad_rows_fixed, words_to_bytes_le,
+        limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
         words_to_bytes_le_vec,
     },
 };
-
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
 use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteRecord, FieldOperation, PrecompileEvent},
+    events::{ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -27,8 +24,9 @@ use sp1_curves::{
     uint256::U256Field,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder},
+    air::{InteractionScope, MachineAir, SP1AirBuilder},
     MachineRecord,
 };
 use std::{
@@ -70,9 +68,9 @@ pub struct Uint256MulCols<T> {
 
     // Memory columns.
     // x_memory is written to with the result, which is why it is of type MemoryWriteCols.
-    pub x_memory: GenericArray<MemoryWriteCols<T>, WordsFieldElement>,
-    pub y_memory: GenericArray<MemoryReadCols<T>, WordsFieldElement>,
-    pub modulus_memory: GenericArray<MemoryReadCols<T>, WordsFieldElement>,
+    pub x_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
+    pub y_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
+    pub modulus_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
 
     /// Columns for checking if modulus is zero. If it's zero, then use 2^256 as the effective
     /// modulus.
@@ -95,6 +93,13 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
 
     fn name(&self) -> String {
         "Uint256MulMod".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::UINT256_MUL).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(
@@ -136,14 +141,15 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
 
                         // Populate memory columns.
                         for i in 0..WORDS_FIELD_ELEMENT {
-                            cols.x_memory[i]
-                                .populate(event.x_memory_records[i], &mut new_byte_lookup_events);
-                            cols.y_memory[i]
-                                .populate(event.y_memory_records[i], &mut new_byte_lookup_events);
-                            cols.modulus_memory[i].populate(
-                                event.modulus_memory_records[i],
-                                &mut new_byte_lookup_events,
-                            );
+                            let x_memory_record =
+                                MemoryRecordEnum::Write(event.x_memory_records[i]);
+                            let y_memory_record = MemoryRecordEnum::Read(event.y_memory_records[i]);
+                            let modulus_memory_record =
+                                MemoryRecordEnum::Read(event.modulus_memory_records[i]);
+                            cols.x_memory[i].populate(x_memory_record, &mut new_byte_lookup_events);
+                            cols.y_memory[i].populate(y_memory_record, &mut new_byte_lookup_events);
+                            cols.modulus_memory[i]
+                                .populate(modulus_memory_record, &mut new_byte_lookup_events);
                         }
 
                         let modulus_bytes = words_to_bytes_le_vec(&event.modulus);
@@ -236,15 +242,21 @@ where
 
         // We are computing (x * y) % modulus. The value of x is stored in the "prev_value" of
         // the x_memory, since we write to it later.
-        let x_limbs = limbs_from_prev_access(&local.x_memory);
-        let y_limbs = limbs_from_access(&local.y_memory);
-        let modulus_limbs = limbs_from_access(&local.modulus_memory);
+        let x_limb_vec = builder.generate_limbs(&local.x_memory, local.is_real.into());
+        let x_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(x_limb_vec.try_into().expect("failed to convert limbs"));
+        let y_limb_vec = builder.generate_limbs(&local.y_memory, local.is_real.into());
+        let y_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(y_limb_vec.try_into().expect("failed to convert limbs"));
+        let modulus_limb_vec = builder.generate_limbs(&local.modulus_memory, local.is_real.into());
+        let modulus_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
 
         // If the modulus is zero, then we don't perform the modulus operation.
         // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
         // not overflow because we are summing 32 bytes.
         let modulus_byte_sum =
-            modulus_limbs.0.iter().fold(AB::Expr::zero(), |acc, &limb| acc + limb);
+            modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
         IsZeroOperation::<AB::F>::eval(
             builder,
             modulus_byte_sum,
@@ -258,10 +270,10 @@ where
         let mut coeff_2_256 = Vec::new();
         coeff_2_256.resize(32, AB::Expr::zero());
         coeff_2_256.push(AB::Expr::one());
-        let modulus_polynomial: Polynomial<AB::Expr> = modulus_limbs.into();
-        let p_modulus: Polynomial<AB::Expr> = modulus_polynomial *
-            (AB::Expr::one() - modulus_is_zero.into()) +
-            Polynomial::from_coefficients(&coeff_2_256) * modulus_is_zero.into();
+        let modulus_polynomial: Polynomial<AB::Expr> = modulus_limbs.clone().into();
+        let p_modulus: Polynomial<AB::Expr> = modulus_polynomial
+            * (AB::Expr::one() - modulus_is_zero.into())
+            + Polynomial::from_coefficients(&coeff_2_256) * modulus_is_zero.into();
 
         // Evaluate the uint256 multiplication
         local.output.eval_with_modulus(
@@ -278,7 +290,7 @@ where
         local.output_range_check.eval(
             builder,
             &local.output.result,
-            &modulus_limbs,
+            &modulus_limbs.clone(),
             local.modulus_is_not_zero,
         );
         builder.assert_eq(
@@ -286,27 +298,29 @@ where
             local.is_real * (AB::Expr::one() - modulus_is_zero.into()),
         );
 
-        // Assert that the correct result is being written to x_memory.
-        builder
-            .when(local.is_real)
-            .assert_all_eq(local.output.result, value_as_limbs(&local.x_memory));
+        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
 
         // Read and write x.
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into() + AB::Expr::one(),
             local.x_ptr,
-            &local.x_memory,
+            &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
             local.is_real,
         );
 
         // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
         // we read it contiguously from the y_ptr memory location.
-        builder.eval_memory_access_slice(
+        builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
             local.y_ptr,
-            &[local.y_memory, local.modulus_memory].concat(),
+            &[local.y_memory, local.modulus_memory]
+                .concat()
+                .iter()
+                .map(|access| access.memory_access)
+                .collect_vec(),
             local.is_real,
         );
 

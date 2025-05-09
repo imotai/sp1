@@ -3,7 +3,8 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
 };
-use sp1_stark::air::{BaseAirBuilder, Polynomial, SP1AirBuilder};
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
 use std::fmt::Debug;
 
 use num::BigUint;
@@ -45,8 +46,7 @@ impl<F: PrimeField32, P: FieldParameters> FieldLtCols<F, P> {
                 self.rhs_comparison_byte = F::from_canonical_u8(*modulus_byte);
                 record.add_byte_lookup_event(ByteLookupEvent {
                     opcode: ByteOpcode::LTU,
-                    a1: 1,
-                    a2: 0,
+                    a: 1,
                     b: *byte,
                     c: *modulus_byte,
                 });

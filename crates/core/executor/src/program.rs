@@ -60,6 +60,8 @@ impl Program {
         // Decode the bytes as an ELF.
         let elf = Elf::decode(input)?;
 
+        assert!(elf.pc_base != 0, "elf with pc_base == 0 is not supported");
+
         // Transpile the RV32IM instructions.
         let instructions = transpile(&elf.instructions);
 
@@ -114,13 +116,13 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
             .par_bridge()
             .map(|(&addr, &word)| {
                 let values = [
-                    (InteractionKind::Memory as u32) << 16,
+                    (InteractionKind::Memory as u32) << 24,
                     0,
                     addr,
-                    word & 255,
-                    (word >> 8) & 255,
-                    (word >> 16) & 255,
-                    (word >> 24) & 255,
+                    word & 0xFFFF,
+                    (word >> 16),
+                    0,
+                    0,
                 ];
                 let x_start =
                     SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values[i]));

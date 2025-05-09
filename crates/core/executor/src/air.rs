@@ -33,112 +33,150 @@ use subenum::subenum;
     Enum,
 )]
 pub enum RiscvAirId {
-    /// The CPU chip.
+    /// The cpu chip, which is a dummy for now, needed for shape loading.
     #[subenum(CoreAirId)]
     Cpu = 0,
     /// The program chip.
     Program = 1,
     /// The SHA-256 extend chip.
     ShaExtend = 2,
+    /// The sha extend control chip.
+    ShaExtendControl = 3,
     /// The SHA-256 compress chip.
-    ShaCompress = 3,
+    ShaCompress = 4,
+    /// The sha compress control chip.
+    ShaCompressControl = 5,
     /// The Edwards add assign chip.
-    EdAddAssign = 4,
+    EdAddAssign = 6,
     /// The Edwards decompress chip.
-    EdDecompress = 5,
+    EdDecompress = 7,
     /// The secp256k1 decompress chip.
-    Secp256k1Decompress = 6,
+    Secp256k1Decompress = 8,
     /// The secp256k1 add assign chip.
-    Secp256k1AddAssign = 7,
+    Secp256k1AddAssign = 9,
     /// The secp256k1 double assign chip.
-    Secp256k1DoubleAssign = 8,
+    Secp256k1DoubleAssign = 10,
     /// The secp256r1 decompress chip.
-    Secp256r1Decompress = 9,
+    Secp256r1Decompress = 11,
     /// The secp256r1 add assign chip.
-    Secp256r1AddAssign = 10,
+    Secp256r1AddAssign = 12,
     /// The secp256r1 double assign chip.
-    Secp256r1DoubleAssign = 11,
+    Secp256r1DoubleAssign = 13,
     /// The Keccak permute chip.
-    KeccakPermute = 12,
+    KeccakPermute = 14,
+    /// The keccak permute control chip.
+    KeccakPermuteControl = 15,
     /// The bn254 add assign chip.
-    Bn254AddAssign = 13,
+    Bn254AddAssign = 16,
     /// The bn254 double assign chip.
-    Bn254DoubleAssign = 14,
+    Bn254DoubleAssign = 17,
     /// The bls12-381 add assign chip.
-    Bls12381AddAssign = 15,
+    Bls12381AddAssign = 18,
     /// The bls12-381 double assign chip.
-    Bls12381DoubleAssign = 16,
+    Bls12381DoubleAssign = 19,
     /// The uint256 mul mod chip.
-    Uint256MulMod = 17,
+    Uint256MulMod = 20,
     /// The u256 xu2048 mul chip.
-    U256XU2048Mul = 18,
+    U256XU2048Mul = 21,
     /// The bls12-381 fp op assign chip.
-    Bls12381FpOpAssign = 19,
+    Bls12381FpOpAssign = 22,
     /// The bls12-831 fp2 add sub assign chip.
-    Bls12381Fp2AddSubAssign = 20,
+    Bls12381Fp2AddSubAssign = 23,
     /// The bls12-831 fp2 mul assign chip.
-    Bls12381Fp2MulAssign = 21,
+    Bls12381Fp2MulAssign = 24,
     /// The bn254 fp2 add sub assign chip.
-    Bn254FpOpAssign = 22,
+    Bn254FpOpAssign = 25,
     /// The bn254 fp op assign chip.
-    Bn254Fp2AddSubAssign = 23,
+    Bn254Fp2AddSubAssign = 26,
     /// The bn254 fp2 mul assign chip.
-    Bn254Fp2MulAssign = 24,
+    Bn254Fp2MulAssign = 27,
     /// The bls12-381 decompress chip.
-    Bls12381Decompress = 25,
+    Bls12381Decompress = 28,
     /// The syscall core chip.
     #[subenum(CoreAirId)]
-    SyscallCore = 26,
+    SyscallCore = 29,
     /// The syscall precompile chip.
-    SyscallPrecompile = 27,
+    SyscallPrecompile = 30,
     /// The div rem chip.
     #[subenum(CoreAirId)]
-    DivRem = 28,
-    /// The add sub chip.
+    DivRem = 31,
+    /// The add chip.
     #[subenum(CoreAirId)]
-    AddSub = 29,
+    Add = 32,
+    /// The addi chip.
+    #[subenum(CoreAirId)]
+    Addi = 33,
+    /// The sub chip.
+    #[subenum(CoreAirId)]
+    Sub = 34,
     /// The bitwise chip.
     #[subenum(CoreAirId)]
-    Bitwise = 30,
+    Bitwise = 35,
     /// The mul chip.
     #[subenum(CoreAirId)]
-    Mul = 31,
+    Mul = 36,
     /// The shift right chip.
     #[subenum(CoreAirId)]
-    ShiftRight = 32,
+    ShiftRight = 37,
     /// The shift left chip.
     #[subenum(CoreAirId)]
-    ShiftLeft = 33,
+    ShiftLeft = 38,
     /// The lt chip.
     #[subenum(CoreAirId)]
-    Lt = 34,
-    /// The memory instructions chip.
+    Lt = 39,
+    /// The load byte chip.
     #[subenum(CoreAirId)]
-    MemoryInstrs = 35,
+    LoadByte = 40,
+    /// The load half chip.
+    #[subenum(CoreAirId)]
+    LoadHalf = 41,
+    /// The load word chip.
+    #[subenum(CoreAirId)]
+    LoadWord = 42,
+    /// The load x0 chip.
+    #[subenum(CoreAirId)]
+    LoadX0 = 43,
+    /// The store byte chip.
+    #[subenum(CoreAirId)]
+    StoreByte = 44,
+    /// The store half chip.
+    #[subenum(CoreAirId)]
+    StoreHalf = 45,
+    /// The store word chip.
+    #[subenum(CoreAirId)]
+    StoreWord = 46,
     /// The auipc chip.
     #[subenum(CoreAirId)]
-    Auipc = 36,
+    Auipc = 47,
     /// The branch chip.
     #[subenum(CoreAirId)]
-    Branch = 37,
-    /// The jump chip.
+    Branch = 48,
+    /// The jal chip.
     #[subenum(CoreAirId)]
-    Jump = 38,
+    Jal = 49,
+    /// The jalr chip.
+    #[subenum(CoreAirId)]
+    Jalr = 50,
     /// The syscall instructions chip.
     #[subenum(CoreAirId)]
-    SyscallInstrs = 39,
+    SyscallInstrs = 51,
+    /// The memory bump chip.
+    #[subenum(CoreAirId)]
+    MemoryBump = 52,
     /// The memory global init chip.
-    MemoryGlobalInit = 40,
+    MemoryGlobalInit = 53,
     /// The memory global finalize chip.
-    MemoryGlobalFinalize = 41,
+    MemoryGlobalFinalize = 54,
     /// The memory local chip.
     #[subenum(CoreAirId)]
-    MemoryLocal = 42,
+    MemoryLocal = 55,
     /// The global chip.
     #[subenum(CoreAirId)]
-    Global = 43,
+    Global = 56,
     /// The byte chip.
-    Byte = 44,
+    Byte = 57,
+    /// The range chip.
+    Range = 58,
 }
 
 impl RiscvAirId {
@@ -146,8 +184,9 @@ impl RiscvAirId {
     #[must_use]
     pub fn core() -> Vec<RiscvAirId> {
         vec![
-            RiscvAirId::Cpu,
-            RiscvAirId::AddSub,
+            RiscvAirId::Add,
+            RiscvAirId::Addi,
+            RiscvAirId::Sub,
             RiscvAirId::Mul,
             RiscvAirId::Bitwise,
             RiscvAirId::ShiftLeft,
@@ -156,9 +195,17 @@ impl RiscvAirId {
             RiscvAirId::Lt,
             RiscvAirId::Auipc,
             RiscvAirId::MemoryLocal,
-            RiscvAirId::MemoryInstrs,
+            RiscvAirId::MemoryBump,
+            RiscvAirId::LoadByte,
+            RiscvAirId::LoadHalf,
+            RiscvAirId::LoadWord,
+            RiscvAirId::LoadX0,
+            RiscvAirId::StoreByte,
+            RiscvAirId::StoreHalf,
+            RiscvAirId::StoreWord,
             RiscvAirId::Branch,
-            RiscvAirId::Jump,
+            RiscvAirId::Jal,
+            RiscvAirId::Jalr,
             RiscvAirId::SyscallCore,
             RiscvAirId::SyscallInstrs,
             RiscvAirId::Global,
@@ -186,30 +233,30 @@ impl RiscvAirId {
     pub fn is_precompile(self) -> bool {
         matches!(
             self,
-            RiscvAirId::ShaExtend |
-                RiscvAirId::ShaCompress |
-                RiscvAirId::EdAddAssign |
-                RiscvAirId::EdDecompress |
-                RiscvAirId::Secp256k1Decompress |
-                RiscvAirId::Secp256k1AddAssign |
-                RiscvAirId::Secp256k1DoubleAssign |
-                RiscvAirId::Secp256r1Decompress |
-                RiscvAirId::Secp256r1AddAssign |
-                RiscvAirId::Secp256r1DoubleAssign |
-                RiscvAirId::KeccakPermute |
-                RiscvAirId::Bn254AddAssign |
-                RiscvAirId::Bn254DoubleAssign |
-                RiscvAirId::Bls12381AddAssign |
-                RiscvAirId::Bls12381DoubleAssign |
-                RiscvAirId::Uint256MulMod |
-                RiscvAirId::U256XU2048Mul |
-                RiscvAirId::Bls12381FpOpAssign |
-                RiscvAirId::Bls12381Fp2AddSubAssign |
-                RiscvAirId::Bls12381Fp2MulAssign |
-                RiscvAirId::Bn254FpOpAssign |
-                RiscvAirId::Bn254Fp2AddSubAssign |
-                RiscvAirId::Bn254Fp2MulAssign |
-                RiscvAirId::Bls12381Decompress
+            RiscvAirId::ShaExtend
+                | RiscvAirId::ShaCompress
+                | RiscvAirId::EdAddAssign
+                | RiscvAirId::EdDecompress
+                | RiscvAirId::Secp256k1Decompress
+                | RiscvAirId::Secp256k1AddAssign
+                | RiscvAirId::Secp256k1DoubleAssign
+                | RiscvAirId::Secp256r1Decompress
+                | RiscvAirId::Secp256r1AddAssign
+                | RiscvAirId::Secp256r1DoubleAssign
+                | RiscvAirId::KeccakPermute
+                | RiscvAirId::Bn254AddAssign
+                | RiscvAirId::Bn254DoubleAssign
+                | RiscvAirId::Bls12381AddAssign
+                | RiscvAirId::Bls12381DoubleAssign
+                | RiscvAirId::Uint256MulMod
+                | RiscvAirId::U256XU2048Mul
+                | RiscvAirId::Bls12381FpOpAssign
+                | RiscvAirId::Bls12381Fp2AddSubAssign
+                | RiscvAirId::Bls12381Fp2MulAssign
+                | RiscvAirId::Bn254FpOpAssign
+                | RiscvAirId::Bn254Fp2AddSubAssign
+                | RiscvAirId::Bn254Fp2MulAssign
+                | RiscvAirId::Bls12381Decompress
         )
     }
 
@@ -263,7 +310,10 @@ impl FromIterator<Shape<RiscvAirId>> for MaximalShapes {
             for (air, height) in shape {
                 if let Ok(core_air) = CoreAirId::try_from(air) {
                     maximal_shape[core_air] = height as u32;
-                } else if air != RiscvAirId::Program && air != RiscvAirId::Byte {
+                } else if air != RiscvAirId::Program
+                    && air != RiscvAirId::Byte
+                    && air != RiscvAirId::Range
+                {
                     tracing::warn!("Invalid core air: {air}");
                 }
             }

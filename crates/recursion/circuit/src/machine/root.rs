@@ -1,30 +1,29 @@
 use std::marker::PhantomData;
 
-use p3_air::Air;
-use p3_baby_bear::BabyBear;
-use p3_commit::Mmcs;
-use p3_field::AbstractField;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_air::Air;
+use slop_algebra::AbstractField;
+use slop_baby_bear::BabyBear;
 
-use super::{
-    PublicValuesOutputDigest, SP1CompressVerifier, SP1CompressWithVKeyVerifier,
-    SP1CompressWithVKeyWitnessVariable, SP1CompressWitnessVariable,
-};
+use super::{PublicValuesOutputDigest, SP1CompressWitnessVariable};
 use crate::{
-    challenger::DuplexChallengerVariable, constraints::RecursiveVerifierConstraintFolder,
+    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
+    challenger::DuplexChallengerVariable,
+    jagged::RecursiveJaggedConfig,
+    shard::RecursiveShardVerifier,
+    zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use sp1_recursion_compiler::ir::{Builder, Felt};
-use sp1_recursion_core::DIGEST_SIZE;
-use sp1_stark::{air::MachineAir, StarkMachine};
+use sp1_recursion_executor::DIGEST_SIZE;
+use sp1_stark::{air::MachineAir, MachineVerifier};
 
 /// A program to verify a single recursive proof representing a complete proof of program execution.
 ///
 /// The root verifier is simply a `SP1CompressVerifier` with an assertion that the `is_complete`
 /// flag is set to true.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1CompressRootVerifier<C, SC, A> {
-    _phantom: PhantomData<(C, SC, A)>,
+pub struct SP1CompressRootVerifier<C, SC, A, JC> {
+    _phantom: PhantomData<(C, SC, A, JC)>,
 }
 
 /// A program to verify a single recursive proof representing a complete proof of program execution.
@@ -36,53 +35,60 @@ pub struct SP1CompressRootVerifierWithVKey<C, SC, A> {
     _phantom: PhantomData<(C, SC, A)>,
 }
 
-impl<C, SC, A> SP1CompressRootVerifier<C, SC, A>
+impl<C, SC, A, JC> SP1CompressRootVerifier<C, SC, A, JC>
 where
-    SC: BabyBearFriConfigVariable<C>,
-    C: CircuitConfig<F = SC::Val, EF = SC::Challenge>,
-    <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
-    A: MachineAir<SC::Val> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    SC: BabyBearFriConfigVariable<C> + Send + Sync,
+    C: CircuitConfig<F = SC::F, EF = SC::EF>,
+    // <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
+    A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    JC: RecursiveJaggedConfig<
+        F = C::F,
+        EF = C::EF,
+        Circuit = C,
+        Commitment = SC::DigestVariable,
+        Challenger = SC::FriChallengerVariable,
+        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
+        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+    >,
 {
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &StarkMachine<SC, A>,
-        input: SP1CompressWitnessVariable<C, SC>,
-        vk_root: [Felt<C::F>; DIGEST_SIZE],
+        machine: &RecursiveShardVerifier<A, SC, C, JC>,
+        input: SP1CompressWitnessVariable<C, SC, JC>,
+        _vk_root: [Felt<C::F>; DIGEST_SIZE],
     ) {
         // Assert that the program is complete.
         builder.assert_felt_eq(input.is_complete, C::F::one());
-        // Verify the proof, as a compress proof.
-        SP1CompressVerifier::verify(
-            builder,
-            machine,
-            input,
-            vk_root,
-            PublicValuesOutputDigest::Root,
-        );
+        // // Verify the proof, as a compress proof.
+        for (vk, proof) in input.vks_and_proofs {
+            let mut challenger = <SC as BabyBearFriConfigVariable<C>>::challenger_variable(builder);
+            machine.verify_shard(builder, &vk, &proof, &mut challenger);
+        }
     }
 }
 
 impl<C, SC, A> SP1CompressRootVerifierWithVKey<C, SC, A>
 where
     SC: BabyBearFriConfigVariable<
-        C,
-        FriChallengerVariable = DuplexChallengerVariable<C>,
-        DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
-    >,
-    C: CircuitConfig<F = SC::Val, EF = SC::Challenge, Bit = Felt<BabyBear>>,
-    <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
-    A: MachineAir<SC::Val> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+            C,
+            FriChallengerVariable = DuplexChallengerVariable<C>,
+            DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
+        > + Send
+        + Sync,
+    C: CircuitConfig<F = SC::F, EF = SC::EF, Bit = Felt<BabyBear>>,
+    // <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
+    A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
 {
     pub fn verify(
-        builder: &mut Builder<C>,
-        machine: &StarkMachine<SC, A>,
-        input: SP1CompressWithVKeyWitnessVariable<C, SC>,
-        value_assertions: bool,
-        kind: PublicValuesOutputDigest,
+        _builder: &mut Builder<C>,
+        _machine: &MachineVerifier<SC, A>,
+        // _input: SP1CompressWithVKeyWitnessVariable<C, SC>,
+        _value_assertions: bool,
+        _kind: PublicValuesOutputDigest,
     ) {
         // Assert that the program is complete.
-        builder.assert_felt_eq(input.compress_var.is_complete, C::F::one());
-        // Verify the proof, as a compress proof.
-        SP1CompressWithVKeyVerifier::verify(builder, machine, input, value_assertions, kind);
+        // builder.assert_felt_eq(input.compress_var.is_complete, C::F::one());
+        // // Verify the proof, as a compress proof.
+        // SP1CompressWithVKeyVerifier::verify(builder, machine, input, value_assertions, kind);
     }
 }

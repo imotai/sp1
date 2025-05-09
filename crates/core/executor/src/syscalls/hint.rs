@@ -9,8 +9,6 @@ pub(crate) fn hint_len_syscall<E: ExecutorConfig>(
     _: u32,
     _: u32,
 ) -> Option<u32> {
-    panic_if_input_exhausted(ctx);
-
     // Note: If the user supplies an input > than length 2^32, then the length returned will be
     // truncated to 32-bits. Reading from the syscall will definitely fail in that case, as the
     // BabyBear field is < 2^32.

@@ -3,25 +3,22 @@ mod logger;
 mod prove;
 mod span;
 mod test;
-pub mod uni_stark;
+mod zerocheck_unit_test;
 
 pub use logger::*;
-use p3_field::Field;
+use p3_field::{AbstractField, Field};
 pub use prove::*;
-use sp1_curves::params::Limbs;
 pub use span::*;
 pub use test::*;
-pub use uni_stark::*;
+pub use zerocheck_unit_test::*;
 
-use crate::memory::MemoryCols;
-
-use generic_array::ArrayLength;
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-
+use sp1_primitives::consts::WORD_BYTE_SIZE;
 pub use sp1_primitives::consts::{
     bytes_to_words_le, bytes_to_words_le_vec, num_to_comma_separated, words_to_bytes_le,
     words_to_bytes_le_vec,
 };
+use sp1_stark::{air::SP1AirBuilder, Word};
 
 pub const fn indices_arr<const N: usize>() -> [usize; N] {
     let mut indices_arr = [0; N];
@@ -33,29 +30,22 @@ pub const fn indices_arr<const N: usize>() -> [usize; N] {
     indices_arr
 }
 
-pub fn pad_to_power_of_two<const N: usize, T: Clone + Default>(values: &mut Vec<T>) {
-    debug_assert!(values.len() % N == 0);
-    let mut n_real_rows = values.len() / N;
-    if n_real_rows < 16 {
-        n_real_rows = 16;
-    }
-    values.resize(n_real_rows.next_power_of_two() * N, T::default());
-}
+// pub fn pad_to_power_of_two<const N: usize, T: Clone + Default>(values: &mut Vec<T>) {
+//     debug_assert!(values.len() % N == 0);
+//     let mut n_real_rows = values.len() / N;
+//     if n_real_rows < 16 {
+//         n_real_rows = 16;
+//     }
+//     values.resize(n_real_rows.next_power_of_two() * N, T::default());
+// }
 
-pub fn limbs_from_prev_access<T: Copy, N: ArrayLength, M: MemoryCols<T>>(
-    cols: &[M],
-) -> Limbs<T, N> {
-    let vec = cols.iter().flat_map(|access| access.prev_value().0).collect::<Vec<T>>();
-
-    let sized = vec.try_into().unwrap_or_else(|_| panic!("failed to convert to limbs"));
-    Limbs(sized)
-}
-
-pub fn limbs_from_access<T: Copy, N: ArrayLength, M: MemoryCols<T>>(cols: &[M]) -> Limbs<T, N> {
-    let vec = cols.iter().flat_map(|access| access.value().0).collect::<Vec<T>>();
-
-    let sized = vec.try_into().unwrap_or_else(|_| panic!("failed to convert to limbs"));
-    Limbs(sized)
+pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Expr>> {
+    let base = AB::Expr::from_canonical_u32(1 << 8);
+    let result_words: Vec<Word<AB::Expr>> = limbs
+        .chunks(WORD_BYTE_SIZE)
+        .map(|l| Word([l[0] + l[1] * base.clone(), l[2] + l[3] * base.clone()]))
+        .collect();
+    result_words
 }
 
 /// Pad to a power of two, with an option to specify the power.
@@ -71,29 +61,23 @@ pub fn pad_rows_fixed<R: Clone>(
 ) {
     let nb_rows = rows.len();
     let dummy_row = row_fn();
-    rows.resize(next_power_of_two(nb_rows, size_log2), dummy_row);
+    rows.resize(next_multiple_of_32(nb_rows, size_log2), dummy_row);
 }
 
-/// Returns the next power of two that is >= `n` and >= 16. If `fixed_power` is set, it will return
-/// `2^fixed_power` after checking that `n <= 2^fixed_power`.
-pub fn next_power_of_two(n: usize, fixed_power: Option<usize>) -> usize {
-    match fixed_power {
-        Some(power) => {
-            let padded_nb_rows = 1 << power;
-            if n * 2 < padded_nb_rows {
-                tracing::debug!(
-                    "fixed log2 rows can be potentially reduced: got {}, expected {}",
-                    n,
-                    padded_nb_rows
-                );
+/// Returns the internal value of the option if it is set, otherwise returns the next multiple of
+/// 32.
+#[track_caller]
+#[inline]
+pub fn next_multiple_of_32(n: usize, fixed_height: Option<usize>) -> usize {
+    match fixed_height {
+        Some(height) => {
+            if n > height {
+                panic!("fixed height is too small: got height {} for number of rows {}", height, n);
             }
-            if n > padded_nb_rows {
-                panic!("fixed log2 rows is too small: got {}, expected {}", n, padded_nb_rows);
-            }
-            padded_nb_rows
+            height
         }
         None => {
-            let mut padded_nb_rows = n.next_power_of_two();
+            let mut padded_nb_rows = n.next_multiple_of(32);
             if padded_nb_rows < 16 {
                 padded_nb_rows = 16;
             }

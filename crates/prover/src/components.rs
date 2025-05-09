@@ -1,35 +1,60 @@
+use slop_baby_bear::BabyBear;
+use slop_jagged::{JaggedConfig, Poseidon2BabyBearJaggedCpuProverComponents};
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_stark::{CpuProver, MachineProver, StarkGenericConfig};
+use sp1_recursion_circuit::machine::InnerVal;
+use sp1_stark::{
+    prover::{CpuProverComponents, MachineProverComponents},
+    MachineVerifier,
+};
 
-use crate::{CompressAir, CoreSC, InnerSC, OuterSC, ShrinkAir, WrapAir};
+use crate::{
+    core::CoreProverComponents, recursion::RecursionProverComponents, CompressAir, CoreSC, InnerSC,
+    ShrinkAir,
+};
 
-pub trait SP1ProverComponents: Send + Sync {
+pub struct SP1Config {}
+
+pub trait SP1ProverComponents: Send + Sync + 'static {
     /// The prover for making SP1 core proofs.
-    type CoreProver: MachineProver<CoreSC, RiscvAir<<CoreSC as StarkGenericConfig>::Val>>
-        + Send
-        + Sync;
-
+    type CoreComponents: CoreProverComponents;
     /// The prover for making SP1 recursive proofs.
-    type CompressProver: MachineProver<InnerSC, CompressAir<<InnerSC as StarkGenericConfig>::Val>>
-        + Send
-        + Sync;
+    type RecursionComponents: RecursionProverComponents;
 
     /// The prover for shrinking compressed proofs.
-    type ShrinkProver: MachineProver<InnerSC, ShrinkAir<<InnerSC as StarkGenericConfig>::Val>>
-        + Send
-        + Sync;
+    type ShrinkProverComponents: MachineProverComponents<
+        Config = InnerSC,
+        Air = ShrinkAir<<InnerSC as JaggedConfig>::F>,
+    >;
 
-    /// The prover for wrapping compressed proofs into SNARK-friendly field elements.
-    type WrapProver: MachineProver<OuterSC, WrapAir<<OuterSC as StarkGenericConfig>::Val>>
-        + Send
-        + Sync;
+    fn core_verifier() -> MachineVerifier<CoreSC, RiscvAir<BabyBear>> {
+        <Self::CoreComponents as CoreProverComponents>::verifier()
+    }
+
+    fn recursion_verifier() -> MachineVerifier<InnerSC, CompressAir<InnerVal>> {
+        <Self::RecursionComponents as RecursionProverComponents>::verifier()
+    }
+
+    // /// The prover for wrapping compressed proofs into SNARK-friendly field elements.
+    // type WrapProver: MachineProver<OuterSC, WrapAir<<OuterSC as StarkGenericConfig>::Val>>
+    //     + Send
+    //     + Sync;
 }
 
-pub struct CpuProverComponents;
+// ShardProver<CpuProverComponents<JaggedBasefoldProverComponents<Poseidon2BabyBear16BasefoldCpuProverComponents, HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>, JaggedEvalSumcheckProver<BabyBear>>, RiscvAir<BabyBear>>>
 
-impl SP1ProverComponents for CpuProverComponents {
-    type CoreProver = CpuProver<CoreSC, RiscvAir<<CoreSC as StarkGenericConfig>::Val>>;
-    type CompressProver = CpuProver<InnerSC, CompressAir<<InnerSC as StarkGenericConfig>::Val>>;
-    type ShrinkProver = CpuProver<InnerSC, ShrinkAir<<InnerSC as StarkGenericConfig>::Val>>;
-    type WrapProver = CpuProver<OuterSC, WrapAir<<OuterSC as StarkGenericConfig>::Val>>;
+pub struct CpuSP1ProverComponents;
+
+impl SP1ProverComponents for CpuSP1ProverComponents {
+    type CoreComponents = CpuProverComponents<
+        Poseidon2BabyBearJaggedCpuProverComponents,
+        RiscvAir<<CoreSC as JaggedConfig>::F>,
+    >;
+    type RecursionComponents = CpuProverComponents<
+        Poseidon2BabyBearJaggedCpuProverComponents,
+        CompressAir<<InnerSC as JaggedConfig>::F>,
+    >;
+    type ShrinkProverComponents = CpuProverComponents<
+        Poseidon2BabyBearJaggedCpuProverComponents,
+        ShrinkAir<<InnerSC as JaggedConfig>::F>,
+    >;
 }

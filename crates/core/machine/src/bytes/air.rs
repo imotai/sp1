@@ -28,7 +28,7 @@ impl<AB: SP1AirBuilder + PairBuilder> Air<AB> for ByteChip<AB::F> {
         let local: &BytePreprocessedCols<AB::Var> = (*prep).borrow();
 
         // Send all the lookups for each operation.
-        for (i, opcode) in ByteOpcode::all().iter().enumerate() {
+        for (i, opcode) in ByteOpcode::byte_table().iter().enumerate() {
             let field_op = opcode.as_field::<AB::F>();
             let mult = local_mult.multiplicities[i];
             match opcode {
@@ -39,33 +39,16 @@ impl<AB: SP1AirBuilder + PairBuilder> Air<AB> for ByteChip<AB::F> {
                 ByteOpcode::XOR => {
                     builder.receive_byte(field_op, local.xor, local.b, local.c, mult)
                 }
-                ByteOpcode::SLL => {
-                    builder.receive_byte(field_op, local.sll, local.b, local.c, mult)
-                }
                 ByteOpcode::U8Range => {
                     builder.receive_byte(field_op, AB::F::zero(), local.b, local.c, mult)
                 }
-                ByteOpcode::ShrCarry => builder.receive_byte_pair(
-                    field_op,
-                    local.shr,
-                    local.shr_carry,
-                    local.b,
-                    local.c,
-                    mult,
-                ),
                 ByteOpcode::LTU => {
                     builder.receive_byte(field_op, local.ltu, local.b, local.c, mult)
                 }
                 ByteOpcode::MSB => {
                     builder.receive_byte(field_op, local.msb, local.b, AB::F::zero(), mult)
                 }
-                ByteOpcode::U16Range => builder.receive_byte(
-                    field_op,
-                    local.value_u16,
-                    AB::F::zero(),
-                    AB::F::zero(),
-                    mult,
-                ),
+                _ => panic!("invalid opcode found in byte table"),
             }
         }
     }

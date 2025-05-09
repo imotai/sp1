@@ -52,7 +52,7 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
     }
 
     // Push the SHA extend event.
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = PrecompileEvent::ShaExtend(ShaExtendEvent {
         shard,
         clk: clk_init,
@@ -65,7 +65,7 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
         local_mem_access: rt.postprocess(),
     });
     let syscall_event =
-        rt.rt.syscall_event(clk_init, None, None, syscall_code, arg1, arg2, rt.next_pc);
+        rt.rt.syscall_event(clk_init, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, event);
 
     None

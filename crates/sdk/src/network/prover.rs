@@ -3,7 +3,10 @@
 //! This module provides an implementation of the [`crate::Prover`] trait that can generate proofs
 //! on a remote RPC server.
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use super::prove::NetworkProveBuilder;
 use crate::{
@@ -25,11 +28,12 @@ use alloy_primitives::{Address, B256};
 use anyhow::{Context, Result};
 use sp1_core_executor::{SP1Context, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{components::CpuProverComponents, HashableKey, SP1Prover, SP1_CIRCUIT_VERSION};
+use sp1_prover::{
+    components::CpuSP1ProverComponents, local::LocalProver, HashableKey, SP1_CIRCUIT_VERSION,
+};
 
 use crate::network::tee::client::Client as TeeClient;
 
-use crate::utils::block_on;
 use tokio::time::sleep;
 
 /// An implementation of [`crate::ProverClient`] that can generate proofs on a remote RPC server.
@@ -83,9 +87,10 @@ impl NetworkProver {
     /// let client = ProverClient::builder().cpu().build();
     /// let (public_values, execution_report) = client.execute(elf, &stdin).run().unwrap();
     /// ```
+    #[must_use]
     pub fn execute<'a>(&'a self, elf: &'a [u8], stdin: &SP1Stdin) -> CpuExecuteBuilder<'a> {
         CpuExecuteBuilder {
-            prover: self.prover.inner(),
+            prover: self.prover.prover.clone(),
             elf,
             stdin: stdin.clone(),
             context_builder: SP1ContextBuilder::default(),
@@ -106,19 +111,16 @@ impl NetworkProver {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).run();
     /// ```
-    pub fn prove<'a>(
-        &'a self,
-        pk: &'a SP1ProvingKey,
-        stdin: &'a SP1Stdin,
-    ) -> NetworkProveBuilder<'a> {
+    #[must_use]
+    pub fn prove(&self, pk: SP1ProvingKey, stdin: SP1Stdin) -> NetworkProveBuilder {
         NetworkProveBuilder {
             prover: self,
             mode: SP1ProofMode::Core,
             pk,
-            stdin: stdin.clone(),
+            stdin,
             timeout: None,
             strategy: FulfillmentStrategy::Hosted,
             skip_simulation: false,
@@ -143,7 +145,7 @@ impl NetworkProver {
     ///
     /// let elf = &[1, 2, 3];
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
+    /// let (pk, vk) = client.setup(elf).await;
     ///
     /// let vk_hash = client.register_program(&vk, elf);
     /// ```
@@ -260,12 +262,12 @@ impl NetworkProver {
 
         // Log the request.
         tracing::info!("Requesting proof:");
-        tracing::info!("├─ Cycle limit: {}", cycle_limit);
-        tracing::info!("├─ Gas limit: {}", gas_limit);
-        tracing::info!("├─ Proof mode: {:?}", mode);
-        tracing::info!("├─ Strategy: {:?}", strategy);
-        tracing::info!("├─ Timeout: {} seconds", timeout_secs);
-        tracing::info!("└─ Circuit version: {}", SP1_CIRCUIT_VERSION);
+        tracing::info!("├─ Cycle limit: {cycle_limit}");
+        tracing::info!("├─ Gas limit: {gas_limit}");
+        tracing::info!("├─ Proof mode: {mode:?}");
+        tracing::info!("├─ Strategy: {strategy:?}");
+        tracing::info!("├─ Timeout: {timeout_secs} seconds");
+        tracing::info!("└─ Circuit version: {SP1_CIRCUIT_VERSION}");
 
         // Request the proof.
         let response = self
@@ -285,12 +287,11 @@ impl NetworkProver {
         // Log the request ID and transaction hash.
         let tx_hash = B256::from_slice(&response.tx_hash);
         let request_id = B256::from_slice(&response.body.unwrap().request_id);
-        tracing::info!("Created request {} in transaction {:?}", request_id, tx_hash);
+        tracing::info!("Created request {request_id} in transaction {tx_hash}");
 
         if self.client.rpc_url == DEFAULT_NETWORK_RPC_URL {
             tracing::info!(
-                "View request status at: https://network.succinct.xyz/request/{}",
-                request_id
+                "View request status at: https://network.succinct.xyz/request/{request_id}"
             );
         }
 
@@ -359,8 +360,8 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn prove_impl(
         &self,
-        pk: &SP1ProvingKey,
-        stdin: &SP1Stdin,
+        pk: SP1ProvingKey,
+        stdin: SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
         timeout: Option<Duration>,
@@ -371,8 +372,8 @@ impl NetworkProver {
     ) -> Result<SP1ProofWithPublicValues> {
         let request_id = self
             .request_proof_impl(
-                pk,
-                stdin,
+                &pk,
+                &stdin,
                 mode,
                 strategy,
                 timeout,
@@ -485,22 +486,22 @@ impl NetworkProver {
     }
 }
 
-impl Prover<CpuProverComponents> for NetworkProver {
-    fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
-        self.prover.setup(elf)
+impl Prover<CpuSP1ProverComponents> for NetworkProver {
+    async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
+        self.prover.setup(elf).await
     }
 
-    fn inner(&self) -> &SP1Prover {
-        self.prover.inner()
+    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+        self.prover.prover.clone()
     }
 
-    fn prove(
+    async fn prove(
         &self,
-        pk: &SP1ProvingKey,
-        stdin: &SP1Stdin,
+        pk: SP1ProvingKey,
+        stdin: SP1Stdin,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues> {
-        block_on(self.prove_impl(
+        self.prove_impl(
             pk,
             stdin,
             mode,
@@ -510,7 +511,8 @@ impl Prover<CpuProverComponents> for NetworkProver {
             None,
             None,
             false,
-        ))
+        )
+        .await
     }
 
     fn verify(
@@ -560,7 +562,7 @@ impl Prover<CpuProverComponents> for NetworkProver {
 
             // Verify the proof.
             if self.tee_signers.contains(&address) {
-                verify_proof(self.prover.inner(), self.version(), bundle, vkey)
+                verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
             } else {
                 Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
                     "Invalid TEE proof, signed by unknown address {}",
@@ -568,7 +570,7 @@ impl Prover<CpuProverComponents> for NetworkProver {
                 )))
             }
         } else {
-            verify_proof(self.prover.inner(), self.version(), bundle, vkey)
+            verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
         }
     }
 }

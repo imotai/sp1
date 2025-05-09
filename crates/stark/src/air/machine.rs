@@ -1,6 +1,6 @@
-use p3_air::BaseAir;
-use p3_field::Field;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_air::BaseAir;
+use slop_algebra::Field;
+use slop_matrix::dense::RowMajorMatrix;
 
 use crate::{septic_digest::SepticDigest, MachineRecord};
 
@@ -29,7 +29,9 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
     /// A unique identifier for this AIR as part of a machine.
     fn name(&self) -> String;
 
-    /// The number of rows in the trace
+    /// The number of rows in the trace, if the chip is included.
+    ///
+    /// **Warning**:: if the chip is not included, `num_rows` is allowed to return anything.
     fn num_rows(&self, _input: &Self::Record) -> Option<usize> {
         None
     }

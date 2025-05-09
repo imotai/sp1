@@ -1,11 +1,9 @@
-use p3_baby_bear::BabyBear;
-use p3_bn254_fr::Bn254Fr;
-use p3_field::{AbstractField, PrimeField32};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
 
 use sp1_recursion_compiler::ir::{Builder, Config, Felt, Var};
-use sp1_recursion_core::DIGEST_SIZE;
-
-use sp1_stark::Word;
+use sp1_recursion_executor::DIGEST_SIZE;
 
 /// Convert 8 BabyBear words into a Bn254Fr field element by shifting by 31 bits each time. The last
 /// word becomes the least significant bits.
@@ -84,73 +82,6 @@ pub fn felt_bytes_to_bn254_var<C: Config>(
 }
 
 #[allow(dead_code)]
-pub fn words_to_bytes<T: Copy>(words: &[Word<T>]) -> Vec<T> {
-    words.iter().flat_map(|w| w.0).collect::<Vec<_>>()
-}
-
-#[cfg(test)]
-pub(crate) mod tests {
-    use std::sync::Arc;
-
-    use sp1_core_machine::utils::{run_test_machine_with_prover, setup_logger};
-    use sp1_recursion_compiler::circuit::{AsmCompiler, AsmConfig};
-
-    use sp1_recursion_compiler::ir::DslIrBlock;
-    use sp1_recursion_core::{machine::RecursionAir, Runtime};
-    use sp1_stark::{
-        baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, InnerChallenge, InnerVal, MachineProver,
-    };
-
-    use crate::witness::WitnessBlock;
-
-    type SC = BabyBearPoseidon2;
-    type F = InnerVal;
-    type EF = InnerChallenge;
-
-    /// A simplified version of some code from `recursion/core/src/stark/mod.rs`.
-    /// Takes in a program and runs it with the given witness and generates a proof with a variety
-    /// of machines depending on the provided test_config.
-    pub(crate) fn run_test_recursion_with_prover<P: MachineProver<SC, RecursionAir<F, 3>>>(
-        block: DslIrBlock<AsmConfig<F, EF>>,
-        witness_stream: impl IntoIterator<Item = WitnessBlock<AsmConfig<F, EF>>>,
-    ) {
-        setup_logger();
-
-        let compile_span = tracing::debug_span!("compile").entered();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
-        let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        compile_span.exit();
-
-        let config = SC::default();
-
-        let run_span = tracing::debug_span!("run the recursive program").entered();
-        let mut runtime = Runtime::<F, EF, _>::new(program.clone(), config.perm.clone());
-        runtime.witness_stream.extend(witness_stream);
-        tracing::debug_span!("run").in_scope(|| runtime.run().unwrap());
-        assert!(runtime.witness_stream.is_empty());
-        run_span.exit();
-
-        let records = vec![runtime.record];
-
-        // Run with the poseidon2 wide chip.
-        let proof_wide_span = tracing::debug_span!("Run test with wide machine").entered();
-        let wide_machine = RecursionAir::<_, 3>::compress_machine(SC::default());
-        let (pk, vk) = wide_machine.setup(&program);
-        let prover = P::new(wide_machine);
-        let pk = prover.pk_to_device(&pk);
-        let result = run_test_machine_with_prover::<_, _, P>(&prover, records.clone(), pk, vk);
-        proof_wide_span.exit();
-
-        if let Err(e) = result {
-            panic!("Verification failed: {:?}", e);
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn run_test_recursion(
-        block: DslIrBlock<AsmConfig<F, EF>>,
-        witness_stream: impl IntoIterator<Item = WitnessBlock<AsmConfig<F, EF>>>,
-    ) {
-        run_test_recursion_with_prover::<CpuProver<_, _>>(block, witness_stream)
-    }
+pub fn words_to_bytes<T: Copy>(words: &[[T; 4]]) -> Vec<T> {
+    words.iter().flat_map(|w| w.iter()).copied().collect::<Vec<_>>()
 }

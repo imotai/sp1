@@ -23,7 +23,7 @@ use std::borrow::BorrowMut;
 
 use crate::{
     operations::{GlobalAccumulationOperation, GlobalInteractionOperation},
-    utils::{indices_arr, next_power_of_two, zeroed_f_vec},
+    utils::{indices_arr, next_multiple_of_32, zeroed_f_vec},
 };
 use sp1_derive::AlignedBorrow;
 
@@ -39,7 +39,7 @@ const GLOBAL_COL_MAP: GlobalCols<usize> = make_col_map();
 
 pub const GLOBAL_INITIAL_DIGEST_POS: usize = GLOBAL_COL_MAP.accumulation.initial_digest[0].0[0];
 
-pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 377;
+pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 380;
 
 #[repr(C)]
 pub struct Ghost {
@@ -54,11 +54,14 @@ pub struct GlobalChip;
 pub struct GlobalCols<T: Copy> {
     pub message: [T; 7],
     pub kind: T,
+    pub shard_16bit_limb: T,
+    pub shard_8bit_limb: T,
     pub interaction: GlobalInteractionOperation<T>,
     pub is_receive: T,
     pub is_send: T,
     pub is_real: T,
-    pub accumulation: GlobalAccumulationOperation<T, 1>,
+    pub index: T,
+    pub accumulation: GlobalAccumulationOperation<T>,
 }
 
 impl<F: PrimeField32> MachineAir<F> for GlobalChip {
@@ -82,24 +85,29 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
             .map(|events| {
                 let mut blu: Vec<ByteLookupEvent> = Vec::new();
                 events.iter().for_each(|event| {
-                    blu.add_u16_range_check(event.message[0].try_into().unwrap());
+                    let message0_16bit_limb = (event.message[0] & 0xffff) as u16;
+                    let message0_8bit_limb = ((event.message[0] >> 16) & 0xff) as u8;
+                    blu.add_u16_range_check(message0_16bit_limb);
+                    blu.add_u8_range_check(0, message0_8bit_limb);
                 });
                 blu
             })
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events(blu_batches.into_iter().flatten().collect());
+        output.public_values.global_count = events.len() as u32;
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let events = &input.global_interaction_events;
         let nb_rows = events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {
+    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
         let events = &input.global_interaction_events;
 
         let nb_rows = events.len();
@@ -125,6 +133,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     let event: &GlobalInteractionEvent = &events[idx];
                     cols.message = event.message.map(F::from_canonical_u32);
                     cols.kind = F::from_canonical_u8(event.kind);
+                    cols.index = F::from_canonical_u32(idx as u32);
                     cols.interaction.populate(
                         SepticBlock(event.message),
                         event.is_receive,
@@ -137,6 +146,10 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     } else {
                         cols.is_send = F::one();
                     }
+                    cols.shard_16bit_limb =
+                        F::from_canonical_u16((event.message[0] & 0xffff) as u16);
+                    cols.shard_8bit_limb =
+                        F::from_canonical_u8(((event.message[0] >> 16) & 0xff) as u8);
                     point_chunks.push(SepticCurveComplete::Affine(SepticCurve {
                         x: SepticExtension(cols.interaction.x_coordinate.0),
                         y: SepticExtension(cols.interaction.y_coordinate.0),
@@ -157,6 +170,11 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
             Some(digest) => digest.point(),
             None => SepticCurve::<F>::dummy(),
         };
+
+        let mut global_sum = input.global_cumulative_sum.lock().unwrap();
+        *global_sum = SepticDigest(SepticCurve::convert(final_digest, |x| F::as_canonical_u32(&x)));
+
+        output.global_interaction_event_count = nb_rows as u32;
         let dummy = SepticCurve::<F>::dummy();
         let final_sum_checker = SepticCurve::<F>::sum_checker_x(final_digest, dummy, final_digest);
 
@@ -206,8 +224,6 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &GlobalCols<AB::Var> = (*local).borrow();
-        let next = main.row_slice(1);
-        let next: &GlobalCols<AB::Var> = (*next).borrow();
 
         // Receive the arguments, which consists of 7 message columns, `is_send`, `is_receive`, and
         // `kind`. In MemoryGlobal, MemoryLocal, Syscall chips, `is_send`, `is_receive`,
@@ -247,16 +263,16 @@ where
             local.is_send.into(),
             local.is_real,
             local.kind,
+            [local.shard_16bit_limb, local.shard_8bit_limb],
         );
 
         // Evaluate the accumulation.
-        GlobalAccumulationOperation::<AB::F, 1>::eval_accumulation(
+        GlobalAccumulationOperation::<AB::F>::eval_accumulation(
             builder,
-            [local.interaction],
-            [local.is_real],
-            [next.is_real],
+            local.interaction,
+            local.is_real,
+            local.index,
             local.accumulation,
-            next.accumulation,
         );
     }
 }
@@ -265,17 +281,19 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
+    use std::sync::Arc;
+
     use super::*;
     use crate::programs::tests::*;
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{ExecutionRecord, Executor, Trace};
-    use sp1_stark::{air::MachineAir, SP1CoreOpts};
+    use sp1_core_executor::{ExecutionRecord, Executor, SP1CoreOpts, Trace};
+    use sp1_stark::air::MachineAir;
 
     #[test]
     fn test_global_generate_trace() {
         let program = simple_program();
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
         runtime.run::<Trace>().unwrap();
         let shard = runtime.records[0].clone();
 

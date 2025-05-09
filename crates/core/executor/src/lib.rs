@@ -23,7 +23,6 @@
 mod air;
 mod context;
 mod cost;
-mod dependencies;
 mod disassembler;
 pub mod estimator;
 pub mod events;
@@ -33,6 +32,7 @@ mod instruction;
 mod io;
 mod memory;
 mod opcode;
+mod opts;
 #[cfg(feature = "profiling")]
 mod profiler;
 mod program;
@@ -40,6 +40,7 @@ mod record;
 mod reduce;
 mod register;
 mod report;
+mod retain;
 mod state;
 pub mod subproof;
 pub mod syscalls;
@@ -52,15 +53,17 @@ pub use executor::*;
 pub use hook::*;
 pub use instruction::*;
 pub use opcode::*;
+pub use opts::*;
 pub use program::*;
 pub use record::*;
 pub use reduce::*;
 pub use register::*;
 pub use report::*;
+pub use retain::*;
 pub use state::*;
 pub use utils::*;
 
-/// Used for testing.
+/// A module for testing programs.
 #[cfg(test)]
 pub mod programs {
     #[allow(dead_code)]

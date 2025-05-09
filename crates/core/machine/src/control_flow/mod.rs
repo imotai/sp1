@@ -1,7 +1,9 @@
 mod auipc;
 mod branch;
-mod jump;
+mod jal;
+mod jalr;
 
 pub use auipc::*;
 pub use branch::*;
-pub use jump::*;
+pub use jal::*;
+pub use jalr::*;

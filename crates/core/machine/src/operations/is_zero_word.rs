@@ -14,19 +14,11 @@ use super::IsZeroOperation;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct IsZeroWordOperation<T> {
-    /// `IsZeroOperation` to check if each byte in the input word is zero.
-    pub is_zero_byte: [IsZeroOperation<T>; WORD_SIZE],
+    /// `IsZeroOperation` to check if each limb in the input word is zero.
+    pub is_zero_limb: [IsZeroOperation<T>; WORD_SIZE],
 
-    /// A boolean flag indicating whether the lower word (the bottom 16 bits of the input) is 0.
-    /// This equals `is_zero_byte[0] * is_zero_byte[1]`.
-    pub is_lower_half_zero: T,
-
-    /// A boolean flag indicating whether the upper word (the top 16 bits of the input) is 0. This
-    /// equals `is_zero_byte[2] * is_zero_byte[3]`.
-    pub is_upper_half_zero: T,
-
-    /// A boolean flag indicating whether the word is zero. This equals `is_zero_byte[0] * ... *
-    /// is_zero_byte[WORD_SIZE - 1]`.
+    /// A boolean flag indicating whether the word is zero. This equals `is_zero_limb[0] * ... *
+    /// is_zero_limb[WORD_SIZE - 1]`.
     pub result: T,
 }
 
@@ -38,46 +30,35 @@ impl<F: Field> IsZeroWordOperation<F> {
     pub fn populate_from_field_element(&mut self, a: Word<F>) -> u32 {
         let mut is_zero = true;
         for i in 0..WORD_SIZE {
-            is_zero &= self.is_zero_byte[i].populate_from_field_element(a[i]) == 1;
+            is_zero &= self.is_zero_limb[i].populate_from_field_element(a[i]) == 1;
         }
-        self.is_lower_half_zero = self.is_zero_byte[0].result * self.is_zero_byte[1].result;
-        self.is_upper_half_zero = self.is_zero_byte[2].result * self.is_zero_byte[3].result;
         self.result = F::from_bool(is_zero);
         is_zero as u32
     }
 
+    /// Evaluate the `IsZeroWordOperation` on the given inputs.
+    /// Constrains that `is_real` is boolean.
+    /// If `is_real` is true, it constrains that the result is `a == 0`.
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
         a: Word<AB::Expr>,
         cols: IsZeroWordOperation<AB::Var>,
         is_real: AB::Expr,
     ) {
-        // Calculate whether each byte is 0.
+        // Calculate whether each limb is 0.
         for i in 0..WORD_SIZE {
             IsZeroOperation::<AB::F>::eval(
                 builder,
                 a[i].clone(),
-                cols.is_zero_byte[i],
+                cols.is_zero_limb[i],
                 is_real.clone(),
             );
         }
 
-        // From here, we only assert when is_real is true.
         builder.assert_bool(is_real.clone());
-        let mut builder_is_real = builder.when(is_real.clone());
-
-        // Calculate is_upper_half_zero and is_lower_half_zero and finally the result.
-        builder_is_real.assert_bool(cols.is_lower_half_zero);
-        builder_is_real.assert_bool(cols.is_upper_half_zero);
-        builder_is_real.assert_bool(cols.result);
-        builder_is_real.assert_eq(
-            cols.is_lower_half_zero,
-            cols.is_zero_byte[0].result * cols.is_zero_byte[1].result,
-        );
-        builder_is_real.assert_eq(
-            cols.is_upper_half_zero,
-            cols.is_zero_byte[2].result * cols.is_zero_byte[3].result,
-        );
-        builder_is_real.assert_eq(cols.result, cols.is_lower_half_zero * cols.is_upper_half_zero);
+        builder.assert_bool(cols.result);
+        builder
+            .when(is_real.clone())
+            .assert_eq(cols.result, cols.is_zero_limb[0].result * cols.is_zero_limb[1].result);
     }
 }

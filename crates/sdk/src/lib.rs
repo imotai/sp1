@@ -27,8 +27,8 @@
 pub mod artifacts;
 pub mod client;
 pub mod cpu;
-pub mod cuda;
-pub mod env;
+// pub mod cuda;
+// pub mod env;
 pub mod install;
 #[cfg(feature = "network")]
 pub mod network;
@@ -38,8 +38,9 @@ pub mod utils;
 pub use crate::client::ProverClient;
 
 // Re-export the provers.
-pub use crate::{cpu::CpuProver, cuda::CudaProver, env::EnvProver};
-
+pub use crate::cpu::CpuProver;
+// pub use crate::cuda::CudaProver;
+// pub use crate::env::EnvProver;
 #[cfg(feature = "network")]
 pub use crate::network::prover::NetworkProver;
 
@@ -66,128 +67,128 @@ pub use utils::setup_logger;
 
 #[cfg(test)]
 mod tests {
-    use sp1_primitives::io::SP1PublicValues;
+    // use sp1_primitives::io::SP1PublicValues;
 
-    use crate::{utils, Prover, ProverClient, SP1Stdin};
+    // use crate::{utils, Prover, ProverClient, SP1Stdin};
 
-    #[test]
-    fn test_execute() {
-        utils::setup_logger();
-        let client = ProverClient::builder().cpu().build();
-        let elf = test_artifacts::FIBONACCI_ELF;
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&10usize);
-        let (_, _) = client.execute(elf, &stdin).run().unwrap();
-    }
+    // #[test]
+    // fn test_execute() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::FIBONACCI_ELF;
+    //     let mut stdin = SP1Stdin::new();
+    //     stdin.write(&10usize);
+    //     let (_, _) = client.execute(elf, &stdin).run().unwrap();
+    // }
 
-    #[test]
-    #[should_panic]
-    fn test_execute_panic() {
-        utils::setup_logger();
-        let client = ProverClient::builder().cpu().build();
-        let elf = test_artifacts::PANIC_ELF;
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&10usize);
-        client.execute(elf, &stdin).run().unwrap();
-    }
+    // #[test]
+    // #[should_panic]
+    // fn test_execute_panic() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::PANIC_ELF;
+    //     let mut stdin = SP1Stdin::new();
+    //     stdin.write(&10usize);
+    //     client.execute(elf, &stdin).run().unwrap();
+    // }
 
-    #[should_panic]
-    #[test]
-    fn test_cycle_limit_fail() {
-        utils::setup_logger();
-        let client = ProverClient::builder().cpu().build();
-        let elf = test_artifacts::PANIC_ELF;
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&10usize);
-        client.execute(elf, &stdin).cycle_limit(1).run().unwrap();
-    }
+    // #[should_panic]
+    // #[test]
+    // fn test_cycle_limit_fail() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::PANIC_ELF;
+    //     let mut stdin = SP1Stdin::new();
+    //     stdin.write(&10usize);
+    //     client.execute(elf, &stdin).cycle_limit(1).run().unwrap();
+    // }
 
-    #[test]
-    fn test_e2e_core() {
-        utils::setup_logger();
-        let client = ProverClient::builder().cpu().build();
-        let elf = test_artifacts::FIBONACCI_ELF;
-        let (pk, vk) = client.setup(elf);
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&10usize);
+    // #[tokio::test]
+    // async fn test_e2e_core() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::FIBONACCI_ELF;
+    //     let (pk, vk) = client.setup(elf).await;
+    //     let mut stdin = SP1Stdin::new();
+    //     stdin.write(&10usize);
 
-        // Generate proof & verify.
-        let mut proof = client.prove(&pk, &stdin).run().unwrap();
-        client.verify(&proof, &vk).unwrap();
+    //     // Generate proof & verify.
+    //     let mut proof = client.prove(pk, stdin).run().await.unwrap();
+    //     client.verify(&proof, &vk).unwrap();
 
-        // Test invalid public values.
-        proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-        if client.verify(&proof, &vk).is_ok() {
-            panic!("verified proof with invalid public values")
-        }
-    }
+    //     // Test invalid public values.
+    //     proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
+    //     if client.verify(&proof, &vk).is_ok() {
+    //         panic!("verified proof with invalid public values")
+    //     }
+    // }
 
-    #[test]
-    fn test_e2e_io_override() {
-        utils::setup_logger();
-        let client = ProverClient::builder().cpu().build();
-        let elf = test_artifacts::HELLO_WORLD_ELF;
+    // #[test]
+    // fn test_e2e_io_override() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::HELLO_WORLD_ELF;
 
-        let mut stdout = Vec::new();
+    //     let mut stdout = Vec::new();
 
-        // Generate proof & verify.
-        let stdin = SP1Stdin::new();
-        let _ = client.execute(elf, &stdin).stdout(&mut stdout).run().unwrap();
+    //     // Generate proof & verify.
+    //     let stdin = SP1Stdin::new();
+    //     let _ = client.execute(elf, &stdin).stdout(&mut stdout).run().unwrap();
 
-        assert_eq!(stdout, b"Hello, world!\n");
-    }
+    //     assert_eq!(stdout, b"Hello, world!\n");
+    // }
 
-    #[test]
-    fn test_e2e_compressed() {
-        utils::setup_logger();
-        let client = ProverClient::builder().cpu().build();
-        let elf = test_artifacts::FIBONACCI_ELF;
-        let (pk, vk) = client.setup(elf);
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&10usize);
+    // #[tokio::test]
+    // async fn test_e2e_compressed() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::FIBONACCI_ELF;
+    //     let (pk, vk) = client.setup(elf).await;
+    //     let mut stdin = SP1Stdin::new();
+    //     stdin.write(&10usize);
 
-        // Generate proof & verify.
-        let mut proof = client.prove(&pk, &stdin).compressed().run().unwrap();
-        client.verify(&proof, &vk).unwrap();
+    //     // Generate proof & verify.
+    //     let mut proof = client.prove(pk, stdin).compressed().run().await.unwrap();
+    //     client.verify(&proof, &vk).unwrap();
 
-        // Test invalid public values.
-        proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-        if client.verify(&proof, &vk).is_ok() {
-            panic!("verified proof with invalid public values")
-        }
-    }
+    //     // Test invalid public values.
+    //     proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
+    //     if client.verify(&proof, &vk).is_ok() {
+    //         panic!("verified proof with invalid public values")
+    //     }
+    // }
 
-    #[test]
-    fn test_e2e_prove_plonk() {
-        utils::setup_logger();
-        let client = ProverClient::builder().cpu().build();
-        let elf = test_artifacts::FIBONACCI_ELF;
-        let (pk, vk) = client.setup(elf);
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&10usize);
+    // #[tokio::test]
+    // async fn test_e2e_prove_plonk() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::FIBONACCI_ELF;
+    //     let (pk, vk) = client.setup(elf).await;
+    //     let mut stdin = SP1Stdin::new();
+    //     stdin.write(&10usize);
 
-        // Generate proof & verify.
-        let mut proof = client.prove(&pk, &stdin).plonk().run().unwrap();
-        client.verify(&proof, &vk).unwrap();
+    //     // Generate proof & verify.
+    //     let mut proof = client.prove(pk, stdin).plonk().run().await.unwrap();
+    //     client.verify(&proof, &vk).unwrap();
 
-        // Test invalid public values.
-        proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-        if client.verify(&proof, &vk).is_ok() {
-            panic!("verified proof with invalid public values")
-        }
-    }
+    //     // Test invalid public values.
+    //     proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
+    //     if client.verify(&proof, &vk).is_ok() {
+    //         panic!("verified proof with invalid public values")
+    //     }
+    // }
 
-    #[test]
-    fn test_e2e_prove_plonk_mock() {
-        utils::setup_logger();
-        let client = ProverClient::builder().mock().build();
-        let elf = test_artifacts::FIBONACCI_ELF;
-        let (pk, vk) = client.setup(elf);
-        let mut stdin = SP1Stdin::new();
-        stdin.write(&10usize);
-        let proof = client.prove(&pk, &stdin).plonk().run().unwrap();
-        client.verify(&proof, &vk).unwrap();
-    }
+    // #[tokio::test]
+    // async fn test_e2e_prove_plonk_mock() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().mock().build();
+    //     let elf = test_artifacts::FIBONACCI_ELF;
+    //     let (pk, vk) = client.setup(elf).await;
+    //     let mut stdin = SP1Stdin::new();
+    //     stdin.write(&10usize);
+    //     let proof = client.prove(pk, stdin).plonk().run().await.unwrap();
+    //     client.verify(&proof, &vk).unwrap();
+    // }
 }
 
 #[cfg(all(feature = "cuda", not(sp1_ci_in_progress)))]

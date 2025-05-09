@@ -1,16 +1,21 @@
-use p3_baby_bear::BabyBear;
-use p3_field::{AbstractField, Field};
+use std::{borrow::BorrowMut, mem::MaybeUninit};
+
+use p3_challenger::DuplexChallenger;
+use p3_symmetric::CryptographicPermutation;
+use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractField, Field, PrimeField32};
+use slop_baby_bear::BabyBear;
+use slop_merkle_tree::{OUTER_CHALLENGER_RATE, OUTER_DIGEST_SIZE};
+use slop_multilinear::Point;
+use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{DslIr, Var},
     prelude::{Builder, Config, Ext, Felt},
 };
-use sp1_recursion_core::{
-    air::ChallengerPublicValues,
-    runtime::{HASH_RATE, PERMUTATION_WIDTH},
-    stark::{OUTER_MULTI_FIELD_CHALLENGER_DIGEST_SIZE, OUTER_MULTI_FIELD_CHALLENGER_RATE},
-    NUM_BITS,
-};
+use sp1_recursion_executor::{HASH_RATE, NUM_BITS, PERMUTATION_WIDTH};
+
+use crate::CircuitConfig;
 
 // Constants for the Multifield challenger.
 pub const POSEIDON_2_BB_RATE: usize = 16;
@@ -51,6 +56,22 @@ pub trait FieldChallengerVariable<C: Config, Bit>:
     fn check_witness(&mut self, builder: &mut Builder<C>, nb_bits: usize, witness: Felt<C::F>);
 
     fn duplexing(&mut self, builder: &mut Builder<C>);
+
+    fn sample_point(
+        &mut self,
+        builder: &mut Builder<C>,
+        dimension: u32,
+    ) -> Point<Ext<C::F, C::EF>> {
+        (0..dimension).map(|_| self.sample_ext(builder)).collect()
+    }
+
+    fn observe_ext_element(&mut self, builder: &mut Builder<C>, element: Ext<C::F, C::EF>)
+    where
+        C: CircuitConfig,
+    {
+        let felts = C::ext2felt(builder, element);
+        self.observe_slice(builder, felts);
+    }
 }
 
 pub trait CanSampleBitsVariable<C: Config, V> {
@@ -73,6 +94,17 @@ impl<C: Config<F = BabyBear>> DuplexChallengerVariable<C> {
             input_buffer: vec![],
             output_buffer: vec![],
         }
+    }
+
+    /// Creates a new challenger variable with the same state as an existing challenger.
+    pub fn from_challenger<P: CryptographicPermutation<[BabyBear; PERMUTATION_WIDTH]>>(
+        builder: &mut Builder<C>,
+        challenger: &DuplexChallenger<BabyBear, P, PERMUTATION_WIDTH, HASH_RATE>,
+    ) -> Self {
+        let sponge_state = challenger.sponge_state.map(|x| builder.eval(x));
+        let input_buffer = challenger.input_buffer.iter().map(|x| builder.eval(*x)).collect();
+        let output_buffer = challenger.output_buffer.iter().map(|x| builder.eval(*x)).collect();
+        DuplexChallengerVariable::<C> { sponge_state, input_buffer, output_buffer }
     }
 
     /// Creates a new challenger with the same state as an existing challenger.
@@ -255,7 +287,7 @@ impl<C: Config> MultiField32ChallengerVariable<C> {
     }
 
     pub fn duplexing(&mut self, builder: &mut Builder<C>) {
-        assert!(self.input_buffer.len() <= self.num_f_elms * OUTER_MULTI_FIELD_CHALLENGER_RATE);
+        assert!(self.input_buffer.len() <= self.num_f_elms * OUTER_CHALLENGER_RATE);
 
         for (i, f_chunk) in self.input_buffer.chunks(self.num_f_elms).enumerate() {
             self.sponge_state[i] = reduce_32(builder, f_chunk);
@@ -278,7 +310,7 @@ impl<C: Config> MultiField32ChallengerVariable<C> {
         self.output_buffer.clear();
 
         self.input_buffer.push(value);
-        if self.input_buffer.len() == self.num_f_elms * OUTER_MULTI_FIELD_CHALLENGER_RATE {
+        if self.input_buffer.len() == self.num_f_elms * OUTER_CHALLENGER_RATE {
             self.duplexing(builder);
         }
     }
@@ -286,7 +318,7 @@ impl<C: Config> MultiField32ChallengerVariable<C> {
     pub fn observe_commitment(
         &mut self,
         builder: &mut Builder<C>,
-        value: [Var<C::N>; OUTER_MULTI_FIELD_CHALLENGER_DIGEST_SIZE],
+        value: [Var<C::N>; OUTER_DIGEST_SIZE],
     ) {
         for val in value {
             let f_vals: Vec<Felt<C::F>> = split_32(builder, val, self.num_f_elms);
@@ -352,14 +384,10 @@ impl<C: Config> CanObserveVariable<C, Felt<C::F>> for MultiField32ChallengerVari
     }
 }
 
-impl<C: Config> CanObserveVariable<C, [Var<C::N>; OUTER_MULTI_FIELD_CHALLENGER_DIGEST_SIZE]>
+impl<C: Config> CanObserveVariable<C, [Var<C::N>; OUTER_DIGEST_SIZE]>
     for MultiField32ChallengerVariable<C>
 {
-    fn observe(
-        &mut self,
-        builder: &mut Builder<C>,
-        value: [Var<C::N>; OUTER_MULTI_FIELD_CHALLENGER_DIGEST_SIZE],
-    ) {
+    fn observe(&mut self, builder: &mut Builder<C>, value: [Var<C::N>; OUTER_DIGEST_SIZE]) {
         self.observe_commitment(builder, value)
     }
 }
@@ -423,6 +451,54 @@ pub fn split_32<C: Config>(builder: &mut Builder<C>, val: Var<C::N>, n: usize) -
     results
 }
 
+pub const CHALLENGER_STATE_NUM_ELTS: usize = size_of::<ChallengerPublicValues<u8>>();
+
+#[derive(AlignedBorrow, Serialize, Deserialize, Clone, Copy, Default, Debug)]
+#[repr(C)]
+pub struct ChallengerPublicValues<T> {
+    pub sponge_state: [T; PERMUTATION_WIDTH],
+    pub num_inputs: T,
+    pub input_buffer: [T; PERMUTATION_WIDTH],
+    pub num_outputs: T,
+    pub output_buffer: [T; PERMUTATION_WIDTH],
+}
+
+impl<T: Clone> ChallengerPublicValues<T> {
+    pub fn set_challenger<P: CryptographicPermutation<[T; PERMUTATION_WIDTH]>>(
+        &self,
+        challenger: &mut DuplexChallenger<T, P, PERMUTATION_WIDTH, HASH_RATE>,
+    ) where
+        T: PrimeField32,
+    {
+        challenger.sponge_state = self.sponge_state;
+        let num_inputs = self.num_inputs.as_canonical_u32() as usize;
+        challenger.input_buffer = self.input_buffer[..num_inputs].to_vec();
+        let num_outputs = self.num_outputs.as_canonical_u32() as usize;
+        challenger.output_buffer = self.output_buffer[..num_outputs].to_vec();
+    }
+
+    pub fn as_array(&self) -> [T; CHALLENGER_STATE_NUM_ELTS]
+    where
+        T: Copy,
+    {
+        unsafe {
+            let mut ret = [MaybeUninit::<T>::zeroed().assume_init(); CHALLENGER_STATE_NUM_ELTS];
+            let pv: &mut ChallengerPublicValues<T> = ret.as_mut_slice().borrow_mut();
+            *pv = *self;
+            ret
+        }
+    }
+}
+
+impl<T: Copy> IntoIterator for ChallengerPublicValues<T> {
+    type Item = T;
+    type IntoIter = std::array::IntoIter<T, CHALLENGER_STATE_NUM_ELTS>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_array().into_iter()
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     #![allow(clippy::print_stdout)]
@@ -432,37 +508,40 @@ pub(crate) mod tests {
     use crate::{
         challenger::{CanCopyChallenger, MultiField32ChallengerVariable},
         hash::{FieldHasherVariable, BN254_DIGEST_SIZE},
-        utils::tests::run_test_recursion,
+        witness::OuterWitness,
     };
-    use p3_baby_bear::BabyBear;
-    use p3_bn254_fr::Bn254Fr;
     use p3_challenger::{CanObserve, CanSample, CanSampleBits, FieldChallenger};
-    use p3_field::AbstractField;
-    use p3_symmetric::{CryptographicHasher, Hash, PseudoCompressionFunction};
+    use p3_symmetric::{CryptographicHasher, PseudoCompressionFunction};
+    use slop_algebra::AbstractField;
+    use slop_baby_bear::BabyBear;
+    use slop_bn254::Bn254Fr;
+    use slop_challenger::{DuplexChallenger, MultiField32Challenger};
+    use slop_jagged::JaggedConfig;
+    use slop_merkle_tree::{
+        my_bb_16_perm, outer_perm, DefaultMerkleTreeConfig, OuterPerm, Perm, Poseidon2Bn254Config,
+    };
+    use slop_symmetric::Hash;
     use sp1_recursion_compiler::{
-        circuit::{AsmBuilder, AsmConfig},
+        circuit::{AsmBuilder, AsmCompiler, AsmConfig},
         config::OuterConfig,
         constraints::ConstraintCompiler,
         ir::{Builder, Config, Ext, ExtConst, Felt, Var},
     };
-    use sp1_recursion_core::stark::{outer_perm, BabyBearPoseidon2Outer, OuterCompress, OuterHash};
     use sp1_recursion_gnark_ffi::PlonkBn254Prover;
-    use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
+    use sp1_recursion_machine::test::run_recursion_test_machines;
+    use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
 
-    use crate::{
-        challenger::{DuplexChallengerVariable, FieldChallengerVariable},
-        witness::OuterWitness,
-    };
+    use crate::challenger::{DuplexChallengerVariable, FieldChallengerVariable};
 
     type SC = BabyBearPoseidon2;
     type C = OuterConfig;
-    type F = <SC as StarkGenericConfig>::Val;
-    type EF = <SC as StarkGenericConfig>::Challenge;
+    type F = <SC as JaggedConfig>::F;
+    type EF = <SC as JaggedConfig>::EF;
 
-    #[test]
-    fn test_compiler_challenger() {
-        let config = SC::default();
-        let mut challenger = config.challenger();
+    #[tokio::test]
+    async fn test_compiler_challenger() {
+        let default_perm = my_bb_16_perm();
+        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
         challenger.observe(F::one());
         challenger.observe(F::two());
         challenger.observe(F::two());
@@ -496,18 +575,25 @@ pub(crate) mod tests {
         builder.print_e(element_ef);
         builder.assert_ext_eq(expected_result_ef, element_ef);
 
-        run_test_recursion(builder.into_root_block(), None);
+        let block = builder.into_root_block();
+        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let program = compiler.compile_inner(block).validate().unwrap();
+
+        let witness_stream = Vec::new();
+        run_recursion_test_machines(program.clone(), witness_stream).await;
     }
 
-    #[test]
-    fn test_challenger_outer() {
-        type SC = BabyBearPoseidon2Outer;
-        type F = <SC as StarkGenericConfig>::Val;
-        type EF = <SC as StarkGenericConfig>::Challenge;
+    #[tokio::test]
+    async fn test_challenger_outer() {
+        type SC = Bn254JaggedConfig;
+        type F = <SC as JaggedConfig>::F;
+        type EF = <SC as JaggedConfig>::EF;
         type N = <C as Config>::N;
 
-        let config = SC::default();
-        let mut challenger = config.challenger();
+        let default_perm = outer_perm();
+        let mut challenger =
+            MultiField32Challenger::<BabyBear, Bn254Fr, OuterPerm, 3, 2>::new(default_perm.clone())
+                .unwrap();
         challenger.observe(F::one());
         challenger.observe(F::two());
         challenger.observe(F::two());
@@ -574,7 +660,7 @@ pub(crate) mod tests {
         let two: Var<_> = builder.eval(N::two());
 
         let to_swap = [[one], [two]];
-        let result = BabyBearPoseidon2Outer::select_chain_digest(&mut builder, one, to_swap);
+        let result = Bn254JaggedConfig::select_chain_digest(&mut builder, one, to_swap);
 
         builder.assert_var_eq(result[0][0], two);
         builder.assert_var_eq(result[1][0], one);
@@ -587,8 +673,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_p2_hash() {
-        let perm = outer_perm();
-        let hasher = OuterHash::new(perm.clone()).unwrap();
+        let (hasher, _) = Poseidon2Bn254Config::default_hasher_and_compressor();
 
         let input: [BabyBear; 7] = [
             BabyBear::from_canonical_u32(0),
@@ -599,7 +684,7 @@ pub(crate) mod tests {
             BabyBear::from_canonical_u32(2),
             BabyBear::from_canonical_u32(2),
         ];
-        let output = hasher.hash_iter(input);
+        let output: [Bn254Fr; 1] = hasher.hash_iter(input);
 
         let mut builder = Builder::<C>::default();
         let a: Felt<_> = builder.eval(input[0]);
@@ -609,7 +694,7 @@ pub(crate) mod tests {
         let e: Felt<_> = builder.eval(input[4]);
         let f: Felt<_> = builder.eval(input[5]);
         let g: Felt<_> = builder.eval(input[6]);
-        let result = BabyBearPoseidon2Outer::hash(&mut builder, &[a, b, c, d, e, f, g]);
+        let result = Bn254JaggedConfig::hash(&mut builder, &[a, b, c, d, e, f, g]);
 
         builder.assert_var_eq(result[0], output[0]);
 
@@ -621,8 +706,7 @@ pub(crate) mod tests {
     #[test]
     fn test_p2_compress() {
         type OuterDigestVariable = [Var<<C as Config>::N>; BN254_DIGEST_SIZE];
-        let perm = outer_perm();
-        let compressor = OuterCompress::new(perm.clone());
+        let (_, compressor) = Poseidon2Bn254Config::default_hasher_and_compressor();
 
         let a: [Bn254Fr; 1] = [Bn254Fr::two()];
         let b: [Bn254Fr; 1] = [Bn254Fr::two()];
@@ -631,7 +715,7 @@ pub(crate) mod tests {
         let mut builder = Builder::<C>::default();
         let a: OuterDigestVariable = [builder.eval(a[0])];
         let b: OuterDigestVariable = [builder.eval(b[0])];
-        let result = BabyBearPoseidon2Outer::compress(&mut builder, [a, b]);
+        let result = Bn254JaggedConfig::compress(&mut builder, [a, b]);
         builder.assert_var_eq(result[0], gt[0]);
 
         let mut backend = ConstraintCompiler::<C>::default();

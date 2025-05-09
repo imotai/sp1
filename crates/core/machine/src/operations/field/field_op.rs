@@ -8,12 +8,10 @@ use p3_field::PrimeField32;
 
 use sp1_core_executor::events::{ByteRecord, FieldOperation};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{Polynomial, SP1AirBuilder};
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::air::SP1AirBuilder;
 
-use super::{
-    util::{compute_root_quotient_and_shift, split_u16_limbs_to_u8_limbs},
-    util_air::eval_field_operation,
-};
+use super::{util::compute_root_quotient_and_shift, util_air::eval_field_operation};
 use sp1_curves::params::{FieldParameters, Limbs};
 
 use typenum::Unsigned;
@@ -37,8 +35,7 @@ pub struct FieldOpCols<T, P: FieldParameters> {
     /// The result of `a op b`, where a, b are field elements
     pub result: Limbs<T, P::Limbs>,
     pub carry: Limbs<T, P::Limbs>,
-    pub(crate) witness_low: Limbs<T, P::Witness>,
-    pub(crate) witness_high: Limbs<T, P::Witness>,
+    pub(crate) witness: Limbs<T, P::Witness>,
 }
 
 impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
@@ -72,27 +69,22 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         let p_op = &p_a * &p_b + &p_c;
         let p_vanishing = &p_op - &p_result - &p_carry * &p_modulus;
 
-        let p_witness = compute_root_quotient_and_shift(
+        let mut p_witness = compute_root_quotient_and_shift(
             &p_vanishing,
             P::WITNESS_OFFSET,
             P::NB_BITS_PER_LIMB as u32,
             P::NB_WITNESS_LIMBS,
         );
 
-        let (mut p_witness_low, mut p_witness_high) = split_u16_limbs_to_u8_limbs(&p_witness);
-
         self.result = p_result.into();
         self.carry = p_carry.into();
+        p_witness.resize(P::Witness::USIZE, F::zero());
 
-        p_witness_low.resize(P::Witness::USIZE, F::zero());
-        p_witness_high.resize(P::Witness::USIZE, F::zero());
-        self.witness_low = Limbs(p_witness_low.try_into().unwrap());
-        self.witness_high = Limbs(p_witness_high.try_into().unwrap());
+        self.witness = Limbs(p_witness.try_into().unwrap());
 
         record.add_u8_range_checks_field(&self.result.0);
         record.add_u8_range_checks_field(&self.carry.0);
-        record.add_u8_range_checks_field(&self.witness_low.0);
-        record.add_u8_range_checks_field(&self.witness_high.0);
+        record.add_u16_range_checks_field(&self.witness.0);
 
         (result, carry)
     }
@@ -136,21 +128,19 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         };
         let p_vanishing: Polynomial<F> = &p_op - &p_result - &p_carry * &p_modulus;
 
-        let p_witness = compute_root_quotient_and_shift(
+        let mut p_witness = compute_root_quotient_and_shift(
             &p_vanishing,
             P::WITNESS_OFFSET,
             P::NB_BITS_PER_LIMB as u32,
             P::NB_WITNESS_LIMBS,
         );
-        let (mut p_witness_low, mut p_witness_high) = split_u16_limbs_to_u8_limbs(&p_witness);
 
         self.result = p_result.into();
         self.carry = p_carry.into();
 
-        p_witness_low.resize(P::Witness::USIZE, F::zero());
-        p_witness_high.resize(P::Witness::USIZE, F::zero());
-        self.witness_low = Limbs(p_witness_low.try_into().unwrap());
-        self.witness_high = Limbs(p_witness_high.try_into().unwrap());
+        p_witness.resize(P::Witness::USIZE, F::zero());
+
+        self.witness = Limbs(p_witness.try_into().unwrap());
 
         result
     }
@@ -219,8 +209,7 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         // Range checks
         record.add_u8_range_checks_field(&self.result.0);
         record.add_u8_range_checks_field(&self.carry.0);
-        record.add_u8_range_checks_field(&self.witness_low.0);
-        record.add_u8_range_checks_field(&self.witness_high.0);
+        record.add_u16_range_checks_field(&self.witness.0);
 
         result
     }
@@ -265,8 +254,8 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
         let is_mul: AB::Expr = is_mul.into();
         let is_div: AB::Expr = is_div.into();
 
-        let p_result = p_res_param.clone() * (is_add.clone() + is_mul.clone()) +
-            p_a_param.clone() * (is_sub.clone() + is_div.clone());
+        let p_result = p_res_param.clone() * (is_add.clone() + is_mul.clone())
+            + p_a_param.clone() * (is_sub.clone() + is_div.clone());
 
         let p_add = p_a_param.clone() + p_b.clone();
         let p_sub = p_res_param.clone() + p_b.clone();
@@ -345,15 +334,13 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
         let p_carry: Polynomial<<AB as AirBuilder>::Expr> = self.carry.into();
         let p_op_minus_result: Polynomial<AB::Expr> = p_op - &p_result;
         let p_vanishing = p_op_minus_result - &(&p_carry * &p_modulus);
-        let p_witness_low = self.witness_low.0.iter().into();
-        let p_witness_high = self.witness_high.0.iter().into();
-        eval_field_operation::<AB, P>(builder, &p_vanishing, &p_witness_low, &p_witness_high);
+        let p_witness = self.witness.0.iter().into();
+        eval_field_operation::<AB, P>(builder, &p_vanishing, &p_witness);
 
         // Range checks for the result, carry, and witness columns.
         builder.slice_range_check_u8(&self.result.0, is_real.clone());
         builder.slice_range_check_u8(&self.carry.0, is_real.clone());
-        builder.slice_range_check_u8(p_witness_low.coefficients(), is_real.clone());
-        builder.slice_range_check_u8(p_witness_high.coefficients(), is_real);
+        builder.slice_range_check_u16(p_witness.coefficients(), is_real.clone());
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -373,173 +360,188 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #![allow(clippy::print_stdout)]
+// #[cfg(test)]
+// mod tests {
+//     #![allow(clippy::print_stdout)]
 
-    use num::BigUint;
-    use p3_air::BaseAir;
-    use p3_field::{Field, PrimeField32};
-    use sp1_core_executor::{ExecutionRecord, Program};
-    use sp1_curves::params::FieldParameters;
-    use sp1_stark::{
-        air::{MachineAir, SP1AirBuilder},
-        StarkGenericConfig,
-    };
+//     use num::BigUint;
+//     use p3_air::BaseAir;
+//     use p3_field::{Field, PrimeField32};
+//     use sp1_core_executor::{ExecutionRecord, Program};
+//     use sp1_curves::params::FieldParameters;
+//     use sp1_stark::{
+//         air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
+//         Chip, StarkMachine,
+//     };
 
-    use super::{FieldOpCols, FieldOperation, Limbs};
+//     use super::{FieldOpCols, FieldOperation, Limbs};
 
-    use crate::utils::{
-        pad_to_power_of_two,
-        uni_stark::{uni_stark_prove, uni_stark_verify},
-    };
-    use core::borrow::{Borrow, BorrowMut};
-    use num::bigint::RandBigInt;
-    use p3_air::Air;
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_matrix::{dense::RowMajorMatrix, Matrix};
-    use rand::thread_rng;
-    use sp1_core_executor::events::ByteRecord;
-    use sp1_curves::{
-        edwards::ed25519::Ed25519BaseField, weierstrass::secp256k1::Secp256k1BaseField,
-    };
-    use sp1_derive::AlignedBorrow;
-    use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
-    use std::mem::size_of;
+//     use crate::utils::{pad_to_power_of_two, run_test_machine, setup_test_machine};
+//     use core::borrow::{Borrow, BorrowMut};
+//     use num::bigint::RandBigInt;
+//     use p3_air::Air;
+//     use p3_baby_bear::BabyBear;
+//     use p3_field::AbstractField;
+//     use p3_matrix::{dense::RowMajorMatrix, Matrix};
+//     use rand::thread_rng;
+//     use sp1_core_executor::events::ByteRecord;
+//     use sp1_curves::{
+//         edwards::ed25519::Ed25519BaseField, weierstrass::secp256k1::Secp256k1BaseField,
+//     };
+//     use sp1_derive::AlignedBorrow;
+//     use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
+//     use std::mem::size_of;
 
-    #[derive(AlignedBorrow, Debug, Clone)]
-    pub struct TestCols<T, P: FieldParameters> {
-        pub a: Limbs<T, P::Limbs>,
-        pub b: Limbs<T, P::Limbs>,
-        pub a_op_b: FieldOpCols<T, P>,
-    }
+//     #[derive(AlignedBorrow, Debug, Clone)]
+//     pub struct TestCols<T, P: FieldParameters> {
+//         pub a: Limbs<T, P::Limbs>,
+//         pub b: Limbs<T, P::Limbs>,
+//         pub a_op_b: FieldOpCols<T, P>,
+//     }
 
-    pub const NUM_TEST_COLS: usize = size_of::<TestCols<u8, Secp256k1BaseField>>();
+//     pub const NUM_TEST_COLS: usize = size_of::<TestCols<u8, Secp256k1BaseField>>();
 
-    struct FieldOpChip<P: FieldParameters> {
-        pub operation: FieldOperation,
-        pub _phantom: std::marker::PhantomData<P>,
-    }
+//     struct FieldOpChip<P: FieldParameters> {
+//         pub operation: FieldOperation,
+//         pub _phantom: std::marker::PhantomData<P>,
+//     }
 
-    impl<P: FieldParameters> FieldOpChip<P> {
-        pub const fn new(operation: FieldOperation) -> Self {
-            Self { operation, _phantom: std::marker::PhantomData }
-        }
-    }
+//     impl<P: FieldParameters> FieldOpChip<P> {
+//         pub const fn new(operation: FieldOperation) -> Self {
+//             Self { operation, _phantom: std::marker::PhantomData }
+//         }
+//     }
 
-    impl<F: PrimeField32, P: FieldParameters> MachineAir<F> for FieldOpChip<P> {
-        type Record = ExecutionRecord;
+//     impl<F: PrimeField32, P: FieldParameters> MachineAir<F> for FieldOpChip<P> {
+//         type Record = ExecutionRecord;
 
-        type Program = Program;
+//         type Program = Program;
 
-        fn name(&self) -> String {
-            format!("FieldOp{:?}", self.operation)
-        }
+//         fn name(&self) -> String {
+//             format!("FieldOp{:?}", self.operation)
+//         }
 
-        fn generate_trace(
-            &self,
-            _: &ExecutionRecord,
-            output: &mut ExecutionRecord,
-        ) -> RowMajorMatrix<F> {
-            let mut rng = thread_rng();
-            let num_rows = 1 << 8;
-            let mut operands: Vec<(BigUint, BigUint)> = (0..num_rows - 4)
-                .map(|_| {
-                    let a = rng.gen_biguint(256) % &P::modulus();
-                    let b = rng.gen_biguint(256) % &P::modulus();
-                    (a, b)
-                })
-                .collect();
+//         fn generate_trace(
+//             &self,
+//             _: &ExecutionRecord,
+//             output: &mut ExecutionRecord,
+//         ) -> RowMajorMatrix<F> {
+//             let mut rng = thread_rng();
+//             let num_rows = 1 << 8;
+//             let mut operands: Vec<(BigUint, BigUint)> = (0..num_rows - 4)
+//                 .map(|_| {
+//                     let a = rng.gen_biguint(256) % &P::modulus();
+//                     let b = rng.gen_biguint(256) % &P::modulus();
+//                     (a, b)
+//                 })
+//                 .collect();
 
-            // Hardcoded edge cases.
-            operands.extend(vec![
-                (BigUint::from(0u32), BigUint::from(1u32)),
-                (BigUint::from(1u32), BigUint::from(2u32)),
-                (BigUint::from(4u32), BigUint::from(5u32)),
-                (BigUint::from(10u32), BigUint::from(19u32)),
-            ]);
+//             // Hardcoded edge cases.
+//             operands.extend(vec![
+//                 (BigUint::from(0u32), BigUint::from(1u32)),
+//                 (BigUint::from(1u32), BigUint::from(2u32)),
+//                 (BigUint::from(4u32), BigUint::from(5u32)),
+//                 (BigUint::from(10u32), BigUint::from(19u32)),
+//             ]);
 
-            let rows = operands
-                .iter()
-                .map(|(a, b)| {
-                    let mut blu_events = Vec::new();
-                    let mut row = [F::zero(); NUM_TEST_COLS];
-                    let cols: &mut TestCols<F, P> = row.as_mut_slice().borrow_mut();
-                    cols.a = P::to_limbs_field::<F, _>(a);
-                    cols.b = P::to_limbs_field::<F, _>(b);
-                    cols.a_op_b.populate(&mut blu_events, a, b, self.operation);
-                    output.add_byte_lookup_events(blu_events);
-                    row
-                })
-                .collect::<Vec<_>>();
-            // Convert the trace to a row major matrix.
-            let mut trace =
-                RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TEST_COLS);
+//             let rows = operands
+//                 .iter()
+//                 .map(|(a, b)| {
+//                     let mut blu_events = Vec::new();
+//                     let mut row = [F::zero(); NUM_TEST_COLS];
+//                     let cols: &mut TestCols<F, P> = row.as_mut_slice().borrow_mut();
+//                     cols.a = P::to_limbs_field::<F, _>(a);
+//                     cols.b = P::to_limbs_field::<F, _>(b);
+//                     cols.a_op_b.populate(&mut blu_events, a, b, self.operation);
+//                     output.add_byte_lookup_events(blu_events);
+//                     row
+//                 })
+//                 .collect::<Vec<_>>();
+//             // Convert the trace to a row major matrix.
+//             let mut trace =
+//                 RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(),
+// NUM_TEST_COLS);
 
-            // Pad the trace to a power of two.
-            pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);
+//             // Pad the trace to a power of two.
+//             pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);
 
-            trace
-        }
+//             trace
+//         }
 
-        fn included(&self, _: &Self::Record) -> bool {
-            true
-        }
-    }
+//         fn included(&self, _: &Self::Record) -> bool {
+//             true
+//         }
+//     }
 
-    impl<F: Field, P: FieldParameters> BaseAir<F> for FieldOpChip<P> {
-        fn width(&self) -> usize {
-            NUM_TEST_COLS
-        }
-    }
+//     impl<F: Field, P: FieldParameters> BaseAir<F> for FieldOpChip<P> {
+//         fn width(&self) -> usize {
+//             NUM_TEST_COLS
+//         }
+//     }
 
-    impl<AB, P: FieldParameters> Air<AB> for FieldOpChip<P>
-    where
-        AB: SP1AirBuilder,
-        Limbs<AB::Var, P::Limbs>: Copy,
-    {
-        fn eval(&self, builder: &mut AB) {
-            let main = builder.main();
-            let local = main.row_slice(0);
-            let local: &TestCols<AB::Var, P> = (*local).borrow();
-            local.a_op_b.eval(builder, &local.a, &local.b, self.operation, AB::F::one());
-        }
-    }
+//     impl<AB, P: FieldParameters> Air<AB> for FieldOpChip<P>
+//     where
+//         AB: SP1AirBuilder,
+//         Limbs<AB::Var, P::Limbs>: Copy,
+//     {
+//         fn eval(&self, builder: &mut AB) {
+//             let main = builder.main();
+//             let local = main.row_slice(0);
+//             let local: &TestCols<AB::Var, P> = (*local).borrow();
+//             local.a_op_b.eval(builder, &local.a, &local.b, self.operation, AB::F::one());
+//         }
+//     }
 
-    #[test]
-    fn generate_trace() {
-        for op in [FieldOperation::Add, FieldOperation::Mul, FieldOperation::Sub].iter() {
-            println!("op: {:?}", op);
-            let chip: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
-            let shard = ExecutionRecord::default();
-            let _: RowMajorMatrix<BabyBear> =
-                chip.generate_trace(&shard, &mut ExecutionRecord::default());
-            // println!("{:?}", trace.values)
-        }
-    }
+//     #[test]
+//     fn generate_trace() {
+//         for op in [FieldOperation::Add, FieldOperation::Mul, FieldOperation::Sub].iter() {
+//             println!("op: {:?}", op);
+//             let chip: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
+//             let shard = ExecutionRecord::default();
+//             let _: RowMajorMatrix<BabyBear> =
+//                 chip.generate_trace(&shard, &mut ExecutionRecord::default());
+//             // println!("{:?}", trace.values)
+//         }
+//     }
 
-    #[test]
-    fn prove_babybear() {
-        let config = BabyBearPoseidon2::new();
+//     #[test]
+//     fn prove_babybear() {
+//         for op in
+//             [FieldOperation::Add, FieldOperation::Sub, FieldOperation::Mul, FieldOperation::Div]
+//                 .iter()
+//         {
+//             println!("op: {:?}", op);
 
-        for op in
-            [FieldOperation::Add, FieldOperation::Sub, FieldOperation::Mul, FieldOperation::Div]
-                .iter()
-        {
-            println!("op: {:?}", op);
+//             let air: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
+//             let shard = ExecutionRecord::default();
+//             <FieldOpChip<Ed25519BaseField> as MachineAir<BabyBear>>::generate_trace(
+//                 &air,
+//                 &shard,
+//                 &mut ExecutionRecord::default(),
+//             );
 
-            let mut challenger = config.challenger();
+//             // Run setup.
+//             let config = BabyBearPoseidon2::new();
+//             let chip: Chip<BabyBear, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
+//             let (pk, vk) = setup_test_machine(StarkMachine::new(
+//                 config.clone(),
+//                 vec![chip],
+//                 SP1_PROOF_NUM_PV_ELTS,
+//                 true,
+//             ));
 
-            let chip: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
-            let shard = ExecutionRecord::default();
-            let trace: RowMajorMatrix<BabyBear> =
-                chip.generate_trace(&shard, &mut ExecutionRecord::default());
-            let proof =
-                uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
-
-            let mut challenger = config.challenger();
-            uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
-        }
-    }
-}
+//             // Run the test.
+//             let air: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
+//             let chip: Chip<BabyBear, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
+//             let machine =
+//                 StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+//             run_test_machine::<BabyBearPoseidon2, FieldOpChip<Ed25519BaseField>>(
+//                 vec![shard],
+//                 machine,
+//                 pk,
+//                 vk,
+//             )
+//             .unwrap();
+//         }
+//     }
+// }

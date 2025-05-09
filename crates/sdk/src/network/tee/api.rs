@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::SP1Stdin;
 use alloy_primitives::{Address, Signature as AlloySignature};
 use alloy_signer::SignerSync;
@@ -11,7 +13,7 @@ pub struct TEERequest {
     /// The network request id.
     pub id: [u8; 32],
     /// The program to execute.
-    pub program: Vec<u8>,
+    pub program: Arc<Vec<u8>>,
     /// The cycle limit for the program.
     pub cycle_limit: u64,
     /// The stdin for the program.
@@ -25,7 +27,7 @@ impl TEERequest {
     pub(crate) fn new<S: SignerSync>(
         signer: &S,
         id: [u8; 32],
-        program: Vec<u8>,
+        program: Arc<Vec<u8>>,
         stdin: SP1Stdin,
         cycle_limit: u64,
     ) -> Self {

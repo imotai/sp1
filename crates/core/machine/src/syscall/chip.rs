@@ -1,4 +1,4 @@
-use crate::utils::next_power_of_two;
+use crate::utils::next_multiple_of_32;
 use core::fmt;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -86,7 +86,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             SyscallShardKind::Core => &input
                 .syscall_events
                 .iter()
-                .filter(|e| e.syscall_code.should_send() == 1)
+                .map(|(event, _)| event)
+                .filter(|e| e.should_send)
                 .copied()
                 .collect::<Vec<_>>(),
             SyscallShardKind::Precompile => &input
@@ -98,7 +99,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
 
         let events = events
             .iter()
-            .filter(|e| e.syscall_code.should_send() == 1)
+            .filter(|e| e.should_send)
             .map(|event| GlobalInteractionEvent {
                 message: [event.shard, event.clk, event.syscall_id, event.arg1, event.arg2, 0, 0],
                 is_receive: self.shard_kind == SyscallShardKind::Precompile,
@@ -109,8 +110,14 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
-        let events = match self.shard_kind() {
-            SyscallShardKind::Core => &input.syscall_events,
+        let events = match self.shard_kind {
+            SyscallShardKind::Core => &input
+                .syscall_events
+                .iter()
+                .map(|(event, _)| event)
+                .filter(|e| e.should_send)
+                .copied()
+                .collect::<Vec<_>>(),
             SyscallShardKind::Precompile => &input
                 .precompile_events
                 .all_events()
@@ -119,7 +126,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
         };
         let nb_rows = events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
         Some(padded_nb_rows)
     }
 
@@ -145,7 +152,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             SyscallShardKind::Core => input
                 .syscall_events
                 .par_iter()
-                .filter(|event| event.syscall_code.should_send() == 1)
+                .map(|(event, _)| event)
+                .filter(|e| e.should_send)
                 .map(|event| row_fn(event, false))
                 .collect::<Vec<_>>(),
             SyscallShardKind::Precompile => input
@@ -175,16 +183,17 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                     shard
                         .syscall_events
                         .iter()
-                        .filter(|e| e.syscall_code.should_send() == 1)
+                        .map(|(event, _)| event)
+                        .filter(|e| e.should_send)
                         .take(1)
-                        .count() >
-                        0
+                        .count()
+                        > 0
                 }
                 SyscallShardKind::Precompile => {
-                    !shard.precompile_events.is_empty() &&
-                        shard.cpu_events.is_empty() &&
-                        shard.global_memory_initialize_events.is_empty() &&
-                        shard.global_memory_finalize_events.is_empty()
+                    !shard.precompile_events.is_empty()
+                        && !shard.contains_cpu()
+                        && shard.global_memory_initialize_events.is_empty()
+                        && shard.global_memory_finalize_events.is_empty()
                 }
             }
         }

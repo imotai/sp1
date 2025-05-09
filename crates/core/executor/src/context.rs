@@ -1,4 +1,5 @@
 use core::mem::take;
+use std::sync::Arc;
 
 use crate::{
     hook::{hookify, BoxedHook, HookEnv, HookRegistry},
@@ -18,7 +19,7 @@ pub struct SP1Context<'a> {
     pub hook_registry: Option<HookRegistry<'a>>,
 
     /// The verifier for verifying subproofs.
-    pub subproof_verifier: Option<&'a dyn SubproofVerifier>,
+    pub subproof_verifier: Option<Arc<dyn SubproofVerifier>>,
 
     /// The maximum number of cpu cycles to use for execution.
     pub max_cycles: Option<u64>,
@@ -46,10 +47,11 @@ impl Default for SP1Context<'_> {
 pub struct SP1ContextBuilder<'a> {
     no_default_hooks: bool,
     hook_registry_entries: Vec<(u32, BoxedHook<'a>)>,
-    subproof_verifier: Option<&'a dyn SubproofVerifier>,
+    subproof_verifier: Option<Arc<dyn SubproofVerifier>>,
     max_cycles: Option<u64>,
     deferred_proof_verification: bool,
     calculate_gas: bool,
+    // TODO remove the lifetime here, change stdout and stderr options to accept channels.
     io_options: IoOptions<'a>,
 }
 
@@ -171,7 +173,7 @@ impl<'a> SP1ContextBuilder<'a> {
     /// Add a subproof verifier.
     ///
     /// The verifier is used to sanity check `verify_sp1_proof` during runtime.
-    pub fn subproof_verifier(&mut self, subproof_verifier: &'a dyn SubproofVerifier) -> &mut Self {
+    pub fn subproof_verifier(&mut self, subproof_verifier: Arc<dyn SubproofVerifier>) -> &mut Self {
         self.subproof_verifier = Some(subproof_verifier);
         self
     }
@@ -228,6 +230,8 @@ impl<W: Write + Send> IoWriter for W {}
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::{subproof::NoOpSubproofVerifier, SP1Context};
 
     #[test]
@@ -265,7 +269,7 @@ mod tests {
         let verifier = NoOpSubproofVerifier;
 
         let SP1Context { subproof_verifier, .. } =
-            SP1Context::builder().subproof_verifier(&verifier).build();
+            SP1Context::builder().subproof_verifier(Arc::new(verifier)).build();
         assert!(subproof_verifier.is_some());
     }
 }

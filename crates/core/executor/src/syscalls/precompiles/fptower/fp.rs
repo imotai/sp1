@@ -50,7 +50,7 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
     rt.clk += 1;
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = FpOpEvent {
         shard,
         clk,
@@ -72,14 +72,14 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
     match P::FIELD_TYPE {
         FieldType::Bn254 => {
             let syscall_code_key = match syscall_code {
-                SyscallCode::BN254_FP_ADD |
-                SyscallCode::BN254_FP_SUB |
-                SyscallCode::BN254_FP_MUL => SyscallCode::BN254_FP_ADD,
+                SyscallCode::BN254_FP_ADD
+                | SyscallCode::BN254_FP_SUB
+                | SyscallCode::BN254_FP_MUL => SyscallCode::BN254_FP_ADD,
                 _ => unreachable!(),
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,
@@ -88,16 +88,16 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
         }
         FieldType::Bls12381 => {
             let syscall_code_key = match syscall_code {
-                SyscallCode::BLS12381_FP_ADD |
-                SyscallCode::BLS12381_FP_SUB |
-                SyscallCode::BLS12381_FP_MUL => SyscallCode::BLS12381_FP_ADD,
+                SyscallCode::BLS12381_FP_ADD
+                | SyscallCode::BLS12381_FP_SUB
+                | SyscallCode::BLS12381_FP_MUL => SyscallCode::BLS12381_FP_ADD,
                 _ => {
                     unreachable!()
                 }
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,

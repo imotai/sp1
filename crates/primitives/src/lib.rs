@@ -8,6 +8,7 @@ use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 
 pub mod consts;
 pub mod io;
+pub mod polynomial;
 pub mod types;
 
 lazy_static! {

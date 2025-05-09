@@ -3,9 +3,9 @@ use std::ops::{Index, IndexMut};
 use crate::air::SP1AirBuilder;
 use arrayref::array_ref;
 use itertools::Itertools;
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field};
 use serde::{Deserialize, Serialize};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
 use std::array::IntoIter;
@@ -31,34 +31,36 @@ impl<T> Word<T> {
 
     /// Extends a variable to a word.
     pub fn extend_var<AB: SP1AirBuilder<Var = T>>(var: T) -> Word<AB::Expr> {
-        Word([AB::Expr::zero() + var, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
+        Word([AB::Expr::zero() + var, AB::Expr::zero()])
     }
 }
 
 impl<T: AbstractField> Word<T> {
     /// Extends a variable to a word.
     pub fn extend_expr<AB: SP1AirBuilder<Expr = T>>(expr: T) -> Word<AB::Expr> {
-        Word([AB::Expr::zero() + expr, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
+        Word([AB::Expr::zero() + expr, AB::Expr::zero()])
     }
 
     /// Returns a word with all zero expressions.
     #[must_use]
     pub fn zero<AB: SP1AirBuilder<Expr = T>>() -> Word<T> {
-        Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
+        Word([AB::Expr::zero(), AB::Expr::zero()])
     }
 }
 
 impl<F: Field> Word<F> {
     /// Converts a word to a u32.
     pub fn to_u32(&self) -> u32 {
-        u32::from_le_bytes(self.0.map(|x| x.to_string().parse::<u8>().unwrap()))
+        let low = self.0[0].to_string().parse::<u16>().unwrap();
+        let high = self.0[1].to_string().parse::<u16>().unwrap();
+        ((high as u32) << 16) | (low as u32)
     }
 }
 
 impl<V: Copy> Word<V> {
     /// Reduces a word to a single variable.
     pub fn reduce<AB: AirBuilder<Var = V>>(&self) -> AB::Expr {
-        let base = [1, 1 << 8, 1 << 16, 1 << 24].map(AB::Expr::from_canonical_u32);
+        let base = [1, 1 << 16].map(AB::Expr::from_canonical_u32);
         self.0.iter().enumerate().map(|(i, x)| base[i].clone() * *x).sum()
     }
 }
@@ -79,7 +81,10 @@ impl<T> IndexMut<usize> for Word<T> {
 
 impl<F: AbstractField> From<u32> for Word<F> {
     fn from(value: u32) -> Self {
-        Word(value.to_le_bytes().map(F::from_canonical_u8))
+        Word([
+            F::from_canonical_u16((value & 0xFFFF) as u16),
+            F::from_canonical_u16((value >> 16) as u16),
+        ])
     }
 }
 

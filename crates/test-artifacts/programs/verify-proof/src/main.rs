@@ -23,6 +23,8 @@ pub fn main() {
     inputs.iter().for_each(|input| {
         // Get expected pv_digest hash: sha256(input)
         let pv_digest = Sha256::digest(input);
+        println!("PV digest len: {}", pv_digest.len());
+        println!("Verifying proof for digest: {:?}", pv_digest);
         verify_sp1_proof(&vkey, &pv_digest.into());
 
         println!("Verified proof for digest: {:?}", hex::encode(pv_digest));

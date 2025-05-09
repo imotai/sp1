@@ -1,11 +1,8 @@
 pub mod air;
 pub mod columns;
-// pub mod event;
-// pub mod opcode;
 pub mod trace;
-pub mod utils;
 
-use sp1_core_executor::{events::ByteLookupEvent, ByteOpcode};
+use sp1_core_executor::ByteOpcode;
 
 use core::borrow::BorrowMut;
 use std::marker::PhantomData;
@@ -14,14 +11,11 @@ use itertools::Itertools;
 use p3_field::Field;
 use p3_matrix::dense::RowMajorMatrix;
 
-use self::{
-    columns::{BytePreprocessedCols, NUM_BYTE_PREPROCESSED_COLS},
-    utils::shr_carry,
-};
+use self::columns::{BytePreprocessedCols, NUM_BYTE_PREPROCESSED_COLS};
 use crate::{bytes::trace::NUM_ROWS, utils::zeroed_f_vec};
 
-/// The number of different byte operations.
-pub const NUM_BYTE_OPS: usize = 9;
+/// The number of different byte operations in the byte table.
+pub const NUM_BYTE_OPS: usize = 6;
 
 /// A chip for computing byte operations.
 ///
@@ -42,7 +36,7 @@ impl<F: Field> ByteChip<F> {
         );
 
         // Record all the necessary operations for each byte lookup.
-        let opcodes = ByteOpcode::all();
+        let opcodes = ByteOpcode::byte_table();
 
         // Iterate over all options for pairs of bytes `a` and `b`.
         for (row_index, (b, c)) in (0..=u8::MAX).cartesian_product(0..=u8::MAX).enumerate() {
@@ -60,45 +54,25 @@ impl<F: Field> ByteChip<F> {
                     ByteOpcode::AND => {
                         let and = b & c;
                         col.and = F::from_canonical_u8(and);
-                        ByteLookupEvent::new(*opcode, and as u16, 0, b, c)
                     }
                     ByteOpcode::OR => {
                         let or = b | c;
                         col.or = F::from_canonical_u8(or);
-                        ByteLookupEvent::new(*opcode, or as u16, 0, b, c)
                     }
                     ByteOpcode::XOR => {
                         let xor = b ^ c;
                         col.xor = F::from_canonical_u8(xor);
-                        ByteLookupEvent::new(*opcode, xor as u16, 0, b, c)
                     }
-                    ByteOpcode::SLL => {
-                        let sll = b << (c & 7);
-                        col.sll = F::from_canonical_u8(sll);
-                        ByteLookupEvent::new(*opcode, sll as u16, 0, b, c)
-                    }
-                    ByteOpcode::U8Range => ByteLookupEvent::new(*opcode, 0, 0, b, c),
-                    ByteOpcode::ShrCarry => {
-                        let (res, carry) = shr_carry(b, c);
-                        col.shr = F::from_canonical_u8(res);
-                        col.shr_carry = F::from_canonical_u8(carry);
-                        ByteLookupEvent::new(*opcode, res as u16, carry, b, c)
-                    }
+                    ByteOpcode::U8Range => {}
                     ByteOpcode::LTU => {
                         let ltu = b < c;
                         col.ltu = F::from_bool(ltu);
-                        ByteLookupEvent::new(*opcode, ltu as u16, 0, b, c)
                     }
                     ByteOpcode::MSB => {
                         let msb = (b & 0b1000_0000) != 0;
                         col.msb = F::from_bool(msb);
-                        ByteLookupEvent::new(*opcode, msb as u16, 0, b, 0)
                     }
-                    ByteOpcode::U16Range => {
-                        let v = ((b as u32) << 8) + c as u32;
-                        col.value_u16 = F::from_canonical_u32(v);
-                        ByteLookupEvent::new(*opcode, v as u16, 0, 0, 0)
-                    }
+                    _ => panic!("invalid opcode found in byte table"),
                 };
             }
         }

@@ -85,7 +85,7 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     }
 
     // Push the SHA extend event.
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = PrecompileEvent::ShaCompress(ShaCompressEvent {
         shard,
         clk: start_clk,
@@ -99,7 +99,7 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
         local_mem_access: rt.postprocess(),
     });
     let syscall_event =
-        rt.rt.syscall_event(start_clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+        rt.rt.syscall_event(start_clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, event);
 
     None

@@ -57,7 +57,7 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
     result.resize(num_words, 0);
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let op = syscall_code.fp_op_map();
     let event = Fp2AddSubEvent {
         shard,
@@ -84,7 +84,7 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,
@@ -100,7 +100,7 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,

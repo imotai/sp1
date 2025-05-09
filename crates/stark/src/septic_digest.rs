@@ -1,8 +1,8 @@
 //! Elliptic Curve digests with a starting point to avoid weierstrass addition exceptions.
 use crate::{septic_curve::SepticCurve, septic_extension::SepticExtension};
-use p3_field::{AbstractExtensionField, AbstractField, Field};
 use serde::{Deserialize, Serialize};
-use std::iter::Sum;
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
+use std::{iter::Sum, ops::Add};
 
 /// The x-coordinate for a curve point used as a starting cumulative sum for global permutation
 /// trace generation, derived from `sqrt(2)`.
@@ -63,6 +63,23 @@ impl<F: Field> SepticDigest<F> {
     }
 }
 
+impl<F: Field> Add for SepticDigest<F> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        let start = Self::starting_digest().0;
+
+        let sum_a = start.add_incomplete(self.0).sub_incomplete(Self::zero().0);
+        let sum_b = sum_a.add_incomplete(rhs.0).sub_incomplete(Self::zero().0);
+
+        let mut result = sum_b;
+        result.add_assign(SepticDigest::<F>::zero().0);
+        result.sub_assign(start);
+
+        SepticDigest(result)
+    }
+}
+
 impl<F: Field> Sum for SepticDigest<F> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         let start = SepticDigest::<F>::starting_digest().0;
@@ -85,7 +102,7 @@ mod test {
     use crate::septic_curve::{CURVE_WITNESS_DUMMY_POINT_X, CURVE_WITNESS_DUMMY_POINT_Y};
 
     use super::*;
-    use p3_baby_bear::BabyBear;
+    use slop_baby_bear::BabyBear;
     #[test]
     fn test_const_points() {
         let x: SepticExtension<BabyBear> = SepticExtension::from_base_fn(|i| {

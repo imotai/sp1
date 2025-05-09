@@ -10,6 +10,8 @@ use super::MemoryRecordEnum;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AluEvent {
+    /// The clock cycle.
+    pub clk: u32,
     /// The program counter.
     pub pc: u32,
     /// The opcode.
@@ -27,8 +29,9 @@ pub struct AluEvent {
 impl AluEvent {
     /// Create a new [`AluEvent`].
     #[must_use]
-    pub fn new(pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
-        Self { pc, opcode, a, b, c, op_a_0 }
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(clk: u32, pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
+        Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }
 
@@ -83,6 +86,8 @@ impl MemInstrEvent {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BranchEvent {
+    /// The clock cycle.
+    pub clk: u32,
     /// The program counter.
     pub pc: u32,
     /// The next program counter.
@@ -104,6 +109,7 @@ impl BranchEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        clk: u32,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
@@ -112,7 +118,7 @@ impl BranchEvent {
         c: u32,
         op_a_0: bool,
     ) -> Self {
-        Self { pc, next_pc, opcode, a, b, c, op_a_0 }
+        Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
 
@@ -122,6 +128,8 @@ impl BranchEvent {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct JumpEvent {
+    /// The clock cycle.
+    pub clk: u32,
     /// The program counter.
     pub pc: u32,
     /// The next program counter.
@@ -143,6 +151,7 @@ impl JumpEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        clk: u32,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
@@ -151,7 +160,7 @@ impl JumpEvent {
         c: u32,
         op_a_0: bool,
     ) -> Self {
-        Self { pc, next_pc, opcode, a, b, c, op_a_0 }
+        Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
 /// AUIPC Instruction Event.
@@ -160,6 +169,8 @@ impl JumpEvent {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AUIPCEvent {
+    /// The clock cycle.
+    pub clk: u32,
     /// The program counter.
     pub pc: u32,
     /// The opcode.
@@ -177,7 +188,8 @@ pub struct AUIPCEvent {
 impl AUIPCEvent {
     /// Create a new [`AUIPCEvent`].
     #[must_use]
-    pub fn new(pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
-        Self { pc, opcode, a, b, c, op_a_0 }
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(clk: u32, pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
+        Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }

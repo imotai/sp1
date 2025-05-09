@@ -1,10 +1,11 @@
 //! Elliptic Curve `y^2 = x^3 + 2x + 26z^5` over the `F_{p^7} = F_p[z]/(z^7 - 2z - 5)` extension
 //! field.
-use crate::{baby_bear_poseidon2::BabyBearPoseidon2, septic_extension::SepticExtension};
-use p3_baby_bear::BabyBear;
-use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField32};
-use p3_symmetric::Permutation;
+use crate::septic_extension::SepticExtension;
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
+use slop_baby_bear::BabyBear;
+use slop_merkle_tree::my_bb_16_perm;
+use slop_symmetric::Permutation;
 use std::ops::Add;
 
 /// A septic elliptic curve point on y^2 = x^3 + 2x + 26z^5 over field `F_{p^7} = F_p[z]/(z^7 - 2z -
@@ -97,9 +98,9 @@ impl<F: Field> SepticCurve<F> {
 impl<F: AbstractField> SepticCurve<F> {
     /// Evaluates the curve formula x^3 + 2x + 26z^5
     pub fn curve_formula(x: SepticExtension<F>) -> SepticExtension<F> {
-        x.cube() +
-            x * F::two() +
-            SepticExtension::from_base_slice(&[
+        x.cube()
+            + x * F::two()
+            + SepticExtension::from_base_slice(&[
                 F::zero(),
                 F::zero(),
                 F::zero(),
@@ -117,8 +118,10 @@ impl<F: PrimeField32> SepticCurve<F> {
     /// hash input. Also, we always return the curve point with y-coordinate within `[1,
     /// (p-1)/2]`, where p is the characteristic. The returned values are the curve point, the
     /// offset used, and the hash input and output.
+    ///
+    /// TODO: this function should maybe take a Perm argument or express the dependency in some way.
     pub fn lift_x(m: SepticExtension<F>) -> (Self, u8, [F; 16], [F; 16]) {
-        let perm = BabyBearPoseidon2::new().perm;
+        let perm = my_bb_16_perm();
         for offset in 0..=255 {
             let m_trial = [
                 m.0[0],
@@ -167,8 +170,8 @@ impl<F: AbstractField> SepticCurve<F> {
         p2: SepticCurve<F>,
         p3: SepticCurve<F>,
     ) -> SepticExtension<F> {
-        (p1.x.clone() + p2.x.clone() + p3.x) * (p2.x.clone() - p1.x.clone()).square() -
-            (p2.y - p1.y).square()
+        (p1.x.clone() + p2.x.clone() + p3.x) * (p2.x.clone() - p1.x.clone()).square()
+            - (p2.y - p1.y).square()
     }
 
     /// Given three points p1, p2, p3, the function is zero if and only if p3.y == (p1 + p2).y
@@ -178,8 +181,8 @@ impl<F: AbstractField> SepticCurve<F> {
         p2: SepticCurve<F>,
         p3: SepticCurve<F>,
     ) -> SepticExtension<F> {
-        (p1.y.clone() + p3.y.clone()) * (p2.x.clone() - p1.x.clone()) -
-            (p2.y - p1.y.clone()) * (p1.x - p3.x)
+        (p1.y.clone() + p3.y.clone()) * (p2.x.clone() - p1.x.clone())
+            - (p2.y - p1.y.clone()) * (p1.x - p3.x)
     }
 }
 
@@ -245,13 +248,9 @@ impl<F: Field> SepticCurveComplete<F> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::print_stdout)]
-
-    use p3_baby_bear::BabyBear;
-    use p3_maybe_rayon::prelude::{
-        IndexedParallelIterator, IntoParallelIterator, ParallelIterator,
-    };
+    use rayon::prelude::*;
     use rayon_scan::ScanParallelIterator;
+    use slop_baby_bear::BabyBear;
     use std::time::Instant;
 
     use super::*;
@@ -290,6 +289,7 @@ mod tests {
 
     #[test]
     #[ignore]
+    #[allow(clippy::print_stdout)]
     fn test_simple_bench() {
         const D: u32 = 1 << 16;
         let mut vec = Vec::with_capacity(D as usize);
@@ -317,12 +317,12 @@ mod tests {
         let start = Instant::now();
         for i in 0..(D as usize) {
             assert!(
-                SepticCurve::<BabyBear>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i]) ==
-                    SepticExtension::<BabyBear>::zero()
+                SepticCurve::<BabyBear>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
+                    == SepticExtension::<BabyBear>::zero()
             );
             assert!(
-                SepticCurve::<BabyBear>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i]) ==
-                    SepticExtension::<BabyBear>::zero()
+                SepticCurve::<BabyBear>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
+                    == SepticExtension::<BabyBear>::zero()
             );
         }
         println!("Time elapsed: {:?}", start.elapsed());
@@ -330,6 +330,7 @@ mod tests {
 
     #[test]
     #[ignore]
+    #[allow(clippy::print_stdout)]
     fn test_parallel_bench() {
         const D: u32 = 1 << 20;
         let mut vec = Vec::with_capacity(D as usize);

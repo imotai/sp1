@@ -8,7 +8,7 @@ use elf::{
 };
 use eyre::OptionExt;
 use hashbrown::HashMap;
-use sp1_primitives::consts::{MAXIMUM_MEMORY_SIZE, WORD_SIZE};
+use sp1_primitives::consts::{MAXIMUM_MEMORY_SIZE, WORD_BYTE_SIZE};
 
 /// RISC-V 32IM ELF (Executable and Linkable Format) File.
 ///
@@ -70,7 +70,7 @@ impl Elf {
         let entry: u32 = elf.ehdr.e_entry.try_into()?;
 
         // Make sure the entrypoint is valid.
-        if entry == MAXIMUM_MEMORY_SIZE || entry % WORD_SIZE as u32 != 0 {
+        if entry == MAXIMUM_MEMORY_SIZE || entry % WORD_BYTE_SIZE as u32 != 0 {
             eyre::bail!("invalid entrypoint");
         }
 
@@ -104,7 +104,7 @@ impl Elf {
 
             // Get the virtual address of the segment as an u32.
             let vaddr: u32 = segment.p_vaddr.try_into()?;
-            if vaddr % WORD_SIZE as u32 != 0 {
+            if vaddr % WORD_BYTE_SIZE as u32 != 0 {
                 eyre::bail!("vaddr {vaddr:08x} is unaligned");
             }
 
@@ -123,7 +123,7 @@ impl Elf {
                         "base address {base_address} should be greater than 0x20"
                     );
                 } else {
-                    let instr_len: u32 = WORD_SIZE
+                    let instr_len: u32 = WORD_BYTE_SIZE
                         .checked_mul(instructions.len())
                         .ok_or_eyre("instructions length overflow")?
                         .try_into()?;
@@ -138,7 +138,7 @@ impl Elf {
             let offset: u32 = segment.p_offset.try_into()?;
 
             // Read the segment and decode each word as an instruction.
-            for i in (0..mem_size).step_by(WORD_SIZE) {
+            for i in (0..mem_size).step_by(WORD_BYTE_SIZE) {
                 let addr = vaddr.checked_add(i).ok_or_else(|| eyre::eyre!("vaddr overflow"))?;
                 if addr == MAXIMUM_MEMORY_SIZE {
                     eyre::bail!(
@@ -154,7 +154,7 @@ impl Elf {
 
                 // Get the word as an u32 but make sure we don't read past the end of the file.
                 let mut word = 0;
-                let len = min(file_size - i, WORD_SIZE as u32);
+                let len = min(file_size - i, WORD_BYTE_SIZE as u32);
                 for j in 0..len {
                     let offset = (offset + i + j) as usize;
                     let byte = input

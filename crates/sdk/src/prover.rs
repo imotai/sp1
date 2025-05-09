@@ -2,7 +2,7 @@
 //!
 //! A trait that each prover variant must implement.
 
-use std::borrow::Borrow;
+use std::{borrow::Borrow, future::Future, sync::Arc};
 
 use anyhow::Result;
 use itertools::Itertools;
@@ -11,20 +11,19 @@ use sp1_core_executor::{ExecutionReport, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::io::SP1PublicValues;
 use sp1_prover::{
-    components::SP1ProverComponents, CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1ProvingKey,
-    SP1VerifyingKey, SP1_CIRCUIT_VERSION,
+    components::SP1ProverComponents, local::LocalProver, CoreSC, InnerSC, SP1CoreProofData,
+    SP1Prover, SP1ProvingKey, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
-use sp1_stark::{air::PublicValues, MachineVerificationError, Word};
+use sp1_stark::{air::PublicValues, MachineVerifierError, Word};
 use thiserror::Error;
 
-use crate::{
-    install::try_install_circuit_artifacts, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
-};
+// use crate::install::try_install_circuit_artifacts;
+use crate::{SP1Proof, SP1ProofMode, SP1ProofWithPublicValues};
 
 /// A basic set of primitives that each prover variant must implement.
 pub trait Prover<C: SP1ProverComponents>: Send + Sync {
-    /// The inner [`SP1Prover`] struct used by the prover.
-    fn inner(&self) -> &SP1Prover<C>;
+    /// The inner [`LocalProver`] struct used by the prover.
+    fn inner(&self) -> Arc<LocalProver<C>>;
 
     /// The version of the current SP1 circuit.
     fn version(&self) -> &str {
@@ -32,7 +31,7 @@ pub trait Prover<C: SP1ProverComponents>: Send + Sync {
     }
 
     /// Generate the proving and verifying keys for the given program.
-    fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey);
+    fn setup(&self, elf: &[u8]) -> impl Future<Output = (SP1ProvingKey, SP1VerifyingKey)> + Send;
 
     /// Executes the program on the given input.
     fn execute(&self, elf: &[u8], stdin: &SP1Stdin) -> Result<(SP1PublicValues, ExecutionReport)> {
@@ -43,10 +42,10 @@ pub trait Prover<C: SP1ProverComponents>: Send + Sync {
     /// Proves the given program on the given input in the given proof mode.
     fn prove(
         &self,
-        pk: &SP1ProvingKey,
-        stdin: &SP1Stdin,
+        pk: SP1ProvingKey,
+        stdin: SP1Stdin,
         mode: SP1ProofMode,
-    ) -> Result<SP1ProofWithPublicValues>;
+    ) -> impl Future<Output = Result<SP1ProofWithPublicValues>> + Send;
 
     /// Verify that an SP1 proof is valid given its vkey and metadata.
     /// For Plonk proofs, verifies that the public inputs of the `PlonkBn254` proof match
@@ -56,7 +55,7 @@ pub trait Prover<C: SP1ProverComponents>: Send + Sync {
         bundle: &SP1ProofWithPublicValues,
         vkey: &SP1VerifyingKey,
     ) -> Result<(), SP1VerificationError> {
-        verify_proof(self.inner(), self.version(), bundle, vkey)
+        verify_proof(self.inner().prover(), self.version(), bundle, vkey)
     }
 }
 
@@ -71,10 +70,10 @@ pub enum SP1VerificationError {
     VersionMismatch(String),
     /// An error that occurs when the core machine verification fails.
     #[error("Core machine verification error: {0}")]
-    Core(MachineVerificationError<CoreSC>),
+    Core(MachineVerifierError<CoreSC>),
     /// An error that occurs when the recursion verification fails.
     #[error("Recursion verification error: {0}")]
-    Recursion(MachineVerificationError<InnerSC>),
+    Recursion(MachineVerifierError<InnerSC>),
     /// An error that occurs when the Plonk verification fails.
     #[error("Plonk verification error: {0}")]
     Plonk(anyhow::Error),
@@ -108,21 +107,21 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 
     match &bundle.proof {
         SP1Proof::Core(proof) => {
-            let public_values: &PublicValues<Word<_>, _> =
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
                 proof.last().unwrap().public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.
             let committed_value_digest_bytes = public_values
                 .committed_value_digest
                 .iter()
-                .flat_map(|w| w.0.iter().map(|x| x.as_canonical_u32() as u8))
+                .flat_map(|w| w.iter().map(|x| x.as_canonical_u32() as u8))
                 .collect_vec();
 
             // Make sure the committed value digest matches the public values hash.
             // It is computationally infeasible to find two distinct inputs, one processed with
             // SHA256 and the other with Blake3, that yield the same hash value.
-            if committed_value_digest_bytes != bundle.public_values.hash() &&
-                committed_value_digest_bytes != bundle.public_values.blake3_hash()
+            if committed_value_digest_bytes != bundle.public_values.hash()
+                && committed_value_digest_bytes != bundle.public_values.blake3_hash()
             {
                 return Err(SP1VerificationError::InvalidPublicValues);
             }
@@ -133,50 +132,52 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 .map_err(SP1VerificationError::Core)
         }
         SP1Proof::Compressed(proof) => {
-            let public_values: &PublicValues<Word<_>, _> =
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
                 proof.proof.public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.
             let committed_value_digest_bytes = public_values
                 .committed_value_digest
                 .iter()
-                .flat_map(|w| w.0.iter().map(|x| x.as_canonical_u32() as u8))
+                .flat_map(|w| w.iter().map(|x| x.as_canonical_u32() as u8))
                 .collect_vec();
 
             // Make sure the committed value digest matches the public values hash.
             // It is computationally infeasible to find two distinct inputs, one processed with
             // SHA256 and the other with Blake3, that yield the same hash value.
-            if committed_value_digest_bytes != bundle.public_values.hash() &&
-                committed_value_digest_bytes != bundle.public_values.blake3_hash()
+            if committed_value_digest_bytes != bundle.public_values.hash()
+                && committed_value_digest_bytes != bundle.public_values.blake3_hash()
             {
                 return Err(SP1VerificationError::InvalidPublicValues);
             }
 
             prover.verify_compressed(proof, vkey).map_err(SP1VerificationError::Recursion)
         }
-        SP1Proof::Plonk(proof) => prover
-            .verify_plonk_bn254(
-                proof,
-                vkey,
-                &bundle.public_values,
-                &if sp1_prover::build::sp1_dev_mode() {
-                    sp1_prover::build::plonk_bn254_artifacts_dev_dir()
-                } else {
-                    try_install_circuit_artifacts("plonk")
-                },
-            )
-            .map_err(SP1VerificationError::Plonk),
-        SP1Proof::Groth16(proof) => prover
-            .verify_groth16_bn254(
-                proof,
-                vkey,
-                &bundle.public_values,
-                &if sp1_prover::build::sp1_dev_mode() {
-                    sp1_prover::build::groth16_bn254_artifacts_dev_dir()
-                } else {
-                    try_install_circuit_artifacts("groth16")
-                },
-            )
-            .map_err(SP1VerificationError::Groth16),
+        SP1Proof::Plonk(_) => unimplemented!(),
+        // prover
+        //     .verify_plonk_bn254(
+        //         proof,
+        //         vkey,
+        //         &bundle.public_values,
+        //         &if sp1_prover::build::sp1_dev_mode() {
+        //             sp1_prover::build::plonk_bn254_artifacts_dev_dir()
+        //         } else {
+        //             try_install_circuit_artifacts("plonk")
+        //         },
+        //     )
+        //     .map_err(SP1VerificationError::Plonk),
+        SP1Proof::Groth16(_) => unimplemented!(),
+        // prover
+        // .verify_groth16_bn254(
+        //     proof,
+        //     vkey,
+        //     &bundle.public_values,
+        //     &if sp1_prover::build::sp1_dev_mode() {
+        //         sp1_prover::build::groth16_bn254_artifacts_dev_dir()
+        //     } else {
+        //         try_install_circuit_artifacts("groth16")
+        //     },
+        // )
+        // .map_err(SP1VerificationError::Groth16),
     }
 }
