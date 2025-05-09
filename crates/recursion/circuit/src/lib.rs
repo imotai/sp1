@@ -391,10 +391,13 @@ impl CircuitConfig for WrapConfig {
         builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
         let mut acc_felt: Felt<_> = builder.uninit();
         builder.push_op(DslIr::ImmF(acc_felt, Self::F::zero()));
+        let one: Felt<_> = builder.constant(Self::F::one());
         for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
             let prod = builder.uninit();
             builder.push_op(DslIr::MulEF(prod, x2, x1));
             let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
+            // Check that x1 is boolean.
+            builder.assert_felt_eq(x1 * (x1 - one), SymbolicFelt::zero());
             acc = builder.eval(acc * lagrange_term);
             // Only need felt of first half of point_1 (current prefix sum).
             if i < point_1.len() / 2 {
@@ -548,10 +551,13 @@ impl CircuitConfig for OuterConfig {
         builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
         let mut acc_felt: Felt<_> = builder.uninit();
         builder.push_op(DslIr::ImmF(acc_felt, Self::F::zero()));
+        let one: Felt<_> = builder.constant(Self::F::one());
         for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
             let prod = builder.uninit();
             builder.push_op(DslIr::MulEF(prod, x2, x1));
             let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
+            // Check that x1 is boolean.
+            builder.assert_felt_eq(x1 * (x1 - one), SymbolicFelt::zero());
             acc = builder.eval(acc * lagrange_term);
             // Only need felt of first half of point_1 (current prefix sum).
             if i < point_1.len() / 2 {
