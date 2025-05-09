@@ -4,18 +4,16 @@ use core::{
 };
 use std::fmt::Debug;
 
-use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    utils::{limbs_to_words, zeroed_f_vec},
-};
-use crate::{
     operations::field::{
         field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
         field_sqrt::FieldSqrtCols, range::FieldLtCols,
     },
-    utils::{bytes_to_words_le_vec, pad_rows_fixed},
+    utils::{
+        bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
+    },
 };
 use generic_array::GenericArray;
 use itertools::Itertools;

@@ -2,7 +2,7 @@
 //!
 //! A library for interacting with the SP1 RISC-V zkVM.
 //!
-//! Visit the [Getting Started](https://docs.succinct.xyz/docs/getting-started/install) section
+//! Visit the [Getting Started](https://docs.succinct.xyz/docs/sp1/getting-started/install) section
 //! in the official SP1 documentation for a quick start guide.
 
 #![warn(clippy::pedantic)]
@@ -48,8 +48,8 @@ pub use crate::network::prover::NetworkProver;
 pub mod proof;
 pub use proof::*;
 pub mod prover;
-pub use prover::Prover;
-pub use prover::SP1VerificationError;
+
+pub use prover::{Prover, SP1VerificationError};
 
 // Re-export the build utilities and executor primitives.
 pub use sp1_build::include_elf;
@@ -123,6 +123,21 @@ mod tests {
     //     }
     // }
 
+    // #[test]
+    // fn test_e2e_io_override() {
+    //     utils::setup_logger();
+    //     let client = ProverClient::builder().cpu().build();
+    //     let elf = test_artifacts::HELLO_WORLD_ELF;
+
+    //     let mut stdout = Vec::new();
+
+    //     // Generate proof & verify.
+    //     let stdin = SP1Stdin::new();
+    //     let _ = client.execute(elf, &stdin).stdout(&mut stdout).run().unwrap();
+
+    //     assert_eq!(stdout, b"Hello, world!\n");
+    // }
+
     // #[tokio::test]
     // async fn test_e2e_compressed() {
     //     utils::setup_logger();
@@ -186,7 +201,7 @@ mod deprecated_check {
     fn cuda_is_deprecated() {}
 
     /// Show a warning if the `cuda` feature is enabled.
-    #[allow(deprecated, unused)]
+    #[allow(unused, deprecated)]
     fn show_cuda_warning() {
         cuda_is_deprecated();
     }

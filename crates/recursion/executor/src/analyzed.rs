@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr, Instruction};
-use crate::program::RawProgram;
-use crate::{BasicBlock, RecursionAirEventCount, SeqBlock};
+use crate::{
+    instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr, Instruction},
+    program::RawProgram,
+    BasicBlock, RecursionAirEventCount, SeqBlock,
+};
 
 /// An instruction that has been analyzed to find where it should insert its events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +89,8 @@ impl<F> RawProgram<Instruction<F>> {
                                 Instruction::CommitPublicValues(_) => {
                                     incr(&mut counts.commit_pv_hash_events, 1)
                                 }
-                                // Just return 0 as a place holder, the executor code will not create any events on these types anyway.
+                                // Just return 0 as a place holder, the executor code will not
+                                // create any events on these types anyway.
                                 Instruction::Print(_) | Instruction::DebugBacktrace(_) => 0,
                             };
 

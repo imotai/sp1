@@ -137,7 +137,15 @@ main() {
     determine_architecture
 
     # Compute the URL of the release tarball in the sp1 repository.
-    RELEASE_URL="https://github.com/${SP1UP_REPO}/releases/download/${SP1UP_TAG}/"
+    if [[ "$SP1UP_TAG" == "latest" ]]; then
+      # <https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases>
+      RELEASE_URL="https://github.com/${SP1UP_REPO}/releases/latest/download/"
+      # Get the actual version from the release API
+      SP1UP_VERSION=$(curl -s https://api.github.com/repos/succinctlabs/sp1/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
+    else
+      RELEASE_URL="https://github.com/${SP1UP_REPO}/releases/download/${SP1UP_TAG}/"
+    fi
+
     BIN_ARCHIVE_URL="${RELEASE_URL}cargo_prove_${SP1UP_VERSION}_${PLATFORM}_${ARCHITECTURE}.$EXT"
 
     check_url "$BIN_ARCHIVE_URL" "binary"
@@ -235,20 +243,20 @@ install_c_toolchain() {
   case $PLATFORM in
     linux)
       case $ARCHITECTURE in
-        amd64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2022.03.25/riscv32im-linux-x86_64.tar.xz" ;;
+        amd64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2024.01.05/riscv32im-linux-x86_64.tar.xz" ;;
         *) err "unsupported architecture for Linux: $ARCHITECTURE" ;;
       esac
       ;;
     darwin)
       case $ARCHITECTURE in
-        arm64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2022.03.25/riscv32im-osx-arm64.tar.xz" ;;
-        amd64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2022.03.25/riscv32im-osx-x86_64.tar.xz" ;;
+        arm64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2024.01.05/riscv32im-osx-arm64.tar.xz" ;;
+        amd64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2024.01.05/riscv32im-osx-x86_64.tar.xz" ;;
         *) err "unsupported architecture for macOS: $ARCHITECTURE" ;;
       esac
       ;;
     win32)
       case $ARCHITECTURE in
-        amd64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2022.03.25/riscv32im-windows-x86_64.tar.xz" ;;
+        amd64) TOOLCHAIN_URL="https://github.com/risc0/toolchain/releases/download/2024.01.05/riscv32im-windows-x86_64.tar.xz" ;;
         *) err "unsupported architecture for Windows: $ARCHITECTURE" ;;
       esac
       ;;
@@ -437,7 +445,7 @@ banner() {
 ._______ ._______ ._______ ._______ ._______ ._______ ._______ ._______ ._______ 
 
 Repo       : https://github.com/succinctlabs/sp1
-Book       : https://succinctlabs.github.io/sp1
+Book       : https://docs.succinct.xyz/
 Telegram   : https://t.me/+AzG4ws-kD24yMGYx
 
 ._______ ._______ ._______ ._______ ._______ ._______ ._______ ._______ ._______ 

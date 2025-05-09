@@ -13,7 +13,6 @@ use execute::CpuExecuteBuilder;
 use prove::CpuProveBuilder;
 use sp1_core_executor::{SP1Context, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::local::{LocalProver, LocalProverOpts};
 use sp1_prover::{
     components::CpuSP1ProverComponents,
     // verify::{verify_groth16_bn254_public_inputs, verify_plonk_bn254_public_inputs},
@@ -22,11 +21,15 @@ use sp1_prover::{
     SP1CoreProofData,
     SP1ProofWithMetadata,
 };
-use sp1_prover::{SP1ProverBuilder, SP1ProvingKey};
+use sp1_prover::{
+    local::{LocalProver, LocalProverOpts},
+    SP1ProverBuilder, SP1ProvingKey,
+};
 
-use crate::prover::verify_proof;
-use crate::SP1VerificationError;
-use crate::{Prover, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1VerifyingKey};
+use crate::{
+    prover::verify_proof, Prover, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
+    SP1VerificationError, SP1VerifyingKey,
+};
 
 /// A prover that uses the CPU to execute and prove programs.
 #[derive(Clone)]
@@ -58,15 +61,13 @@ impl CpuProver {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (public_values, execution_report) = client.execute(elf, &stdin)
-    ///     .run()
-    ///     .unwrap();
+    /// let (public_values, execution_report) = client.execute(elf, &stdin).run().unwrap();
     /// ```
     #[must_use]
     pub fn execute<'a>(&'a self, elf: &'a [u8], stdin: &SP1Stdin) -> CpuExecuteBuilder<'a> {
@@ -85,16 +86,14 @@ impl CpuProver {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
     /// let (pk, vk) = client.setup(elf).await;
-    /// let builder = client.prove(pk, stdin)
-    ///     .core()
-    ///     .run();
+    /// let builder = client.prove(pk, stdin).core().run();
     /// ```
     #[must_use]
     pub fn prove(&self, pk: SP1ProvingKey, stdin: SP1Stdin) -> CpuProveBuilder {
@@ -133,22 +132,22 @@ impl CpuProver {
         let proof: SP1ProofWithMetadata<SP1CoreProofData> =
             self.prover.clone().prove_core(pk.clone(), program, stdin, context).await?;
         if mode == SP1ProofMode::Core {
-            return Ok(SP1ProofWithPublicValues {
-                proof: SP1Proof::Core(proof.proof.0),
-                public_values: proof.public_values,
-                sp1_version: self.version().to_string(),
-            });
+            return Ok(SP1ProofWithPublicValues::new(
+                SP1Proof::Core(proof.proof.0),
+                proof.public_values,
+                self.version().to_string(),
+            ));
         }
 
         // Generate the compressed proof.
         let public_values = proof.public_values.clone();
         let reduce_proof = self.prover.clone().compress(&vk, proof, deferred_proofs).await?;
         if mode == SP1ProofMode::Compressed {
-            return Ok(SP1ProofWithPublicValues {
-                proof: SP1Proof::Compressed(Box::new(reduce_proof)),
+            return Ok(SP1ProofWithPublicValues::new(
+                SP1Proof::Compressed(Box::new(reduce_proof)),
                 public_values,
-                sp1_version: self.version().to_string(),
-            });
+                self.version().to_string(),
+            ));
         }
 
         // Generate the shrink proof.
@@ -170,12 +169,12 @@ impl CpuProver {
                 //     try_install_circuit_artifacts("groth16")
                 // };
 
-                // let proof = self.prover.wrap_groth16_bn254(outer_proof, &groth16_bn254_artifacts);
-                // Ok(SP1ProofWithPublicValues {
-                //     proof: SP1Proof::Groth16(proof),
+                // let proof = self.prover.wrap_groth16_bn254(outer_proof,
+                // &groth16_bn254_artifacts); Ok(SP1ProofWithPublicValues::new(
+                //     SP1Proof::Groth16(proof),
                 //     public_values,
-                //     sp1_version: self.version().to_string(),
-                // })
+                //     self.version().to_string(),
+                // ))
             }
             SP1ProofMode::Plonk => {
                 todo!()
@@ -188,11 +187,11 @@ impl CpuProver {
                 //     try_install_circuit_artifacts("plonk")
                 // };
                 // let proof = self.prover.wrap_plonk_bn254(outer_proof, &plonk_bn254_artifacts);
-                // Ok(SP1ProofWithPublicValues {
-                //     proof: SP1Proof::Plonk(proof),
+                // Ok(SP1ProofWithPublicValues::new(
+                //     SP1Proof::Plonk(proof),
                 //     public_values,
-                //     sp1_version: self.version().to_string(),
-                // })
+                //     self.version().to_string(),
+                // ))
             }
             _ => unreachable!(),
         }
@@ -206,7 +205,7 @@ impl CpuProver {
         context: SP1Context,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues> {
-        let (public_values, _) = self.prover.clone().execute(&pk.elf, &stdin, context)?;
+        let (public_values, _, _) = self.prover.clone().execute(&pk.elf, &stdin, context)?;
         Ok(SP1ProofWithPublicValues::create_mock_proof(pk, public_values, mode, self.version()))
     }
 
@@ -219,7 +218,7 @@ impl CpuProver {
         context: SP1Context<'static>,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues> {
-        let (public_values, _) = self.prover.clone().execute(&pk.elf, &stdin, context)?;
+        let (public_values, _, _) = self.prover.clone().execute(&pk.elf, &stdin, context)?;
         Ok(SP1ProofWithPublicValues::create_mock_proof(pk, public_values, mode, self.version()))
     }
 

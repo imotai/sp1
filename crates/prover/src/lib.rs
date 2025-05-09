@@ -13,6 +13,7 @@
 
 // pub mod build;
 pub mod components;
+// pub mod gas; // TODO reimplement gas
 mod core;
 pub mod error;
 pub mod local;

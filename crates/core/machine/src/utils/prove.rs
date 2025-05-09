@@ -111,7 +111,7 @@ pub fn generate_records<F: PrimeField32>(
 
             // See if any deferred shards are ready to be committed to.
             let mut deferred = deferred.split(done, None, opts.split_opts);
-            log::info!("deferred {} records", deferred.len());
+            tracing::debug!("deferred {} records", deferred.len());
 
             // Update the public values & prover state for the shards which do not
             // contain "cpu events" before committing to them.
@@ -249,9 +249,26 @@ pub fn trace_checkpoint(
     runtime.subproof_verifier = Some(Arc::new(noop));
 
     // Execute from the checkpoint.
-    let (records, _) = runtime.execute_record(true).unwrap();
+    let (records, done) = runtime.execute_record(true).unwrap();
 
-    (records.into_iter().map(|r| *r).collect(), runtime.report)
+    let mut records = records.into_iter().map(|r| *r).collect::<Vec<_>>();
+    let pv = records.last().unwrap().public_values;
+
+    // Handle the case where the COMMIT happens across the last two shards.
+    if !done
+        && (pv.committed_value_digest.iter().any(|v| *v != 0)
+            || pv.deferred_proofs_digest.iter().any(|v| *v != 0))
+    {
+        // We turn off the `print_report` flag to avoid modifying the report.
+        runtime.print_report = false;
+        let (_, next_pv, _) = runtime.execute_state(true).unwrap();
+        for record in records.iter_mut() {
+            record.public_values.committed_value_digest = next_pv.committed_value_digest;
+            record.public_values.deferred_proofs_digest = next_pv.deferred_proofs_digest;
+        }
+    }
+
+    (records, runtime.report)
 }
 
 #[derive(Error, Debug)]

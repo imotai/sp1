@@ -4,12 +4,11 @@ use core::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::operations::field::{field_op::FieldOpCols, range::FieldLtCols};
-use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
-    utils::{limbs_to_words, zeroed_f_vec},
+    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
+    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
 use itertools::Itertools;

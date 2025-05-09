@@ -60,14 +60,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          toolchain: 1.81.0
           args: --all-targets --all-features --tests
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          toolchain: 1.81.0
           args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk -- --test-threads=4
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
@@ -113,14 +111,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          toolchain: 1.81.0
           args: --all-targets --all-features --tests
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          toolchain: 1.81.0
           args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
@@ -160,17 +156,15 @@ jobs:
   #       uses: actions-rs/cargo@v1
   #       with:
   #         command: check
-  #         toolchain: 1.81.0
   #         args: --all-targets --all-features --tests
 
   #     - name: Run cargo test
   #       uses: actions-rs/cargo@v1
   #       with:
   #         command: test
-  #         toolchain: 1.81.0
   #         args: --release --package sp1-verifier
   #       env:
-  #         RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+  #         RUSTFLAGS: -Copt-level=3 -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
   #         RUST_BACKTRACE: 1
 
   lint:
@@ -206,6 +200,7 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
+          toolchain: nightly
         env:
           CARGO_INCREMENTAL: 1
 
@@ -299,10 +294,14 @@ jobs:
   #         cargo install --force --locked --path .
   #         cargo clean  
 
-  #     - name: Run cargo fmt
-  #       run: |
-  #         cd ./examples/
-  #         cargo fmt --all -- --check
+      # - name: Run cargo fmt
+      #   uses: actions-rs/cargo@v1
+      #   with:
+      #     command: fmt
+      #     args: --all -- --check
+      #     toolchain: nightly
+      #   env:
+      #     CARGO_INCREMENTAL: 1
 
   #     - name: Run cargo check
   #       run: |
@@ -334,7 +333,6 @@ jobs:
         with:
           message: typos
 
-  # TODO: Enable once recursion crates are fixed for multilinear.
   # check-verifier-no-std:
   #   name: Check Verifier `no_std`
   #   runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
@@ -344,11 +342,6 @@ jobs:
   #   steps:
   #     - name: Checkout Actions Repository
   #       uses: actions/checkout@v4
-
-  #     - name: Setup CI
-  #       uses: ./.github/actions/setup
-  #       with:
-  #         pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
   
   #     - name: Install Rust toolchain
   #       uses: dtolnay/rust-toolchain@stable

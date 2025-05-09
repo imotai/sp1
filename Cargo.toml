@@ -1,5 +1,5 @@
 [workspace.package]
-version = "4.0.1"
+version = "4.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.79"
@@ -29,6 +29,7 @@ members = [
   "crates/zkvm/*",
   "crates/sdk",
   "crates/primitives",
+  # "crates/verifier",
 ]
 exclude = [
   "examples/target",
@@ -38,7 +39,7 @@ exclude = [
   "crates/perf",
   "crates/recursion/circuit-old",
   "crates/recursion/gnark-cli",
-  "crates/verifier",
+  # "crates/verifier",
 ]
 resolver = "2"
 
@@ -55,27 +56,27 @@ debug-assertions = true
 
 [workspace.dependencies]
 # sp1
-sp1-build = { path = "crates/build", version = "4.0.1" }
-sp1-cli = { path = "crates/cli", version = "4.0.1", default-features = false }
-sp1-core-machine = { path = "crates/core/machine", version = "4.0.1" }
-sp1-core-executor = { path = "crates/core/executor", version = "4.0.1" }
-sp1-curves = { path = "crates/curves", version = "4.0.1" }
-sp1-derive = { path = "crates/derive", version = "4.0.1" }
-sp1-eval = { path = "crates/eval", version = "4.0.1" }
-sp1-helper = { path = "crates/helper", version = "4.0.1", default-features = false }
-sp1-primitives = { path = "crates/primitives", version = "4.0.1" }
-sp1-prover = { path = "crates/prover", version = "4.0.1" }
-sp1-recursion-compiler = { path = "crates/recursion/compiler", version = "4.0.1" }
-sp1-recursion-derive = { path = "crates/recursion/derive", version = "4.0.1", default-features = false }
-sp1-recursion-gnark-ffi = { path = "crates/recursion/gnark-ffi", version = "4.0.1", default-features = false }
-sp1-recursion-circuit = { path = "crates/recursion/circuit", version = "4.0.1", default-features = false }
-sp1-recursion-executor = { path = "crates/recursion/executor", version = "4.0.1", default-features = false }
-sp1-recursion-machine = { path = "crates/recursion/machine", version = "4.0.1", default-features = false }
-sp1-sdk = { path = "crates/sdk", version = "4.0.1" }
-sp1-cuda = { path = "crates/cuda", version = "4.0.1" }
-sp1-stark = { path = "crates/stark", version = "4.0.1" }
-sp1-lib = { path = "crates/zkvm/lib", version = "4.0.1", default-features = false }
-sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "4.0.1", default-features = false }
+sp1-build = { path = "crates/build", version = "4.2.0" }
+sp1-cli = { path = "crates/cli", version = "4.2.0", default-features = false }
+sp1-core-machine = { path = "crates/core/machine", version = "4.2.0" }
+sp1-core-executor = { path = "crates/core/executor", version = "4.2.0" }
+sp1-curves = { path = "crates/curves", version = "4.2.0" }
+sp1-derive = { path = "crates/derive", version = "4.2.0" }
+sp1-eval = { path = "crates/eval", version = "4.2.0" }
+sp1-helper = { path = "crates/helper", version = "4.2.0", default-features = false }
+sp1-primitives = { path = "crates/primitives", version = "4.2.0" }
+sp1-prover = { path = "crates/prover", version = "4.2.0" }
+sp1-recursion-compiler = { path = "crates/recursion/compiler", version = "4.2.0" }
+sp1-recursion-derive = { path = "crates/recursion/derive", version = "4.2.0", default-features = false }
+sp1-recursion-gnark-ffi = { path = "crates/recursion/gnark-ffi", version = "4.2.0", default-features = false }
+sp1-recursion-circuit = { path = "crates/recursion/circuit", version = "4.2.0", default-features = false }
+sp1-recursion-executor = { path = "crates/recursion/executor", version = "4.2.0", default-features = false }
+sp1-recursion-machine = { path = "crates/recursion/machine", version = "4.2.0", default-features = false }
+sp1-sdk = { path = "crates/sdk", version = "4.2.0" }
+sp1-cuda = { path = "crates/cuda", version = "4.2.0" }
+sp1-stark = { path = "crates/stark", version = "4.2.0" }
+sp1-lib = { path = "crates/zkvm/lib", version = "4.2.0", default-features = false }
+sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "4.2.0", default-features = false }
 
 # slop
 slop-algebra = { git = "https://github.com/succinctlabs/slop" }
@@ -187,6 +188,7 @@ futures-util = "0.3.31"
 derive-where = "1.2.7"
 strum_macros = "0.27.1"
 strum = "0.27.1"
+blake3 = { version = "1.6.1", default-features = false }
 
 [workspace.metadata.typos]
 default.extend-ignore-re = [

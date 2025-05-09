@@ -138,8 +138,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //         ));
         //     } else if i != 0 && public_values.start_pc != prev_next_pc {
         //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all shards",
-        //         ));
+        //             "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all
+        // shards",         ));
         //     } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
         //         return Err(MachineVerifierError::InvalidPublicValues(
         //             "next_pc != 0: execution should have halted",
@@ -150,8 +150,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //     //     return Err(MachineVerifierError::InvalidPublicValues(
         //     //         "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
         //     //     ));
-        //     // } else if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero() {
-        //     //     return Err(MachineVerifierError::InvalidPublicValues(
+        //     // } else if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero()
+        // {     //     return Err(MachineVerifierError::InvalidPublicValues(
         //     //         "start_pc == 0: execution should never start at halted state",
         //     //     ));
         //     prev_next_pc = public_values.next_pc;
@@ -179,8 +179,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Transition:
         // - For all shards, `previous_init_addr_bits` should equal `last_init_addr_bits` of the
         //   previous shard.
-        // - For all shards, `previous_finalize_addr_bits` should equal `last_finalize_addr_bits`
-        //   of the previous shard.
+        // - For all shards, `previous_finalize_addr_bits` should equal `last_finalize_addr_bits` of
+        //   the previous shard.
         // - For shards without "MemoryInit", `previous_init_addr_bits` should equal
         //   `last_init_addr_bits`.
         // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
@@ -224,8 +224,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - `deferred_proofs_digest` should be zero.
         //
         // Transition:
-        // - If `committed_value_digest_prev` is not zero, then `committed_value_digest`
-        //   equal
+        // - If `committed_value_digest_prev` is not zero, then `committed_value_digest` equal
         //  `committed_value_digest_prev`. Otherwise, `committed_value_digest` should
         //   equal zero.         // - If `deferred_proofs_digest_prev` is not zero, then
         //   `deferred_proofs_digest` should         //   equal
@@ -498,10 +497,37 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     //     if public_values_hash != expected_public_values_hash {
     //         return Err(Groth16VerificationError::InvalidPublicValues.into());
     //     }
+    //     verify_public_values(public_values, expected_public_values_hash)?;
 
     //     Ok(())
     // }
 }
+
+// /// In SP1, a proof's public values can either be hashed with SHA2 or Blake3. In SP1 V4, there is
+// no /// metadata attached to the proof about which hasher function was used for public values
+// hashing. /// Instead, when verifying the proof, the public values are hashed with SHA2 and
+// Blake3, and /// if either matches the `expected_public_values_hash`, the verification is
+// successful. ///
+// /// The security for this verification in SP1 V4 derives from the fact that both SHA2 and Blake3
+// are /// designed to be collision resistant. It is computationally infeasible to find an input i1
+// for /// SHA256 and an input i2 for Blake3 that the same hash value. Doing so would require
+// breaking both /// algorithms simultaneously.
+// fn verify_public_values(
+//     public_values: &SP1PublicValues,
+//     expected_public_values_hash: BigUint,
+// ) -> Result<()> {
+//     // First, check if the public values are hashed with SHA256. If that fails, attempt hashing
+// with     // Blake3. If neither match, return an error.
+//     let sha256_public_values_hash = public_values.hash_bn254();
+//     if sha256_public_values_hash != expected_public_values_hash {
+//         let blake3_public_values_hash = public_values.hash_bn254_with_fn(blake3_hash);
+//         if blake3_public_values_hash != expected_public_values_hash {
+//             return Err(Groth16VerificationError::InvalidPublicValues.into());
+//         }
+//     }
+
+//     Ok(())
+// }
 
 use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;

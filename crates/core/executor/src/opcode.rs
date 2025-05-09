@@ -100,7 +100,7 @@ pub enum Opcode {
     AUIPC = 35,
     /// Transfer control to the debugger.
     ECALL = 36,
-    /// Transfer control to the operating system.
+    /// Transfer control to the debugger.
     EBREAK = 37,
     /// Unimplemented instruction.
     UNIMP = 38,

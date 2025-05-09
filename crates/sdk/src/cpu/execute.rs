@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use sp1_core_executor::{ExecutionReport, HookEnv, SP1ContextBuilder};
+use sp1_core_executor::{ExecutionReport, HookEnv, IoWriter, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::io::SP1PublicValues;
 use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver};
@@ -35,13 +35,14 @@ impl<'a> CpuExecuteBuilder<'a> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let builder = client.execute(elf, &stdin)
+    /// let builder = client
+    ///     .execute(elf, &stdin)
     ///     .with_hook(1, |env, data| {
     ///         println!("Hook triggered with data: {:?}", data);
     ///         vec![vec![1, 2, 3]]
@@ -70,15 +71,13 @@ impl<'a> CpuExecuteBuilder<'a> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let builder = client.execute(elf, &stdin)
-    ///     .cycle_limit(1000000)
-    ///     .run();
+    /// let builder = client.execute(elf, &stdin).cycle_limit(1000000).run();
     /// ```
     #[must_use]
     pub fn cycle_limit(mut self, max_cycles: u64) -> Self {
@@ -99,19 +98,86 @@ impl<'a> CpuExecuteBuilder<'a> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let builder = client.execute(elf, &stdin)
-    ///     .deferred_proof_verification(false)
-    ///     .run();
+    /// let builder = client.execute(elf, &stdin).deferred_proof_verification(false).run();
     /// ```
     #[must_use]
     pub fn deferred_proof_verification(mut self, value: bool) -> Self {
         self.context_builder.set_deferred_proof_verification(value);
+        self
+    }
+
+    /// Whether to enable gas calculation in the executor.
+    ///
+    /// # Arguments
+    /// * `value` - Whether to enable gas calculation in the executor.
+    ///
+    /// # Details
+    /// Default: `true`. If set to `false`, the executor will not calculate gas.
+    /// This is useful for reducing the execution time of the program, since gas calculation
+    /// must perform extra work to simulate parts of the proving process.
+    ///
+    /// Gas may be retrieved through the [`ExecutionReport`] available through [`Self::run`].
+    /// It will be `None` if and only if this option is disabled.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    ///
+    /// let elf = &[1, 2, 3];
+    /// let stdin = SP1Stdin::new();
+    ///
+    /// let client = ProverClient::builder().cpu().build();
+    /// let builder = client.execute(elf, &stdin).calculate_gas(false).run();
+    /// ```
+    #[must_use]
+    pub fn calculate_gas(mut self, value: bool) -> Self {
+        self.context_builder.calculate_gas(value);
+        self
+    }
+
+    /// Override the default stdout of the guest program.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    ///
+    /// let mut stdout = Vec::new();
+    ///
+    /// let elf = &[1, 2, 3];
+    /// let stdin = SP1Stdin::new();
+    ///
+    /// let client = ProverClient::builder().cpu().build();
+    /// client.execute(elf, &stdin).stdout(&mut stdout).run();
+    /// ```
+    #[must_use]
+    pub fn stdout<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
+        self.context_builder.stdout(writer);
+        self
+    }
+
+    /// Override the default stdout of the guest program.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    ///
+    /// let mut stderr = Vec::new();
+    ///
+    /// let elf = &[1, 2, 3];
+    /// let stdin = SP1Stdin::new();
+    ///
+    /// let client = ProverClient::builder().cpu().build();
+    /// client.execute(elf, &stdin).stderr(&mut stderr).run();
+    /// ```
+    #[must_use]
+    pub fn stderr<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
+        self.context_builder.stderr(writer);
         self
     }
 
@@ -123,19 +189,18 @@ impl<'a> CpuExecuteBuilder<'a> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, include_elf, Prover};
+    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let (public_values, execution_report) = client.execute(elf, &stdin)
-    ///     .run()
-    ///     .unwrap();
+    /// let (public_values, execution_report) = client.execute(elf, &stdin).run().unwrap();
     /// ```
     pub fn run(self) -> Result<(SP1PublicValues, ExecutionReport)> {
         let Self { prover, elf, stdin, mut context_builder } = self;
         let context = context_builder.build();
-        Ok(prover.execute(elf, &stdin, context)?)
+        let (pv, _, report) = prover.execute(elf, &stdin, context)?;
+        Ok((pv, report))
     }
 }

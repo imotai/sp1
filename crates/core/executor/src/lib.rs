@@ -24,6 +24,7 @@ mod air;
 mod context;
 mod cost;
 mod disassembler;
+pub mod estimator;
 pub mod events;
 mod executor;
 mod hook;

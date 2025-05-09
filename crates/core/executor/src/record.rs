@@ -28,7 +28,7 @@ use crate::{
     },
     program::Program,
     syscalls::SyscallCode,
-    Opcode, RetainedEventsPreset, RiscvAirId, SplitOpts,
+    RetainedEventsPreset, RiscvAirId, SplitOpts,
 };
 
 /// A record of the execution of a program.
@@ -123,92 +123,6 @@ impl ExecutionRecord {
     #[must_use]
     pub fn new(program: Arc<Program>) -> Self {
         Self { program, ..Default::default() }
-    }
-
-    /// Add a mul event to the execution record.
-    pub fn add_mul_event(&mut self, mul_event: (AluEvent, ALUTypeRecord)) {
-        self.mul_events.push(mul_event);
-    }
-
-    /// Add a lt event to the execution record.
-    pub fn add_lt_event(&mut self, lt_event: (AluEvent, ALUTypeRecord)) {
-        self.lt_events.push(lt_event);
-    }
-
-    /// Add a batch of alu events to the execution record.
-    /// This function should not be used on ADD, ADDI, SUB events.
-    pub fn add_alu_events(
-        &mut self,
-        mut alu_events: HashMap<Opcode, Vec<(AluEvent, ALUTypeRecord)>>,
-    ) {
-        for (opcode, value) in &mut alu_events {
-            match opcode {
-                Opcode::MUL | Opcode::MULH | Opcode::MULHU | Opcode::MULHSU => {
-                    self.mul_events.append(value);
-                }
-                Opcode::XOR | Opcode::OR | Opcode::AND => {
-                    self.bitwise_events.append(value);
-                }
-                Opcode::SLL => {
-                    self.shift_left_events.append(value);
-                }
-                Opcode::SRL | Opcode::SRA => {
-                    self.shift_right_events.append(value);
-                }
-                Opcode::SLT | Opcode::SLTU => {
-                    self.lt_events.append(value);
-                }
-                _ => {
-                    panic!("Invalid opcode: {opcode:?}");
-                }
-            }
-        }
-    }
-
-    /// Add a memory instructions event to the execution record.
-    pub fn add_memory_instructions_event(
-        &mut self,
-        memory_instructions_event: (MemInstrEvent, ITypeRecord),
-    ) {
-        let opcode = memory_instructions_event.0.opcode;
-        let op_a_0 = memory_instructions_event.0.op_a_0;
-        if matches!(opcode, Opcode::LB | Opcode::LBU | Opcode::LH | Opcode::LHU | Opcode::LW)
-            && op_a_0
-        {
-            self.memory_load_x0_events.push(memory_instructions_event);
-        } else if matches!(opcode, Opcode::LB | Opcode::LBU) {
-            self.memory_load_byte_events.push(memory_instructions_event);
-        } else if matches!(opcode, Opcode::LH | Opcode::LHU) {
-            self.memory_load_half_events.push(memory_instructions_event);
-        } else if opcode == Opcode::LW {
-            self.memory_load_word_events.push(memory_instructions_event);
-        } else if opcode == Opcode::SB {
-            self.memory_store_byte_events.push(memory_instructions_event);
-        } else if opcode == Opcode::SH {
-            self.memory_store_half_events.push(memory_instructions_event);
-        } else if opcode == Opcode::SW {
-            self.memory_store_word_events.push(memory_instructions_event);
-        }
-    }
-
-    /// Add a branch event to the execution record.
-    pub fn add_branch_event(&mut self, branch_event: (BranchEvent, ITypeRecord)) {
-        self.branch_events.push(branch_event);
-    }
-
-    /// Add a JAL event to the execution record.
-    pub fn add_jal_event(&mut self, jal_event: (JumpEvent, JTypeRecord)) {
-        self.jal_events.push(jal_event);
-    }
-
-    /// Add a JALR event to the execution record.
-    pub fn add_jalr_event(&mut self, jalr_event: (JumpEvent, ITypeRecord)) {
-        self.jalr_events.push(jalr_event);
-    }
-
-    /// Add an AUIPC event to the execution record.
-    pub fn add_auipc_event(&mut self, auipc_event: (AUIPCEvent, JTypeRecord)) {
-        self.auipc_events.push(auipc_event);
     }
 
     /// Take out events from the [`ExecutionRecord`] that should be deferred to a separate shard.

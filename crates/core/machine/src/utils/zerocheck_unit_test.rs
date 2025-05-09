@@ -133,8 +133,8 @@ where
 //     use slop_air::Air;
 //     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 //     use slop_alloc::CpuBackend;
-//     use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig};
-//     use slop_matrix::dense::RowMajorMatrixView;
+//     use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig,
+// Poseidon2BabyBear16BasefoldConfig};     use slop_matrix::dense::RowMajorMatrixView;
 //     use slop_multilinear::{full_geq, Mle, PaddedMle, Padding, Point, VirtualGeq};
 //     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
 //     use sp1_core_executor::{
@@ -290,8 +290,8 @@ where
 //         );
 
 //         let (proof, column_openings) =
-//             reduce_sumcheck_to_evaluation(vec![zerocheck_poly], &mut challenger, claims, t, lambda)
-//                 .await;
+//             reduce_sumcheck_to_evaluation(vec![zerocheck_poly], &mut challenger, claims, t,
+// lambda)                 .await;
 
 //         let chip_eval_claim = proof.point_and_eval.1;
 //         let chip_eval_point = proof.point_and_eval.0.clone();

@@ -13,7 +13,8 @@ use crate::{io::SP1Stdin, riscv::RiscvAir};
 use super::prove_core;
 
 // /// This type is the function signature used for malicious trace and public values generators for
-// failure test cases. pub(crate) type MaliciousTracePVGeneratorType<Val, P> =
+// /// failure test cases.
+// pub(crate) type MaliciousTracePVGeneratorType<Val, P> =
 //     Box<dyn Fn(&P, &mut ExecutionRecord) -> Vec<(String, RowMajorMatrix<Val>)> + Send + Sync>;
 
 /// The canonical entry point for testing a [`Program`] and [`SP1Stdin`] with a [`MachineProver`].

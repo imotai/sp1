@@ -3,16 +3,14 @@ use std::{borrow::BorrowMut, mem::MaybeUninit};
 use p3_challenger::DuplexChallenger;
 use p3_symmetric::CryptographicPermutation;
 use serde::{Deserialize, Serialize};
-use slop_algebra::Field;
-use slop_algebra::{AbstractField, PrimeField32};
+use slop_algebra::{AbstractField, Field, PrimeField32};
 use slop_baby_bear::BabyBear;
 use slop_merkle_tree::{OUTER_CHALLENGER_RATE, OUTER_DIGEST_SIZE};
 use slop_multilinear::Point;
 use sp1_derive::AlignedBorrow;
-use sp1_recursion_compiler::ir::DslIr;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
-    ir::Var,
+    ir::{DslIr, Var},
     prelude::{Builder, Config, Ext, Felt},
 };
 use sp1_recursion_executor::{HASH_RATE, NUM_BITS, PERMUTATION_WIDTH};
@@ -507,10 +505,10 @@ pub(crate) mod tests {
 
     use std::iter::zip;
 
-    use crate::witness::OuterWitness;
     use crate::{
         challenger::{CanCopyChallenger, MultiField32ChallengerVariable},
         hash::{FieldHasherVariable, BN254_DIGEST_SIZE},
+        witness::OuterWitness,
     };
     use p3_challenger::{CanObserve, CanSample, CanSampleBits, FieldChallenger};
     use p3_symmetric::{CryptographicHasher, PseudoCompressionFunction};

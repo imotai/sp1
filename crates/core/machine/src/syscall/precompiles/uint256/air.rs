@@ -1,10 +1,12 @@
 use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols};
 
-use crate::utils::next_multiple_of_32;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     operations::{field::range::FieldLtCols, IsZeroOperation},
-    utils::{limbs_to_words, pad_rows_fixed, words_to_bytes_le, words_to_bytes_le_vec},
+    utils::{
+        limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
+        words_to_bytes_le_vec,
+    },
 };
 use generic_array::GenericArray;
 use itertools::Itertools;

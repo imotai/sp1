@@ -151,8 +151,7 @@ mod sys {
             }
             Err(cbindgen::Error::ParseSyntaxError { .. }) => {
                 return;
-            } /* Ignore parse errors so */
-            // rust-analyzer can run.
+            } // Ignore parse errors so  rust-analyzer can run.
             Err(e) => panic!("{:?}", e),
         }
 

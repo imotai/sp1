@@ -2,8 +2,10 @@
 use std::{fs::File, io::BufWriter};
 use std::{str::FromStr, sync::Arc};
 
+use crate::estimator::RecordEstimator;
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
+
 use clap::ValueEnum;
 use enum_map::EnumMap;
 use hashbrown::HashMap;
@@ -15,7 +17,7 @@ use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use crate::{
-    context::SP1Context,
+    context::{IoOptions, SP1Context},
     estimate_trace_elements,
     events::{
         AUIPCEvent, AluEvent, BranchEvent, JumpEvent, LogicalShard, MemInstrEvent,
@@ -99,6 +101,9 @@ pub struct Executor<'a> {
     /// Whether we should write to the report.
     pub print_report: bool,
 
+    /// Data used to estimate total trace area.
+    pub record_estimator: Option<Box<RecordEstimator>>,
+
     /// Whether we should emit global memory init and finalize events. This can be enabled in
     /// Checkpoint mode and disabled in Trace mode.
     pub emit_global_memory_events: bool,
@@ -164,8 +169,14 @@ pub struct Executor<'a> {
     /// Syscalls that have been overridden to be internal instead of external.
     pub internal_syscalls_override: Vec<SyscallCode>,
 
-    /// event counts for the current shard.
-    pub event_counts: EnumMap<RiscvAirId, u64>,
+    /// The options for the IO.
+    pub io_options: IoOptions<'a>,
+
+    /// The total number of unconstrained cycles.
+    pub total_unconstrained_cycles: u64,
+
+    /// Temporary event counts for the current shard. This is a field to reuse memory.
+    event_counts: EnumMap<RiscvAirId, u64>,
 }
 
 /// The configuration of the executor.
@@ -294,6 +305,10 @@ pub enum ExecutionError {
     /// The program ended in unconstrained mode.
     #[error("program ended in unconstrained mode")]
     EndInUnconstrained(),
+
+    /// The unconstrained cycle limit was exceeded.
+    #[error("unconstrained cycle limit exceeded")]
+    UnconstrainedCycleLimitExceeded(u64),
 }
 
 impl<'a> Executor<'a> {
@@ -303,23 +318,21 @@ impl<'a> Executor<'a> {
         Self::with_context(program, opts, SP1Context::default())
     }
 
-    /// Create a new runtime for the program, and setup the profiler if `TRACE_FILE` env var is set
-    /// and the feature flag `profiling` is enabled.
-    #[must_use]
-    pub fn with_context_and_elf(
-        opts: SP1CoreOpts,
-        context: SP1Context<'a>,
-        elf_bytes: &[u8],
-    ) -> Self {
-        let program = Program::from(elf_bytes).expect("Failed to create program from ELF bytes");
-
-        #[cfg(not(feature = "profiling"))]
-        return Self::with_context(Arc::new(program), opts, context);
-
+    /// WARNING: This function's API is subject to change without a major version bump.
+    ///
+    /// If the feature `"profiling"` is enabled, this sets up the profiler. Otherwise, it does
+    /// nothing. The argument `elf_bytes` must describe the same program as `self.program`.
+    ///
+    /// The profiler is configured by the following environment variables:
+    ///
+    /// - `TRACE_FILE`: writes Gecko traces to this path. If unspecified, the profiler is disabled.
+    /// - `TRACE_SAMPLE_RATE`: The period between clock cycles where samples are taken. Defaults to
+    ///   1.
+    #[inline]
+    #[allow(unused_variables)]
+    pub fn maybe_setup_profiler(&mut self, elf_bytes: &[u8]) {
         #[cfg(feature = "profiling")]
         {
-            let mut this = Self::with_context(Arc::new(program), opts, context);
-
             let trace_buf = std::env::var("TRACE_FILE").ok().map(|file| {
                 let file = File::create(file).unwrap();
                 BufWriter::new(file)
@@ -336,20 +349,16 @@ impl<'a> Executor<'a> {
                     })
                     .unwrap_or(1);
 
-                this.profiler = Some((
+                self.profiler = Some((
                     Profiler::new(elf_bytes, sample_rate as u64)
                         .expect("Failed to create profiler"),
                     trace_buf,
                 ));
             }
-
-            this
         }
     }
 
     /// Create a new runtime from a program, options, and a context.
-    ///
-    /// Note: This function *will not* set up the profiler.
     #[must_use]
     pub fn with_context(program: Arc<Program>, opts: SP1CoreOpts, context: SP1Context<'a>) -> Self {
         // Create a default record with the program.
@@ -398,6 +407,7 @@ impl<'a> Executor<'a> {
             report: ExecutionReport::default(),
             local_counts: LocalCounts::default(),
             print_report: false,
+            record_estimator: None,
             subproof_verifier: context.subproof_verifier,
             hook_registry,
             max_cycles: context.max_cycles,
@@ -410,6 +420,8 @@ impl<'a> Executor<'a> {
             sharding_threshold: Some(opts.sharding_threshold),
             event_counts: EnumMap::default(),
             internal_syscalls_override,
+            io_options: context.io_options,
+            total_unconstrained_cycles: 0,
             opts,
         }
     }
@@ -1459,7 +1471,9 @@ impl<'a> Executor<'a> {
         let mut syscall = SyscallCode::default();
 
         if !E::UNCONSTRAINED {
-            self.report.opcode_counts[instruction.opcode] += 1;
+            if self.print_report {
+                self.report.opcode_counts[instruction.opcode] += 1;
+            }
             self.local_counts.event_counts[instruction.opcode] += 1;
             if instruction.is_memory_load_instruction() && instruction.op_a == Register::X0 as u8 {
                 self.local_counts.event_counts[instruction.opcode] -= 1;
@@ -1734,6 +1748,30 @@ impl<'a> Executor<'a> {
             (a, precompile_rt.next_pc, syscall_impl.num_extra_cycles, precompile_rt.exit_code)
         };
 
+        // TODO(tqn) measure local memory events for the precompiles,
+        // taking into account whether it should be sent
+        // if let (Some(estimator), Some(syscall_id)) =
+        //     (&mut self.record_estimator, syscall.as_air_id())
+        // {
+        //     let threshold = match syscall_id {
+        //         RiscvAirId::ShaExtend => self.opts.split_opts.sha_extend,
+        //         RiscvAirId::ShaCompress => self.opts.split_opts.sha_compress,
+        //         RiscvAirId::KeccakPermute => self.opts.split_opts.keccak,
+        //         _ => self.opts.split_opts.deferred,
+        //     } as u64;
+        //     let shards = &mut estimator.precompile_records[syscall_id];
+        //     let local_memory_ct =
+        //         estimator.current_precompile_touched_compressed_addresses.len() as u64;
+        //     match shards.last_mut().filter(|shard| shard.0 < threshold) {
+        //         Some((shard_precompile_event_ct, shard_local_memory_ct)) => {
+        //             *shard_precompile_event_ct += 1;
+        //             *shard_local_memory_ct += local_memory_ct;
+        //         }
+        //         None => shards.push((1, local_memory_ct)),
+        //     }
+        //     estimator.current_precompile_touched_compressed_addresses.clear();
+        // }
+
         // If the syscall is `EXIT_UNCONSTRAINED`, the memory was restored to pre-unconstrained code
         // in the execute function, so we need to re-read from x10 and x11.  Just do a peek on the
         // registers.
@@ -1794,6 +1832,10 @@ impl<'a> Executor<'a> {
         // Increment the clock.
         self.state.global_clk += 1;
 
+        if E::UNCONSTRAINED {
+            self.total_unconstrained_cycles += 1;
+        }
+
         if !E::UNCONSTRAINED {
             // If there's not enough cycles left for another instruction, move to the next shard.
             let cpu_exit = self.max_syscall_cycles + self.state.clk >= self.shard_size;
@@ -1804,10 +1846,9 @@ impl<'a> Executor<'a> {
             let mut maximal_size_reached = true;
             if self.state.global_clk % self.size_check_frequency == 0 {
                 // Estimate the number of events in the trace.
-                self.estimate_riscv_event_counts(
-                    self.local_counts.local_mem as u64,
-                    self.local_counts.syscalls_sent as u64,
-                    *self.local_counts.event_counts,
+                Self::estimate_riscv_event_counts(
+                    &mut self.event_counts,
+                    &self.local_counts,
                     self.local_counts.load_x0_counts,
                 );
 
@@ -1838,24 +1879,36 @@ impl<'a> Executor<'a> {
                 self.state.clk = 1;
                 self.bump_record::<E>();
             }
-        }
 
-        // If the cycle limit is exceeded, return an error.
-        if let Some(max_cycles) = self.max_cycles {
-            if self.state.global_clk >= max_cycles {
-                return Err(ExecutionError::ExceededCycleLimit(max_cycles));
+            // If the cycle limit is exceeded, return an error.
+            if let Some(max_cycles) = self.max_cycles {
+                if self.state.global_clk > max_cycles {
+                    return Err(ExecutionError::ExceededCycleLimit(max_cycles));
+                }
             }
         }
 
         let done = self.state.pc == 0
             || self.state.pc.wrapping_sub(self.program.pc_base)
                 >= (self.program.instructions.len() * 4) as u32;
-
+        if done && E::UNCONSTRAINED {
+            tracing::error!("program ended in unconstrained mode at clk {}", self.state.global_clk);
+            return Err(ExecutionError::EndInUnconstrained());
+        }
         Ok(done)
     }
 
     /// Bump the record.
     pub fn bump_record<E: ExecutorConfig>(&mut self) {
+        if let Some(estimator) = &mut self.record_estimator {
+            Self::estimate_riscv_event_counts(
+                &mut self.event_counts,
+                &self.local_counts,
+                self.local_counts.load_x0_counts,
+            );
+            // The above method estimates event counts only for core shards.
+            estimator.core_records.push(self.event_counts);
+        }
         self.local_counts = LocalCounts::default();
         // Copy all of the existing local memory accesses to the record's local_memory_access vec.
         if E::MODE == ExecutorMode::Trace {
@@ -2057,6 +2110,9 @@ impl<'a> Executor<'a> {
             self.initialize();
         }
 
+        let unconstrained_cycle_limit =
+            std::env::var("UNCONSTRAINED_CYCLE_LIMIT").map(|v| v.parse::<u64>().unwrap()).ok();
+
         // Loop until we've executed `self.shard_batch_size` shards if `self.shard_batch_size` is
         // set.
         let mut done = false;
@@ -2066,6 +2122,15 @@ impl<'a> Executor<'a> {
             if self.execute_cycle::<E>()? {
                 done = true;
                 break;
+            }
+
+            // Check if the unconstrained cycle limit was exceeded.
+            if let Some(unconstrained_cycle_limit) = unconstrained_cycle_limit {
+                if self.total_unconstrained_cycles > unconstrained_cycle_limit {
+                    return Err(ExecutionError::UnconstrainedCycleLimitExceeded(
+                        unconstrained_cycle_limit,
+                    ));
+                }
             }
 
             if self.shard_batch_size > 0 && current_shard != self.state.current_shard {
@@ -2085,6 +2150,19 @@ impl<'a> Executor<'a> {
 
             // Push the remaining execution record with memory initialize & finalize events.
             self.bump_record::<E>();
+
+            // Flush stdout and stderr.
+            if let Some(ref mut w) = self.io_options.stdout {
+                if let Err(e) = w.flush() {
+                    tracing::error!("failed to flush stdout override: {e}");
+                }
+            }
+
+            if let Some(ref mut w) = self.io_options.stderr {
+                if let Err(e) = w.flush() {
+                    tracing::error!("failed to flush stderr override: {e}");
+                }
+            }
         }
 
         // Push the remaining execution record, if there are any CPU events.
@@ -2147,6 +2225,23 @@ impl<'a> Executor<'a> {
             tracing::warn!("Not all input bytes were read.");
         }
 
+        if let Some(estimator) = &mut self.record_estimator {
+            // Mirror the logic below.
+            // Register 0 is always init and finalized, so we add 1
+            // registers 1..32
+            let touched_reg_ct =
+                1 + (1..32).filter(|&r| self.state.memory.registers.get(r).is_some()).count();
+            let total_mem = touched_reg_ct + self.state.memory.page_table.exact_len();
+            // The memory_image is already initialized in the MemoryProgram chip
+            // so we subtract it off. It is initialized in the executor in the `initialize`
+            // function.
+            estimator.memory_global_init_events = total_mem
+                .checked_sub(self.record.program.memory_image.len())
+                .expect("program memory image should be accounted for in memory exact len")
+                as u64;
+            estimator.memory_global_finalize_events = total_mem as u64;
+        }
+
         if self.emit_global_memory_events
             && (E::MODE == ExecutorMode::Trace || E::MODE == ExecutorMode::Checkpoint)
         {
@@ -2174,12 +2269,15 @@ impl<'a> Executor<'a> {
 
             // Count the number of touched memory addresses manually, since `PagedMemory` doesn't
             // already know its length.
-            self.report.touched_memory_addresses = 0;
+            if self.print_report {
+                self.report.touched_memory_addresses = 0;
+            }
             for addr in 1..32 {
                 let record = self.state.memory.registers.get(addr);
                 if record.is_some() {
-                    self.report.touched_memory_addresses += 1;
-
+                    if self.print_report {
+                        self.report.touched_memory_addresses += 1;
+                    }
                     // Program memory is initialized in the MemoryProgram chip and doesn't require
                     // any events, so we only send init events for other memory
                     // addresses.
@@ -2199,7 +2297,9 @@ impl<'a> Executor<'a> {
                 }
             }
             for addr in self.state.memory.page_table.keys() {
-                self.report.touched_memory_addresses += 1;
+                if self.print_report {
+                    self.report.touched_memory_addresses += 1;
+                }
 
                 // Program memory is initialized in the MemoryProgram chip and doesn't require any
                 // events, so we only send init events for other memory addresses.
@@ -2220,55 +2320,69 @@ impl<'a> Executor<'a> {
     }
 
     /// Maps the opcode counts to the number of events in each air.
-    pub fn estimate_riscv_event_counts(
-        &mut self,
-        touched_addresses: u64,
-        syscalls_sent: u64,
-        opcode_counts: EnumMap<Opcode, u64>,
+    fn estimate_riscv_event_counts(
+        event_counts: &mut EnumMap<RiscvAirId, u64>,
+        local_counts: &LocalCounts,
         load_x0_counts: u64,
     ) {
+        let touched_addresses: u64 = local_counts.local_mem as u64;
+        let syscalls_sent: u64 = local_counts.syscalls_sent as u64;
+        let opcode_counts: &EnumMap<Opcode, u64> = &local_counts.event_counts;
+
         // Compute the number of events in the add chip.
-        self.event_counts[RiscvAirId::Add] = opcode_counts[Opcode::ADD];
+        event_counts[RiscvAirId::Add] = opcode_counts[Opcode::ADD];
 
         // Compute the number of events in the addi chip.
-        self.event_counts[RiscvAirId::Addi] = opcode_counts[Opcode::ADDI];
+        event_counts[RiscvAirId::Addi] = opcode_counts[Opcode::ADDI];
 
         // Compute the number of events in the sub chip.
-        self.event_counts[RiscvAirId::Sub] = opcode_counts[Opcode::SUB];
+        event_counts[RiscvAirId::Sub] = opcode_counts[Opcode::SUB];
 
         // Compute the number of events in the bitwise chip.
-        self.event_counts[RiscvAirId::Bitwise] =
+        event_counts[RiscvAirId::Bitwise] =
             opcode_counts[Opcode::XOR] + opcode_counts[Opcode::OR] + opcode_counts[Opcode::AND];
 
         // Compute the number of events in the divrem chip.
-        self.event_counts[RiscvAirId::DivRem] = opcode_counts[Opcode::DIV]
+        event_counts[RiscvAirId::DivRem] = opcode_counts[Opcode::DIV]
             + opcode_counts[Opcode::DIVU]
             + opcode_counts[Opcode::REM]
             + opcode_counts[Opcode::REMU];
 
         // Compute the number of events in the lt chip.
-        self.event_counts[RiscvAirId::Lt] =
-            opcode_counts[Opcode::SLT] + opcode_counts[Opcode::SLTU];
+        event_counts[RiscvAirId::Lt] = opcode_counts[Opcode::SLT] + opcode_counts[Opcode::SLTU];
 
         // Compute the number of events in the mul chip.
-        self.event_counts[RiscvAirId::Mul] = opcode_counts[Opcode::MUL]
+        event_counts[RiscvAirId::Mul] = opcode_counts[Opcode::MUL]
             + opcode_counts[Opcode::MULH]
             + opcode_counts[Opcode::MULHU]
             + opcode_counts[Opcode::MULHSU];
 
         // Compute the number of events in the shift left chip.
-        self.event_counts[RiscvAirId::ShiftLeft] = opcode_counts[Opcode::SLL];
+        event_counts[RiscvAirId::ShiftLeft] = opcode_counts[Opcode::SLL];
 
         // Compute the number of events in the shift right chip.
-        self.event_counts[RiscvAirId::ShiftRight] =
+        event_counts[RiscvAirId::ShiftRight] =
+            opcode_counts[Opcode::SRL] + opcode_counts[Opcode::SRA];
+
+        // Compute the number of events in the mul chip.
+        event_counts[RiscvAirId::Mul] = opcode_counts[Opcode::MUL]
+            + opcode_counts[Opcode::MULH]
+            + opcode_counts[Opcode::MULHU]
+            + opcode_counts[Opcode::MULHSU];
+
+        // Compute the number of events in the shift left chip.
+        event_counts[RiscvAirId::ShiftLeft] = opcode_counts[Opcode::SLL];
+
+        // Compute the number of events in the shift right chip.
+        event_counts[RiscvAirId::ShiftRight] =
             opcode_counts[Opcode::SRL] + opcode_counts[Opcode::SRA];
 
         // Compute the number of events in the memory local chip.
-        self.event_counts[RiscvAirId::MemoryLocal] =
+        event_counts[RiscvAirId::MemoryLocal] =
             touched_addresses.div_ceil(NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC as u64);
 
         // Compute the number of events in the branch chip.
-        self.event_counts[RiscvAirId::Branch] = opcode_counts[Opcode::BEQ]
+        event_counts[RiscvAirId::Branch] = opcode_counts[Opcode::BEQ]
             + opcode_counts[Opcode::BNE]
             + opcode_counts[Opcode::BLT]
             + opcode_counts[Opcode::BGE]
@@ -2276,33 +2390,31 @@ impl<'a> Executor<'a> {
             + opcode_counts[Opcode::BGEU];
 
         // Compute the number of events in the jump chip.
-        self.event_counts[RiscvAirId::Jal] = opcode_counts[Opcode::JAL];
-        self.event_counts[RiscvAirId::Jalr] = opcode_counts[Opcode::JALR];
+        event_counts[RiscvAirId::Jal] = opcode_counts[Opcode::JAL];
+        event_counts[RiscvAirId::Jalr] = opcode_counts[Opcode::JALR];
 
         // Compute the number of events in the auipc chip.
-        self.event_counts[RiscvAirId::Auipc] = opcode_counts[Opcode::AUIPC]
+        event_counts[RiscvAirId::Auipc] = opcode_counts[Opcode::AUIPC]
             + opcode_counts[Opcode::UNIMP]
             + opcode_counts[Opcode::EBREAK];
 
         // Compute the number of events in the memory instruction chip.
-        self.event_counts[RiscvAirId::LoadByte] =
-            opcode_counts[Opcode::LB] + opcode_counts[Opcode::LBU];
-        self.event_counts[RiscvAirId::LoadHalf] =
-            opcode_counts[Opcode::LH] + opcode_counts[Opcode::LHU];
-        self.event_counts[RiscvAirId::LoadWord] = opcode_counts[Opcode::LW];
-        self.event_counts[RiscvAirId::LoadX0] = load_x0_counts;
-        self.event_counts[RiscvAirId::StoreByte] = opcode_counts[Opcode::SB];
-        self.event_counts[RiscvAirId::StoreHalf] = opcode_counts[Opcode::SH];
-        self.event_counts[RiscvAirId::StoreWord] = opcode_counts[Opcode::SW];
+        event_counts[RiscvAirId::LoadByte] = opcode_counts[Opcode::LB] + opcode_counts[Opcode::LBU];
+        event_counts[RiscvAirId::LoadHalf] = opcode_counts[Opcode::LH] + opcode_counts[Opcode::LHU];
+        event_counts[RiscvAirId::LoadWord] = opcode_counts[Opcode::LW];
+        event_counts[RiscvAirId::LoadX0] = load_x0_counts;
+        event_counts[RiscvAirId::StoreByte] = opcode_counts[Opcode::SB];
+        event_counts[RiscvAirId::StoreHalf] = opcode_counts[Opcode::SH];
+        event_counts[RiscvAirId::StoreWord] = opcode_counts[Opcode::SW];
 
         // Compute the number of events in the syscall instruction chip.
-        self.event_counts[RiscvAirId::SyscallInstrs] = opcode_counts[Opcode::ECALL];
+        event_counts[RiscvAirId::SyscallInstrs] = opcode_counts[Opcode::ECALL];
 
         // Compute the number of events in the syscall core chip.
-        self.event_counts[RiscvAirId::SyscallCore] = syscalls_sent;
+        event_counts[RiscvAirId::SyscallCore] = syscalls_sent;
 
         // Compute the number of events in the global chip.
-        self.event_counts[RiscvAirId::Global] = 2 * touched_addresses + syscalls_sent;
+        event_counts[RiscvAirId::Global] = 2 * touched_addresses + syscalls_sent;
     }
 
     #[inline]
@@ -2315,7 +2427,7 @@ impl<'a> Executor<'a> {
         }
 
         if !E::UNCONSTRAINED && self.state.global_clk % 10_000_000 == 0 {
-            log::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
+            tracing::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
         }
     }
 }
@@ -2344,7 +2456,7 @@ mod tests {
         simple_memory_program, simple_program, ssz_withdrawals_program, u256xu2048_mul_program,
     };
 
-    use crate::{Register, SP1CoreOpts, Simple};
+    use crate::{Register, SP1Context, SP1CoreOpts, Simple};
 
     use super::{Executor, Instruction, Opcode, Program};
 
@@ -2353,6 +2465,7 @@ mod tests {
     /// Runtime needs to be Send so we can use it across async calls.
     #[allow(clippy::used_underscore_items)]
     fn _assert_runtime_is_send() {
+        #[allow(clippy::used_underscore_items)]
         _assert_send::<Executor>();
     }
 
@@ -2368,6 +2481,20 @@ mod tests {
     fn test_fibonacci_program_run() {
         let program = Arc::new(fibonacci_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run::<Simple>().unwrap();
+    }
+
+    #[test]
+    fn test_fibonacci_program_run_with_max_cycles() {
+        let program = Arc::new(fibonacci_program());
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run::<Simple>().unwrap();
+
+        let max_cycles = runtime.state.global_clk;
+
+        let program = Arc::new(fibonacci_program());
+        let context = SP1Context::builder().max_cycles(max_cycles).build();
+        let mut runtime = Executor::with_context(program, SP1CoreOpts::default(), context);
         runtime.run::<Simple>().unwrap();
     }
 

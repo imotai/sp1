@@ -69,16 +69,17 @@ pub trait HashableKey {
         // format!("0x{:0>64}", vkey_digest_bn254.as_canonical_biguint().to_str_radix(16))
     }
 
-    // /// Hash the key into a 32 byte array.
-    // ///
-    // /// This has the same value as `bytes32`, but as a raw byte array.
-    // fn bytes32_raw(&self) -> [u8; 32] {
-    //     let vkey_digest_bn254 = self.hash_bn254();
-    //     let vkey_bytes = vkey_digest_bn254.as_canonical_biguint().to_bytes_be();
-    //     let mut result = [0u8; 32];
-    //     result[1..].copy_from_slice(&vkey_bytes);
-    //     result
-    // }
+    /// Hash the key into a 32 byte array.
+    ///
+    /// This has the same value as `bytes32`, but as a raw byte array.
+    fn bytes32_raw(&self) -> [u8; 32] {
+        todo!()
+        // let vkey_digest_bn254 = self.hash_bn254();
+        // let vkey_bytes = vkey_digest_bn254.as_canonical_biguint().to_bytes_be();
+        // let mut result = [0u8; 32];
+        // result[1..].copy_from_slice(&vkey_bytes);
+        // result
+    }
 
     // /// Hash the key into a digest of bytes elements.
     // fn hash_bytes(&self) -> [u8; DIGEST_SIZE * 4] {

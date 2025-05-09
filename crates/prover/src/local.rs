@@ -125,17 +125,33 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         elf: &[u8],
         stdin: &SP1Stdin,
         mut context: SP1Context,
-    ) -> Result<(SP1PublicValues, ExecutionReport), ExecutionError> {
+    ) -> Result<(SP1PublicValues, [u8; 32], ExecutionReport), ExecutionError> {
         context.subproof_verifier = Some(self);
         let opts = SP1CoreOpts::default();
-        let mut runtime = Executor::with_context_and_elf(opts, context, elf);
+        let program = Arc::new(Program::from(elf).unwrap());
+        let mut runtime = Executor::with_context(program, opts, context);
+        runtime.maybe_setup_profiler(elf);
 
         runtime.write_vecs(&stdin.buffer);
         for (proof, vkey) in stdin.proofs.iter() {
             runtime.write_proof(proof.clone(), vkey.clone());
         }
         runtime.run_fast()?;
-        Ok((SP1PublicValues::from(&runtime.state.public_values_stream), runtime.report))
+
+        let mut committed_value_digest = [0u8; 32];
+
+        runtime.record.public_values.committed_value_digest.iter().enumerate().for_each(
+            |(i, word)| {
+                let bytes = word.to_le_bytes();
+                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes);
+            },
+        );
+
+        Ok((
+            SP1PublicValues::from(&runtime.state.public_values_stream),
+            committed_value_digest,
+            runtime.report,
+        ))
     }
 
     /// Get a reference to the underlying [SP1Prover]
@@ -742,8 +758,7 @@ pub mod tests {
 
     use slop_algebra::PrimeField32;
 
-    use crate::components::CpuSP1ProverComponents;
-    use crate::SP1ProverBuilder;
+    use crate::{components::CpuSP1ProverComponents, SP1ProverBuilder};
 
     use super::*;
 
@@ -810,7 +825,6 @@ pub mod tests {
 
     /// Tests an end-to-end workflow of proving a program across the entire proof generation
     /// pipeline.
-    ///
     #[tokio::test]
     #[serial]
     async fn test_e2e() -> Result<()> {

@@ -11,6 +11,10 @@ use crate::network::builder::NetworkProverBuilder;
 // use crate::cuda::builder::CudaProverBuilder;
 
 /// An entrypoint for interacting with the prover for the SP1 RISC-V zkVM.
+///
+/// IMPORTANT: `ProverClient` only needs to be initialized ONCE and can be reused for subsequent
+/// proving operations (can be shared across tasks by wrapping in an `Arc`). Note that the initial
+/// initialization may be slow as it loads necessary proving parameters and sets up the environment.
 pub struct ProverClient;
 
 impl ProverClient {
@@ -18,7 +22,7 @@ impl ProverClient {
     // ///
     // /// # Usage
     // /// ```no_run
-    // /// use sp1_sdk::{ProverClient, SP1Stdin, Prover};
+    // /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
     // ///
     // /// std::env::set_var("SP1_PROVER", "network");
     // /// std::env::set_var("NETWORK_PRIVATE_KEY", "...");
@@ -68,7 +72,7 @@ impl ProverClientBuilder {
     ///
     /// # Example
     /// ```no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, Prover};
+    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
@@ -86,7 +90,7 @@ impl ProverClientBuilder {
     ///
     /// # Usage
     /// ```no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, Prover};
+    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
@@ -104,7 +108,7 @@ impl ProverClientBuilder {
     // ///
     // /// # Example
     // /// ```no_run
-    // /// use sp1_sdk::{ProverClient, SP1Stdin, Prover};
+    // /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
     // ///
     // /// let elf = &[1, 2, 3];
     // /// let stdin = SP1Stdin::new();
@@ -115,14 +119,14 @@ impl ProverClientBuilder {
     // /// ```
     // #[must_use]
     // pub fn cuda(&self) -> CudaProverBuilder {
-    //     CudaProverBuilder
+    //     CudaProverBuilder::default()
     // }
 
     /// Builds a [`NetworkProver`] specifically for proving on the network.
     ///
     /// # Example
     /// ```no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin, Prover};
+    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
@@ -134,6 +138,6 @@ impl ProverClientBuilder {
     #[cfg(feature = "network")]
     #[must_use]
     pub fn network(&self) -> NetworkProverBuilder {
-        NetworkProverBuilder { private_key: None, rpc_url: None }
+        NetworkProverBuilder { private_key: None, rpc_url: None, tee_signers: None }
     }
 }
