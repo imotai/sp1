@@ -28,7 +28,10 @@ use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::CanObserveVariable,
     jagged::RecursiveJaggedConfig,
-    machine::{recursion_public_values_digest, root_public_values_digest},
+    machine::{
+        assert_complete, assert_recursion_public_values_valid, recursion_public_values_digest,
+        root_public_values_digest,
+    },
     shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfigVariable, CircuitConfig, EF,
@@ -174,7 +177,7 @@ where
             let current_public_values: &RecursionPublicValues<Felt<C::F>> =
                 shard_proof.public_values.as_slice().borrow();
             // Assert that the public values are valid.
-            // assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
+            assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
             // Assert that the vk root is the same as the witnessed one.
             // for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
             //     builder.assert_felt_eq(*expected, *actual);
@@ -452,7 +455,7 @@ where
 
         // If the proof is complete, make completeness assertions.
         // TODO: comment back in
-        // assert_complete(builder, compress_public_values, is_complete);
+        assert_complete(builder, compress_public_values, is_complete);
 
         SC::commit_recursion_public_values(builder, *compress_public_values);
     }

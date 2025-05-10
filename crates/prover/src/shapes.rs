@@ -128,7 +128,7 @@ impl SP1ReduceShape {
             1 | 2 => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 103168),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 259968),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 60832),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 60864),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 159168),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 60000),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
@@ -138,11 +138,11 @@ impl SP1ReduceShape {
             .into_iter()
             .collect(),
             3 => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 154816),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 154848),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 393408),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 91232),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 91296),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 148256),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 89824),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 89856),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 604800),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
@@ -150,11 +150,11 @@ impl SP1ReduceShape {
             .into_iter()
             .collect(),
             4 => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 206592),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 206624),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 528960),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 121664),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 121696),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 204384),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120992),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 121056),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 806400),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
@@ -770,11 +770,11 @@ mod tests {
         // .collect();
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 206592),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 206624),
             (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 528960),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 121664),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 121696),
             (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 204384),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120992),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 121056),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
             (CompressAir::<BabyBear>::Select(SelectChip), 806400),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),

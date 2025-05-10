@@ -1,12 +1,14 @@
 use std::borrow::Borrow;
 
-// use anyhow::Result;
-// use num_bigint::BigUint;
-// use slop_algebra::{AbstractField, PrimeField};
-// use slop_baby_bear::BabyBear;
-// use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
-// use sp1_core_machine::cpu::MAX_CPU_LOG_DEGREE;
-// use sp1_primitives::{consts::WORD_SIZE, io::SP1PublicValues};
+use anyhow::Result;
+use slop_algebra::AbstractField;
+use slop_baby_bear::BabyBear;
+use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
+use sp1_primitives::consts::WORD_SIZE;
+use sp1_stark::{
+    air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
+    BabyBearPoseidon2, MachineVerifierError, Word,
+};
 
 // // use sp1_recursion_circuit::machine::RootPublicValues;
 // // use sp1_recursion_core::{air::RecursionPublicValues, stark::BabyBearPoseidon2Outer};
@@ -59,20 +61,16 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // // First shard has a "CPU" constraint.
         // //
         // // Assert that the first shard has a "CPU".
-        // let first_shard = proof.0.first().unwrap();
-
-        // CPU log degree bound constraints.
-        //
-        // Assert that the CPU log degree does not exceed `MAX_CPU_LOG_DEGREE`. This is to ensure
-        // that the lookup argument's multiplicities do not overflow.
-        // for shard_proof in proof.0.iter() {
-        //     if shard_proof.contains_cpu() {
-        //         let log_degree_cpu = shard_proof.log_degree_cpu();
-        //         if log_degree_cpu > MAX_CPU_LOG_DEGREE {
-        //             return Err(MachineVerifierError::CpuLogDegreeTooLarge(log_degree_cpu));
-        //         }
-        //     }
-        // }
+        let first_shard = proof.0.first().unwrap();
+        let public_values: &PublicValues<[_; 4], Word<_>, _> =
+            first_shard.public_values.as_slice().borrow();
+        if public_values.execution_shard != BabyBear::one()
+            || public_values.next_execution_shard != BabyBear::two()
+        {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "first shard does not contain CPU",
+            ));
+        }
 
         // Shard constraints.
         //
@@ -93,29 +91,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             }
         }
 
-        // Execution shard constraints.
-        //
-        // Initialization:
-        // - Execution shard should start at one.
-        //
-        // Transition:
-        // - Execution shard should increment by one for each shard with "CPU".
-        // - Execution shard should stay the same for non-CPU shards.
-        // - For the other shards, execution shard does not matter.
-        // let mut current_execution_shard = BabyBear::zero();
-        // for shard_proof in proof.0.iter() {
-        //     let public_values: &PublicValues<Word<_>, _> =
-        //         shard_proof.public_values.as_slice().borrow();
-        //     if shard_proof.contains_cpu() {
-        //         current_execution_shard += BabyBear::one();
-        //         if public_values.execution_shard != current_execution_shard {
-        //             return Err(MachineVerifierError::InvalidPublicValues(
-        //                 "execution shard index should be the previous execution shard index + 1
-        // if cpu exists and start at 1",             ));
-        //         }
-        //     }
-        // }
-
         // // Program counter constraints.
         // //
         // // Initialization:
@@ -128,47 +103,44 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // //
         // // Finalization:
         // // - `next_pc` should equal zero.
-        // let mut prev_next_pc = BabyBear::zero();
-        // for (i, shard_proof) in proof.0.iter().enumerate() {
-        //     let public_values: &PublicValues<Word<_>, _> =
-        //         shard_proof.public_values.as_slice().borrow();
-        //     if i == 0 && public_values.start_pc != vk.pc_start {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "start_pc != vk.start_pc: program counter should start at vk.start_pc",
-        //         ));
-        //     } else if i != 0 && public_values.start_pc != prev_next_pc {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all
-        // shards",         ));
-        //     } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "next_pc != 0: execution should have halted",
-        //         ));
-        //     }
-        //     // } else if !shard_proof.contains_cpu() && public_values.start_pc !=
-        //     // public_values.next_pc {
-        //     //     return Err(MachineVerifierError::InvalidPublicValues(
-        //     //         "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
-        //     //     ));
-        //     // } else if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero()
-        // {     //     return Err(MachineVerifierError::InvalidPublicValues(
-        //     //         "start_pc == 0: execution should never start at halted state",
-        //     //     ));
-        //     prev_next_pc = public_values.next_pc;
-        // }
+        let mut prev_next_pc = BabyBear::zero();
+        for (i, shard_proof) in proof.0.iter().enumerate() {
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
+                shard_proof.public_values.as_slice().borrow();
+            if i == 0 && public_values.start_pc != vk.pc_start {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "start_pc != vk.start_pc: program counter should start at vk.start_pc",
+                ));
+            } else if i != 0 && public_values.start_pc != prev_next_pc {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all shards",
+                ));
+            } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "next_pc != 0: execution should have halted",
+                ));
+            } else if public_values.execution_shard == public_values.next_execution_shard
+                && public_values.start_pc != public_values.next_pc
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
+                ));
+            }
+            prev_next_pc = public_values.next_pc;
+        }
 
         // // Exit code constraints.
         // //
         // // - In every shard, the exit code should be zero.
-        // for shard_proof in proof.0.iter() {
-        //     let public_values: &PublicValues<Word<_>, _> =
-        //         shard_proof.public_values.as_slice().borrow();
-        //     if public_values.exit_code != BabyBear::zero() {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "exit_code != 0: exit code should be zero for all shards",
-        //         ));
-        //     }
-        // }
+        for shard_proof in proof.0.iter() {
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
+                shard_proof.public_values.as_slice().borrow();
+            if public_values.exit_code != BabyBear::zero() {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "exit_code != 0: exit code should be zero for all shards",
+                ));
+            }
+        }
 
         // Memory initialization & finalization constraints.
         //
@@ -185,37 +157,23 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //   `last_init_addr_bits`.
         // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
         //   `last_finalize_addr_bits`.
-        // let mut last_init_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
-        // let mut last_finalize_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
-        // for shard_proof in proof.0.iter() {
-        //     let public_values: &PublicValues<Word<_>, _> =
-        //         shard_proof.public_values.as_slice().borrow();
-        //     if public_values.previous_init_addr_word != last_init_addr_word_prev {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "previous_init_addr_word != last_init_addr_word_prev",
-        //         ));
-        //     } else if public_values.previous_finalize_addr_word != last_finalize_addr_word_prev {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "previous_finalize_addr_word != last_finalize_addr_word_prev",
-        //         ));
-        //     }
-        //     // } else if !shard_proof.contains_global_memory_init()
-        //     //     && public_values.previous_init_addr_bits != public_values.last_init_addr_bits
-        //     // {
-        //     //     return Err(MachineVerifierError::InvalidPublicValues(
-        //     //         "previous_init_addr_bits != last_init_addr_bits",
-        //     //     ));
-        //     // } else if !shard_proof.contains_global_memory_finalize()
-        //     //     && public_values.previous_finalize_addr_bits
-        //     //         != public_values.last_finalize_addr_bits
-        //     // {
-        //     //     return Err(MachineVerifierError::InvalidPublicValues(
-        //     //         "previous_finalize_addr_bits != last_finalize_addr_bits",
-        //     //     ));
-        //     // }
-        //     last_init_addr_word_prev = public_values.previous_init_addr_word;
-        //     last_finalize_addr_word_prev = public_values.previous_finalize_addr_word;
-        // }
+        let mut last_init_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
+        let mut last_finalize_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
+        for shard_proof in proof.0.iter() {
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
+                shard_proof.public_values.as_slice().borrow();
+            if public_values.previous_init_addr_word != last_init_addr_word_prev {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "previous_init_addr_word != last_init_addr_word_prev",
+                ));
+            } else if public_values.previous_finalize_addr_word != last_finalize_addr_word_prev {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "previous_finalize_addr_word != last_finalize_addr_word_prev",
+                ));
+            }
+            last_init_addr_word_prev = public_values.last_init_addr_word;
+            last_finalize_addr_word_prev = public_values.last_finalize_addr_word;
+        }
 
         // Digest constraints.
         //
@@ -225,56 +183,49 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //
         // Transition:
         // - If `committed_value_digest_prev` is not zero, then `committed_value_digest` equal
-        //  `committed_value_digest_prev`. Otherwise, `committed_value_digest` should
-        //   equal zero.         // - If `deferred_proofs_digest_prev` is not zero, then
-        //   `deferred_proofs_digest` should         //   equal
-        //  `deferred_proofs_digest_prev`. Otherwise, `deferred_proofs_digest` should
-        //  equal zero.         // - If it's not a shard with "CPU", then
-        //  `committed_value_digest` should not change from         //   the
-        //  previous shard.
-        // - If it's not a shard with "CPU", then `deferred_proofs_digest` should not
-        //  change from         //   the
-        //  previous shard.
-        // let zero_committed_value_digest =
-        //     [Word([BabyBear::zero(); WORD_SIZE]); PV_DIGEST_NUM_WORDS];
-        // let zero_deferred_proofs_digest = [BabyBear::zero(); POSEIDON_NUM_WORDS];
-        // let mut committed_value_digest_prev = zero_committed_value_digest;
-        // let mut deferred_proofs_digest_prev = zero_deferred_proofs_digest;
-        // for shard_proof in proof.0.iter() {
-        //     let public_values: &PublicValues<Word<_>, _> =
-        //         shard_proof.public_values.as_slice().borrow();
-        //     if committed_value_digest_prev != zero_committed_value_digest
-        //         && public_values.committed_value_digest != committed_value_digest_prev
-        //     {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "committed_value_digest != committed_value_digest_prev",
-        //         ));
-        //     } else if deferred_proofs_digest_prev != zero_deferred_proofs_digest
-        //         && public_values.deferred_proofs_digest != deferred_proofs_digest_prev
-        //     {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "deferred_proofs_digest != deferred_proofs_digest_prev",
-        //         ));
-        //     }
-        // } else if !shard_proof.contains_cpu()
-        //     && public_values.committed_value_digest != committed_value_digest_prev
-        // {
-        //     return Err(MachineVerifierError::InvalidPublicValues(
-        //         "committed_value_digest != committed_value_digest_prev",
-        //     ));
-        // } else if !shard_proof.contains_cpu()
-        //     && public_values.deferred_proofs_digest != deferred_proofs_digest_prev
-        // {
-        //     return Err(MachineVerifierError::InvalidPublicValues(
-        //         "deferred_proofs_digest != deferred_proofs_digest_prev",
-        //     ));
-        // }
-        // committed_value_digest_prev = public_values.committed_value_digest;
-        // deferred_proofs_digest_prev = public_values.deferred_proofs_digest;
-        // }
+        //  `committed_value_digest_prev`. Otherwise, `committed_value_digest` should equal zero.
+        // - If `deferred_proofs_digest_prev` is not zero, then `deferred_proofs_digest` should be
+        //   `deferred_proofs_digest_prev`. Otherwise, `deferred_proofs_digest` should be zero.
+        // - If it's not a shard with "CPU", then `committed_value_digest` should not change.
+        // - If it's not a shard with "CPU", then `deferred_proofs_digest` should not change.
+        let zero_committed_value_digest = [[BabyBear::zero(); 4]; PV_DIGEST_NUM_WORDS];
+        let zero_deferred_proofs_digest = [BabyBear::zero(); POSEIDON_NUM_WORDS];
+        let mut committed_value_digest_prev = zero_committed_value_digest;
+        let mut deferred_proofs_digest_prev = zero_deferred_proofs_digest;
+        for shard_proof in proof.0.iter() {
+            let public_values: &PublicValues<[_; 4], Word<_>, _> =
+                shard_proof.public_values.as_slice().borrow();
+            if committed_value_digest_prev != zero_committed_value_digest
+                && public_values.committed_value_digest != committed_value_digest_prev
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "committed_value_digest != committed_value_digest_prev",
+                ));
+            } else if deferred_proofs_digest_prev != zero_deferred_proofs_digest
+                && public_values.deferred_proofs_digest != deferred_proofs_digest_prev
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "deferred_proofs_digest != deferred_proofs_digest_prev",
+                ));
+            } else if public_values.execution_shard == public_values.next_execution_shard
+                && public_values.committed_value_digest != committed_value_digest_prev
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "committed_value_digest != committed_value_digest_prev",
+                ));
+            } else if public_values.execution_shard == public_values.next_execution_shard
+                && public_values.deferred_proofs_digest != deferred_proofs_digest_prev
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "deferred_proofs_digest != deferred_proofs_digest_prev",
+                ));
+            }
+            committed_value_digest_prev = public_values.committed_value_digest;
+            deferred_proofs_digest_prev = public_values.deferred_proofs_digest;
+        }
 
         // Verify that the number of shards is not too large.
-        if proof.0.len() > 1 << 24 {
+        if proof.0.len() >= 1 << 24 {
             return Err(MachineVerifierError::TooManyShards);
         }
 
@@ -528,11 +479,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
 //     Ok(())
 // }
-
-use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
-use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
-use sp1_stark::{air::PublicValues, BabyBearPoseidon2, MachineVerifierError, Word};
 
 use crate::{
     components::SP1ProverComponents, CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
