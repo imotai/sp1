@@ -8,6 +8,8 @@
 #include <cassert>
 #include <cstdint>
 
+#include "ptx.cuh"
+
 #ifdef __CUDA_ARCH__
 
 #define inline __device__ __forceinline__
@@ -46,7 +48,7 @@ public:
 
     inline bb31_t() {}
 
-    inline constexpr bb31_t(const uint32_t a) { val = a; }
+    inline constexpr bb31_t(const uint32_t a) : val(a) {}
 
     inline bb31_t(const uint32_t *p) { val = *p; }
 
@@ -238,17 +240,17 @@ private:
         asm("}");
     }
 
+    // Montgomery multiplication
+
     inline bb31_t &mul(const bb31_t b)
     {
-        uint32_t tmp[2], red;
+        uint64_t t;
+        uint32_t tl, th, red;
 
-        asm("mul.lo.u32 %0, %2, %3; mul.hi.u32 %1, %2, %3;"
-            : "=r"(tmp[0]), "=r"(tmp[1])
-            : "r"(val), "r"(b.val));
-        asm("mul.lo.u32 %0, %1, %2;" : "=r"(red) : "r"(tmp[0]), "r"(M));
-        asm("mad.lo.cc.u32 %0, %2, %3, %0; madc.hi.u32 %1, %2, %3, %4;"
-            : "+r"(tmp[0]), "=r"(val)
-            : "r"(red), "r"(MOD), "r"(tmp[1]));
+        mul_wide    (  t, val, b.val);    unpack(tl, th, t);
+        mul_lo      (red,  tl, M);
+        mad_lo_cc   ( tl, red, MOD, tl);
+        madc_hi     (val, red, MOD, th);
 
         final_sub(val);
 

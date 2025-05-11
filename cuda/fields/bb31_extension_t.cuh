@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ptx.cuh"
 #include "bb31_t.cuh"
 
 class bb31_extension_t
@@ -10,7 +11,9 @@ public:
 
     bb31_t value[D];
 
-    inline constexpr bb31_extension_t(int a) : value{bb31_t(a), bb31_t(0), bb31_t(0), bb31_t(0)} {}
+    __host__ __device__
+    inline constexpr bb31_extension_t(int a, int b = 0, int c = 0, int d = 0)
+    : value{bb31_t(a), bb31_t(b), bb31_t(c), bb31_t(d)} {}
 
     __device__ __forceinline__ bb31_extension_t() {}
 
@@ -100,29 +103,116 @@ public:
 
     __device__ __forceinline__ bb31_extension_t &operator*=(const bb31_extension_t b)
     {
-        bb31_t product[4] = {bb31_t(0), bb31_t(0), bb31_t(0), bb31_t(0)};
-#pragma unroll
-        for (size_t i = 0; i < D; i++)
-        {
-#pragma unroll
-            for (size_t j = 0; j < D; j++)
-            {
-                if (i + j >= D)
-                {
-                    product[i + j - D] += value[i] * b.value[j] * W;
-                }
-                else
-                {
-                    product[i + j] += value[i] * b.value[j];
-                }
-            }
-        }
+        uint32_t
+            x0 = value[0].val,
+            x1 = value[1].val,
+            x2 = value[2].val,
+            x3 = value[3].val,
+            y0 = b.value[0].val,
+            y1 = b.value[1].val,
+            y2 = b.value[2].val,
+            y3 = b.value[3].val;
 
-#pragma unroll
-        for (size_t i = 0; i < D; i++)
-        {
-            value[i] = product[i];
-        }
+        uint64_t a0, a1, a2, a3, a4, a5, a6, w;
+        uint32_t l0, l1, l2, l3, l4, l5, l6, l;
+        uint32_t h0, h1, h2, h3, h4, h5, h6, h = 0;
+
+        // Compute and accumulate partial products
+
+        mul_wide(a0, x0, y0);
+        mul_wide(a1, x1, y0);
+        mul_wide(a2, x2, y0);
+        mul_wide(a3, x3, y0);
+
+        mad_wide(a1, x0, y1, a1);
+        mad_wide(a2, x1, y1, a2);
+        mad_wide(a3, x2, y1, a3);
+        mul_wide(a4, x3, y1);
+
+        mad_wide(a2, x0, y2, a2);
+        mad_wide(a3, x1, y2, a3);
+        mad_wide(a4, x2, y2, a4);
+        mul_wide(a5, x3, y2);
+
+        mad_wide(a3, x0, y3, a3);
+        mad_wide(a4, x1, y3, a4);
+        mad_wide(a5, x2, y3, a5);
+        mul_wide(a6, x3, y3);
+
+        // Reduction step to zero the top 4 bits in each accumulator
+
+        static constexpr uint32_t mul2_32 = 0x0ffffffe;    // 2^32 = 2^28 - 2
+
+        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, mul2_32, w);
+        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, mul2_32, w);
+        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, mul2_32, w);
+        unpack(l3, h3, a3); l = l3; pack(w, l, h); mad_wide(a3, h3, mul2_32, w);
+        unpack(l4, h4, a4); l = l4; pack(w, l, h); mad_wide(a4, h4, mul2_32, w);
+        unpack(l5, h5, a5); l = l5; pack(w, l, h); mad_wide(a5, h5, mul2_32, w);
+        unpack(l6, h6, a6); l = l6; pack(w, l, h); mad_wide(a6, h6, mul2_32, w);
+
+        unpack(l4, h4, a4);
+        unpack(l5, h5, a5);
+        unpack(l6, h6, a6);
+
+        mad_lo(a0, a4, 11, a0);
+        mad_lo(a1, a5, 11, a1);
+        mad_lo(a2, a6, 11, a2);
+
+        // Avoid overflow in Montgomery reduction
+
+        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, mul2_32, w);
+        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, mul2_32, w);
+        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, mul2_32, w);
+
+        unpack(l0, h0, a0);
+        unpack(l1, h1, a1);
+        unpack(l2, h2, a2);
+        unpack(l3, h3, a3);
+
+        // Montgomery reductions
+
+        const uint32_t M = 0x77FFFFFF;
+
+        mul_lo   (y0, l0, M);
+        mul_lo   (y1, l1, M);
+        mul_lo   (y2, l2, M);
+        mul_lo   (y3, l3, M);
+
+        const uint32_t MOD = 0x78000001;
+
+        mad_wide(a0, y0, MOD, a0);
+        mad_wide(a1, y1, MOD, a1);
+        mad_wide(a2, y2, MOD, a2);
+        mad_wide(a3, y3, MOD, a3);
+
+        unpack(l0, x0, a0);
+        unpack(l1, x1, a1);
+        unpack(l2, x2, a2);
+        unpack(l3, x3, a3);
+
+        // Final_sub()
+
+        asm volatile (
+            "\n\t{"
+            "\n\t\t.reg.pred %%p0, %%p1, %%p2, %%p3;"
+            "\n\t\tsetp.ge.u32 %%p0, %0, %4;"
+            "\n\t\tsetp.ge.u32 %%p1, %1, %4;"
+            "\n\t\tsetp.ge.u32 %%p2, %2, %4;"
+            "\n\t\tsetp.ge.u32 %%p3, %3, %4;"
+            "\n\t@%%p0\tsub.u32 %0, %0, %4;"
+            "\n\t@%%p1\tsub.u32 %1, %1, %4;"
+            "\n\t@%%p2\tsub.u32 %2, %2, %4;"
+            "\n\t@%%p3\tsub.u32 %3, %3, %4;"
+            "\n\t}"
+            : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3)
+            : "r"(MOD)
+        );
+
+        value[0] = x0;
+        value[1] = x1;
+        value[2] = x2;
+        value[3] = x3;
 
         return *this;
     }
@@ -245,4 +335,5 @@ public:
         }
         return ret;
     }
+
 };
