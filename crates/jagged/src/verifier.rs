@@ -4,6 +4,7 @@ use slop_challenger::FieldChallenger;
 use slop_multilinear::{full_geq, Evaluations, Mle, Point};
 use slop_stacked::{StackedPcsProof, StackedPcsVerifier};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
+use std::fmt::Debug;
 use thiserror::Error;
 
 use crate::{JaggedConfig, JaggedEvalConfig, JaggedLittlePolynomialVerifierParams};
@@ -25,9 +26,9 @@ pub struct JaggedPcsVerifier<C: JaggedConfig> {
 }
 
 #[derive(Debug, Error)]
-pub enum JaggedPcsVerifierError<C: JaggedConfig> {
+pub enum JaggedPcsVerifierError<EF> {
     #[error("sumcheck claim mismatch: {0} != {1}")]
-    SumcheckClaimMismatch(C::EF, C::EF),
+    SumcheckClaimMismatch(EF, EF),
     #[error("sumcheck proof verification failed: {0}")]
     SumcheckError(SumcheckError),
     #[error("jagged evaluation proof verification failed")]
@@ -53,7 +54,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         proof: &JaggedPcsProof<C>,
         insertion_points: &[usize],
         challenger: &mut C::Challenger,
-    ) -> Result<(), JaggedPcsVerifierError<C>> {
+    ) -> Result<(), JaggedPcsVerifierError<C::EF>> {
         let JaggedPcsProof { stacked_pcs_proof, sumcheck_proof, jagged_eval_proof, params } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
@@ -157,7 +158,7 @@ impl<'a, C: JaggedConfig> MachineJaggedPcsVerifier<'a, C> {
         evaluation_claims: &[Evaluations<C::EF>],
         proof: &JaggedPcsProof<C>,
         challenger: &mut C::Challenger,
-    ) -> Result<(), JaggedPcsVerifierError<C>> {
+    ) -> Result<(), JaggedPcsVerifierError<C::EF>> {
         let insertion_points = self
             .column_counts_by_round
             .iter()

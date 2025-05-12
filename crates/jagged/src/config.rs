@@ -2,18 +2,15 @@ use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_multilinear::MultilinearPcsVerifier;
-
 use std::fmt::Debug;
 
 use crate::JaggedEvalConfig;
 
-pub trait JaggedConfig:
-    'static + Clone + Debug + Send + Clone + Serialize + DeserializeOwned
-{
+pub trait JaggedConfig: 'static + Clone + Send + Clone + Serialize + DeserializeOwned {
     type F: Field;
     type EF: ExtensionField<Self::F>;
 
-    type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
+    type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned + Debug;
 
     /// The challenger type that creates the random challenges via Fiat-Shamir.
     ///

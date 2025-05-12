@@ -35,6 +35,11 @@ impl<T, A: Backend> Point<T, A> {
     }
 
     #[inline]
+    pub fn values_mut(&mut self) -> &mut Buffer<T, A> {
+        &mut self.values
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.values.len() == 0
     }

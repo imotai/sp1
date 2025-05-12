@@ -2,6 +2,7 @@ use std::{convert::Infallible, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field};
+use slop_alloc::CpuBackend;
 use slop_multilinear::Point;
 
 use crate::{JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams};
@@ -36,6 +37,7 @@ impl<F: Field, EF: ExtensionField<F>, C: Send + Sync> JaggedEvalProver<F, EF, C>
 {
     type EvalProof = ();
     type EvalConfig = TrivialJaggedEvalConfig;
+    type A = CpuBackend;
     async fn prove_jagged_evaluation(
         &self,
         _params: &JaggedLittlePolynomialProverParams,
@@ -43,6 +45,7 @@ impl<F: Field, EF: ExtensionField<F>, C: Send + Sync> JaggedEvalProver<F, EF, C>
         _z_col: &Point<EF>,
         _z_trace: &Point<EF>,
         _challenger: &mut C,
+        _backend: Self::A,
     ) -> Self::EvalProof {
     }
 }

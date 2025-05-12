@@ -57,7 +57,7 @@ where
 {
 }
 
-pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
+pub trait JaggedProverComponents: Clone + Send + Sync + 'static {
     type F: Field;
     type EF: ExtensionField<Self::F>;
     type A: JaggedBackend<Self::F, Self::EF>;
@@ -82,8 +82,7 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
         + 'static
         + Send
         + Sync
-        + Clone
-        + Debug;
+        + Clone;
 
     type JaggedSumcheckProver: JaggedSumcheckProver<Self::F, Self::EF, Self::A>;
 
@@ -108,13 +107,14 @@ pub trait JaggedProverComponents: Clone + Send + Sync + 'static + Debug {
                 Self::EF,
                 Self::Challenger,
             >>::JaggedEvalProof,
+            A = Self::A,
         >
         + 'static
         + Send
         + Sync;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct JaggedProver<C: JaggedProverComponents> {
     stacked_pcs_prover: StackedPcsProver<C::BatchPcsProver, C::Stacker>,
     jagged_sumcheck_prover: C::JaggedSumcheckProver,
@@ -135,11 +135,9 @@ pub struct JaggedProverData<C: JaggedProverComponents> {
 }
 
 #[derive(Debug, Error)]
-pub enum JaggedProverError<C: JaggedProverComponents> {
+pub enum JaggedProverError<Error> {
     #[error("batch pcs prover error")]
-    BatchPcsProverError(
-        StackedPcsProverError<<C::BatchPcsProver as MultilinearPcsProver>::ProverError>,
-    ),
+    BatchPcsProverError(StackedPcsProverError<Error>),
     #[error("copy error")]
     CopyError(#[from] CopyError),
 }
@@ -169,7 +167,6 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
     pub const fn log_stacking_height(&self) -> u32 {
         self.stacked_pcs_prover.log_stacking_height
     }
-
     /// Commit to a batch of padded multilinears.
     ///
     /// The jagged polyniomial commitments scheme is able to commit to sparse polynomials having
@@ -178,7 +175,10 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
     pub async fn commit_multilinears(
         &self,
         multilinears: Vec<PaddedMle<C::F, C::A>>,
-    ) -> Result<(C::Commitment, JaggedProverData<C>), JaggedProverError<C>> {
+    ) -> Result<
+        (C::Commitment, JaggedProverData<C>),
+        JaggedProverError<<C::BatchPcsProver as MultilinearPcsProver>::ProverError>,
+    > {
         let mut row_counts = multilinears.iter().map(|x| x.num_real_entries()).collect::<Vec<_>>();
         let mut column_counts =
             multilinears.iter().map(|x| x.num_polynomials()).collect::<Vec<_>>();
@@ -236,7 +236,10 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
         evaluation_claims: Rounds<Evaluations<C::EF, C::A>>,
         prover_data: Rounds<JaggedProverData<C>>,
         challenger: &mut C::Challenger,
-    ) -> Result<JaggedPcsProof<C::Config>, JaggedProverError<C>> {
+    ) -> Result<
+        JaggedPcsProof<C::Config>,
+        JaggedProverError<<C::BatchPcsProver as MultilinearPcsProver>::ProverError>,
+    > {
         let num_col_variables = prover_data
             .iter()
             .map(|data| data.column_counts.iter().sum::<usize>())
@@ -342,7 +345,14 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
 
         let jagged_eval_proof = self
             .jagged_eval_prover
-            .prove_jagged_evaluation(&params, &z_row, &z_col, &final_eval_point, challenger)
+            .prove_jagged_evaluation(
+                &params,
+                &z_row,
+                &z_col,
+                &final_eval_point,
+                challenger,
+                backend.clone(),
+            )
             .await;
 
         let (_, stack_point) = final_eval_point

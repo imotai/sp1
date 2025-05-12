@@ -1,43 +1,72 @@
-use std::future::Future;
 use std::sync::Arc;
+use std::{future::Future, marker::PhantomData};
 
 use itertools::Itertools;
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSlice,
 };
-use slop_algebra::{ExtensionField, Field};
-use slop_alloc::Backend;
+use slop_algebra::{interpolate_univariate_polynomial, ExtensionField, Field};
+use slop_alloc::{Backend, Buffer, CpuBackend};
+use slop_challenger::FieldChallenger;
 use slop_multilinear::Point;
 
 use crate::BranchingProgram;
 
+use super::JaggedEvalSumcheckPoly;
+
 /// A trait for the jagged assist's sum as poly.
-pub trait JaggedAssistSumAsPoly<F: Field, EF: ExtensionField<F>, A: Backend>: Sized {
+pub trait JaggedAssistSumAsPoly<
+    F: Field,
+    EF: ExtensionField<F>,
+    A: Backend,
+    Challenger: FieldChallenger<F> + Send + Sync,
+    DeviceChallenger,
+>: Sized + Send + Sync
+{
+    /// Construct a new sumcheck instance from the parameters.
     fn new(
         z_row: Point<EF>,
         z_index: Point<EF>,
         merged_prefix_sums: Arc<Vec<Point<F>>>,
         z_col_eq_vals: Vec<EF>,
-    ) -> impl Future<Output = Self> + Send;
+    ) -> impl Future<Output = Self> + Send + Sync;
 
-    fn sum_as_poly(
+    #[allow(clippy::too_many_arguments)]
+    /// Compute the sum as a polynomial in the last varaible, storing the result in `sum_values`, then
+    /// sample randomness, storing the result in `rhos`. Expected to return the evaluation
+    /// of the polynomial at the sampled point.
+    fn sum_as_poly_and_sample_into_point(
         &self,
         round_num: usize,
-        z_col_eq_vals: &[EF],
-        intermediate_eq_full_evals: &[EF],
-        rhos: &Point<EF>,
-    ) -> impl Future<Output = (EF, EF)> + Send;
+        z_col_eq_vals: &Buffer<EF, A>,
+        intermediate_eq_full_evals: &Buffer<EF, A>,
+        sum_values: &mut Buffer<EF, A>,
+        challenger: &mut DeviceChallenger,
+        claim: EF,
+        rhos: Point<EF, A>,
+    ) -> impl Future<Output = (EF, Point<EF, A>)> + Send + Sync;
+
+    /// Fix the last variable of the polynomial, returning a new polynomial with one less variable.
+    /// The zeroth coordinate of randomness_point is used for fixing the last variable.
+    fn fix_last_variable(
+        poly: JaggedEvalSumcheckPoly<F, EF, Challenger, DeviceChallenger, Self, A>,
+    ) -> impl Future<Output = JaggedEvalSumcheckPoly<F, EF, Challenger, DeviceChallenger, Self, A>>
+           + Send
+           + Sync;
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct JaggedAssistSumAsPolyCPUImpl<F: Field, EF: ExtensionField<F>> {
+pub struct JaggedAssistSumAsPolyCPUImpl<F: Field, EF: ExtensionField<F>, Challenger> {
     branching_program: BranchingProgram<EF>,
     merged_prefix_sums: Arc<Vec<Point<F>>>,
     half: EF,
+    _marker: PhantomData<Challenger>,
 }
 
-impl<F: Field, EF: ExtensionField<F>> JaggedAssistSumAsPolyCPUImpl<F, EF> {
+impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F>>
+    JaggedAssistSumAsPolyCPUImpl<F, EF, Challenger>
+{
     #[inline]
     fn eval(
         &self,
@@ -82,8 +111,9 @@ impl<F: Field, EF: ExtensionField<F>> JaggedAssistSumAsPolyCPUImpl<F, EF> {
     }
 }
 
-impl<F: Field, EF: ExtensionField<F>, A: Backend> JaggedAssistSumAsPoly<F, EF, A>
-    for JaggedAssistSumAsPolyCPUImpl<F, EF>
+impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F> + Send + Sync>
+    JaggedAssistSumAsPoly<F, EF, CpuBackend, Challenger, Challenger>
+    for JaggedAssistSumAsPolyCPUImpl<F, EF, Challenger>
 {
     async fn new(
         z_row: Point<EF>,
@@ -93,16 +123,25 @@ impl<F: Field, EF: ExtensionField<F>, A: Backend> JaggedAssistSumAsPoly<F, EF, A
     ) -> Self {
         let branching_program = BranchingProgram::new(z_row, z_index);
 
-        Self { branching_program, merged_prefix_sums, half: EF::two().inverse() }
+        Self {
+            branching_program,
+            merged_prefix_sums,
+            half: EF::two().inverse(),
+            _marker: PhantomData,
+        }
     }
 
-    async fn sum_as_poly(
+    async fn sum_as_poly_and_sample_into_point(
         &self,
         round_num: usize,
-        z_col_eq_vals: &[EF],
-        intermediate_eq_full_evals: &[EF],
-        rhos: &Point<EF>,
-    ) -> (EF, EF) {
+        z_col_eq_vals: &Buffer<EF>,
+        intermediate_eq_full_evals: &Buffer<EF>,
+        sum_values: &mut Buffer<EF>,
+        challenger: &mut Challenger,
+        claim: EF,
+        rhos: Point<EF>,
+    ) -> (EF, Point<EF>) {
+        let mut rhos = rhos.clone();
         // Calculate the partition chunk size.
         let chunk_size = std::cmp::max(z_col_eq_vals.len() / num_cpus::get(), 1);
 
@@ -128,7 +167,7 @@ impl<F: Field, EF: ExtensionField<F>, A: Backend> JaggedAssistSumAsPoly<F, EF, A
                                 merged_prefix_sum,
                                 *z_col_eq_val,
                                 *intermediate_eq_full_eval,
-                                rhos,
+                                &rhos,
                             );
                             let y_half = self.eval(
                                 self.half,
@@ -136,7 +175,7 @@ impl<F: Field, EF: ExtensionField<F>, A: Backend> JaggedAssistSumAsPoly<F, EF, A
                                 merged_prefix_sum,
                                 *z_col_eq_val,
                                 *intermediate_eq_full_eval,
-                                rhos,
+                                &rhos,
                             );
 
                             (y_0, y_half)
@@ -151,6 +190,60 @@ impl<F: Field, EF: ExtensionField<F>, A: Backend> JaggedAssistSumAsPoly<F, EF, A
                 |(y_0, y_2), (y_0_i, y_2_i)| (y_0 + y_0_i, y_2 + y_2_i),
             );
 
-        (y_0, y_half)
+        // Store the values in the sum_values buffer.
+        sum_values.as_mut_slice()[3 * round_num] = y_0;
+        sum_values.as_mut_slice()[3 * round_num + 1] = y_half;
+        let y_1 = claim - y_0;
+        sum_values.as_mut_slice()[3 * round_num + 2] = y_1;
+
+        // Interpolate the polynomial.
+        let poly = interpolate_univariate_polynomial(
+            &[EF::zero(), EF::two().inverse(), EF::one()],
+            &[y_0, y_half, y_1],
+        );
+
+        // Observe and sample new randomness.
+        for elem in poly.coefficients.iter() {
+            challenger.observe_slice(elem.as_base_slice());
+        }
+        let alpha = challenger.sample_ext_element();
+        rhos.add_dimension(alpha);
+
+        // Return the new claim for the next round.
+        (poly.eval_at_point(alpha), rhos.clone())
+    }
+
+    async fn fix_last_variable(
+        poly: JaggedEvalSumcheckPoly<F, EF, Challenger, Challenger, Self, CpuBackend>,
+    ) -> JaggedEvalSumcheckPoly<F, EF, Challenger, Challenger, Self, CpuBackend> {
+        // Add alpha to the rho point.
+        let alpha = *poly.rho.first().unwrap();
+
+        let merged_prefix_sum_dim = poly.prefix_sum_dimension as usize;
+
+        // Update the intermediate full eq evals.
+        let updated_intermediate_eq_full_evals = poly
+            .merged_prefix_sums
+            .chunks(merged_prefix_sum_dim)
+            .zip_eq(poly.intermediate_eq_full_evals.iter())
+            .map(|(merged_prefix_sum, intermediate_eq_full_eval)| {
+                let x_i =
+                    merged_prefix_sum.get(merged_prefix_sum_dim - 1 - poly.round_num).unwrap();
+                *intermediate_eq_full_eval
+                    * ((alpha * *x_i) + (EF::one() - alpha) * (EF::one() - *x_i))
+            })
+            .collect_vec();
+
+        JaggedEvalSumcheckPoly::new(
+            poly.bp_batch_eval,
+            poly.rho,
+            poly.z_col,
+            poly.merged_prefix_sums,
+            poly.z_col_eq_vals,
+            poly.round_num + 1,
+            updated_intermediate_eq_full_evals.into(),
+            poly.half,
+            poly.prefix_sum_dimension,
+        )
     }
 }

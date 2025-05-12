@@ -21,6 +21,7 @@ slop-commit = { workspace = true }
 slop-basefold-prover = { workspace = true }
 slop-basefold = { workspace = true }
 slop-futures = { workspace = true }
+slop-tensor = { workspace = true }
 slop-merkle-tree = { workspace = true }
 
 itertools = "0.12.0"

@@ -35,6 +35,13 @@ impl<T, A: Backend> Tensor<T, A> {
     }
 
     #[inline]
+    pub fn zeros_in_with_total_capacity(sizes: impl AsRef<[usize]>, allocator: A) -> Self {
+        let mut tensor = Self::with_sizes_in(sizes, allocator);
+        tensor.storage.write_bytes(0, tensor.total_len() * std::mem::size_of::<T>()).unwrap();
+        tensor
+    }
+
+    #[inline]
     pub fn try_with_sizes_in(
         sizes: impl AsRef<[usize]>,
         allocator: A,

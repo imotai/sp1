@@ -11,3 +11,4 @@ categories.workspace = true
 p3-challenger = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-algebra = { workspace = true }
+futures = {workspace = true}

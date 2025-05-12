@@ -1,8 +1,11 @@
+mod eval_sumcheck_prover;
 mod sumcheck_eval;
 mod sumcheck_poly;
 mod sumcheck_sum_as_poly;
 mod trivial_eval;
 
+pub use eval_sumcheck_prover::*;
+use slop_alloc::{Buffer, CanCopyFrom, CpuBackend};
 pub use sumcheck_eval::*;
 pub use sumcheck_poly::*;
 pub use sumcheck_sum_as_poly::*;
@@ -12,7 +15,7 @@ use std::{error::Error, fmt::Debug, future::Future};
 
 use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
-use slop_multilinear::Point;
+use slop_multilinear::{Point, PointBackend};
 
 use crate::{JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams};
 
@@ -35,10 +38,11 @@ pub trait JaggedEvalConfig<F: Field, EF: ExtensionField<F>, Challenger>:
 }
 
 pub trait JaggedEvalProver<F: Field, EF: ExtensionField<F>, Challenger>:
-    'static + Send + Sync + std::fmt::Debug + Clone
+    'static + Send + Sync + Clone
 {
-    type EvalProof: 'static + Debug + Clone + Send + Sync + Serialize + DeserializeOwned;
+    type EvalProof: 'static + Debug + Clone + Serialize + DeserializeOwned;
     type EvalConfig: JaggedEvalConfig<F, EF, Challenger, JaggedEvalProof = Self::EvalProof>;
+    type A: PointBackend<EF> + CanCopyFrom<Buffer<EF>, CpuBackend, Output = Buffer<EF, Self::A>>;
 
     fn prove_jagged_evaluation(
         &self,
@@ -47,7 +51,8 @@ pub trait JaggedEvalProver<F: Field, EF: ExtensionField<F>, Challenger>:
         z_col: &Point<EF>,
         z_trace: &Point<EF>,
         challenger: &mut Challenger,
-    ) -> impl Future<Output = Self::EvalProof> + Send;
+        backend: Self::A,
+    ) -> impl Future<Output = Self::EvalProof> + Send + Sync;
 }
 
 #[cfg(test)]
@@ -65,13 +70,14 @@ mod tests {
     use slop_challenger::DuplexChallenger;
     use slop_merkle_tree::{my_bb_16_perm, Perm};
     use slop_multilinear::Mle;
-    use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
+    use slop_sumcheck::partially_verify_sumcheck_proof;
     use slop_utils::log2_ceil_usize;
 
     use super::*;
 
     type F = BabyBear;
     type EF = BinomialExtensionField<F, 4>;
+    type Challenger = DuplexChallenger<BabyBear, Perm, 16, 8>;
 
     #[tokio::test]
     async fn test_jagged_eval_sumcheck() {
@@ -122,24 +128,33 @@ mod tests {
         let (expected_sum, _) =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 
-        let batch_eval_poly =
-            JaggedEvalSumcheckPoly::<F, EF, JaggedAssistSumAsPolyCPUImpl<F, EF>, CpuBackend>::new(
-                z_row.clone(),
-                z_col.clone(),
-                z_index.clone(),
-                prefix_sums.clone(),
-            )
-            .await;
+        let batch_eval_poly = JaggedEvalSumcheckPoly::<
+            F,
+            EF,
+            Challenger,
+            Challenger,
+            JaggedAssistSumAsPolyCPUImpl<F, EF, Challenger>,
+            CpuBackend,
+        >::new_from_jagged_params(
+            z_row.clone(),
+            z_col.clone(),
+            z_index.clone(),
+            prefix_sums.clone(),
+            CpuBackend,
+        )
+        .await;
 
         let default_perm = my_bb_16_perm();
-        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
+        let mut challenger = Challenger::new(default_perm.clone());
 
-        let (sc_proof, _) = reduce_sumcheck_to_evaluation(
-            vec![batch_eval_poly],
+        let mut sum_values = Buffer::from(vec![EF::zero(); 6 * z_index.dimension()]);
+
+        let (sc_proof, _) = prove_jagged_eval_sumcheck(
+            batch_eval_poly,
             &mut challenger,
-            vec![expected_sum],
+            expected_sum,
             1,
-            EF::one(),
+            &mut sum_values,
         )
         .await;
 
