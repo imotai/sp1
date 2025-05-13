@@ -1,7 +1,7 @@
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 
-use crate::RiscvAirId;
+use crate::{syscalls::SyscallCode, RiscvAirId};
 
 const BYTE_NUM_ROWS: u64 = 1 << 16;
 const RANGE_NUM_ROWS: u64 = 1 << 17;
@@ -12,6 +12,7 @@ pub fn estimate_trace_elements(
     num_events_per_air: EnumMap<RiscvAirId, u64>,
     costs_per_air: &HashMap<RiscvAirId, u64>,
     program_size: u64,
+    internal_syscalls_override: &[SyscallCode],
 ) -> (u64, u64) {
     let mut max_height = 0;
 
@@ -123,6 +124,19 @@ pub fn estimate_trace_elements(
         * costs_per_air[&RiscvAirId::Global];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Global]);
 
+    for syscall in internal_syscalls_override {
+        let syscall_air_id = syscall.as_air_id().unwrap();
+        let rows_per_event = syscall_air_id.rows_per_event() as u64;
+        let num_rows = (num_events_per_air[syscall_air_id] * rows_per_event).next_multiple_of(32);
+        cells += num_rows * costs_per_air[&syscall_air_id];
+        max_height = max_height.max(num_rows);
+        // Currently, all precompiles with `rows_per_event > 1` have the respective control chip.
+        if rows_per_event > 1 {
+            cells += num_events_per_air[syscall_air_id].next_multiple_of(32)
+                * costs_per_air[&syscall.control_air_id().unwrap()];
+        }
+    }
+
     (cells, max_height)
 }
 
@@ -134,31 +148,9 @@ pub fn pad_rv32im_event_counts(
     num_cycles: u64,
 ) -> EnumMap<RiscvAirId, u64> {
     event_counts.iter_mut().for_each(|(k, v)| match k {
-        RiscvAirId::Add => *v += num_cycles,
-        RiscvAirId::Addi => *v += num_cycles,
-        RiscvAirId::Sub => *v += num_cycles,
-        RiscvAirId::Bitwise => *v += num_cycles,
-        RiscvAirId::DivRem => *v += num_cycles,
-        RiscvAirId::Lt => *v += num_cycles,
-        RiscvAirId::Mul => *v += num_cycles,
-        RiscvAirId::ShiftLeft => *v += num_cycles,
-        RiscvAirId::ShiftRight => *v += num_cycles,
         RiscvAirId::MemoryLocal => *v += 64 * num_cycles,
-        RiscvAirId::Branch => *v += num_cycles,
-        RiscvAirId::Jal => *v += num_cycles,
-        RiscvAirId::Jalr => *v += num_cycles,
-        RiscvAirId::Auipc => *v += num_cycles,
-        RiscvAirId::LoadByte => *v += num_cycles,
-        RiscvAirId::LoadHalf => *v += num_cycles,
-        RiscvAirId::LoadWord => *v += num_cycles,
-        RiscvAirId::LoadX0 => *v += num_cycles,
-        RiscvAirId::StoreByte => *v += num_cycles,
-        RiscvAirId::StoreHalf => *v += num_cycles,
-        RiscvAirId::StoreWord => *v += num_cycles,
-        RiscvAirId::SyscallInstrs => *v += num_cycles,
-        RiscvAirId::SyscallCore => *v += num_cycles,
         RiscvAirId::Global => *v += 512 * num_cycles,
-        _ => (),
+        _ => *v += num_cycles,
     });
     event_counts
 }

@@ -108,6 +108,8 @@ pub struct ExecutionRecord {
     pub shape: Option<Shape<RiscvAirId>>,
     /// The predicted counts of the proof.
     pub counts: Option<EnumMap<RiscvAirId, u64>>,
+    /// The estimated total trace area of the proof.
+    pub estimated_trace_area: u64,
     /// The final timestamp of the shard.
     pub last_timestamp: u32,
     /// The start program counter.
@@ -461,6 +463,8 @@ impl MachineRecord for ExecutionRecord {
         other.public_values.global_init_count = 0;
         self.public_values.global_finalize_count += other.public_values.global_finalize_count;
         other.public_values.global_finalize_count = 0;
+        self.estimated_trace_area += other.estimated_trace_area;
+        other.estimated_trace_area = 0;
         self.add_events.append(&mut other.add_events);
         self.sub_events.append(&mut other.sub_events);
         self.mul_events.append(&mut other.mul_events);

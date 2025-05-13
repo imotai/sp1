@@ -233,6 +233,8 @@ pub enum ExecutorMode {
 pub struct LocalCounts {
     /// The event counts.
     pub event_counts: Box<EnumMap<Opcode, u64>>,
+    /// The retained precompile counts.
+    pub retained_precompile_counts: Box<EnumMap<RiscvAirId, u64>>,
     /// The load x0 counts.
     pub load_x0_counts: u64,
     /// The number of syscalls sent globally in the current shard.
@@ -1726,12 +1728,17 @@ impl<'a> Executor<'a> {
         let syscall_count = self.state.syscall_counts.entry(syscall_for_count).or_insert(0);
         *syscall_count += 1;
 
-        if !E::UNCONSTRAINED && syscall.should_send() == 1 {
-            self.local_counts.syscalls_sent += 1;
-        }
-
         let syscall_impl = get_syscall(syscall)?;
         let external = !self.internal_syscalls_override.contains(&syscall);
+
+        if !E::UNCONSTRAINED && syscall.should_send() == 1 {
+            if external {
+                self.local_counts.syscalls_sent += 1;
+            } else {
+                self.local_counts.retained_precompile_counts[syscall.as_air_id().unwrap()] += 1;
+            }
+        }
+
         let mut precompile_rt: SyscallContext<'_, '_, E> = SyscallContext::new(self, external);
         let (a, precompile_next_pc, precompile_cycles, returned_exit_code) = {
             // Executing a syscall optionally returns a value to write to the t0
@@ -1850,6 +1857,7 @@ impl<'a> Executor<'a> {
                     &mut self.event_counts,
                     &self.local_counts,
                     self.local_counts.load_x0_counts,
+                    &self.internal_syscalls_override,
                 );
 
                 // Check if the main trace area or table height is too large.
@@ -1858,8 +1866,12 @@ impl<'a> Executor<'a> {
                 {
                     let padded_event_counts =
                         pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
-                    let (padded_element_count, max_height) =
-                        estimate_trace_elements(padded_event_counts, &self.costs, self.program_len);
+                    let (padded_element_count, max_height) = estimate_trace_elements(
+                        padded_event_counts,
+                        &self.costs,
+                        self.program_len,
+                        &self.internal_syscalls_override,
+                    );
 
                     if padded_element_count > element_threshold || max_height > height_threshold {
                         tracing::info!(
@@ -1905,10 +1917,18 @@ impl<'a> Executor<'a> {
                 &mut self.event_counts,
                 &self.local_counts,
                 self.local_counts.load_x0_counts,
+                &self.internal_syscalls_override,
             );
             // The above method estimates event counts only for core shards.
             estimator.core_records.push(self.event_counts);
         }
+        self.record.estimated_trace_area = estimate_trace_elements(
+            self.event_counts,
+            &self.costs,
+            self.program_len,
+            &self.internal_syscalls_override,
+        )
+        .0;
         self.local_counts = LocalCounts::default();
         // Copy all of the existing local memory accesses to the record's local_memory_access vec.
         if E::MODE == ExecutorMode::Trace {
@@ -2324,6 +2344,7 @@ impl<'a> Executor<'a> {
         event_counts: &mut EnumMap<RiscvAirId, u64>,
         local_counts: &LocalCounts,
         load_x0_counts: u64,
+        internal_syscalls_override: &[SyscallCode],
     ) {
         let touched_addresses: u64 = local_counts.local_mem as u64;
         let syscalls_sent: u64 = local_counts.syscalls_sent as u64;
@@ -2415,6 +2436,12 @@ impl<'a> Executor<'a> {
 
         // Compute the number of events in the global chip.
         event_counts[RiscvAirId::Global] = 2 * touched_addresses + syscalls_sent;
+
+        // Compute the number of events in the retained precompiles.
+        for syscall in internal_syscalls_override {
+            let air_id = SyscallCode::as_air_id(*syscall).unwrap();
+            event_counts[air_id] = local_counts.retained_precompile_counts[air_id];
+        }
     }
 
     #[inline]

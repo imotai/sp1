@@ -70,8 +70,8 @@ impl Default for SP1CoreOpts {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SplitOpts {
     /// The threshold for combining the memory init/finalize events in to the current shard in
-    /// terms of cycles.
-    pub combine_memory_threshold: usize,
+    /// terms of total trace area in the shard, and the number of memory init/finalize events.
+    pub combine_memory_threshold: (u64, usize),
     /// The threshold for default events.
     pub deferred: usize,
     /// The threshold for keccak events.
@@ -104,18 +104,18 @@ impl SplitOpts {
     #[must_use]
     pub fn new(deferred_split_threshold: usize) -> Self {
         Self {
-            combine_memory_threshold: 1 << 17,
+            combine_memory_threshold: (1 << 28, 1 << 17),
             deferred: deferred_split_threshold,
-            fp_operation_256bit: deferred_split_threshold * 2,
-            ec_add_256bit: deferred_split_threshold * 64 / 65,
-            ec_double_256bit: deferred_split_threshold * 64 / 33,
+            fp_operation_256bit: deferred_split_threshold * 9 / 5,
+            ec_add_256bit: deferred_split_threshold * 4 / 5,
+            ec_double_256bit: deferred_split_threshold * 3 / 2,
             keccak: 32 * deferred_split_threshold / 150,
             sha_extend: 64 * deferred_split_threshold / 129,
             sha_compress: 32 * deferred_split_threshold / 80,
-            memory: 32 * deferred_split_threshold,
-            fp2_operation_256bit: deferred_split_threshold,
-            fp_operation_384bit: deferred_split_threshold,
-            fp2_operation_384bit: deferred_split_threshold / 2,
+            memory: 27 * deferred_split_threshold,
+            fp2_operation_256bit: deferred_split_threshold * 8 / 9,
+            fp_operation_384bit: deferred_split_threshold * 11 / 10,
+            fp2_operation_384bit: deferred_split_threshold * 7 / 12,
         }
     }
 }
