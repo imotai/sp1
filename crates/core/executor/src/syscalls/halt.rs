@@ -5,10 +5,10 @@ use super::{context::SyscallContext, SyscallCode};
 pub fn halt_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,
     _: SyscallCode,
-    exit_code: u32,
-    _: u32,
-) -> Option<u32> {
+    exit_code: u64,
+    _: u64,
+) -> Option<u64> {
     ctx.set_next_pc(0);
-    ctx.set_exit_code(exit_code);
+    ctx.set_exit_code(exit_code as u32);
     None
 }

@@ -12,30 +12,30 @@ use crate::{
 pub(crate) fn uint256_mul<E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let clk = rt.clk;
 
     let x_ptr = arg1;
-    if x_ptr % 4 != 0 {
+    if x_ptr % 8 != 0 {
         panic!();
     }
     let y_ptr = arg2;
-    if y_ptr % 4 != 0 {
+    if y_ptr % 8 != 0 {
         panic!();
     }
 
     // First read the words for the x value. We can read a slice_unsafe here because we write
     // the computed result to x later.
-    let x = rt.slice_unsafe(x_ptr, WORDS_FIELD_ELEMENT);
+    let x = rt.slice_unsafe(x_ptr, WORDS_FIELD_ELEMENT / 2);
 
     // Read the y value.
-    let (y_memory_records, y) = rt.mr_slice(y_ptr, WORDS_FIELD_ELEMENT);
+    let (y_memory_records, y) = rt.mr_slice(y_ptr, WORDS_FIELD_ELEMENT / 2);
 
     // The modulus is stored after the y value. We increment the pointer by the number of words.
-    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u32 * WORD_BYTE_SIZE as u32;
-    let (modulus_memory_records, modulus) = rt.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT);
+    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u64 * WORD_BYTE_SIZE as u64;
+    let (modulus_memory_records, modulus) = rt.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT / 2);
 
     // Get the BigUint values for x, y, and the modulus.
     let uint256_x = BigUint::from_bytes_le(&words_to_bytes_le_vec(&x));
@@ -53,8 +53,8 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
     let mut result_bytes = result.to_bytes_le();
     result_bytes.resize(32, 0u8); // Pad the result to 32 bytes.
 
-    // Convert the result to little endian u32 words.
-    let result = bytes_to_words_le::<8>(&result_bytes);
+    // Convert the result to little endian u64 words.
+    let result = bytes_to_words_le::<4>(&result_bytes);
 
     // Increment clk so that the write is not at the same cycle as the read.
     rt.clk += 1;

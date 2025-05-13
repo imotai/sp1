@@ -1,6 +1,6 @@
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
-use std::{str::FromStr, sync::Arc};
+use std::{num::Wrapping, str::FromStr, sync::Arc};
 
 use crate::estimator::RecordEstimator;
 #[cfg(feature = "profiling")]
@@ -11,7 +11,7 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use sp1_primitives::consts::BABYBEAR_PRIME;
+// use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::air::PublicValues;
 use strum::IntoEnumIterator;
 use thiserror::Error;
@@ -36,6 +36,9 @@ use crate::{
     ALUTypeRecord, ITypeRecord, Instruction, JTypeRecord, Opcode, Program, RTypeRecord, Register,
     RetainedEventsPreset, RiscvAirId, SP1CoreOpts, ShardingThreshold,
 };
+
+/// Max u64 value.
+pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
 /// The default increment for the program counter.  Is used for all instructions except
 /// for branches and jumps.
@@ -130,7 +133,7 @@ pub struct Executor<'a> {
     pub records: Vec<Box<ExecutionRecord>>,
 
     /// Local memory access events.
-    pub local_memory_access: HashMap<u32, MemoryLocalEvent>,
+    pub local_memory_access: HashMap<u64, MemoryLocalEvent>,
 
     /// A counter for the number of cycles that have been executed in certain functions.
     pub cycle_tracker: HashMap<String, (u64, u32)>,
@@ -282,7 +285,7 @@ pub enum ExecutionError {
 
     /// The execution failed with an invalid memory access.
     #[error("invalid memory access for opcode {0} and address {1}")]
-    InvalidMemoryAccess(Opcode, u32),
+    InvalidMemoryAccess(Opcode, u64),
 
     /// The execution failed with an unimplemented syscall.
     #[error("unimplemented syscall {0}")]
@@ -462,7 +465,7 @@ impl<'a> Executor<'a> {
     /// Get the current values of the registers.
     #[allow(clippy::single_match_else)]
     #[must_use]
-    pub fn registers<E: ExecutorConfig>(&mut self) -> [u32; 32] {
+    pub fn registers<E: ExecutorConfig>(&mut self) -> [u64; 32] {
         let mut registers = [0; 32];
         for i in 0..32 {
             let record = self.state.memory.registers.get(i);
@@ -491,8 +494,8 @@ impl<'a> Executor<'a> {
 
     /// Get the current value of a register.
     #[must_use]
-    pub fn register<E: ExecutorConfig>(&mut self, register: Register) -> u32 {
-        let addr = register as u32;
+    pub fn register<E: ExecutorConfig>(&mut self, register: Register) -> u64 {
+        let addr = register as u64;
         let record = self.state.memory.registers.get(addr);
 
         if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
@@ -515,7 +518,7 @@ impl<'a> Executor<'a> {
     ///
     /// Assumes `addr` is a valid memory address, not a register.
     #[must_use]
-    pub fn word<E: ExecutorConfig>(&mut self, addr: u32) -> u32 {
+    pub fn word<E: ExecutorConfig>(&mut self, addr: u64) -> u64 {
         #[allow(clippy::single_match_else)]
         let record = self.state.memory.page_table.get(addr);
 
@@ -540,9 +543,9 @@ impl<'a> Executor<'a> {
     ///
     /// Assumes `addr` is a valid memory address, not a register.
     #[must_use]
-    pub fn byte<E: ExecutorConfig>(&mut self, addr: u32) -> u8 {
-        let word = self.word::<E>(addr - addr % 4);
-        (word >> ((addr % 4) * 8)) as u8
+    pub fn byte<E: ExecutorConfig>(&mut self, addr: u64) -> u8 {
+        let word = self.word::<E>(addr - addr % 8);
+        (word >> ((addr % 8) * 8)) as u8
     }
 
     /// Get the current timestamp for a given memory access position.
@@ -568,16 +571,16 @@ impl<'a> Executor<'a> {
     /// Read a word from memory and create an access record.
     pub fn mr<E: ExecutorConfig>(
         &mut self,
-        addr: u32,
+        addr: u64,
         lshard: LogicalShard,
         timestamp: u32,
-        local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
+        local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
-            panic!("Invalid memory access: addr={addr}");
-        }
+        // if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
+        //     panic!("Invalid memory access: addr={addr}");
+        // }
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
@@ -657,9 +660,9 @@ impl<'a> Executor<'a> {
         register: Register,
         lshard: LogicalShard,
         timestamp: u32,
-    ) -> u32 {
+    ) -> u64 {
         // Get the memory record entry.
-        let addr = register as u32;
+        let addr = register as u64;
         let entry = self.state.memory.registers.entry(addr);
         if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match entry {
@@ -715,10 +718,10 @@ impl<'a> Executor<'a> {
         register: Register,
         lshard: LogicalShard,
         timestamp: u32,
-        local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
+        local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
         // Get the memory record entry.
-        let addr = register as u32;
+        let addr = register as u64;
         let entry = self.state.memory.registers.entry(addr);
         if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
             match entry {
@@ -785,17 +788,17 @@ impl<'a> Executor<'a> {
     /// Write a word to memory and create an access record.
     pub fn mw<E: ExecutorConfig>(
         &mut self,
-        addr: u32,
-        value: u32,
+        addr: u64,
+        value: u64,
         lshard: LogicalShard,
         timestamp: u32,
-        local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
+        local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
-            panic!("Invalid memory access: addr={addr}");
-        }
+        // if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
+        //     panic!("Invalid memory access: addr={addr}");
+        // }
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
@@ -872,12 +875,12 @@ impl<'a> Executor<'a> {
     pub fn rw_traced<E: ExecutorConfig>(
         &mut self,
         register: Register,
-        value: u32,
+        value: u64,
         lshard: LogicalShard,
         timestamp: u32,
-        local_memory_access: Option<&mut HashMap<u32, MemoryLocalEvent>>,
+        local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
-        let addr = register as u32;
+        let addr = register as u64;
 
         // Get the memory record entry.
         let entry = self.state.memory.registers.entry(addr);
@@ -958,11 +961,11 @@ impl<'a> Executor<'a> {
     pub fn rw<E: ExecutorConfig>(
         &mut self,
         register: Register,
-        value: u32,
+        value: u64,
         lshard: LogicalShard,
         timestamp: u32,
     ) {
-        let addr = register as u32;
+        let addr = register as u64;
         // Get the memory record entry.
         let entry = self.state.memory.registers.entry(addr);
         if E::MODE == ExecutorMode::Checkpoint || E::UNCONSTRAINED {
@@ -1014,7 +1017,7 @@ impl<'a> Executor<'a> {
 
     /// Read from memory, assuming that all addresses are aligned.
     #[inline]
-    pub fn mr_cpu<E: ExecutorConfig>(&mut self, addr: u32) -> u32 {
+    pub fn mr_cpu<E: ExecutorConfig>(&mut self, addr: u64) -> u64 {
         // Read the address from memory and create a memory read record.
         let record =
             self.mr::<E>(addr, self.lshard(), self.timestamp(&MemoryAccessPosition::Memory), None);
@@ -1031,7 +1034,7 @@ impl<'a> Executor<'a> {
         &mut self,
         register: Register,
         position: MemoryAccessPosition,
-    ) -> u32 {
+    ) -> u64 {
         // Read the address from memory and create a memory read record if in trace mode.
         if E::MODE == ExecutorMode::Trace {
             let record =
@@ -1058,7 +1061,7 @@ impl<'a> Executor<'a> {
     ///
     /// This function will panic if the address is not aligned or if the memory accesses are already
     /// initialized.
-    pub fn mw_cpu<E: ExecutorConfig>(&mut self, addr: u32, value: u32) {
+    pub fn mw_cpu<E: ExecutorConfig>(&mut self, addr: u64, value: u64) {
         // Read the address from memory and create a memory read record.
         let record = self.mw::<E>(
             addr,
@@ -1075,7 +1078,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Write to a register.
-    pub fn rw_cpu<E: ExecutorConfig>(&mut self, register: Register, value: u32) {
+    pub fn rw_cpu<E: ExecutorConfig>(&mut self, register: Register, value: u64) {
         // The only time we are writing to a register is when it is in operand A.
         let position = MemoryAccessPosition::A;
 
@@ -1107,12 +1110,12 @@ impl<'a> Executor<'a> {
     fn emit_events(
         &mut self,
         clk: u32,
-        next_pc: u32,
+        next_pc: u64,
         instruction: &Instruction,
         syscall_code: SyscallCode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         op_a_0: bool,
         record: MemoryAccessRecord,
         exit_code: u32,
@@ -1124,7 +1127,7 @@ impl<'a> Executor<'a> {
 
         if let Some(x) = self.memory_accesses.a {
             if x.current_record().shard != x.previous_record().shard {
-                self.record.shard_bump_memory_events.push((x, instruction.op_a as u32));
+                self.record.shard_bump_memory_events.push((x, instruction.op_a as u64));
             }
         }
         if let Some(x) = self.memory_accesses.b {
@@ -1163,19 +1166,19 @@ impl<'a> Executor<'a> {
     fn emit_alu_event(
         &mut self,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
         let event = AluEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
         match opcode {
-            Opcode::ADD => {
+            Opcode::ADD | Opcode::ADDW => {
                 let record = RTypeRecord::from(record);
                 self.record.add_events.push((event, record));
             }
-            Opcode::ADDI => {
+            Opcode::ADDI | Opcode::ADDIW => {
                 let record = ITypeRecord::from(record);
                 self.record.addi_events.push((event, record));
             }
@@ -1187,11 +1190,17 @@ impl<'a> Executor<'a> {
                 let record = ALUTypeRecord::from(record);
                 self.record.bitwise_events.push((event, record));
             }
-            Opcode::SLL => {
+            Opcode::SLL | Opcode::SLLW => {
                 let record = ALUTypeRecord::from(record);
                 self.record.shift_left_events.push((event, record));
             }
-            Opcode::SRL | Opcode::SRA => {
+            Opcode::SRL
+            | Opcode::SRA
+            | Opcode::SRLW
+            | Opcode::SRAW
+            | Opcode::SLLIW
+            | Opcode::SRLIW
+            | Opcode::SRAIW => {
                 let record = ALUTypeRecord::from(record);
                 self.record.shift_right_events.push((event, record));
             }
@@ -1199,7 +1208,7 @@ impl<'a> Executor<'a> {
                 let record = ALUTypeRecord::from(record);
                 self.record.lt_events.push((event, record));
             }
-            Opcode::MUL | Opcode::MULHU | Opcode::MULHSU | Opcode::MULH => {
+            Opcode::MUL | Opcode::MULHU | Opcode::MULHSU | Opcode::MULH | Opcode::MULW => {
                 let record = ALUTypeRecord::from(record);
                 self.record.mul_events.push((event, record));
             }
@@ -1216,9 +1225,9 @@ impl<'a> Executor<'a> {
     fn emit_mem_instr_event(
         &mut self,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
@@ -1259,12 +1268,12 @@ impl<'a> Executor<'a> {
     fn emit_branch_event(
         &mut self,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc: u32,
+        next_pc: u64,
     ) {
         let event = BranchEvent {
             clk: self.state.clk,
@@ -1286,12 +1295,12 @@ impl<'a> Executor<'a> {
     fn emit_jal_event(
         &mut self,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc: u32,
+        next_pc: u64,
     ) {
         let event =
             JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
@@ -1305,12 +1314,12 @@ impl<'a> Executor<'a> {
     fn emit_jalr_event(
         &mut self,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc: u32,
+        next_pc: u64,
     ) {
         let event =
             JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
@@ -1323,9 +1332,9 @@ impl<'a> Executor<'a> {
     fn emit_auipc_event(
         &mut self,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
@@ -1341,10 +1350,10 @@ impl<'a> Executor<'a> {
         &self,
         clk: u32,
         syscall_code: SyscallCode,
-        arg1: u32,
-        arg2: u32,
+        arg1: u64,
+        arg2: u64,
         op_a_0: bool,
-        next_pc: u32,
+        next_pc: u64,
         exit_code: u32,
     ) -> SyscallEvent {
         // should_send: if the syscall is usually sent and it is not manually set as internal.
@@ -1371,11 +1380,11 @@ impl<'a> Executor<'a> {
         &mut self,
         clk: u32,
         syscall_code: SyscallCode,
-        arg1: u32,
-        arg2: u32,
+        arg1: u64,
+        arg2: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc: u32,
+        next_pc: u64,
         exit_code: u32,
     ) {
         let syscall_event =
@@ -1385,7 +1394,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Fetch the destination register and input operand values for an ALU instruction.
-    fn alu_rr<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (Register, u32, u32) {
+    fn alu_rr<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (Register, u64, u64) {
         if !instruction.imm_c {
             let (rd, rs1, rs2) = instruction.r_type();
             let c = self.rr_cpu::<E>(rs2, MemoryAccessPosition::C);
@@ -1405,7 +1414,7 @@ impl<'a> Executor<'a> {
 
     /// Set the destination register with the result.
     #[inline]
-    fn alu_rw<E: ExecutorConfig>(&mut self, rd: Register, a: u32) {
+    fn alu_rw<E: ExecutorConfig>(&mut self, rd: Register, a: u64) {
         self.rw_cpu::<E>(rd, a);
     }
 
@@ -1413,7 +1422,7 @@ impl<'a> Executor<'a> {
     fn load_rr<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-    ) -> (Register, u32, u32, u32, u32) {
+    ) -> (Register, u64, u64, u64, u64) {
         let (rd, rs1, imm) = instruction.i_type();
         let (b, c) = (self.rr_cpu::<E>(rs1, MemoryAccessPosition::B), imm);
         let addr = b.wrapping_add(c);
@@ -1425,7 +1434,7 @@ impl<'a> Executor<'a> {
     fn store_rr<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-    ) -> (u32, u32, u32, u32, u32) {
+    ) -> (u64, u64, u64, u64, u64) {
         let (rs1, rs2, imm) = instruction.s_type();
         let c = imm;
         let b = self.rr_cpu::<E>(rs2, MemoryAccessPosition::B);
@@ -1436,7 +1445,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Fetch the input operand values for a branch instruction.
-    fn branch_rr<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
+    fn branch_rr<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (u64, u64, u64) {
         let (rs1, rs2, imm) = instruction.b_type();
         let c = imm;
         let b = self.rr_cpu::<E>(rs2, MemoryAccessPosition::B);
@@ -1463,7 +1472,7 @@ impl<'a> Executor<'a> {
         let mut next_pc = self.state.pc.wrapping_add(4);
         // Will be set to a non-default value if the instruction is a syscall.
 
-        let (mut a, b, c): (u32, u32, u32);
+        let (mut a, b, c): (u64, u64, u64);
 
         if E::MODE == ExecutorMode::Trace {
             self.memory_accesses = MemoryAccessRecord::default();
@@ -1542,17 +1551,17 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute an ALU instruction.
-    fn execute_alu<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
+    fn execute_alu<E: ExecutorConfig>(&mut self, instruction: &Instruction) -> (u64, u64, u64) {
         let (rd, b, c) = self.alu_rr::<E>(instruction);
         let a = match instruction.opcode {
-            Opcode::ADD | Opcode::ADDI => b.wrapping_add(c),
-            Opcode::SUB => b.wrapping_sub(c),
+            Opcode::ADD | Opcode::ADDI => (Wrapping(b) + Wrapping(c)).0,
+            Opcode::SUB => (Wrapping(b) - Wrapping(c)).0,
             Opcode::XOR => b ^ c,
             Opcode::OR => b | c,
             Opcode::AND => b & c,
-            Opcode::SLL => b.wrapping_shl(c),
-            Opcode::SRL => b.wrapping_shr(c),
-            Opcode::SRA => (b as i32).wrapping_shr(c) as u32,
+            Opcode::SLL => b << (c & 0x3f),
+            Opcode::SRL => b >> (c & 0x3f),
+            Opcode::SRA => ((b as i64) >> (c & 0x3f)) as u64,
             Opcode::SLT => {
                 if (b as i32) < (c as i32) {
                     1
@@ -1567,38 +1576,77 @@ impl<'a> Executor<'a> {
                     0
                 }
             }
-            Opcode::MUL => b.wrapping_mul(c),
-            Opcode::MULH => (((b as i32) as i64).wrapping_mul((c as i32) as i64) >> 32) as u32,
-            Opcode::MULHU => ((b as u64).wrapping_mul(c as u64) >> 32) as u32,
-            Opcode::MULHSU => (((b as i32) as i64).wrapping_mul(c as i64) >> 32) as u32,
+            Opcode::MUL => (Wrapping(b as i64) * Wrapping(c as i64)).0 as u64,
+            Opcode::MULH => (((b as i64) as i128).wrapping_mul((c as i64) as i128) >> 64) as u64,
+            Opcode::MULHU => ((b as u128 * c as u128) >> 64) as u64,
+            Opcode::MULHSU => ((((b as i64) as i128) * (c as i128)) >> 64) as u64,
             Opcode::DIV => {
                 if c == 0 {
-                    u32::MAX
+                    M64
                 } else {
-                    (b as i32).wrapping_div(c as i32) as u32
+                    ((b as i32).wrapping_div(c as i32) as u32) as u64
                 }
             }
             Opcode::DIVU => {
                 if c == 0 {
-                    u32::MAX
+                    M64
                 } else {
-                    b.wrapping_div(c)
+                    (b.wrapping_div(c) as i64) as u64
                 }
             }
             Opcode::REM => {
                 if c == 0 {
                     b
                 } else {
-                    (b as i32).wrapping_rem(c as i32) as u32
+                    (((b as i64) as i128) % ((c as i64) as i128)) as u64
                 }
             }
             Opcode::REMU => {
                 if c == 0 {
                     b
                 } else {
-                    b.wrapping_rem(c)
+                    b % c
                 }
             }
+            // RISCV-64
+            Opcode::ADDW => (Wrapping(b as i32) + Wrapping(c as i32)).0 as i64 as u64,
+            Opcode::SUBW => (Wrapping(b as i32) - Wrapping(c as i32)).0 as i64 as u64,
+            Opcode::MULW => (Wrapping(b as i32) * Wrapping(c as i32)).0 as i64 as u64,
+            Opcode::DIVW => {
+                if c as i32 == 0 {
+                    M64
+                } else {
+                    (((b as i32) as i64) / ((c as i32) as i64)) as u64
+                }
+            }
+            Opcode::DIVUW => {
+                if c as i32 == 0 {
+                    M64
+                } else {
+                    ((b as u32 / c as u32) as i32) as u64
+                }
+            }
+            Opcode::REMW => {
+                if c as i32 == 0 {
+                    (b as i32) as u64
+                } else {
+                    (((b as i32) as i64) % ((c as i32) as i64)) as u64
+                }
+            }
+            Opcode::REMUW => {
+                if c as u32 == 0 {
+                    (b as i32) as u64
+                } else {
+                    (((b as u32) % (c as u32)) as i32) as u64
+                }
+            }
+            // RISC-V 64-bit operations
+            Opcode::SLLW | Opcode::SLLIW => (((b as i64) << (c & 0x1f)) as i32) as i64 as u64,
+            Opcode::SRLW | Opcode::SRLIW => (((b as u32) >> ((c & 0x1f) as u32)) as i32) as u64,
+            Opcode::SRAW | Opcode::SRAIW => {
+                (b as i32).wrapping_shr(((c as i64 & 0x1f) as i32) as u32) as i64 as u64
+            }
+            Opcode::ADDIW => (Wrapping(b as i32) + Wrapping(c as i32)).0 as u64,
             _ => unreachable!(),
         };
         self.alu_rw::<E>(rd, a);
@@ -1609,29 +1657,42 @@ impl<'a> Executor<'a> {
     fn execute_load<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-    ) -> Result<(u32, u32, u32), ExecutionError> {
+    ) -> Result<(u64, u64, u64), ExecutionError> {
         let (rd, b, c, addr, memory_read_value) = self.load_rr::<E>(instruction);
 
         let a = match instruction.opcode {
-            Opcode::LB => ((memory_read_value >> ((addr % 4) * 8)) & 0xFF) as i8 as i32 as u32,
+            Opcode::LB => ((memory_read_value >> ((addr % 8) * 8)) & 0xFF) as i8 as i64 as u64,
             Opcode::LH => {
                 if addr % 2 != 0 {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LH, addr));
                 }
-                ((memory_read_value >> (((addr / 2) % 2) * 16)) & 0xFFFF) as i16 as i32 as u32
+                ((memory_read_value >> (((addr / 2) % 4) * 16)) & 0xFFFF) as i16 as i64 as u64
             }
             Opcode::LW => {
                 if addr % 4 != 0 {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LW, addr));
                 }
-                memory_read_value
+                ((memory_read_value >> (((addr / 4) % 2) * 32)) & 0xFFFFFFFF) as i32 as u64
             }
-            Opcode::LBU => (memory_read_value >> ((addr % 4) * 8)) & 0xFF,
+            Opcode::LBU => ((memory_read_value >> ((addr % 8) * 8)) & 0xFF) as u8 as u64,
             Opcode::LHU => {
                 if addr % 2 != 0 {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LHU, addr));
                 }
-                (memory_read_value >> (((addr / 2) % 2) * 16)) & 0xFFFF
+                ((memory_read_value >> (((addr / 2) % 4) * 16)) & 0xFFFF) as u16 as u64
+            }
+            // RISCV-64
+            Opcode::LWU => {
+                if addr % 4 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LWU, addr));
+                }
+                (memory_read_value >> (((addr / 4) % 2) * 32)) & 0xFFFFFFFF
+            }
+            Opcode::LD => {
+                if addr % 8 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LD, addr));
+                }
+                memory_read_value
             }
             _ => unreachable!(),
         };
@@ -1643,24 +1704,32 @@ impl<'a> Executor<'a> {
     fn execute_store<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-    ) -> Result<(u32, u32, u32), ExecutionError> {
+    ) -> Result<(u64, u64, u64), ExecutionError> {
         let (a, b, c, addr, memory_read_value) = self.store_rr::<E>(instruction);
 
         let memory_store_value = match instruction.opcode {
             Opcode::SB => {
-                let shift = (addr % 4) * 8;
+                let shift = (addr % 8) * 8;
                 ((a & 0xFF) << shift) | (memory_read_value & !(0xFF << shift))
             }
             Opcode::SH => {
                 if addr % 2 != 0 {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::SH, addr));
                 }
-                let shift = ((addr / 2) % 2) * 16;
+                let shift = ((addr / 2) % 4) * 16;
                 ((a & 0xFFFF) << shift) | (memory_read_value & !(0xFFFF << shift))
             }
             Opcode::SW => {
                 if addr % 4 != 0 {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::SW, addr));
+                }
+                let shift = ((addr / 4) % 2) * 32;
+                ((a & 0xFFFFFFFF) << shift) | (memory_read_value & !(0xFFFFFFFF << shift))
+            }
+            // RISCV-64
+            Opcode::SD => {
+                if addr % 8 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::SD, addr));
                 }
                 a
             }
@@ -1674,14 +1743,14 @@ impl<'a> Executor<'a> {
     fn execute_branch<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-        mut next_pc: u32,
-    ) -> (u32, u32, u32, u32) {
+        mut next_pc: u64,
+    ) -> (u64, u64, u64, u64) {
         let (a, b, c) = self.branch_rr::<E>(instruction);
         let branch = match instruction.opcode {
             Opcode::BEQ => a == b,
             Opcode::BNE => a != b,
-            Opcode::BLT => (a as i32) < (b as i32),
-            Opcode::BGE => (a as i32) >= (b as i32),
+            Opcode::BLT => (a as i64) < (b as i64),
+            Opcode::BGE => (a as i64) >= (b as i64),
             Opcode::BLTU => a < b,
             Opcode::BGEU => a >= b,
             _ => {
@@ -1698,14 +1767,14 @@ impl<'a> Executor<'a> {
     #[allow(clippy::type_complexity)]
     fn execute_ecall<E: ExecutorConfig>(
         &mut self,
-    ) -> Result<(u32, u32, u32, u32, u32, SyscallCode, u32), ExecutionError> {
+    ) -> Result<(u64, u64, u64, u32, u64, SyscallCode, u32), ExecutionError> {
         // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
         // register is that we write to it later.
         let t0 = Register::X5;
         let syscall_id = self.register::<E>(t0);
         let c = self.rr_cpu::<E>(Register::X11, MemoryAccessPosition::C);
         let b = self.rr_cpu::<E>(Register::X10, MemoryAccessPosition::B);
-        let syscall = SyscallCode::from_u32(syscall_id);
+        let syscall = SyscallCode::from_u32(syscall_id as u32);
 
         if self.print_report && !E::UNCONSTRAINED {
             self.report.syscall_counts[syscall] += 1;
@@ -1720,7 +1789,7 @@ impl<'a> Executor<'a> {
         if E::UNCONSTRAINED
             && (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
         {
-            return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
+            return Err(ExecutionError::InvalidSyscallUsage(syscall_id));
         }
 
         // Update the syscall counts.
@@ -1795,22 +1864,27 @@ impl<'a> Executor<'a> {
     fn execute_jump<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-    ) -> (u32, u32, u32, u32) {
+    ) -> (u64, u64, u64, u64) {
         let (a, b, c, next_pc) = match instruction.opcode {
             Opcode::JAL => {
                 let (rd, imm) = instruction.j_type();
-                let (b, c) = (imm, 0);
+                let imm_se = sign_extend_imm(imm, 21);
                 let a = self.state.pc + 4;
                 self.rw_cpu::<E>(rd, a);
-                let next_pc = self.state.pc.wrapping_add(imm);
+                let next_pc = ((self.state.pc as i64).wrapping_add(imm_se)) as u64;
+                let b = imm_se as u64;
+                let c = 0;
                 (a, b, c, next_pc)
             }
             Opcode::JALR => {
-                let (rd, rs1, imm) = instruction.i_type();
-                let (b, c) = (self.rr_cpu::<E>(rs1, MemoryAccessPosition::B), imm);
+                let (rd, rs1, c) = instruction.i_type();
+                let imm_se = sign_extend_imm(c, 12);
+                let b = self.rr_cpu::<E>(rs1, MemoryAccessPosition::B);
                 let a = self.state.pc + 4;
+                // Calculate next PC: (rs1 + imm) & ~1
+                let next_pc = ((b as i64).wrapping_add(imm_se) as u64) & !1_u64;
                 self.rw_cpu::<E>(rd, a);
-                let next_pc = b.wrapping_add(c);
+
                 (a, b, c, next_pc)
             }
             _ => unreachable!(),
@@ -1897,7 +1971,7 @@ impl<'a> Executor<'a> {
 
         let done = self.state.pc == 0
             || self.state.pc.wrapping_sub(self.program.pc_base)
-                >= (self.program.instructions.len() * 4) as u32;
+                >= (self.program.instructions.len() * 4) as u64;
         if done && E::UNCONSTRAINED {
             tracing::error!("program ended in unconstrained mode at clk {}", self.state.global_clk);
             return Err(ExecutionError::EndInUnconstrained());
@@ -1970,7 +2044,7 @@ impl<'a> Executor<'a> {
     pub fn execute_state(
         &mut self,
         emit_global_memory_events: bool,
-    ) -> Result<(ExecutionState, PublicValues<u32, u32, u32>, bool), ExecutionError> {
+    ) -> Result<(ExecutionState, PublicValues<u64, u64, u64>, bool), ExecutionError> {
         self.memory_checkpoint.clear();
         self.emit_global_memory_events = emit_global_memory_events;
 
@@ -2089,7 +2163,7 @@ impl<'a> Executor<'a> {
 
             done = self.state.pc == 0
                 || self.state.pc.wrapping_sub(self.program.pc_base)
-                    >= (self.program.instructions.len() * 4) as u32;
+                    >= (self.program.instructions.len() * 4) as u64;
         }
 
         Ok(())
@@ -2194,12 +2268,12 @@ impl<'a> Executor<'a> {
             record.public_values = public_values;
             record.public_values.committed_value_digest = public_values.committed_value_digest;
             record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
-            record.public_values.execution_shard = start_shard.get() + i as u32;
+            record.public_values.execution_shard = start_shard.get() as u64 + i as u64;
             if record.contains_cpu() {
                 record.public_values.start_pc = record.start_pc.unwrap();
                 record.public_values.next_pc = record.next_pc;
-                record.public_values.exit_code = record.exit_code;
-                record.public_values.last_timestamp = record.last_timestamp;
+                record.public_values.exit_code = record.exit_code as u64;
+                record.public_values.last_timestamp = record.last_timestamp as u64;
                 last_next_pc = record.public_values.next_pc;
                 last_exit_code = record.public_values.exit_code;
             } else {
@@ -2439,7 +2513,7 @@ impl<'a> Executor<'a> {
         #[cfg(feature = "profiling")]
         if let Some((ref mut profiler, _)) = self.profiler {
             if !E::UNCONSTRAINED {
-                profiler.record(self.state.global_clk, self.state.pc as u64);
+                profiler.record(self.state.global_clk, self.state.pc);
             }
         }
 
@@ -2457,8 +2531,13 @@ impl Default for ExecutorMode {
 
 /// Aligns an address to the nearest word below or equal to it.
 #[must_use]
-pub const fn align(addr: u32) -> u32 {
-    addr - addr % 4
+pub const fn align(addr: u64) -> u64 {
+    addr - addr % 8
+}
+
+fn sign_extend_imm(value: u64, bits: u8) -> i64 {
+    let shift = 64 - bits;
+    ((value as i64) << shift) >> shift
 }
 
 #[cfg(test)]
@@ -2743,6 +2822,7 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x29, -1
         //     addi x31, x30, 4
+        // TODO: update negative in u64
         let instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 29, 0xFFFF_FFFF, false, true),
@@ -2893,7 +2973,7 @@ mod tests {
         assert_eq!(runtime.state.pc, 108);
     }
 
-    fn simple_op_code_test(opcode: Opcode, expected: u32, a: u32, b: u32) {
+    fn simple_op_code_test(opcode: Opcode, expected: u64, a: u64, b: u64) {
         let instructions = vec![
             Instruction::new(Opcode::ADD, 10, 0, a, false, true),
             Instruction::new(Opcode::ADD, 11, 0, b, false, true),
@@ -2963,23 +3043,23 @@ mod tests {
         simple_op_code_test(Opcode::MUL, 0xffffffff, 0x00000001, 0xffffffff);
     }
 
-    fn neg(a: u32) -> u32 {
-        u32::MAX - a + 1
+    fn neg(a: u64) -> u64 {
+        u64::MAX - a + 1
     }
 
     #[test]
     fn division_tests() {
         simple_op_code_test(Opcode::DIVU, 3, 20, 6);
-        simple_op_code_test(Opcode::DIVU, 715_827_879, u32::MAX - 20 + 1, 6);
-        simple_op_code_test(Opcode::DIVU, 0, 20, u32::MAX - 6 + 1);
-        simple_op_code_test(Opcode::DIVU, 0, u32::MAX - 20 + 1, u32::MAX - 6 + 1);
+        simple_op_code_test(Opcode::DIVU, 715_827_879, (u32::MAX - 20 + 1) as u64, 6);
+        simple_op_code_test(Opcode::DIVU, 0, 20, (u32::MAX - 6 + 1) as u64);
+        simple_op_code_test(Opcode::DIVU, 0, (u32::MAX - 20 + 1) as u64, (u32::MAX - 6 + 1) as u64);
 
         simple_op_code_test(Opcode::DIVU, 1 << 31, 1 << 31, 1);
-        simple_op_code_test(Opcode::DIVU, 0, 1 << 31, u32::MAX - 1 + 1);
+        simple_op_code_test(Opcode::DIVU, 0, 1 << 31, (u32::MAX - 1 + 1) as u64);
 
-        simple_op_code_test(Opcode::DIVU, u32::MAX, 1 << 31, 0);
-        simple_op_code_test(Opcode::DIVU, u32::MAX, 1, 0);
-        simple_op_code_test(Opcode::DIVU, u32::MAX, 0, 0);
+        simple_op_code_test(Opcode::DIVU, u32::MAX as u64, 1 << 31, 0);
+        simple_op_code_test(Opcode::DIVU, u32::MAX as u64, 1, 0);
+        simple_op_code_test(Opcode::DIVU, u32::MAX as u64, 0, 0);
 
         simple_op_code_test(Opcode::DIV, 3, 18, 6);
         simple_op_code_test(Opcode::DIV, neg(6), neg(24), 4);
@@ -3143,7 +3223,7 @@ mod tests {
     #[should_panic]
     fn test_invalid_address_syscall() {
         let instructions = vec![
-            Instruction::new(Opcode::ADD, 5, 0, SHA_COMPRESS, false, true),
+            Instruction::new(Opcode::ADD, 5, 0, SHA_COMPRESS as u64, false, true),
             Instruction::new(Opcode::ADD, 10, 0, 10, false, true),
             Instruction::new(Opcode::ADD, 11, 10, 20, false, true),
             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false),

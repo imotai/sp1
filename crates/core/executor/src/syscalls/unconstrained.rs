@@ -12,9 +12,9 @@ use super::{SyscallCode, SyscallContext};
 pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,
     _: SyscallCode,
-    _: u32,
-    _: u32,
-) -> Option<u32> {
+    _: u64,
+    _: u64,
+) -> Option<u64> {
     assert!(!E::UNCONSTRAINED, "Unconstrained block is already active.");
 
     // Save the state of the runtime before unconstrained execution.
@@ -62,9 +62,9 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
 pub fn exit_unconstrained_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,
     _: SyscallCode,
-    _: u32,
-    _: u32,
-) -> Option<u32> {
+    _: u64,
+    _: u64,
+) -> Option<u64> {
     assert!(E::UNCONSTRAINED, "Unconstrained block is not active.");
     ctx.set_next_pc(0);
     ctx.set_exit_code(0);

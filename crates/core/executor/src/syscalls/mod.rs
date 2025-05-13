@@ -66,7 +66,7 @@ impl<'a, 'b, E: ExecutorConfig> Syscall<'a, 'b, E> {
 
 /// A type alias for a syscall handler.
 pub type SyscallHandler<'a, 'b, E> =
-    fn(&mut SyscallContext<'a, 'b, E>, SyscallCode, u32, u32) -> Option<u32>;
+    fn(&mut SyscallContext<'a, 'b, E>, SyscallCode, u64, u64) -> Option<u64>;
 
 /// Maps syscall codes to their implementations.
 #[allow(clippy::too_many_lines)]

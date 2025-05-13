@@ -6,7 +6,7 @@ use std::{
     thread,
 };
 
-use crate::{BuildArgs, BUILD_TARGET};
+use crate::{BuildArgs, DEFAULT_TARGET, DEFAULT_TARGET_64};
 
 /// Get the arguments to build the program with the arguments from the [`BuildArgs`] struct.
 pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
@@ -14,7 +14,7 @@ pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
         "build".to_string(),
         "--release".to_string(),
         "--target".to_string(),
-        BUILD_TARGET.to_string(),
+        args.build_target.clone(),
     ];
 
     if args.ignore_rust_version {
@@ -59,13 +59,17 @@ pub(crate) fn get_rust_compiler_flags(_: &BuildArgs, version: &semver::Version) 
         "passes=loweratomic"
     };
 
+    let text_addr = match args.build_target.as_str() {
+        DEFAULT_TARGET => "0x00200800",
+        DEFAULT_TARGET_64 => "0x80000000",
+        _ => panic!("Unsupported target: {}", args.build_target),
+    };
+
     let rust_flags = [
         "-C",
         atomic_lower_pass,
         "-C",
-        "link-arg=-Ttext=0x00201000",
-        "-C",
-        "link-arg=--image-base=0x00200800",
+        &format!("link-arg=-Ttext={}", text_addr),
         "-C",
         "panic=abort",
     ];

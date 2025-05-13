@@ -31,20 +31,20 @@ impl<T> Word<T> {
 
     /// Extends a variable to a word.
     pub fn extend_var<AB: SP1AirBuilder<Var = T>>(var: T) -> Word<AB::Expr> {
-        Word([AB::Expr::zero() + var, AB::Expr::zero()])
+        Word([AB::Expr::zero() + var, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
     }
 }
 
 impl<T: AbstractField> Word<T> {
     /// Extends a variable to a word.
     pub fn extend_expr<AB: SP1AirBuilder<Expr = T>>(expr: T) -> Word<AB::Expr> {
-        Word([AB::Expr::zero() + expr, AB::Expr::zero()])
+        Word([AB::Expr::zero() + expr, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
     }
 
     /// Returns a word with all zero expressions.
     #[must_use]
     pub fn zero<AB: SP1AirBuilder<Expr = T>>() -> Word<T> {
-        Word([AB::Expr::zero(), AB::Expr::zero()])
+        Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
     }
 }
 
@@ -84,6 +84,19 @@ impl<F: AbstractField> From<u32> for Word<F> {
         Word([
             F::from_canonical_u16((value & 0xFFFF) as u16),
             F::from_canonical_u16((value >> 16) as u16),
+            F::zero(),
+            F::zero(),
+        ])
+    }
+}
+
+impl<F: AbstractField> From<u64> for Word<F> {
+    fn from(value: u64) -> Self {
+        Word([
+            F::from_canonical_u16((value & 0xFFFF) as u16),
+            F::from_canonical_u16((value >> 16) as u16),
+            F::from_canonical_u16((value >> 32) as u16),
+            F::from_canonical_u16((value >> 48) as u16),
         ])
     }
 }

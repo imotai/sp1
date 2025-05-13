@@ -84,7 +84,7 @@ pub struct PublicValues<W1, W2, T> {
     pub empty: [T; 7],
 }
 
-impl PublicValues<u32, u32, u32> {
+impl PublicValues<u64, u64, u64> {
     /// Convert the public values into a vector of field elements.  This function will pad the
     /// vector to the maximum number of public values.
     #[must_use]
@@ -149,8 +149,8 @@ impl<T: Clone> BorrowMut<PublicValues<[T; 4], Word<T>, T>> for [T] {
     }
 }
 
-impl<F: AbstractField> From<PublicValues<u32, u32, u32>> for PublicValues<[F; 4], Word<F>, F> {
-    fn from(value: PublicValues<u32, u32, u32>) -> Self {
+impl<F: AbstractField> From<PublicValues<u64, u64, u64>> for PublicValues<[F; 4], Word<F>, F> {
+    fn from(value: PublicValues<u64, u64, u64>) -> Self {
         let PublicValues {
             committed_value_digest,
             deferred_proofs_digest,
@@ -176,34 +176,34 @@ impl<F: AbstractField> From<PublicValues<u32, u32, u32>> for PublicValues<[F; 4]
 
         let committed_value_digest: [_; PV_DIGEST_NUM_WORDS] = core::array::from_fn(|i| {
             [
-                F::from_canonical_u32(committed_value_digest[i] & 0xFF),
-                F::from_canonical_u32((committed_value_digest[i] >> 8) & 0xFF),
-                F::from_canonical_u32((committed_value_digest[i] >> 16) & 0xFF),
-                F::from_canonical_u32((committed_value_digest[i] >> 24) & 0xFF),
+                F::from_canonical_u64(committed_value_digest[i] & 0xFF),
+                F::from_canonical_u64((committed_value_digest[i] >> 8) & 0xFF),
+                F::from_canonical_u64((committed_value_digest[i] >> 16) & 0xFF),
+                F::from_canonical_u64((committed_value_digest[i] >> 24) & 0xFF),
             ]
         });
 
         let deferred_proofs_digest: [_; POSEIDON_NUM_WORDS] =
-            core::array::from_fn(|i| F::from_canonical_u32(deferred_proofs_digest[i]));
+            core::array::from_fn(|i| F::from_canonical_u64(deferred_proofs_digest[i]));
 
-        let start_pc = F::from_canonical_u32(start_pc);
-        let next_pc = F::from_canonical_u32(next_pc);
-        let prev_exit_code = F::from_canonical_u32(prev_exit_code);
-        let exit_code = F::from_canonical_u32(exit_code);
-        let shard = F::from_canonical_u32(shard);
-        let execution_shard = F::from_canonical_u32(execution_shard);
-        let next_execution_shard = F::from_canonical_u32(next_execution_shard);
+        let start_pc = F::from_canonical_u64(start_pc);
+        let next_pc = F::from_canonical_u64(next_pc);
+        let exit_code = F::from_canonical_u64(exit_code);
+        let prev_exit_code = F::from_canonical_u64(prev_exit_code);
+        let shard = F::from_canonical_u64(shard);
+        let execution_shard = F::from_canonical_u64(execution_shard);
+        let next_execution_shard = F::from_canonical_u64(next_execution_shard);
         let previous_init_addr_word = Word::from(previous_init_addr_word);
         let last_init_addr_word = Word::from(last_init_addr_word);
         let previous_finalize_addr_word = Word::from(previous_finalize_addr_word);
         let last_finalize_addr_word = Word::from(last_finalize_addr_word);
-        let last_timestamp = F::from_canonical_u32(last_timestamp);
-        let last_timestamp_inv = F::from_canonical_u32(last_timestamp_inv);
-        let global_init_count = F::from_canonical_u32(global_init_count);
-        let global_finalize_count = F::from_canonical_u32(global_finalize_count);
-        let global_count = F::from_canonical_u32(global_count);
+        let last_timestamp = F::from_canonical_u64(last_timestamp);
+        let last_timestamp_inv = F::from_canonical_u64(last_timestamp_inv);
+        let global_init_count = F::from_canonical_u64(global_init_count);
+        let global_finalize_count = F::from_canonical_u64(global_finalize_count);
+        let global_count = F::from_canonical_u64(global_count);
         let global_cumulative_sum =
-            SepticDigest(SepticCurve::convert(global_cumulative_sum.0, F::from_canonical_u32));
+            SepticDigest(SepticCurve::convert(global_cumulative_sum.0, F::from_canonical_u64));
 
         Self {
             committed_value_digest,

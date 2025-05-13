@@ -116,7 +116,7 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         out
     }
 
-    pub fn from_words_le(words: &[u32]) -> Self {
+    pub fn from_words_le(words: &[u64]) -> Self {
         let x_bytes =
             words[0..words.len() / 2].iter().flat_map(|n| n.to_le_bytes()).collect::<Vec<_>>();
         let y_bytes =
@@ -126,9 +126,9 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         Self { x, y, _marker: std::marker::PhantomData }
     }
 
-    pub fn to_words_le(&self) -> Vec<u32> {
-        let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
-        let num_bytes = num_words * 4;
+    pub fn to_words_le(&self) -> Vec<u64> {
+        let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE / 2;
+        let num_bytes = num_words * 8;
         let half_words = num_words / 2;
 
         let mut x_bytes = self.x.to_bytes_le();
@@ -136,20 +136,28 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         let mut y_bytes = self.y.to_bytes_le();
         y_bytes.resize(num_bytes / 2, 0u8);
 
-        let mut words = vec![0u32; num_words];
+        let mut words = vec![0u64; num_words];
 
         for i in 0..half_words {
-            let x = u32::from_le_bytes([
-                x_bytes[4 * i],
-                x_bytes[4 * i + 1],
-                x_bytes[4 * i + 2],
-                x_bytes[4 * i + 3],
+            let x = u64::from_le_bytes([
+                x_bytes[8 * i],
+                x_bytes[8 * i + 1],
+                x_bytes[8 * i + 2],
+                x_bytes[8 * i + 3],
+                x_bytes[8 * i + 4],
+                x_bytes[8 * i + 5],
+                x_bytes[8 * i + 6],
+                x_bytes[8 * i + 7],
             ]);
-            let y = u32::from_le_bytes([
-                y_bytes[4 * i],
-                y_bytes[4 * i + 1],
-                y_bytes[4 * i + 2],
-                y_bytes[4 * i + 3],
+            let y = u64::from_le_bytes([
+                y_bytes[8 * i],
+                y_bytes[8 * i + 1],
+                y_bytes[8 * i + 2],
+                y_bytes[8 * i + 3],
+                y_bytes[8 * i + 4],
+                y_bytes[8 * i + 5],
+                y_bytes[8 * i + 6],
+                y_bytes[8 * i + 7],
             ]);
 
             words[i] = x;

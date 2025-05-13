@@ -15,15 +15,15 @@ pub struct Uint256MulEvent {
     /// The clock cycle.
     pub clk: u32,
     /// The pointer to the x value.
-    pub x_ptr: u32,
+    pub x_ptr: u64,
     /// The x value as a list of words.
-    pub x: Vec<u32>,
+    pub x: Vec<u64>,
     /// The pointer to the y value.
-    pub y_ptr: u32,
+    pub y_ptr: u64,
     /// The y value as a list of words.
-    pub y: Vec<u32>,
+    pub y: Vec<u64>,
     /// The modulus as a list of words.
-    pub modulus: Vec<u32>,
+    pub modulus: Vec<u64>,
     /// The memory records for the x value.
     pub x_memory_records: Vec<MemoryWriteRecord>,
     /// The memory records for the y value.

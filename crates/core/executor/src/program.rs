@@ -29,11 +29,11 @@ pub struct Program {
     /// The instructions of the program.
     pub instructions: Vec<Instruction>,
     /// The start address of the program.
-    pub pc_start: u32,
+    pub pc_start: u64,
     /// The base address of the program.
-    pub pc_base: u32,
+    pub pc_base: u64,
     /// The initial memory image, useful for global constants.
-    pub memory_image: HashMap<u32, u32>,
+    pub memory_image: HashMap<u64, u64>,
     /// The shape for the preprocessed tables.
     pub preprocessed_shape: Option<Shape<RiscvAirId>>,
 }
@@ -41,7 +41,7 @@ pub struct Program {
 impl Program {
     /// Create a new [Program].
     #[must_use]
-    pub fn new(instructions: Vec<Instruction>, pc_start: u32, pc_base: u32) -> Self {
+    pub fn new(instructions: Vec<Instruction>, pc_start: u64, pc_base: u64) -> Self {
         Self {
             instructions,
             pc_start,
@@ -98,7 +98,7 @@ impl Program {
 
     #[must_use]
     /// Fetch the instruction at the given program counter.
-    pub fn fetch(&self, pc: u32) -> &Instruction {
+    pub fn fetch(&self, pc: u64) -> &Instruction {
         let idx = ((pc - self.pc_base) / 4) as usize;
         &self.instructions[idx]
     }
@@ -106,7 +106,7 @@ impl Program {
 
 impl<F: PrimeField32> MachineProgram<F> for Program {
     fn pc_start(&self) -> F {
-        F::from_canonical_u32(self.pc_start)
+        F::from_canonical_u64(self.pc_start)
     }
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
@@ -118,9 +118,9 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
                 let values = [
                     (InteractionKind::Memory as u32) << 24,
                     0,
-                    addr,
-                    word & 0xFFFF,
-                    (word >> 16),
+                    addr as u32,
+                    (word & 0xFFFF) as u32,
+                    (word >> 16) as u32,
                     0,
                     0,
                 ];

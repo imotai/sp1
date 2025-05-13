@@ -11,7 +11,8 @@ pub use sp1_primitives::types::Elf;
 use clap::{Parser, ValueEnum};
 
 const DEFAULT_DOCKER_TAG: &str = concat!("v", env!("CARGO_PKG_VERSION"));
-const BUILD_TARGET: &str = "riscv32im-succinct-zkvm-elf";
+const DEFAULT_TARGET: &str = "riscv32im-succinct-zkvm-elf";
+const DEFAULT_TARGET_64: &str = "riscv64im-succinct-zkvm-elf";
 const HELPER_TARGET_SUBDIR: &str = "elf-compilation";
 
 /// Controls the warning message verbosity in the build process.
@@ -83,6 +84,8 @@ pub struct BuildArgs {
     pub elf_name: Option<String>,
     #[arg(alias = "out-dir", long, action, help = "Copy the compiled ELF to this directory")]
     pub output_directory: Option<String>,
+    #[arg(long, help = "The target to build for", default_value = DEFAULT_TARGET)]
+    pub build_target: String,
 
     #[arg(
         alias = "workspace-dir",
@@ -99,6 +102,17 @@ pub struct BuildArgs {
 // Implement default args to match clap defaults.
 impl Default for BuildArgs {
     fn default() -> Self {
+        let build_target = match env::var("SP1_BUILD_TARGET") {
+            Ok(target) if target == DEFAULT_TARGET || target == DEFAULT_TARGET_64 => target,
+            Ok(target) => panic!(
+                "SP1_BUILD_TARGET must be either '{}' or '{}', got '{}'",
+                DEFAULT_TARGET, DEFAULT_TARGET_64, target
+            ),
+            #[cfg(feature = "64bit")]
+            _ => DEFAULT_TARGET_64.to_string(),
+            #[cfg(not(feature = "64bit"))]
+            _ => DEFAULT_TARGET.to_string(),
+        };
         Self {
             docker: false,
             tag: DEFAULT_DOCKER_TAG.to_string(),
@@ -112,6 +126,7 @@ impl Default for BuildArgs {
             locked: false,
             no_default_features: false,
             workspace_directory: None,
+            build_target,
             warning_level: WarningLevel::All,
         }
     }
@@ -220,6 +235,13 @@ pub fn build_program_with_args(path: &str, args: BuildArgs) {
 #[macro_export]
 macro_rules! include_elf {
     ($arg:tt) => {{
-        $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
+        #[cfg(feature = "64bit")]
+        {
+            $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_64_", $arg))))
+        }
+        #[cfg(not(feature = "64bit"))]
+        {
+            $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
+        }
     }};
 }

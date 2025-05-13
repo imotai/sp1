@@ -25,7 +25,7 @@ pub struct KeccakPermuteEvent {
     /// The memory records for the post-state.
     pub state_write_records: Vec<MemoryWriteRecord>,
     /// The address of the state.
-    pub state_addr: u32,
+    pub state_addr: u64,
     /// The local memory access records.
     pub local_mem_access: Vec<MemoryLocalEvent>,
 }

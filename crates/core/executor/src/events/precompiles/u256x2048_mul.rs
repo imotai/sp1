@@ -12,25 +12,25 @@ pub struct U256xU2048MulEvent {
     /// The channel number.
     pub clk: u32,
     /// The pointer to the a value.
-    pub a_ptr: u32,
+    pub a_ptr: u64,
     /// The a value as a list of words.
-    pub a: Vec<u32>,
+    pub a: Vec<u64>,
     /// The pointer to the b value.
-    pub b_ptr: u32,
+    pub b_ptr: u64,
     /// The b value as a list of words.
-    pub b: Vec<u32>,
+    pub b: Vec<u64>,
     /// The pointer to the lo value.
-    pub lo_ptr: u32,
+    pub lo_ptr: u64,
     /// The memory record for the pointer to the lo value.
     pub lo_ptr_memory: MemoryReadRecord,
     /// The lo value as a list of words.
-    pub lo: Vec<u32>,
+    pub lo: Vec<u64>,
     /// The pointer to the hi value.
-    pub hi_ptr: u32,
+    pub hi_ptr: u64,
     /// The memory record for the pointer to the hi value.
     pub hi_ptr_memory: MemoryReadRecord,
     /// The hi value as a list of words.
-    pub hi: Vec<u32>,
+    pub hi: Vec<u64>,
     /// The memory records for the a value.
     pub a_memory_records: Vec<MemoryReadRecord>,
     /// The memory records for the b value.
