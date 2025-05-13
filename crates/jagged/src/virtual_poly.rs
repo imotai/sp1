@@ -390,14 +390,14 @@ mod tests {
     use slop_challenger::{CanObserve, FieldChallenger};
     use slop_commit::Rounds;
     use slop_jagged::{
-        BabyBearPoseidon2TrivialEval, HadamardJaggedSumcheckProver, JaggedConfig,
+        BabyBearPoseidon2, HadamardJaggedSumcheckProver, JaggedConfig,
         JaggedLittlePolynomialProverParams, JaggedPcsVerifier, JaggedProver, JaggedSumcheckProver,
     };
     use slop_multilinear::{Mle, MultilinearPcsChallenger, PaddedMle};
     use slop_sumcheck::SumcheckPolyFirstRound;
 
     use crate::{
-        CudaJaggedMleGenerator, Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval,
+        CudaJaggedMleGenerator, Poseidon2BabyBearJaggedCudaProverComponents,
         VirtualJaggedSumcheckProver,
     };
 
@@ -406,8 +406,8 @@ mod tests {
     async fn test_virtual_jagged_sumcheck_poly() {
         let log_blowup = 1;
 
-        type JC = BabyBearPoseidon2TrivialEval;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval>;
+        type JC = BabyBearPoseidon2;
+        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
 

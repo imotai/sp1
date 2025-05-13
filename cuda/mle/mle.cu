@@ -178,9 +178,9 @@ __global__ void fixLastVariable(
 {
     size_t outputHeight = (inputHeight + 1) >> 1;
     bool padding = inputHeight & 1;
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
     {
-        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
         {
             F zeroValue = F::load(input, j * inputHeight + (i << 1));
             F oneValue;
@@ -211,9 +211,9 @@ __global__ void fixLastVariableConstantPadding(
 {
     size_t outputHeight = (inputHeight + 1) >> 1;
     bool padding = inputHeight & 1;
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
     {
-        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
         {
             F zeroValue = F::load(input, j * inputHeight + (i << 1));
             F oneValue;
@@ -305,9 +305,9 @@ __global__ void foldMle(
     size_t width)
 {
     size_t inputHeight = outputHeight << 1;
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
     {
-        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
         {
             F evenValue = F::load(input, j * inputHeight + (i << 1));
             F oddValue = F::load(input, j * inputHeight + (i << 1) + 1);

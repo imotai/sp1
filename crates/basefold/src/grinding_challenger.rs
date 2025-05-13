@@ -4,7 +4,7 @@ use csl_challenger::DuplexChallenger;
 use csl_cuda::sys::challenger::grind_baby_bear;
 use csl_cuda::{args, sys::runtime::KernelPtr, TaskScope};
 use slop_algebra::PrimeField64;
-use slop_alloc::{Buffer, IntoHost};
+use slop_alloc::{Buffer, CpuBackend, IntoHost};
 use slop_baby_bear::BabyBear;
 use slop_challenger::GrindingChallenger;
 use slop_symmetric::CryptographicPermutation;
@@ -19,8 +19,14 @@ pub unsafe trait GrindingChallengerKernel<F> {
 ///
 /// Useful for finding a proof-of-work witness on machines with not that many cores.
 pub trait DeviceGrindingChallenger: GrindingChallenger {
+    type OnDeviceChallenger;
     /// Grinds on device.
     fn grind_device(&mut self, bits: usize) -> impl Future<Output = Self::Witness> + Send;
+
+    fn into_device(
+        self,
+        backend: TaskScope,
+    ) -> impl Future<Output = Self::OnDeviceChallenger> + Send + Sync;
 }
 
 impl<F, P, const WIDTH: usize, const RATE: usize> DeviceGrindingChallenger
@@ -30,6 +36,7 @@ where
     P: CryptographicPermutation<[F; WIDTH]> + Send + Sync,
     TaskScope: GrindingChallengerKernel<F>,
 {
+    type OnDeviceChallenger = DuplexChallenger<F, TaskScope>;
     async fn grind_device(&mut self, bits: usize) -> Self::Witness {
         let cpu_challenger: DuplexChallenger<F, _> = self.clone().into();
         let handle = csl_cuda::spawn(move |t| async move {
@@ -62,6 +69,10 @@ where
         // for the security of the protocol.
         assert!(self.check_witness(bits, *result));
         *result
+    }
+
+    async fn into_device(self, backend: TaskScope) -> Self::OnDeviceChallenger {
+        backend.into_device(DuplexChallenger::<F, CpuBackend>::from(self)).await.unwrap()
     }
 }
 

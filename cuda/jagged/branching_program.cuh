@@ -2,6 +2,7 @@
 
 extern "C" void *branching_program_kernel();
 extern "C" void *transition_kernel();
+extern "C" void *interpolateAndObserve_kernel();
 
 // A range of values where the start is inclusive and the end is exclusive.
 struct Range {

@@ -1,10 +1,15 @@
+use csl_challenger::DuplexChallenger;
 use slop_algebra::{ExtensionField, Field};
+use slop_alloc::Buffer;
 use slop_multilinear::Point;
 use slop_tensor::{ReduceSumBackend, Tensor};
 
 use csl_cuda::{
     args,
-    sys::{jagged::branching_program_kernel, runtime::KernelPtr},
+    sys::{
+        jagged::{branching_program_kernel, fixLastVariable_kernel, interpolateAndObserve_kernel},
+        runtime::KernelPtr,
+    },
     TaskScope,
 };
 
@@ -12,6 +17,10 @@ use csl_cuda::{
 ///
 pub unsafe trait BranchingProgramKernel<F: Field, EF: ExtensionField<F>> {
     fn branching_program_kernel() -> KernelPtr;
+
+    fn interpolate_and_observe_kernel() -> KernelPtr;
+
+    fn fix_last_variable() -> KernelPtr;
 }
 
 /// # Safety
@@ -20,10 +29,18 @@ unsafe impl<F: Field, EF: ExtensionField<F>> BranchingProgramKernel<F, EF> for T
     fn branching_program_kernel() -> KernelPtr {
         unsafe { branching_program_kernel() }
     }
+
+    fn interpolate_and_observe_kernel() -> KernelPtr {
+        unsafe { interpolateAndObserve_kernel() }
+    }
+
+    fn fix_last_variable() -> KernelPtr {
+        unsafe { fixLastVariable_kernel() }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn branching_program<F: Field, EF: ExtensionField<F>>(
+pub async fn branching_program_and_sample<F: Field, EF: ExtensionField<F>>(
     curr_prefix_sums_device: &Tensor<F, TaskScope>,
     next_prefix_sums_device: &Tensor<F, TaskScope>,
     prefix_sum_length: usize,
@@ -34,9 +51,13 @@ pub async fn branching_program<F: Field, EF: ExtensionField<F>>(
     num_columns: usize,
     round_num: i8,
     lambdas_device: &Tensor<EF, TaskScope>,
-    z_col_eq_vals_device: &Tensor<EF, TaskScope>,
-    intermediate_eq_full_evals_device: &Tensor<EF, TaskScope>,
-) -> Tensor<EF, TaskScope>
+    z_col_eq_vals_device: &Buffer<EF, TaskScope>,
+    intermediate_eq_full_evals_device: &Buffer<EF, TaskScope>,
+    challenger: &mut DuplexChallenger<F, TaskScope>,
+    randomness_point: &Point<EF, TaskScope>,
+    sum_values: &mut Buffer<EF, TaskScope>,
+    claim: EF,
+) -> (Tensor<EF, TaskScope>, Buffer<EF, TaskScope>)
 where
     TaskScope: BranchingProgramKernel<F, EF> + ReduceSumBackend<EF>,
 {
@@ -50,8 +71,7 @@ where
     let grid_size_x = num_columns.div_ceil(BLOCK_SIZE * STRIDE);
     let grid_size = (grid_size_x, 2, 1);
 
-    let mut bp_results: Tensor<EF, TaskScope> =
-        Tensor::with_sizes_in([2, num_columns], backend.clone());
+    let mut bp_results: Tensor<EF, TaskScope> = Tensor::zeros_in([2, num_columns], backend.clone());
 
     unsafe {
         let args = args!(
@@ -87,17 +107,59 @@ where
             .unwrap();
     }
 
-    bp_results.sum(1).await
+    let mut results = bp_results.sum(1).await;
+
+    let mut sampled_value =
+        Buffer::with_capacity_in(randomness_point.dimension() + 1, backend.clone());
+
+    unsafe {
+        sampled_value.assume_init();
+        let args = args!(
+            results.as_mut_ptr(),
+            challenger.as_mut_raw(),
+            sampled_value.as_mut_ptr(),
+            round_num,
+            sum_values.as_mut_ptr(),
+            claim
+        );
+
+        let new_grid_size = (1usize, 1, 1);
+
+        backend
+            .launch_kernel(
+                <TaskScope as BranchingProgramKernel<F, EF>>::interpolate_and_observe_kernel(),
+                new_grid_size,
+                (BLOCK_SIZE, 1, 1),
+                &args,
+                0,
+            )
+            .unwrap();
+
+        sampled_value.set_len(1);
+    }
+
+    sampled_value.extend_from_device_slice(randomness_point).unwrap();
+
+    (results, sampled_value)
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
-    use rand::{distributions::Standard, Rng};
-    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-    use slop_alloc::{Buffer, CpuBackend, IntoHost};
+    use csl_basefold::DeviceGrindingChallenger;
+    use csl_tracing::init_tracer;
+    use itertools::Itertools;
+    use rand::{distributions::Standard, thread_rng, Rng};
+    use slop_algebra::{
+        extension::BinomialExtensionField, interpolate_univariate_polynomial,
+        AbstractExtensionField, AbstractField,
+    };
+    use slop_alloc::{Buffer, CpuBackend, IntoHost, ToHost};
     use slop_baby_bear::BabyBear;
+    use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig};
+    use slop_challenger::{CanObserve, FieldChallenger};
     use slop_jagged::{
         all_bit_states, all_memory_states, transition_function, BranchingProgram,
         StateOrFail::{Fail, State},
@@ -110,6 +172,7 @@ mod tests {
         sys::{jagged::transition_kernel, runtime::KernelPtr},
         TaskScope,
     };
+    use tracing::Instrument;
 
     type F = BabyBear;
     type EF = BinomialExtensionField<F, 4>;
@@ -243,199 +306,311 @@ mod tests {
         )
     }
 
-    #[tokio::test]
-    async fn test_naive_branching_program() {
-        let num_columns = 1000;
-        const PREFIX_SUM_LENGTH: usize = 30;
-        const MAX_HEIGHT: usize = 1 << 21;
+    // TODO: Add back in when doing the "jagged assist with storage" optimization.
+    // #[tokio::test]
+    // async fn test_naive_branching_program() {
+    //     let num_columns = 1000;
+    //     const PREFIX_SUM_LENGTH: usize = 30;
+    //     const MAX_HEIGHT: usize = 1 << 21;
 
-        let (
-            curr_prefix_sum_points,
-            next_prefix_sum_points,
-            z_row_point,
-            z_index_point,
-            z_col_eq_vals,
-            intermediate_eq_full_evals,
-        ) = generate_branching_program_test_data(num_columns, PREFIX_SUM_LENGTH, MAX_HEIGHT);
+    //     let (
+    //         curr_prefix_sum_points,
+    //         next_prefix_sum_points,
+    //         z_row_point,
+    //         z_index_point,
+    //         z_col_eq_vals,
+    //         intermediate_eq_full_evals,
+    //     ) = generate_branching_program_test_data(num_columns, PREFIX_SUM_LENGTH, MAX_HEIGHT);
 
-        // Get the CPU results to compare.
-        let bp = BranchingProgram::new(z_row_point.clone(), z_index_point.clone());
+    //     // Get the CPU results to compare.
+    //     let bp = BranchingProgram::new(z_row_point.clone(), z_index_point.clone());
 
-        let mut expected_result = EF::zero();
-        for (curr_prefix_sum, next_prefix_sum) in
-            curr_prefix_sum_points.iter().zip(next_prefix_sum_points.iter())
-        {
-            let curr_prefix_sum_ef: Point<EF> =
-                curr_prefix_sum.values().iter().map(|x| (*x).into()).collect::<Vec<_>>().into();
-            let next_prefix_sum_ef: Point<EF> =
-                next_prefix_sum.values().iter().map(|x| (*x).into()).collect::<Vec<_>>().into();
-            expected_result += bp.eval(&curr_prefix_sum_ef, &next_prefix_sum_ef);
-        }
+    //     let mut expected_result = EF::zero();
+    //     for (curr_prefix_sum, next_prefix_sum) in
+    //         curr_prefix_sum_points.iter().zip(next_prefix_sum_points.iter())
+    //     {
+    //         let curr_prefix_sum_ef: Point<EF> =
+    //             curr_prefix_sum.values().iter().map(|x| (*x).into()).collect::<Vec<_>>().into();
+    //         let next_prefix_sum_ef: Point<EF> =
+    //             next_prefix_sum.values().iter().map(|x| (*x).into()).collect::<Vec<_>>().into();
+    //         expected_result += bp.eval(&curr_prefix_sum_ef, &next_prefix_sum_ef);
+    //     }
 
-        // The kernel currently assumes there are two points, even if they are not used (e.g. if
-        // the round number == -1).
-        let lambdas = vec![EF::zero(), EF::two().inverse()];
+    //     // The kernel currently assumes there are two points, even if they are not used (e.g. if
+    //     // the round number == -1).
+    //     let lambdas = vec![EF::zero(), EF::two().inverse()];
 
-        let bp_results_host = csl_cuda::run_in_place(|t| async move {
-            let curr_prefix_sum_values = curr_prefix_sum_points
-                .iter()
-                .flat_map(|x| x.values().clone().into_vec())
-                .collect::<Vec<_>>();
-            let next_prefix_sum_values = next_prefix_sum_points
-                .iter()
-                .flat_map(|x| x.values().clone().into_vec())
-                .collect::<Vec<_>>();
+    //     let bp_results_host = csl_cuda::run_in_place(|t| async move {
+    //         let curr_prefix_sum_values = curr_prefix_sum_points
+    //             .iter()
+    //             .flat_map(|x| x.values().clone().into_vec())
+    //             .collect::<Vec<_>>();
+    //         let next_prefix_sum_values = next_prefix_sum_points
+    //             .iter()
+    //             .flat_map(|x| x.values().clone().into_vec())
+    //             .collect::<Vec<_>>();
 
-            let mut curr_prefix_sum_tensor: Tensor<F> = curr_prefix_sum_values.into();
-            curr_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
-            let curr_prefix_sum_tensor_transposed = curr_prefix_sum_tensor.transpose();
+    //         let mut curr_prefix_sum_tensor: Tensor<F> = curr_prefix_sum_values.into();
+    //         curr_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
+    //         let curr_prefix_sum_tensor_transposed = curr_prefix_sum_tensor.transpose();
 
-            let mut next_prefix_sum_tensor: Tensor<F> = next_prefix_sum_values.into();
-            next_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
-            let next_prefix_sum_tensor_transposed = next_prefix_sum_tensor.transpose();
+    //         let mut next_prefix_sum_tensor: Tensor<F> = next_prefix_sum_values.into();
+    //         next_prefix_sum_tensor.reshape_in_place([num_columns, PREFIX_SUM_LENGTH]);
+    //         let next_prefix_sum_tensor_transposed = next_prefix_sum_tensor.transpose();
 
-            let curr_prefix_sums_device =
-                t.into_device(curr_prefix_sum_tensor_transposed).await.unwrap();
-            let next_prefix_sums_device =
-                t.into_device(next_prefix_sum_tensor_transposed).await.unwrap();
+    //         let curr_prefix_sums_device =
+    //             t.into_device(curr_prefix_sum_tensor_transposed).await.unwrap();
+    //         let next_prefix_sums_device =
+    //             t.into_device(next_prefix_sum_tensor_transposed).await.unwrap();
 
-            let z_row_device = t.into_device(z_row_point).await.unwrap();
-            let z_index_device = t.into_device(z_index_point).await.unwrap();
+    //         let z_row_device = t.into_device(z_row_point).await.unwrap();
+    //         let z_index_device = t.into_device(z_index_point).await.unwrap();
 
-            let empty_buffer = Buffer::<EF, TaskScope>::with_capacity_in(0, t.clone());
-            let empty_point: Point<EF, TaskScope> = Point::new(empty_buffer);
+    //         let mut empty_buffer = Buffer::<EF, TaskScope>::with_capacity_in(0, t.clone());
+    //         let empty_point: Point<EF, TaskScope> = Point::new(empty_buffer.clone());
 
-            let lambdas_tensor: Tensor<EF> = lambdas.into();
-            let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
+    //         let lambdas_tensor: Tensor<EF> = lambdas.into();
+    //         let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
 
-            let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
-            let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
+    //         let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
+    //         let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
 
-            let intermediate_eq_full_evals_tensor: Tensor<EF> = intermediate_eq_full_evals.into();
-            let intermediate_eq_full_evals_device =
-                t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
+    //         let intermediate_eq_full_evals_tensor: Tensor<EF> = intermediate_eq_full_evals.into();
+    //         let intermediate_eq_full_evals_device =
+    //             t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
 
-            t.synchronize().await.unwrap();
-            let time = std::time::Instant::now();
+    //         let verifier = Poseidon2BabyBear16BasefoldConfig::default_verifier(1);
+    //         let challenger = Poseidon2BabyBear16BasefoldConfig::default_challenger(&verifier);
+    //         let mut challenger_device = challenger.into_device(t.clone()).await;
 
-            let _bp_results_device = branching_program(
-                &curr_prefix_sums_device,
-                &next_prefix_sums_device,
-                PREFIX_SUM_LENGTH,
-                &empty_point,
-                &empty_point,
-                &z_row_device,
-                &z_index_device,
-                num_columns,
-                -1,
-                &lambdas_device,
-                &z_col_eq_vals_device,
-                &intermediate_eq_full_evals_device,
-            )
-            .await;
+    //         t.synchronize().await.unwrap();
+    //         let time = std::time::Instant::now();
 
-            t.synchronize().await.unwrap();
-            println!("warmup time: {:?}", time.elapsed());
+    //         let _bp_results_device = branching_program_and_sample(
+    //             &curr_prefix_sums_device,
+    //             &next_prefix_sums_device,
+    //             PREFIX_SUM_LENGTH,
+    //             &empty_point,
+    //             &empty_point,
+    //             &z_row_device,
+    //             &z_index_device,
+    //             num_columns,
+    //             -1,
+    //             &lambdas_device,
+    //             &z_col_eq_vals_device.storage,
+    //             &intermediate_eq_full_evals_device.storage,
+    //             &mut challenger_device,
+    //             &empty_point,
+    //             &mut empty_buffer,
+    //             EF::zero(),
+    //         )
+    //         .await;
 
-            t.synchronize().await.unwrap();
-            let time = std::time::Instant::now();
+    //         t.synchronize().await.unwrap();
+    //         println!("warmup time: {:?}", time.elapsed());
 
-            let bp_results_device = branching_program(
-                &curr_prefix_sums_device,
-                &next_prefix_sums_device,
-                PREFIX_SUM_LENGTH,
-                &empty_point,
-                &empty_point,
-                &z_row_device,
-                &z_index_device,
-                num_columns,
-                -1,
-                &lambdas_device,
-                &z_col_eq_vals_device,
-                &intermediate_eq_full_evals_device,
-            )
-            .await;
+    //         t.synchronize().await.unwrap();
+    //         let time = std::time::Instant::now();
 
-            t.synchronize().await.unwrap();
-            println!("branching program time: {:?}", time.elapsed());
+    //         let bp_results_device = branching_program_and_sample(
+    //             &curr_prefix_sums_device,
+    //             &next_prefix_sums_device,
+    //             PREFIX_SUM_LENGTH,
+    //             &empty_point,
+    //             &empty_point,
+    //             &z_row_device,
+    //             &z_index_device,
+    //             num_columns,
+    //             -1,
+    //             &lambdas_device,
+    //             &z_col_eq_vals_device.storage,
+    //             &intermediate_eq_full_evals_device.storage,
+    //             &mut challenger_device,
+    //             &empty_point,
+    //             &mut empty_buffer,
+    //             EF::zero(),
+    //         )
+    //         .await;
 
-            let bp_results = bp_results_device.storage.into_host().await.unwrap();
-            bp_results.into_vec()
-        })
-        .await
-        .await
-        .unwrap();
+    //         t.synchronize().await.unwrap();
+    //         println!("branching program time: {:?}", time.elapsed());
 
-        assert_eq!(bp_results_host, vec![expected_result, expected_result]);
-    }
+    //         let bp_results = bp_results_device.0.storage.into_host().await.unwrap();
+    //         bp_results.into_vec()
+    //     })
+    //     .await
+    //     .await
+    //     .unwrap();
+
+    //     assert_eq!(bp_results_host, vec![expected_result, expected_result]);
+    // }
 
     #[tokio::test]
     async fn test_branching_program() {
+        init_tracer();
         let mut rng = rand::thread_rng();
 
         type F = BabyBear;
         type EF = BinomialExtensionField<F, 4>;
 
-        let num_columns = 1000;
-        const PREFIX_SUM_LENGTH: usize = 30;
+        let num_columns = 1400;
+        const PREFIX_SUM_LENGTH: usize = 29;
         const MAX_HEIGHT: usize = 1 << 21;
+        let verifier = Poseidon2BabyBear16BasefoldConfig::default_verifier(1);
+        let mut challenger = Poseidon2BabyBear16BasefoldConfig::default_challenger(&verifier);
 
-        for round_num in 0..PREFIX_SUM_LENGTH * 2 {
-            let (
-                curr_prefix_sum_points,
-                next_prefix_sum_points,
-                z_row_point,
-                z_index_point,
-                z_col_eq_vals,
-                intermediate_eq_full_evals,
-            ) = generate_branching_program_test_data(num_columns, PREFIX_SUM_LENGTH, MAX_HEIGHT);
+        let mut sum_values = vec![EF::zero(); 6 * PREFIX_SUM_LENGTH];
+        let challenger_for_device = challenger.clone();
+        csl_cuda::run_in_place(|t| async move {
+            let sum_values_for_device: Buffer<EF> = vec![EF::zero(); 6 * PREFIX_SUM_LENGTH].into();
 
-            let rhos: Point<EF> =
-                (0..round_num).map(|_| rng.sample(Standard)).collect::<Vec<_>>().into();
+            let mut sum_values_device = t.into_device(sum_values_for_device).await.unwrap();
 
-            let lambdas = vec![EF::zero(), EF::two().inverse()];
+            let randomness_point_for_device: Buffer<EF> = vec![EF::zero(); 1].into();
 
-            // Get the CPU results to compare.
-            let bp = BranchingProgram::new(z_row_point.clone(), z_index_point.clone());
+            let randomness_point_device =
+                t.into_device(randomness_point_for_device.clone()).await.unwrap();
+            let mut challenger_device = challenger_for_device.clone().into_device(t.clone()).await;
+            for round_num in 0..2 * PREFIX_SUM_LENGTH {
+                let (
+                    curr_prefix_sum_points,
+                    next_prefix_sum_points,
+                    z_row_point,
+                    z_index_point,
+                    z_col_eq_vals,
+                    intermediate_eq_full_evals,
+                ) = generate_branching_program_test_data(
+                    num_columns,
+                    PREFIX_SUM_LENGTH,
+                    MAX_HEIGHT,
+                );
 
-            let mut expected_results = vec![EF::zero(); 2];
-            for (lambda, expected_result) in lambdas.iter().zip(expected_results.iter_mut()) {
-                for column in 0..num_columns {
-                    let mut merged_prefix_sum = curr_prefix_sum_points[column].clone();
-                    merged_prefix_sum.extend(&next_prefix_sum_points[column]);
+                let rhos: Point<EF> =
+                    (0..round_num).map(|_| rng.sample(Standard)).collect::<Vec<_>>().into();
 
-                    let merged_prefix_sum: Point<EF> = merged_prefix_sum
-                        .values()
-                        .iter()
-                        .map(|x| (*x).into())
-                        .collect::<Vec<_>>()
-                        .into();
+                let rhos_device = t.into_device(rhos.clone()).await.unwrap();
 
-                    let (mut bp_prefix_sum, eq_prefix_sum) =
-                        merged_prefix_sum.split_at(merged_prefix_sum.dimension() - round_num - 1);
-                    bp_prefix_sum.add_dimension_back(*lambda);
-                    bp_prefix_sum.extend(&rhos);
-                    let num_dimensions = bp_prefix_sum.dimension();
-                    assert!(bp_prefix_sum.dimension() == PREFIX_SUM_LENGTH * 2);
-                    let (curr_prefix_sum, next_prefix_sum) =
-                        bp_prefix_sum.split_at(num_dimensions / 2);
+                let (current_prefix_sum_rho_point_device, next_prefix_sum_rho_point_device): (
+                    Point<EF, TaskScope>,
+                    Point<EF, TaskScope>,
+                ) = if round_num < PREFIX_SUM_LENGTH {
+                    (Point::new(Buffer::with_capacity_in(0, t.clone())), rhos_device.clone())
+                } else {
+                    let current_prefix_sum_rho_point_dim = round_num - PREFIX_SUM_LENGTH;
+                    let mut current_prefix_sum_rho_point =
+                        Buffer::with_capacity_in(current_prefix_sum_rho_point_dim, t.clone());
 
-                    let eq_val = if *lambda == EF::zero() {
-                        EF::one() - *eq_prefix_sum.values()[0]
-                    } else if *lambda == EF::two().inverse() {
-                        EF::two().inverse()
-                    } else {
-                        unreachable!("lambda must be 0 or 1/2")
-                    };
+                    let mut next_prefix_sum_rho_point = Buffer::with_capacity_in(
+                        rhos.dimension() - current_prefix_sum_rho_point_dim,
+                        t.clone(),
+                    );
+                    let (a, b) = rhos_device.split_at(current_prefix_sum_rho_point_dim);
+                    current_prefix_sum_rho_point.extend_from_device_slice(a).unwrap();
+                    next_prefix_sum_rho_point.extend_from_device_slice(b).unwrap();
+                    (
+                        Point::new(current_prefix_sum_rho_point),
+                        Point::new(next_prefix_sum_rho_point),
+                    )
+                };
 
-                    let eq_eval = intermediate_eq_full_evals[column] * eq_val;
+                let current_prefix_sum_rho_point_from_device =
+                    current_prefix_sum_rho_point_device.clone().into_host().await.unwrap();
+                let next_prefix_sum_rho_point_from_device =
+                    next_prefix_sum_rho_point_device.clone().into_host().await.unwrap();
 
-                    *expected_result += (eq_eval * z_col_eq_vals[column])
-                        * bp.eval(&curr_prefix_sum, &next_prefix_sum);
+                let (current_prefix_sum_rho_point, next_prefix_sum_rho_point): (
+                    Point<EF>,
+                    Point<EF>,
+                ) = if round_num < PREFIX_SUM_LENGTH {
+                    (Vec::new().into(), rhos.clone())
+                } else {
+                    let current_prefix_sum_rho_point_dim = round_num - PREFIX_SUM_LENGTH;
+                    rhos.split_at(current_prefix_sum_rho_point_dim)
+                };
+
+                assert_eq!(
+                    current_prefix_sum_rho_point_from_device.dimension(),
+                    current_prefix_sum_rho_point.dimension()
+                );
+                assert_eq!(
+                    next_prefix_sum_rho_point_from_device.dimension(),
+                    next_prefix_sum_rho_point.dimension()
+                );
+
+                for i in 0..current_prefix_sum_rho_point.dimension() {
+                    assert_eq!(
+                        current_prefix_sum_rho_point_from_device.values()[i],
+                        current_prefix_sum_rho_point.values()[i]
+                    );
+                    assert_eq!(
+                        next_prefix_sum_rho_point_from_device.values()[i],
+                        next_prefix_sum_rho_point.values()[i]
+                    );
                 }
-            }
 
-            let bp_results_device = csl_cuda::run_in_place(|t| async move {
+                let lambdas = vec![EF::zero(), EF::two().inverse()];
+
+                // Get the CPU results to compare.
+                let bp = BranchingProgram::new(z_row_point.clone(), z_index_point.clone());
+
+                let mut expected_results = [EF::zero(); 2];
+                for (lambda, expected_result) in lambdas.iter().zip(expected_results.iter_mut()) {
+                    for column in 0..num_columns {
+                        let mut merged_prefix_sum = curr_prefix_sum_points[column].clone();
+                        merged_prefix_sum.extend(&next_prefix_sum_points[column]);
+
+                        let merged_prefix_sum: Point<EF> = merged_prefix_sum
+                            .values()
+                            .iter()
+                            .map(|x| (*x).into())
+                            .collect::<Vec<_>>()
+                            .into();
+
+                        let (mut bp_prefix_sum, eq_prefix_sum) = merged_prefix_sum
+                            .split_at(merged_prefix_sum.dimension() - round_num - 1);
+                        bp_prefix_sum.add_dimension_back(*lambda);
+                        bp_prefix_sum.extend(&rhos);
+                        let num_dimensions = bp_prefix_sum.dimension();
+                        assert!(bp_prefix_sum.dimension() == PREFIX_SUM_LENGTH * 2);
+                        let (curr_prefix_sum, next_prefix_sum) =
+                            bp_prefix_sum.split_at(num_dimensions / 2);
+
+                        let eq_val = if *lambda == EF::zero() {
+                            EF::one() - *eq_prefix_sum.values()[0]
+                        } else if *lambda == EF::two().inverse() {
+                            EF::two().inverse()
+                        } else {
+                            unreachable!("lambda must be 0 or 1/2")
+                        };
+
+                        let eq_eval = intermediate_eq_full_evals[column] * eq_val;
+
+                        *expected_result += (eq_eval * z_col_eq_vals[column])
+                            * bp.eval(&curr_prefix_sum, &next_prefix_sum);
+                    }
+                }
+
+                let claim = thread_rng().gen::<EF>();
+                let y_0 = expected_results[0];
+                let y_half = expected_results[1];
+                let y_1 = claim - y_0;
+
+                sum_values[3 * round_num] = y_0;
+                sum_values[3 * round_num + 1] = y_half;
+                sum_values[3 * round_num + 2] = y_1;
+
+                let poly = interpolate_univariate_polynomial(
+                    &[EF::zero(), EF::two().inverse(), EF::one()],
+                    &[y_0, y_half, y_1],
+                );
+                for elem in poly.coefficients.iter() {
+                    CanObserve::<F>::observe_slice(&mut challenger, EF::as_base_slice(elem));
+                }
+
+                let alpha = challenger.sample_ext_element();
+
+                let expected_result = poly.eval_at_point(alpha);
+
                 let curr_prefix_sum_values = curr_prefix_sum_points
                     .iter()
                     .flat_map(|x| x.values().clone().into_vec())
@@ -474,23 +649,21 @@ mod tests {
                 let lambdas_tensor: Tensor<EF> = lambdas.into();
                 let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
 
-                let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
+                let z_col_eq_vals_tensor: Buffer<EF> = z_col_eq_vals.into();
                 let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
-
-                t.synchronize().await.unwrap();
-                let time = std::time::Instant::now();
 
                 let current_prefix_sum_rho_device =
                     t.into_device(current_prefix_sum_rho_point.clone()).await.unwrap();
                 let next_prefix_sum_rho_device =
                     t.into_device(next_prefix_sum_rho_point.clone()).await.unwrap();
 
-                let intermediate_eq_full_evals_tensor: Tensor<EF> =
+                let intermediate_eq_full_evals_tensor: Buffer<EF> =
                     intermediate_eq_full_evals.into();
                 let intermediate_eq_full_evals_device =
                     t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
 
-                let bp_results_device = branching_program(
+                let time = std::time::Instant::now();
+                let bp_results_device = branching_program_and_sample(
                     &curr_prefix_sums_device,
                     &next_prefix_sums_device,
                     PREFIX_SUM_LENGTH,
@@ -503,20 +676,38 @@ mod tests {
                     &lambdas_device,
                     &z_col_eq_vals_device,
                     &intermediate_eq_full_evals_device,
+                    &mut challenger_device,
+                    &Point::new(randomness_point_device.clone()),
+                    &mut sum_values_device,
+                    claim,
                 )
+                .instrument(tracing::info_span!("branching_program", round_num))
                 .await;
 
-                t.synchronize().await.unwrap();
                 println!("branching program time: {:?}", time.elapsed());
 
-                let bp_results_device = bp_results_device.storage.into_host().await.unwrap();
-                bp_results_device.into_vec()
-            })
-            .await
-            .await
-            .unwrap();
+                let alpha_from_device = bp_results_device.1.to_host().await.unwrap().as_slice()[0];
 
-            assert_eq!(bp_results_device, expected_results);
-        }
+                assert_eq!(alpha_from_device, alpha);
+
+                let bp_results_device = bp_results_device.0.storage.into_host().await.unwrap();
+                let bp_results_device = bp_results_device.into_vec()[0];
+
+                assert_eq!(bp_results_device, expected_result);
+            }
+
+            let sum_values_from_device = sum_values_device.into_host().await.unwrap();
+
+            for (i, (sum_value, sum_value_from_device)) in
+                sum_values.iter().zip_eq(sum_values_from_device.iter()).enumerate()
+            {
+                assert_eq!(
+                    sum_value, sum_value_from_device,
+                    "mismatch on sum values at index {}",
+                    i
+                );
+            }
+        })
+        .await;
     }
 }

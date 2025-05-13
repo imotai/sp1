@@ -1,58 +1,43 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
+use csl_basefold::DeviceGrindingChallenger;
+use csl_challenger::DuplexChallenger;
 use csl_cuda::reduce::DeviceSumKernel;
-use csl_cuda::TaskScope;
+use csl_cuda::{args, TaskScope};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, IntoHost};
+use slop_alloc::{Buffer, HasBackend};
+use slop_challenger::FieldChallenger;
 use slop_jagged::JaggedAssistSumAsPoly;
+use slop_jagged::JaggedEvalSumcheckPoly;
 use slop_multilinear::Point;
 use slop_tensor::{ReduceSumBackend, Tensor};
 
-use crate::branching_program;
+use crate::branching_program_and_sample;
 use crate::BranchingProgramKernel;
 
 #[derive(Debug, Clone)]
-pub struct JaggedAssistSumAsPolyGPUImpl<F: Field, EF: ExtensionField<F>> {
+pub struct JaggedAssistSumAsPolyGPUImpl<F: Field, EF: ExtensionField<F>, Challenger> {
     z_row: Point<EF, TaskScope>,
     z_index: Point<EF, TaskScope>,
     current_prefix_sums: Tensor<F, TaskScope>,
     next_prefix_sums: Tensor<F, TaskScope>,
     prefix_sum_length: usize,
     num_columns: usize,
-    z_col_eq_vals: Tensor<EF, TaskScope>,
     lambdas: Tensor<EF, TaskScope>,
+    _marker: PhantomData<Challenger>,
 }
 
-impl<F: Field, EF: ExtensionField<F>> JaggedAssistSumAsPolyGPUImpl<F, EF> {
-    async fn into_device(
-        current_prefix_sum_rho: Point<EF>,
-        next_prefix_sum_rho: Point<EF>,
-        intermediate_eq_full_evals: Vec<EF>,
-    ) -> (Point<EF, TaskScope>, Point<EF, TaskScope>, Tensor<EF, TaskScope>) {
-        csl_cuda::run_in_place(|t| async move {
-            let current_prefix_sum_rho_device =
-                t.into_device(current_prefix_sum_rho).await.unwrap();
-            let next_prefix_sum_rho_device = t.into_device(next_prefix_sum_rho).await.unwrap();
-
-            let intermediate_eq_full_evals_tensor: Tensor<EF> =
-                intermediate_eq_full_evals.to_vec().into();
-            let intermediate_eq_full_evals_device =
-                t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
-
-            (
-                current_prefix_sum_rho_device,
-                next_prefix_sum_rho_device,
-                intermediate_eq_full_evals_device,
-            )
-        })
-        .await
-        .await
-        .unwrap()
-    }
-}
-
-impl<F: Field, EF: ExtensionField<F>> JaggedAssistSumAsPoly<F, EF, TaskScope>
-    for JaggedAssistSumAsPolyGPUImpl<F, EF>
+impl<
+        F: Field,
+        EF: ExtensionField<F>,
+        Challenger: DeviceGrindingChallenger<OnDeviceChallenger = DuplexChallenger<F, TaskScope>>
+            + FieldChallenger<F>
+            + Send
+            + Sync,
+    > JaggedAssistSumAsPoly<F, EF, TaskScope, Challenger, DuplexChallenger<F, TaskScope>>
+    for JaggedAssistSumAsPolyGPUImpl<F, EF, Challenger>
 where
     TaskScope: Backend + DeviceSumKernel<EF> + BranchingProgramKernel<F, EF> + ReduceSumBackend<EF>,
 {
@@ -60,7 +45,7 @@ where
         z_row: Point<EF>,
         z_index: Point<EF>,
         merged_prefix_sums: Arc<Vec<Point<F>>>,
-        z_col_eq_vals: Vec<EF>,
+        _z_col_eq_vals: Vec<EF>,
     ) -> Self
     where
         TaskScope: Backend,
@@ -72,6 +57,7 @@ where
         // for now this hack should suffice since tasks are owned.
         csl_cuda::run_in_place(|t| async move {
             let z_row_device = t.into_device(z_row).await.unwrap();
+
             let z_index_device = t.into_device(z_index).await.unwrap();
 
             // Chop up the merged prefix sums into current and next prefix sums.
@@ -99,9 +85,6 @@ where
             let next_prefix_sums_device =
                 t.into_device(next_prefix_sums_tensor_transposed).await.unwrap();
 
-            let z_col_eq_vals_tensor: Tensor<EF> = z_col_eq_vals.into();
-            let z_col_eq_vals_device = t.into_device(z_col_eq_vals_tensor).await.unwrap();
-
             let half = EF::two().inverse();
 
             let lambdas = vec![EF::zero(), half];
@@ -115,8 +98,8 @@ where
                 next_prefix_sums: next_prefix_sums_device,
                 prefix_sum_length,
                 num_columns,
-                z_col_eq_vals: z_col_eq_vals_device,
                 lambdas: lambdas_device,
+                _marker: PhantomData,
             }
         })
         .await
@@ -124,54 +107,241 @@ where
         .unwrap()
     }
 
-    async fn sum_as_poly(
+    async fn sum_as_poly_and_sample_into_point(
         &self,
         round_num: usize,
-        _z_col_eq_vals: &[EF],
-        intermediate_eq_full_evals: &[EF],
-        rhos: &Point<EF>,
-    ) -> (EF, EF) {
-        let (current_prefix_sum_rho_point, next_prefix_sum_rho_point): (Point<EF>, Point<EF>) =
-            if round_num < self.prefix_sum_length {
-                (Vec::new().into(), rhos.clone())
-            } else {
-                let current_prefix_sum_rho_point_dim = round_num - self.prefix_sum_length;
-                rhos.split_at(current_prefix_sum_rho_point_dim)
-            };
+        z_col_eq_vals: &Buffer<EF, TaskScope>,
+        intermediate_eq_full_evals: &Buffer<EF, TaskScope>,
+        sum_values: &mut Buffer<EF, TaskScope>,
+        challenger: &mut DuplexChallenger<F, TaskScope>,
+        claim: EF,
+        rhos: Point<EF, TaskScope>,
+    ) -> (EF, Point<EF, TaskScope>) {
+        let (current_prefix_sum_rho_point, next_prefix_sum_rho_point): (
+            Point<EF, TaskScope>,
+            Point<EF, TaskScope>,
+        ) = if round_num < self.prefix_sum_length {
+            (Point::new(Buffer::with_capacity_in(0, rhos.backend().clone())), rhos.clone())
+        } else {
+            let current_prefix_sum_rho_point_dim = round_num - self.prefix_sum_length;
+            let mut current_prefix_sum_rho_point =
+                Buffer::with_capacity_in(current_prefix_sum_rho_point_dim, rhos.backend().clone());
 
-        let (
-            current_prefix_sum_rho_device,
-            next_prefix_sum_rho_device,
-            intermediate_eq_full_evals_device,
-        ) = Self::into_device(
-            current_prefix_sum_rho_point,
-            next_prefix_sum_rho_point,
-            intermediate_eq_full_evals.to_vec(),
-        )
-        .await;
+            let mut next_prefix_sum_rho_point = Buffer::with_capacity_in(
+                rhos.dimension() - current_prefix_sum_rho_point_dim,
+                rhos.backend().clone(),
+            );
 
-        let bp_results_device = branching_program(
+            let (a, b) = rhos.split_at(current_prefix_sum_rho_point_dim);
+            current_prefix_sum_rho_point.extend_from_device_slice(a).unwrap();
+            next_prefix_sum_rho_point.extend_from_device_slice(b).unwrap();
+            assert_eq!(current_prefix_sum_rho_point.len(), current_prefix_sum_rho_point_dim);
+            assert_eq!(
+                next_prefix_sum_rho_point.len(),
+                rhos.dimension() - current_prefix_sum_rho_point_dim
+            );
+            assert_eq!(current_prefix_sum_rho_point.capacity(), current_prefix_sum_rho_point_dim);
+            assert_eq!(
+                next_prefix_sum_rho_point.capacity(),
+                rhos.dimension() - current_prefix_sum_rho_point_dim
+            );
+            (Point::new(current_prefix_sum_rho_point), Point::new(next_prefix_sum_rho_point))
+        };
+
+        let (bp_results_device, new_randomness) = branching_program_and_sample(
             &self.current_prefix_sums,
             &self.next_prefix_sums,
             self.prefix_sum_length,
-            &current_prefix_sum_rho_device,
-            &next_prefix_sum_rho_device,
+            &current_prefix_sum_rho_point,
+            &next_prefix_sum_rho_point,
             &self.z_row,
             &self.z_index,
             self.num_columns,
             round_num.try_into().unwrap(),
             &self.lambdas,
-            &self.z_col_eq_vals,
-            &intermediate_eq_full_evals_device,
+            z_col_eq_vals,
+            intermediate_eq_full_evals,
+            challenger,
+            &rhos,
+            sum_values,
+            claim,
         )
         .await;
 
         let bp_results_device = bp_results_device.storage.into_host().await.unwrap();
+
         let bp_results = bp_results_device.into_vec();
 
-        let y_0 = bp_results[0];
-        let y_half = bp_results[1];
+        (bp_results[0], Point::new(new_randomness))
+    }
 
-        (y_0, y_half)
+    async fn fix_last_variable(
+        poly: slop_jagged::JaggedEvalSumcheckPoly<
+            F,
+            EF,
+            Challenger,
+            DuplexChallenger<F, TaskScope>,
+            Self,
+            TaskScope,
+        >,
+    ) -> slop_jagged::JaggedEvalSumcheckPoly<
+        F,
+        EF,
+        Challenger,
+        DuplexChallenger<F, TaskScope>,
+        Self,
+        TaskScope,
+    > {
+        let merged_prefix_sum_dim = poly.prefix_sum_dimension as usize;
+
+        let mut intermediate_eq_full_evals = poly.intermediate_eq_full_evals;
+        let backend = intermediate_eq_full_evals.backend().clone();
+
+        const BLOCK_SIZE: usize = 512;
+        const STRIDE: usize = 1;
+        let grid_size_x = poly.merged_prefix_sums.len().div_ceil(BLOCK_SIZE * STRIDE);
+        let grid_size = (grid_size_x, 1, 1);
+
+        unsafe {
+            let args = args!(
+                poly.merged_prefix_sums.as_ptr(),
+                intermediate_eq_full_evals.as_mut_ptr(),
+                poly.rho.as_ptr(),
+                merged_prefix_sum_dim,
+                intermediate_eq_full_evals.len(),
+                poly.round_num,
+                poly.rho.dimension()
+            );
+
+            backend
+                .launch_kernel(
+                    <TaskScope as BranchingProgramKernel<F, EF>>::fix_last_variable(),
+                    grid_size,
+                    (BLOCK_SIZE, 1, 1),
+                    &args,
+                    0,
+                )
+                .unwrap();
+        }
+
+        JaggedEvalSumcheckPoly::new(
+            poly.bp_batch_eval,
+            poly.rho,
+            poly.z_col,
+            poly.merged_prefix_sums,
+            poly.z_col_eq_vals,
+            poly.round_num + 1,
+            intermediate_eq_full_evals,
+            poly.half,
+            poly.prefix_sum_dimension,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use csl_cuda::TaskScope;
+    use itertools::Itertools;
+    use rand::Rng;
+    use slop_algebra::extension::BinomialExtensionField;
+    use slop_algebra::AbstractField;
+    use slop_alloc::Buffer;
+    use slop_baby_bear::BabyBear;
+
+    type F = BabyBear;
+    type EF = BinomialExtensionField<F, 4>;
+
+    #[tokio::test]
+    async fn test_fix_last_variable() {
+        let merged_prefix_sum_dim = 50;
+
+        let num_columns = 1000;
+
+        let mut rng = rand::thread_rng();
+
+        let intermediate_eq_full_evals =
+            (0..num_columns).map(|_| rng.gen::<EF>()).collect::<Vec<_>>();
+
+        let merged_prefix_sums =
+            (0..num_columns * merged_prefix_sum_dim).map(|_| rng.gen::<F>()).collect::<Vec<_>>();
+
+        let new_randomness_point =
+            (0..merged_prefix_sum_dim).map(|_| rng.gen::<EF>()).collect::<Vec<_>>();
+
+        csl_cuda::run_in_place(|backend| async move {
+            for round_num in 0..merged_prefix_sum_dim {
+                let merged_prefix_sums_device = backend
+                    .into_device(Buffer::<F>::from(merged_prefix_sums.clone()))
+                    .await
+                    .unwrap();
+
+                let mut intermediate_eq_full_evals_device = backend
+                    .into_device(Buffer::<EF>::from(intermediate_eq_full_evals.clone()))
+                    .await
+                    .unwrap();
+
+                let new_randomness_point_device = backend
+                    .into_device(Buffer::<EF>::from(new_randomness_point.clone()))
+                    .await
+                    .unwrap();
+
+                const BLOCK_SIZE: usize = 512;
+                const STRIDE: usize = 1;
+                let grid_size_x = merged_prefix_sums_device.len().div_ceil(BLOCK_SIZE * STRIDE);
+                let grid_size = (grid_size_x, 1, 1);
+
+                unsafe {
+                    let time = std::time::Instant::now();
+                    let args = args!(
+                        merged_prefix_sums_device.as_ptr(),
+                        intermediate_eq_full_evals_device.as_mut_ptr(),
+                        new_randomness_point_device.as_ptr(),
+                        { merged_prefix_sum_dim },
+                        { num_columns },
+                        { round_num },
+                        new_randomness_point_device.len()
+                    );
+
+                    backend
+                        .launch_kernel(
+                            <TaskScope as BranchingProgramKernel<F, EF>>::fix_last_variable(),
+                            grid_size,
+                            (BLOCK_SIZE, 1, 1),
+                            &args,
+                            0,
+                        )
+                        .unwrap();
+                    println!("Kernel execution time: {:?}", time.elapsed());
+                }
+                let intermediate_eq_full_evals_from_device =
+                    intermediate_eq_full_evals_device.into_host().await.unwrap();
+
+                let alpha = *new_randomness_point.first().unwrap();
+
+                let expected_intermediate_eq_full_evals = merged_prefix_sums
+                    .to_vec()
+                    .chunks(merged_prefix_sum_dim)
+                    .zip_eq(intermediate_eq_full_evals.iter())
+                    .map(|(merged_prefix_sum, intermediate_eq_full_eval)| {
+                        let x_i =
+                            merged_prefix_sum.get(merged_prefix_sum_dim - 1 - round_num).unwrap();
+                        *intermediate_eq_full_eval
+                            * ((alpha * *x_i) + (EF::one() - alpha) * (EF::one() - *x_i))
+                    })
+                    .collect_vec();
+
+                for (i, (expected, actual)) in expected_intermediate_eq_full_evals
+                    .iter()
+                    .zip_eq(intermediate_eq_full_evals_from_device.iter())
+                    .enumerate()
+                {
+                    assert_eq!(expected, actual, "Mismatch at index {}", i);
+                }
+            }
+        })
+        .await
+        .await
+        .unwrap();
     }
 }

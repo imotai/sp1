@@ -1,8 +1,11 @@
 use csl_cuda::TaskScope;
 use slop_algebra::{Field, PrimeField64};
 use slop_alloc::{Backend, Buffer, CopyIntoBackend, CpuBackend, HasBackend};
+use slop_challenger::FromChallenger;
 use slop_symmetric::CryptographicPermutation;
 
+#[derive(Debug, Clone)]
+#[repr(C)]
 pub struct DuplexChallenger<F, B: Backend> {
     sponge_state: Buffer<F, B>,
     input_buffer: Buffer<F, B>,
@@ -11,27 +14,24 @@ pub struct DuplexChallenger<F, B: Backend> {
     output_buffer_size: usize,
 }
 
-#[repr(C)]
-pub struct DuplexChallengerRawMut<F> {
-    sponge_state: *mut F,
-    input_buffer: *mut F,
-    input_buffer_size: usize,
-    output_buffer: *mut F,
-    output_buffer_size: usize,
-}
-
-impl<F> DuplexChallenger<F, TaskScope> {
-    pub fn as_mut_raw(&mut self) -> DuplexChallengerRawMut<F> {
-        DuplexChallengerRawMut {
-            sponge_state: self.sponge_state.as_mut_ptr(),
-            input_buffer: self.input_buffer.as_mut_ptr(),
-            input_buffer_size: self.input_buffer_size,
-            output_buffer: self.output_buffer.as_mut_ptr(),
-            output_buffer_size: self.output_buffer_size,
-        }
+impl<
+        F: PrimeField64,
+        P: CryptographicPermutation<[F; WIDTH]>,
+        const WIDTH: usize,
+        const RATE: usize,
+    > FromChallenger<slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>, TaskScope>
+    for DuplexChallenger<F, TaskScope>
+where
+    slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>: Send + Sync,
+{
+    async fn from_challenger(
+        challenger: &slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>,
+        backend: TaskScope,
+    ) -> Self {
+        let duplex_challenger = DuplexChallenger::from(challenger.clone());
+        duplex_challenger.copy_into_backend(&backend).await.unwrap()
     }
 }
-
 impl<
         F: PrimeField64,
         P: CryptographicPermutation<[F; WIDTH]>,
@@ -66,6 +66,27 @@ impl<F, B: Backend> HasBackend for DuplexChallenger<F, B> {
     #[inline]
     fn backend(&self) -> &Self::Backend {
         self.sponge_state.backend()
+    }
+}
+
+#[repr(C)]
+pub struct DuplexChallengerRawMut<F> {
+    sponge_state: *mut F,
+    input_buffer: *mut F,
+    input_buffer_size: usize,
+    output_buffer: *mut F,
+    output_buffer_size: usize,
+}
+
+impl<F> DuplexChallenger<F, TaskScope> {
+    pub fn as_mut_raw(&mut self) -> DuplexChallengerRawMut<F> {
+        DuplexChallengerRawMut {
+            sponge_state: self.sponge_state.as_mut_ptr(),
+            input_buffer: self.input_buffer.as_mut_ptr(),
+            input_buffer_size: self.input_buffer_size,
+            output_buffer: self.output_buffer.as_mut_ptr(),
+            output_buffer_size: self.output_buffer_size,
+        }
     }
 }
 

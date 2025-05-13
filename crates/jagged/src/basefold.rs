@@ -1,10 +1,11 @@
+use csl_basefold::BasefoldCudaConfig;
 use csl_basefold::Poseidon2BabyBear16BasefoldCudaProverComponents;
+use csl_challenger::DuplexChallenger;
 use csl_cuda::TaskScope;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
-use slop_jagged::{
-    JaggedBasefoldProverComponents, JaggedEvalSumcheckProver, TrivialJaggedEvalConfig,
-};
+use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
+use slop_jagged::{JaggedBasefoldProverComponents, JaggedEvalSumcheckProver};
 
 use crate::JaggedAssistSumAsPolyGPUImpl;
 use crate::VirtualJaggedSumcheckProver;
@@ -14,22 +15,20 @@ pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverCompo
     VirtualJaggedSumcheckProver,
     JaggedEvalSumcheckProver<
         BabyBear,
-        JaggedAssistSumAsPolyGPUImpl<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+        JaggedAssistSumAsPolyGPUImpl<
+            BabyBear,
+            BinomialExtensionField<BabyBear, 4>,
+            <Poseidon2BabyBear16BasefoldConfig as BasefoldCudaConfig>::DeviceChallenger,
+        >,
         TaskScope,
+        DuplexChallenger<BabyBear, TaskScope>,
     >,
->;
-
-pub type Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval = JaggedBasefoldProverComponents<
-    Poseidon2BabyBear16BasefoldCudaProverComponents,
-    VirtualJaggedSumcheckProver,
-    TrivialJaggedEvalConfig,
 >;
 
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use csl_tracing::init_tracer;
     use futures::prelude::*;
     use rand::{thread_rng, Rng};
     use serial_test::serial;
@@ -39,20 +38,18 @@ mod tests {
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
     use slop_jagged::{
-        BabyBearPoseidon2TrivialEval, JaggedConfig, JaggedPcsVerifier, JaggedProver,
-        MachineJaggedPcsVerifier,
+        BabyBearPoseidon2, JaggedConfig, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier,
     };
 
-    use crate::Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval;
+    use crate::Poseidon2BabyBearJaggedCudaProverComponents;
 
     #[tokio::test]
     #[serial]
     async fn test_jagged_basefold() {
-        init_tracer();
         let log_blowup = 1;
 
-        type JC = BabyBearPoseidon2TrivialEval;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponentsTrivialEval>;
+        type JC = BabyBearPoseidon2;
+        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
 

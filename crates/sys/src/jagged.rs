@@ -8,5 +8,9 @@ extern "C" {
 
     pub fn branching_program_kernel() -> KernelPtr;
 
+    pub fn interpolateAndObserve_kernel() -> KernelPtr;
+
     pub fn transition_kernel() -> KernelPtr;
+
+    pub fn fixLastVariable_kernel() -> KernelPtr;
 }

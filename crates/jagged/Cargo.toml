@@ -9,6 +9,7 @@ categories.workspace = true
 
 [dependencies]
 csl-cuda = { workspace = true }
+csl-challenger = { workspace = true }
 csl-basefold = { workspace = true }
 csl-tracing = { workspace = true }
 slop-tensor = { workspace = true }

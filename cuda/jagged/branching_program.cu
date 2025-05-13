@@ -1,6 +1,7 @@
 #include "branching_program.cuh"
 #include "../fields/bb31_extension_t.cuh"
 #include "../fields/bb31_t.cuh"
+#include "../challenger/challenger.cuh"
 #include <cstdio>
 
 // The points are stored in column major order.
@@ -141,6 +142,95 @@ __device__ static inline EF getEqVal(
 }
 
 template<typename F, typename EF>
+__global__ void interpolateAndObserve(
+    EF *results,
+    DuplexChallenger challenger,
+    EF *sampled_value,
+    int8_t round_num,
+    EF *sum_values,
+    EF claim
+){
+    if (blockIdx.x == 0 && threadIdx.x == 0 && blockIdx.y == 0 && threadIdx.y == 0) {
+
+
+    EF y_0 = results[0];
+    EF y_half = results[1];
+    EF y_1 = claim - y_0;
+    F x_0 = F::zero();
+    F x_one = F::one();
+    F x_half = F::one() / F::two();
+
+    sum_values[3*round_num + 0] = y_0;
+    sum_values[3*round_num + 1] = y_half;
+    sum_values[3*round_num + 2] = y_1;
+
+
+
+    EF coefficients[3];
+    interpolateQuadratic<F, EF>(x_0, x_half, x_one, y_0, y_half, y_1, coefficients);
+
+    challenger.observe_ext(&coefficients[0]);
+    challenger.observe_ext(&coefficients[1]);
+    challenger.observe_ext(&coefficients[2]);
+
+    EF alpha = challenger.sample_ext();
+
+    sampled_value[0] = alpha;
+
+    results[0] = coefficients[0] + coefficients[1] * alpha + coefficients[2] * alpha * alpha;
+    }
+
+}
+
+template<typename F, typename EF>
+__device__ void interpolateQuadratic(
+    F x_0,
+    F x_1,
+    F x_2,
+    EF y_0,
+    EF y_1,
+    EF y_2,
+    EF coefficients[3])
+{
+    // Compute the coefficients of the quadratic polynomial.
+    EF coeff_0 = y_0/((x_0-x_1)*(x_0-x_2));
+    EF coeff_1 = y_1/((x_1-x_0)*(x_1-x_2));
+    EF coeff_2 = y_2/((x_2-x_0)*(x_2-x_1));
+        // Compute the value of the polynomial at x.
+    coefficients[2] =coeff_0+ coeff_1 + coeff_2;
+    coefficients[1] = -(coeff_0 * (x_1 + x_2) + coeff_1 * (x_0 + x_2) + coeff_2 * (x_0 + x_1));
+    coefficients[0] = coeff_0 * x_1 * x_2 + coeff_1 * x_0 * x_2 + coeff_2 * x_0 * x_1;
+}
+
+
+template<typename F, typename EF>
+__global__ void fixLastVariable(
+    F *merged_prefix_sums,
+    EF *intermediate_eq_full_evals,
+    EF *rho,
+    size_t merged_prefix_sum_dim,
+    size_t num_columns,
+    size_t round_num,
+    size_t randomness_point_length
+
+)
+{
+
+    EF alpha = rho[0];
+
+   for (size_t column_idx = blockDim.x * blockIdx.x + threadIdx.x; column_idx < num_columns; column_idx += blockDim.x * gridDim.x)
+    {
+
+        if (column_idx >= num_columns){
+            return;
+        }
+        F value = merged_prefix_sums[ column_idx * merged_prefix_sum_dim + merged_prefix_sum_dim - 1 - round_num];
+        EF new_value = alpha * EF(value) + (EF::one() - alpha) * (EF::one() - EF(value));
+        intermediate_eq_full_evals[column_idx] *= new_value;
+    }
+}
+
+template<typename F, typename EF>
 __global__ void branchingProgram(
     // The prefix sums.  The current and next prefix sums must be the same length.
     // Note that the number of layers is prefix_sum_length.
@@ -178,6 +268,7 @@ __global__ void branchingProgram(
 
     // The output.
     EF *__restrict__ output
+
 )
 {
     int num_layers = static_cast<int>(z_index_length) + 1;
@@ -342,4 +433,15 @@ extern "C" void *branching_program_kernel()
 extern "C" void *transition_kernel()
 {
     return (void *)transition<bb31_t, bb31_extension_t>;
+}
+
+
+extern "C" void *interpolateAndObserve_kernel()
+{
+    return (void *)interpolateAndObserve<bb31_t, bb31_extension_t>;
+}
+
+extern "C" void *fixLastVariable_kernel()
+{
+    return (void *)fixLastVariable<bb31_t, bb31_extension_t>;
 }
