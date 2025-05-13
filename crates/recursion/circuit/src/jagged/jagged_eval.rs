@@ -169,6 +169,7 @@ mod tests {
     use p3_challenger::DuplexChallenger;
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_alloc::CpuBackend;
     use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use slop_jagged::{
         JaggedEvalProver, JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams,
@@ -264,7 +265,14 @@ mod tests {
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
         let jagged_eval_proof = prover
-            .prove_jagged_evaluation(prover_params, z_row, z_col, z_trace, &mut challenger)
+            .prove_jagged_evaluation(
+                prover_params,
+                z_row,
+                z_col,
+                z_trace,
+                &mut challenger,
+                CpuBackend,
+            )
             .await;
 
         let mut builder = AsmBuilder::<F, EF>::default();

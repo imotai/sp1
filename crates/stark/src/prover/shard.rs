@@ -36,7 +36,7 @@ use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 /// The components of the machine prover.
 ///
 /// This trait is used specify a configuration of a hypercube prover.
-pub trait MachineProverComponents: 'static + Send + Sync + Sized + Debug {
+pub trait MachineProverComponents: 'static + Send + Sync + Sized {
     /// The base field.
     ///
     /// This is the field on which the traces committed to are defined over.

@@ -25,7 +25,7 @@ use super::{
 };
 
 /// The components of a CPU prover.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct CpuProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
 
 /// A CPU prover.
@@ -35,7 +35,7 @@ pub type CpuShardProver<PcsComponents, A> = ShardProver<CpuProverComponents<PcsC
 /// A CPU prover builder.
 pub struct CpuProverBuilder<PcsComponents, A>
 where
-    PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug,
+    PcsComponents: JaggedProverComponents<A = CpuBackend>,
     A: std::fmt::Debug
         + MachineAir<PcsComponents::F>
         + Air<SymbolicAirBuilder<PcsComponents::F>>
@@ -50,7 +50,7 @@ where
 
 impl<PcsComponents, A> Deref for CpuProverBuilder<PcsComponents, A>
 where
-    PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug,
+    PcsComponents: JaggedProverComponents<A = CpuBackend>,
     A: std::fmt::Debug
         + MachineAir<PcsComponents::F>
         + Air<SymbolicAirBuilder<PcsComponents::F>>
@@ -69,7 +69,7 @@ where
 
 impl<PcsComponents, A> DerefMut for CpuProverBuilder<PcsComponents, A>
 where
-    PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug,
+    PcsComponents: JaggedProverComponents<A = CpuBackend>,
     A: std::fmt::Debug
         + MachineAir<PcsComponents::F>
         + Air<SymbolicAirBuilder<PcsComponents::F>>
@@ -86,7 +86,7 @@ where
 
 impl<A, PcsComponents> MachineProverComponents for CpuProverComponents<PcsComponents, A>
 where
-    PcsComponents: JaggedProverComponents<A = CpuBackend> + std::fmt::Debug,
+    PcsComponents: JaggedProverComponents<A = CpuBackend>,
     A: std::fmt::Debug
         + MachineAir<PcsComponents::F>
         + Air<SymbolicAirBuilder<PcsComponents::F>>

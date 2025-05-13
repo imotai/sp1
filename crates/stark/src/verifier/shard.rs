@@ -39,7 +39,7 @@ pub struct ShardVerifier<C: MachineConfig, A: MachineAir<C::F>> {
 pub enum ShardVerifierError<C: MachineConfig> {
     /// The pcs opening proof is invalid.
     #[error("invalid pcs opening proof: {0}")]
-    InvalidopeningArgument(JaggedPcsVerifierError<C>),
+    InvalidopeningArgument(JaggedPcsVerifierError<C::EF>),
     /// The constraints check failed.
     #[error("constraints check failed: {0}")]
     ConstraintsCheckFailed(SumcheckError),
@@ -543,6 +543,7 @@ impl<BC, EC, A> ShardVerifier<JaggedBasefoldConfig<BC, EC>, A>
 where
     A: MachineAir<BC::F>,
     BC: DefaultBasefoldConfig,
+    BC::Commitment: std::fmt::Debug,
     EC: JaggedEvalConfig<BC::F, BC::EF, BC::Challenger> + std::fmt::Debug + Default,
 {
     /// Create a shard verifier from basefold parameters.
