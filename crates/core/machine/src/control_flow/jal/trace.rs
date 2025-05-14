@@ -60,7 +60,7 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
                         }
                         cols.state.populate(
                             &mut blu,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );

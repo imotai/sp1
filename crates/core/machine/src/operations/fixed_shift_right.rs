@@ -2,7 +2,7 @@ use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 /// A set of columns needed to compute `>>` of a word with a fixed offset R.
@@ -32,8 +32,8 @@ impl<F: Field> FixedShiftRightOperation<F> {
         1 << (16 - nb_bits_to_shift)
     }
 
-    pub fn populate(&mut self, record: &mut impl ByteRecord, input: u32, rotation: usize) -> u32 {
-        let input_limbs = u32_to_u16_limbs(input);
+    pub fn populate(&mut self, record: &mut impl ByteRecord, input: u64, rotation: usize) -> u64 {
+        let input_limbs = u64_to_u16_limbs(input);
         let expected = input >> rotation;
         self.value = Word::from(expected);
 

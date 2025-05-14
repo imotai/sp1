@@ -964,8 +964,8 @@ pub mod tests {
         for mul_op in mul_ops.iter() {
             for operand in operands.iter() {
                 let instructions = vec![
-                    Instruction::new(Opcode::ADDI, 29, 0, operand.0, false, true),
-                    Instruction::new(Opcode::ADDI, 30, 0, operand.1, false, true),
+                    Instruction::new(Opcode::ADDI, 29, 0, operand.0 as u64, false, true),
+                    Instruction::new(Opcode::ADDI, 30, 0, operand.1 as u64, false, true),
                     Instruction::new(*mul_op, 31, 30, 29, false, false),
                 ];
                 let program = Program::new(instructions, 0, 0);
@@ -1025,8 +1025,8 @@ pub mod tests {
         let mut instructions = vec![];
         for div_rem_op in div_rem_ops.iter() {
             for op in operands.iter() {
-                instructions.push(Instruction::new(Opcode::ADDI, 29, 0, op.0, false, true));
-                instructions.push(Instruction::new(Opcode::ADDI, 30, 0, op.1, false, true));
+                instructions.push(Instruction::new(Opcode::ADDI, 29, 0, op.0 as u64, false, true));
+                instructions.push(Instruction::new(Opcode::ADDI, 30, 0, op.1 as u64, false, true));
                 instructions.push(Instruction::new(*div_rem_op, 31, 29, 30, false, false));
             }
         }

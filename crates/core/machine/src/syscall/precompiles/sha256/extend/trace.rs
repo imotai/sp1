@@ -111,7 +111,7 @@ impl ShaExtendChip {
             cols.i = F::from_canonical_u32(j as u32 + 16);
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
+            cols.w_ptr = F::from_canonical_u64(event.w_ptr as u64);
 
             let w_i_minus_15_read = MemoryRecordEnum::Read(event.w_i_minus_15_reads[j]);
             let w_i_minus_2_read = MemoryRecordEnum::Read(event.w_i_minus_2_reads[j]);

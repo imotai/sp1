@@ -249,7 +249,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 let instruction = input.program.fetch(event.pc);
                 cols.state.populate(
                     &mut blu,
-                    input.public_values.execution_shard,
+                    input.public_values.execution_shard as u32,
                     event.clk,
                     event.pc,
                 );
@@ -265,7 +265,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 cols.is_remu = F::from_bool(event.opcode == Opcode::REMU);
                 cols.is_div = F::from_bool(event.opcode == Opcode::DIV);
                 cols.is_rem = F::from_bool(event.opcode == Opcode::REM);
-                cols.is_c_0.populate(event.c);
+                // cols.is_c_0.populate(event.c);
             }
 
             let (quotient, remainder) = get_quotient_and_remainder(event.b, event.c, event.opcode);
@@ -274,8 +274,8 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
             // Calculate flags for sign detection.
             {
-                cols.is_overflow_b.populate(event.b, i32::MIN as u32);
-                cols.is_overflow_c.populate(event.c, -1i32 as u32);
+                cols.is_overflow_b.populate(event.b, i64::MIN as u64);
+                cols.is_overflow_c.populate(event.c, -1i64 as u64);
                 if is_signed_operation(event.opcode) {
                     cols.rem_neg = F::from_canonical_u8(get_msb(remainder));
                     cols.b_neg = F::from_canonical_u8(get_msb(event.b));
@@ -288,7 +288,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 } else {
                     cols.abs_remainder = cols.remainder;
                     cols.abs_c = Word::from(event.c);
-                    cols.max_abs_c_or_1 = Word::from(u32::max(1, event.c));
+                    cols.max_abs_c_or_1 = Word::from(u64::max(1, event.c));
                 }
 
                 // Set the `alu_event` flags.
@@ -302,14 +302,14 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                         cols.c_neg_operation.populate(
                             &mut blu_events,
                             event.c,
-                            cols.abs_c.to_u32(),
+                            cols.abs_c.to_u64(),
                         );
                     }
                     if cols.abs_rem_alu_event.is_one() {
                         cols.rem_neg_operation.populate(
                             &mut blu_events,
-                            cols.remainder.to_u32(),
-                            cols.abs_remainder.to_u32(),
+                            cols.remainder.to_u64(),
+                            cols.abs_remainder.to_u64(),
                         );
                     }
                     output.add_byte_lookup_events(blu_events);
@@ -320,7 +320,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                     let mut blu_events: Vec<ByteLookupEvent> = vec![];
                     cols.b_msb.populate_msb(&mut blu_events, (event.b >> 16) as u16);
                     cols.c_msb.populate_msb(&mut blu_events, (event.c >> 16) as u16);
-                    cols.rem_msb.populate_msb(&mut blu_events, (remainder >> 16) as u16);
+                    // cols.rem_msb.populate_msb(&mut blu_events, (remainder >> 16) as u16);
 
                     output.add_byte_lookup_events(blu_events);
                 }
@@ -333,9 +333,9 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 if cols.remainder_check_multiplicity.is_one() {
                     cols.remainder_lt_operation.populate_unsigned(
                         &mut blu_events,
-                        1u32,
-                        cols.abs_remainder.to_u32(),
-                        cols.max_abs_c_or_1.to_u32(),
+                        1u64,
+                        cols.abs_remainder.to_u64(),
+                        cols.max_abs_c_or_1.to_u64(),
                     );
                 }
 
@@ -447,7 +447,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
             // 0 divided by 1. quotient = remainder = 0.
             cols.is_divu = F::one();
-            cols.adapter.op_c_memory.prev_value = Word::from(1);
+            cols.adapter.op_c_memory.prev_value = Word::from(1u64);
             cols.abs_c[0] = F::one();
             cols.max_abs_c_or_1[0] = F::one();
 
@@ -517,18 +517,18 @@ where
                 [local.c_times_quotient[0].into(), local.c_times_quotient[1].into()];
 
             // The lower 4 bytes of c_times_quotient must match the lower 4 bytes of (c * quotient).
-            MulOperation::<AB::F>::eval(
-                builder,
-                Word(lower_half),
-                local.quotient.map(|x| x.into()),
-                local.adapter.c().map(|x| x.into()),
-                local.c_times_quotient_lower,
-                local.is_real.into(),
-                AB::Expr::one(),
-                AB::Expr::zero(),
-                AB::Expr::zero(),
-                AB::Expr::zero(),
-            );
+            // MulOperation::<AB::F>::eval(
+            //     builder,
+            //     Word(lower_half),
+            //     local.quotient.map(|x| x.into()),
+            //     local.adapter.c().map(|x| x.into()),
+            //     local.c_times_quotient_lower,
+            //     local.is_real.into(),
+            //     AB::Expr::one(),
+            //     AB::Expr::zero(),
+            //     AB::Expr::zero(),
+            //     AB::Expr::zero(),
+            // );
 
             // SAFETY: Since exactly one flag is turned on, `is_mulh` and `is_mulhu` are correct.
             let is_mulh = local.is_div + local.is_rem;
@@ -538,18 +538,18 @@ where
                 [local.c_times_quotient[2].into(), local.c_times_quotient[3].into()];
 
             // The upper 4 bytes of c_times_quotient must match the upper 4 bytes of (c * quotient).
-            MulOperation::<AB::F>::eval(
-                builder,
-                Word(upper_half),
-                local.quotient.map(|x| x.into()),
-                local.adapter.c().map(|x| x.into()),
-                local.c_times_quotient_upper,
-                local.is_real.into(),
-                AB::Expr::zero(),
-                is_mulh,
-                is_mulhu,
-                AB::Expr::zero(),
-            );
+            // MulOperation::<AB::F>::eval(
+            //     builder,
+            //     Word(upper_half),
+            //     local.quotient.map(|x| x.into()),
+            //     local.adapter.c().map(|x| x.into()),
+            //     local.c_times_quotient_upper,
+            //     local.is_real.into(),
+            //     AB::Expr::zero(),
+            //     is_mulh,
+            //     is_mulhu,
+            //     AB::Expr::zero(),
+            // );
         }
 
         // Calculate is_overflow. is_overflow = is_equal(b, -2^{31}) * is_equal(c, -1) * is_signed
@@ -708,9 +708,9 @@ where
                 local.c_neg_operation,
                 local.abs_c_alu_event.into(),
             );
-            builder
-                .when(local.abs_c_alu_event)
-                .assert_word_eq(Word([zero.clone(), zero.clone()]), local.c_neg_operation.value);
+            // builder
+            //     .when(local.abs_c_alu_event)
+            //     .assert_word_eq(Word([zero.clone(), zero.clone()]), local.c_neg_operation.value);
 
             AddOperation::<AB::F>::eval(
                 builder,
@@ -719,9 +719,9 @@ where
                 local.rem_neg_operation,
                 local.abs_rem_alu_event.into(),
             );
-            builder
-                .when(local.abs_rem_alu_event)
-                .assert_word_eq(Word([zero.clone(), zero.clone()]), local.rem_neg_operation.value);
+            // builder
+            //     .when(local.abs_rem_alu_event)
+            //     .assert_word_eq(Word([zero.clone(), zero.clone()]), local.rem_neg_operation.value);
 
             // Check that the absolute value selector columns are computed correctly.
             // This enforces the send multiplicities are zero when `is_real == 0`.

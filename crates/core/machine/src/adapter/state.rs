@@ -30,13 +30,13 @@ impl<T: Copy> CPUState<T> {
 
 impl<F: Field> CPUState<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, shard: u32, clk: u32, pc: u32) {
+    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, shard: u32, clk: u32, pc: u64) {
         let clk_high_limb = (clk >> 14) as u16;
         let clk_low_limb = (clk & ((1 << 14) - 1)) as u16;
         self.shard = F::from_canonical_u32(shard);
         self.clk_high_limb = F::from_canonical_u16(clk_high_limb);
         self.clk_low_limb = F::from_canonical_u16(clk_low_limb);
-        self.pc = F::from_canonical_u32(pc);
+        self.pc = F::from_canonical_u64(pc);
         blu_events.add_bit_range_check(clk_high_limb, 14);
         blu_events.add_bit_range_check(clk_low_limb, 14);
     }

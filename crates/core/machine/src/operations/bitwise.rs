@@ -20,16 +20,17 @@ impl<F: Field> BitwiseOperation<F> {
     pub fn populate_bitwise(
         &mut self,
         record: &mut impl ByteRecord,
-        a_u32: u32,
-        b_u32: u32,
-        c_u32: u32,
+        a_u64: u64,
+        b_u64: u64,
+        c_u64: u64,
         opcode: Opcode,
     ) {
-        let a = a_u32.to_le_bytes();
-        let b = b_u32.to_le_bytes();
-        let c = c_u32.to_le_bytes();
+        let a = a_u64.to_le_bytes();
+        let b = b_u64.to_le_bytes();
+        let c = c_u64.to_le_bytes();
 
-        self.result = a.map(|x| F::from_canonical_u8(x));
+        // self.result = a.map(|x| F::from_canonical_u8(x));
+        // TODO: u64
 
         for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
             let byte_event =

@@ -85,7 +85,7 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(
                             &mut byte_lookup_events,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );
@@ -115,7 +115,7 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(
                         &mut blu,
-                        input.public_values.execution_shard,
+                        input.public_values.execution_shard as u32,
                         event.0.clk,
                         event.0.pc,
                     );

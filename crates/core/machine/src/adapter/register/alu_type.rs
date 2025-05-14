@@ -53,7 +53,7 @@ impl<F: PrimeField32> ALUTypeReader<F> {
         self.op_a = F::from_canonical_u8(instruction.op_a);
         self.op_a_memory.populate(record.a, blu_events);
         self.op_a_0 = F::from_bool(instruction.op_a == 0);
-        self.op_b = F::from_canonical_u32(instruction.op_b);
+        self.op_b = F::from_canonical_u64(instruction.op_b);
         self.op_b_memory.populate(record.b, blu_events);
         self.op_c = Word::from(instruction.op_c);
         let imm_c = record.c.is_none();

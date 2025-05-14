@@ -45,7 +45,14 @@ pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Ex
     let base = AB::Expr::from_canonical_u32(1 << 8);
     let result_words: Vec<Word<AB::Expr>> = limbs
         .chunks(WORD_BYTE_SIZE)
-        .map(|l| Word([l[0] + l[1] * base.clone(), l[2] + l[3] * base.clone()]))
+        .map(|l| {
+            Word([
+                l[0] + l[1] * base.clone(),
+                l[2] + l[3] * base.clone(),
+                l[4] + l[5] * base.clone(),
+                l[6] + l[7] * base.clone(),
+            ])
+        })
         .collect();
     result_words
 }

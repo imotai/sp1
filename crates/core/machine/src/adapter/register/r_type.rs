@@ -36,9 +36,9 @@ impl<F: PrimeField32> RTypeReader<F> {
         self.op_a = F::from_canonical_u8(instruction.op_a);
         self.op_a_memory.populate(record.a, blu_events);
         self.op_a_0 = F::from_bool(instruction.op_a == 0);
-        self.op_b = F::from_canonical_u32(instruction.op_b);
+        self.op_b = F::from_canonical_u64(instruction.op_b);
         self.op_b_memory.populate(record.b, blu_events);
-        self.op_c = F::from_canonical_u32(instruction.op_c);
+        self.op_c = F::from_canonical_u64(instruction.op_c);
         self.op_c_memory.populate(record.c, blu_events);
     }
 }

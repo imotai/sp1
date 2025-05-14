@@ -142,8 +142,8 @@ impl ShaCompressChip {
 
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
-            cols.h_ptr = F::from_canonical_u32(event.h_ptr);
+            cols.w_ptr = F::from_canonical_u64(event.w_ptr);
+            cols.h_ptr = F::from_canonical_u64(event.h_ptr);
 
             cols.octet[j] = F::one();
             cols.octet_num[octet_num_idx] = F::one();
@@ -151,7 +151,7 @@ impl ShaCompressChip {
 
             cols.mem.populate(MemoryRecordEnum::Read(event.h_read_records[j]), blu);
             cols.mem_value = Word::from(event.h_read_records[j].value);
-            cols.mem_addr = F::from_canonical_u32(event.h_ptr + (j * 4) as u32);
+            cols.mem_addr = F::from_canonical_u64(event.h_ptr + (j * 8) as u64);
 
             cols.a = Word::from(event.h_read_records[0].value);
             cols.b = Word::from(event.h_read_records[1].value);
@@ -185,11 +185,11 @@ impl ShaCompressChip {
 
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
-            cols.h_ptr = F::from_canonical_u32(event.h_ptr);
+            cols.w_ptr = F::from_canonical_u64(event.w_ptr);
+            cols.h_ptr = F::from_canonical_u64(event.h_ptr);
             cols.mem.populate(MemoryRecordEnum::Read(event.w_i_read_records[j]), blu);
             cols.mem_value = Word::from(event.w_i_read_records[j].value);
-            cols.mem_addr = F::from_canonical_u32(event.w_ptr + (j * 4) as u32);
+            cols.mem_addr = F::from_canonical_u64(event.w_ptr + (j * 8) as u64);
             cols.index = F::from_canonical_u32(j as u32 + 8);
 
             let a = h_array[0];
@@ -209,44 +209,53 @@ impl ShaCompressChip {
             cols.g = Word::from(g);
             cols.h = Word::from(h);
 
-            let e_rr_6 = cols.e_rr_6.populate(blu, e, 6);
-            let e_rr_11 = cols.e_rr_11.populate(blu, e, 11);
-            let e_rr_25 = cols.e_rr_25.populate(blu, e, 25);
-            let s1_intermediate = cols.s1_intermediate.populate_xor_u16(blu, e_rr_6, e_rr_11);
-            let s1 = cols.s1.populate_xor_u16(blu, s1_intermediate, e_rr_25);
+            let e_rr_6 = cols.e_rr_6.populate(blu, e as u64, 6);
+            let e_rr_11 = cols.e_rr_11.populate(blu, e as u64, 11);
+            let e_rr_25 = cols.e_rr_25.populate(blu, e as u64, 25);
+            let s1_intermediate =
+                cols.s1_intermediate.populate_xor_u16(blu, e_rr_6 as u64, e_rr_11 as u64);
+            let s1 = cols.s1.populate_xor_u16(blu, s1_intermediate, e_rr_25 as u64);
 
-            let e_and_f = cols.e_and_f.populate_and_u16(blu, e, f);
+            let e_and_f = cols.e_and_f.populate_and_u16(blu, e as u64, f as u64);
             let e_not = cols.e_not.populate(e);
-            let e_not_and_g = cols.e_not_and_g.populate_and_u16(blu, e_not, g);
+            let e_not_and_g = cols.e_not_and_g.populate_and_u16(blu, e_not as u64, g as u64);
             let ch = cols.ch.populate_xor_u16(blu, e_and_f, e_not_and_g);
 
-            let temp1 = cols.temp1.populate(blu, h, s1, ch, event.w[j], SHA_COMPRESS_K[j]);
+            let temp1 = cols.temp1.populate(
+                blu,
+                h as u64,
+                s1,
+                ch,
+                event.w[j] as u64,
+                SHA_COMPRESS_K[j] as u64,
+            );
 
-            let a_rr_2 = cols.a_rr_2.populate(blu, a, 2);
-            let a_rr_13 = cols.a_rr_13.populate(blu, a, 13);
-            let a_rr_22 = cols.a_rr_22.populate(blu, a, 22);
-            let s0_intermediate = cols.s0_intermediate.populate_xor_u16(blu, a_rr_2, a_rr_13);
-            let s0 = cols.s0.populate_xor_u16(blu, s0_intermediate, a_rr_22);
+            let a_rr_2 = cols.a_rr_2.populate(blu, a as u64, 2);
+            let a_rr_13 = cols.a_rr_13.populate(blu, a as u64, 13);
+            let a_rr_22 = cols.a_rr_22.populate(blu, a as u64, 22);
+            let s0_intermediate =
+                cols.s0_intermediate.populate_xor_u16(blu, a_rr_2 as u64, a_rr_13 as u64);
+            let s0 = cols.s0.populate_xor_u16(blu, s0_intermediate, a_rr_22 as u64);
 
-            let a_and_b = cols.a_and_b.populate_and_u16(blu, a, b);
-            let a_and_c = cols.a_and_c.populate_and_u16(blu, a, c);
-            let b_and_c = cols.b_and_c.populate_and_u16(blu, b, c);
+            let a_and_b = cols.a_and_b.populate_and_u16(blu, a as u64, b as u64);
+            let a_and_c = cols.a_and_c.populate_and_u16(blu, a as u64, c as u64);
+            let b_and_c = cols.b_and_c.populate_and_u16(blu, b as u64, c as u64);
             let maj_intermediate = cols.maj_intermediate.populate_xor_u16(blu, a_and_b, a_and_c);
             let maj = cols.maj.populate_xor_u16(blu, maj_intermediate, b_and_c);
 
             let temp2 = cols.temp2.populate(blu, s0, maj);
 
-            let d_add_temp1 = cols.d_add_temp1.populate(blu, d, temp1);
+            let d_add_temp1 = cols.d_add_temp1.populate(blu, d as u64, temp1);
             let temp1_add_temp2 = cols.temp1_add_temp2.populate(blu, temp1, temp2);
 
             h_array[7] = g;
             h_array[6] = f;
             h_array[5] = e;
-            h_array[4] = d_add_temp1;
+            h_array[4] = d_add_temp1 as u32;
             h_array[3] = c;
             h_array[2] = b;
             h_array[1] = a;
-            h_array[0] = temp1_add_temp2;
+            h_array[0] = temp1_add_temp2 as u32;
 
             cols.is_real = F::one();
 
@@ -265,17 +274,17 @@ impl ShaCompressChip {
 
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
-            cols.h_ptr = F::from_canonical_u32(event.h_ptr);
+            cols.w_ptr = F::from_canonical_u64(event.w_ptr);
+            cols.h_ptr = F::from_canonical_u64(event.h_ptr);
 
             cols.octet[j] = F::one();
             cols.octet_num[octet_num_idx] = F::one();
             cols.is_finalize = F::one();
 
-            cols.finalize_add.populate(blu, og_h[j], h_array[j]);
+            cols.finalize_add.populate(blu, og_h[j] as u64, h_array[j] as u64);
             cols.mem.populate(MemoryRecordEnum::Write(event.h_write_records[j]), blu);
             cols.mem_value = Word::from(event.h_write_records[j].value);
-            cols.mem_addr = F::from_canonical_u32(event.h_ptr + (j * 4) as u32);
+            cols.mem_addr = F::from_canonical_u64(event.h_ptr + (j * 8) as u64);
             cols.index = F::from_canonical_u32(j as u32 + 72);
 
             v[j] = h_array[j];

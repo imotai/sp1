@@ -152,9 +152,9 @@ impl Elf {
                 if base_address == u64::MAX {
                     base_address = vaddr;
                     eyre::ensure!(
-                        base_address.unwrap() > 0x20,
+                        base_address > 0x20,
                         "base address {} should be greater than 0x20",
-                        base_address.unwrap()
+                        base_address
                     );
                 } else {
                     let instr_len: u64 = INSTRUCTION_WORD_SIZE
@@ -162,7 +162,6 @@ impl Elf {
                         .ok_or_eyre("instructions length overflow")?
                         .try_into()?;
                     let last_instruction_addr = base_address
-                        .unwrap()
                         .checked_add(instr_len)
                         .ok_or_eyre("instruction addr overflow")?;
                     eyre::ensure!(vaddr == last_instruction_addr, "unsupported elf structure");

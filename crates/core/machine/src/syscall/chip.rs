@@ -101,7 +101,15 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             .iter()
             .filter(|e| e.should_send)
             .map(|event| GlobalInteractionEvent {
-                message: [event.shard, event.clk, event.syscall_id, event.arg1, event.arg2, 0, 0],
+                message: [
+                    event.shard,
+                    event.clk,
+                    event.syscall_id,
+                    event.arg1 as u32, // TODO: u64
+                    event.arg2 as u32,
+                    0,
+                    0,
+                ],
                 is_receive: self.shard_kind == SyscallShardKind::Precompile,
                 kind: InteractionKind::Syscall as u8,
             })
@@ -142,8 +150,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             cols.shard = F::from_canonical_u32(syscall_event.shard);
             cols.clk = F::from_canonical_u32(syscall_event.clk);
             cols.syscall_id = F::from_canonical_u32(syscall_event.syscall_code.syscall_id());
-            cols.arg1 = F::from_canonical_u32(syscall_event.arg1);
-            cols.arg2 = F::from_canonical_u32(syscall_event.arg2);
+            cols.arg1 = F::from_canonical_u64(syscall_event.arg1);
+            cols.arg2 = F::from_canonical_u64(syscall_event.arg2);
             cols.is_real = F::one();
             row
         };

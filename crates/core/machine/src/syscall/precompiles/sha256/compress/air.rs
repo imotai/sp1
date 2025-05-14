@@ -467,7 +467,7 @@ impl ShaCompressChip {
         // [a,b,c,...,h] which will act as a selector.
         let add_operands = [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h];
         let zero = AB::Expr::zero();
-        let mut filtered_operand = Word([zero.clone(), zero.clone()]);
+        let mut filtered_operand = Word([zero.clone(), zero.clone(), zero.clone(), zero.clone()]);
         for (i, operand) in local.octet.iter().zip(add_operands.iter()) {
             for j in 0..WORD_SIZE {
                 filtered_operand.0[j] = filtered_operand.0[j].clone() + *i * operand.0[j];

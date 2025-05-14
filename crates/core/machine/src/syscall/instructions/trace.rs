@@ -10,7 +10,7 @@ use sp1_core_executor::{
     syscalls::SyscallCode,
     ExecutionRecord, Program, RTypeRecord,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::utils::{next_multiple_of_32, zeroed_f_vec};
@@ -61,7 +61,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
                         self.event_to_row(&event.0, &event.1, cols, &mut blu);
                         cols.state.populate(
                             &mut blu,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );
@@ -96,11 +96,11 @@ impl SyscallInstrsChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.next_pc = F::from_canonical_u32(event.next_pc);
+        cols.next_pc = F::from_canonical_u64(event.next_pc);
 
         cols.op_a_value = Word::from(record.a.value());
         cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
-        blu.add_u16_range_checks(&u32_to_u16_limbs(record.a.value()));
+        blu.add_u16_range_checks(&u64_to_u16_limbs(record.a.value()));
         let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
 
         let syscall_id = a_prev_value[0];

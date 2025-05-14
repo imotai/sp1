@@ -70,7 +70,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                         value: event.prev_value(),
                         prev_shard: event.previous_record().shard,
                         prev_timestamp: event.previous_record().timestamp,
-                        shard: input.public_values.execution_shard,
+                        shard: input.public_values.execution_shard as u32,
                         timestamp: 0,
                     });
                     cols.access.populate(bump_event, &mut blu);
@@ -110,12 +110,12 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                         value: event.prev_value(),
                         prev_shard: event.previous_record().shard,
                         prev_timestamp: event.previous_record().timestamp,
-                        shard: input.public_values.execution_shard,
+                        shard: input.public_values.execution_shard as u32,
                         timestamp: 0,
                     });
                     cols.access.populate(bump_event, &mut byte_lookup_events);
-                    cols.shard = F::from_canonical_u32(input.public_values.execution_shard);
-                    cols.addr = F::from_canonical_u32(addr);
+                    cols.shard = F::from_canonical_u64(input.public_values.execution_shard);
+                    cols.addr = F::from_canonical_u64(addr);
                     cols.is_real = F::one();
                 }
             });

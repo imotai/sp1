@@ -640,8 +640,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 end_pc: vk.pc_start,
                 end_shard: BabyBear::one(),
                 end_execution_shard: BabyBear::one(),
-                init_addr_word: Word([BabyBear::zero(); 2]),
-                finalize_addr_word: Word([BabyBear::zero(); 2]),
+                init_addr_word: Word([BabyBear::zero(); 4]),
+                finalize_addr_word: Word([BabyBear::zero(); 4]),
                 committed_value_digest: [[BabyBear::zero(); 4]; 8],
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });

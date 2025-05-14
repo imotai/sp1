@@ -23,7 +23,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::air::MachineAir;
 
 #[derive(Default)]
@@ -117,7 +117,7 @@ impl<F: PrimeField32> MachineAir<F> for LoadByteChip {
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(
                             &mut blu,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );
@@ -163,7 +163,7 @@ impl LoadByteChip {
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
 
-        let limb = u32_to_u16_limbs(event.mem_access.value())[bit1 as usize];
+        let limb = u64_to_u16_limbs(event.mem_access.value())[bit1 as usize];
         cols.selected_limb = F::from_canonical_u16(limb);
         cols.selected_limb_low_byte = F::from_canonical_u16(limb & 0xFF);
         let byte = limb.to_le_bytes()[bit0 as usize];
@@ -272,6 +272,8 @@ where
         let limb0 =
             local.selected_byte + AB::Expr::from_canonical_u32((1 << 16) - (1 << 8)) * local.msb;
         let limb1 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        let limb2 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        let limb3 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
 
         // Constrain the program and register reads.
         ITypeReader::<AB::F>::eval(
@@ -280,7 +282,7 @@ where
             clk,
             local.state.pc,
             opcode,
-            Word([limb0, limb1]),
+            Word([limb0, limb1, limb2, limb3]),
             local.adapter,
             is_real.clone(),
         );

@@ -23,7 +23,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::air::MachineAir;
 
 #[derive(Default)]
@@ -117,7 +117,7 @@ impl<F: PrimeField32> MachineAir<F> for StoreByteChip {
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(
                             &mut blu,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );
@@ -164,13 +164,13 @@ impl StoreByteChip {
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
 
-        let limb = u32_to_u16_limbs(event.mem_access.prev_value())[bit1 as usize];
+        let limb = u64_to_u16_limbs(event.mem_access.prev_value())[bit1 as usize]; // TODO: u64
         let limb_a = (event.a & ((1 << 16) - 1)) as u16;
         blu.add_u8_range_checks(&limb.to_le_bytes());
         blu.add_u8_range_checks(&limb_a.to_le_bytes());
         cols.mem_limb = F::from_canonical_u16(limb);
         cols.mem_limb_low_byte = F::from_canonical_u16(limb & 0xFF);
-        cols.register_low_byte = F::from_canonical_u32(event.a & 0xFF);
+        cols.register_low_byte = F::from_canonical_u64(event.a & 0xFF);
         cols.store_value = Word::from(event.mem_access.value());
         cols.increment =
             (cols.register_low_byte - cols.mem_limb_low_byte) * (F::one() - cols.offset_bit[0]);

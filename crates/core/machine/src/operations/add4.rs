@@ -2,7 +2,7 @@ use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::air::WordAirBuilder;
@@ -20,18 +20,18 @@ impl<F: Field> Add4Operation<F> {
     pub fn populate(
         &mut self,
         record: &mut impl ByteRecord,
-        a_u32: u32,
-        b_u32: u32,
-        c_u32: u32,
-        d_u32: u32,
-    ) -> u32 {
-        let expected = a_u32.wrapping_add(b_u32).wrapping_add(c_u32).wrapping_add(d_u32);
-        let expected_limbs = u32_to_u16_limbs(expected);
+        a_u64: u64,
+        b_u64: u64,
+        c_u64: u64,
+        d_u64: u64,
+    ) -> u64 {
+        let expected = a_u64.wrapping_add(b_u64).wrapping_add(c_u64).wrapping_add(d_u64);
+        let expected_limbs = u64_to_u16_limbs(expected);
         self.value = Word::from(expected);
-        let a = u32_to_u16_limbs(a_u32);
-        let b = u32_to_u16_limbs(b_u32);
-        let c = u32_to_u16_limbs(c_u32);
-        let d = u32_to_u16_limbs(d_u32);
+        let a = u64_to_u16_limbs(a_u64);
+        let b = u64_to_u16_limbs(b_u64);
+        let c = u64_to_u16_limbs(c_u64);
+        let d = u64_to_u16_limbs(d_u64);
 
         let base = 65536u32;
         let mut carry_limbs = [0u8; WORD_SIZE];

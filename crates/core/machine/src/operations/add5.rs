@@ -2,7 +2,7 @@ use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::air::WordAirBuilder;
@@ -20,39 +20,39 @@ impl<F: Field> Add5Operation<F> {
     pub fn populate(
         &mut self,
         record: &mut impl ByteRecord,
-        a_u32: u32,
-        b_u32: u32,
-        c_u32: u32,
-        d_u32: u32,
-        e_u32: u32,
-    ) -> u32 {
+        a_u64: u64,
+        b_u64: u64,
+        c_u64: u64,
+        d_u64: u64,
+        e_u64: u64,
+    ) -> u64 {
         let expected =
-            a_u32.wrapping_add(b_u32).wrapping_add(c_u32).wrapping_add(d_u32).wrapping_add(e_u32);
-        let expected_limbs = u32_to_u16_limbs(expected);
+            a_u64.wrapping_add(b_u64).wrapping_add(c_u64).wrapping_add(d_u64).wrapping_add(e_u64);
+        let expected_limbs = u64_to_u16_limbs(expected);
         self.value = Word::from(expected);
-        let a = u32_to_u16_limbs(a_u32);
-        let b = u32_to_u16_limbs(b_u32);
-        let c = u32_to_u16_limbs(c_u32);
-        let d = u32_to_u16_limbs(d_u32);
-        let e = u32_to_u16_limbs(e_u32);
-        let base = 65536u32;
+        let a = u64_to_u16_limbs(a_u64);
+        let b = u64_to_u16_limbs(b_u64);
+        let c = u64_to_u16_limbs(c_u64);
+        let d = u64_to_u16_limbs(d_u64);
+        let e = u64_to_u16_limbs(e_u64);
+        let base = 65536u64;
         let mut carry = 0;
         let mut carry_limbs = [0u8; WORD_SIZE];
         for i in 0..WORD_SIZE {
-            carry = ((a[i] as u32)
-                + (b[i] as u32)
-                + (c[i] as u32)
-                + (d[i] as u32)
-                + (e[i] as u32)
+            carry = ((a[i] as u64)
+                + (b[i] as u64)
+                + (c[i] as u64)
+                + (d[i] as u64)
+                + (e[i] as u64)
                 + carry
-                - expected_limbs[i] as u32)
+                - expected_limbs[i] as u64)
                 / base;
             carry_limbs[i] = carry as u8;
         }
 
         // Range check.
         record.add_u8_range_checks(&carry_limbs);
-        record.add_u16_range_checks(&u32_to_u16_limbs(expected));
+        record.add_u16_range_checks(&u64_to_u16_limbs(expected));
         expected
     }
 

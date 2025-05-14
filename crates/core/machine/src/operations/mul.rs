@@ -15,8 +15,8 @@ use super::U16toU8Operation;
 /// The mask for a byte.
 const BYTE_MASK: u8 = 0xff;
 
-pub const fn get_msb(a: [u8; 4]) -> u8 {
-    ((a[3] >> (BYTE_SIZE - 1)) & 1) as u8
+pub const fn get_msb(a: [u8; 8]) -> u8 {
+    ((a[7] >> (BYTE_SIZE - 1)) & 1) as u8
 }
 
 /// A set of columns needed for the MUL operations.
@@ -53,19 +53,19 @@ impl<F: Field> MulOperation<F> {
     pub fn populate(
         &mut self,
         record: &mut impl ByteRecord,
-        b_u32: u32,
-        c_u32: u32,
+        b_u64: u64,
+        c_u64: u64,
         is_mulh: bool,
         is_mulhsu: bool,
     ) {
-        let b_word = b_u32.to_le_bytes();
-        let c_word = c_u32.to_le_bytes();
+        let b_word = b_u64.to_le_bytes();
+        let c_word = c_u64.to_le_bytes();
 
         let mut b = b_word.to_vec();
         let mut c = c_word.to_vec();
 
-        self.b_lower_byte.populate_u16_to_u8_safe(record, b_u32);
-        self.c_lower_byte.populate_u16_to_u8_safe(record, c_u32);
+        self.b_lower_byte.populate_u16_to_u8_safe(record, b_u64);
+        self.c_lower_byte.populate_u16_to_u8_safe(record, c_u64);
 
         // Handle b and c's signs.
         {

@@ -138,3 +138,8 @@ pub fn u64_to_u32(limbs: &[u64]) -> Vec<u32> {
 pub fn u32_to_u16_limbs(value: u32) -> [u16; 2] {
     [(value & 0xFFFF) as u16, (value >> 16) as u16]
 }
+
+/// Converts a 64-bit integer to four 16-bit integers.
+pub fn u64_to_u16_limbs(value: u64) -> [u16; 4] {
+    [(value & 0xFFFF) as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
+}

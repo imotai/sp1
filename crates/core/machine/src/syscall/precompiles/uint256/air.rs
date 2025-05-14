@@ -153,7 +153,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                         }
 
                         let modulus_bytes = words_to_bytes_le_vec(&event.modulus);
-                        let modulus_byte_sum = modulus_bytes.iter().map(|b| *b as u32).sum::<u32>();
+                        let modulus_byte_sum = modulus_bytes.iter().map(|b| *b as u64).sum::<u64>();
                         IsZeroOperation::populate(&mut cols.modulus_is_zero, modulus_byte_sum);
 
                         // Populate the output column.

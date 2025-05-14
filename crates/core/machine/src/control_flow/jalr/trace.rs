@@ -9,7 +9,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, JumpEvent},
     ExecutionRecord, Program,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::utils::{next_multiple_of_32, zeroed_f_vec};
@@ -56,7 +56,7 @@ impl<F: PrimeField32> MachineAir<F> for JalrChip {
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(
                             &mut blu,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );
@@ -96,7 +96,7 @@ impl JalrChip {
     ) {
         cols.is_real = F::one();
         cols.op_a_value = event.a.into();
-        blu.add_u16_range_checks(&u32_to_u16_limbs(event.a));
+        blu.add_u16_range_checks(&u64_to_u16_limbs(event.a));
         cols.op_a_range_checker.populate(cols.op_a_value, blu);
         let next_pc = event.b.wrapping_add(event.c);
         cols.next_pc_range_checker.populate(Word::from(next_pc), blu);

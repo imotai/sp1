@@ -95,9 +95,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 message: [
                     mem_event.initial_mem_access.shard,
                     mem_event.initial_mem_access.timestamp,
-                    mem_event.addr,
-                    mem_event.initial_mem_access.value & 0xFFFF,
-                    (mem_event.initial_mem_access.value >> 16) & 0xFFFF,
+                    mem_event.addr as u32,
+                    (mem_event.initial_mem_access.value & 0xFFFF) as u32,
+                    ((mem_event.initial_mem_access.value >> 16) & 0xFFFF) as u32, //TODO: u64
                     0u32,
                     0u32,
                 ],
@@ -108,9 +108,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 message: [
                     mem_event.final_mem_access.shard,
                     mem_event.final_mem_access.timestamp,
-                    mem_event.addr,
-                    mem_event.final_mem_access.value & 0xFFFF,
-                    (mem_event.final_mem_access.value >> 16) & 0xFFFF,
+                    mem_event.addr as u32,
+                    (mem_event.final_mem_access.value & 0xFFFF) as u32,
+                    ((mem_event.final_mem_access.value >> 16) & 0xFFFF) as u32,
                     0u32,
                     0u32,
                 ],
@@ -154,7 +154,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                     let cols = &mut cols.memory_local_entries[k];
                     if idx + k < events.len() {
                         let event = &events[idx + k];
-                        cols.addr = F::from_canonical_u32(event.addr);
+                        cols.addr = F::from_canonical_u64(event.addr);
                         cols.initial_shard = F::from_canonical_u32(event.initial_mem_access.shard);
                         cols.final_shard = F::from_canonical_u32(event.final_mem_access.shard);
                         cols.initial_clk =

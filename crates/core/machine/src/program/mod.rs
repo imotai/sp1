@@ -93,8 +93,8 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                     }
                     let cols: &mut ProgramPreprocessedCols<F> = row.borrow_mut();
                     let mut instruction = program.instructions[idx];
-                    let pc = program.pc_base + (idx as u32 * 4);
-                    cols.pc = F::from_canonical_u32(pc);
+                    let pc = program.pc_base + (idx as u64 * 4);
+                    cols.pc = F::from_canonical_u64(pc);
                     if instruction.is_branch_instruction() {
                         instruction.op_c = pc.wrapping_add(instruction.op_c);
                         debug_assert!(instruction.op_c < (1 << 31) - (1 << 27) + 1);
@@ -227,7 +227,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             .into_iter()
             .enumerate()
             .map(|(i, _)| {
-                let pc = input.program.pc_base + (i as u32 * 4);
+                let pc = input.program.pc_base + (i as u64 * 4);
                 let mut row = [F::zero(); NUM_PROGRAM_MULT_COLS];
                 let cols: &mut ProgramMultiplicityCols<F> = row.as_mut_slice().borrow_mut();
                 cols.multiplicity =

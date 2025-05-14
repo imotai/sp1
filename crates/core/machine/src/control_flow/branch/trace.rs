@@ -56,7 +56,7 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
                         instruction.op_c = event.0.pc.wrapping_add(instruction.op_c);
                         cols.state.populate(
                             &mut blu,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );
@@ -121,13 +121,13 @@ impl BranchChip {
 
         cols.compare_operation.populate_signed(
             blu,
-            a_lt_b as u32,
+            a_lt_b as u64,
             event.a,
             event.b,
             use_signed_comparison,
         );
 
-        cols.next_pc = F::from_canonical_u32(event.next_pc);
+        cols.next_pc = F::from_canonical_u64(event.next_pc);
 
         if branching {
             cols.is_branching = F::one();

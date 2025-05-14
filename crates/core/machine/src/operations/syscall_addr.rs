@@ -23,9 +23,9 @@ pub struct SyscallAddrOperation<T> {
 }
 
 impl<F: PrimeField32> SyscallAddrOperation<F> {
-    pub fn populate(&mut self, record: &mut impl ByteRecord, addr: u32, len: u32) {
+    pub fn populate(&mut self, record: &mut impl ByteRecord, addr: u64, len: u32) {
         self.addr_word = Word::from(addr);
-        let addr_word_limbs = u32_to_u16_limbs(addr);
+        let addr_word_limbs = u64_to_u16_limbs(addr);
         record.add_u16_range_checks(&addr_word_limbs);
         self.most_sig_limb_inv = F::from_canonical_u16(addr_word_limbs[1]).inverse();
         self.range_check.populate_unsigned(record, 1, addr, BABYBEAR_PRIME - len);

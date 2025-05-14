@@ -17,7 +17,7 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
     InteractionKind, Word,
@@ -67,10 +67,10 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
 
         match self.kind {
             MemoryChipType::Initialize => {
-                output.public_values.global_init_count += memory_events.len() as u32;
+                output.public_values.global_init_count += memory_events.len() as u64;
             }
             MemoryChipType::Finalize => {
-                output.public_values.global_finalize_count += memory_events.len() as u32;
+                output.public_values.global_finalize_count += memory_events.len() as u64;
             }
         };
 
@@ -93,9 +93,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                     let addr = memory_events[i].addr;
                     let value = memory_events[i].value;
                     let prev_addr = if i == 0 { previous_addr } else { memory_events[i - 1].addr };
-                    blu.add_u16_range_checks(&u32_to_u16_limbs(value));
-                    blu.add_u16_range_checks(&u32_to_u16_limbs(prev_addr));
-                    blu.add_u16_range_checks(&u32_to_u16_limbs(addr));
+                    blu.add_u16_range_checks(&u64_to_u16_limbs(value));
+                    blu.add_u16_range_checks(&u64_to_u16_limbs(prev_addr));
+                    blu.add_u16_range_checks(&u64_to_u16_limbs(addr));
                     cols.prev_addr_range_checker.populate(Word::from(prev_addr), &mut blu);
                     cols.addr_range_checker.populate(Word::from(addr), &mut blu);
                     if i != 0 || prev_addr != 0 {
@@ -114,7 +114,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 message: [
                     interaction_shard,
                     interaction_clk,
-                    event.addr,
+                    event.addr as u32, //TODO: u64
                     (event.value & 0xFFFF) as u32,
                     (event.value >> 16) as u32,
                     0,
@@ -187,7 +187,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             cols.prev_addr = Word::from(prev_addr);
             cols.prev_addr_range_checker.populate(cols.prev_addr, &mut blu);
             cols.is_prev_addr_zero.populate(prev_addr);
-            cols.is_index_zero.populate(i as u32);
+            cols.is_index_zero.populate(i as u64);
             if prev_addr != 0 || i != 0 {
                 cols.is_comp = F::one();
                 cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);

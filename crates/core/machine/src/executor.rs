@@ -85,7 +85,7 @@ struct RecordTask {
     done: bool,
     program: Arc<Program>,
     record_gen_sync: Arc<TurnBasedSync>,
-    state: Arc<Mutex<PublicValues<u32, u32, u32>>>,
+    state: Arc<Mutex<PublicValues<u64, u64, u64>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     record_tx: mpsc::Sender<ExecutionRecord>,
     abort_handle: AbortHandle,
@@ -166,22 +166,20 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                     // Update the public values & prover state for the shards which contain
                     // "cpu events".
                     let mut state = state.lock().unwrap();
-                    for record in records.iter_mut() {
-                        state.shard += 1;
-                        state.execution_shard = record.public_values.execution_shard;
-                        state.next_execution_shard = record.public_values.execution_shard + 1;
-                        state.exit_code = record.public_values.exit_code;
-                        state.start_pc = record.public_values.start_pc;
-                        state.next_pc = record.public_values.next_pc;
-                        state.last_timestamp = record.public_values.last_timestamp;
-                        state.last_timestamp_inv = F::from_canonical_u32(state.last_timestamp - 1)
-                            .inverse()
-                            .as_canonical_u32();
-                        state.committed_value_digest = record.public_values.committed_value_digest;
-                        state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
-                        record.public_values = *state;
-                        state.prev_exit_code = record.public_values.exit_code;
-                    }
+                    // for record in records.iter_mut() {
+                    //     state.shard += 1;
+                    //     state.execution_shard = record.public_values.execution_shard;
+                    //     state.next_execution_shard = record.public_values.execution_shard + 1;
+                    //     state.start_pc = record.public_values.start_pc;
+                    //     state.next_pc = record.public_values.next_pc;
+                    //     state.last_timestamp = record.public_values.last_timestamp;
+                    //     state.last_timestamp_inv = F::from_canonical_u32(state.last_timestamp - 1)
+                    //         .inverse()
+                    //         .as_canonical_u32();
+                    //     state.committed_value_digest = record.public_values.committed_value_digest;
+                    //     state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
+                    //     record.public_values = *state;
+                    // }
 
                     // Defer events that are too expensive to include in every shard.
                     let mut deferred = deferred.lock().unwrap();
@@ -208,21 +206,21 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                     // Update the public values & prover state for the shards which do not
                     // contain "cpu events" before committing to them.
                     state.execution_shard = state.next_execution_shard;
-                    for record in deferred.iter_mut() {
-                        state.shard += 1;
-                        state.previous_init_addr_word =
-                            record.public_values.previous_init_addr_word;
-                        state.last_init_addr_word = record.public_values.last_init_addr_word;
-                        state.previous_finalize_addr_word =
-                            record.public_values.previous_finalize_addr_word;
-                        state.last_finalize_addr_word =
-                            record.public_values.last_finalize_addr_word;
-                        state.start_pc = state.next_pc;
-                        state.last_timestamp = 1;
-                        state.last_timestamp_inv = 0;
-                        state.next_execution_shard = state.execution_shard;
-                        record.public_values = *state;
-                    }
+                    // for record in deferred.iter_mut() {
+                    //     state.shard += 1;
+                    //     state.previous_init_addr_word =
+                    //         record.public_values.previous_init_addr_word;
+                    //     state.last_init_addr_word = record.public_values.last_init_addr_word;
+                    //     state.previous_finalize_addr_word =
+                    //         record.public_values.previous_finalize_addr_word;
+                    //     state.last_finalize_addr_word =
+                    //         record.public_values.last_finalize_addr_word;
+                    //     state.start_pc = state.next_pc;
+                    //     state.last_timestamp = 1;
+                    //     state.last_timestamp_inv = 0;
+                    //     state.next_execution_shard = state.execution_shard;
+                    //     record.public_values = *state;
+                    // }
                     records.append(&mut deferred);
 
                     // Generate the dependencies.
@@ -272,7 +270,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
 
                 // Initialize the record generation state.
                 let record_gen_sync = Arc::new(TurnBasedSync::new());
-                let state = Arc::new(Mutex::new(PublicValues::<u32, u32, u32>::default().reset()));
+                let state = Arc::new(Mutex::new(PublicValues::<u64, u64, u64>::default().reset()));
                 let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
 
                 // Check if the task was aborted again.

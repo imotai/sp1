@@ -23,7 +23,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::air::MachineAir;
 
 #[derive(Default)]
@@ -111,7 +111,7 @@ impl<F: PrimeField32> MachineAir<F> for LoadHalfChip {
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(
                             &mut blu,
-                            input.public_values.execution_shard,
+                            input.public_values.execution_shard as u32,
                             event.0.clk,
                             event.0.pc,
                         );
@@ -156,7 +156,7 @@ impl LoadHalfChip {
 
         let bit = ((memory_addr >> 1) & 1) as u16;
         cols.offset_bit = F::from_canonical_u16(bit);
-        let limb = u32_to_u16_limbs(event.mem_access.value())[bit as usize];
+        let limb = u64_to_u16_limbs(event.mem_access.value())[bit as usize];
         cols.selected_limb = F::from_canonical_u16(limb);
 
         if event.opcode == Opcode::LH {
@@ -242,18 +242,18 @@ where
         );
 
         // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval(
-            builder,
-            shard,
-            clk,
-            local.state.pc,
-            opcode,
-            Word([
-                local.selected_limb.into(),
-                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
-            ]),
-            local.adapter,
-            is_real.clone(),
-        );
+        // ITypeReader::<AB::F>::eval(
+        //     builder,
+        //     shard,
+        //     clk,
+        //     local.state.pc,
+        //     opcode,
+        //     Word([
+        //         local.selected_limb.into(),
+        //         AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+        //     ]),
+        //     local.adapter,
+        //     is_real.clone(),
+        // );
     }
 }

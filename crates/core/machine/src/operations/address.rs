@@ -2,7 +2,7 @@ use p3_field::{AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use super::{AddOperation, BabyBearWordRangeChecker};
@@ -22,12 +22,12 @@ pub struct AddressOperation<T> {
 }
 
 impl<F: PrimeField32> AddressOperation<F> {
-    pub fn populate(&mut self, record: &mut impl ByteRecord, b: u32, c: u32) -> u32 {
+    pub fn populate(&mut self, record: &mut impl ByteRecord, b: u64, c: u64) -> u64 {
         let memory_addr = b.wrapping_add(c);
         self.addr_word_operation.populate(record, b, c);
         self.addr_word_range_checker.populate(Word::from(memory_addr), record);
-        let addr_word_limbs = u32_to_u16_limbs(memory_addr);
-        self.most_sig_limb_inv = F::from_canonical_u16(addr_word_limbs[1]).inverse();
+        let addr_word_limbs = u64_to_u16_limbs(memory_addr);
+        self.most_sig_limb_inv = F::from_canonical_u16(addr_word_limbs[3]).inverse();
         record.add_bit_range_check(addr_word_limbs[0] / 4, 14);
         memory_addr
     }

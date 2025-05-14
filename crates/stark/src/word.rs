@@ -55,6 +55,15 @@ impl<F: Field> Word<F> {
         let high = self.0[1].to_string().parse::<u16>().unwrap();
         ((high as u32) << 16) | (low as u32)
     }
+
+    /// Converts a word to a u64.
+    pub fn to_u64(&self) -> u64 {
+        let low = self.0[0].to_string().parse::<u16>().unwrap();
+        let mid_low = self.0[1].to_string().parse::<u16>().unwrap();
+        let mid_high = self.0[2].to_string().parse::<u16>().unwrap();
+        let high = self.0[3].to_string().parse::<u16>().unwrap();
+        ((high as u64) << 48) | ((mid_high as u64) << 32) | ((mid_low as u64) << 16) | (low as u64)
+    }
 }
 
 impl<V: Copy> Word<V> {

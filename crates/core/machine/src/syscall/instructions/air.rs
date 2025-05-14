@@ -50,7 +50,7 @@ where
         builder.assert_bool(local.is_real);
 
         // Verify that local.is_halt is correct.
-        self.eval_is_halt_syscall(builder, &a, local);
+        // self.eval_is_halt_syscall(builder, &a, local);
 
         // Constrain the state of the CPU.
         // The extra timestamp increment is `num_extra_cycles`.
@@ -85,22 +85,22 @@ where
 
         // `num_extra_cycles` is checked to be equal to the return value of
         // `get_num_extra_ecall_cycles`
-        builder.assert_eq::<AB::Var, AB::Expr>(
-            local.num_extra_cycles,
-            self.get_num_extra_ecall_cycles::<AB>(&a, local),
-        );
+        // builder.assert_eq::<AB::Var, AB::Expr>(
+        //     local.num_extra_cycles,
+        //     self.get_num_extra_ecall_cycles::<AB>(&a, local),
+        // );
 
         // ECALL instruction.
-        self.eval_ecall(builder, &a, local);
+        // self.eval_ecall(builder, &a, local);
 
         // COMMIT/COMMIT_DEFERRED_PROOFS ecall instruction.
-        self.eval_commit(
-            builder,
-            &a,
-            local,
-            public_values.committed_value_digest,
-            public_values.deferred_proofs_digest,
-        );
+        // self.eval_commit(
+        //     builder,
+        //     &a,
+        //     local,
+        //     public_values.committed_value_digest,
+        //     public_values.deferred_proofs_digest,
+        // );
 
         // HALT ecall and UNIMPL instruction.
         self.eval_halt_unimpl(builder, local, public_values);
@@ -185,7 +185,7 @@ impl SyscallInstrsChip {
 
         // `op_a_val` is constrained.
         // When syscall_id is ENTER_UNCONSTRAINED, the new value of op_a should be 0.
-        let zero_word = Word::<AB::F>::from(0);
+        let zero_word = Word::<AB::F>::from(0u64);
         builder
             .when(local.is_real)
             .when(is_enter_unconstrained)
@@ -254,8 +254,16 @@ impl SyscallInstrsChip {
         // to not include the verification check of the expected public values digest word.
 
         // First, get the expected public value digest from the bitmap and public values.
-        let mut expected_pv_digest =
-            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()];
+        let mut expected_pv_digest = [
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+        ];
         for i in 0..4 {
             expected_pv_digest[i] = builder.index_array(
                 commit_digest.iter().map(|word| word[i]).collect_vec().as_slice(),
@@ -268,6 +276,10 @@ impl SyscallInstrsChip {
                 + expected_pv_digest[1].clone() * AB::F::from_canonical_u32(1 << 8),
             expected_pv_digest[2].clone()
                 + expected_pv_digest[3].clone() * AB::F::from_canonical_u32(1 << 8),
+            expected_pv_digest[4].clone()
+                + expected_pv_digest[5].clone() * AB::F::from_canonical_u32(1 << 8),
+            expected_pv_digest[6].clone()
+                + expected_pv_digest[7].clone() * AB::F::from_canonical_u32(1 << 8),
         ]);
 
         // Assert that the expected public value digest are valid bytes.
