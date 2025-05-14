@@ -624,6 +624,11 @@ impl<C: MachineProverComponents> ShardProver<C> {
         // Observe the commitments.
         challenger.observe(main_commit.clone());
 
+        for chips in shard_chips.iter() {
+            let num_real_entries = traces.get(&chips.air.name()).unwrap().num_real_entries();
+            challenger.observe(C::F::from_canonical_usize(num_real_entries));
+        }
+
         // Sample the logup challenges.
         let alpha = challenger.sample_ext_element::<C::EF>();
         let beta = challenger.sample_ext_element::<C::EF>();

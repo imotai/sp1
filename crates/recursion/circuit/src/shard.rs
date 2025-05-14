@@ -202,7 +202,7 @@ where
 
         // Convert height bits to felts.
         let heights = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
-        let mut height_felts = Vec::new();
+        let mut height_felts: Vec<Felt<C::F>> = Vec::new();
         let two = SymbolicFelt::from_canonical_u32(2);
         for height in heights {
             let mut acc = SymbolicFelt::zero();
@@ -211,7 +211,7 @@ where
             height.iter().for_each(|x| {
                 acc = *x + two * acc;
             });
-            height_felts.push(acc);
+            height_felts.push(builder.eval(acc));
         }
 
         // Observe the public values.
@@ -220,6 +220,10 @@ where
         }
         // Observe the main commitment.
         challenger.observe(builder, *main_commitment);
+
+        for height in height_felts.iter() {
+            challenger.observe(builder, *height);
+        }
 
         // Sample the permutation challenges.
         let alpha = challenger.sample_ext(builder);
@@ -341,7 +345,7 @@ where
         );
         builder.cycle_tracker_v2_exit();
 
-        let params: Vec<Vec<SymbolicFelt<C::F>>> = unfiltered_column_counts
+        let params: Vec<Vec<Felt<C::F>>> = unfiltered_column_counts
             .iter()
             .map(|round| {
                 round
@@ -372,6 +376,7 @@ where
                 builder.assert_felt_eq(sum, *y);
                 param_index += 1;
             });
+        builder.assert_felt_eq(prefix_sum_felts[0], C::F::zero());
         builder.cycle_tracker_v2_exit();
     }
 }

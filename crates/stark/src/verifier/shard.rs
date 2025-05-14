@@ -434,6 +434,14 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         // Observe the main commitment.
         challenger.observe(main_commitment.clone());
 
+        let mut heights: Vec<C::F> = Vec::new();
+        for chip_values in opened_values.chips.iter() {
+            assert!(chip_values.degree.len() <= 29);
+            let acc = chip_values.degree.iter().fold(C::F::zero(), |acc, &x| x + C::F::two() * acc);
+            heights.push(acc);
+            challenger.observe(acc);
+        }
+
         let alpha = challenger.sample_ext_element::<C::EF>();
         let beta = challenger.sample_ext_element::<C::EF>();
         let pv_challenge = challenger.sample_ext_element::<C::EF>();
@@ -488,6 +496,11 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             .map(|x| x.local.iter().as_slice())
             .collect::<Vec<_>>();
 
+        let unfiltered_preprocessed_column_count = preprocessed_openings
+            .iter()
+            .map(|table_openings| table_openings.len())
+            .collect::<Vec<_>>();
+
         let main_openings = main_openings_for_proof
             .iter()
             .map(|x| x.local.iter().copied().collect::<MleEval<_>>())
@@ -508,6 +521,40 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
 
         let only_has_main_commitment = vk.preprocessed_commit.is_none();
+
+        let column_counts = heights
+            .iter()
+            .zip_eq(&unfiltered_preprocessed_column_count)
+            .flat_map(|(&h, &c)| std::iter::repeat(h).take(c))
+            .chain(
+                heights
+                    .iter()
+                    .zip_eq(&main_column_count)
+                    .flat_map(|(&h, &c)| std::iter::repeat(h).take(c)),
+            )
+            .collect::<Vec<C::F>>();
+        let preprocessed_column_count_total =
+            unfiltered_preprocessed_column_count.iter().sum::<usize>();
+
+        let col_prefix_sum = evaluation_proof
+            .params
+            .col_prefix_sums
+            .iter()
+            .map(|x| x.iter().fold(C::F::zero(), |acc, &y| y + C::F::two() * acc))
+            .collect::<Vec<_>>();
+
+        let skip_indices = [preprocessed_column_count_total, col_prefix_sum.len() - 2];
+        let mut param_index = 0;
+        col_prefix_sum
+            .iter()
+            .zip(col_prefix_sum.iter().skip(1))
+            .enumerate()
+            .filter(|(i, _)| !skip_indices.contains(i))
+            .for_each(|(_, (x, y))| {
+                assert_eq!(*y, *x + column_counts[param_index]);
+                param_index += 1;
+            });
+        assert_eq!(col_prefix_sum[0], C::F::zero());
 
         let (commitments, column_counts, openings) = if only_has_main_commitment {
             (
