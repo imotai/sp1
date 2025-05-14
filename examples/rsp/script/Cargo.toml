@@ -12,7 +12,6 @@ clap = { version = "4.5.7", features = ["derive", "env"] }
 rsp-client-executor = { git = "https://github.com/succinctlabs/rsp/", rev = "3647076" }
 
 # sp1
-sp1-sdk = { path = "../../../crates/sdk" }
 sp1-prover = { path = "../../../crates/prover" }
 
 [build-dependencies]
@@ -20,4 +19,3 @@ sp1-build = { path = "../../../crates/build" }
 
 [features]
 default = []
-cuda = ["sp1-sdk/cuda"]
