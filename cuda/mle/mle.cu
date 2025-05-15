@@ -122,8 +122,7 @@ __global__ void partial_lagrange_naive(
         {
             bool bit = ((i >> (total_num_variables - 1 - k)) & 1) != 0;
             EF z = EF::load(point, k);
-            F bit_f = F::from_bool(bit);
-            value *= z * bit_f + (EF::one() - z) * (F::one() - bit_f);
+            value *= bit ? z : (EF::one() - z);
         }
         EF::store(output, i, value);
     }
