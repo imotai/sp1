@@ -131,7 +131,8 @@ __global__ void jaggedVirtualFixLastVariable(
             EF jaggedValOne = eqzColVal * eqzRowOne;
 
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
-            EF value = alpha * (jaggedValOne - jaggedValZero) + jaggedValZero;
+
+            EF value = alpha.interpolateLinear(jaggedValOne, jaggedValZero);
 
             size_t halfOffset = offset / 2;
             size_t baseIdx = colIdx * halfHeight + rowIdx + halfOffset;

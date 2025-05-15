@@ -44,6 +44,14 @@ public:
 
     inline uint32_t operator*() const { return val; }
 
+    __host__ __device__
+    bool operator!=(const bb31_t &x) const {
+        if (val != x.val)
+            return true;
+        else
+            return false;
+    }
+
     inline size_t len() const { return 1; }
 
     inline bb31_t() {}
@@ -233,11 +241,7 @@ public:
 private:
     static inline void final_sub(uint32_t &val)
     {
-        asm("{");
-        asm(".reg.pred %p;");
-        asm("setp.ge.u32 %p, %0, %1;" ::"r"(val), "r"(MOD));
-        asm("@%p sub.u32 %0, %0, %1;" : "+r"(val) : "r"(MOD));
-        asm("}");
+        val = val >= MOD ? val-MOD : val;
     }
 
     // Montgomery multiplication
@@ -499,6 +503,28 @@ public:
     {
         val = __shfl_xor_sync(0xFFFFFFFF, val, laneMask);
     }
+
+    __device__ __forceinline__ bb31_t interpolateLinear( const bb31_t one, const bb31_t zero) const
+    {
+        uint64_t w;
+        uint32_t l = zero.val, h = 0, t;
+
+        pack(w, l, h);
+
+        sub(t, one.val, l);
+        t = t > one.val ? t+MOD : t;
+
+        mad_wide(w, t, val, w); unpack(l, h, w);
+
+        mul_lo(t, l, M);
+        mad_wide(w, t, MOD, w); unpack(l, h, w);
+
+        h = h >= MOD ? h-MOD : h;
+
+        bb31_t retval;
+        retval.val = h;
+        return retval;
+    }
 };
 
 #undef inline
@@ -695,7 +721,7 @@ public:
 
     inline bool operator==(const bb31_t rhs) const { return val == rhs.val; }
 
-    inline bool operator!=(const bb31_t rhs) const { return !(*this == rhs); }
+    inline bool operator!=(const bb31_t rhs) const { return val != rhs.val; }
 
     inline bb31_t &operator^=(int b)
     {

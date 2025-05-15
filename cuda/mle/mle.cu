@@ -194,7 +194,7 @@ __global__ void fixLastVariable(
                 oneValue =  F::load(input, j * inputHeight + (i << 1) + 1);
             }
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
-            EF value = alpha * (oneValue - zeroValue) + zeroValue;
+            EF value = alpha.interpolateLinear(oneValue, zeroValue);
             EF::store(output, j * outputHeight + i, value);
         }
     }
@@ -227,7 +227,7 @@ __global__ void fixLastVariableConstantPadding(
                 oneValue =  F::load(input, j * inputHeight + (i << 1) + 1);
             }
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
-            EF value = alpha * (oneValue - zeroValue) + zeroValue;
+            EF value = alpha.interpolateLinear(oneValue, zeroValue);
             EF::store(output, j * outputHeight + i, value);
         }
     }
@@ -280,7 +280,7 @@ __global__ void fixLastVariableInPlace(
             F zeroValue = F::load(inout, j * inputHeight + (i << 1));
             F oneValue = F::load(inout, j * inputHeight + (i << 1) + 1);
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
-            F value = alpha * (oneValue - zeroValue) + zeroValue;
+            F value = alpha.interpolateLinear(oneValue, zeroValue);
             F::store(inout, j * outputHeight + i, value);
         }
     }

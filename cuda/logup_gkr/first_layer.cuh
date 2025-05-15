@@ -95,10 +95,10 @@ public:
         EF alpha)
     {
         CircuitValues<EF> values;
-        values.numeratorZero = alpha * (oneValues.numeratorZero - zeroValues.numeratorZero) + zeroValues.numeratorZero;
-        values.numeratorOne = alpha * (oneValues.numeratorOne - zeroValues.numeratorOne) + zeroValues.numeratorOne;
-        values.denominatorZero = alpha * (oneValues.denominatorZero - zeroValues.denominatorZero) + zeroValues.denominatorZero;
-        values.denominatorOne = alpha * (oneValues.denominatorOne - zeroValues.denominatorOne) + zeroValues.denominatorOne;
+        values.numeratorZero   = alpha.interpolateLinear(oneValues.numeratorZero,   zeroValues.numeratorZero);
+        values.numeratorOne    = alpha.interpolateLinear(oneValues.numeratorOne,    zeroValues.numeratorOne);
+        values.denominatorZero = alpha.interpolateLinear(oneValues.denominatorZero, zeroValues.denominatorZero);
+        values.denominatorOne  = alpha.interpolateLinear(oneValues.denominatorOne,  zeroValues.denominatorOne);
         return values;
     }
 

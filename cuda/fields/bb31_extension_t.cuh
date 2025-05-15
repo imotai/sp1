@@ -8,8 +8,18 @@ class bb31_extension_t
 public:
     static constexpr size_t D = 4;
     static constexpr bb31_t W = bb31_t{11};
+    static constexpr uint32_t MOD = 0x78000001u;
+    static constexpr uint32_t M = 0x77ffffffu;
+    static constexpr uint32_t MUL2_32 = 0x0ffffffe;    // 2^32 = 2^28 - 2
 
     bb31_t value[D];
+
+    __device__ __forceinline__ bool operator!=(const bb31_extension_t &x) const {
+        bool t = false;
+        for (int i=0; i<D; i++)
+            t = (value[i] != x.value[i]) ? true : t;
+        return t;
+    }
 
     __host__ __device__
     inline constexpr bb31_extension_t(int a, int b = 0, int c = 0, int d = 0)
@@ -141,15 +151,13 @@ public:
 
         // Reduction step to zero the top 4 bits in each accumulator
 
-        static constexpr uint32_t mul2_32 = 0x0ffffffe;    // 2^32 = 2^28 - 2
-
-        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, mul2_32, w);
-        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, mul2_32, w);
-        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, mul2_32, w);
-        unpack(l3, h3, a3); l = l3; pack(w, l, h); mad_wide(a3, h3, mul2_32, w);
-        unpack(l4, h4, a4); l = l4; pack(w, l, h); mad_wide(a4, h4, mul2_32, w);
-        unpack(l5, h5, a5); l = l5; pack(w, l, h); mad_wide(a5, h5, mul2_32, w);
-        unpack(l6, h6, a6); l = l6; pack(w, l, h); mad_wide(a6, h6, mul2_32, w);
+        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, MUL2_32, w);
+        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, MUL2_32, w);
+        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, MUL2_32, w);
+        unpack(l3, h3, a3); l = l3; pack(w, l, h); mad_wide(a3, h3, MUL2_32, w);
+        unpack(l4, h4, a4); l = l4; pack(w, l, h); mad_wide(a4, h4, MUL2_32, w);
+        unpack(l5, h5, a5); l = l5; pack(w, l, h); mad_wide(a5, h5, MUL2_32, w);
+        unpack(l6, h6, a6); l = l6; pack(w, l, h); mad_wide(a6, h6, MUL2_32, w);
 
         unpack(l4, h4, a4);
         unpack(l5, h5, a5);
@@ -161,9 +169,9 @@ public:
 
         // Avoid overflow in Montgomery reduction
 
-        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, mul2_32, w);
-        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, mul2_32, w);
-        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, mul2_32, w);
+        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, MUL2_32, w);
+        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, MUL2_32, w);
+        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, MUL2_32, w);
 
         unpack(l0, h0, a0);
         unpack(l1, h1, a1);
@@ -172,14 +180,10 @@ public:
 
         // Montgomery reductions
 
-        const uint32_t M = 0x77FFFFFF;
-
         mul_lo   (y0, l0, M);
         mul_lo   (y1, l1, M);
         mul_lo   (y2, l2, M);
         mul_lo   (y3, l3, M);
-
-        const uint32_t MOD = 0x78000001;
 
         mad_wide(a0, y0, MOD, a0);
         mad_wide(a1, y1, MOD, a1);
@@ -193,26 +197,10 @@ public:
 
         // Final_sub()
 
-        asm volatile (
-            "\n\t{"
-            "\n\t\t.reg.pred %%p0, %%p1, %%p2, %%p3;"
-            "\n\t\tsetp.ge.u32 %%p0, %0, %4;"
-            "\n\t\tsetp.ge.u32 %%p1, %1, %4;"
-            "\n\t\tsetp.ge.u32 %%p2, %2, %4;"
-            "\n\t\tsetp.ge.u32 %%p3, %3, %4;"
-            "\n\t@%%p0\tsub.u32 %0, %0, %4;"
-            "\n\t@%%p1\tsub.u32 %1, %1, %4;"
-            "\n\t@%%p2\tsub.u32 %2, %2, %4;"
-            "\n\t@%%p3\tsub.u32 %3, %3, %4;"
-            "\n\t}"
-            : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3)
-            : "r"(MOD)
-        );
-
-        value[0] = x0;
-        value[1] = x1;
-        value[2] = x2;
-        value[3] = x3;
+        value[0] = x0 >= MOD ? x0-MOD : x0;
+        value[1] = x1 >= MOD ? x1-MOD : x1;
+        value[2] = x2 >= MOD ? x2-MOD : x2;
+        value[3] = x3 >= MOD ? x3-MOD : x3;
 
         return *this;
     }
@@ -259,18 +247,6 @@ public:
             ret *= ret;
         }
         return ret;
-    }
-
-    friend __device__ __forceinline__ bool operator!=(
-        const bb31_extension_t &lhs,
-        const bb31_extension_t &rhs)
-    {
-        for (int i = 0; i < D; ++i)
-        {
-            if (lhs.value[i].val != rhs.value[i].val)
-                return true;
-        }
-        return false;
     }
 
     __device__ __forceinline__ bb31_extension_t frobenius()
@@ -336,4 +312,199 @@ public:
         return ret;
     }
 
+    __device__ __forceinline__ bb31_extension_t interpolateLinear( const bb31_extension_t one, const bb31_extension_t zero) const
+    {
+        uint32_t
+            x0 = value[0].val,
+            x1 = value[1].val,
+            x2 = value[2].val,
+            x3 = value[3].val,
+            y0 = one.value[0].val - zero.value[0].val,
+            y1 = one.value[1].val - zero.value[1].val,
+            y2 = one.value[2].val - zero.value[2].val,
+            y3 = one.value[3].val - zero.value[3].val;
+
+        uint64_t a0, a1, a2, a3, a4, a5, a6, w;
+        uint32_t l0, l1, l2, l3, l4, l5, l6, l;
+        uint32_t h0, h1, h2, h3, h4, h5, h6, h = 0;
+
+        const uint32_t MOD = bb31_extension_t::MOD;
+        const uint32_t M   = bb31_extension_t::M;
+
+        y0 = y0 > one.value[0].val ? y0+MOD : y0;
+        y1 = y1 > one.value[1].val ? y1+MOD : y1;
+        y2 = y2 > one.value[2].val ? y2+MOD : y2;
+        y3 = y3 > one.value[3].val ? y3+MOD : y3;
+
+        // Compute and accumulate partial products
+        // => a = alpha * (one - zero)
+
+        mul_wide(a0, x0, y0);
+        mul_wide(a1, x1, y0);
+        mul_wide(a2, x2, y0);
+        mul_wide(a3, x3, y0);
+
+        mad_wide(a1, x0, y1, a1);
+        mad_wide(a2, x1, y1, a2);
+        mad_wide(a3, x2, y1, a3);
+        mul_wide(a4, x3, y1);
+
+        mad_wide(a2, x0, y2, a2);
+        mad_wide(a3, x1, y2, a3);
+        mad_wide(a4, x2, y2, a4);
+        mul_wide(a5, x3, y2);
+
+        mad_wide(a3, x0, y3, a3);
+        mad_wide(a4, x1, y3, a4);
+        mad_wide(a5, x2, y3, a5);
+        mul_wide(a6, x3, y3);
+
+        // Reduction step to zero the top 4 bits in each accumulator
+
+        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, MUL2_32, w);
+        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, MUL2_32, w);
+        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, MUL2_32, w);
+        unpack(l3, h3, a3); l = l3; pack(w, l, h); mad_wide(a3, h3, MUL2_32, w);
+        unpack(l4, h4, a4); l = l4; pack(w, l, h); mad_wide(a4, h4, MUL2_32, w);
+        unpack(l5, h5, a5); l = l5; pack(w, l, h); mad_wide(a5, h5, MUL2_32, w);
+        unpack(l6, h6, a6); l = l6; pack(w, l, h); mad_wide(a6, h6, MUL2_32, w);
+
+        unpack(l4, h4, a4);
+        unpack(l5, h5, a5);
+        unpack(l6, h6, a6);
+
+        mad_lo(a0, a4, 11, a0);
+        mad_lo(a1, a5, 11, a1);
+        mad_lo(a2, a6, 11, a2);
+
+        // Avoid overflow in Montgomery reduction
+
+        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, MUL2_32, w);
+        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, MUL2_32, w);
+        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, MUL2_32, w);
+
+        unpack(l0, h0, a0);
+        unpack(l1, h1, a1);
+        unpack(l2, h2, a2);
+        unpack(l3, h3, a3);
+
+        // Montgomery reductions
+
+        mul_lo   (y0, l0, M);
+        mul_lo   (y1, l1, M);
+        mul_lo   (y2, l2, M);
+        mul_lo   (y3, l3, M);
+
+        mad_wide(a0, y0, MOD, a0);
+        mad_wide(a1, y1, MOD, a1);
+        mad_wide(a2, y2, MOD, a2);
+        mad_wide(a3, y3, MOD, a3);
+
+        unpack(l0, x0, a0);
+        unpack(l1, x1, a1);
+        unpack(l2, x2, a2);
+        unpack(l3, x3, a3);
+
+        // Add the zero-value before final reductions
+
+        add(x0, x0, zero.value[0].val);
+        add(x1, x1, zero.value[1].val);
+        add(x2, x2, zero.value[2].val);
+        add(x3, x3, zero.value[3].val);
+
+        // Final_sub()
+
+        x0 = x0 >= MOD ? x0-MOD : x0;
+        x1 = x1 >= MOD ? x1-MOD : x1;
+        x2 = x2 >= MOD ? x2-MOD : x2;
+        x3 = x3 >= MOD ? x3-MOD : x3;
+
+        x0 = x0 >= MOD ? x0-MOD : x0;
+        x1 = x1 >= MOD ? x1-MOD : x1;
+        x2 = x2 >= MOD ? x2-MOD : x2;
+        x3 = x3 >= MOD ? x3-MOD : x3;
+
+        bb31_extension_t retval;
+        retval.value[0].val = x0;
+        retval.value[1].val = x1;
+        retval.value[2].val = x2;
+        retval.value[3].val = x3;
+        return retval;
+    }
+
+    __device__ __forceinline__ bb31_extension_t interpolateLinear( const bb31_t one, const bb31_t zero) const
+    {
+        uint32_t
+            x0 = value[0].val,
+            x1 = value[1].val,
+            x2 = value[2].val,
+            x3 = value[3].val,
+            y0 = one.val - zero.val,
+            y1, y2, y3;
+
+        uint64_t a0, a1, a2, a3, w;
+        uint32_t l0, l1, l2, l3, l;
+        uint32_t h0, h1, h2, h3, h = 0;
+
+        const uint32_t MOD = 0x78000001u;
+        const uint32_t M = 0x77ffffffu;
+
+        y0 = y0 > one.val ? y0+MOD : y0;
+
+        // Compute and accumulate partial products
+        // => a = alpha * (one - zero)
+
+        mul_wide(a0, x0, y0);
+        mul_wide(a1, x1, y0);
+        mul_wide(a2, x2, y0);
+        mul_wide(a3, x3, y0);
+
+        // Reduction step to zero the top 4 bits in each accumulator
+
+        unpack(l0, h0, a0); l = l0; pack(w, l, h); mad_wide(a0, h0, MUL2_32, w);
+        unpack(l1, h1, a1); l = l1; pack(w, l, h); mad_wide(a1, h1, MUL2_32, w);
+        unpack(l2, h2, a2); l = l2; pack(w, l, h); mad_wide(a2, h2, MUL2_32, w);
+        unpack(l3, h3, a3); l = l3; pack(w, l, h); mad_wide(a3, h3, MUL2_32, w);
+
+        // Montgomery reductions
+
+        unpack(l0, h0, a0);
+        unpack(l1, h1, a1);
+        unpack(l2, h2, a2);
+        unpack(l3, h3, a3);
+
+        mul_lo   (y0, l0, M);
+        mul_lo   (y1, l1, M);
+        mul_lo   (y2, l2, M);
+        mul_lo   (y3, l3, M);
+
+        mad_wide(a0, y0, MOD, a0);
+        mad_wide(a1, y1, MOD, a1);
+        mad_wide(a2, y2, MOD, a2);
+        mad_wide(a3, y3, MOD, a3);
+
+        unpack(l0, x0, a0);
+        unpack(l1, x1, a1);
+        unpack(l2, x2, a2);
+        unpack(l3, x3, a3);
+
+        // Add the zero-value after Montgomery reduction
+
+        add(x0, x0, zero.val);
+        x0 = x0 >= MOD ? x0-MOD : x0;
+
+        // Final_sub()
+
+        x1 = x1 >= MOD ? x1-MOD : x1;
+        x2 = x2 >= MOD ? x2-MOD : x2;
+        x3 = x3 >= MOD ? x3-MOD : x3;
+        x0 = x0 >= MOD ? x0-MOD : x0;
+
+        bb31_extension_t retval;
+        retval.value[0].val = x0;
+        retval.value[1].val = x1;
+        retval.value[2].val = x2;
+        retval.value[3].val = x3;
+        return retval;
+    }
 };

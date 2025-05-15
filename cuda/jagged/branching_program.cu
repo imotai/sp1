@@ -177,9 +177,15 @@ __global__ void interpolateAndObserve(
 
     sampled_value[0] = alpha;
 
-    results[0] = coefficients[0] + coefficients[1] * alpha + coefficients[2] * alpha * alpha;
-    }
+    // results[0] = coefficients[0] + coefficients[1] * alpha + coefficients[2] * alpha * alpha;
 
+    EF t(coefficients[2]);
+    t *= alpha;
+    t += coefficients[1];
+    t *= alpha;
+    t += coefficients[0];
+    results[0] = t;
+    }
 }
 
 template<typename F, typename EF>
@@ -192,14 +198,61 @@ __device__ void interpolateQuadratic(
     EF y_2,
     EF coefficients[3])
 {
-    // Compute the coefficients of the quadratic polynomial.
+    /* Compute the coefficients of the quadratic polynomial.
+
     EF coeff_0 = y_0/((x_0-x_1)*(x_0-x_2));
     EF coeff_1 = y_1/((x_1-x_0)*(x_1-x_2));
     EF coeff_2 = y_2/((x_2-x_0)*(x_2-x_1));
-        // Compute the value of the polynomial at x.
+    */
+
+    F x0102 = (x_0-x_1)*(x_0-x_2);
+    F x1012 = (x_1-x_0)*(x_1-x_2);
+    F x2021 = (x_2-x_0)*(x_2-x_1);
+    F x0102x1012 = x0102 * x1012;
+    F denom = x0102x1012 * x2021;
+    F inv = denom.reciprocal();
+
+    EF coeff_0 = y_0 * inv * x1012 * x2021;
+    EF coeff_1 = y_1 * inv * x0102 * x2021;
+    EF coeff_2 = y_2 * inv * x0102x1012;
+
+    /* Compute the value of the polynomial at x.
+
+    // 3 F+F
+    // 4 EF+EF
+    // 9 EF*F
     coefficients[2] =coeff_0+ coeff_1 + coeff_2;
     coefficients[1] = -(coeff_0 * (x_1 + x_2) + coeff_1 * (x_0 + x_2) + coeff_2 * (x_0 + x_1));
     coefficients[0] = coeff_0 * x_1 * x_2 + coeff_1 * x_0 * x_2 + coeff_2 * x_0 * x_1;
+    */
+
+    // 2 F+F
+    // 6 EF+EF
+    // 7 EF*F
+    EF
+        t0, t1, t2,
+        c0c1 = coeff_0 + coeff_1,       // EF+EF
+        c0x1 = coeff_0 * x_1,           // EF*F
+        c1x0 = coeff_1 * x_0,           // EF*F
+        c2x0 = coeff_2 * x_0,           // EF*F
+        c0c1x2 = c0c1 * x_2;            // EF*F
+
+    F x0x1 = x_0 + x_1;                 // F+F
+
+    t2 = c0c1 + coeff_2;                // F+F
+
+    t1  = coeff_2 * x0x1;               // EF*F
+    t1 += c0x1;                         // EF+EF
+    t1 += c1x0;                         // EF+EF
+    t1 += c0c1x2;                       // EF+EF
+
+    t0 = c0x1 + c1x0;                   // EF+EF
+    t0 *= x_2;                          // EF*F
+    t0 += c2x0 * x_1;                   // EF + EF*F
+
+    coefficients[2] = t2;
+    coefficients[1] = -t1;
+    coefficients[0] = t0;
 }
 
 
@@ -225,7 +278,16 @@ __global__ void fixLastVariable(
             return;
         }
         F value = merged_prefix_sums[ column_idx * merged_prefix_sum_dim + merged_prefix_sum_dim - 1 - round_num];
-        EF new_value = alpha * EF(value) + (EF::one() - alpha) * (EF::one() - EF(value));
+
+        // EF new_value = alpha * EF(value) + (EF::one() - alpha) * (EF::one() - EF(value));
+
+        EF v(value);
+        EF new_value = alpha * v;
+        new_value += new_value;
+        new_value -= alpha;
+        new_value -= v;
+        new_value += EF::one();
+
         intermediate_eq_full_evals[column_idx] *= new_value;
     }
 }
