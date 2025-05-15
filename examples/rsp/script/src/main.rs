@@ -1,9 +1,20 @@
+// use sp1_sdk::{include_elf, utils, ProverClient, SP1Stdin};
+use sp1_core_executor::{RetainedEventsPreset, SP1CoreOpts, SP1Context, Executor, Program};
+use sp1_prover::{
+    local::{LocalProver, LocalProverOpts},
+    components::CpuSP1ProverComponents,
+    SP1ProverBuilder,
+};
+use sp1_core_machine::io::SP1Stdin;
+use sp1_build::include_elf;
+use std::sync::Arc;
+use sp1_primitives::io::SP1PublicValues;
+use sp1_core_machine::utils::setup_logger;
+
 use alloy_primitives::B256;
 use clap::Parser;
 use rsp_client_executor::{io::ClientExecutorInput, CHAIN_ID_ETH_MAINNET};
 use std::path::PathBuf;
-
-use sp1_prover::{components::CpuSP1ProverComponents, SP1ProverBuilder};
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("rsp-program");
@@ -25,21 +36,29 @@ fn load_input_from_cache(chain_id: u64, block_number: u64) -> ClientExecutorInpu
 
 #[tokio::main]
 async fn main() {
-    utils::setup_logger();
-    let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
-    let opts = LocalProverOpts {
-        core_opts: SP1CoreOpts {
-            retained_events_presets: [RetainedEventsPreset::Sha256].into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let prover = Arc::new(LocalProver::new(sp1_prover, opts));
+    setup_logger();
+    // Load the input from the cache.
+    let client_input = load_input_from_cache(CHAIN_ID_ETH_MAINNET, 21740164);
+    let mut stdin = SP1Stdin::default();
+    let buffer = bincode::serialize(&client_input).unwrap();
+    stdin.write_vec(buffer);
 
-    let (pk, program, vk) = prover
-        .prover()
-        .core()
-        .setup(ELF)
-        .instrument(tracing::debug_span!("setup").or_current())
-        .await;
+    // let (public_values, committed_value_digest, report) = prover.clone().execute(ELF, &stdin, SP1Context::default()).unwrap();
+    let opts = SP1CoreOpts::default();
+    let program = Arc::new(Program::from(ELF).unwrap());
+    let mut runtime = Executor::with_context(program, opts, SP1Context::default());
+    runtime.maybe_setup_profiler(ELF);
+
+    runtime.write_vecs(&stdin.buffer);
+    let now = std::time::Instant::now();
+    runtime.run_fast().unwrap();
+
+    println!("total elapsed: {:?}", now.elapsed());
+
+    println!("Full execution report:\n{:?}", runtime.report);
+
+    let mut public_values = SP1PublicValues::from(&runtime.state.public_values_stream); 
+
+    let block_hash = public_values.read::<B256>();
+    println!("success: block_hash={block_hash}");
 }

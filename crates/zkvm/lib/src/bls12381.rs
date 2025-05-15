@@ -6,11 +6,11 @@ use crate::{
 };
 
 /// The number of limbs in [Bls12381AffinePoint].
-pub const N: usize = 24;
+pub const N: usize = 12;
 
 /// A point on the BLS12-381 curve.
 #[derive(Copy, Clone)]
-#[repr(align(4))]
+#[repr(align(8))]
 pub struct Bls12381Point(pub WeierstrassPoint<N>);
 
 impl WeierstrassAffinePoint<N> for Bls12381Point {
@@ -24,11 +24,19 @@ impl WeierstrassAffinePoint<N> for Bls12381Point {
 }
 
 impl AffinePoint<N> for Bls12381Point {
-    const GENERATOR: [u32; N] = [
-        3676489403, 4214943754, 4185529071, 1817569343, 387689560, 2706258495, 2541009157,
-        3278408783, 1336519695, 647324556, 832034708, 401724327, 1187375073, 212476713, 2726857444,
-        3493644100, 738505709, 14358731, 3587181302, 4243972245, 1948093156, 2694721773,
-        3819610353, 146011265,
+    const GENERATOR: [u64; N] = [
+        18103045581585958587,
+        7806400890582735599,
+        11623291730934869080,
+        14080658508445169925,
+        2780237799254240271,
+        1725392847304644500,
+        912580534683953121,
+        15005087156090211044,
+        61670280795567085,
+        18227722000993880822,
+        11573741888802228964,
+        627113611842199793,
     ];
 
     /// The generator was taken from "py_ecc" python library by the Ethereum Foundation:
@@ -37,7 +45,7 @@ impl AffinePoint<N> for Bls12381Point {
     #[allow(deprecated)]
     const GENERATOR_T: Self = Self(WeierstrassPoint::Affine(Self::GENERATOR));
 
-    fn new(limbs: [u32; N]) -> Self {
+    fn new(limbs: [u64; N]) -> Self {
         Self(WeierstrassPoint::Affine(limbs))
     }
 
@@ -49,14 +57,14 @@ impl AffinePoint<N> for Bls12381Point {
         self.is_infinity()
     }
 
-    fn limbs_ref(&self) -> &[u32; N] {
+    fn limbs_ref(&self) -> &[u64; N] {
         match &self.0 {
             WeierstrassPoint::Infinity => panic!("Infinity point has no limbs"),
             WeierstrassPoint::Affine(limbs) => limbs,
         }
     }
 
-    fn limbs_mut(&mut self) -> &mut [u32; N] {
+    fn limbs_mut(&mut self) -> &mut [u64; N] {
         match &mut self.0 {
             WeierstrassPoint::Infinity => panic!("Infinity point has no limbs"),
             WeierstrassPoint::Affine(limbs) => limbs,

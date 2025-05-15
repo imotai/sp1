@@ -1563,7 +1563,7 @@ impl<'a> Executor<'a> {
             Opcode::SRL => b >> (c & 0x3f),
             Opcode::SRA => ((b as i64) >> (c & 0x3f)) as u64,
             Opcode::SLT => {
-                if (b as i32) < (c as i32) {
+                if (b as i64) < (c as i64) {
                     1
                 } else {
                     0
