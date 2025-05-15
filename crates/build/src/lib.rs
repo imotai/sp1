@@ -2,6 +2,8 @@ mod build;
 mod command;
 mod utils;
 
+use std::env;
+
 use build::build_program_internal;
 pub use build::{execute_build_program, generate_elf_paths};
 pub use command::TOOLCHAIN_NAME;
@@ -235,11 +237,11 @@ pub fn build_program_with_args(path: &str, args: BuildArgs) {
 #[macro_export]
 macro_rules! include_elf {
     ($arg:tt) => {{
-        #[cfg(feature = "64bit")]
+        #[cfg(all(feature = "64bit"))]
         {
             $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_64_", $arg))))
         }
-        #[cfg(not(feature = "64bit"))]
+        #[cfg(not(all(feature = "64bit")))]
         {
             $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
         }

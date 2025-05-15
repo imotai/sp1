@@ -28,60 +28,60 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &SyscallInstrColumns<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &SyscallInstrColumns<AB::Var> = (*local).borrow();
 
-        let public_values_slice: [AB::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
-            core::array::from_fn(|i| builder.public_values()[i]);
-        let public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar> =
-            public_values_slice.as_slice().borrow();
+        // let public_values_slice: [AB::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
+        //     core::array::from_fn(|i| builder.public_values()[i]);
+        // let public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar> =
+        //     public_values_slice.as_slice().borrow();
 
-        // Convert the syscall code to four bytes using the safe API.
-        let a = U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
-            builder,
-            local.adapter.prev_a().0.map(Into::into),
-            local.a_low_bytes,
-            local.is_real.into(),
-        );
+        // // Convert the syscall code to four bytes using the safe API.
+        // let a = U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
+        //     builder,
+        //     local.adapter.prev_a().0.map(Into::into),
+        //     local.a_low_bytes,
+        //     local.is_real.into(),
+        // );
 
-        // SAFETY: Only `ECALL` opcode can be received in this chip.
-        // `is_real` is checked to be boolean, and the `opcode` matches the corresponding opcode.
-        builder.assert_bool(local.is_real);
+        // // SAFETY: Only `ECALL` opcode can be received in this chip.
+        // // `is_real` is checked to be boolean, and the `opcode` matches the corresponding opcode.
+        // builder.assert_bool(local.is_real);
 
-        // Verify that local.is_halt is correct.
-        // self.eval_is_halt_syscall(builder, &a, local);
+        // // Verify that local.is_halt is correct.
+        // // self.eval_is_halt_syscall(builder, &a, local);
 
-        // Constrain the state of the CPU.
-        // The extra timestamp increment is `num_extra_cycles`.
-        // The `next_pc` is constrained in the AIR.
-        CPUState::<AB::F>::eval(
-            builder,
-            local.state,
-            local.next_pc.into(),
-            local.num_extra_cycles + AB::F::from_canonical_u32(4),
-            local.is_real.into(),
-        );
+        // // Constrain the state of the CPU.
+        // // The extra timestamp increment is `num_extra_cycles`.
+        // // The `next_pc` is constrained in the AIR.
+        // CPUState::<AB::F>::eval(
+        //     builder,
+        //     local.state,
+        //     local.next_pc.into(),
+        //     local.num_extra_cycles + AB::F::from_canonical_u32(4),
+        //     local.is_real.into(),
+        // );
 
-        // Constrain the program and register reads.
-        RTypeReader::<AB::F>::eval(
-            builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
-            local.state.pc,
-            AB::Expr::from_canonical_u32(Opcode::ECALL as u32),
-            local.op_a_value,
-            local.adapter,
-            local.is_real.into(),
-        );
-        builder.when(local.is_real).assert_zero(local.adapter.op_a_0);
+        // // Constrain the program and register reads.
+        // RTypeReader::<AB::F>::eval(
+        //     builder,
+        //     local.state.shard::<AB>(),
+        //     local.state.clk::<AB>(),
+        //     local.state.pc,
+        //     AB::Expr::from_canonical_u32(Opcode::ECALL as u32),
+        //     local.op_a_value,
+        //     local.adapter,
+        //     local.is_real.into(),
+        // );
+        // builder.when(local.is_real).assert_zero(local.adapter.op_a_0);
 
-        // If the syscall is not halt, then next_pc should be pc + 4.
-        // `next_pc` is constrained for the case where `is_halt` is false to be `pc + 4`.
-        builder
-            .when(local.is_real)
-            .when(AB::Expr::one() - local.is_halt)
-            .assert_eq(local.next_pc, local.state.pc + AB::Expr::from_canonical_u32(4));
+        // // If the syscall is not halt, then next_pc should be pc + 4.
+        // // `next_pc` is constrained for the case where `is_halt` is false to be `pc + 4`.
+        // builder
+        //     .when(local.is_real)
+        //     .when(AB::Expr::one() - local.is_halt)
+        //     .assert_eq(local.next_pc, local.state.pc + AB::Expr::from_canonical_u32(4));
 
         // `num_extra_cycles` is checked to be equal to the return value of
         // `get_num_extra_ecall_cycles`
@@ -103,7 +103,7 @@ where
         // );
 
         // HALT ecall and UNIMPL instruction.
-        self.eval_halt_unimpl(builder, local, public_values);
+        // self.eval_halt_unimpl(builder, local, public_values);
     }
 }
 

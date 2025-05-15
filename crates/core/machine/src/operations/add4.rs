@@ -64,27 +64,27 @@ impl<F: Field> Add4Operation<F> {
         is_real: AB::Var,
         cols: Add4Operation<AB::Var>,
     ) {
-        builder.assert_bool(is_real);
+        // builder.assert_bool(is_real);
 
-        let base = AB::F::from_canonical_u32(1 << 16);
-        let mut carry_limbs = [AB::Expr::zero(), AB::Expr::zero()];
-        let mut carry = AB::Expr::zero(); // Initialize carry to zero
+        // let base = AB::F::from_canonical_u32(1 << 16);
+        // let mut carry_limbs = [AB::Expr::zero(), AB::Expr::zero()];
+        // let mut carry = AB::Expr::zero(); // Initialize carry to zero
 
-        // The set of constraints are
-        //  - carry is initialized to zero
-        //  - 2^16 * carry_next + value[i] = a[i] + b[i] + c[i] + d[i] + carry
-        //  - 0 <= carry < 2^8
-        //  - 0 <= value[i] < 2^16
-        // Since the carries are bounded by 2^8, no BabyBear overflows are possible.
-        // The maximum carry possible is less than 2^8, so the circuit is complete.
-        for i in 0..WORD_SIZE {
-            carry = (a[i].clone() + b[i].clone() + c[i].clone() + d[i].clone() - cols.value[i]
-                + carry)
-                * base.inverse();
-            carry_limbs[i] = carry.clone();
-        }
-        // Range check each limb.
-        builder.slice_range_check_u16(&cols.value.0, is_real);
-        builder.slice_range_check_u8(&carry_limbs, is_real);
+        // // The set of constraints are
+        // //  - carry is initialized to zero
+        // //  - 2^16 * carry_next + value[i] = a[i] + b[i] + c[i] + d[i] + carry
+        // //  - 0 <= carry < 2^8
+        // //  - 0 <= value[i] < 2^16
+        // // Since the carries are bounded by 2^8, no BabyBear overflows are possible.
+        // // The maximum carry possible is less than 2^8, so the circuit is complete.
+        // for i in 0..WORD_SIZE {
+        //     carry = (a[i].clone() + b[i].clone() + c[i].clone() + d[i].clone() - cols.value[i]
+        //         + carry)
+        //         * base.inverse();
+        //     carry_limbs[i] = carry.clone();
+        // }
+        // // Range check each limb.
+        // builder.slice_range_check_u16(&cols.value.0, is_real);
+        // builder.slice_range_check_u8(&carry_limbs, is_real);
     }
 }

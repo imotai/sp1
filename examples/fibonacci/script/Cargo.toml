@@ -9,9 +9,14 @@ publish = false
 hex = "0.4.3"
 sp1-sdk = { workspace = true }
 tokio = { workspace = true }
+sp1-prover = { workspace = true }
+sp1-core-executor = { workspace = true }
+sp1-build = { workspace = true, features = ["64bit"] }
+sp1-core-machine = { workspace = true }
+sp1-primitives = { workspace = true }
 
 [build-dependencies]
-sp1-build = { workspace = true }
+sp1-build = { workspace = true, features = ["64bit"] }
 
 [[bin]]
 name = "plonk_bn254"

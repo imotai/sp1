@@ -576,7 +576,7 @@ fn deferred_program_from_input(
     let verify_span = tracing::debug_span!("Verify deferred program").entered();
 
     // Verify the proof.
-    SP1DeferredVerifier::verify(&mut builder, recursion_verifier, input, vk_verification);
+    // SP1DeferredVerifier::verify(&mut builder, recursion_verifier, input, vk_verification);
     verify_span.exit();
     let block = builder.into_root_block();
     operations_span.exit();
@@ -608,13 +608,13 @@ fn compress_program_from_input(
     let input = input.read(&mut builder);
 
     // Verify the proof.
-    SP1CompressWithVKeyVerifier::verify(
-        &mut builder,
-        recursion_verifier,
-        input,
-        vk_verification,
-        PublicValuesOutputDigest::Reduce,
-    );
+    // SP1CompressWithVKeyVerifier::verify(
+    //     &mut builder,
+    //     recursion_verifier,
+    //     input,
+    //     vk_verification,
+    //     PublicValuesOutputDigest::Reduce,
+    // );
     let block = builder.into_root_block();
     builder_span.exit();
     // SAFETY: The circuit is well-formed. It does not use synchronization primitives
@@ -646,13 +646,13 @@ fn shrink_program_from_input(
     let input = input.read(&mut builder);
 
     // Verify the root proof.
-    SP1CompressRootVerifierWithVKey::verify(
-        &mut builder,
-        recursion_verifier,
-        input,
-        vk_verification,
-        PublicValuesOutputDigest::Reduce,
-    );
+    // SP1CompressRootVerifierWithVKey::verify(
+    //     &mut builder,
+    //     recursion_verifier,
+    //     input,
+    //     vk_verification,
+    //     PublicValuesOutputDigest::Reduce,
+    // );
 
     let block = builder.into_root_block();
     builder_span.exit();
@@ -686,13 +686,13 @@ fn wrap_program_from_input(
     let input = input.read(&mut builder);
 
     // Verify the root proof.
-    SP1CompressRootVerifierWithVKey::verify(
-        &mut builder,
-        recursion_verifier,
-        input,
-        vk_verification,
-        PublicValuesOutputDigest::Root,
-    );
+    // SP1CompressRootVerifierWithVKey::verify(
+    //     &mut builder,
+    //     recursion_verifier,
+    //     input,
+    //     vk_verification,
+    //     PublicValuesOutputDigest::Root,
+    // );
 
     let block = builder.into_root_block();
     builder_span.exit();

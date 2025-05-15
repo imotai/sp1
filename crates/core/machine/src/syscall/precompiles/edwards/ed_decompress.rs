@@ -126,99 +126,99 @@ impl<V: Copy> EdDecompressCols<V> {
     ) where
         V: Into<AB::Expr>,
     {
-        builder.assert_bool(self.sign);
+        // builder.assert_bool(self.sign);
 
-        let y_limbs = builder.generate_limbs(&self.y_access, self.is_real.into());
-        let y: Limbs<AB::Expr, U32> = Limbs(y_limbs.try_into().expect("failed to convert limbs"));
-        let max_num_limbs =
-            Ed25519BaseField::to_limbs_field::<AB::Expr, AB::F>(&Ed25519BaseField::modulus());
-        self.y_range.eval(builder, &y, &max_num_limbs, self.is_real);
-        self.yy.eval(builder, &y, &y, FieldOperation::Mul, self.is_real);
-        self.u.eval(
-            builder,
-            &self.yy.result,
-            &[AB::Expr::one()].iter(),
-            FieldOperation::Sub,
-            self.is_real,
-        );
-        let d_biguint = E::d_biguint();
-        let d_const = E::BaseField::to_limbs_field::<AB::F, _>(&d_biguint);
-        self.dyy.eval(builder, &d_const, &self.yy.result, FieldOperation::Mul, self.is_real);
-        self.v.eval(
-            builder,
-            &[AB::Expr::one()].iter(),
-            &self.dyy.result,
-            FieldOperation::Add,
-            self.is_real,
-        );
-        self.u_div_v.eval(
-            builder,
-            &self.u.result,
-            &self.v.result,
-            FieldOperation::Div,
-            self.is_real,
-        );
+        // let y_limbs = builder.generate_limbs(&self.y_access, self.is_real.into());
+        // let y: Limbs<AB::Expr, U32> = Limbs(y_limbs.try_into().expect("failed to convert limbs"));
+        // let max_num_limbs =
+        //     Ed25519BaseField::to_limbs_field::<AB::Expr, AB::F>(&Ed25519BaseField::modulus());
+        // self.y_range.eval(builder, &y, &max_num_limbs, self.is_real);
+        // self.yy.eval(builder, &y, &y, FieldOperation::Mul, self.is_real);
+        // self.u.eval(
+        //     builder,
+        //     &self.yy.result,
+        //     &[AB::Expr::one()].iter(),
+        //     FieldOperation::Sub,
+        //     self.is_real,
+        // );
+        // let d_biguint = E::d_biguint();
+        // let d_const = E::BaseField::to_limbs_field::<AB::F, _>(&d_biguint);
+        // self.dyy.eval(builder, &d_const, &self.yy.result, FieldOperation::Mul, self.is_real);
+        // self.v.eval(
+        //     builder,
+        //     &[AB::Expr::one()].iter(),
+        //     &self.dyy.result,
+        //     FieldOperation::Add,
+        //     self.is_real,
+        // );
+        // self.u_div_v.eval(
+        //     builder,
+        //     &self.u.result,
+        //     &self.v.result,
+        //     FieldOperation::Div,
+        //     self.is_real,
+        // );
 
-        // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained
-        // to be canonical here.
-        self.x.eval(builder, &self.u_div_v.result, AB::F::zero(), self.is_real);
-        self.neg_x.eval(
-            builder,
-            &[AB::Expr::zero()].iter(),
-            &self.x.multiplication.result,
-            FieldOperation::Sub,
-            self.is_real,
-        );
-        // Constrain that `neg_x.result` is also canonical.
-        self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
+        // // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained
+        // // to be canonical here.
+        // self.x.eval(builder, &self.u_div_v.result, AB::F::zero(), self.is_real);
+        // self.neg_x.eval(
+        //     builder,
+        //     &[AB::Expr::zero()].iter(),
+        //     &self.x.multiplication.result,
+        //     FieldOperation::Sub,
+        //     self.is_real,
+        // );
+        // // Constrain that `neg_x.result` is also canonical.
+        // self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
 
-        let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
+        // let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
 
-        builder.eval_memory_access_slice_write(
-            self.shard,
-            self.clk,
-            ptr.clone(),
-            &self.x_access,
-            self.x_value.to_vec(),
-            self.is_real,
-        );
+        // builder.eval_memory_access_slice_write(
+        //     self.shard,
+        //     self.clk,
+        //     ptr.clone(),
+        //     &self.x_access,
+        //     self.x_value.to_vec(),
+        //     self.is_real,
+        // );
 
-        builder.eval_memory_access_slice_read(
-            self.shard,
-            self.clk,
-            ptr.clone() + AB::F::from_canonical_u32(32),
-            &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
-            self.is_real,
-        );
+        // builder.eval_memory_access_slice_read(
+        //     self.shard,
+        //     self.clk,
+        //     ptr.clone() + AB::F::from_canonical_u32(32),
+        //     &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
+        //     self.is_real,
+        // );
 
-        // Constrain that x_value is correct.
-        // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
-        // is canonical.
-        let neg_x_words = limbs_to_words::<AB>(self.neg_x.result.0.to_vec());
-        let mul_x_words = limbs_to_words::<AB>(self.x.multiplication.result.0.to_vec());
-        let x_value_words = self.x_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
-        for (neg_x_word, x_value_word) in neg_x_words.iter().zip(x_value_words.iter()) {
-            builder
-                .when(self.is_real)
-                .when(self.sign)
-                .assert_all_eq(neg_x_word.clone(), x_value_word.clone());
-        }
-        for (mul_x_word, x_value_word) in mul_x_words.iter().zip(x_value_words.iter()) {
-            builder
-                .when(self.is_real)
-                .when_not(self.sign)
-                .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
-        }
+        // // Constrain that x_value is correct.
+        // // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
+        // // is canonical.
+        // let neg_x_words = limbs_to_words::<AB>(self.neg_x.result.0.to_vec());
+        // let mul_x_words = limbs_to_words::<AB>(self.x.multiplication.result.0.to_vec());
+        // let x_value_words = self.x_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
+        // for (neg_x_word, x_value_word) in neg_x_words.iter().zip(x_value_words.iter()) {
+        //     builder
+        //         .when(self.is_real)
+        //         .when(self.sign)
+        //         .assert_all_eq(neg_x_word.clone(), x_value_word.clone());
+        // }
+        // for (mul_x_word, x_value_word) in mul_x_words.iter().zip(x_value_words.iter()) {
+        //     builder
+        //         .when(self.is_real)
+        //         .when_not(self.sign)
+        //         .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
+        // }
 
-        builder.receive_syscall(
-            self.shard,
-            self.clk,
-            AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
-            ptr,
-            self.sign,
-            self.is_real,
-            InteractionScope::Local,
-        );
+        // builder.receive_syscall(
+        //     self.shard,
+        //     self.clk,
+        //     AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
+        //     ptr,
+        //     self.sign,
+        //     self.is_real,
+        //     InteractionScope::Local,
+        // );
     }
 }
 

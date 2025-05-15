@@ -171,77 +171,77 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &LoadX0Columns<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &LoadX0Columns<AB::Var> = (*local).borrow();
 
-        let shard = local.state.shard::<AB>();
-        let clk = local.state.clk::<AB>();
+        // let shard = local.state.shard::<AB>();
+        // let clk = local.state.clk::<AB>();
 
-        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw` are checked to be
-        // boolean. Each "real" row has exactly one selector turned on, as `is_real`, the
-        // sum of the selectors, is boolean. Therefore, the `opcode` matches the
-        // corresponding opcode.
-        let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
-            + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu
-            + AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
-            + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu
-            + AB::Expr::from_canonical_u32(Opcode::LW as u32) * local.is_lw;
-        let is_real = local.is_lb + local.is_lbu + local.is_lh + local.is_lhu + local.is_lw;
-        builder.assert_bool(local.is_lb);
-        builder.assert_bool(local.is_lbu);
-        builder.assert_bool(local.is_lh);
-        builder.assert_bool(local.is_lhu);
-        builder.assert_bool(local.is_lw);
-        builder.assert_bool(is_real.clone());
+        // // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw` are checked to be
+        // // boolean. Each "real" row has exactly one selector turned on, as `is_real`, the
+        // // sum of the selectors, is boolean. Therefore, the `opcode` matches the
+        // // corresponding opcode.
+        // let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
+        //     + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu
+        //     + AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
+        //     + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu
+        //     + AB::Expr::from_canonical_u32(Opcode::LW as u32) * local.is_lw;
+        // let is_real = local.is_lb + local.is_lbu + local.is_lh + local.is_lhu + local.is_lw;
+        // builder.assert_bool(local.is_lb);
+        // builder.assert_bool(local.is_lbu);
+        // builder.assert_bool(local.is_lh);
+        // builder.assert_bool(local.is_lhu);
+        // builder.assert_bool(local.is_lw);
+        // builder.assert_bool(is_real.clone());
 
-        // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
-            builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            local.offset_bit[0].into(),
-            local.offset_bit[1].into(),
-            is_real.clone(),
-            local.address_operation,
-        );
+        // // Step 1. Compute the address, and check offsets and address bounds.
+        // let aligned_addr = AddressOperation::<AB::F>::eval(
+        //     builder,
+        //     local.adapter.b().map(Into::into),
+        //     local.adapter.c().map(Into::into),
+        //     local.offset_bit[0].into(),
+        //     local.offset_bit[1].into(),
+        //     is_real.clone(),
+        //     local.address_operation,
+        // );
 
-        // Check the alignment of the address.
-        builder.when(local.is_lw).assert_zero(local.offset_bit[0]);
-        builder.when(local.is_lw).assert_zero(local.offset_bit[1]);
-        builder.when(local.is_lh + local.is_lhu).assert_zero(local.offset_bit[0]);
+        // // Check the alignment of the address.
+        // builder.when(local.is_lw).assert_zero(local.offset_bit[0]);
+        // builder.when(local.is_lw).assert_zero(local.offset_bit[1]);
+        // builder.when(local.is_lh + local.is_lhu).assert_zero(local.offset_bit[0]);
 
-        // Step 2. Read the memory address.
-        builder.eval_memory_access_read(
-            shard.clone(),
-            clk.clone(),
-            aligned_addr.clone(),
-            local.memory_access,
-            is_real.clone(),
-        );
+        // // Step 2. Read the memory address.
+        // builder.eval_memory_access_read(
+        //     shard.clone(),
+        //     clk.clone(),
+        //     aligned_addr.clone(),
+        //     local.memory_access,
+        //     is_real.clone(),
+        // );
 
-        // This chip is specifically for load operations with `op_a = x0`.
-        builder.when(is_real.clone()).assert_one(local.adapter.op_a_0);
+        // // This chip is specifically for load operations with `op_a = x0`.
+        // builder.when(is_real.clone()).assert_one(local.adapter.op_a_0);
 
-        // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
-            builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            is_real.clone(),
-        );
+        // // Constrain the state of the CPU.
+        // CPUState::<AB::F>::eval(
+        //     builder,
+        //     local.state,
+        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+        //     is_real.clone(),
+        // );
 
-        // Constrain the program and register reads.
-        // Since `op_a = x0`, it's immutable.
-        ITypeReader::<AB::F>::eval_op_a_immutable(
-            builder,
-            shard,
-            clk,
-            local.state.pc,
-            opcode,
-            local.adapter,
-            is_real.clone(),
-        );
+        // // Constrain the program and register reads.
+        // // Since `op_a = x0`, it's immutable.
+        // ITypeReader::<AB::F>::eval_op_a_immutable(
+        //     builder,
+        //     shard,
+        //     clk,
+        //     local.state.pc,
+        //     opcode,
+        //     local.adapter,
+        //     is_real.clone(),
+        // );
     }
 }

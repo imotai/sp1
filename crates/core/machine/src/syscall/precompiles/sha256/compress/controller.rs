@@ -75,13 +75,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
             let cols: &mut ShaCompressControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-<<<<<<< HEAD
             cols.w_ptr.populate(&mut blu_events, event.w_ptr, 256);
             cols.h_ptr.populate(&mut blu_events, event.h_ptr, 32);
-=======
-            cols.w_ptr = F::from_canonical_u64(event.w_ptr);
-            cols.h_ptr = F::from_canonical_u64(event.h_ptr);
->>>>>>> 59561be38 (rsp test + machine compiles)
             cols.is_real = F::one();
             for i in 0..8 {
                 let prev_value = event.h[i];

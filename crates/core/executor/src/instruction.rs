@@ -66,6 +66,21 @@ impl Instruction {
                 | Opcode::DIVU
                 | Opcode::REM
                 | Opcode::REMU
+                // RISCV-64
+                | Opcode::ADDW
+                | Opcode::SUBW
+                | Opcode::MULW
+                | Opcode::DIVW
+                | Opcode::DIVUW
+                | Opcode::REMW
+                | Opcode::REMUW
+                | Opcode::ADDIW
+                | Opcode::SLLW
+                | Opcode::SRLW
+                | Opcode::SRAW
+                | Opcode::SLLIW
+                | Opcode::SRLIW
+                | Opcode::SRAIW
         )
     }
 
@@ -80,14 +95,24 @@ impl Instruction {
     #[must_use]
     #[inline]
     pub const fn is_memory_load_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::LB | Opcode::LH | Opcode::LW | Opcode::LBU | Opcode::LHU)
+        matches!(
+            self.opcode,
+            Opcode::LB
+                | Opcode::LH
+                | Opcode::LW
+                | Opcode::LBU
+                | Opcode::LHU
+                // RISCV-64
+                | Opcode::LWU
+                | Opcode::LD
+        )
     }
 
     /// Returns if the instruction is a memory store instruction.
     #[must_use]
     #[inline]
     pub const fn is_memory_store_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::SB | Opcode::SH | Opcode::SW)
+        matches!(self.opcode, Opcode::SB | Opcode::SH | Opcode::SW | /* RISCV-64 */ Opcode::SD)
     }
 
     /// Returns if the instruction is a branch instruction.

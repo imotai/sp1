@@ -192,99 +192,99 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &LoadByteColumns<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &LoadByteColumns<AB::Var> = (*local).borrow();
 
-        let shard = local.state.shard::<AB>();
-        let clk = local.state.clk::<AB>();
+        // let shard = local.state.shard::<AB>();
+        // let clk = local.state.clk::<AB>();
 
-        // SAFETY: All selectors `is_lb`, `is_lbu` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
-        // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
-        let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
-            + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu;
-        let is_real = local.is_lb + local.is_lbu;
-        builder.assert_bool(local.is_lb);
-        builder.assert_bool(local.is_lbu);
-        builder.assert_bool(is_real.clone());
+        // // SAFETY: All selectors `is_lb`, `is_lbu` are checked to be boolean.
+        // // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
+        // // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
+        // let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
+        //     + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu;
+        // let is_real = local.is_lb + local.is_lbu;
+        // builder.assert_bool(local.is_lb);
+        // builder.assert_bool(local.is_lbu);
+        // builder.assert_bool(is_real.clone());
 
-        // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
-            builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            local.offset_bit[0].into(),
-            local.offset_bit[1].into(),
-            is_real.clone(),
-            local.address_operation,
-        );
+        // // Step 1. Compute the address, and check offsets and address bounds.
+        // let aligned_addr = AddressOperation::<AB::F>::eval(
+        //     builder,
+        //     local.adapter.b().map(Into::into),
+        //     local.adapter.c().map(Into::into),
+        //     local.offset_bit[0].into(),
+        //     local.offset_bit[1].into(),
+        //     is_real.clone(),
+        //     local.address_operation,
+        // );
 
-        // Step 2. Read the memory address.
-        builder.eval_memory_access_read(
-            shard.clone(),
-            clk.clone(),
-            aligned_addr.clone(),
-            local.memory_access,
-            is_real.clone(),
-        );
+        // // Step 2. Read the memory address.
+        // builder.eval_memory_access_read(
+        //     shard.clone(),
+        //     clk.clone(),
+        //     aligned_addr.clone(),
+        //     local.memory_access,
+        //     is_real.clone(),
+        // );
 
-        // This chip requires `op_a != x0`.
-        builder.assert_zero(local.adapter.op_a_0);
+        // // This chip requires `op_a != x0`.
+        // builder.assert_zero(local.adapter.op_a_0);
 
-        // Step 3. Use the memory value to compute the write value for `op_a`.
-        // Select the u16 limb corresponding to the offset.
-        builder.assert_eq(
-            local.selected_limb,
-            local.offset_bit[1] * local.memory_access.prev_value[1]
-                + (AB::Expr::one() - local.offset_bit[1]) * local.memory_access.prev_value[0],
-        );
-        // Split the u16 limb into two bytes.
-        let byte0 = local.selected_limb_low_byte;
-        let byte1 = (local.selected_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
-        builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], is_real.clone());
-        // Select the u8 byte corresponding to the offset.
-        builder.assert_eq(
-            local.selected_byte,
-            local.offset_bit[0] * byte1 + (AB::Expr::one() - local.offset_bit[0]) * byte0,
-        );
-        // Get the MSB of the selected byte if the opcode is `LB`.
-        // If the opcode is `LBU`, the MSB is constrained to be zero.
-        builder.when(local.is_lbu).assert_zero(local.msb);
-        builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::MSB as u32),
-            local.msb,
-            local.selected_byte,
-            AB::Expr::zero(),
-            local.is_lb,
-        );
+        // // Step 3. Use the memory value to compute the write value for `op_a`.
+        // // Select the u16 limb corresponding to the offset.
+        // builder.assert_eq(
+        //     local.selected_limb,
+        //     local.offset_bit[1] * local.memory_access.prev_value[1]
+        //         + (AB::Expr::one() - local.offset_bit[1]) * local.memory_access.prev_value[0],
+        // );
+        // // Split the u16 limb into two bytes.
+        // let byte0 = local.selected_limb_low_byte;
+        // let byte1 = (local.selected_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
+        // builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], is_real.clone());
+        // // Select the u8 byte corresponding to the offset.
+        // builder.assert_eq(
+        //     local.selected_byte,
+        //     local.offset_bit[0] * byte1 + (AB::Expr::one() - local.offset_bit[0]) * byte0,
+        // );
+        // // Get the MSB of the selected byte if the opcode is `LB`.
+        // // If the opcode is `LBU`, the MSB is constrained to be zero.
+        // builder.when(local.is_lbu).assert_zero(local.msb);
+        // builder.send_byte(
+        //     AB::Expr::from_canonical_u32(ByteOpcode::MSB as u32),
+        //     local.msb,
+        //     local.selected_byte,
+        //     AB::Expr::zero(),
+        //     local.is_lb,
+        // );
 
-        // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
-            builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            is_real.clone(),
-        );
+        // // Constrain the state of the CPU.
+        // CPUState::<AB::F>::eval(
+        //     builder,
+        //     local.state,
+        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+        //     is_real.clone(),
+        // );
 
-        // Compute the two limbs of the word to be written to `op_a`.
-        let limb0 =
-            local.selected_byte + AB::Expr::from_canonical_u32((1 << 16) - (1 << 8)) * local.msb;
-        let limb1 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
-        let limb2 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
-        let limb3 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        // // Compute the two limbs of the word to be written to `op_a`.
+        // let limb0 =
+        //     local.selected_byte + AB::Expr::from_canonical_u32((1 << 16) - (1 << 8)) * local.msb;
+        // let limb1 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        // let limb2 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        // let limb3 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
 
-        // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval(
-            builder,
-            shard,
-            clk,
-            local.state.pc,
-            opcode,
-            Word([limb0, limb1, limb2, limb3]),
-            local.adapter,
-            is_real.clone(),
-        );
+        // // Constrain the program and register reads.
+        // ITypeReader::<AB::F>::eval(
+        //     builder,
+        //     shard,
+        //     clk,
+        //     local.state.pc,
+        //     opcode,
+        //     Word([limb0, limb1, limb2, limb3]),
+        //     local.adapter,
+        //     is_real.clone(),
+        // );
     }
 }

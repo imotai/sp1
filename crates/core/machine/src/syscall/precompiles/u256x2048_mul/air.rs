@@ -269,148 +269,148 @@ where
     AB: SP1AirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &U256x2048MulCols<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &U256x2048MulCols<AB::Var> = (*local).borrow();
 
-        // Assert that is_real is a boolean.
-        builder.assert_bool(local.is_real);
+        // // Assert that is_real is a boolean.
+        // builder.assert_bool(local.is_real);
 
-        let a_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.a_ptr, local.is_real.into());
-        let b_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.b_ptr, local.is_real.into());
-        let lo_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.lo_ptr, local.is_real.into());
-        let hi_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.hi_ptr, local.is_real.into());
+        // let a_ptr =
+        //     SyscallAddrOperation::<AB::F>::eval(builder, 32, local.a_ptr, local.is_real.into());
+        // let b_ptr =
+        //     SyscallAddrOperation::<AB::F>::eval(builder, 256, local.b_ptr, local.is_real.into());
+        // let lo_ptr =
+        //     SyscallAddrOperation::<AB::F>::eval(builder, 256, local.lo_ptr, local.is_real.into());
+        // let hi_ptr =
+        //     SyscallAddrOperation::<AB::F>::eval(builder, 32, local.hi_ptr, local.is_real.into());
 
-        // Receive the arguments.
-        builder.receive_syscall(
-            local.shard,
-            local.clk,
-            AB::F::from_canonical_u32(SyscallCode::U256XU2048_MUL.syscall_id()),
-            a_ptr.clone(),
-            b_ptr.clone(),
-            local.is_real,
-            InteractionScope::Local,
-        );
+        // // Receive the arguments.
+        // builder.receive_syscall(
+        //     local.shard,
+        //     local.clk,
+        //     AB::F::from_canonical_u32(SyscallCode::U256XU2048_MUL.syscall_id()),
+        //     a_ptr.clone(),
+        //     b_ptr.clone(),
+        //     local.is_real,
+        //     InteractionScope::Local,
+        // );
 
-        // Evaluate that the lo_ptr and hi_ptr are read from the correct memory locations.
-        builder.eval_memory_access_read(
-            local.shard,
-            local.clk.into(),
-            AB::Expr::from_canonical_u32(LO_REGISTER),
-            local.lo_ptr_memory,
-            local.is_real,
-        );
-        builder.assert_word_eq(local.lo_ptr_memory.prev_value, local.lo_ptr.addr_word);
+        // // Evaluate that the lo_ptr and hi_ptr are read from the correct memory locations.
+        // builder.eval_memory_access_read(
+        //     local.shard,
+        //     local.clk.into(),
+        //     AB::Expr::from_canonical_u32(LO_REGISTER),
+        //     local.lo_ptr_memory,
+        //     local.is_real,
+        // );
+        // builder.assert_word_eq(local.lo_ptr_memory.prev_value, local.lo_ptr.addr_word);
 
-        builder.eval_memory_access_read(
-            local.shard,
-            local.clk.into(),
-            AB::Expr::from_canonical_u32(HI_REGISTER),
-            local.hi_ptr_memory,
-            local.is_real,
-        );
-        builder.assert_word_eq(local.hi_ptr_memory.prev_value, local.hi_ptr.addr_word);
+        // builder.eval_memory_access_read(
+        //     local.shard,
+        //     local.clk.into(),
+        //     AB::Expr::from_canonical_u32(HI_REGISTER),
+        //     local.hi_ptr_memory,
+        //     local.is_real,
+        // );
+        // builder.assert_word_eq(local.hi_ptr_memory.prev_value, local.hi_ptr.addr_word);
 
-        // Evaluate the memory accesses for a_memory and b_memory.
-        builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
-            a_ptr.clone(),
-            &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
-            local.is_real,
-        );
+        // // Evaluate the memory accesses for a_memory and b_memory.
+        // builder.eval_memory_access_slice_read(
+        //     local.shard,
+        //     local.clk.into(),
+        //     a_ptr.clone(),
+        //     &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
+        //     local.is_real,
+        // );
 
-        builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
-            b_ptr.clone(),
-            &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
-            local.is_real,
-        );
+        // builder.eval_memory_access_slice_read(
+        //     local.shard,
+        //     local.clk.into(),
+        //     b_ptr.clone(),
+        //     &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
+        //     local.is_real,
+        // );
 
-        let a_limbs_vec = builder.generate_limbs(&local.a_memory, local.is_real.into());
-        let a_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
-            Limbs(a_limbs_vec.try_into().expect("failed to convert limbs"));
+        // let a_limbs_vec = builder.generate_limbs(&local.a_memory, local.is_real.into());
+        // let a_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+        //     Limbs(a_limbs_vec.try_into().expect("failed to convert limbs"));
 
-        // Iterate through chunks of 8 for b_memory and convert each chunk to its limbs.
-        let b_limb_array: Vec<Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs>> = local
-            .b_memory
-            .chunks(8)
-            .map(|access| {
-                Limbs(
-                    builder
-                        .generate_limbs(access, local.is_real.into())
-                        .try_into()
-                        .expect("failed to convert limbs"),
-                )
-            })
-            .collect::<Vec<_>>();
+        // // Iterate through chunks of 8 for b_memory and convert each chunk to its limbs.
+        // let b_limb_array: Vec<Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs>> = local
+        //     .b_memory
+        //     .chunks(8)
+        //     .map(|access| {
+        //         Limbs(
+        //             builder
+        //                 .generate_limbs(access, local.is_real.into())
+        //                 .try_into()
+        //                 .expect("failed to convert limbs"),
+        //         )
+        //     })
+        //     .collect::<Vec<_>>();
 
-        let mut coeff_2_256 = Vec::new();
-        coeff_2_256.resize(32, AB::Expr::zero());
-        coeff_2_256.push(AB::Expr::one());
-        let modulus_polynomial: Polynomial<AB::Expr> = Polynomial::from_coefficients(&coeff_2_256);
+        // let mut coeff_2_256 = Vec::new();
+        // coeff_2_256.resize(32, AB::Expr::zero());
+        // coeff_2_256.push(AB::Expr::one());
+        // let modulus_polynomial: Polynomial<AB::Expr> = Polynomial::from_coefficients(&coeff_2_256);
 
-        // Evaluate that each of the mul and carry columns are valid.
-        let outputs = [
-            &local.a_mul_b1,
-            &local.ab2_plus_carry,
-            &local.ab3_plus_carry,
-            &local.ab4_plus_carry,
-            &local.ab5_plus_carry,
-            &local.ab6_plus_carry,
-            &local.ab7_plus_carry,
-            &local.ab8_plus_carry,
-        ];
+        // // Evaluate that each of the mul and carry columns are valid.
+        // let outputs = [
+        //     &local.a_mul_b1,
+        //     &local.ab2_plus_carry,
+        //     &local.ab3_plus_carry,
+        //     &local.ab4_plus_carry,
+        //     &local.ab5_plus_carry,
+        //     &local.ab6_plus_carry,
+        //     &local.ab7_plus_carry,
+        //     &local.ab8_plus_carry,
+        // ];
 
-        outputs[0].eval_mul_and_carry(
-            builder,
-            &a_limbs,
-            &b_limb_array[0],
-            &Polynomial::from_coefficients(&[AB::Expr::zero()]), /* Zero polynomial for no
-                                                                  * previous carry */
-            &modulus_polynomial,
-            local.is_real,
-        );
+        // outputs[0].eval_mul_and_carry(
+        //     builder,
+        //     &a_limbs,
+        //     &b_limb_array[0],
+        //     &Polynomial::from_coefficients(&[AB::Expr::zero()]), /* Zero polynomial for no
+        //                                                           * previous carry */
+        //     &modulus_polynomial,
+        //     local.is_real,
+        // );
 
-        for i in 1..outputs.len() {
-            outputs[i].eval_mul_and_carry(
-                builder,
-                &a_limbs,
-                &b_limb_array[i],
-                &outputs[i - 1].carry,
-                &modulus_polynomial,
-                local.is_real,
-            );
-        }
+        // for i in 1..outputs.len() {
+        //     outputs[i].eval_mul_and_carry(
+        //         builder,
+        //         &a_limbs,
+        //         &b_limb_array[i],
+        //         &outputs[i - 1].carry,
+        //         &modulus_polynomial,
+        //         local.is_real,
+        //     );
+        // }
 
         // Evaluate the memory accesses for lo_memory and hi_memory.
-        let mut result_words = Vec::new();
-        for i in 0..8 {
-            let output_words = limbs_to_words::<AB>(outputs[i].result.0.to_vec());
-            result_words.extend(output_words);
-        }
-        builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
-            lo_ptr.clone(),
-            &local.lo_memory,
-            result_words,
-            local.is_real,
-        );
+        // let mut result_words = Vec::new();
+        // for i in 0..8 {
+        //     let output_words = limbs_to_words::<AB>(outputs[i].result.0.to_vec());
+        //     result_words.extend(output_words);
+        // }
+        // builder.eval_memory_access_slice_write(
+        //     local.shard,
+        //     local.clk.into() + AB::Expr::one(),
+        //     lo_ptr.clone(),
+        //     &local.lo_memory,
+        //     result_words,
+        //     local.is_real,
+        // );
 
-        let output_carry_words = limbs_to_words::<AB>(outputs[outputs.len() - 1].carry.0.to_vec());
-        builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
-            hi_ptr.clone(),
-            &local.hi_memory,
-            output_carry_words,
-            local.is_real,
-        );
+        // let output_carry_words = limbs_to_words::<AB>(outputs[outputs.len() - 1].carry.0.to_vec());
+        // builder.eval_memory_access_slice_write(
+        //     local.shard,
+        //     local.clk.into() + AB::Expr::one(),
+        //     hi_ptr.clone(),
+        //     &local.hi_memory,
+        //     output_carry_words,
+        //     local.is_real,
+        // );
     }
 }

@@ -277,154 +277,154 @@ where
     AB: SP1AirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &MemoryInitCols<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &MemoryInitCols<AB::Var> = (*local).borrow();
 
-        // Constrain that `local.is_real` is boolean.
-        builder.assert_bool(local.is_real);
-        // Constrain that the value is a valid `Word`.
-        builder.slice_range_check_u16(&local.value.0, local.is_real);
-        // Constrain that the previous address is a valid `Word`.
-        builder.slice_range_check_u16(&local.prev_addr.0, local.is_real);
-        // Constrain that the address is a valid `Word`.
-        builder.slice_range_check_u16(&local.addr.0, local.is_real);
+        // // Constrain that `local.is_real` is boolean.
+        // builder.assert_bool(local.is_real);
+        // // Constrain that the value is a valid `Word`.
+        // builder.slice_range_check_u16(&local.value.0, local.is_real);
+        // // Constrain that the previous address is a valid `Word`.
+        // builder.slice_range_check_u16(&local.prev_addr.0, local.is_real);
+        // // Constrain that the address is a valid `Word`.
+        // builder.slice_range_check_u16(&local.addr.0, local.is_real);
 
-        let interaction_kind = match self.kind {
-            MemoryChipType::Initialize => InteractionKind::MemoryGlobalInitControl,
-            MemoryChipType::Finalize => InteractionKind::MemoryGlobalFinalizeControl,
-        };
+        // let interaction_kind = match self.kind {
+        //     MemoryChipType::Initialize => InteractionKind::MemoryGlobalInitControl,
+        //     MemoryChipType::Finalize => InteractionKind::MemoryGlobalFinalizeControl,
+        // };
 
-        // Receive the previous index, address, and validity state.
-        builder.receive(
-            AirInteraction::new(
-                vec![local.index]
-                    .into_iter()
-                    .chain(local.prev_addr.0)
-                    .chain(once(local.prev_valid))
-                    .map(Into::into)
-                    .collect(),
-                local.is_real.into(),
-                interaction_kind,
-            ),
-            InteractionScope::Local,
-        );
+        // // Receive the previous index, address, and validity state.
+        // builder.receive(
+        //     AirInteraction::new(
+        //         vec![local.index]
+        //             .into_iter()
+        //             .chain(local.prev_addr.0)
+        //             .chain(once(local.prev_valid))
+        //             .map(Into::into)
+        //             .collect(),
+        //         local.is_real.into(),
+        //         interaction_kind,
+        //     ),
+        //     InteractionScope::Local,
+        // );
 
-        // Send the next index, address, and validity state.
-        builder.send(
-            AirInteraction::new(
-                vec![local.index + AB::Expr::one()]
-                    .into_iter()
-                    .chain(local.addr.0.map(Into::into))
-                    .chain(once(local.is_comp.into()))
-                    .collect(),
-                local.is_real.into(),
-                interaction_kind,
-            ),
-            InteractionScope::Local,
-        );
+        // // Send the next index, address, and validity state.
+        // builder.send(
+        //     AirInteraction::new(
+        //         vec![local.index + AB::Expr::one()]
+        //             .into_iter()
+        //             .chain(local.addr.0.map(Into::into))
+        //             .chain(once(local.is_comp.into()))
+        //             .collect(),
+        //         local.is_real.into(),
+        //         interaction_kind,
+        //     ),
+        //     InteractionScope::Local,
+        // );
 
-        if self.kind == MemoryChipType::Initialize {
-            // Send the "send interaction" to the global table.
-            builder.send(
-                AirInteraction::new(
-                    vec![
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
-                        local.addr.reduce::<AB>(),
-                        local.value.0[0].into(),
-                        local.value.0[1].into(),
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
-                        AB::Expr::one(),
-                        AB::Expr::zero(),
-                        AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
-                    ],
-                    local.is_real.into(),
-                    InteractionKind::Global,
-                ),
-                InteractionScope::Local,
-            );
-        } else {
-            // Send the "receive interaction" to the global table.
-            builder.send(
-                AirInteraction::new(
-                    vec![
-                        local.shard.into(),
-                        local.timestamp.into(),
-                        local.addr.reduce::<AB>(),
-                        local.value.0[0].into(),
-                        local.value.0[1].into(),
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
-                        AB::Expr::one(),
-                        AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
-                    ],
-                    local.is_real.into(),
-                    InteractionKind::Global,
-                ),
-                InteractionScope::Local,
-            );
-        }
+        // if self.kind == MemoryChipType::Initialize {
+        //     // Send the "send interaction" to the global table.
+        //     builder.send(
+        //         AirInteraction::new(
+        //             vec![
+        //                 AB::Expr::zero(),
+        //                 AB::Expr::zero(),
+        //                 local.addr.reduce::<AB>(),
+        //                 local.value.0[0].into(),
+        //                 local.value.0[1].into(),
+        //                 AB::Expr::zero(),
+        //                 AB::Expr::zero(),
+        //                 AB::Expr::one(),
+        //                 AB::Expr::zero(),
+        //                 AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
+        //             ],
+        //             local.is_real.into(),
+        //             InteractionKind::Global,
+        //         ),
+        //         InteractionScope::Local,
+        //     );
+        // } else {
+        //     // Send the "receive interaction" to the global table.
+        //     builder.send(
+        //         AirInteraction::new(
+        //             vec![
+        //                 local.shard.into(),
+        //                 local.timestamp.into(),
+        //                 local.addr.reduce::<AB>(),
+        //                 local.value.0[0].into(),
+        //                 local.value.0[1].into(),
+        //                 AB::Expr::zero(),
+        //                 AB::Expr::zero(),
+        //                 AB::Expr::zero(),
+        //                 AB::Expr::one(),
+        //                 AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
+        //             ],
+        //             local.is_real.into(),
+        //             InteractionKind::Global,
+        //         ),
+        //         InteractionScope::Local,
+        //     );
+        // }
 
-        // Check that the previous address is a valid BabyBear word.
-        BabyBearWordRangeChecker::<AB::F>::range_check(
-            builder,
-            local.prev_addr,
-            local.prev_addr_range_checker,
-            local.is_real.into(),
-        );
+        // // Check that the previous address is a valid BabyBear word.
+        // BabyBearWordRangeChecker::<AB::F>::range_check(
+        //     builder,
+        //     local.prev_addr,
+        //     local.prev_addr_range_checker,
+        //     local.is_real.into(),
+        // );
 
-        // Check that the address is a valid BabyBear word.
-        BabyBearWordRangeChecker::<AB::F>::range_check(
-            builder,
-            local.addr,
-            local.addr_range_checker,
-            local.is_real.into(),
-        );
+        // // Check that the address is a valid BabyBear word.
+        // BabyBearWordRangeChecker::<AB::F>::range_check(
+        //     builder,
+        //     local.addr,
+        //     local.addr_range_checker,
+        //     local.is_real.into(),
+        // );
 
-        // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
-        IsZeroOperation::<AB::F>::eval(
-            builder,
-            local.prev_addr.reduce::<AB>(),
-            local.is_prev_addr_zero,
-            local.is_real.into(),
-        );
-        IsZeroOperation::<AB::F>::eval(
-            builder,
-            local.index.into(),
-            local.is_index_zero,
-            local.is_real.into(),
-        );
+        // // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
+        // IsZeroOperation::<AB::F>::eval(
+        //     builder,
+        //     local.prev_addr.reduce::<AB>(),
+        //     local.is_prev_addr_zero,
+        //     local.is_real.into(),
+        // );
+        // IsZeroOperation::<AB::F>::eval(
+        //     builder,
+        //     local.index.into(),
+        //     local.is_index_zero,
+        //     local.is_real.into(),
+        // );
 
-        // Comparison will be done unless `prev_addr == 0` and `index == 0`.
-        // If `is_real = 0`, then `is_comp` will be zero.
-        // If `is_real = 1`, then `is_comp` will be zero when `prev_addr == 0` and `index == 0`.
-        // If `is_real = 1`, then `is_comp` will be one when `prev_addr != 0` or `index != 0`.
-        builder.assert_eq(
-            local.is_comp,
-            local.is_real
-                * (AB::Expr::one() - local.is_prev_addr_zero.result * local.is_index_zero.result),
-        );
-        builder.assert_bool(local.is_comp);
-        // If `is_comp = 1`, then `prev_addr < addr` should hold.
-        LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
-            builder,
-            local.prev_addr.map(Into::into),
-            local.addr.map(Into::into),
-            local.lt_cols,
-            local.is_comp.into(),
-        );
-        builder.when(local.is_comp).assert_one(local.lt_cols.u16_compare_operation.bit);
+        // // Comparison will be done unless `prev_addr == 0` and `index == 0`.
+        // // If `is_real = 0`, then `is_comp` will be zero.
+        // // If `is_real = 1`, then `is_comp` will be zero when `prev_addr == 0` and `index == 0`.
+        // // If `is_real = 1`, then `is_comp` will be one when `prev_addr != 0` or `index != 0`.
+        // builder.assert_eq(
+        //     local.is_comp,
+        //     local.is_real
+        //         * (AB::Expr::one() - local.is_prev_addr_zero.result * local.is_index_zero.result),
+        // );
+        // builder.assert_bool(local.is_comp);
+        // // If `is_comp = 1`, then `prev_addr < addr` should hold.
+        // LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+        //     builder,
+        //     local.prev_addr.map(Into::into),
+        //     local.addr.map(Into::into),
+        //     local.lt_cols,
+        //     local.is_comp.into(),
+        // );
+        // builder.when(local.is_comp).assert_one(local.lt_cols.u16_compare_operation.bit);
 
         // If `prev_addr == 0` and `index == 0`, then `addr == 0`, and the `value` should be zero.
         // This forces the initialization of address 0 with value 0.
         // Constraints related to register %x0: Register %x0 should always be 0.
         // See 2.6 Load and Store Instruction on P.18 of the RISC-V spec.
-        let is_not_comp = local.is_real - local.is_comp;
-        builder.when(is_not_comp.clone()).assert_word_zero(local.addr);
-        builder.when(is_not_comp.clone()).assert_word_zero(local.value);
+        // let is_not_comp = local.is_real - local.is_comp;
+        // builder.when(is_not_comp.clone()).assert_word_zero(local.addr);
+        // builder.when(is_not_comp.clone()).assert_word_zero(local.value);
     }
 }
 

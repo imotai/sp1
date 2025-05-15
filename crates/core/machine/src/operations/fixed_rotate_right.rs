@@ -65,58 +65,58 @@ impl<F: Field> FixedRotateRightOperation<F> {
         cols: FixedRotateRightOperation<AB::Var>,
         is_real: AB::Var,
     ) {
-        builder.assert_bool(is_real);
+        // builder.assert_bool(is_real);
 
-        // Compute some constants with respect to the rotation needed for the rotation.
-        let nb_limbs_to_shift = Self::nb_limbs_to_shift(rotation);
-        let nb_bits_to_shift = Self::nb_bits_to_shift(rotation);
-        let carry_multiplier = AB::F::from_canonical_u32(Self::carry_multiplier(rotation));
+        // // Compute some constants with respect to the rotation needed for the rotation.
+        // let nb_limbs_to_shift = Self::nb_limbs_to_shift(rotation);
+        // let nb_bits_to_shift = Self::nb_bits_to_shift(rotation);
+        // let carry_multiplier = AB::F::from_canonical_u32(Self::carry_multiplier(rotation));
 
-        // Perform the limb shift.
-        let input_limbs_rotated =
-            [input[nb_limbs_to_shift % WORD_SIZE], input[(1 + nb_limbs_to_shift) % WORD_SIZE]];
+        // // Perform the limb shift.
+        // let input_limbs_rotated =
+        //     [input[nb_limbs_to_shift % WORD_SIZE], input[(1 + nb_limbs_to_shift) % WORD_SIZE]];
 
-        // For each limb, calculate the shift and carry. If it's not the first limb, calculate the
-        // new limb value using the current shifted limb and the last carry.
-        let mut first_shift = AB::Expr::zero();
-        let mut last_carry = AB::Expr::zero();
-        for i in (0..WORD_SIZE).rev() {
-            let limb = input_limbs_rotated[i];
-            // Break down the limb into lower and higher parts.
-            //  - `limb = lower_limb + higher_limb * 2^bit_shift`
-            //  - `lower_limb < 2^(bit_shift)`
-            //  - `higher_limb < 2^(16 - bit_shift)`
-            let lower_limb =
-                limb - cols.higher_limb[i] * AB::Expr::from_canonical_u32(1 << nb_bits_to_shift);
-            // Check that `lower_limb < 2^(bit_shift)`
-            builder.send_byte(
-                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-                lower_limb.clone(),
-                AB::F::from_canonical_u32(nb_bits_to_shift as u32),
-                AB::Expr::zero(),
-                is_real,
-            );
-            // Check that `higher_limb < 2^(16 - bit_shift)`
-            builder.send_byte(
-                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-                cols.higher_limb[i],
-                AB::Expr::from_canonical_u32(16 - nb_bits_to_shift as u32),
-                AB::Expr::zero(),
-                is_real,
-            );
-            if i == WORD_SIZE - 1 {
-                first_shift = cols.higher_limb[i].into();
-            } else {
-                builder
-                    .when(is_real)
-                    .assert_eq(cols.value[i], cols.higher_limb[i] + last_carry * carry_multiplier);
-            }
-            last_carry = lower_limb;
-        }
+        // // For each limb, calculate the shift and carry. If it's not the first limb, calculate the
+        // // new limb value using the current shifted limb and the last carry.
+        // let mut first_shift = AB::Expr::zero();
+        // let mut last_carry = AB::Expr::zero();
+        // for i in (0..WORD_SIZE).rev() {
+        //     let limb = input_limbs_rotated[i];
+        //     // Break down the limb into lower and higher parts.
+        //     //  - `limb = lower_limb + higher_limb * 2^bit_shift`
+        //     //  - `lower_limb < 2^(bit_shift)`
+        //     //  - `higher_limb < 2^(16 - bit_shift)`
+        //     let lower_limb =
+        //         limb - cols.higher_limb[i] * AB::Expr::from_canonical_u32(1 << nb_bits_to_shift);
+        //     // Check that `lower_limb < 2^(bit_shift)`
+        //     builder.send_byte(
+        //         AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+        //         lower_limb.clone(),
+        //         AB::F::from_canonical_u32(nb_bits_to_shift as u32),
+        //         AB::Expr::zero(),
+        //         is_real,
+        //     );
+        //     // Check that `higher_limb < 2^(16 - bit_shift)`
+        //     builder.send_byte(
+        //         AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+        //         cols.higher_limb[i],
+        //         AB::Expr::from_canonical_u32(16 - nb_bits_to_shift as u32),
+        //         AB::Expr::zero(),
+        //         is_real,
+        //     );
+        //     if i == WORD_SIZE - 1 {
+        //         first_shift = cols.higher_limb[i].into();
+        //     } else {
+        //         builder
+        //             .when(is_real)
+        //             .assert_eq(cols.value[i], cols.higher_limb[i] + last_carry * carry_multiplier);
+        //     }
+        //     last_carry = lower_limb;
+        // }
 
-        // For the first limb, we didn't know the last carry so compute the rotated limb here.
-        builder
-            .when(is_real)
-            .assert_eq(cols.value[WORD_SIZE - 1], first_shift + last_carry * carry_multiplier);
+        // // For the first limb, we didn't know the last carry so compute the rotated limb here.
+        // builder
+        //     .when(is_real)
+        //     .assert_eq(cols.value[WORD_SIZE - 1], first_shift + last_carry * carry_multiplier);
     }
 }

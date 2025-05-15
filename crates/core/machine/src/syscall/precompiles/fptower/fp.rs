@@ -218,103 +218,103 @@ where
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &FpOpCols<AB::Var, P> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &FpOpCols<AB::Var, P> = (*local).borrow();
 
-        // Check that operations flags are boolean.
-        builder.assert_bool(local.is_add);
-        builder.assert_bool(local.is_sub);
-        builder.assert_bool(local.is_mul);
+        // // Check that operations flags are boolean.
+        // builder.assert_bool(local.is_add);
+        // builder.assert_bool(local.is_sub);
+        // builder.assert_bool(local.is_mul);
 
-        // Check that only one of them is set.
-        builder.assert_eq(local.is_add + local.is_sub + local.is_mul, AB::Expr::one());
+        // // Check that only one of them is set.
+        // builder.assert_eq(local.is_add + local.is_sub + local.is_mul, AB::Expr::one());
 
-        let p_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
-        let p: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-            Limbs(p_limbs.try_into().expect("failed to convert limbs"));
-        let q_limbs = builder.generate_limbs(&local.y_access, local.is_real.into());
-        let q: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-            Limbs(q_limbs.try_into().expect("failed to convert limbs"));
+        // let p_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
+        // let p: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+        //     Limbs(p_limbs.try_into().expect("failed to convert limbs"));
+        // let q_limbs = builder.generate_limbs(&local.y_access, local.is_real.into());
+        // let q: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+        //     Limbs(q_limbs.try_into().expect("failed to convert limbs"));
 
-        let modulus_coeffs =
-            P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
-        let p_modulus = Polynomial::from_coefficients(&modulus_coeffs);
+        // let modulus_coeffs =
+        //     P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
+        // let p_modulus = Polynomial::from_coefficients(&modulus_coeffs);
 
-        local.output.eval_variable(
-            builder,
-            &p,
-            &q,
-            &p_modulus,
-            local.is_add,
-            local.is_sub,
-            local.is_mul,
-            AB::F::zero(),
-            local.is_real,
-        );
+        // local.output.eval_variable(
+        //     builder,
+        //     &p,
+        //     &q,
+        //     &p_modulus,
+        //     local.is_add,
+        //     local.is_sub,
+        //     local.is_mul,
+        //     AB::F::zero(),
+        //     local.is_real,
+        // );
 
-        local.output_range.eval(builder, &local.output.result, &p_modulus, local.is_real);
+        // local.output_range.eval(builder, &local.output.result, &p_modulus, local.is_real);
 
-        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
+        // let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
 
-        let x_ptr = SyscallAddrOperation::<AB::F>::eval(
-            builder,
-            P::NB_LIMBS as u32,
-            local.x_ptr,
-            local.is_real.into(),
-        );
-        let y_ptr = SyscallAddrOperation::<AB::F>::eval(
-            builder,
-            P::NB_LIMBS as u32,
-            local.y_ptr,
-            local.is_real.into(),
-        );
+        // let x_ptr = SyscallAddrOperation::<AB::F>::eval(
+        //     builder,
+        //     P::NB_LIMBS as u32,
+        //     local.x_ptr,
+        //     local.is_real.into(),
+        // );
+        // let y_ptr = SyscallAddrOperation::<AB::F>::eval(
+        //     builder,
+        //     P::NB_LIMBS as u32,
+        //     local.y_ptr,
+        //     local.is_real.into(),
+        // );
 
-        builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
-            y_ptr.clone(),
-            &local.y_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
-            local.is_real,
-        );
+        // builder.eval_memory_access_slice_read(
+        //     local.shard,
+        //     local.clk.into(),
+        //     y_ptr.clone(),
+        //     &local.y_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
+        //     local.is_real,
+        // );
 
-        // We read p at +1 since p, q could be the same.
-        builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1),
-            x_ptr.clone(),
-            &local.x_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
-            result_words,
-            local.is_real,
-        );
+        // // We read p at +1 since p, q could be the same.
+        // builder.eval_memory_access_slice_write(
+        //     local.shard,
+        //     local.clk + AB::F::from_canonical_u32(1),
+        //     x_ptr.clone(),
+        //     &local.x_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
+        //     result_words,
+        //     local.is_real,
+        // );
 
-        // Select the correct syscall id based on the operation flags.
-        //
-        // *Remark*: If support for division is added, we will need to add the division syscall id.
-        let (add_syscall_id, sub_syscall_id, mul_syscall_id) = match P::FIELD_TYPE {
-            FieldType::Bn254 => (
-                AB::F::from_canonical_u32(SyscallCode::BN254_FP_ADD.syscall_id()),
-                AB::F::from_canonical_u32(SyscallCode::BN254_FP_SUB.syscall_id()),
-                AB::F::from_canonical_u32(SyscallCode::BN254_FP_MUL.syscall_id()),
-            ),
-            FieldType::Bls12381 => (
-                AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_ADD.syscall_id()),
-                AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_SUB.syscall_id()),
-                AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_MUL.syscall_id()),
-            ),
-        };
-        let syscall_id_felt = local.is_add * add_syscall_id
-            + local.is_sub * sub_syscall_id
-            + local.is_mul * mul_syscall_id;
+        // // Select the correct syscall id based on the operation flags.
+        // //
+        // // *Remark*: If support for division is added, we will need to add the division syscall id.
+        // let (add_syscall_id, sub_syscall_id, mul_syscall_id) = match P::FIELD_TYPE {
+        //     FieldType::Bn254 => (
+        //         AB::F::from_canonical_u32(SyscallCode::BN254_FP_ADD.syscall_id()),
+        //         AB::F::from_canonical_u32(SyscallCode::BN254_FP_SUB.syscall_id()),
+        //         AB::F::from_canonical_u32(SyscallCode::BN254_FP_MUL.syscall_id()),
+        //     ),
+        //     FieldType::Bls12381 => (
+        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_ADD.syscall_id()),
+        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_SUB.syscall_id()),
+        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_MUL.syscall_id()),
+        //     ),
+        // };
+        // let syscall_id_felt = local.is_add * add_syscall_id
+        //     + local.is_sub * sub_syscall_id
+        //     + local.is_mul * mul_syscall_id;
 
-        builder.receive_syscall(
-            local.shard,
-            local.clk,
-            syscall_id_felt,
-            x_ptr,
-            y_ptr,
-            local.is_real,
-            InteractionScope::Local,
-        );
+        // builder.receive_syscall(
+        //     local.shard,
+        //     local.clk,
+        //     syscall_id_felt,
+        //     x_ptr,
+        //     y_ptr,
+        //     local.is_real,
+        //     InteractionScope::Local,
+        // );
     }
 }

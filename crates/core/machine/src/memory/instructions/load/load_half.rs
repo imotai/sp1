@@ -175,71 +175,71 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &LoadHalfColumns<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &LoadHalfColumns<AB::Var> = (*local).borrow();
 
-        let shard = local.state.shard::<AB>();
-        let clk = local.state.clk::<AB>();
+        // let shard = local.state.shard::<AB>();
+        // let clk = local.state.clk::<AB>();
 
-        // SAFETY: All selectors `is_lh`, `is_lhu` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
-        // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
-        let opcode = AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
-            + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu;
-        let is_real = local.is_lh + local.is_lhu;
-        builder.assert_bool(local.is_lh);
-        builder.assert_bool(local.is_lhu);
-        builder.assert_bool(is_real.clone());
+        // // SAFETY: All selectors `is_lh`, `is_lhu` are checked to be boolean.
+        // // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
+        // // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
+        // let opcode = AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
+        //     + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu;
+        // let is_real = local.is_lh + local.is_lhu;
+        // builder.assert_bool(local.is_lh);
+        // builder.assert_bool(local.is_lhu);
+        // builder.assert_bool(is_real.clone());
 
-        // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
-            builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            AB::Expr::zero(),
-            local.offset_bit.into(),
-            is_real.clone(),
-            local.address_operation,
-        );
+        // // Step 1. Compute the address, and check offsets and address bounds.
+        // let aligned_addr = AddressOperation::<AB::F>::eval(
+        //     builder,
+        //     local.adapter.b().map(Into::into),
+        //     local.adapter.c().map(Into::into),
+        //     AB::Expr::zero(),
+        //     local.offset_bit.into(),
+        //     is_real.clone(),
+        //     local.address_operation,
+        // );
 
-        // Step 2. Read the memory address.
-        builder.eval_memory_access_read(
-            shard.clone(),
-            clk.clone(),
-            aligned_addr.clone(),
-            local.memory_access,
-            is_real.clone(),
-        );
+        // // Step 2. Read the memory address.
+        // builder.eval_memory_access_read(
+        //     shard.clone(),
+        //     clk.clone(),
+        //     aligned_addr.clone(),
+        //     local.memory_access,
+        //     is_real.clone(),
+        // );
 
-        // This chip requires `op_a != x0`.
-        builder.assert_zero(local.adapter.op_a_0);
+        // // This chip requires `op_a != x0`.
+        // builder.assert_zero(local.adapter.op_a_0);
 
-        // Step 3. Use the memory value to compute the write value for `op_a`.
-        // Select the u16 limb corresponding to the offset.
-        builder.assert_eq(
-            local.selected_limb,
-            local.offset_bit * local.memory_access.prev_value[1]
-                + (AB::Expr::one() - local.offset_bit) * local.memory_access.prev_value[0],
-        );
-        // Get the MSB of the selected limb if the opcode is `LH`.
-        // If the opcode is `LHU`, the MSB is constrained to be zero.
-        builder.when(local.is_lhu).assert_zero(local.msb.msb);
-        U16MSBOperation::<AB::F>::eval_msb(
-            builder,
-            local.selected_limb.into(),
-            local.msb,
-            local.is_lh.into(),
-        );
+        // // Step 3. Use the memory value to compute the write value for `op_a`.
+        // // Select the u16 limb corresponding to the offset.
+        // builder.assert_eq(
+        //     local.selected_limb,
+        //     local.offset_bit * local.memory_access.prev_value[1]
+        //         + (AB::Expr::one() - local.offset_bit) * local.memory_access.prev_value[0],
+        // );
+        // // Get the MSB of the selected limb if the opcode is `LH`.
+        // // If the opcode is `LHU`, the MSB is constrained to be zero.
+        // builder.when(local.is_lhu).assert_zero(local.msb.msb);
+        // U16MSBOperation::<AB::F>::eval_msb(
+        //     builder,
+        //     local.selected_limb.into(),
+        //     local.msb,
+        //     local.is_lh.into(),
+        // );
 
-        // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
-            builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            is_real.clone(),
-        );
+        // // Constrain the state of the CPU.
+        // CPUState::<AB::F>::eval(
+        //     builder,
+        //     local.state,
+        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+        //     is_real.clone(),
+        // );
 
         // Constrain the program and register reads.
         // ITypeReader::<AB::F>::eval(

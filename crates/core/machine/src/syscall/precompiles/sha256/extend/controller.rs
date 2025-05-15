@@ -68,11 +68,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             let cols: &mut ShaExtendControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-<<<<<<< HEAD
             cols.w_ptr.populate(&mut blu_events, event.w_ptr, 256);
-=======
-            cols.w_ptr = F::from_canonical_u64(event.w_ptr as u64);
->>>>>>> 59561be38 (rsp test + machine compiles)
             cols.is_real = F::one();
             rows.push(row);
         }

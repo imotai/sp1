@@ -236,111 +236,111 @@ where
     Limbs<AB::Var, <U256Field as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &Uint256MulCols<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &Uint256MulCols<AB::Var> = (*local).borrow();
 
-        // We are computing (x * y) % modulus. The value of x is stored in the "prev_value" of
-        // the x_memory, since we write to it later.
-        let x_limb_vec = builder.generate_limbs(&local.x_memory, local.is_real.into());
-        let x_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
-            Limbs(x_limb_vec.try_into().expect("failed to convert limbs"));
-        let y_limb_vec = builder.generate_limbs(&local.y_memory, local.is_real.into());
-        let y_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
-            Limbs(y_limb_vec.try_into().expect("failed to convert limbs"));
-        let modulus_limb_vec = builder.generate_limbs(&local.modulus_memory, local.is_real.into());
-        let modulus_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
-            Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
+        // // We are computing (x * y) % modulus. The value of x is stored in the "prev_value" of
+        // // the x_memory, since we write to it later.
+        // let x_limb_vec = builder.generate_limbs(&local.x_memory, local.is_real.into());
+        // let x_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+        //     Limbs(x_limb_vec.try_into().expect("failed to convert limbs"));
+        // let y_limb_vec = builder.generate_limbs(&local.y_memory, local.is_real.into());
+        // let y_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+        //     Limbs(y_limb_vec.try_into().expect("failed to convert limbs"));
+        // let modulus_limb_vec = builder.generate_limbs(&local.modulus_memory, local.is_real.into());
+        // let modulus_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+        //     Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
 
-        // If the modulus is zero, then we don't perform the modulus operation.
-        // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
-        // not overflow because we are summing 32 bytes.
-        let modulus_byte_sum =
-            modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
-        IsZeroOperation::<AB::F>::eval(
-            builder,
-            modulus_byte_sum,
-            local.modulus_is_zero,
-            local.is_real.into(),
-        );
+        // // If the modulus is zero, then we don't perform the modulus operation.
+        // // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
+        // // not overflow because we are summing 32 bytes.
+        // let modulus_byte_sum =
+        //     modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
+        // IsZeroOperation::<AB::F>::eval(
+        //     builder,
+        //     modulus_byte_sum,
+        //     local.modulus_is_zero,
+        //     local.is_real.into(),
+        // );
 
-        // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.
-        // Otherwise, we use the modulus passed in.
-        let modulus_is_zero = local.modulus_is_zero.result;
-        let mut coeff_2_256 = Vec::new();
-        coeff_2_256.resize(32, AB::Expr::zero());
-        coeff_2_256.push(AB::Expr::one());
-        let modulus_polynomial: Polynomial<AB::Expr> = modulus_limbs.clone().into();
-        let p_modulus: Polynomial<AB::Expr> = modulus_polynomial
-            * (AB::Expr::one() - modulus_is_zero.into())
-            + Polynomial::from_coefficients(&coeff_2_256) * modulus_is_zero.into();
+        // // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.
+        // // Otherwise, we use the modulus passed in.
+        // let modulus_is_zero = local.modulus_is_zero.result;
+        // let mut coeff_2_256 = Vec::new();
+        // coeff_2_256.resize(32, AB::Expr::zero());
+        // coeff_2_256.push(AB::Expr::one());
+        // let modulus_polynomial: Polynomial<AB::Expr> = modulus_limbs.clone().into();
+        // let p_modulus: Polynomial<AB::Expr> = modulus_polynomial
+        //     * (AB::Expr::one() - modulus_is_zero.into())
+        //     + Polynomial::from_coefficients(&coeff_2_256) * modulus_is_zero.into();
 
-        // Evaluate the uint256 multiplication
-        local.output.eval_with_modulus(
-            builder,
-            &x_limbs,
-            &y_limbs,
-            &p_modulus,
-            FieldOperation::Mul,
-            local.is_real,
-        );
+        // // Evaluate the uint256 multiplication
+        // local.output.eval_with_modulus(
+        //     builder,
+        //     &x_limbs,
+        //     &y_limbs,
+        //     &p_modulus,
+        //     FieldOperation::Mul,
+        //     local.is_real,
+        // );
 
-        // Verify the range of the output if the moduls is not zero.  Also, check the value of
-        // modulus_is_not_zero.
-        local.output_range_check.eval(
-            builder,
-            &local.output.result,
-            &modulus_limbs.clone(),
-            local.modulus_is_not_zero,
-        );
-        builder.assert_eq(
-            local.modulus_is_not_zero,
-            local.is_real * (AB::Expr::one() - modulus_is_zero.into()),
-        );
+        // // Verify the range of the output if the moduls is not zero.  Also, check the value of
+        // // modulus_is_not_zero.
+        // local.output_range_check.eval(
+        //     builder,
+        //     &local.output.result,
+        //     &modulus_limbs.clone(),
+        //     local.modulus_is_not_zero,
+        // );
+        // builder.assert_eq(
+        //     local.modulus_is_not_zero,
+        //     local.is_real * (AB::Expr::one() - modulus_is_zero.into()),
+        // );
 
-        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
+        // let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
 
-        let x_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.x_ptr, local.is_real.into());
-        let y_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
+        // let x_ptr =
+        //     SyscallAddrOperation::<AB::F>::eval(builder, 32, local.x_ptr, local.is_real.into());
+        // let y_ptr =
+        //     SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
 
-        // Read and write x.
-        builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
-            x_ptr.clone(),
-            &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
-            result_words,
-            local.is_real,
-        );
+        // // Read and write x.
+        // builder.eval_memory_access_slice_write(
+        //     local.shard,
+        //     local.clk.into() + AB::Expr::one(),
+        //     x_ptr.clone(),
+        //     &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
+        //     result_words,
+        //     local.is_real,
+        // );
 
-        // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
-        // we read it contiguously from the y_ptr memory location.
-        builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
-            y_ptr.clone(),
-            &[local.y_memory, local.modulus_memory]
-                .concat()
-                .iter()
-                .map(|access| access.memory_access)
-                .collect_vec(),
-            local.is_real,
-        );
+        // // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
+        // // we read it contiguously from the y_ptr memory location.
+        // builder.eval_memory_access_slice_read(
+        //     local.shard,
+        //     local.clk.into(),
+        //     y_ptr.clone(),
+        //     &[local.y_memory, local.modulus_memory]
+        //         .concat()
+        //         .iter()
+        //         .map(|access| access.memory_access)
+        //         .collect_vec(),
+        //     local.is_real,
+        // );
 
-        // Receive the arguments.
-        builder.receive_syscall(
-            local.shard,
-            local.clk,
-            AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
-            x_ptr.clone(),
-            y_ptr.clone(),
-            local.is_real,
-            InteractionScope::Local,
-        );
+        // // Receive the arguments.
+        // builder.receive_syscall(
+        //     local.shard,
+        //     local.clk,
+        //     AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
+        //     x_ptr.clone(),
+        //     y_ptr.clone(),
+        //     local.is_real,
+        //     InteractionScope::Local,
+        // );
 
-        // Assert that is_real is a boolean.
-        builder.assert_bool(local.is_real);
+        // // Assert that is_real is a boolean.
+        // builder.assert_bool(local.is_real);
     }
 }

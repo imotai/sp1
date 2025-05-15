@@ -2094,6 +2094,10 @@ version = "1.1.0"
 dependencies = [
  "hex",
  "sp1-build",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-primitives",
+ "sp1-prover",
  "sp1-sdk",
  "tokio",
 ]

@@ -151,7 +151,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         runtime.record.public_values.committed_value_digest.iter().enumerate().for_each(
             |(i, word)| {
                 let bytes = word.to_le_bytes();
-                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes);
+                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes[0..4]);
             },
         );
 

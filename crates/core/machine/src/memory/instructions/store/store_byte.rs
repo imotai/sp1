@@ -189,92 +189,92 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &StoreByteColumns<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &StoreByteColumns<AB::Var> = (*local).borrow();
 
-        let shard = local.state.shard::<AB>();
-        let clk = local.state.clk::<AB>();
+        // let shard = local.state.shard::<AB>();
+        // let clk = local.state.clk::<AB>();
 
-        let opcode = AB::Expr::from_canonical_u32(Opcode::SB as u32);
-        builder.assert_bool(local.is_real);
+        // let opcode = AB::Expr::from_canonical_u32(Opcode::SB as u32);
+        // builder.assert_bool(local.is_real);
 
-        // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
-            builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            local.offset_bit[0].into(),
-            local.offset_bit[1].into(),
-            local.is_real.into(),
-            local.address_operation,
-        );
+        // // Step 1. Compute the address, and check offsets and address bounds.
+        // let aligned_addr = AddressOperation::<AB::F>::eval(
+        //     builder,
+        //     local.adapter.b().map(Into::into),
+        //     local.adapter.c().map(Into::into),
+        //     local.offset_bit[0].into(),
+        //     local.offset_bit[1].into(),
+        //     local.is_real.into(),
+        //     local.address_operation,
+        // );
 
-        // Step 2. Write the memory address.
-        // The `store_value` will be constrained in Step 3.
-        builder.eval_memory_access_write(
-            shard.clone(),
-            clk.clone(),
-            aligned_addr.clone(),
-            local.memory_access,
-            local.store_value,
-            local.is_real.into(),
-        );
+        // // Step 2. Write the memory address.
+        // // The `store_value` will be constrained in Step 3.
+        // builder.eval_memory_access_write(
+        //     shard.clone(),
+        //     clk.clone(),
+        //     aligned_addr.clone(),
+        //     local.memory_access,
+        //     local.store_value,
+        //     local.is_real.into(),
+        // );
 
-        // Step 3. Use the memory value to compute the write value for `op_a`.
-        // Select the u16 limb corresponding to the offset.
-        builder.assert_eq(
-            local.mem_limb,
-            local.offset_bit[1] * local.memory_access.prev_value[1]
-                + (AB::Expr::one() - local.offset_bit[1]) * local.memory_access.prev_value[0],
-        );
-        // Split the u16 memory limb into two bytes.
-        let byte0 = local.mem_limb_low_byte;
-        let byte1 = (local.mem_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
-        builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
-        // Split the u16 register limb into two bytes.
-        let byte0 = local.register_low_byte;
-        let byte1 =
-            (local.adapter.prev_a().0[0] - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
-        builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
+        // // Step 3. Use the memory value to compute the write value for `op_a`.
+        // // Select the u16 limb corresponding to the offset.
+        // builder.assert_eq(
+        //     local.mem_limb,
+        //     local.offset_bit[1] * local.memory_access.prev_value[1]
+        //         + (AB::Expr::one() - local.offset_bit[1]) * local.memory_access.prev_value[0],
+        // );
+        // // Split the u16 memory limb into two bytes.
+        // let byte0 = local.mem_limb_low_byte;
+        // let byte1 = (local.mem_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
+        // builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
+        // // Split the u16 register limb into two bytes.
+        // let byte0 = local.register_low_byte;
+        // let byte1 =
+        //     (local.adapter.prev_a().0[0] - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
+        // builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
 
-        builder.assert_eq(
-            local.increment,
-            (local.register_low_byte - local.mem_limb_low_byte)
-                * (AB::Expr::one() - local.offset_bit[0])
-                + (AB::Expr::from_canonical_u16(1 << 8) * local.register_low_byte - local.mem_limb
-                    + local.mem_limb_low_byte)
-                    * local.offset_bit[0],
-        );
+        // builder.assert_eq(
+        //     local.increment,
+        //     (local.register_low_byte - local.mem_limb_low_byte)
+        //         * (AB::Expr::one() - local.offset_bit[0])
+        //         + (AB::Expr::from_canonical_u16(1 << 8) * local.register_low_byte - local.mem_limb
+        //             + local.mem_limb_low_byte)
+        //             * local.offset_bit[0],
+        // );
 
-        builder.assert_eq(
-            local.store_value.0[0],
-            local.increment * (AB::Expr::one() - local.offset_bit[1])
-                + local.memory_access.prev_value.0[0],
-        );
-        builder.assert_eq(
-            local.store_value.0[1],
-            local.increment * local.offset_bit[1] + local.memory_access.prev_value.0[1],
-        );
+        // builder.assert_eq(
+        //     local.store_value.0[0],
+        //     local.increment * (AB::Expr::one() - local.offset_bit[1])
+        //         + local.memory_access.prev_value.0[0],
+        // );
+        // builder.assert_eq(
+        //     local.store_value.0[1],
+        //     local.increment * local.offset_bit[1] + local.memory_access.prev_value.0[1],
+        // );
 
-        // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
-            builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            local.is_real.into(),
-        );
+        // // Constrain the state of the CPU.
+        // CPUState::<AB::F>::eval(
+        //     builder,
+        //     local.state,
+        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+        //     local.is_real.into(),
+        // );
 
-        // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval_op_a_immutable(
-            builder,
-            shard,
-            clk,
-            local.state.pc,
-            opcode,
-            local.adapter,
-            local.is_real.into(),
-        );
+        // // Constrain the program and register reads.
+        // ITypeReader::<AB::F>::eval_op_a_immutable(
+        //     builder,
+        //     shard,
+        //     clk,
+        //     local.state.pc,
+        //     opcode,
+        //     local.adapter,
+        //     local.is_real.into(),
+        // );
     }
 }

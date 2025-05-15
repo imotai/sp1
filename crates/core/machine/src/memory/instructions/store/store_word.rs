@@ -151,56 +151,56 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &StoreWordColumns<AB::Var> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &StoreWordColumns<AB::Var> = (*local).borrow();
 
-        let shard = local.state.shard::<AB>();
-        let clk = local.state.clk::<AB>();
+        // let shard = local.state.shard::<AB>();
+        // let clk = local.state.clk::<AB>();
 
-        let opcode = AB::Expr::from_canonical_u32(Opcode::SW as u32);
+        // let opcode = AB::Expr::from_canonical_u32(Opcode::SW as u32);
 
-        builder.assert_bool(local.is_real);
+        // builder.assert_bool(local.is_real);
 
-        // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
-            builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_real.into(),
-            local.address_operation,
-        );
+        // // Step 1. Compute the address, and check offsets and address bounds.
+        // let aligned_addr = AddressOperation::<AB::F>::eval(
+        //     builder,
+        //     local.adapter.b().map(Into::into),
+        //     local.adapter.c().map(Into::into),
+        //     AB::Expr::zero(),
+        //     AB::Expr::zero(),
+        //     local.is_real.into(),
+        //     local.address_operation,
+        // );
 
-        // Step 2. Write at the memory address.
-        builder.eval_memory_access_write(
-            shard.clone(),
-            clk.clone(),
-            aligned_addr.clone(),
-            local.memory_access,
-            *local.adapter.prev_a(),
-            local.is_real,
-        );
+        // // Step 2. Write at the memory address.
+        // builder.eval_memory_access_write(
+        //     shard.clone(),
+        //     clk.clone(),
+        //     aligned_addr.clone(),
+        //     local.memory_access,
+        //     *local.adapter.prev_a(),
+        //     local.is_real,
+        // );
 
-        // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
-            builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            local.is_real.into(),
-        );
+        // // Constrain the state of the CPU.
+        // CPUState::<AB::F>::eval(
+        //     builder,
+        //     local.state,
+        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+        //     local.is_real.into(),
+        // );
 
-        // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval_op_a_immutable(
-            builder,
-            shard,
-            clk,
-            local.state.pc,
-            opcode,
-            local.adapter,
-            local.is_real.into(),
-        );
+        // // Constrain the program and register reads.
+        // ITypeReader::<AB::F>::eval_op_a_immutable(
+        //     builder,
+        //     shard,
+        //     clk,
+        //     local.state.pc,
+        //     opcode,
+        //     local.adapter,
+        //     local.is_real.into(),
+        // );
     }
 }

@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use sp1_cli::{
     commands::{
         build::BuildCmd, build_toolchain::BuildToolchainCmd,
-        install_toolchain::InstallToolchainCmd, new::NewCmd,
+        install_toolchain::InstallToolchainCmd, new::NewCmd, vkey::VkeyCmd,
     },
     SP1_VERSION_MESSAGE,
 };
@@ -27,7 +27,7 @@ pub enum ProveCliCommands {
     Build(BuildCmd),
     BuildToolchain(BuildToolchainCmd),
     InstallToolchain(InstallToolchainCmd),
-    // Vkey(VkeyCmd),
+    Vkey(VkeyCmd),
 }
 
 #[tokio::main]

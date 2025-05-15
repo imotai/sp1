@@ -359,147 +359,147 @@ where
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &WeierstrassDoubleAssignCols<AB::Var, E::BaseField> = (*local).borrow();
+        // let main = builder.main();
+        // let local = main.row_slice(0);
+        // let local: &WeierstrassDoubleAssignCols<AB::Var, E::BaseField> = (*local).borrow();
 
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
-        let p_x_limbs = builder
-            .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
-        let p_y_limbs = builder
-            .generate_limbs(&local.p_access[num_words_field_element..], local.is_real.into());
-        let p_x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
-            Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
-        let p_y: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
-            Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
+        // let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        // let p_x_limbs = builder
+        //     .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
+        // let p_y_limbs = builder
+        //     .generate_limbs(&local.p_access[num_words_field_element..], local.is_real.into());
+        // let p_x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+        //     Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
+        // let p_y: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+        //     Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
 
-        // `a` in the Weierstrass form: y^2 = x^3 + a * x + b.
-        let a = E::BaseField::to_limbs_field::<AB::Expr, _>(&E::a_int());
+        // // `a` in the Weierstrass form: y^2 = x^3 + a * x + b.
+        // let a = E::BaseField::to_limbs_field::<AB::Expr, _>(&E::a_int());
 
-        // slope = slope_numerator / slope_denominator.
-        let slope = {
-            // slope_numerator = a + (p.x * p.x) * 3.
-            {
-                local.p_x_squared.eval(builder, &p_x, &p_x, FieldOperation::Mul, local.is_real);
+        // // slope = slope_numerator / slope_denominator.
+        // let slope = {
+        //     // slope_numerator = a + (p.x * p.x) * 3.
+        //     {
+        //         local.p_x_squared.eval(builder, &p_x, &p_x, FieldOperation::Mul, local.is_real);
 
-                local.p_x_squared_times_3.eval(
-                    builder,
-                    &local.p_x_squared.result,
-                    &E::BaseField::to_limbs_field::<AB::Expr, _>(&BigUint::from(3u32)),
-                    FieldOperation::Mul,
-                    local.is_real,
-                );
+        //         local.p_x_squared_times_3.eval(
+        //             builder,
+        //             &local.p_x_squared.result,
+        //             &E::BaseField::to_limbs_field::<AB::Expr, _>(&BigUint::from(3u32)),
+        //             FieldOperation::Mul,
+        //             local.is_real,
+        //         );
 
-                local.slope_numerator.eval(
-                    builder,
-                    &a,
-                    &local.p_x_squared_times_3.result,
-                    FieldOperation::Add,
-                    local.is_real,
-                );
-            };
+        //         local.slope_numerator.eval(
+        //             builder,
+        //             &a,
+        //             &local.p_x_squared_times_3.result,
+        //             FieldOperation::Add,
+        //             local.is_real,
+        //         );
+        //     };
 
-            // slope_denominator = 2 * y.
-            local.slope_denominator.eval(
-                builder,
-                &E::BaseField::to_limbs_field::<AB::Expr, _>(&BigUint::from(2u32)),
-                &p_y,
-                FieldOperation::Mul,
-                local.is_real,
-            );
+        //     // slope_denominator = 2 * y.
+        //     local.slope_denominator.eval(
+        //         builder,
+        //         &E::BaseField::to_limbs_field::<AB::Expr, _>(&BigUint::from(2u32)),
+        //         &p_y,
+        //         FieldOperation::Mul,
+        //         local.is_real,
+        //     );
 
-            local.slope.eval(
-                builder,
-                &local.slope_numerator.result,
-                &local.slope_denominator.result,
-                FieldOperation::Div,
-                local.is_real,
-            );
+        //     local.slope.eval(
+        //         builder,
+        //         &local.slope_numerator.result,
+        //         &local.slope_denominator.result,
+        //         FieldOperation::Div,
+        //         local.is_real,
+        //     );
 
-            &local.slope.result
-        };
+        //     &local.slope.result
+        // };
 
-        // x = slope * slope - (p.x + p.x).
-        let x = {
-            local.slope_squared.eval(builder, slope, slope, FieldOperation::Mul, local.is_real);
-            local.p_x_plus_p_x.eval(builder, &p_x, &p_x, FieldOperation::Add, local.is_real);
-            local.x3_ins.eval(
-                builder,
-                &local.slope_squared.result,
-                &local.p_x_plus_p_x.result,
-                FieldOperation::Sub,
-                local.is_real,
-            );
-            &local.x3_ins.result
-        };
+        // // x = slope * slope - (p.x + p.x).
+        // let x = {
+        //     local.slope_squared.eval(builder, slope, slope, FieldOperation::Mul, local.is_real);
+        //     local.p_x_plus_p_x.eval(builder, &p_x, &p_x, FieldOperation::Add, local.is_real);
+        //     local.x3_ins.eval(
+        //         builder,
+        //         &local.slope_squared.result,
+        //         &local.p_x_plus_p_x.result,
+        //         FieldOperation::Sub,
+        //         local.is_real,
+        //     );
+        //     &local.x3_ins.result
+        // };
 
-        // y = slope * (p.x - x) - p.y.
-        {
-            local.p_x_minus_x.eval(builder, &p_x, x, FieldOperation::Sub, local.is_real);
-            local.slope_times_p_x_minus_x.eval(
-                builder,
-                slope,
-                &local.p_x_minus_x.result,
-                FieldOperation::Mul,
-                local.is_real,
-            );
-            local.y3_ins.eval(
-                builder,
-                &local.slope_times_p_x_minus_x.result,
-                &p_y,
-                FieldOperation::Sub,
-                local.is_real,
-            );
-        }
+        // // y = slope * (p.x - x) - p.y.
+        // {
+        //     local.p_x_minus_x.eval(builder, &p_x, x, FieldOperation::Sub, local.is_real);
+        //     local.slope_times_p_x_minus_x.eval(
+        //         builder,
+        //         slope,
+        //         &local.p_x_minus_x.result,
+        //         FieldOperation::Mul,
+        //         local.is_real,
+        //     );
+        //     local.y3_ins.eval(
+        //         builder,
+        //         &local.slope_times_p_x_minus_x.result,
+        //         &p_y,
+        //         FieldOperation::Sub,
+        //         local.is_real,
+        //     );
+        // }
 
-        let modulus = E::BaseField::to_limbs_field::<AB::Expr, AB::F>(&E::BaseField::modulus());
-        local.x3_range.eval(builder, &local.x3_ins.result, &modulus, local.is_real);
-        local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
+        // let modulus = E::BaseField::to_limbs_field::<AB::Expr, AB::F>(&E::BaseField::modulus());
+        // local.x3_range.eval(builder, &local.x3_ins.result, &modulus, local.is_real);
+        // local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
-        let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
-        let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
+        // let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        // let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
+        // let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
-        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
-            builder,
-            E::NB_LIMBS as u32 * 2,
-            local.p_ptr,
-            local.is_real.into(),
-        );
+        // let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+        //     builder,
+        //     E::NB_LIMBS as u32 * 2,
+        //     local.p_ptr,
+        //     local.is_real.into(),
+        // );
 
-        builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into(),
-            p_ptr.clone(),
-            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
-            result_words,
-            local.is_real,
-        );
+        // builder.eval_memory_access_slice_write(
+        //     local.shard,
+        //     local.clk.into(),
+        //     p_ptr.clone(),
+        //     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+        //     result_words,
+        //     local.is_real,
+        // );
 
-        // Fetch the syscall id for the curve type.
-        let syscall_id_felt = match E::CURVE_TYPE {
-            CurveType::Secp256k1 => {
-                AB::F::from_canonical_u32(SyscallCode::SECP256K1_DOUBLE.syscall_id())
-            }
-            CurveType::Secp256r1 => {
-                AB::F::from_canonical_u32(SyscallCode::SECP256R1_DOUBLE.syscall_id())
-            }
-            CurveType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_DOUBLE.syscall_id()),
-            CurveType::Bls12381 => {
-                AB::F::from_canonical_u32(SyscallCode::BLS12381_DOUBLE.syscall_id())
-            }
-            _ => panic!("Unsupported curve"),
-        };
+        // // Fetch the syscall id for the curve type.
+        // let syscall_id_felt = match E::CURVE_TYPE {
+        //     CurveType::Secp256k1 => {
+        //         AB::F::from_canonical_u32(SyscallCode::SECP256K1_DOUBLE.syscall_id())
+        //     }
+        //     CurveType::Secp256r1 => {
+        //         AB::F::from_canonical_u32(SyscallCode::SECP256R1_DOUBLE.syscall_id())
+        //     }
+        //     CurveType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_DOUBLE.syscall_id()),
+        //     CurveType::Bls12381 => {
+        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_DOUBLE.syscall_id())
+        //     }
+        //     _ => panic!("Unsupported curve"),
+        // };
 
-        builder.receive_syscall(
-            local.shard,
-            local.clk,
-            syscall_id_felt,
-            p_ptr,
-            AB::Expr::zero(),
-            local.is_real,
-            InteractionScope::Local,
-        );
+        // builder.receive_syscall(
+        //     local.shard,
+        //     local.clk,
+        //     syscall_id_felt,
+        //     p_ptr,
+        //     AB::Expr::zero(),
+        //     local.is_real,
+        //     InteractionScope::Local,
+        // );
     }
 }
 

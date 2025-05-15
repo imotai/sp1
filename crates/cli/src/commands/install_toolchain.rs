@@ -105,17 +105,11 @@ impl InstallToolchainCmd {
         let toolchain_download_url =
             rt.block_on(get_toolchain_download_url(&client, target.to_string()));
 
-        if !skip_download {
-            let artifact_exists = rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
-            if !artifact_exists {
-                return Err(anyhow::anyhow!(
-                    "Unsupported architecture. Please build the toolchain from source."
-                ));
-            }
-            // Download the toolchain.
-            let mut file = fs::File::create(toolchain_archive_path)?;
-            rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file))
-                .unwrap();
+        let artifact_exists = rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
+        if !artifact_exists {
+            return Err(anyhow::anyhow!(
+                "Unsupported architecture. Please build the toolchain from source."
+            ));
         }
 
         // Download the toolchain.
