@@ -43,7 +43,6 @@ async fn main() {
     let buffer = bincode::serialize(&client_input).unwrap();
     stdin.write_vec(buffer);
 
-    // let (public_values, committed_value_digest, report) = prover.clone().execute(ELF, &stdin, SP1Context::default()).unwrap();
     let opts = SP1CoreOpts::default();
     let program = Arc::new(Program::from(ELF).unwrap());
     let mut runtime = Executor::with_context(program, opts, SP1Context::default());

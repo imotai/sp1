@@ -194,25 +194,25 @@ where
     AB: SP1RecursionAirBuilder + PairBuilder,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &PublicValuesCols<AB::Var> = (*local).borrow();
-        // let prepr = builder.preprocessed();
-        // let local_prepr = prepr.row_slice(0);
-        // let local_prepr: &PublicValuesPreprocessedCols<AB::Var> = (*local_prepr).borrow();
-        // let pv = builder.public_values();
-        // let pv_elms: [AB::Expr; RECURSIVE_PROOF_NUM_PV_ELTS] =
-        //     core::array::from_fn(|i| pv[i].into());
-        // let public_values: &RecursionPublicValues<AB::Expr> = pv_elms.as_slice().borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &PublicValuesCols<AB::Var> = (*local).borrow();
+        let prepr = builder.preprocessed();
+        let local_prepr = prepr.row_slice(0);
+        let local_prepr: &PublicValuesPreprocessedCols<AB::Var> = (*local_prepr).borrow();
+        let pv = builder.public_values();
+        let pv_elms: [AB::Expr; RECURSIVE_PROOF_NUM_PV_ELTS] =
+            core::array::from_fn(|i| pv[i].into());
+        let public_values: &RecursionPublicValues<AB::Expr> = pv_elms.as_slice().borrow();
 
-        // // Constrain mem read for the public value element.
-        // builder.send_single(local_prepr.pv_mem.addr, local.pv_element, local_prepr.pv_mem.mult);
+        // Constrain mem read for the public value element.
+        builder.send_single(local_prepr.pv_mem.addr, local.pv_element, local_prepr.pv_mem.mult);
 
-        // for (i, pv_elm) in public_values.digest.iter().enumerate() {
-        //     // Ensure that the public value element is the same for all rows within a fri fold
-        //     // invocation.
-        //     builder.when(local_prepr.pv_idx[i]).assert_eq(pv_elm.clone(), local.pv_element);
-        // }
+        for (i, pv_elm) in public_values.digest.iter().enumerate() {
+            // Ensure that the public value element is the same for all rows within a fri fold
+            // invocation.
+            builder.when(local_prepr.pv_idx[i]).assert_eq(pv_elm.clone(), local.pv_element);
+        }
     }
 }
 
