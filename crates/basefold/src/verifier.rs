@@ -262,8 +262,6 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             })
             .collect::<Vec<_>>();
 
-        // TODO: replace with log_blowup here.
-        assert_eq!(commitments.len(), log_max_height - 1);
         // Loop over the FRI queries.
         for ((commitment, query_opening), beta) in
             commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas)
