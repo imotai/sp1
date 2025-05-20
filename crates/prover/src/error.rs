@@ -12,13 +12,16 @@ pub enum SP1ProverError {
     CompilationError,
     // Core executor error.
     #[error("Core executor error: {0}")]
-    CoreExecutorError(MachineExecutorError),
+    CoreExecutorError(#[from] MachineExecutorError),
     // Recursion prover error.
     #[error("Recursion prover error: {0}")]
     RecursionProverError(MachineProverError),
     /// Recursion program error.
     #[error("Recursion program error: {0}")]
     RecursionProgramError(#[from] RecursionProgramError),
+    /// Other error.
+    #[error("Unexpected error: {0}")]
+    Other(String),
 }
 
 #[derive(Debug, Error)]

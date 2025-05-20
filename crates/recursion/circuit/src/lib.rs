@@ -51,7 +51,6 @@ pub type InnerSC = BabyBearPoseidon2;
 pub trait AsRecursive<C: CircuitConfig> {
     type Recursive;
 }
-
 pub trait BabyBearFriConfig:
     JaggedConfig<
     F = BabyBear,

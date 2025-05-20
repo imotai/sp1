@@ -2,6 +2,7 @@ pub mod concurrency;
 mod logger;
 mod prove;
 mod span;
+#[cfg(test)]
 mod test;
 mod zerocheck_unit_test;
 
@@ -9,6 +10,7 @@ pub use logger::*;
 use p3_field::{AbstractField, Field};
 pub use prove::*;
 pub use span::*;
+#[cfg(test)]
 pub use test::*;
 pub use zerocheck_unit_test::*;
 

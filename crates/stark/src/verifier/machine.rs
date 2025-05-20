@@ -33,6 +33,9 @@ pub enum MachineVerifierError<C: MachineConfig> {
     /// There are too many shards.
     #[error("too many shards")]
     TooManyShards,
+    /// Invalid verification key.
+    #[error("invalid verification key")]
+    InvalidVerificationKey,
 }
 
 /// A verifier for a machine proof.

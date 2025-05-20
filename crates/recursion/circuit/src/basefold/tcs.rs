@@ -1,10 +1,12 @@
 use std::marker::PhantomData;
 
 use itertools::Itertools;
-use slop_merkle_tree::{MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2BabyBearConfig};
+use slop_merkle_tree::{
+    MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
+};
 use slop_tensor::Tensor;
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
-use sp1_stark::BabyBearPoseidon2;
+use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
 
 use crate::{basefold::merkle_tree::verify, hash::FieldHasherVariable, AsRecursive, CircuitConfig};
 
@@ -42,6 +44,10 @@ impl<C, M> Clone for RecursiveMerkleTreeTcs<C, M> {
 
 impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<Poseidon2BabyBearConfig> {
     type Recursive = RecursiveMerkleTreeTcs<C, BabyBearPoseidon2>;
+}
+
+impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<Poseidon2Bn254Config> {
+    type Recursive = RecursiveMerkleTreeTcs<C, Bn254JaggedConfig>;
 }
 
 impl<C, M> RecursiveTcs for RecursiveMerkleTreeTcs<C, M>

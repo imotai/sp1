@@ -67,7 +67,7 @@ where
 
 impl<C, F, W, const DIGEST_ELEMENTS: usize> Witnessable<C> for Hash<F, W, DIGEST_ELEMENTS>
 where
-    C: CircuitConfig<F = <InnerSC as JaggedConfig>::F, EF = <InnerSC as JaggedConfig>::EF>,
+    C: CircuitConfig<F: Witnessable<C>, EF: Witnessable<C>>,
     W: Witnessable<C>,
 {
     type WitnessVariable = [W::WitnessVariable; DIGEST_ELEMENTS];
@@ -135,6 +135,7 @@ where
     // OpeningProof<SC>: Witnessable<C, WitnessVariable = TwoAdicPcsProofVariable<C, SC>>,
 {
     type WitnessVariable = SP1CompressWitnessVariable<C, SC, JC<C, SC>>;
+
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let vks_and_proofs = self.vks_and_proofs.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);

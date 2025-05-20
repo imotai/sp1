@@ -11,7 +11,6 @@ use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, Felt, SymbolicExt},
 };
-use sp1_stark::BabyBearPoseidon2;
 
 use crate::{
     basefold::{
@@ -72,16 +71,15 @@ pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
     pub stacked_pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
 }
 
-impl<
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>, Bit = Felt<BabyBear>>,
-        BC,
-        E,
-    > AsRecursive<C> for JaggedBasefoldConfig<BC, E>
+impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>, BC, E> AsRecursive<C>
+    for JaggedBasefoldConfig<BC, E>
+where
+    Self: BabyBearFriConfigVariable<C>,
 {
     type Recursive = RecursiveJaggedConfigImpl<
         C,
-        BabyBearPoseidon2,
-        RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, BabyBearPoseidon2>>,
+        Self,
+        RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, Self>>,
     >;
 }
 

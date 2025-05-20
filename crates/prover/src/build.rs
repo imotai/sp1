@@ -2,33 +2,35 @@
 
 use std::{borrow::Borrow, path::PathBuf};
 
-use p3_baby_bear::BabyBear;
-use sp1_core_executor::SP1Context;
+use slop_baby_bear::BabyBear;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
-    machine::{SP1CompressWitnessValues, SP1WrapVerifier},
+    machine::{SP1CompressRootVerifier, SP1CompressWitnessValues},
+    utils::{babybear_bytes_to_bn254, babybears_to_bn254},
 };
 use sp1_recursion_compiler::{
     config::OuterConfig,
     constraints::{Constraint, ConstraintCompiler},
     ir::Builder,
 };
-use sp1_recursion_core::air::RecursionPublicValues;
+use sp1_recursion_executor::RecursionPublicValues;
+// use sp1_recursion_core::air::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
-use sp1_stark::{SP1ProverOpts, ShardProof, StarkVerifyingKey};
+use sp1_stark::{MachineVerifyingKey, ShardProof};
 
 pub use sp1_recursion_circuit::witness::{OuterWitness, Witnessable};
-pub use sp1_recursion_core::stark::sp1_dev_mode;
 
 use crate::{
-    utils::{babybear_bytes_to_bn254, babybears_to_bn254, words_to_bytes},
-    OuterSC, SP1Prover, WrapAir,
+    components::{CpuSP1ProverComponents, SP1ProverComponents},
+    local::{LocalProver, LocalProverOpts},
+    utils::words_to_bytes,
+    OuterSC, SP1ProverBuilder,
 };
 
 /// Tries to build the PLONK artifacts inside the development directory.
 pub fn try_build_plonk_bn254_artifacts_dev(
-    template_vk: &StarkVerifyingKey<OuterSC>,
+    template_vk: &MachineVerifyingKey<OuterSC>,
     template_proof: &ShardProof<OuterSC>,
 ) -> PathBuf {
     let build_dir = plonk_bn254_artifacts_dev_dir();
@@ -39,7 +41,7 @@ pub fn try_build_plonk_bn254_artifacts_dev(
 
 /// Tries to build the groth16 bn254 artifacts in the current environment.
 pub fn try_build_groth16_bn254_artifacts_dev(
-    template_vk: &StarkVerifyingKey<OuterSC>,
+    template_vk: &MachineVerifyingKey<OuterSC>,
     template_proof: &ShardProof<OuterSC>,
 ) -> PathBuf {
     let build_dir = groth16_bn254_artifacts_dev_dir();
@@ -61,7 +63,7 @@ pub fn groth16_bn254_artifacts_dev_dir() -> PathBuf {
 /// Build the plonk bn254 artifacts to the given directory for the given verification key and
 /// template proof.
 pub fn build_plonk_bn254_artifacts(
-    template_vk: &StarkVerifyingKey<OuterSC>,
+    template_vk: &MachineVerifyingKey<OuterSC>,
     template_proof: &ShardProof<OuterSC>,
     build_dir: impl Into<PathBuf>,
 ) {
@@ -74,7 +76,7 @@ pub fn build_plonk_bn254_artifacts(
 /// Build the groth16 bn254 artifacts to the given directory for the given verification key and
 /// template proof.
 pub fn build_groth16_bn254_artifacts(
-    template_vk: &StarkVerifyingKey<OuterSC>,
+    template_vk: &MachineVerifyingKey<OuterSC>,
     template_proof: &ShardProof<OuterSC>,
     build_dir: impl Into<PathBuf>,
 ) {
@@ -88,8 +90,8 @@ pub fn build_groth16_bn254_artifacts(
 ///
 /// This may take a while as it needs to first generate a dummy proof and then it needs to compile
 /// the circuit.
-pub fn build_plonk_bn254_artifacts_with_dummy(build_dir: impl Into<PathBuf>) {
-    let (wrap_vk, wrapped_proof) = dummy_proof();
+pub async fn build_plonk_bn254_artifacts_with_dummy(build_dir: impl Into<PathBuf>) {
+    let (wrap_vk, wrapped_proof) = dummy_proof().await;
     let wrap_vk_bytes = bincode::serialize(&wrap_vk).unwrap();
     let wrapped_proof_bytes = bincode::serialize(&wrapped_proof).unwrap();
     std::fs::write("wrap_vk.bin", wrap_vk_bytes).unwrap();
@@ -105,8 +107,8 @@ pub fn build_plonk_bn254_artifacts_with_dummy(build_dir: impl Into<PathBuf>) {
 ///
 /// This may take a while as it needs to first generate a dummy proof and then it needs to compile
 /// the circuit.
-pub fn build_groth16_bn254_artifacts_with_dummy(build_dir: impl Into<PathBuf>) {
-    let (wrap_vk, wrapped_proof) = dummy_proof();
+pub async fn build_groth16_bn254_artifacts_with_dummy(build_dir: impl Into<PathBuf>) {
+    let (wrap_vk, wrapped_proof) = dummy_proof().await;
     let wrap_vk_bytes = bincode::serialize(&wrap_vk).unwrap();
     let wrapped_proof_bytes = bincode::serialize(&wrapped_proof).unwrap();
     std::fs::write("wrap_vk.bin", wrap_vk_bytes).unwrap();
@@ -120,7 +122,7 @@ pub fn build_groth16_bn254_artifacts_with_dummy(build_dir: impl Into<PathBuf>) {
 
 /// Build the verifier constraints and template witness for the circuit.
 pub fn build_constraints_and_witness(
-    template_vk: &StarkVerifyingKey<OuterSC>,
+    template_vk: &MachineVerifyingKey<OuterSC>,
     template_proof: &ShardProof<OuterSC>,
 ) -> (Vec<Constraint>, OuterWitness<OuterConfig>) {
     tracing::info!("building verifier constraints");
@@ -148,36 +150,41 @@ pub fn build_constraints_and_witness(
 
 /// Generate a dummy proof that we can use to build the circuit. We need this to know the shape of
 /// the proof.
-pub fn dummy_proof() -> (StarkVerifyingKey<OuterSC>, ShardProof<OuterSC>) {
+pub async fn dummy_proof() -> (MachineVerifyingKey<OuterSC>, ShardProof<OuterSC>) {
     let elf = include_bytes!("../elf/riscv32im-succinct-zkvm-elf");
 
     tracing::info!("initializing prover");
-    let prover: SP1Prover = SP1Prover::new();
-    let opts = SP1ProverOpts::auto();
-    let context = SP1Context::default();
+    let prover = SP1ProverBuilder::cpu().build().await;
+    let local_prover = LocalProver::new(prover, LocalProverOpts::default());
+    let prover = std::sync::Arc::new(local_prover);
 
     tracing::info!("setup elf");
-    let (_, pk_d, program, vk) = prover.setup(elf);
+    let (pk, program, vk) = prover.prover().core().setup(elf).await;
+    let pk = unsafe { pk.into_inner() };
 
     tracing::info!("prove core");
     let mut stdin = SP1Stdin::new();
     stdin.write(&500u32);
-    let core_proof = prover.prove_core(&pk_d, program, &stdin, opts, context).unwrap();
+    let core_proof =
+        prover.clone().prove_core(pk, program, stdin, Default::default()).await.unwrap();
 
     tracing::info!("compress");
-    let compressed_proof = prover.compress(&vk, core_proof, vec![], opts).unwrap();
+    let compressed_proof = prover.clone().compress(&vk, core_proof, vec![]).await.unwrap();
 
     tracing::info!("shrink");
-    let shrink_proof = prover.shrink(compressed_proof, opts).unwrap();
+    let shrink_proof = prover.shrink(compressed_proof).await.unwrap();
 
     tracing::info!("wrap");
-    let wrapped_proof = prover.wrap_bn254(shrink_proof, opts).unwrap();
+    let wrapped_proof = prover.wrap(shrink_proof).await.unwrap();
 
     (wrapped_proof.vk, wrapped_proof.proof)
 }
 
 fn build_outer_circuit(template_input: &SP1CompressWitnessValues<OuterSC>) -> Vec<Constraint> {
-    let wrap_machine = WrapAir::wrap_machine(OuterSC::default());
+    let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
+    let wrap_verifier = wrap_verifier.shard_verifier();
+    let recursive_wrap_verifier =
+        crate::recursion::recursive_verifier::<_, OuterSC, OuterConfig, _>(wrap_verifier);
 
     let wrap_span = tracing::debug_span!("build wrap circuit").entered();
     let mut builder = Builder::<OuterConfig>::default();
@@ -186,21 +193,27 @@ fn build_outer_circuit(template_input: &SP1CompressWitnessValues<OuterSC>) -> Ve
     let template_vk = template_input.vks_and_proofs.first().unwrap().0.clone();
     // Get an input variable.
     let input = template_input.read(&mut builder);
+
     // Fix the `wrap_vk` value to be the same as the template `vk`. Since the chip information and
     // the ordering is already a constant, we just need to constrain the commitment and pc_start.
 
     // Get the vk variable from the input.
-    let vk = input.vks_and_proofs.first().unwrap().0.clone();
+    let vk = &input.vks_and_proofs.first().unwrap().0;
     // Get the expected commitment.
-    let expected_commitment: [_; 1] = template_vk.commit.into();
+    let expected_commitment: [_; 1] =
+        template_vk.preprocessed_commit.expect("expected preprocessed commitment").into();
     let expected_commitment = expected_commitment.map(|x| builder.eval(x));
     // Constrain `commit` to be the same as the template `vk`.
-    OuterSC::assert_digest_eq(&mut builder, expected_commitment, vk.commitment);
+    OuterSC::assert_digest_eq(
+        &mut builder,
+        expected_commitment,
+        vk.preprocessed_commit.expect("expected preprocessed commitment"),
+    );
     // Constrain `pc_start` to be the same as the template `vk`.
     builder.assert_felt_eq(vk.pc_start, template_vk.pc_start);
 
     // Verify the proof.
-    SP1WrapVerifier::verify(&mut builder, &wrap_machine, input);
+    SP1CompressRootVerifier::verify(&mut builder, &recursive_wrap_verifier, input);
 
     let mut backend = ConstraintCompiler::<OuterConfig>::default();
     let operations = backend.emit(builder.into_operations());

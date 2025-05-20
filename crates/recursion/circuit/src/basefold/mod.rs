@@ -16,13 +16,14 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::D;
 use std::{iter::once, marker::PhantomData};
 use tcs::{RecursiveMerkleTreeTcs, RecursiveTcs, RecursiveTensorCsOpening};
+use tracing::instrument;
 pub mod merkle_tree;
 pub mod stacked;
 pub mod tcs;
 pub mod witness;
 use crate::AsRecursive;
-use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
-use sp1_stark::BabyBearPoseidon2;
+use slop_basefold::{Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig};
+use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
 
 pub trait RecursiveBasefoldConfig: Sized {
     type F: Copy;
@@ -43,6 +44,10 @@ pub struct RecursiveBasefoldConfigImpl<C, SC>(PhantomData<(C, SC)>);
 
 impl<C: CircuitConfig> AsRecursive<C> for Poseidon2BabyBear16BasefoldConfig {
     type Recursive = RecursiveBasefoldConfigImpl<C, BabyBearPoseidon2>;
+}
+
+impl<C: CircuitConfig> AsRecursive<C> for Poseidon2Bn254FrBasefoldConfig {
+    type Recursive = RecursiveBasefoldConfigImpl<C, Bn254JaggedConfig>;
 }
 
 impl<
@@ -268,6 +273,7 @@ impl<
         builder.cycle_tracker_v2_exit();
 
         builder.cycle_tracker_v2_enter("compute batch_evals");
+
         // Compute the batch evaluations from the openings of the component polynomials.
         let zero = SymbolicExt::<C::F, C::EF>::zero();
         let mut batch_evals = vec![zero; query_indices.len()];
@@ -289,6 +295,7 @@ impl<
         builder.cycle_tracker_v2_exit();
 
         builder.cycle_tracker_v2_enter("verify_tensor_openings");
+
         // Verify the proof of the claimed values.
         for (commit, opening) in
             commitments.iter().zip_eq(proof.component_polynomials_query_openings.iter())
@@ -326,6 +333,7 @@ impl<
     /// The FRI verifier for a single query. We modify this from Plonky3 to be compatible with
     /// opening only a single vector.
     #[allow(clippy::too_many_arguments)]
+    #[instrument(name = "verify_queries", skip_all)]
     fn verify_queries(
         &self,
         builder: &mut Builder<C>,
@@ -337,28 +345,27 @@ impl<
         betas: &[Ext<C::F, C::EF>],
     ) {
         let log_max_height = commitments.len() + self.fri_config.log_blowup();
-        let two_adic_generator: Felt<C::F> =
-            builder.constant(C::F::two_adic_generator(log_max_height));
 
         let mut folded_evals = reduced_openings;
-
         builder.cycle_tracker_v2_enter("compute exp reverse bits");
         let mut xis: Vec<Felt<C::F>> = indices
             .iter()
-            .map(|index| C::exp_reverse_bits(builder, two_adic_generator, index.to_vec()))
+            .map(|index| {
+                let two_adic_generator: Felt<C::F> =
+                    builder.constant(C::F::two_adic_generator(log_max_height));
+                C::exp_reverse_bits(builder, two_adic_generator, index.to_vec())
+            })
             .collect::<Vec<_>>();
         builder.cycle_tracker_v2_exit();
 
         let mut indices = indices.to_vec();
-
-        // TODO: replace with log_blowup here.
-        assert_eq!(commitments.len(), log_max_height - 1);
 
         // Loop over the FRI queries.
         for ((commitment, query_opening), beta) in
             commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas)
         {
             let openings = &query_opening.values;
+
             for (((index, folded_eval), opening), x) in indices
                 .iter_mut()
                 .zip_eq(folded_evals.iter_mut())

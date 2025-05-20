@@ -2,7 +2,6 @@
 version = "4.2.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.79"
 repository = "https://github.com/succinctlabs/sp1"
 keywords = ["sp1", "succinct", "zero-knowledge", "zkvm"]
 categories = ["cryptography"]
@@ -175,6 +174,7 @@ p3-bn254-fr = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_co
 # p3-uni-stark = { path = "../Plonky3/uni-stark" }
 # p3-maybe-rayon = { path = "../Plonky3/maybe-rayon" }
 # p3-bn254-fr = { path = "../Plonky3/bn254-fr" }
+
 
 # misc
 hashbrown = "0.14.5"

@@ -7,15 +7,16 @@ use slop_baby_bear::BabyBear;
 use super::{PublicValuesOutputDigest, SP1CompressWitnessVariable};
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
-    challenger::DuplexChallengerVariable,
+    challenger::{CanObserveVariable, DuplexChallengerVariable},
     jagged::RecursiveJaggedConfig,
     shard::RecursiveShardVerifier,
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use sp1_recursion_compiler::ir::{Builder, Felt};
-use sp1_recursion_executor::DIGEST_SIZE;
+use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE};
 use sp1_stark::{air::MachineAir, MachineVerifier};
+use std::borrow::Borrow;
 
 /// A program to verify a single recursive proof representing a complete proof of program execution.
 ///
@@ -55,15 +56,32 @@ where
         builder: &mut Builder<C>,
         machine: &RecursiveShardVerifier<A, SC, C, JC>,
         input: SP1CompressWitnessVariable<C, SC, JC>,
-        _vk_root: [Felt<C::F>; DIGEST_SIZE],
+        // _vk_root: [Felt<C::F>; DIGEST_SIZE],
     ) {
+        // Assert the the proof is not malformed.
+        assert!(input.vks_and_proofs.len() == 1);
+        // Take the proof from the input.
+        let (vk, proof) = &input.vks_and_proofs[0];
+
         // Assert that the program is complete.
         builder.assert_felt_eq(input.is_complete, C::F::one());
-        // // Verify the proof, as a compress proof.
-        for (vk, proof) in input.vks_and_proofs {
-            let mut challenger = <SC as BabyBearFriConfigVariable<C>>::challenger_variable(builder);
-            machine.verify_shard(builder, &vk, &proof, &mut challenger);
+
+        let mut challenger = <SC as BabyBearFriConfigVariable<C>>::challenger_variable(builder);
+        if let Some(vk) = vk.preprocessed_commit.as_ref() {
+            challenger.observe(builder, *vk)
         }
+        challenger.observe(builder, vk.pc_start);
+        challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
+        challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
+
+        // Observe the padding.
+        let zero: Felt<_> = builder.eval(C::F::zero());
+        challenger.observe(builder, zero);
+        machine.verify_shard(builder, vk, proof, &mut challenger);
+
+        let public_values: &RecursionPublicValues<Felt<C::F>> =
+            proof.public_values.as_slice().borrow();
+        SC::commit_recursion_public_values(builder, *public_values);
     }
 }
 

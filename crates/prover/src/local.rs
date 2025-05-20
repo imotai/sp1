@@ -3,16 +3,25 @@ use futures::{
     prelude::*,
     stream::{FuturesOrdered, FuturesUnordered},
 };
+use slop_algebra::PrimeField;
 use slop_futures::queue::WorkerQueue;
 use sp1_recursion_circuit::{
     machine::{SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues},
+    utils::{babybear_bytes_to_bn254, babybears_to_bn254, words_to_bytes},
+    witness::{OuterWitness, Witnessable},
     InnerSC,
+};
+use sp1_recursion_executor::RecursionPublicValues;
+use sp1_recursion_gnark_ffi::{
+    Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
 };
 use sp1_stark::ChipDimensions;
 use std::{
+    borrow::Borrow,
     collections::{BTreeMap, VecDeque},
     env,
     ops::Range,
+    path::Path,
     sync::Arc,
 };
 
@@ -39,7 +48,8 @@ use tokio::sync::{
 
 use crate::{
     components::SP1ProverComponents, error::SP1ProverError, recursion::SP1RecursionProver, CoreSC,
-    HashableKey, SP1CircuitWitness, SP1CoreProof, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
+    HashableKey, OuterSC, SP1CircuitWitness, SP1CoreProof, SP1CoreProofData, SP1Prover,
+    SP1VerifyingKey,
 };
 
 #[derive(Debug, Clone)]
@@ -422,6 +432,145 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         Err(SP1ProverError::RecursionProverError(MachineProverError::ProverClosed))
     }
 
+    #[tracing::instrument(name = "prove shrink", skip_all)]
+    pub async fn shrink(
+        &self,
+        compressed_proof: SP1ReduceProof<InnerSC>,
+    ) -> Result<SP1ReduceProof<InnerSC>, SP1ProverError> {
+        // Make the compress proof.
+        let SP1ReduceProof { vk: compressed_vk, proof: compressed_proof } = compressed_proof;
+        let input = SP1CompressWitnessValues {
+            vks_and_proofs: vec![(compressed_vk.clone(), compressed_proof)],
+            is_complete: true,
+        };
+
+        let witness = SP1CircuitWitness::Shrink(input);
+        let record = self
+            .prover
+            .recursion()
+            .execute(&witness)
+            .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {:?}", e)))?;
+
+        let (_, vk) = self
+            .prover
+            .recursion()
+            .keys(&witness)
+            .expect("Failed to find key for shrink program (arity 1");
+
+        let proof = self
+            .prover
+            .recursion()
+            .prove_shrink(record)
+            .await
+            .map_err(SP1ProverError::RecursionProverError)?;
+
+        Ok(SP1ReduceProof { vk, proof })
+    }
+
+    #[tracing::instrument(name = "prove wrap", skip_all)]
+    pub async fn wrap(
+        &self,
+        shrunk_proof: SP1ReduceProof<InnerSC>,
+    ) -> Result<SP1ReduceProof<OuterSC>, SP1ProverError> {
+        let SP1ReduceProof { vk: compressed_vk, proof: compressed_proof } = shrunk_proof;
+        let input = SP1CompressWitnessValues {
+            vks_and_proofs: vec![(compressed_vk.clone(), compressed_proof)],
+            is_complete: true,
+        };
+
+        let witness = SP1CircuitWitness::Wrap(input);
+        let record = self
+            .prover
+            .recursion()
+            .execute(&witness)
+            .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {:?}", e)))?;
+
+        let (_, vk) = self.prover.recursion().wrap_keys();
+
+        let proof = self
+            .prover
+            .recursion()
+            .prove_wrap(record)
+            .await
+            .map_err(SP1ProverError::RecursionProverError)?;
+
+        Ok(SP1ReduceProof { vk, proof })
+    }
+
+    #[tracing::instrument(name = "prove wrap plonk bn254", skip_all)]
+    pub async fn wrap_plonk_bn254(
+        &self,
+        wrap_proof: SP1ReduceProof<OuterSC>,
+        build_dir: &Path,
+    ) -> PlonkBn254Proof {
+        let SP1ReduceProof { vk: wrap_vk, proof: wrap_proof } = wrap_proof;
+        let input = SP1CompressWitnessValues {
+            vks_and_proofs: vec![(wrap_vk.clone(), wrap_proof.clone())],
+            is_complete: true,
+        };
+
+        let pv: &RecursionPublicValues<BabyBear> = wrap_proof.public_values.as_slice().borrow();
+
+        let vkey_hash = babybears_to_bn254(&pv.sp1_vk_digest);
+        let committed_values_digest_bytes: [BabyBear; 32] =
+            words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
+        let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
+        let mut witness = OuterWitness::default();
+        input.write(&mut witness);
+        witness.write_committed_values_digest(committed_values_digest);
+        witness.write_vkey_hash(vkey_hash);
+
+        let prover = PlonkBn254Prover::new();
+        let proof = prover.prove(witness, build_dir.to_path_buf());
+
+        // Verify the proof.
+        prover.verify(
+            &proof,
+            &vkey_hash.as_canonical_biguint(),
+            &committed_values_digest.as_canonical_biguint(),
+            build_dir,
+        );
+
+        proof
+    }
+
+    #[tracing::instrument(name = "prove wrap plonk bn254", skip_all)]
+    pub async fn wrap_groth16_bn254(
+        &self,
+        wrap_proof: SP1ReduceProof<OuterSC>,
+        build_dir: &Path,
+    ) -> Groth16Bn254Proof {
+        let SP1ReduceProof { vk: wrap_vk, proof: wrap_proof } = wrap_proof;
+        let input = SP1CompressWitnessValues {
+            vks_and_proofs: vec![(wrap_vk.clone(), wrap_proof.clone())],
+            is_complete: true,
+        };
+
+        let pv: &RecursionPublicValues<BabyBear> = wrap_proof.public_values.as_slice().borrow();
+
+        let vkey_hash = babybears_to_bn254(&pv.sp1_vk_digest);
+        let committed_values_digest_bytes: [BabyBear; 32] =
+            words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
+        let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
+        let mut witness = OuterWitness::default();
+        input.write(&mut witness);
+        witness.write_committed_values_digest(committed_values_digest);
+        witness.write_vkey_hash(vkey_hash);
+
+        let prover = Groth16Bn254Prover::new();
+        let proof = prover.prove(witness, build_dir.to_path_buf());
+
+        // Verify the proof.
+        prover.verify(
+            &proof,
+            &vkey_hash.as_canonical_biguint(),
+            &committed_values_digest.as_canonical_biguint(),
+            build_dir,
+        );
+
+        proof
+    }
+
     /// Generate the inputs for the first layer of recursive proofs.
     #[allow(clippy::type_complexity)]
     pub fn get_first_layer_inputs<'a>(
@@ -498,10 +647,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });
 
-            deferred_digest = SP1RecursionProver::<C::RecursionComponents>::hash_deferred_proofs(
-                deferred_digest,
-                batch,
-            );
+            deferred_digest = SP1RecursionProver::<C>::hash_deferred_proofs(deferred_digest, batch);
         }
         (deferred_inputs, deferred_digest)
     }
@@ -758,7 +904,11 @@ pub mod tests {
 
     use slop_algebra::PrimeField32;
 
-    use crate::{components::CpuSP1ProverComponents, SP1ProverBuilder};
+    use crate::{
+        build::{try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev},
+        components::CpuSP1ProverComponents,
+        SP1ProverBuilder,
+    };
 
     use super::*;
 
@@ -797,6 +947,8 @@ pub mod tests {
             .await
             .unwrap();
 
+        let public_values = core_proof.public_values.clone();
+
         let cycles = core_proof.cycles as usize;
         let num_shards = core_proof.proof.0.len();
         tracing::info!("Cycles: {}, number of shards: {}", cycles, num_shards);
@@ -819,6 +971,30 @@ pub mod tests {
 
         // Verify the compress proof
         prover.prover().verify_compressed(&compress_proof, &vk).unwrap();
+
+        let shrink_proof = prover.clone().shrink(compress_proof).await.unwrap();
+        prover.prover().verify_shrink(&shrink_proof, &vk).unwrap();
+
+        let wrap_proof = prover.clone().wrap(shrink_proof).await.unwrap();
+        prover.prover().verify_wrap_bn254(&wrap_proof, &vk).unwrap();
+
+        let artifacts_dir = try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+        let plonk_bn254_proof = prover.wrap_plonk_bn254(wrap_proof.clone(), &artifacts_dir).await;
+
+        prover
+            .prover()
+            .verify_plonk_bn254(&plonk_bn254_proof, &vk, &public_values, &artifacts_dir)
+            .unwrap();
+
+        let artifacts_dir =
+            try_build_groth16_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+        let groth16_bn254_proof =
+            prover.wrap_groth16_bn254(wrap_proof.clone(), &artifacts_dir).await;
+
+        prover
+            .prover()
+            .verify_groth16_bn254(&groth16_bn254_proof, &vk, &public_values, &artifacts_dir)
+            .unwrap();
 
         Ok(())
     }

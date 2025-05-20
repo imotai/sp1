@@ -451,7 +451,10 @@ mod tests {
 
         let elf = test_artifacts::FIBONACCI_ELF;
         let program = Arc::new(Program::from(elf).unwrap());
-        let prover = Arc::new(CpuShardProver::new(verifier.clone()));
+        let prover = Arc::new(CpuShardProver::<
+            slop_jagged::Poseidon2BabyBearJaggedCpuProverComponents,
+            _,
+        >::new(verifier.clone()));
 
         let (pk, vk) = prover.setup(program.clone(), ProverSemaphore::new(1)).await;
         let pk = unsafe { pk.into_inner() };

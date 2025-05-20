@@ -11,7 +11,8 @@ use slop_algebra::extension::BinomialExtensionField;
 use slop_alloc::CpuBackend;
 use slop_baby_bear::BabyBear;
 use slop_jagged::{
-    JaggedProver, JaggedProverComponents, Poseidon2BabyBearJaggedCpuProverComponents,
+    DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents,
+    Poseidon2BabyBearJaggedCpuProverComponents,
 };
 
 use crate::{
@@ -125,13 +126,16 @@ where
     type PcsProverComponents = PcsComponents;
 }
 
-impl<A> CpuShardProver<Poseidon2BabyBearJaggedCpuProverComponents, A>
+impl<Comp, A, Config> CpuShardProver<Comp, A>
 where
-    A: ZerocheckAir<BabyBear, BinomialExtensionField<BabyBear, 4>> + std::fmt::Debug,
+    Config: JaggedConfig + Sync,
+    Comp: JaggedProverComponents<A = CpuBackend, Config = Config, F = Config::F, EF = Config::EF>
+        + DefaultJaggedProver,
+    A: ZerocheckAir<Config::F, Config::EF> + std::fmt::Debug,
 {
     /// Create a new CPU prover.
     #[must_use]
-    pub fn new(verifier: ShardVerifier<BabyBearPoseidon2, A>) -> Self {
+    pub fn new(verifier: ShardVerifier<Config, A>) -> Self {
         // Construct the shard prover.
         let ShardVerifier { pcs_verifier, machine } = verifier;
         let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
@@ -140,6 +144,7 @@ where
         let logup_gkr_trace_generator = LogupGkrCpuTraceGenerator::default();
         let logup_gkr_prover =
             GkrProverImpl::new(logup_gkr_trace_generator, LogupGkrCpuRoundProver);
+
         Self {
             trace_generator,
             logup_gkr_prover,

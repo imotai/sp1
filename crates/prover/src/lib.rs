@@ -11,7 +11,7 @@
 #![allow(clippy::new_without_default)]
 #![allow(clippy::collapsible_else_if)]
 
-// pub mod build;
+pub mod build;
 pub mod components;
 // pub mod gas; // TODO reimplement gas
 mod core;
@@ -34,6 +34,7 @@ use slop_baby_bear::BabyBear;
 use sp1_recursion_executor::RecursionProgram;
 use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphore, ShardProver};
 
+use slop_jagged::Bn254JaggedConfig;
 use sp1_stark::{prover::MachineProvingKey, BabyBearPoseidon2};
 
 pub use types::*;
@@ -55,8 +56,8 @@ pub const CORE_LOG_BLOWUP: usize = 1;
 pub type InnerSC = BabyBearPoseidon2;
 pub const COMPRESS_LOG_BLOWUP: usize = 1;
 
-// The configuration for the outer prover.
-// pub type OuterSC = BabyBearPoseidon2Outer;
+/// The configuration for the outer prover.
+pub type OuterSC = Bn254JaggedConfig;
 
 // pub type DeviceProvingKey<C> = <<C as SP1ProverComponents>::CoreProver as MachineProver<
 //     BabyBearPoseidon2,
@@ -66,7 +67,7 @@ use sp1_recursion_machine::RecursionAir;
 
 const COMPRESS_DEGREE: usize = 3;
 const SHRINK_DEGREE: usize = 3;
-const WRAP_DEGREE: usize = 9;
+const WRAP_DEGREE: usize = 3;
 
 // const CORE_CACHE_SIZE: usize = 5;
 pub const REDUCE_BATCH_SIZE: usize = 2;
@@ -77,12 +78,13 @@ pub type WrapAir<F> = RecursionAir<F, WRAP_DEGREE>;
 
 pub struct SP1Prover<C: SP1ProverComponents> {
     core_prover: SP1CoreProver<C::CoreComponents>,
-    recursion_prover: SP1RecursionProver<C::RecursionComponents>,
+    recursion_prover: SP1RecursionProver<C>,
 }
-
 pub struct SP1ProverBuilder<C: SP1ProverComponents> {
     core_prover_builder: MachineProverBuilder<C::CoreComponents>,
     recursion_prover_builder: MachineProverBuilder<C::RecursionComponents>,
+    shrink_prover_builder: MachineProverBuilder<C::RecursionComponents>,
+    wrap_prover_builder: MachineProverBuilder<C::WrapComponents>,
     recursion_programs_cache_size: usize,
     max_reduce_arity: usize,
     join_pk: BTreeMap<SP1RecursionShape, Arc<MachineProvingKey<C::RecursionComponents>>>,
@@ -90,6 +92,7 @@ pub struct SP1ProverBuilder<C: SP1ProverComponents> {
 }
 
 impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new_multi_permits(
         base_core_provers: Vec<Arc<ShardProver<C::CoreComponents>>>,
         core_prover_permits: Vec<ProverSemaphore>,
@@ -97,6 +100,12 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         base_recursion_provers: Vec<Arc<ShardProver<C::RecursionComponents>>>,
         recursion_prover_permits: Vec<ProverSemaphore>,
         nums_recursion_workers: Vec<usize>,
+        base_shrink_provers: Vec<Arc<ShardProver<C::RecursionComponents>>>,
+        shrink_prover_permits: Vec<ProverSemaphore>,
+        nums_shrink_workers: Vec<usize>,
+        base_wrap_provers: Vec<Arc<ShardProver<C::WrapComponents>>>,
+        wrap_prover_permits: Vec<ProverSemaphore>,
+        nums_wrap_workers: Vec<usize>,
         recursion_programs_cache_size: usize,
         max_reduce_arity: usize,
     ) -> Self {
@@ -114,9 +123,25 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             base_recursion_provers,
         );
 
+        let shrink_verifier = C::shrink_verifier();
+        let shrink_prover_builder = MachineProverBuilder::new(
+            shrink_verifier.shard_verifier().clone(),
+            shrink_prover_permits,
+            base_shrink_provers,
+        );
+
+        let wrap_verifier = C::wrap_verifier();
+        let wrap_prover_builder = MachineProverBuilder::new(
+            wrap_verifier.shard_verifier().clone(),
+            wrap_prover_permits,
+            base_wrap_provers,
+        );
+
         let mut builder = Self {
             core_prover_builder,
             recursion_prover_builder,
+            shrink_prover_builder,
+            wrap_prover_builder,
             recursion_programs_cache_size,
             join_pk: BTreeMap::new(),
             recursion_programs: BTreeMap::new(),
@@ -125,6 +150,8 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
 
         let _ = builder.num_core_workers_per_kind(nums_core_workers);
         let _ = builder.num_recursion_workers_per_kind(nums_recursion_workers);
+        let _ = builder.num_shrink_workers_per_kind(nums_shrink_workers);
+        let _ = builder.num_wrap_workers_per_kind(nums_wrap_workers);
 
         builder
     }
@@ -136,6 +163,12 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         recursion_prover: ShardProver<C::RecursionComponents>,
         recursion_prover_permit: ProverSemaphore,
         num_recursion_workers: usize,
+        shrink_prover: ShardProver<C::RecursionComponents>,
+        shrink_prover_permit: ProverSemaphore,
+        num_shrink_workers: usize,
+        wrap_prover: ShardProver<C::WrapComponents>,
+        wrap_prover_permit: ProverSemaphore,
+        num_wrap_workers: usize,
         recursion_programs_cache_size: usize,
         max_reduce_arity: usize,
     ) -> Self {
@@ -146,6 +179,12 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             vec![Arc::new(recursion_prover)],
             vec![recursion_prover_permit],
             vec![num_recursion_workers],
+            vec![Arc::new(shrink_prover)],
+            vec![shrink_prover_permit],
+            vec![num_shrink_workers],
+            vec![Arc::new(wrap_prover)],
+            vec![wrap_prover_permit],
+            vec![num_wrap_workers],
             recursion_programs_cache_size,
             max_reduce_arity,
         )
@@ -192,6 +231,16 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         num_workers_per_kind: Vec<usize>,
     ) -> &mut Self {
         self.recursion_prover_builder.num_workers_per_kind(num_workers_per_kind);
+        self
+    }
+
+    pub fn num_shrink_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
+        self.shrink_prover_builder.num_workers_per_kind(num_workers_per_kind);
+        self
+    }
+
+    pub fn num_wrap_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
+        self.wrap_prover_builder.num_workers_per_kind(num_workers_per_kind);
         self
     }
 
@@ -246,9 +295,13 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         let recursion_prover = self.recursion_prover_builder.build();
         let _join_pk = std::mem::take(&mut self.join_pk);
         let recursion_programs = std::mem::take(&mut self.recursion_programs);
+        let shrink_prover = self.shrink_prover_builder.build();
+        let wrap_prover = self.wrap_prover_builder.build();
         let recursion_prover = SP1RecursionProver::new(
             core_verifier,
             recursion_prover,
+            shrink_prover,
+            wrap_prover,
             self.recursion_programs_cache_size,
             recursion_programs,
             self.max_reduce_arity,
@@ -262,7 +315,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     // TODO: hide behind builder pattern
     pub fn new(
         core_prover: SP1CoreProver<C::CoreComponents>,
-        compress_prover: SP1RecursionProver<C::RecursionComponents>,
+        compress_prover: SP1RecursionProver<C>,
     ) -> Self {
         // TODO: make as part of the input.
         Self { core_prover, recursion_prover: compress_prover }
@@ -272,7 +325,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self.core_prover
     }
 
-    pub fn recursion(&self) -> &SP1RecursionProver<C::RecursionComponents> {
+    pub fn recursion(&self) -> &SP1RecursionProver<C> {
         &self.recursion_prover
     }
 
@@ -825,18 +878,32 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
         let recursion_shard_prover =
             CpuShardProver::new(recursion_verifier.shard_verifier().clone());
 
-        let num_core_workers = num_workers;
+        let shrink_verifier = CpuSP1ProverComponents::shrink_verifier();
+        let shrink_shard_prover = CpuShardProver::new(shrink_verifier.shard_verifier().clone());
+
+        let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
+        let wrap_shard_prover = CpuShardProver::new(wrap_verifier.shard_verifier().clone());
+
+        let num_core_workers: usize = num_workers;
         let num_recursion_workers = num_workers;
+        let num_shrink_workers = num_workers;
+        let num_wrap_workers = num_workers;
         let recursion_programs_cache_size = 5;
-        let max_reduce_arity = 2;
+        let max_reduce_arity = 4;
 
         SP1ProverBuilder::new_single_permit(
             cpu_shard_prover,
             prover_permits.clone(),
             num_core_workers,
             recursion_shard_prover,
-            prover_permits,
+            prover_permits.clone(),
             num_recursion_workers,
+            shrink_shard_prover,
+            prover_permits.clone(),
+            num_shrink_workers,
+            wrap_shard_prover,
+            prover_permits.clone(),
+            num_wrap_workers,
             recursion_programs_cache_size,
             max_reduce_arity,
         )

@@ -34,8 +34,8 @@ use sp1_stark::{
 };
 
 use crate::{
-    recursion::{RecursionProverComponents, RECURSION_MAX_LOG_ROW_COUNT},
-    CompressAir, CoreSC, InnerSC, SP1RecursionProver, SP1VerifyingKey,
+    components::SP1ProverComponents, recursion::RECURSION_MAX_LOG_ROW_COUNT, CompressAir, CoreSC,
+    InnerSC, SP1RecursionProver, SP1VerifyingKey, ShrinkAir,
 };
 
 /// The shape of the recursion proof.
@@ -118,15 +118,15 @@ pub struct SP1ReduceShape {
 
 impl Default for SP1ReduceShape {
     fn default() -> Self {
-        Self::with_max_arity(2).unwrap()
+        Self::reduce_shape_from_arity(2).unwrap()
     }
 }
 
 impl SP1ReduceShape {
-    pub fn with_max_arity(arity: usize) -> Option<Self> {
+    pub fn reduce_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             1 | 2 => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 103168),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 103264),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 259968),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 60864),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 159168),
@@ -138,7 +138,7 @@ impl SP1ReduceShape {
             .into_iter()
             .collect(),
             3 => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 154848),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 155008),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 393408),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 91296),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 148256),
@@ -150,7 +150,7 @@ impl SP1ReduceShape {
             .into_iter()
             .collect(),
             4 => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 206624),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 206816),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 528960),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 121696),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 204384),
@@ -164,6 +164,24 @@ impl SP1ReduceShape {
             _ => return None,
         };
         Some(Self { shape })
+    }
+
+    pub fn shrink_shape_from_arity(arity: usize) -> Option<Self> {
+        let shape = match arity {
+            4 => [
+                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 28960),
+                (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 51104),
+                (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 51776),
+                (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 132224),
+                (ShrinkAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 30272),
+                (ShrinkAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 31648),
+                (ShrinkAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
+                (ShrinkAir::<BabyBear>::Select(SelectChip), 201600),
+            ],
+            _ => return None,
+        };
+
+        Some(Self { shape: shape.into_iter().collect() })
     }
 
     pub fn dummy_input(
@@ -233,10 +251,7 @@ impl SP1ReduceShape {
     }
 
     #[allow(dead_code)]
-    async fn max_arity<C: RecursionProverComponents>(
-        &self,
-        prover: &SP1RecursionProver<C>,
-    ) -> usize {
+    async fn max_arity<C: SP1ProverComponents>(&self, prover: &SP1RecursionProver<C>) -> usize {
         let mut arity = 0;
         for possible_arity in 1.. {
             let input = prover.dummy_reduce_input_with_shape(possible_arity, self);
@@ -770,13 +785,13 @@ mod tests {
         // .collect();
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 206624),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 528960),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 121696),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 204384),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 121056),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 103264),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 259968),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 60864),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 159168),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 60000),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-            (CompressAir::<BabyBear>::Select(SelectChip), 806400),
+            (CompressAir::<BabyBear>::Select(SelectChip), 403200),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()

@@ -18,9 +18,10 @@ pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
 // use sp1_recursion_circuit::machine::{
 //     SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues,
 // };
-
+use slop_bn254::Bn254Fr;
 use sp1_recursion_circuit::{
     machine::{SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues},
+    utils::babybears_to_bn254,
     InnerSC,
 };
 use sp1_stark::{
@@ -55,10 +56,10 @@ pub trait HashableKey {
     /// Hash the key into a digest of u32 elements.
     fn hash_u32(&self) -> [u32; DIGEST_SIZE];
 
-    // /// Hash the key into a Bn254Fr element.
-    // fn hash_bn254(&self) -> Bn254Fr {
-    //     babybears_to_bn254(&self.hash_babybear())
-    // }
+    /// Hash the key into a Bn254Fr element.
+    fn hash_bn254(&self) -> Bn254Fr {
+        babybears_to_bn254(&self.hash_babybear())
+    }
 
     /// Hash the key into a 32 byte hex string, prefixed with "0x".
     ///
@@ -256,4 +257,6 @@ pub enum SP1CircuitWitness {
     Core(SP1RecursionWitnessValues<CoreSC>),
     Deferred(SP1DeferredWitnessValues<InnerSC>),
     Compress(SP1CompressWitnessValues<InnerSC>),
+    Shrink(SP1CompressWitnessValues<InnerSC>),
+    Wrap(SP1CompressWitnessValues<InnerSC>),
 }

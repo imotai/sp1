@@ -81,7 +81,9 @@ pub async fn run_test_core(
         max_log_row_count,
         machine,
     );
-    let prover = CpuShardProver::new(verifier.clone());
+    let prover = CpuShardProver::<slop_jagged::Poseidon2BabyBearJaggedCpuProverComponents, _>::new(
+        verifier.clone(),
+    );
     let setup_permit = ProverSemaphore::new(1);
     let (pk, vk) = prover
         .setup(runtime.program.clone(), setup_permit.clone())
