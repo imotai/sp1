@@ -1,53 +1,57 @@
 use csl_cuda::TaskScope;
-use slop_algebra::{Field, PrimeField64};
+use slop_algebra::{Field, PrimeField32};
 use slop_alloc::{Backend, Buffer, CopyIntoBackend, CpuBackend, HasBackend};
 use slop_challenger::FromChallenger;
 use slop_symmetric::CryptographicPermutation;
 
 #[derive(Debug, Clone)]
 #[repr(C)]
-pub struct DuplexChallenger<F, B: Backend> {
-    pub sponge_state: Buffer<F, B>,
+pub struct MultiField32Challenger<F, PF, B: Backend> {
+    pub sponge_state: Buffer<PF, B>,
     pub input_buffer: Buffer<F, B>,
     pub input_buffer_size: usize,
     pub output_buffer: Buffer<F, B>,
     pub output_buffer_size: usize,
+    pub num_f_elms: usize,
 }
 
 impl<
-        F: PrimeField64,
-        P: CryptographicPermutation<[F; WIDTH]>,
+        F: PrimeField32,
+        PF: Field,
+        P: CryptographicPermutation<[PF; WIDTH]>,
         const WIDTH: usize,
         const RATE: usize,
-    > FromChallenger<slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>, TaskScope>
-    for DuplexChallenger<F, TaskScope>
+    > FromChallenger<slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>, TaskScope>
+    for MultiField32Challenger<F, PF, TaskScope>
 where
-    slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>: Send + Sync,
+    slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>: Send + Sync,
 {
     async fn from_challenger(
-        challenger: &slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>,
+        challenger: &slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>,
         backend: TaskScope,
     ) -> Self {
-        let duplex_challenger = DuplexChallenger::from(challenger.clone());
-        duplex_challenger.copy_into_backend(&backend).await.unwrap()
+        let multi_field_challenger = MultiField32Challenger::from(challenger.clone());
+        multi_field_challenger.copy_into_backend(&backend).await.unwrap()
     }
 }
+
 impl<
-        F: PrimeField64,
-        P: CryptographicPermutation<[F; WIDTH]>,
+        F: PrimeField32,
+        PF: Field,
+        P: CryptographicPermutation<[PF; WIDTH]>,
         const WIDTH: usize,
         const RATE: usize,
-    > From<slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>>
-    for DuplexChallenger<F, CpuBackend>
+    > From<slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>>
+    for MultiField32Challenger<F, PF, CpuBackend>
 {
-    fn from(challenger: slop_challenger::DuplexChallenger<F, P, WIDTH, RATE>) -> Self {
+    fn from(challenger: slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>) -> Self {
         let mut input_buffer = challenger.input_buffer;
         let input_buffer_size = input_buffer.len();
-        assert!(input_buffer_size <= WIDTH);
+        assert!(input_buffer_size <= RATE * challenger.num_f_elms);
         input_buffer.resize(WIDTH, F::zero());
         let mut output_buffer = challenger.output_buffer;
         let output_buffer_size = output_buffer.len();
-        assert!(output_buffer_size <= WIDTH);
+        assert!(output_buffer_size <= WIDTH * challenger.num_f_elms);
         output_buffer.resize(WIDTH, F::zero());
         let sponge_state = challenger.sponge_state;
         assert!(sponge_state.len() == WIDTH);
@@ -55,12 +59,20 @@ impl<
         let input_buffer = Buffer::from(input_buffer);
         let output_buffer = Buffer::from(output_buffer);
         let sponge_state = Buffer::from(sponge_state.to_vec());
+        let num_f_elms = challenger.num_f_elms;
 
-        Self { input_buffer, input_buffer_size, output_buffer, output_buffer_size, sponge_state }
+        Self {
+            input_buffer,
+            input_buffer_size,
+            output_buffer,
+            output_buffer_size,
+            sponge_state,
+            num_f_elms,
+        }
     }
 }
 
-impl<F, B: Backend> HasBackend for DuplexChallenger<F, B> {
+impl<F, PF, B: Backend> HasBackend for MultiField32Challenger<F, PF, B> {
     type Backend = B;
 
     #[inline]
@@ -70,28 +82,32 @@ impl<F, B: Backend> HasBackend for DuplexChallenger<F, B> {
 }
 
 #[repr(C)]
-pub struct DuplexChallengerRawMut<F> {
-    pub sponge_state: *mut F,
+pub struct MultiField32ChallengerRawMut<F, PF> {
+    pub sponge_state: *mut PF,
     pub input_buffer: *mut F,
     pub input_buffer_size: usize,
     pub output_buffer: *mut F,
     pub output_buffer_size: usize,
+    pub num_f_elms: usize,
 }
 
-impl<F> DuplexChallenger<F, TaskScope> {
-    pub fn as_mut_raw(&mut self) -> DuplexChallengerRawMut<F> {
-        DuplexChallengerRawMut {
+impl<F, PF> MultiField32Challenger<F, PF, TaskScope> {
+    pub fn as_mut_raw(&mut self) -> MultiField32ChallengerRawMut<F, PF> {
+        MultiField32ChallengerRawMut {
             sponge_state: self.sponge_state.as_mut_ptr(),
             input_buffer: self.input_buffer.as_mut_ptr(),
             input_buffer_size: self.input_buffer_size,
             output_buffer: self.output_buffer.as_mut_ptr(),
             output_buffer_size: self.output_buffer_size,
+            num_f_elms: self.num_f_elms,
         }
     }
 }
 
-impl<F: Field> CopyIntoBackend<TaskScope, CpuBackend> for DuplexChallenger<F, CpuBackend> {
-    type Output = DuplexChallenger<F, TaskScope>;
+impl<F: PrimeField32, PF: Field> CopyIntoBackend<TaskScope, CpuBackend>
+    for MultiField32Challenger<F, PF, CpuBackend>
+{
+    type Output = MultiField32Challenger<F, PF, TaskScope>;
 
     async fn copy_into_backend(
         self,
@@ -100,18 +116,21 @@ impl<F: Field> CopyIntoBackend<TaskScope, CpuBackend> for DuplexChallenger<F, Cp
         let input_buffer = self.input_buffer.copy_into_backend(backend).await?;
         let output_buffer = self.output_buffer.copy_into_backend(backend).await?;
         let sponge_state = self.sponge_state.copy_into_backend(backend).await?;
-        Ok(DuplexChallenger {
+        Ok(MultiField32Challenger {
             input_buffer,
             input_buffer_size: self.input_buffer_size,
             output_buffer,
             output_buffer_size: self.output_buffer_size,
             sponge_state,
+            num_f_elms: self.num_f_elms,
         })
     }
 }
 
-impl<F: Field> CopyIntoBackend<CpuBackend, TaskScope> for DuplexChallenger<F, TaskScope> {
-    type Output = DuplexChallenger<F, CpuBackend>;
+impl<F: Field, PF: Field> CopyIntoBackend<CpuBackend, TaskScope>
+    for MultiField32Challenger<F, PF, TaskScope>
+{
+    type Output = MultiField32Challenger<F, PF, CpuBackend>;
 
     async fn copy_into_backend(
         self,
@@ -120,12 +139,13 @@ impl<F: Field> CopyIntoBackend<CpuBackend, TaskScope> for DuplexChallenger<F, Ta
         let input_buffer = self.input_buffer.copy_into_backend(backend).await?;
         let output_buffer = self.output_buffer.copy_into_backend(backend).await?;
         let sponge_state = self.sponge_state.copy_into_backend(backend).await?;
-        Ok(DuplexChallenger {
+        Ok(MultiField32Challenger {
             input_buffer,
             input_buffer_size: self.input_buffer_size,
             output_buffer,
             output_buffer_size: self.output_buffer_size,
             sponge_state,
+            num_f_elms: self.num_f_elms,
         })
     }
 }

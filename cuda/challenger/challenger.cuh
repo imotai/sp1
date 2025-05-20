@@ -1,8 +1,10 @@
 #pragma once
 #include "../fields/bb31_t.cuh"
 #include "../poseidon2/poseidon2_bb31_16.cuh"
+#include "../poseidon2/poseidon2_bn254_3.cuh"
 #include "../poseidon2/poseidon2.cuh"
 #include "../fields/bb31_extension_t.cuh"
+#include "../fields/bn254_t.cuh"
 
 extern "C" void *grind_baby_bear();
 
@@ -170,4 +172,111 @@ public:
 
         }
     }
+};
+
+class MultiField32Challenger
+{
+    static constexpr const int WIDTH = poseidon2_bn254_3::Bn254::WIDTH;
+    static constexpr const int RATE = poseidon2_bn254_3::constants::RATE;
+
+    bn254_t *sponge_state;
+    bb31_t *input_buffer;
+    size_t input_buffer_size;
+    bb31_t *output_buffer;
+    size_t output_buffer_size;
+    size_t num_f_elms;
+
+   
+
+    __device__ void duplexing()
+    {
+        // Assert input size doesn't exceed RATE
+        assert(num_f_elms == 3);
+        assert(input_buffer_size <= num_f_elms * RATE);
+
+        // Copy input buffer elements to sponge state
+        for (size_t i = 0; i < input_buffer_size; i += num_f_elms)
+        {
+            // [i, min(input_buffer_size, i + num_f_elms)]
+            size_t end = min(input_buffer_size, i + num_f_elms);
+            bn254_t reduced = poseidon2_bn254_3::reduceBabyBear(input_buffer + i, nullptr, end - i, 0);
+            sponge_state[i / num_f_elms] = reduced;
+        }
+
+        // Clear input buffer.
+        input_buffer_size = 0;
+
+        // Apply the permutation to the sponge state and store the output in the output buffer.
+        poseidon2::Bn254Hasher hasher;
+
+        bn254_t next_state[WIDTH];
+        for (size_t i = 0 ; i < WIDTH ; i++) {
+            next_state[i].set_to_zero();
+        }
+        hasher.permute(sponge_state, next_state);
+
+        // Copy the output buffer to the sponge state.
+        output_buffer_size = WIDTH * num_f_elms;
+        for (size_t i = 0; i < WIDTH; i++)
+        {
+            sponge_state[i] = next_state[i];
+            bn254_t x = next_state[i];
+            x.from();
+            uint32_t v0 = (uint32_t)(((uint64_t)(x[0]) + (uint64_t(1) << 32) * (uint64_t)(x[1])) % 0x78000001);
+            uint32_t v1 = (uint32_t)(((uint64_t)(x[2]) + (uint64_t(1) << 32) * (uint64_t)(x[3])) % 0x78000001);
+            uint32_t v2 = (uint32_t)(((uint64_t)(x[4]) + (uint64_t(1) << 32) * (uint64_t)(x[5])) % 0x78000001);
+            output_buffer[i * 3] = bb31_t::from_canonical_u32(v0);
+            output_buffer[i * 3 + 1] = bb31_t::from_canonical_u32(v1);
+            output_buffer[i * 3 + 2] = bb31_t::from_canonical_u32(v2);
+        }
+    }
+
+public:
+    __device__ __inline_hint__ void observe(bb31_t *value)
+    {
+        // Clear the output buffer.
+        output_buffer_size = 0;
+
+        // Push value to the input buffer.
+        input_buffer_size += 1;
+        input_buffer[input_buffer_size - 1] = *value;
+
+        if (input_buffer_size == num_f_elms * RATE)
+        {
+            duplexing();
+        }
+    }
+
+    __device__ __inline_hint__ void observe_ext(bb31_extension_t *value)
+    {
+#pragma unroll
+        for (size_t i = 0; i < bb31_extension_t::D; i++)
+        {
+            observe(&value->value[i]);
+        }
+    }
+
+    __device__ __inline_hint__ bb31_t sample()
+    {
+        bb31_t result;
+        if (input_buffer_size != 0 || output_buffer_size == 0)
+        {
+            duplexing();
+        }
+        // Pop the last element of the buffer.
+        result = output_buffer[output_buffer_size - 1];
+        output_buffer_size -= 1;
+        return result;
+    }
+
+    __device__ __inline_hint__ bb31_extension_t sample_ext()
+    {
+        bb31_extension_t result;
+        for (size_t i = 0; i < bb31_extension_t::D; i++)
+        {
+            result.value[i] = sample();
+        }
+        return result;
+    }
+
 };

@@ -42,6 +42,14 @@ impl SP1CudaProverBuilder {
             scope.clone(),
         );
 
+        let shrink_verifier = CudaSP1ProverComponents::shrink_verifier();
+        let shrink_prover =
+            new_cuda_prover_sumcheck_eval(shrink_verifier.shard_verifier().clone(), scope.clone());
+
+        let wrap_verifier = CudaSP1ProverComponents::wrap_verifier();
+        let wrap_prover =
+            new_cuda_prover_sumcheck_eval(wrap_verifier.shard_verifier().clone(), scope.clone());
+
         if cpu_memory_gb <= 20 {
             num_prover_workers = 1;
         }
@@ -51,10 +59,14 @@ impl SP1CudaProverBuilder {
 
         let num_core_workers = num_prover_workers;
         let num_recursion_workers = num_prover_workers;
+        let num_shrink_workers = num_prover_workers;
+        let num_wrap_workers = num_prover_workers;
 
         let core_prover_permit = prover_permits.clone();
         let recursion_prover_permit = prover_permits.clone();
-        let recursion_program_cache_size = 4;
+        let shrink_prover_permit = prover_permits.clone();
+        let wrap_prover_permit = prover_permits.clone();
+        let recursion_programs_cache_size = 4;
         let max_reduce_arity = 4;
 
         let inner = SP1ProverBuilder::new_single_permit(
@@ -64,7 +76,13 @@ impl SP1CudaProverBuilder {
             recursion_prover,
             recursion_prover_permit,
             num_recursion_workers,
-            recursion_program_cache_size,
+            shrink_prover,
+            shrink_prover_permit,
+            num_shrink_workers,
+            wrap_prover,
+            wrap_prover_permit,
+            num_wrap_workers,
+            recursion_programs_cache_size,
             max_reduce_arity,
         );
 

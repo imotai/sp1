@@ -141,10 +141,10 @@ __device__ static inline EF getEqVal(
     assert(false);
 }
 
-template<typename F, typename EF>
+template<typename F, typename EF, typename Challenger>
 __global__ void interpolateAndObserve(
     EF *results,
-    DuplexChallenger challenger,
+    Challenger challenger,
     EF *sampled_value,
     int8_t round_num,
     EF *sum_values,
@@ -498,9 +498,14 @@ extern "C" void *transition_kernel()
 }
 
 
-extern "C" void *interpolateAndObserve_kernel()
+extern "C" void *interpolateAndObserve_kernel_duplex()
 {
-    return (void *)interpolateAndObserve<bb31_t, bb31_extension_t>;
+    return (void *)interpolateAndObserve<bb31_t, bb31_extension_t, DuplexChallenger>;
+}
+
+extern "C" void *interpolateAndObserve_kernel_multi_field_32()
+{
+    return (void *)interpolateAndObserve<bb31_t, bb31_extension_t, MultiField32Challenger>;
 }
 
 extern "C" void *fixLastVariable_kernel()

@@ -210,6 +210,17 @@ public:
             even[i] = p[i];
     }
 
+    __host__ __device__ constexpr mont_t(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f, uint32_t g, uint32_t h) {
+        even[0] = a;
+        even[1] = b;
+        even[2] = c;
+        even[3] = d;
+        even[4] = e;
+        even[5] = f;
+        even[6] = g;
+        even[7] = h;
+    }
+
     inline void store(uint32_t *p) const
     {
         for (size_t i = 0; i < n; i++)

@@ -27,6 +27,7 @@ slop-multilinear = { workspace = true }
 slop-challenger = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-poseidon2 = { workspace = true }
+slop-bn254 = { workspace = true }
 serde = { workspace = true }
 itertools = { workspace = true }
 

@@ -2,20 +2,22 @@ use std::marker::PhantomData;
 
 use csl_air::{air_block::BlockAir, SymbolicProverFolder};
 use csl_cuda::TaskScope;
-use csl_jagged::Poseidon2BabyBearJaggedCudaProverComponents;
+use csl_jagged::{
+    Poseidon2BabyBearJaggedCudaProverComponents, Poseidon2Bn254JaggedCudaProverComponents,
+};
 use csl_logup_gkr::LogupGkrCudaProverComponents;
 use csl_tracegen::{CudaTraceGenerator, CudaTracegenAir};
 use csl_zerocheck::ZerocheckEvalProgramProverData;
 use serde::{Deserialize, Serialize};
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
-use slop_jagged::{JaggedConfig, JaggedProver, JaggedProverComponents};
+use slop_jagged::{DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents};
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, ShrinkAir};
+use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, OuterSC, WrapAir};
 use sp1_stark::{
     air::MachineAir,
     prover::{MachineProverComponents, ShardProver, ZerocheckAir},
-    BabyBearPoseidon2, GkrProverImpl, ShardVerifier,
+    GkrProverImpl, MachineConfig, ShardVerifier,
 };
 
 pub struct CudaSP1ProverComponents;
@@ -27,9 +29,9 @@ impl SP1ProverComponents for CudaSP1ProverComponents {
         Poseidon2BabyBearJaggedCudaProverComponents,
         CompressAir<<InnerSC as JaggedConfig>::F>,
     >;
-    type ShrinkProverComponents = CudaProverComponents<
-        Poseidon2BabyBearJaggedCudaProverComponents,
-        ShrinkAir<<InnerSC as JaggedConfig>::F>,
+    type WrapComponents = CudaProverComponents<
+        Poseidon2Bn254JaggedCudaProverComponents,
+        WrapAir<<OuterSC as JaggedConfig>::F>,
     >;
 }
 
@@ -38,47 +40,50 @@ pub struct CudaProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)
 
 pub type CudaProver<PcsComponents, A> = ShardProver<CudaProverComponents<PcsComponents, A>>;
 
-type F = BabyBear;
-type EF = BinomialExtensionField<BabyBear, 4>;
-
-impl<A> MachineProverComponents
-    for CudaProverComponents<Poseidon2BabyBearJaggedCudaProverComponents, A>
+impl<JC, A> MachineProverComponents for CudaProverComponents<JC, A>
 where
-    A: CudaTracegenAir<F> + ZerocheckAir<F, EF> + std::fmt::Debug,
+    JC: JaggedProverComponents<
+        F = BabyBear,
+        EF = BinomialExtensionField<BabyBear, 4>,
+        A = TaskScope,
+    >,
+    A: CudaTracegenAir<JC::F> + ZerocheckAir<JC::F, JC::EF> + std::fmt::Debug,
 {
-    type F = F;
-    type EF = EF;
-    type Program = <A as MachineAir<F>>::Program;
-    type Record = <A as MachineAir<F>>::Record;
+    type F = JC::F;
+    type EF = JC::EF;
+    type Program = <A as MachineAir<JC::F>>::Program;
+    type Record = <A as MachineAir<JC::F>>::Record;
     type Air = A;
     type B = TaskScope;
 
-    type Commitment =
-        <Poseidon2BabyBearJaggedCudaProverComponents as JaggedProverComponents>::Commitment;
+    type Commitment = JC::Commitment;
 
-    type Challenger =
-        <Poseidon2BabyBearJaggedCudaProverComponents as JaggedProverComponents>::Challenger;
+    type Challenger = JC::Challenger;
 
-    type Config = <Poseidon2BabyBearJaggedCudaProverComponents as JaggedProverComponents>::Config;
+    type Config = JC::Config;
 
-    type TraceGenerator = CudaTraceGenerator<F, A>;
+    type TraceGenerator = CudaTraceGenerator<Self::F, A>;
 
     type ZerocheckProverData = ZerocheckEvalProgramProverData<Self::F, Self::EF, A>;
 
-    type PcsProverComponents = Poseidon2BabyBearJaggedCudaProverComponents;
+    type PcsProverComponents = JC;
 
     type GkrProver =
         GkrProverImpl<LogupGkrCudaProverComponents<Self::F, Self::EF, A, Self::Challenger>>;
 }
 
-pub fn new_cuda_prover_sumcheck_eval<A>(
-    verifier: ShardVerifier<BabyBearPoseidon2, A>,
+pub fn new_cuda_prover_sumcheck_eval<C, Comp, A>(
+    verifier: ShardVerifier<C, A>,
     scope: TaskScope,
-) -> CudaProver<Poseidon2BabyBearJaggedCudaProverComponents, A>
+) -> CudaProver<Comp, A>
 where
-    A: CudaTracegenAir<F>
+    C: MachineConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    Comp: JaggedProverComponents<A = TaskScope, Config = C, F = C::F, EF = C::EF>
+        + DefaultJaggedProver,
+    A: MachineAir<C::F>
+        + CudaTracegenAir<C::F>
         + for<'a> BlockAir<SymbolicProverFolder<'a>>
-        + ZerocheckAir<F, EF>
+        + ZerocheckAir<C::F, C::EF>
         + std::fmt::Debug,
 {
     let ShardVerifier { pcs_verifier, machine } = verifier;

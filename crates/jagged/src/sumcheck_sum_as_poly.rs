@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use csl_basefold::DeviceGrindingChallenger;
-use csl_challenger::DuplexChallenger;
 use csl_cuda::reduce::DeviceSumKernel;
 use csl_cuda::{args, TaskScope};
 use slop_algebra::{ExtensionField, Field};
@@ -32,14 +31,14 @@ pub struct JaggedAssistSumAsPolyGPUImpl<F: Field, EF: ExtensionField<F>, Challen
 impl<
         F: Field,
         EF: ExtensionField<F>,
-        Challenger: DeviceGrindingChallenger<OnDeviceChallenger = DuplexChallenger<F, TaskScope>>
-            + FieldChallenger<F>
-            + Send
-            + Sync,
-    > JaggedAssistSumAsPoly<F, EF, TaskScope, Challenger, DuplexChallenger<F, TaskScope>>
+        Challenger: DeviceGrindingChallenger + FieldChallenger<F> + Send + Sync,
+    > JaggedAssistSumAsPoly<F, EF, TaskScope, Challenger, Challenger::OnDeviceChallenger>
     for JaggedAssistSumAsPolyGPUImpl<F, EF, Challenger>
 where
-    TaskScope: Backend + DeviceSumKernel<EF> + BranchingProgramKernel<F, EF> + ReduceSumBackend<EF>,
+    TaskScope: Backend
+        + DeviceSumKernel<EF>
+        + BranchingProgramKernel<F, EF, Challenger::OnDeviceChallenger>
+        + ReduceSumBackend<EF>,
 {
     async fn new(
         z_row: Point<EF>,
@@ -113,7 +112,7 @@ where
         z_col_eq_vals: &Buffer<EF, TaskScope>,
         intermediate_eq_full_evals: &Buffer<EF, TaskScope>,
         sum_values: &mut Buffer<EF, TaskScope>,
-        challenger: &mut DuplexChallenger<F, TaskScope>,
+        challenger: &mut Challenger::OnDeviceChallenger,
         claim: EF,
         rhos: Point<EF, TaskScope>,
     ) -> (EF, Point<EF, TaskScope>) {
@@ -180,7 +179,7 @@ where
             F,
             EF,
             Challenger,
-            DuplexChallenger<F, TaskScope>,
+            Challenger::OnDeviceChallenger,
             Self,
             TaskScope,
         >,
@@ -188,7 +187,7 @@ where
         F,
         EF,
         Challenger,
-        DuplexChallenger<F, TaskScope>,
+        Challenger::OnDeviceChallenger,
         Self,
         TaskScope,
     > {
@@ -215,7 +214,7 @@ where
 
             backend
                 .launch_kernel(
-                    <TaskScope as BranchingProgramKernel<F, EF>>::fix_last_variable(),
+                    <TaskScope as BranchingProgramKernel<F, EF, Challenger::OnDeviceChallenger>>::fix_last_variable(),
                     grid_size,
                     (BLOCK_SIZE, 1, 1),
                     &args,
@@ -241,6 +240,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use csl_challenger::DuplexChallenger;
     use csl_cuda::TaskScope;
     use itertools::Itertools;
     use rand::Rng;
@@ -305,7 +305,11 @@ mod tests {
 
                     backend
                         .launch_kernel(
-                            <TaskScope as BranchingProgramKernel<F, EF>>::fix_last_variable(),
+                            <TaskScope as BranchingProgramKernel<
+                                F,
+                                EF,
+                                DuplexChallenger<F, TaskScope>,
+                            >>::fix_last_variable(),
                             grid_size,
                             (BLOCK_SIZE, 1, 1),
                             &args,

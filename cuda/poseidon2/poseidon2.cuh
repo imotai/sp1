@@ -308,7 +308,7 @@ namespace poseidon2
     };
 
     using BabyBearHasher = StaticHasher<poseidon2_bb31_16::BabyBear>;
-    using Bn254Hasher = DynamicHasher<poseidon2_bn254_3::Bn254>;
+    using Bn254Hasher = StaticHasher<poseidon2_bn254_3::Bn254>;
 
     class BabyBearHasherState : public HasherState<poseidon2_bb31_16::BabyBear, BabyBearHasher>
     {

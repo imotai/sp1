@@ -1,10 +1,13 @@
 use csl_basefold::BasefoldCudaConfig;
-use csl_basefold::Poseidon2BabyBear16BasefoldCudaProverComponents;
-use csl_challenger::DuplexChallenger;
+use csl_basefold::{
+    Poseidon2BabyBear16BasefoldCudaProverComponents, Poseidon2Bn254BasefoldCudaProverComponents,
+};
+use csl_challenger::{DuplexChallenger, MultiField32Challenger};
 use csl_cuda::TaskScope;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
-use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
+use slop_basefold::{Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig};
+use slop_bn254::Bn254Fr;
 use slop_jagged::{JaggedBasefoldProverComponents, JaggedEvalSumcheckProver};
 
 use crate::JaggedAssistSumAsPolyGPUImpl;
@@ -22,6 +25,21 @@ pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverCompo
         >,
         TaskScope,
         DuplexChallenger<BabyBear, TaskScope>,
+    >,
+>;
+
+pub type Poseidon2Bn254JaggedCudaProverComponents = JaggedBasefoldProverComponents<
+    Poseidon2Bn254BasefoldCudaProverComponents,
+    VirtualJaggedSumcheckProver,
+    JaggedEvalSumcheckProver<
+        BabyBear,
+        JaggedAssistSumAsPolyGPUImpl<
+            BabyBear,
+            BinomialExtensionField<BabyBear, 4>,
+            <Poseidon2Bn254FrBasefoldConfig as BasefoldCudaConfig>::DeviceChallenger,
+        >,
+        TaskScope,
+        MultiField32Challenger<BabyBear, Bn254Fr, TaskScope>,
     >,
 >;
 

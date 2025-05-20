@@ -2,12 +2,14 @@ use std::marker::PhantomData;
 
 use csl_cuda::TaskScope;
 use csl_dft::SpparkDftBabyBear;
-use csl_merkle_tree::Poseidon2BabyBear16CudaProver;
+use csl_merkle_tree::{Poseidon2BabyBear16CudaProver, Poseidon2Bn254CudaProver};
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
-use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+use slop_basefold::{
+    BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig,
+};
 use slop_basefold_prover::{BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver};
-use slop_merkle_tree::{MerkleTreeTcs, Poseidon2BabyBearConfig};
+use slop_merkle_tree::{MerkleTreeTcs, Poseidon2BabyBearConfig, Poseidon2Bn254Config};
 
 use crate::{BasefoldCudaConfig, CudaDftEncoder, FriCudaProver, GrindingPowCudaProver};
 
@@ -27,12 +29,39 @@ impl BasefoldProverComponents for Poseidon2BabyBear16BasefoldCudaProverComponent
     type PowProver = GrindingPowCudaProver;
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord)]
+pub struct Poseidon2Bn254BasefoldCudaProverComponents;
+
+impl BasefoldProverComponents for Poseidon2Bn254BasefoldCudaProverComponents {
+    type F = BabyBear;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+    type A = TaskScope;
+    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config>;
+    type Challenger = <Poseidon2Bn254FrBasefoldConfig as BasefoldCudaConfig>::DeviceChallenger;
+    type Config = Poseidon2Bn254FrBasefoldConfig;
+    type Encoder = CudaDftEncoder<BabyBear, SpparkDftBabyBear>;
+    type FriProver = FriCudaProver<Self::Encoder, Self::TcsProver>;
+    type TcsProver = Poseidon2Bn254CudaProver;
+    type PowProver = GrindingPowCudaProver;
+}
+
 impl DefaultBasefoldProver for Poseidon2BabyBear16BasefoldCudaProverComponents {
     fn default_prover(verifier: &BasefoldVerifier<Self::Config>) -> BasefoldProver<Self> {
         let dft = SpparkDftBabyBear::default();
         let encoder = CudaDftEncoder { config: verifier.fri_config, dft };
         let fri_prover = FriCudaProver::<_, _>(PhantomData);
         let tcs_prover = Poseidon2BabyBear16CudaProver::default();
+        let pow_prover = GrindingPowCudaProver;
+        BasefoldProver { encoder, fri_prover, tcs_prover, pow_prover }
+    }
+}
+
+impl DefaultBasefoldProver for Poseidon2Bn254BasefoldCudaProverComponents {
+    fn default_prover(verifier: &BasefoldVerifier<Self::Config>) -> BasefoldProver<Self> {
+        let dft = SpparkDftBabyBear::default();
+        let encoder = CudaDftEncoder { config: verifier.fri_config, dft };
+        let fri_prover = FriCudaProver::<_, _>(PhantomData);
+        let tcs_prover = Poseidon2Bn254CudaProver::default();
         let pow_prover = GrindingPowCudaProver;
         BasefoldProver { encoder, fri_prover, tcs_prover, pow_prover }
     }

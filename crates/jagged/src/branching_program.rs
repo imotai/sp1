@@ -1,13 +1,18 @@
-use csl_challenger::DuplexChallenger;
+use csl_basefold::AsMutRawChallenger;
+use csl_challenger::{DuplexChallenger, MultiField32Challenger};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::Buffer;
+use slop_bn254::Bn254Fr;
 use slop_multilinear::Point;
 use slop_tensor::{ReduceSumBackend, Tensor};
 
 use csl_cuda::{
     args,
     sys::{
-        jagged::{branching_program_kernel, fixLastVariable_kernel, interpolateAndObserve_kernel},
+        jagged::{
+            branching_program_kernel, fixLastVariable_kernel, interpolateAndObserve_kernel_duplex,
+            interpolateAndObserve_kernel_multi_field_32,
+        },
         runtime::KernelPtr,
     },
     TaskScope,
@@ -15,7 +20,7 @@ use csl_cuda::{
 
 /// # Safety
 ///
-pub unsafe trait BranchingProgramKernel<F: Field, EF: ExtensionField<F>> {
+pub unsafe trait BranchingProgramKernel<F: Field, EF: ExtensionField<F>, Challenger> {
     fn branching_program_kernel() -> KernelPtr;
 
     fn interpolate_and_observe_kernel() -> KernelPtr;
@@ -25,13 +30,31 @@ pub unsafe trait BranchingProgramKernel<F: Field, EF: ExtensionField<F>> {
 
 /// # Safety
 ///
-unsafe impl<F: Field, EF: ExtensionField<F>> BranchingProgramKernel<F, EF> for TaskScope {
+unsafe impl<F: Field, EF: ExtensionField<F>>
+    BranchingProgramKernel<F, EF, DuplexChallenger<F, TaskScope>> for TaskScope
+{
     fn branching_program_kernel() -> KernelPtr {
         unsafe { branching_program_kernel() }
     }
 
     fn interpolate_and_observe_kernel() -> KernelPtr {
-        unsafe { interpolateAndObserve_kernel() }
+        unsafe { interpolateAndObserve_kernel_duplex() }
+    }
+
+    fn fix_last_variable() -> KernelPtr {
+        unsafe { fixLastVariable_kernel() }
+    }
+}
+
+unsafe impl<F: Field, EF: ExtensionField<F>>
+    BranchingProgramKernel<F, EF, MultiField32Challenger<F, Bn254Fr, TaskScope>> for TaskScope
+{
+    fn branching_program_kernel() -> KernelPtr {
+        unsafe { branching_program_kernel() }
+    }
+
+    fn interpolate_and_observe_kernel() -> KernelPtr {
+        unsafe { interpolateAndObserve_kernel_multi_field_32() }
     }
 
     fn fix_last_variable() -> KernelPtr {
@@ -40,7 +63,11 @@ unsafe impl<F: Field, EF: ExtensionField<F>> BranchingProgramKernel<F, EF> for T
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn branching_program_and_sample<F: Field, EF: ExtensionField<F>>(
+pub async fn branching_program_and_sample<
+    F: Field,
+    EF: ExtensionField<F>,
+    Challenger: AsMutRawChallenger,
+>(
     curr_prefix_sums_device: &Tensor<F, TaskScope>,
     next_prefix_sums_device: &Tensor<F, TaskScope>,
     prefix_sum_length: usize,
@@ -53,13 +80,13 @@ pub async fn branching_program_and_sample<F: Field, EF: ExtensionField<F>>(
     lambdas_device: &Tensor<EF, TaskScope>,
     z_col_eq_vals_device: &Buffer<EF, TaskScope>,
     intermediate_eq_full_evals_device: &Buffer<EF, TaskScope>,
-    challenger: &mut DuplexChallenger<F, TaskScope>,
+    challenger: &mut Challenger,
     randomness_point: &Point<EF, TaskScope>,
     sum_values: &mut Buffer<EF, TaskScope>,
     claim: EF,
 ) -> (Tensor<EF, TaskScope>, Buffer<EF, TaskScope>)
 where
-    TaskScope: BranchingProgramKernel<F, EF> + ReduceSumBackend<EF>,
+    TaskScope: BranchingProgramKernel<F, EF, Challenger> + ReduceSumBackend<EF>,
 {
     // Right now, we assume there are two points.
     assert!(lambdas_device.total_len() == 2);
@@ -98,7 +125,8 @@ where
 
         backend
             .launch_kernel(
-                <TaskScope as BranchingProgramKernel<F, EF>>::branching_program_kernel(),
+                <TaskScope as BranchingProgramKernel<F, EF, Challenger>>::branching_program_kernel(
+                ),
                 grid_size,
                 (BLOCK_SIZE, 1, 1),
                 &args,
@@ -127,7 +155,7 @@ where
 
         backend
             .launch_kernel(
-                <TaskScope as BranchingProgramKernel<F, EF>>::interpolate_and_observe_kernel(),
+                <TaskScope as BranchingProgramKernel<F, EF, Challenger>>::interpolate_and_observe_kernel(),
                 new_grid_size,
                 (BLOCK_SIZE, 1, 1),
                 &args,

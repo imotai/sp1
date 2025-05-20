@@ -1,13 +1,14 @@
-use std::future::Future;
-
-use csl_challenger::DuplexChallenger;
+use csl_challenger::{
+    DuplexChallenger, DuplexChallengerRawMut, MultiField32Challenger, MultiField32ChallengerRawMut,
+};
 use csl_cuda::sys::challenger::grind_baby_bear;
 use csl_cuda::{args, sys::runtime::KernelPtr, TaskScope};
-use slop_algebra::PrimeField64;
+use slop_algebra::{Field, PrimeField, PrimeField32, PrimeField64};
 use slop_alloc::{Buffer, CpuBackend, IntoHost};
 use slop_baby_bear::BabyBear;
 use slop_challenger::GrindingChallenger;
 use slop_symmetric::CryptographicPermutation;
+use std::future::Future;
 
 /// # Safety
 /// TODO
@@ -15,11 +16,18 @@ pub unsafe trait GrindingChallengerKernel<F> {
     fn grind_kernel() -> KernelPtr;
 }
 
+pub trait AsMutRawChallenger {
+    type ChallengerRawMut;
+
+    fn as_mut_raw(&mut self) -> Self::ChallengerRawMut;
+}
+
 /// A [`GrindingChallenger`] that can also grind on device.
 ///
 /// Useful for finding a proof-of-work witness on machines with not that many cores.
 pub trait DeviceGrindingChallenger: GrindingChallenger {
-    type OnDeviceChallenger;
+    type OnDeviceChallenger: AsMutRawChallenger + Send + Sync;
+
     /// Grinds on device.
     fn grind_device(&mut self, bits: usize) -> impl Future<Output = Self::Witness> + Send;
 
@@ -27,6 +35,24 @@ pub trait DeviceGrindingChallenger: GrindingChallenger {
         self,
         backend: TaskScope,
     ) -> impl Future<Output = Self::OnDeviceChallenger> + Send + Sync;
+}
+
+impl<F, TaskScope> AsMutRawChallenger for DuplexChallenger<F, TaskScope>
+where
+    F: PrimeField64 + Send + Sync,
+    TaskScope: GrindingChallengerKernel<F> + slop_alloc::Backend,
+{
+    type ChallengerRawMut = DuplexChallengerRawMut<F>;
+
+    fn as_mut_raw(&mut self) -> DuplexChallengerRawMut<F> {
+        DuplexChallengerRawMut {
+            sponge_state: self.sponge_state.as_mut_ptr(),
+            input_buffer: self.input_buffer.as_mut_ptr(),
+            input_buffer_size: self.input_buffer_size,
+            output_buffer: self.output_buffer.as_mut_ptr(),
+            output_buffer_size: self.output_buffer_size,
+        }
+    }
 }
 
 impl<F, P, const WIDTH: usize, const RATE: usize> DeviceGrindingChallenger
@@ -73,6 +99,46 @@ where
 
     async fn into_device(self, backend: TaskScope) -> Self::OnDeviceChallenger {
         backend.into_device(DuplexChallenger::<F, CpuBackend>::from(self)).await.unwrap()
+    }
+}
+
+impl<F, PF, TaskScope> AsMutRawChallenger for MultiField32Challenger<F, PF, TaskScope>
+where
+    F: PrimeField32 + Send + Sync,
+    PF: PrimeField + Field + Send + Sync,
+    TaskScope: GrindingChallengerKernel<F> + slop_alloc::Backend,
+{
+    type ChallengerRawMut = MultiField32ChallengerRawMut<F, PF>;
+
+    fn as_mut_raw(&mut self) -> MultiField32ChallengerRawMut<F, PF> {
+        MultiField32ChallengerRawMut {
+            sponge_state: self.sponge_state.as_mut_ptr(),
+            input_buffer: self.input_buffer.as_mut_ptr(),
+            input_buffer_size: self.input_buffer_size,
+            output_buffer: self.output_buffer.as_mut_ptr(),
+            output_buffer_size: self.output_buffer_size,
+            num_f_elms: self.num_f_elms,
+        }
+    }
+}
+
+impl<F, PF, P, const WIDTH: usize, const RATE: usize> DeviceGrindingChallenger
+    for slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>
+where
+    F: PrimeField64 + PrimeField32 + Send + Sync,
+    PF: PrimeField + Field + Send + Sync,
+    P: CryptographicPermutation<[PF; WIDTH]> + Send + Sync,
+    TaskScope: GrindingChallengerKernel<F>,
+{
+    type OnDeviceChallenger = MultiField32Challenger<F, PF, TaskScope>;
+
+    async fn grind_device(&mut self, bits: usize) -> Self::Witness {
+        // Grind on CPU for now.
+        self.grind(bits)
+    }
+
+    async fn into_device(self, backend: TaskScope) -> Self::OnDeviceChallenger {
+        backend.into_device(MultiField32Challenger::<F, PF, CpuBackend>::from(self)).await.unwrap()
     }
 }
 

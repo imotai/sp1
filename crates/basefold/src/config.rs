@@ -4,11 +4,15 @@ use std::marker::PhantomData;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{ExtensionField, TwoAdicField};
 use slop_baby_bear::BabyBear;
-use slop_challenger::{CanObserve, DuplexChallenger, FieldChallenger};
+use slop_bn254::Bn254Fr;
+use slop_challenger::{CanObserve, DuplexChallenger, FieldChallenger, MultiField32Challenger};
 use slop_commit::TensorCs;
-use slop_merkle_tree::{my_bb_16_perm, Perm};
+use slop_merkle_tree::{my_bb_16_perm, outer_perm, OuterPerm, Perm};
 
-use slop_basefold::{BasefoldConfig, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+use slop_basefold::{
+    BasefoldConfig, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig,
+    Poseidon2Bn254FrBasefoldConfig,
+};
 
 use crate::DeviceGrindingChallenger;
 
@@ -57,5 +61,15 @@ impl BasefoldCudaConfig for Poseidon2BabyBear16BasefoldConfig {
     ) -> DuplexChallenger<BabyBear, Perm, 16, 8> {
         let default_perm = my_bb_16_perm();
         DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm)
+    }
+}
+
+impl BasefoldCudaConfig for Poseidon2Bn254FrBasefoldConfig {
+    type DeviceChallenger = MultiField32Challenger<BabyBear, Bn254Fr, OuterPerm, 3, 2>;
+
+    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::DeviceChallenger {
+        let default_perm = outer_perm();
+
+        MultiField32Challenger::new(default_perm).expect("MultiField32Challenger::new failed")
     }
 }

@@ -20,6 +20,8 @@ pub const FIBONACCI_LONG_ELF: &[u8] =
 pub enum Stage {
     Core,
     Compress,
+    Shrink,
+    Wrap,
 }
 
 pub async fn make_measurement(
@@ -35,7 +37,16 @@ pub async fn make_measurement(
         .max_reduce_arity(4)
         .build()
         .await;
-    let opts = local_gpu_opts();
+    let mut opts = local_gpu_opts();
+    opts.core_opts
+        .retained_events_presets
+        .insert(sp1_core_executor::RetainedEventsPreset::Bls12381Field);
+    opts.core_opts
+        .retained_events_presets
+        .insert(sp1_core_executor::RetainedEventsPreset::Bn254Field);
+    opts.core_opts.retained_events_presets.insert(sp1_core_executor::RetainedEventsPreset::Sha256);
+    opts.core_opts.retained_events_presets.insert(sp1_core_executor::RetainedEventsPreset::U256);
+
     let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
     let time = Instant::now();
@@ -96,13 +107,49 @@ pub async fn make_measurement(
         .unwrap();
     let compress_time = time.elapsed();
 
+    if let Stage::Compress = stage {
+        return Measurement {
+            name: name.to_string(),
+            cycles,
+            num_shards,
+            core_time,
+            compress_time,
+            shrink_time: Duration::ZERO,
+            wrap_time: Duration::ZERO,
+        };
+    }
+
     // Verify the compress proof
     prover.prover().verify_compressed(&compress_proof, &vk).unwrap();
 
-    // // Serialize the compress proof and measure it's size.
-    // // let compress_proof_bytes = bincode::serialize(&compress_proof).unwrap();
-    // // let compress_proof_size = compress_proof_bytes.len();
-    // // tracing::info!("compress proof size: {}", compress_proof_size);
+    // Serialize the compress proof and measure it's size.
+    let compress_proof_bytes = bincode::serialize(&compress_proof).unwrap();
+    let compress_proof_size = compress_proof_bytes.len();
+    tracing::info!("compress proof size: {}", compress_proof_size);
+
+    let time = Instant::now();
+    let shrunk = prover.shrink(compress_proof).await.unwrap();
+    let shrink_time = time.elapsed();
+
+    if let Stage::Shrink = stage {
+        return Measurement {
+            name: name.to_string(),
+            cycles,
+            num_shards,
+            core_time,
+            compress_time,
+            shrink_time,
+            wrap_time: Duration::ZERO,
+        };
+    }
+
+    prover.prover().verify_shrink(&shrunk, &vk).unwrap();
+
+    let time = Instant::now();
+    let wrapped = prover.wrap(shrunk).await.unwrap();
+    let wrap_time = time.elapsed();
+
+    prover.prover().verify_wrap_bn254(&wrapped, &vk).unwrap();
 
     Measurement {
         name: name.to_string(),
@@ -110,7 +157,7 @@ pub async fn make_measurement(
         num_shards,
         core_time,
         compress_time,
-        shrink_time: Duration::ZERO,
-        wrap_time: Duration::ZERO,
+        shrink_time,
+        wrap_time,
     }
 }
