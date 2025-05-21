@@ -39,11 +39,6 @@ impl Drop for CudaStream {
     }
 }
 
-/// A [CudaStream] is a handle to a CUDA stream.
-// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// #[repr(transparent)]
-// pub struct UnsafeCudaStream(Arc<CudaStreamOwned>);
-
 impl CudaStream {
     #[inline]
     pub(crate) fn create() -> Result<Self, CudaError> {
