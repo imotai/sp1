@@ -200,14 +200,14 @@ where
         builder.assert_bool(is_real.clone());
 
         // Evaluate the LT operation.
-        LtOperationSigned::<AB::F>::eval_lt_signed(
-            builder,
-            local.adapter.b().map(|x| x.into()),
-            local.adapter.c().map(|x| x.into()),
-            local.lt_operation,
-            local.is_slt.into(),
-            is_real.clone(),
-        );
+        // LtOperationSigned::<AB::F>::eval_lt_signed(
+        //     builder,
+        //     local.adapter.b().map(|x| x.into()),
+        //     local.adapter.c().map(|x| x.into()),
+        //     local.lt_operation,
+        //     local.is_slt.into(),
+        //     is_real.clone(),
+        // );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4`.

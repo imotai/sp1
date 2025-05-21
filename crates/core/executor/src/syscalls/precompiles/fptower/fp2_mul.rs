@@ -31,8 +31,8 @@ pub(crate) fn fp2_mul_syscall<P: FpOpField, E: ExecutorConfig>(
 
     let num_words = <P as NumWords>::WordsCurvePoint::USIZE;
 
-    let x = rt.slice_unsafe(x_ptr, num_words / 2);
-    let (y_memory_records, y) = rt.mr_slice(y_ptr, num_words / 2);
+    let x = rt.slice_unsafe(x_ptr, num_words);
+    let (y_memory_records, y) = rt.mr_slice(y_ptr, num_words);
     rt.clk += 1;
 
     let x_32 = u64_to_u32(&x);

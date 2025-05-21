@@ -115,18 +115,23 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
             .iter()
             .par_bridge()
             .map(|(&addr, &word)| {
+                let limb_1 = (word & 0xFFFF) as u32 + (1 << 16) * ((word >> 32) & 0xFF) as u32;
+                let limb_2 =
+                    ((word >> 16) & 0xFFFF) as u32 + (1 << 16) * ((word >> 40) & 0xFF) as u32;
                 let values = [
                     (InteractionKind::Memory as u32) << 24,
                     0,
-                    addr as u32,
-                    (word & 0xFFFF) as u32,
-                    (word >> 16) as u32,
-                    0,
-                    0,
+                    (addr & 0xFFFF) as u32,
+                    ((addr >> 16) & 0xFFFF) as u32,
+                    ((addr >> 32) & 0xFFFF) as u32,
+                    limb_1,
+                    limb_2,
+                    ((word >> 48) & 0xFFFF) as u32,
                 ];
-                let x_start =
-                    SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values[i]));
-                let (point, _, _, _) = SepticCurve::<F>::lift_x(x_start);
+                // let x_start =
+                //     SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values[i]));
+                let (point, _, _, _) =
+                    SepticCurve::<F>::lift_x(values.map(|x| F::from_canonical_u32(x)));
                 SepticCurveComplete::Affine(point.neg())
             })
             .collect();

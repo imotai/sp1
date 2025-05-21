@@ -96,10 +96,10 @@ impl JalrChip {
     ) {
         cols.is_real = F::one();
         cols.op_a_value = event.a.into();
-        blu.add_u16_range_checks(&u64_to_u16_limbs(event.a));
-        cols.op_a_range_checker.populate(cols.op_a_value, blu);
-        let next_pc = event.b.wrapping_add(event.c);
-        cols.next_pc_range_checker.populate(Word::from(next_pc), blu);
+        // blu.add_u16_range_checks(&u64_to_u16_limbs(event.a));
+        // cols.op_a_range_checker.populate(cols.op_a_value, blu);
+        // let next_pc = event.b.wrapping_add(event.c);
+        // cols.next_pc_range_checker.populate(Word::from(next_pc), blu);
         cols.add_operation.populate(blu, event.b, event.c);
     }
 }

@@ -39,7 +39,7 @@ const GLOBAL_COL_MAP: GlobalCols<usize> = make_col_map();
 
 pub const GLOBAL_INITIAL_DIGEST_POS: usize = GLOBAL_COL_MAP.accumulation.initial_digest[0].0[0];
 
-pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 380;
+pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 381;
 
 #[repr(C)]
 pub struct Ghost {
@@ -52,7 +52,7 @@ pub struct GlobalChip;
 #[derive(AlignedBorrow)]
 #[repr(C)]
 pub struct GlobalCols<T: Copy> {
-    pub message: [T; 7],
+    pub message: [T; 8],
     pub kind: T,
     pub shard_16bit_limb: T,
     pub shard_8bit_limb: T,
@@ -134,12 +134,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     cols.message = event.message.map(F::from_canonical_u32);
                     cols.kind = F::from_canonical_u8(event.kind);
                     cols.index = F::from_canonical_u32(idx as u32);
-                    cols.interaction.populate(
-                        SepticBlock(event.message),
-                        event.is_receive,
-                        true,
-                        event.kind,
-                    );
+                    cols.interaction.populate(event.message, event.is_receive, true, event.kind);
                     cols.is_real = F::one();
                     if event.is_receive {
                         cols.is_receive = F::one();
@@ -244,6 +239,7 @@ where
                     local.message[4].into(),
                     local.message[5].into(),
                     local.message[6].into(),
+                    local.message[7].into(),
                     local.is_send.into(),
                     local.is_receive.into(),
                     local.kind.into(),

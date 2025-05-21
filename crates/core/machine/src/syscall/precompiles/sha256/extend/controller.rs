@@ -126,39 +126,39 @@ where
             local.clk,
             AB::F::from_canonical_u32(SyscallCode::SHA_EXTEND.syscall_id()),
             w_ptr.clone(),
-            AB::Expr::zero(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
             local.is_real,
             InteractionScope::Local,
         );
 
-        // Send the initial state.
-        builder.send(
-            AirInteraction::new(
-                vec![
-                    local.shard.into(),
-                    local.clk.into(),
-                    w_ptr.clone(),
-                    AB::Expr::from_canonical_u32(16),
-                ],
-                local.is_real.into(),
-                InteractionKind::ShaExtend,
-            ),
-            InteractionScope::Local,
-        );
+        // // Send the initial state.
+        // builder.send(
+        //     AirInteraction::new(
+        //         vec![
+        //             local.shard.into(),
+        //             local.clk.into(),
+        //             w_ptr.clone(),
+        //             AB::Expr::from_canonical_u32(16),
+        //         ],
+        //         local.is_real.into(),
+        //         InteractionKind::ShaExtend,
+        //     ),
+        //     InteractionScope::Local,
+        // );
 
-        // Receive the final state.
-        builder.receive(
-            AirInteraction::new(
-                vec![
-                    local.shard.into(),
-                    local.clk.into(),
-                    w_ptr.clone(),
-                    AB::Expr::from_canonical_u32(64),
-                ],
-                local.is_real.into(),
-                InteractionKind::ShaExtend,
-            ),
-            InteractionScope::Local,
-        );
+        // // Receive the final state.
+        // builder.receive(
+        //     AirInteraction::new(
+        //         vec![
+        //             local.shard.into(),
+        //             local.clk.into(),
+        //             w_ptr.clone(),
+        //             AB::Expr::from_canonical_u32(64),
+        //         ],
+        //         local.is_real.into(),
+        //         InteractionKind::ShaExtend,
+        //     ),
+        //     InteractionScope::Local,
+        // );
     }
 }

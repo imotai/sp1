@@ -1811,7 +1811,7 @@ dependencies = [
  "rfc6979",
  "serdect",
  "signature",
- "sp1-lib 4.2.1",
+ "sp1-lib 5.0.0",
  "spki 0.7.3",
 ]
 
@@ -2115,6 +2115,7 @@ dependencies = [
  "sp1-prover",
  "sp1-sdk",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3040,7 +3041,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.1",
+ "windows-targets 0.53.0",
 ]
 
 [[package]]
@@ -4526,9 +4527,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.5.12"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "928fca9cf2aa042393a8325b9ead81d2f0df4cb12e1e24cef072922ccd99c5af"
+checksum = "0d04b7d0ee6b4a0207a0a7adb104d23ecb0b47d6beae7152d0fa34b692b29fd6"
 dependencies = [
  "bitflags",
 ]
@@ -5394,6 +5395,7 @@ dependencies = [
  "sp1-primitives 5.0.0",
  "sp1-prover",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -5889,18 +5891,6 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.9.8"
-source = "git+https://github.com/sp1-patches/RustCrypto-hashes.git?branch=patch-v0.9.8#afdbfb09c325f8a69c01d540ec9a261e3637725d"
-dependencies = [
- "block-buffer 0.9.0",
- "cfg-if",
- "cpufeatures",
- "digest 0.9.0",
- "opaque-debug",
-]
-
-[[package]]
-name = "sha2"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d58a1e1bf39749807d89cf2d98ac2dfa0ff1cb3faa38fbb64dd88ac8013d800"
@@ -6378,7 +6368,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
 ]
 
@@ -6488,7 +6478,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "thiserror 1.0.69",
  "tokio",
@@ -6839,8 +6829,8 @@ dependencies = [
  "indicatif",
  "itertools 0.13.0",
  "k256",
- "p3-baby-bear",
- "p3-field",
+ "p3-baby-bear 0.1.0",
+ "p3-field 0.1.0",
  "p3-fri",
  "prost 0.13.5",
  "reqwest",
@@ -6851,7 +6841,7 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-cuda",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-stark",
  "strum 0.27.1",
@@ -6943,6 +6933,8 @@ name = "sp1-zkvm-64"
 version = "5.0.0"
 dependencies = [
  "cfg-if",
+ "critical-section",
+ "embedded-alloc",
  "getrandom 0.2.16",
  "lazy_static",
  "libm",
@@ -6955,8 +6947,6 @@ dependencies = [
 [[package]]
 name = "sp1_bls12_381"
 version = "0.8.0-sp1-5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac255e1704ebcdeec5e02f6a0ebc4d2e9e6b802161938330b6810c13a610c583"
 dependencies = [
  "cfg-if",
  "ff 0.13.1",
@@ -7005,8 +6995,8 @@ dependencies = [
  "hex-literal",
  "serde",
  "serde_with",
- "sha2 0.9.8",
- "sp1-zkvm",
+ "sha2 0.9.9",
+ "sp1-zkvm-64",
  "ssz_rs",
 ]
 
@@ -7015,8 +7005,13 @@ name = "ssz-withdrawals-script"
 version = "1.1.0"
 dependencies = [
  "sp1-build",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-primitives 5.0.0",
+ "sp1-prover",
  "sp1-sdk",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -7335,7 +7330,7 @@ name = "tendermint-program"
 version = "1.1.0"
 dependencies = [
  "serde_cbor",
- "sp1-zkvm",
+ "sp1-zkvm-64",
  "tendermint-light-client-verifier",
 ]
 
@@ -7364,8 +7359,14 @@ dependencies = [
  "serde_cbor",
  "serde_json",
  "sp1-build",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-primitives 5.0.0",
+ "sp1-prover",
+ "sp1-sdk",
  "tendermint-light-client-verifier",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8184,9 +8185,9 @@ dependencies = [
 
 [[package]]
 name = "windows-link"
-version = "0.1.2"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3bfe459f85da17560875b8bf1423d6f113b7a87a5d942e7da0ac71be7c61f8b"
+checksum = "76840935b766e1b0a05c0066835fb9ec80071d4c09a16f6bd5f7e655e3c14c38"
 
 [[package]]
 name = "windows-result"
@@ -8266,9 +8267,9 @@ dependencies = [
 
 [[package]]
 name = "windows-targets"
-version = "0.53.1"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30357ec391cde730f8fbfcdc29adc47518b06504528df977ab5af02ef23fdee9"
+checksum = "b1e4c7e8ceaaf9cb7d7507c974735728ab453b67ef8f18febdd7c11fe59dca8b"
 dependencies = [
  "windows_aarch64_gnullvm 0.53.0",
  "windows_aarch64_msvc 0.53.0",
@@ -8604,7 +8605,3 @@ dependencies = [
  "sha3",
  "subtle",
 ]
-
-[[patch.unused]]
-name = "sp1_bls12_381"
-version = "0.8.0-sp1-4.0.0-v2"

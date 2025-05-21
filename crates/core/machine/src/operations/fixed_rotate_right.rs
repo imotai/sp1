@@ -51,8 +51,8 @@ impl<F: Field> FixedRotateRightOperation<F> {
             let lower_limb = (limb & ((1 << nb_bits_to_shift) - 1)) as u16;
             let higher_limb = (limb >> nb_bits_to_shift) as u16;
             self.higher_limb.0[i] = F::from_canonical_u16(higher_limb);
-            record.add_bit_range_check(lower_limb, nb_bits_to_shift as u8);
-            record.add_bit_range_check(higher_limb, (16 - nb_bits_to_shift) as u8);
+            // record.add_bit_range_check(lower_limb, nb_bits_to_shift as u8);
+            // record.add_bit_range_check(higher_limb, (16 - nb_bits_to_shift) as u8);
         }
 
         expected

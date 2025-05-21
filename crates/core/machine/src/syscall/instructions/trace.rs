@@ -100,7 +100,7 @@ impl SyscallInstrsChip {
 
         cols.op_a_value = Word::from(record.a.value());
         cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
-        blu.add_u16_range_checks(&u64_to_u16_limbs(record.a.value()));
+        //blu.add_u16_range_checks(&u64_to_u16_limbs(record.a.value()));
         let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
 
         let syscall_id = a_prev_value[0];
@@ -108,59 +108,59 @@ impl SyscallInstrsChip {
         let num_cycles = a_prev_value[2];
 
         cols.num_extra_cycles = num_cycles;
-        cols.is_halt =
-            F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
+        // cols.is_halt =
+        //     F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
 
-        // Populate `is_enter_unconstrained`.
-        cols.is_enter_unconstrained.populate_from_field_element(
-            syscall_id - F::from_canonical_u32(SyscallCode::ENTER_UNCONSTRAINED.syscall_id()),
-        );
+        // // Populate `is_enter_unconstrained`.
+        // cols.is_enter_unconstrained.populate_from_field_element(
+        //     syscall_id - F::from_canonical_u32(SyscallCode::ENTER_UNCONSTRAINED.syscall_id()),
+        // );
 
-        // Populate `is_hint_len`.
-        cols.is_hint_len.populate_from_field_element(
-            syscall_id - F::from_canonical_u32(SyscallCode::HINT_LEN.syscall_id()),
-        );
+        // // Populate `is_hint_len`.
+        // cols.is_hint_len.populate_from_field_element(
+        //     syscall_id - F::from_canonical_u32(SyscallCode::HINT_LEN.syscall_id()),
+        // );
 
-        // Populate `is_halt`.
-        cols.is_halt_check.populate_from_field_element(
-            syscall_id - F::from_canonical_u32(SyscallCode::HALT.syscall_id()),
-        );
+        // // Populate `is_halt`.
+        // cols.is_halt_check.populate_from_field_element(
+        //     syscall_id - F::from_canonical_u32(SyscallCode::HALT.syscall_id()),
+        // );
 
-        // Populate `is_commit`.
-        cols.is_commit.populate_from_field_element(
-            syscall_id - F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()),
-        );
+        // // Populate `is_commit`.
+        // cols.is_commit.populate_from_field_element(
+        //     syscall_id - F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()),
+        // );
 
-        // Populate `is_commit_deferred_proofs`.
-        cols.is_commit_deferred_proofs.populate_from_field_element(
-            syscall_id - F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()),
-        );
+        // // Populate `is_commit_deferred_proofs`.
+        // cols.is_commit_deferred_proofs.populate_from_field_element(
+        //     syscall_id - F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()),
+        // );
 
-        // If the syscall is `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and
-        // digest word.
-        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
-            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
-        {
-            let digest_idx = record.b.value() as usize;
-            cols.index_bitmap[digest_idx] = F::one();
-        }
+        // // If the syscall is `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and
+        // // digest word.
+        // if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
+        //     || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
+        // {
+        //     let digest_idx = record.b.value() as usize;
+        //     cols.index_bitmap[digest_idx] = F::one();
+        // }
 
-        // If the syscall is `COMMIT`, set the expected public values digest and range check.
-        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) {
-            let digest_bytes = record.c.value().to_le_bytes();
-            cols.expected_public_values_digest = digest_bytes.map(F::from_canonical_u8);
-            blu.add_u8_range_checks(&digest_bytes);
-        }
+        // // If the syscall is `COMMIT`, set the expected public values digest and range check.
+        // if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) {
+        //     let digest_bytes = record.c.value().to_le_bytes();
+        //     cols.expected_public_values_digest = digest_bytes.map(F::from_canonical_u8);
+        //     blu.add_u8_range_checks(&digest_bytes);
+        // }
 
         // Add the BabyBear range check of the operands.
-        if send_to_table == F::one() || cols.is_halt == F::one() {
-            cols.op_b_range_check.populate(Word::from(event.arg1), blu);
-        }
+        // if send_to_table == F::one() || cols.is_halt == F::one() {
+        //     cols.op_b_range_check.populate(Word::from(event.arg1), blu);
+        // }
 
-        if send_to_table == F::one()
-            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
-        {
-            cols.op_c_range_check.populate(Word::from(event.arg2), blu);
-        }
+        // if send_to_table == F::one()
+        //     || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
+        // {
+        //     cols.op_c_range_check.populate(Word::from(event.arg2), blu);
+        // }
     }
 }

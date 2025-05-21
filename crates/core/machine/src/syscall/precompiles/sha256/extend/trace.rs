@@ -108,10 +108,45 @@ impl ShaExtendChip {
             let mut row = [F::zero(); NUM_SHA_EXTEND_COLS];
             let cols: &mut ShaExtendCols<F> = row.as_mut_slice().borrow_mut();
             cols.is_real = F::one();
-            cols.i = F::from_canonical_u32(j as u32 + 16);
+            let i = j as u64 + 16;
+            cols.i = F::from_canonical_u64(i);
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.w_ptr = F::from_canonical_u64(event.w_ptr as u64);
+            cols.w_ptr = [
+                F::from_canonical_u64((event.w_ptr & 0xFFFF) as u64),
+                F::from_canonical_u64(((event.w_ptr >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((event.w_ptr >> 32) & 0xFFFF) as u64),
+            ];
+            let w_i_minus_15_ptr = event.w_ptr + (i - 15) * 8;
+            let w_i_minus_2_ptr = event.w_ptr + (i - 2) * 8;
+            let w_i_minus_16_ptr = event.w_ptr + (i - 16) * 8;
+            let w_i_minus_7_ptr = event.w_ptr + (i - 7) * 8;
+            let w_i_ptr = event.w_ptr + i * 8;
+            cols.w_i_minus_15_ptr = [
+                F::from_canonical_u64((w_i_minus_15_ptr & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_15_ptr >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_15_ptr >> 32) & 0xFFFF) as u64),
+            ];
+            cols.w_i_minus_2_ptr = [
+                F::from_canonical_u64((w_i_minus_2_ptr & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_2_ptr >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_2_ptr >> 32) & 0xFFFF) as u64),
+            ];
+            cols.w_i_minus_16_ptr = [
+                F::from_canonical_u64((w_i_minus_16_ptr & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_16_ptr >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_16_ptr >> 32) & 0xFFFF) as u64),
+            ];
+            cols.w_i_minus_7_ptr = [
+                F::from_canonical_u64((w_i_minus_7_ptr & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_7_ptr >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_minus_7_ptr >> 32) & 0xFFFF) as u64),
+            ];
+            cols.w_i_ptr = [
+                F::from_canonical_u64((w_i_ptr & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_ptr >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((w_i_ptr >> 32) & 0xFFFF) as u64),
+            ];
 
             let w_i_minus_15_read = MemoryRecordEnum::Read(event.w_i_minus_15_reads[j]);
             let w_i_minus_2_read = MemoryRecordEnum::Read(event.w_i_minus_2_reads[j]);
@@ -150,12 +185,12 @@ impl ShaExtendChip {
 
             let w_i_write = MemoryRecordEnum::Write(event.w_i_writes[j]);
             cols.w_i.populate(w_i_write, blu);
-            blu.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::LTU,
-                a: 1u16,
-                b: j as u8,
-                c: 48,
-            });
+            // blu.add_byte_lookup_event(ByteLookupEvent {
+            //     opcode: ByteOpcode::LTU,
+            //     a: 1u16,
+            //     b: j as u8,
+            //     c: 48,
+            // });
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

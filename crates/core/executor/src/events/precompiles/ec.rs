@@ -111,9 +111,9 @@ pub fn create_ec_add_event<E: EllipticCurve, Ex: ExecutorConfig>(
 
     let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
 
-    let p = rt.slice_unsafe(p_ptr, num_words / 2);
+    let p = rt.slice_unsafe(p_ptr, num_words);
 
-    let (q_memory_records, q) = rt.mr_slice(q_ptr, num_words / 2);
+    let (q_memory_records, q) = rt.mr_slice(q_ptr, num_words);
 
     // When we write to p, we want the clk to be incremented because p and q could be the same.
     rt.clk += 1;
@@ -156,7 +156,7 @@ pub fn create_ec_double_event<E: EllipticCurve, Ex: ExecutorConfig>(
 
     let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
 
-    let p = rt.slice_unsafe(p_ptr, num_words / 2);
+    let p = rt.slice_unsafe(p_ptr, num_words);
 
     let p_affine = AffinePoint::<E>::from_words_le(&p);
 

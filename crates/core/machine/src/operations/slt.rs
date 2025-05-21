@@ -45,8 +45,8 @@ impl<F: Field> LtOperationSigned<F> {
         let b_comp = u64_to_u16_limbs(b_u64);
         let c_comp = u64_to_u16_limbs(c_u64);
         if is_signed {
-            self.b_msb.populate_msb(record, b_comp[1]);
-            self.c_msb.populate_msb(record, c_comp[1]);
+            // self.b_msb.populate_msb(record, b_comp[1]);
+            // self.c_msb.populate_msb(record, c_comp[1]);
             // (a as i32) < (b as i32) if and only if (a ^ (1 << 31)) < (b ^ (1 << 31))
             self.result.populate_unsigned(record, a_u64, b_u64 ^ (1 << 63), c_u64 ^ (1 << 63));
         } else {

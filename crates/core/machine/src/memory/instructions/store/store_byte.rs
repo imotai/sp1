@@ -47,6 +47,9 @@ pub struct StoreByteColumns<T> {
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
+    /// Aligned address. (TODO: u64 will not need later)
+    pub aligned_addr: [T; 3],
+
     /// The bit decomposition of the offset.
     pub offset_bit: [T; 2],
 
@@ -157,17 +160,20 @@ impl StoreByteChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        let memory_addr = event.b.wrapping_add(event.c);
 
         let bit0 = (memory_addr & 1) as u16;
         let bit1 = ((memory_addr >> 1) & 1) as u16;
+        let bit2 = ((memory_addr >> 2) & 1) as u16;
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
 
-        let limb = u64_to_u16_limbs(event.mem_access.prev_value())[bit1 as usize]; // TODO: u64
-        let limb_a = (event.a & ((1 << 16) - 1)) as u16;
-        blu.add_u8_range_checks(&limb.to_le_bytes());
-        blu.add_u8_range_checks(&limb_a.to_le_bytes());
+        let limb_number = 2 * bit2 + bit1;
+        let limb = u64_to_u16_limbs(event.mem_access.prev_value())[limb_number as usize];
+        // let limb_a = (event.a & ((1 << 16) - 1)) as u16;
+        // blu.add_u8_range_checks(&limb.to_le_bytes());
+        // blu.add_u8_range_checks(&limb_a.to_le_bytes());
         cols.mem_limb = F::from_canonical_u16(limb);
         cols.mem_limb_low_byte = F::from_canonical_u16(limb & 0xFF);
         cols.register_low_byte = F::from_canonical_u64(event.a & 0xFF);
@@ -177,6 +183,13 @@ impl StoreByteChip {
         cols.increment += (F::from_canonical_u16(1 << 8) * cols.register_low_byte - cols.mem_limb
             + cols.mem_limb_low_byte)
             * cols.offset_bit[0];
+
+        let aligned_addr = memory_addr - 4 * bit2 as u64 - 2 * bit1 as u64 - bit0 as u64;
+        cols.aligned_addr = [
+            F::from_canonical_u64(aligned_addr & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
+        ];
 
         cols.is_real = F::one();
     }
@@ -189,14 +202,14 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &StoreByteColumns<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &StoreByteColumns<AB::Var> = (*local).borrow();
 
-        // let shard = local.state.shard::<AB>();
-        // let clk = local.state.clk::<AB>();
+        let shard = local.state.shard::<AB>();
+        let clk = local.state.clk::<AB>();
 
-        // let opcode = AB::Expr::from_canonical_u32(Opcode::SB as u32);
+        let opcode = AB::Expr::from_canonical_u32(Opcode::SB as u32);
         // builder.assert_bool(local.is_real);
 
         // // Step 1. Compute the address, and check offsets and address bounds.
@@ -210,16 +223,16 @@ where
         //     local.address_operation,
         // );
 
-        // // Step 2. Write the memory address.
-        // // The `store_value` will be constrained in Step 3.
-        // builder.eval_memory_access_write(
-        //     shard.clone(),
-        //     clk.clone(),
-        //     aligned_addr.clone(),
-        //     local.memory_access,
-        //     local.store_value,
-        //     local.is_real.into(),
-        // );
+        // Step 2. Write the memory address.
+        // The `store_value` will be constrained in Step 3.
+        builder.eval_memory_access_write(
+            shard.clone(),
+            clk.clone(),
+            &local.aligned_addr.map(Into::into),
+            local.memory_access,
+            local.store_value,
+            local.is_real.into(),
+        );
 
         // // Step 3. Use the memory value to compute the write value for `op_a`.
         // // Select the u16 limb corresponding to the offset.
@@ -257,24 +270,24 @@ where
         //     local.increment * local.offset_bit[1] + local.memory_access.prev_value.0[1],
         // );
 
-        // // Constrain the state of the CPU.
-        // CPUState::<AB::F>::eval(
-        //     builder,
-        //     local.state,
-        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-        //     local.is_real.into(),
-        // );
+        // Constrain the state of the CPU.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.is_real.into(),
+        );
 
-        // // Constrain the program and register reads.
-        // ITypeReader::<AB::F>::eval_op_a_immutable(
-        //     builder,
-        //     shard,
-        //     clk,
-        //     local.state.pc,
-        //     opcode,
-        //     local.adapter,
-        //     local.is_real.into(),
-        // );
+        // Constrain the program and register reads.
+        ITypeReader::<AB::F>::eval_op_a_immutable(
+            builder,
+            shard,
+            clk,
+            local.state.pc,
+            opcode,
+            local.adapter,
+            local.is_real.into(),
+        );
     }
 }

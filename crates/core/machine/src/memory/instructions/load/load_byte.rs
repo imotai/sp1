@@ -59,6 +59,9 @@ pub struct LoadByteColumns<T> {
     /// The selected byte value.
     pub selected_byte: T,
 
+    /// aligned memory address (TODO: u64 will not need later)
+    pub aligned_addr: [T; 3],
+
     /// The `MSB` of the byte, if the opcode is `LB`.
     pub msb: T,
 
@@ -157,28 +160,39 @@ impl LoadByteChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        let memory_addr = event.b.wrapping_add(event.c);
         let bit0 = (memory_addr & 1) as u16;
         let bit1 = ((memory_addr >> 1) & 1) as u16;
+        let bit2 = ((memory_addr >> 2) & 1) as u16;
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
 
-        let limb = u64_to_u16_limbs(event.mem_access.value())[bit1 as usize];
+        let aligned_addr = memory_addr - 4 * bit2 as u64 - 2 * bit1 as u64 - bit0 as u64;
+        cols.aligned_addr = [
+            F::from_canonical_u64(aligned_addr & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
+        ];
+
+        let limb_number = 2 * bit2 + bit1;
+
+        let limb = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize];
         cols.selected_limb = F::from_canonical_u16(limb);
         cols.selected_limb_low_byte = F::from_canonical_u16(limb & 0xFF);
         let byte = limb.to_le_bytes()[bit0 as usize];
         cols.selected_byte = F::from_canonical_u8(byte);
-        blu.add_u8_range_checks(&limb.to_le_bytes());
+        // blu.add_u8_range_checks(&limb.to_le_bytes());
 
         if event.opcode == Opcode::LB {
             cols.is_lb = F::one();
             cols.msb = F::from_canonical_u8(byte >> 7);
-            blu.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::MSB,
-                a: (byte >> 7) as u16,
-                b: byte,
-                c: 0,
-            });
+            // blu.add_byte_lookup_event(ByteLookupEvent {
+            //     opcode: ByteOpcode::MSB,
+            //     a: (byte >> 7) as u16,
+            //     b: byte,
+            //     c: 0,
+            // });
         } else {
             cols.is_lbu = F::one();
         }
@@ -192,24 +206,24 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &LoadByteColumns<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &LoadByteColumns<AB::Var> = (*local).borrow();
 
-        // let shard = local.state.shard::<AB>();
-        // let clk = local.state.clk::<AB>();
+        let shard = local.state.shard::<AB>();
+        let clk = local.state.clk::<AB>();
 
-        // // SAFETY: All selectors `is_lb`, `is_lbu` are checked to be boolean.
-        // // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
-        // // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
-        // let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
-        //     + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu;
-        // let is_real = local.is_lb + local.is_lbu;
+        // SAFETY: All selectors `is_lb`, `is_lbu` are checked to be boolean.
+        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
+        // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
+        let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
+            + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu;
+        let is_real = local.is_lb + local.is_lbu;
         // builder.assert_bool(local.is_lb);
         // builder.assert_bool(local.is_lbu);
         // builder.assert_bool(is_real.clone());
 
-        // // Step 1. Compute the address, and check offsets and address bounds.
+        // Step 1. Compute the address, and check offsets and address bounds.
         // let aligned_addr = AddressOperation::<AB::F>::eval(
         //     builder,
         //     local.adapter.b().map(Into::into),
@@ -220,14 +234,14 @@ where
         //     local.address_operation,
         // );
 
-        // // Step 2. Read the memory address.
-        // builder.eval_memory_access_read(
-        //     shard.clone(),
-        //     clk.clone(),
-        //     aligned_addr.clone(),
-        //     local.memory_access,
-        //     is_real.clone(),
-        // );
+        // Step 2. Read the memory address.
+        builder.eval_memory_access_read(
+            shard.clone(),
+            clk.clone(),
+            &local.aligned_addr.map(Into::into),
+            local.memory_access,
+            is_real.clone(),
+        );
 
         // // This chip requires `op_a != x0`.
         // builder.assert_zero(local.adapter.op_a_0);
@@ -259,32 +273,32 @@ where
         //     local.is_lb,
         // );
 
-        // // Constrain the state of the CPU.
-        // CPUState::<AB::F>::eval(
-        //     builder,
-        //     local.state,
-        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-        //     is_real.clone(),
-        // );
+        // Constrain the state of the CPU.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            is_real.clone(),
+        );
 
-        // // Compute the two limbs of the word to be written to `op_a`.
-        // let limb0 =
-        //     local.selected_byte + AB::Expr::from_canonical_u32((1 << 16) - (1 << 8)) * local.msb;
-        // let limb1 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
-        // let limb2 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
-        // let limb3 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        // Compute the four limbs of the word to be written to `op_a`.
+        let limb0 =
+            local.selected_byte + AB::Expr::from_canonical_u32((1 << 16) - (1 << 8)) * local.msb;
+        let limb1 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        let limb2 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
+        let limb3 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
 
-        // // Constrain the program and register reads.
-        // ITypeReader::<AB::F>::eval(
-        //     builder,
-        //     shard,
-        //     clk,
-        //     local.state.pc,
-        //     opcode,
-        //     Word([limb0, limb1, limb2, limb3]),
-        //     local.adapter,
-        //     is_real.clone(),
-        // );
+        // Constrain the program and register reads.
+        ITypeReader::<AB::F>::eval(
+            builder,
+            shard,
+            clk,
+            local.state.pc,
+            opcode,
+            Word([limb0, limb1, limb2, limb3]),
+            local.adapter,
+            is_real.clone(),
+        );
     }
 }

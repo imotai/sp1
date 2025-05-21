@@ -59,6 +59,8 @@ pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub shard: T,
     pub clk: T,
     pub ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
+    pub y_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
     pub sign_bit: T,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub y_access: GenericArray<MemoryAccessCols<T>, P::WordsFieldElement>,
@@ -196,6 +198,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut rows = Vec::new();
         let weierstrass_width = num_weierstrass_decompress_cols::<E::BaseField>();
         let width = BaseAir::<F>::width(self);
+        let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
 
         let mut new_byte_lookup_events = Vec::new();
 
@@ -216,55 +219,67 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             cols.is_real = F::from_bool(true);
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u32 * 2);
+            cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u64 * 2);
             cols.sign_bit = F::from_bool(event.sign_bit);
 
-            let x = BigUint::from_bytes_le(&event.x_bytes);
-            Self::populate_field_ops(&mut new_byte_lookup_events, cols, x);
+            // let x = BigUint::from_bytes_le(&event.x_bytes);
+            // Self::populate_field_ops(&mut new_byte_lookup_events, cols, x);
 
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Read(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                let new_x_addr = event.ptr.wrapping_add(8 * i as u64) + num_limbs as u64;
+                cols.x_addrs[i] = [
+                    F::from_canonical_u64(new_x_addr & 0xFFFF),
+                    F::from_canonical_u64((new_x_addr >> 16) & 0xFFFF),
+                    F::from_canonical_u64((new_x_addr >> 32) & 0xFFFF),
+                ];
             }
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Write(event.y_memory_records[i]);
                 let current_record = record.current_record();
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
                 cols.y_value[i] = Word::from(current_record.value);
+                let new_y_addr = event.ptr.wrapping_add(8 * i as u64);
+                cols.y_addrs[i] = [
+                    F::from_canonical_u64(new_y_addr & 0xFFFF),
+                    F::from_canonical_u64((new_y_addr >> 16) & 0xFFFF),
+                    F::from_canonical_u64((new_y_addr >> 32) & 0xFFFF),
+                ];
             }
 
-            if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
-                let lsb = cols.y.lsb;
-                let choice_cols: &mut LexicographicChoiceCols<F, E::BaseField> =
-                    row[weierstrass_width..width].borrow_mut();
+            // if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
+            //     let lsb = cols.y.lsb;
+            //     let choice_cols: &mut LexicographicChoiceCols<F, E::BaseField> =
+            //         row[weierstrass_width..width].borrow_mut();
 
-                let decompressed_y = BigUint::from_bytes_le(&event.decompressed_y_bytes);
-                let neg_y = &modulus - &decompressed_y;
+            //     let decompressed_y = BigUint::from_bytes_le(&event.decompressed_y_bytes);
+            //     let neg_y = &modulus - &decompressed_y;
 
-                let is_y_eq_sqrt_y_result =
-                    F::from_canonical_u8(event.decompressed_y_bytes[0] % 2) == lsb;
-                choice_cols.is_y_eq_sqrt_y_result = F::from_bool(is_y_eq_sqrt_y_result);
+            //     let is_y_eq_sqrt_y_result =
+            //         F::from_canonical_u8(event.decompressed_y_bytes[0] % 2) == lsb;
+            //     choice_cols.is_y_eq_sqrt_y_result = F::from_bool(is_y_eq_sqrt_y_result);
 
-                if event.sign_bit {
-                    assert!(neg_y < decompressed_y);
-                    choice_cols.when_sqrt_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
-                    choice_cols.when_neg_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
-                    choice_cols.comparison_lt_cols.populate(
-                        &mut new_byte_lookup_events,
-                        &neg_y,
-                        &decompressed_y,
-                    );
-                } else {
-                    assert!(neg_y > decompressed_y);
-                    choice_cols.when_sqrt_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
-                    choice_cols.when_neg_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
-                    choice_cols.comparison_lt_cols.populate(
-                        &mut new_byte_lookup_events,
-                        &decompressed_y,
-                        &neg_y,
-                    );
-                }
-            }
+            //     if event.sign_bit {
+            //         assert!(neg_y < decompressed_y);
+            //         choice_cols.when_sqrt_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
+            //         choice_cols.when_neg_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
+            //         choice_cols.comparison_lt_cols.populate(
+            //             &mut new_byte_lookup_events,
+            //             &neg_y,
+            //             &decompressed_y,
+            //         );
+            //     } else {
+            //         assert!(neg_y > decompressed_y);
+            //         choice_cols.when_sqrt_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
+            //         choice_cols.when_neg_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
+            //         choice_cols.comparison_lt_cols.populate(
+            //             &mut new_byte_lookup_events,
+            //             &decompressed_y,
+            //             &neg_y,
+            //         );
+            //     }
+            // }
 
             rows.push(row);
         }
@@ -346,15 +361,15 @@ where
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
+        let main = builder.main();
 
-        // let weierstrass_cols = num_weierstrass_decompress_cols::<E::BaseField>();
-        // let local_slice = main.row_slice(0);
-        // let local: &WeierstrassDecompressCols<AB::Var, E::BaseField> =
-        //     (*local_slice)[0..weierstrass_cols].borrow();
+        let weierstrass_cols = num_weierstrass_decompress_cols::<E::BaseField>();
+        let local_slice = main.row_slice(0);
+        let local: &WeierstrassDecompressCols<AB::Var, E::BaseField> =
+            (*local_slice)[0..weierstrass_cols].borrow();
 
-        // let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
-        // let num_words_field_element = num_limbs / 4;
+        let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
+        let num_words_field_element = num_limbs / 8;
 
         // builder.assert_bool(local.sign_bit);
 
@@ -508,55 +523,55 @@ where
         //     }
         // }
 
-        // let ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     E::NB_LIMBS as u32 * 2,
-        //     local.ptr,
-        //     local.is_real.into(),
-        // );
+        let ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.ptr,
+            local.is_real.into(),
+        );
 
-        // for i in 0..num_words_field_element {
-        //     builder.eval_memory_access_read(
-        //         local.shard,
-        //         local.clk,
-        //         ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
-        //         local.x_access[i].memory_access,
-        //         local.is_real,
-        //     );
-        // }
-        // for i in 0..num_words_field_element {
-        //     builder.eval_memory_access_write(
-        //         local.shard,
-        //         local.clk,
-        //         ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4),
-        //         local.y_access[i],
-        //         local.y_value[i],
-        //         local.is_real,
-        //     );
-        // }
+        for i in 0..num_words_field_element {
+            builder.eval_memory_access_read(
+                local.shard,
+                local.clk,
+                &local.x_addrs[i].map(Into::into),
+                local.x_access[i].memory_access,
+                local.is_real,
+            );
+        }
+        for i in 0..num_words_field_element {
+            builder.eval_memory_access_write(
+                local.shard,
+                local.clk,
+                &local.y_addrs[i].map(Into::into),
+                local.y_access[i],
+                local.y_value[i],
+                local.is_real,
+            );
+        }
 
-        // let syscall_id = match E::CURVE_TYPE {
-        //     CurveType::Secp256k1 => {
-        //         AB::F::from_canonical_u32(SyscallCode::SECP256K1_DECOMPRESS.syscall_id())
-        //     }
-        //     CurveType::Secp256r1 => {
-        //         AB::F::from_canonical_u32(SyscallCode::SECP256R1_DECOMPRESS.syscall_id())
-        //     }
-        //     CurveType::Bls12381 => {
-        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_DECOMPRESS.syscall_id())
-        //     }
-        //     _ => panic!("Unsupported curve"),
-        // };
+        let syscall_id = match E::CURVE_TYPE {
+            CurveType::Secp256k1 => {
+                AB::F::from_canonical_u32(SyscallCode::SECP256K1_DECOMPRESS.syscall_id())
+            }
+            CurveType::Secp256r1 => {
+                AB::F::from_canonical_u32(SyscallCode::SECP256R1_DECOMPRESS.syscall_id())
+            }
+            CurveType::Bls12381 => {
+                AB::F::from_canonical_u32(SyscallCode::BLS12381_DECOMPRESS.syscall_id())
+            }
+            _ => panic!("Unsupported curve"),
+        };
 
-        // builder.receive_syscall(
-        //     local.shard,
-        //     local.clk,
-        //     syscall_id,
-        //     ptr,
-        //     local.sign_bit,
-        //     local.is_real,
-        //     InteractionScope::Local,
-        // );
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            syscall_id,
+            ptr,
+            [local.sign_bit.into(), AB::Expr::zero(), AB::Expr::zero()],
+            local.is_real,
+            InteractionScope::Local,
+        );
     }
 }
 

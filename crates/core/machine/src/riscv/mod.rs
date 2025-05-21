@@ -20,10 +20,13 @@ use crate::{
     global::GlobalChip,
     memory::{
         load::{
-            load_byte::LoadByteChip, load_half::LoadHalfChip, load_word::LoadWordChip,
-            load_x0::LoadX0Chip,
+            load_byte::LoadByteChip, load_double::LoadDoubleChip, load_half::LoadHalfChip,
+            load_word::LoadWordChip, load_x0::LoadX0Chip,
         },
-        store::{store_byte::StoreByteChip, store_half::StoreHalfChip, store_word::StoreWordChip},
+        store::{
+            store_byte::StoreByteChip, store_double::StoreDoubleChip, store_half::StoreHalfChip,
+            store_word::StoreWordChip,
+        },
         MemoryBumpChip, MemoryChipType, MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW,
     },
     range::RangeChip,
@@ -37,8 +40,8 @@ use crate::{
 pub(crate) mod riscv_chips {
     pub use crate::{
         alu::{
-            add::AddChip, addi::AddiChip, sub::SubChip, BitwiseChip, DivRemChip, LtChip, MulChip,
-            ShiftLeft, ShiftRightChip,
+            add::AddChip, addi::AddiChip, addiw::AddiwChip, addw::AddwChip, sub::SubChip,
+            subw::SubwChip, BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip,
         },
         bytes::ByteChip,
         cpu::CpuChip,
@@ -90,10 +93,16 @@ pub enum RiscvAir<F: PrimeField32> {
     // Cpu(CpuChip),
     /// An AIR for the RISC-V Add instruction.
     Add(AddChip),
+    /// An AIR for the RISC-V Addw instruction.
+    Addw(AddwChip),
     /// An AIR for the RISC-V Addi instruction.
     Addi(AddiChip),
+    /// An AIR for the RISC-V Addiw instruction.
+    Addiw(AddiwChip),
     // An AIR for the RISC-V Sub instruction.
     Sub(SubChip),
+    /// An AIR for the RISC-V Subw instruction.
+    Subw(SubwChip),
     /// An AIR for RISC-V Bitwise instructions.
     Bitwise(BitwiseChip),
     /// An AIR for RISC-V Mul instruction.
@@ -112,6 +121,8 @@ pub enum RiscvAir<F: PrimeField32> {
     LoadHalf(LoadHalfChip),
     /// An AIR for RISC-V memory load word instructions.
     LoadWord(LoadWordChip),
+    /// An AIR for RISC-V memory load double instructions.
+    LoadDouble(LoadDoubleChip),
     /// An AIR for RISC-V memory load x0 instructions.
     LoadX0(LoadX0Chip),
     /// An AIR for RISC-V memory store byte instructions.
@@ -120,6 +131,8 @@ pub enum RiscvAir<F: PrimeField32> {
     StoreHalf(StoreHalfChip),
     /// An AIR for RISC-V memory store word instructions.
     StoreWord(StoreWordChip),
+    /// An AIR for RISC-V memory store double instructions.
+    StoreDouble(StoreDoubleChip),
     /// An AIR for RISC-V AUIPC instruction.
     AUIPC(AuipcChip),
     /// An AIR for RISC-V branch instructions.
@@ -259,7 +272,10 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::DivRem(DivRemChip::default()),
             RiscvAir::Add(AddChip::default()),
             RiscvAir::Addi(AddiChip::default()),
+            RiscvAir::Addiw(AddiwChip::default()),
+            RiscvAir::Addw(AddwChip::default()),
             RiscvAir::Sub(SubChip::default()),
+            RiscvAir::Subw(SubwChip::default()),
             RiscvAir::Bitwise(BitwiseChip::default()),
             RiscvAir::Mul(MulChip::default()),
             RiscvAir::ShiftRight(ShiftRightChip::default()),
@@ -268,10 +284,12 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::LoadByte(LoadByteChip::default()),
             RiscvAir::LoadHalf(LoadHalfChip::default()),
             RiscvAir::LoadWord(LoadWordChip::default()),
+            RiscvAir::LoadDouble(LoadDoubleChip::default()),
             RiscvAir::LoadX0(LoadX0Chip::default()),
             RiscvAir::StoreByte(StoreByteChip::default()),
             RiscvAir::StoreHalf(StoreHalfChip::default()),
             RiscvAir::StoreWord(StoreWordChip::default()),
+            RiscvAir::StoreDouble(StoreDoubleChip::default()),
             RiscvAir::AUIPC(AuipcChip::default()),
             RiscvAir::Branch(BranchChip::default()),
             RiscvAir::Jal(JalChip::default()),
@@ -349,7 +367,10 @@ impl<F: PrimeField32> RiscvAir<F> {
                 DivRem,
                 Add,
                 Addi,
+                Addiw,
+                Addw,
                 Sub,
+                Subw,
                 Bitwise,
                 Mul,
                 ShiftRight,
@@ -358,10 +379,12 @@ impl<F: PrimeField32> RiscvAir<F> {
                 LoadByte,
                 LoadHalf,
                 LoadWord,
+                LoadDouble,
                 LoadX0,
                 StoreByte,
                 StoreHalf,
                 StoreWord,
+                StoreDouble,
                 AUIPC,
                 Branch,
                 Jal,
@@ -598,13 +621,25 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(add.name(), add.cost());
         chips.push(add);
 
+        let addw = Chip::new(RiscvAir::Addw(AddwChip::default()));
+        costs.insert(addw.name(), addw.cost());
+        chips.push(addw);
+
         let addi = Chip::new(RiscvAir::Addi(AddiChip::default()));
         costs.insert(addi.name(), addi.cost());
         chips.push(addi);
 
+        let addiw = Chip::new(RiscvAir::Addiw(AddiwChip::default()));
+        costs.insert(addiw.name(), addiw.cost());
+        chips.push(addiw);
+
         let sub = Chip::new(RiscvAir::Sub(SubChip::default()));
         costs.insert(sub.name(), sub.cost());
         chips.push(sub);
+
+        let subw = Chip::new(RiscvAir::Subw(SubwChip::default()));
+        costs.insert(subw.name(), subw.cost());
+        chips.push(subw);
 
         let bitwise = Chip::new(RiscvAir::Bitwise(BitwiseChip::default()));
         costs.insert(bitwise.name(), bitwise.cost());
@@ -642,6 +677,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(load_x0.name(), load_x0.cost());
         chips.push(load_x0);
 
+        let load_double = Chip::new(RiscvAir::LoadDouble(LoadDoubleChip::default()));
+        costs.insert(load_double.name(), load_double.cost());
+        chips.push(load_double);
+
         let store_byte = Chip::new(RiscvAir::StoreByte(StoreByteChip::default()));
         costs.insert(store_byte.name(), store_byte.cost());
         chips.push(store_byte);
@@ -653,6 +692,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         let store_word = Chip::new(RiscvAir::StoreWord(StoreWordChip::default()));
         costs.insert(store_word.name(), store_word.cost());
         chips.push(store_word);
+
+        let store_double = Chip::new(RiscvAir::StoreDouble(StoreDoubleChip::default()));
+        costs.insert(store_double.name(), store_double.cost());
+        chips.push(store_double);
 
         let auipc = Chip::new(RiscvAir::AUIPC(AuipcChip::default()));
         costs.insert(auipc.name(), auipc.cost());
@@ -715,8 +758,11 @@ impl<F: PrimeField32> RiscvAir<F> {
         vec![
             (RiscvAirId::DivRem, record.divrem_events.len()),
             (RiscvAirId::Add, record.add_events.len()),
+            (RiscvAirId::Addw, record.addw_events.len()),
             (RiscvAirId::Addi, record.addi_events.len()),
+            (RiscvAirId::Addiw, record.addiw_events.len()),
             (RiscvAirId::Sub, record.sub_events.len()),
+            (RiscvAirId::Subw, record.subw_events.len()),
             (RiscvAirId::Bitwise, record.bitwise_events.len()),
             (RiscvAirId::Mul, record.mul_events.len()),
             (RiscvAirId::ShiftRight, record.shift_right_events.len()),
@@ -734,10 +780,12 @@ impl<F: PrimeField32> RiscvAir<F> {
             (RiscvAirId::LoadByte, record.memory_load_byte_events.len()),
             (RiscvAirId::LoadHalf, record.memory_load_half_events.len()),
             (RiscvAirId::LoadWord, record.memory_load_word_events.len()),
+            (RiscvAirId::LoadDouble, record.memory_load_double_events.len()),
             (RiscvAirId::LoadX0, record.memory_load_x0_events.len()),
             (RiscvAirId::StoreByte, record.memory_store_byte_events.len()),
             (RiscvAirId::StoreHalf, record.memory_store_half_events.len()),
             (RiscvAirId::StoreWord, record.memory_store_word_events.len()),
+            (RiscvAirId::StoreDouble, record.memory_store_double_events.len()),
             (RiscvAirId::Auipc, record.auipc_events.len()),
             (RiscvAirId::Branch, record.branch_events.len()),
             (RiscvAirId::Jal, record.jal_events.len()),
@@ -774,8 +822,11 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
         match value {
             RiscvAirDiscriminants::Program => RiscvAirId::Program,
             RiscvAirDiscriminants::Add => RiscvAirId::Add,
+            RiscvAirDiscriminants::Addw => RiscvAirId::Addw,
             RiscvAirDiscriminants::Addi => RiscvAirId::Addi,
+            RiscvAirDiscriminants::Addiw => RiscvAirId::Addiw,
             RiscvAirDiscriminants::Sub => RiscvAirId::Sub,
+            RiscvAirDiscriminants::Subw => RiscvAirId::Subw,
             RiscvAirDiscriminants::Bitwise => RiscvAirId::Bitwise,
             RiscvAirDiscriminants::Mul => RiscvAirId::Mul,
             RiscvAirDiscriminants::DivRem => RiscvAirId::DivRem,
@@ -786,9 +837,11 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::LoadHalf => RiscvAirId::LoadHalf,
             RiscvAirDiscriminants::LoadWord => RiscvAirId::LoadWord,
             RiscvAirDiscriminants::LoadX0 => RiscvAirId::LoadX0,
+            RiscvAirDiscriminants::LoadDouble => RiscvAirId::LoadDouble,
             RiscvAirDiscriminants::StoreByte => RiscvAirId::StoreByte,
             RiscvAirDiscriminants::StoreHalf => RiscvAirId::StoreHalf,
             RiscvAirDiscriminants::StoreWord => RiscvAirId::StoreWord,
+            RiscvAirDiscriminants::StoreDouble => RiscvAirId::StoreDouble,
             RiscvAirDiscriminants::RangeLookup => RiscvAirId::Range,
             RiscvAirDiscriminants::MemoryBump => RiscvAirId::MemoryBump,
             RiscvAirDiscriminants::AUIPC => RiscvAirId::Auipc,

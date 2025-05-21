@@ -26,17 +26,16 @@ impl<F: Field> BitwiseOperation<F> {
         opcode: Opcode,
     ) {
         let a = a_u64.to_le_bytes();
-        let b = b_u64.to_le_bytes();
-        let c = c_u64.to_le_bytes();
+        // let b = b_u64.to_le_bytes();
+        // let c = c_u64.to_le_bytes();
 
-        // self.result = a.map(|x| F::from_canonical_u8(x));
-        // TODO: u64
+        self.result = a.map(|x| F::from_canonical_u8(x));
 
-        for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
-            let byte_event =
-                ByteLookupEvent { opcode: ByteOpcode::from(opcode), a: b_a as u16, b: b_b, c: b_c };
-            record.add_byte_lookup_event(byte_event);
-        }
+        // for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
+        //     let byte_event =
+        //         ByteLookupEvent { opcode: ByteOpcode::from(opcode), a: b_a as u16, b: b_b, c: b_c };
+        //     record.add_byte_lookup_event(byte_event);
+        // }
     }
 
     /// Evaluate the bitwise operation over four bytes.

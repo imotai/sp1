@@ -1,4 +1,5 @@
 use core::borrow::Borrow;
+use std::iter::once;
 
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
@@ -26,10 +27,10 @@ where
     AB: SP1AirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
+        let main = builder.main();
 
-        // let local = main.row_slice(0);
-        // let local: &KeccakMemCols<AB::Var> = (*local).borrow();
+        let local = main.row_slice(0);
+        let local: &KeccakMemCols<AB::Var> = (*local).borrow();
 
         // builder.assert_bool(local.is_real);
 
@@ -158,45 +159,42 @@ where
         //     builder.assert_eq(computed_a_prime_prime_prime_0_0_limb, a_prime_prime_prime_0_0_limb);
         // }
 
-        // // Receive state.
-        // builder.receive(
-        //     AirInteraction::new(
-        //         vec![local.shard, local.clk, local.state_addr, local.index]
-        //             .into_iter()
-        //             .chain(
-        //                 local.keccak.a.into_iter().flat_map(|two_d| {
-        //                     two_d.into_iter().flat_map(|one_d| one_d.into_iter())
-        //                 }),
-        //             )
-        //             .map(Into::into)
-        //             .collect(),
-        //         local.is_real.into(),
-        //         InteractionKind::Keccak,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        let receive_values = once(local.shard)
+            .chain(once(local.clk))
+            .chain(local.state_addr)
+            .chain(once(local.index))
+            .chain(
+                local
+                    .keccak
+                    .a
+                    .into_iter()
+                    .flat_map(|two_d| two_d.into_iter().flat_map(|one_d| one_d.into_iter())),
+            )
+            .map(Into::into)
+            .collect::<Vec<_>>();
 
-        // // Send state.
-        // builder.send(
-        //     AirInteraction::new(
-        //         vec![
-        //             local.shard.into(),
-        //             local.clk.into(),
-        //             local.state_addr.into(),
-        //             local.index + AB::Expr::one(),
-        //         ]
-        //         .into_iter()
-        //         .chain((0..5).flat_map(|y| {
-        //             (0..5).flat_map(move |x| {
-        //                 (0..4).map(move |limb| local.keccak.a_prime_prime_prime(y, x, limb).into())
-        //             })
-        //         }))
-        //         .collect(),
-        //         local.is_real.into(),
-        //         InteractionKind::Keccak,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        // Receive state.
+        builder.receive(
+            AirInteraction::new(receive_values, local.is_real.into(), InteractionKind::Keccak),
+            InteractionScope::Local,
+        );
+
+        let send_values = once(local.shard.into())
+            .chain(once(local.clk.into()))
+            .chain(local.state_addr.map(Into::into))
+            .chain(once(local.index + AB::Expr::one()))
+            .chain((0..5).flat_map(|y| {
+                (0..5).flat_map(move |x| {
+                    (0..4).map(move |limb| local.keccak.a_prime_prime_prime(y, x, limb).into())
+                })
+            }))
+            .collect::<Vec<_>>();
+
+        // Send state.
+        builder.send(
+            AirInteraction::new(send_values, local.is_real.into(), InteractionKind::Keccak),
+            InteractionScope::Local,
+        );
     }
 }
 

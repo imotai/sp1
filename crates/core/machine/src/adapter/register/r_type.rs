@@ -85,22 +85,22 @@ impl<F: Field> RTypeReader<F> {
         builder.eval_memory_access_in_shard_write(
             shard.clone(),
             clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real.clone(),
         );
         builder.eval_memory_access_in_shard_read(
             shard.clone(),
-            clk.clone() + AB::F::from_canonical_u32(MemoryAccessPosition::B as u32),
-            cols.op_b,
+            clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
+            [cols.op_b.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_b_memory,
             is_real.clone(),
         );
         builder.eval_memory_access_in_shard_read(
             shard,
-            clk + AB::F::from_canonical_u32(MemoryAccessPosition::C as u32),
-            cols.op_c,
+            clk + AB::Expr::from_canonical_u32(MemoryAccessPosition::C as u32),
+            [cols.op_c.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_c_memory,
             is_real,
         );

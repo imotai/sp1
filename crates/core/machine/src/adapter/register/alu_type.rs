@@ -97,7 +97,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder.eval_memory_access_in_shard_write(
             shard.clone(),
             clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real.clone(),
@@ -105,7 +105,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder.eval_memory_access_in_shard_read(
             shard.clone(),
             clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
-            cols.op_b,
+            [cols.op_b.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_b_memory,
             is_real.clone(),
         );
@@ -113,7 +113,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder.eval_memory_access_in_shard_read(
             shard.clone(),
             clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::C as u32),
-            cols.op_c[0],
+            [cols.op_c[0].into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_c_memory,
             is_real - cols.imm_c,
         );

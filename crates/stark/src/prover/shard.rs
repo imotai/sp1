@@ -498,11 +498,11 @@ impl<C: ShardProverComponents> ShardProver<C> {
         let LogUpEvaluations { point: gkr_point, chip_openings } = logup_evaluations;
 
         let mut chip_heights = BTreeMap::new();
-        for (air, num_constraints) in airs.iter().cloned() {
+        for ((air, num_constraints), chip) in airs.iter().cloned().zip_eq(chips.iter()) {
             let ChipEvaluation {
                 main_trace_evaluations: main_opening,
                 preprocessed_trace_evaluations: prep_opening,
-            } = chip_openings.get(&air.name()).unwrap();
+            } = chip_openings.get(&chip.name()).unwrap();
 
             let main_trace = traces.get(&air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
@@ -702,7 +702,6 @@ impl<C: ShardProverComponents> ShardProver<C> {
             )
             .instrument(tracing::debug_span!("logup gkr proof"))
             .await;
-
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();
         // Get the challenge for batching the evaluations from the GKR proof.

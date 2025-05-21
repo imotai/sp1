@@ -88,7 +88,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             .map(|chunk| {
                 let mut blu = Vec::new();
                 let mut row = [F::zero(); NUM_MEMORY_INIT_COLS];
-                let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
+                // let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
                 chunk.iter().for_each(|&i| {
                     let addr = memory_events[i].addr;
                     let value = memory_events[i].value;
@@ -96,11 +96,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                     blu.add_u16_range_checks(&u64_to_u16_limbs(value));
                     blu.add_u16_range_checks(&u64_to_u16_limbs(prev_addr));
                     blu.add_u16_range_checks(&u64_to_u16_limbs(addr));
-                    cols.prev_addr_range_checker.populate(Word::from(prev_addr), &mut blu);
-                    cols.addr_range_checker.populate(Word::from(addr), &mut blu);
-                    if i != 0 || prev_addr != 0 {
-                        cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
-                    }
+                    // cols.prev_addr_range_checker.populate(Word::from(prev_addr), &mut blu);
+                    // cols.addr_range_checker.populate(Word::from(addr), &mut blu);
+                    // if i != 0 || prev_addr != 0 {
+                    //     cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
+                    // }
                 });
                 blu
             })
@@ -110,15 +110,21 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let events = memory_events.into_iter().map(|event| {
             let interaction_shard = if is_receive { event.shard } else { 0 };
             let interaction_clk = if is_receive { event.timestamp } else { 0 };
+            let limb_1 =
+                (event.value & 0xFFFF) as u32 + (1 << 16) * (event.value >> 32 & 0xFF) as u32;
+            let limb_2 =
+                (event.value >> 16 & 0xFFFF) as u32 + (1 << 16) * (event.value >> 40 & 0xFF) as u32;
+
             GlobalInteractionEvent {
                 message: [
                     interaction_shard,
                     interaction_clk,
-                    event.addr as u32, //TODO: u64
-                    (event.value & 0xFFFF) as u32,
-                    (event.value >> 16) as u32,
-                    0,
-                    0,
+                    (event.addr & 0xFFFF) as u32,
+                    ((event.addr >> 16) & 0xFFFF) as u32,
+                    ((event.addr >> 32) & 0xFFFF) as u32,
+                    limb_1,
+                    limb_2,
+                    ((event.value >> 48) & 0xFFFF) as u32,
                 ],
                 is_receive,
                 kind: InteractionKind::Memory as u8,
@@ -160,22 +166,27 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp } =
                     event.to_owned();
 
-                let mut blu = vec![];
+                // let mut blu = vec![];
                 let mut row = [F::zero(); NUM_MEMORY_INIT_COLS];
                 let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
                 cols.addr = Word::from(addr);
-                cols.addr_range_checker.populate(cols.addr, &mut blu);
+                // cols.addr_range_checker.populate(cols.addr, &mut blu);
                 cols.shard = F::from_canonical_u32(shard);
                 cols.timestamp = F::from_canonical_u32(timestamp);
                 cols.value = Word::from(value);
                 cols.is_real = F::one();
+                let limb_1 = (value & 0xFFFF) as u32 + (1 << 16) * (value >> 32 & 0xFF) as u32;
+                let limb_2 =
+                    (value >> 16 & 0xFFFF) as u32 + (1 << 16) * (value >> 40 & 0xFF) as u32;
+                cols.limb_1 = F::from_canonical_u32(limb_1);
+                cols.limb_2 = F::from_canonical_u32(limb_2);
                 row
             })
             .collect::<Vec<_>>();
 
-        let mut blu = vec![];
+        // let mut blu = vec![];
         for i in 0..memory_events.len() {
-            let addr = memory_events[i].addr;
+            // let addr = memory_events[i].addr;
             let cols: &mut MemoryInitCols<F> = rows[i].as_mut_slice().borrow_mut();
             let prev_addr = if i == 0 { previous_addr } else { memory_events[i - 1].addr };
             if prev_addr == 0 && i != 0 {
@@ -185,12 +196,12 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             }
             cols.index = F::from_canonical_u32(i as u32);
             cols.prev_addr = Word::from(prev_addr);
-            cols.prev_addr_range_checker.populate(cols.prev_addr, &mut blu);
+            // cols.prev_addr_range_checker.populate(cols.prev_addr, &mut blu);
             cols.is_prev_addr_zero.populate(prev_addr);
             cols.is_index_zero.populate(i as u64);
             if prev_addr != 0 || i != 0 {
                 cols.is_comp = F::one();
-                cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
+                // cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
             }
         }
 
@@ -253,6 +264,12 @@ pub struct MemoryInitCols<T: Copy> {
     /// The value of the memory access.
     pub value: Word<T>,
 
+    /// Packed limb 1 for global message
+    pub limb_1: T,
+
+    /// Packed limb 2 for global message
+    pub limb_2: T,
+
     /// Whether the memory access is a real access.
     pub is_real: T,
 
@@ -277,98 +294,100 @@ where
     AB: SP1AirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &MemoryInitCols<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &MemoryInitCols<AB::Var> = (*local).borrow();
 
-        // // Constrain that `local.is_real` is boolean.
-        // builder.assert_bool(local.is_real);
-        // // Constrain that the value is a valid `Word`.
-        // builder.slice_range_check_u16(&local.value.0, local.is_real);
-        // // Constrain that the previous address is a valid `Word`.
-        // builder.slice_range_check_u16(&local.prev_addr.0, local.is_real);
-        // // Constrain that the address is a valid `Word`.
-        // builder.slice_range_check_u16(&local.addr.0, local.is_real);
+        // Constrain that `local.is_real` is boolean.
+        builder.assert_bool(local.is_real);
+        // Constrain that the value is a valid `Word`.
+        builder.slice_range_check_u16(&local.value.0, local.is_real);
+        // Constrain that the previous address is a valid `Word`.
+        builder.slice_range_check_u16(&local.prev_addr.0, local.is_real);
+        // Constrain that the address is a valid `Word`.
+        builder.slice_range_check_u16(&local.addr.0, local.is_real);
 
-        // let interaction_kind = match self.kind {
-        //     MemoryChipType::Initialize => InteractionKind::MemoryGlobalInitControl,
-        //     MemoryChipType::Finalize => InteractionKind::MemoryGlobalFinalizeControl,
-        // };
+        let interaction_kind = match self.kind {
+            MemoryChipType::Initialize => InteractionKind::MemoryGlobalInitControl,
+            MemoryChipType::Finalize => InteractionKind::MemoryGlobalFinalizeControl,
+        };
 
-        // // Receive the previous index, address, and validity state.
-        // builder.receive(
-        //     AirInteraction::new(
-        //         vec![local.index]
-        //             .into_iter()
-        //             .chain(local.prev_addr.0)
-        //             .chain(once(local.prev_valid))
-        //             .map(Into::into)
-        //             .collect(),
-        //         local.is_real.into(),
-        //         interaction_kind,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        // Receive the previous index, address, and validity state.
+        builder.receive(
+            AirInteraction::new(
+                vec![local.index]
+                    .into_iter()
+                    .chain(local.prev_addr.0)
+                    .chain(once(local.prev_valid))
+                    .map(Into::into)
+                    .collect(),
+                local.is_real.into(),
+                interaction_kind,
+            ),
+            InteractionScope::Local,
+        );
 
-        // // Send the next index, address, and validity state.
-        // builder.send(
-        //     AirInteraction::new(
-        //         vec![local.index + AB::Expr::one()]
-        //             .into_iter()
-        //             .chain(local.addr.0.map(Into::into))
-        //             .chain(once(local.is_comp.into()))
-        //             .collect(),
-        //         local.is_real.into(),
-        //         interaction_kind,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        // Send the next index, address, and validity state.
+        builder.send(
+            AirInteraction::new(
+                vec![local.index + AB::Expr::one()]
+                    .into_iter()
+                    .chain(local.addr.0.map(Into::into))
+                    .chain(once(local.is_comp.into()))
+                    .collect(),
+                local.is_real.into(),
+                interaction_kind,
+            ),
+            InteractionScope::Local,
+        );
 
-        // if self.kind == MemoryChipType::Initialize {
-        //     // Send the "send interaction" to the global table.
-        //     builder.send(
-        //         AirInteraction::new(
-        //             vec![
-        //                 AB::Expr::zero(),
-        //                 AB::Expr::zero(),
-        //                 local.addr.reduce::<AB>(),
-        //                 local.value.0[0].into(),
-        //                 local.value.0[1].into(),
-        //                 AB::Expr::zero(),
-        //                 AB::Expr::zero(),
-        //                 AB::Expr::one(),
-        //                 AB::Expr::zero(),
-        //                 AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
-        //             ],
-        //             local.is_real.into(),
-        //             InteractionKind::Global,
-        //         ),
-        //         InteractionScope::Local,
-        //     );
-        // } else {
-        //     // Send the "receive interaction" to the global table.
-        //     builder.send(
-        //         AirInteraction::new(
-        //             vec![
-        //                 local.shard.into(),
-        //                 local.timestamp.into(),
-        //                 local.addr.reduce::<AB>(),
-        //                 local.value.0[0].into(),
-        //                 local.value.0[1].into(),
-        //                 AB::Expr::zero(),
-        //                 AB::Expr::zero(),
-        //                 AB::Expr::zero(),
-        //                 AB::Expr::one(),
-        //                 AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
-        //             ],
-        //             local.is_real.into(),
-        //             InteractionKind::Global,
-        //         ),
-        //         InteractionScope::Local,
-        //     );
-        // }
+        if self.kind == MemoryChipType::Initialize {
+            // Send the "send interaction" to the global table.
+            builder.send(
+                AirInteraction::new(
+                    vec![
+                        AB::Expr::zero(),
+                        AB::Expr::zero(),
+                        local.addr.0[0].into(),
+                        local.addr.0[1].into(),
+                        local.addr.0[2].into(),
+                        local.limb_1.into(),
+                        local.limb_2.into(),
+                        local.value.0[3].into(),
+                        AB::Expr::one(),
+                        AB::Expr::zero(),
+                        AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
+                    ],
+                    local.is_real.into(),
+                    InteractionKind::Global,
+                ),
+                InteractionScope::Local,
+            );
+        } else {
+            // Send the "receive interaction" to the global table.
+            builder.send(
+                AirInteraction::new(
+                    vec![
+                        local.shard.into(),
+                        local.timestamp.into(),
+                        local.addr.0[0].into(),
+                        local.addr.0[1].into(),
+                        local.addr.0[2].into(),
+                        local.limb_1.into(),
+                        local.limb_2.into(),
+                        local.value.0[3].into(),
+                        AB::Expr::zero(),
+                        AB::Expr::one(),
+                        AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
+                    ],
+                    local.is_real.into(),
+                    InteractionKind::Global,
+                ),
+                InteractionScope::Local,
+            );
+        }
 
-        // // Check that the previous address is a valid BabyBear word.
+        // Check that the previous address is a valid BabyBear word.
         // BabyBearWordRangeChecker::<AB::F>::range_check(
         //     builder,
         //     local.prev_addr,
@@ -376,7 +395,7 @@ where
         //     local.is_real.into(),
         // );
 
-        // // Check that the address is a valid BabyBear word.
+        // Check that the address is a valid BabyBear word.
         // BabyBearWordRangeChecker::<AB::F>::range_check(
         //     builder,
         //     local.addr,
@@ -384,7 +403,7 @@ where
         //     local.is_real.into(),
         // );
 
-        // // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
+        // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
         // IsZeroOperation::<AB::F>::eval(
         //     builder,
         //     local.prev_addr.reduce::<AB>(),
@@ -398,17 +417,17 @@ where
         //     local.is_real.into(),
         // );
 
-        // // Comparison will be done unless `prev_addr == 0` and `index == 0`.
-        // // If `is_real = 0`, then `is_comp` will be zero.
-        // // If `is_real = 1`, then `is_comp` will be zero when `prev_addr == 0` and `index == 0`.
-        // // If `is_real = 1`, then `is_comp` will be one when `prev_addr != 0` or `index != 0`.
+        // Comparison will be done unless `prev_addr == 0` and `index == 0`.
+        // If `is_real = 0`, then `is_comp` will be zero.
+        // If `is_real = 1`, then `is_comp` will be zero when `prev_addr == 0` and `index == 0`.
+        // If `is_real = 1`, then `is_comp` will be one when `prev_addr != 0` or `index != 0`.
         // builder.assert_eq(
         //     local.is_comp,
         //     local.is_real
         //         * (AB::Expr::one() - local.is_prev_addr_zero.result * local.is_index_zero.result),
         // );
         // builder.assert_bool(local.is_comp);
-        // // If `is_comp = 1`, then `prev_addr < addr` should hold.
+        // If `is_comp = 1`, then `prev_addr < addr` should hold.
         // LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
         //     builder,
         //     local.prev_addr.map(Into::into),

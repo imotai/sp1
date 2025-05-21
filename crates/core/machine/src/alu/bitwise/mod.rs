@@ -81,12 +81,12 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                 let mut blu = Vec::new();
                 self.event_to_row(&event.0, cols, &mut blu);
                 let instruction = input.program.fetch(event.0.pc);
-                // cols.state.populate(
-                //     &mut blu,
-                //     input.public_values.execution_shard,
-                //     event.0.clk,
-                //     event.0.pc,
-                // );
+                cols.state.populate(
+                    &mut blu,
+                    input.public_values.execution_shard as u32,
+                    event.0.clk,
+                    event.0.pc,
+                );
                 cols.adapter.populate(&mut blu, instruction, event.1);
 
                 row
@@ -119,12 +119,12 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                     let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
                     self.event_to_row(&event.0, cols, &mut blu);
                     let instruction = input.program.fetch(event.0.pc);
-                    // cols.state.populate(
-                    //     &mut blu,
-                    //     input.public_values.execution_shard,
-                    //     event.0.clk,
-                    //     event.0.pc,
-                    // );
+                    cols.state.populate(
+                        &mut blu,
+                        input.public_values.execution_shard as u32,
+                        event.0.clk,
+                        event.0.pc,
+                    );
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu

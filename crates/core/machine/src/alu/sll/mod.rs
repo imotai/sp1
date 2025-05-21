@@ -69,6 +69,15 @@ pub struct ShiftLeftCols<T> {
 
     /// Boolean to indicate whether the row is not a padding row.
     pub is_real: T,
+
+    /// If the opcode is SLL.
+    pub is_sll: T,
+
+    /// If the opcode is SLLW.
+    pub is_sllw: T,
+
+    /// If the opcode is SLLIW.
+    pub is_slliw: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
@@ -192,30 +201,33 @@ impl ShiftLeft {
         cols: &mut ShiftLeftCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        let b = u64_to_u16_limbs(event.b);
-        let c = u64_to_u16_limbs(event.c)[0];
+        // let b = u64_to_u16_limbs(event.b);
+        // let c = u64_to_u16_limbs(event.c)[0];
         cols.a = Word::from(event.a);
-        for i in 0..5 {
-            cols.c_bits[i] = F::from_canonical_u16((c >> i) & 1);
-        }
+        cols.is_sll = F::from_bool(event.opcode == Opcode::SLL);
+        cols.is_sllw = F::from_bool(event.opcode == Opcode::SLLW);
+        cols.is_slliw = F::from_bool(event.opcode == Opcode::SLLIW);
+        // for i in 0..5 {
+        //     cols.c_bits[i] = F::from_canonical_u16((c >> i) & 1);
+        // }
         cols.is_real = F::one();
-        cols.pow_2_01 = F::from_canonical_u32(1 << (c & 3));
-        cols.pow_2_23 = F::from_canonical_u32(1 << (c & 12));
-        cols.pow_2 = F::from_canonical_u32(1 << (c & 15));
-        if ((c >> 4) & 1) == 1 {
-            cols.pow_2_bit = cols.pow_2;
-        }
-        let bit_shift = (c & 0xF) as u8;
-        blu.add_bit_range_check(c >> 5, 11);
-        for i in 0..WORD_SIZE {
-            let limb = b[i] as u32;
-            let lower_limb = (limb & ((1 << (16 - bit_shift)) - 1)) as u16;
-            let higher_limb = (limb >> (16 - bit_shift)) as u16;
-            cols.lower_limb.0[i] = F::from_canonical_u16(lower_limb);
-            cols.higher_limb.0[i] = F::from_canonical_u16(higher_limb);
-            blu.add_bit_range_check(lower_limb, 16 - bit_shift);
-            blu.add_bit_range_check(higher_limb, bit_shift);
-        }
+        // cols.pow_2_01 = F::from_canonical_u32(1 << (c & 3));
+        // cols.pow_2_23 = F::from_canonical_u32(1 << (c & 12));
+        // cols.pow_2 = F::from_canonical_u32(1 << (c & 15));
+        // if ((c >> 4) & 1) == 1 {
+        //     cols.pow_2_bit = cols.pow_2;
+        // }
+        // let bit_shift = (c & 0xF) as u8;
+        // blu.add_bit_range_check(c >> 5, 11);
+        // for i in 0..WORD_SIZE {
+        //     let limb = b[i] as u32;
+        //     let lower_limb = (limb & ((1 << (16 - bit_shift)) - 1)) as u16;
+        //     let higher_limb = (limb >> (16 - bit_shift)) as u16;
+        //     cols.lower_limb.0[i] = F::from_canonical_u16(lower_limb);
+        //     cols.higher_limb.0[i] = F::from_canonical_u16(higher_limb);
+        //     blu.add_bit_range_check(lower_limb, 16 - bit_shift);
+        //     blu.add_bit_range_check(higher_limb, bit_shift);
+        // }
     }
 }
 
@@ -234,79 +246,79 @@ where
         let local = main.row_slice(0);
         let local: &ShiftLeftCols<AB::Var> = (*local).borrow();
 
-        // Step 1: Compute the bottom 5 bits of `c`.
-        // `c_lower_bits` is equal to the bit sum of the bottom 5 bits of `c`.
-        // `bit_shift` is equal to the bit sum of the bottom 4 bits of `c`.
-        let mut c_lower_bits = AB::Expr::zero();
-        let mut bit_shift = AB::Expr::zero();
-        for i in 0..5 {
-            builder.assert_bool(local.c_bits[i]);
-            c_lower_bits =
-                c_lower_bits.clone() + local.c_bits[i] * AB::Expr::from_canonical_u32(1 << i);
-            if i == 3 {
-                bit_shift = c_lower_bits.clone();
-            }
-        }
-        let inverse_32 = AB::F::from_canonical_u32(32).inverse();
-        // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and
-        // a multiple of 32.
-        builder.send_byte(
-            AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-            (local.adapter.c()[0] - c_lower_bits) * inverse_32,
-            AB::Expr::from_canonical_u32(11),
-            AB::Expr::zero(),
-            local.is_real,
-        );
+        // // Step 1: Compute the bottom 5 bits of `c`.
+        // // `c_lower_bits` is equal to the bit sum of the bottom 5 bits of `c`.
+        // // `bit_shift` is equal to the bit sum of the bottom 4 bits of `c`.
+        // let mut c_lower_bits = AB::Expr::zero();
+        // let mut bit_shift = AB::Expr::zero();
+        // for i in 0..5 {
+        //     builder.assert_bool(local.c_bits[i]);
+        //     c_lower_bits =
+        //         c_lower_bits.clone() + local.c_bits[i] * AB::Expr::from_canonical_u32(1 << i);
+        //     if i == 3 {
+        //         bit_shift = c_lower_bits.clone();
+        //     }
+        // }
+        // let inverse_32 = AB::F::from_canonical_u32(32).inverse();
+        // // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and
+        // // a multiple of 32.
+        // builder.send_byte(
+        //     AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+        //     (local.adapter.c()[0] - c_lower_bits) * inverse_32,
+        //     AB::Expr::from_canonical_u32(11),
+        //     AB::Expr::zero(),
+        //     local.is_real,
+        // );
 
-        // Step 2: Compute `pow(2, lower 4 bits of c)`.
-        builder.assert_eq(
-            local.pow_2_01,
-            (AB::Expr::one() + local.c_bits[0])
-                * (AB::Expr::one() + AB::Expr::from_canonical_u32(3) * local.c_bits[1]),
-        );
-        builder.assert_eq(
-            local.pow_2_23,
-            (AB::Expr::one() + AB::Expr::from_canonical_u32(15) * local.c_bits[2])
-                * (AB::Expr::one() + AB::Expr::from_canonical_u32(255) * local.c_bits[3]),
-        );
-        builder.assert_eq(local.pow_2, local.pow_2_01 * local.pow_2_23);
+        // // Step 2: Compute `pow(2, lower 4 bits of c)`.
+        // builder.assert_eq(
+        //     local.pow_2_01,
+        //     (AB::Expr::one() + local.c_bits[0])
+        //         * (AB::Expr::one() + AB::Expr::from_canonical_u32(3) * local.c_bits[1]),
+        // );
+        // builder.assert_eq(
+        //     local.pow_2_23,
+        //     (AB::Expr::one() + AB::Expr::from_canonical_u32(15) * local.c_bits[2])
+        //         * (AB::Expr::one() + AB::Expr::from_canonical_u32(255) * local.c_bits[3]),
+        // );
+        // builder.assert_eq(local.pow_2, local.pow_2_01 * local.pow_2_23);
 
-        // Step 3: Split the `b` word into lower and higher parts.
-        for i in 0..WORD_SIZE {
-            let limb = local.adapter.b()[i];
-            // Check that `lower_limb < 2^(16 - bit_shift)`
-            builder.send_byte(
-                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-                local.lower_limb[i],
-                AB::Expr::from_canonical_u32(16) - bit_shift.clone(),
-                AB::Expr::zero(),
-                local.is_real,
-            );
-            // Check that `higher_limb < 2^(bit_shift)`
-            builder.send_byte(
-                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-                local.higher_limb[i],
-                bit_shift.clone(),
-                AB::Expr::zero(),
-                local.is_real,
-            );
-            // Check that `limb == higher_limb * 2^(16 - bit_shift) + lower_limb`
-            // Multiply `2^(bit_shift)` to the equation to avoid populating `2^(16 - bit_shift)`.
-            // This is possible, since `2^(bit_shift)` is not zero.
-            builder.assert_eq(
-                limb * local.pow_2,
-                local.higher_limb[i] * AB::Expr::from_canonical_u32(1 << 16)
-                    + local.lower_limb[i] * local.pow_2,
-            );
-        }
+        // // Step 3: Split the `b` word into lower and higher parts.
+        // for i in 0..WORD_SIZE {
+        //     let limb = local.adapter.b()[i];
+        //     // Check that `lower_limb < 2^(16 - bit_shift)`
+        //     builder.send_byte(
+        //         AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+        //         local.lower_limb[i],
+        //         AB::Expr::from_canonical_u32(16) - bit_shift.clone(),
+        //         AB::Expr::zero(),
+        //         local.is_real,
+        //     );
+        //     // Check that `higher_limb < 2^(bit_shift)`
+        //     builder.send_byte(
+        //         AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+        //         local.higher_limb[i],
+        //         bit_shift.clone(),
+        //         AB::Expr::zero(),
+        //         local.is_real,
+        //     );
+        //     // Check that `limb == higher_limb * 2^(16 - bit_shift) + lower_limb`
+        //     // Multiply `2^(bit_shift)` to the equation to avoid populating `2^(16 - bit_shift)`.
+        //     // This is possible, since `2^(bit_shift)` is not zero.
+        //     builder.assert_eq(
+        //         limb * local.pow_2,
+        //         local.higher_limb[i] * AB::Expr::from_canonical_u32(1 << 16)
+        //             + local.lower_limb[i] * local.pow_2,
+        //     );
+        // }
 
-        // Step 4. Compute the final result `a`.
-        builder.assert_eq(local.pow_2_bit, local.pow_2 * local.c_bits[4]);
+        // // Step 4. Compute the final result `a`.
+        // builder.assert_eq(local.pow_2_bit, local.pow_2 * local.c_bits[4]);
 
-        let limb_0 = local.lower_limb[0] * (local.pow_2 - local.pow_2_bit);
-        let limb_1 = local.lower_limb[0] * local.pow_2_bit
-            + local.higher_limb[0] * (AB::Expr::one() - local.c_bits[4])
-            + local.lower_limb[1] * (local.pow_2 - local.pow_2_bit);
+        // let limb_0 = local.lower_limb[0] * (local.pow_2 - local.pow_2_bit);
+        // let limb_1 = local.lower_limb[0] * local.pow_2_bit
+        //     + local.higher_limb[0] * (AB::Expr::one() - local.c_bits[4])
+        //     + local.lower_limb[1] * (local.pow_2 - local.pow_2_bit);
 
         // builder.assert_word_eq(local.a, Word([limb_0, limb_1]));
 
@@ -315,6 +327,10 @@ where
         // interactions. This chip only deals with the `SLL` opcode, so the opcode matches
         // the instruction.
         builder.assert_bool(local.is_real);
+
+        let opcode = local.is_sll * AB::F::from_canonical_u32(Opcode::SLL as u32)
+            + local.is_sllw * AB::F::from_canonical_u32(Opcode::SLLW as u32)
+            + local.is_slliw * AB::F::from_canonical_u32(Opcode::SLLIW as u32);
 
         // Constrain the CPU state.
         // The program counter and timestamp increment by `4`.
@@ -332,7 +348,7 @@ where
             local.state.shard::<AB>(),
             local.state.clk::<AB>(),
             local.state.pc,
-            AB::F::from_canonical_u32(Opcode::SLL as u32),
+            opcode,
             local.a,
             local.adapter,
             local.is_real.into(),

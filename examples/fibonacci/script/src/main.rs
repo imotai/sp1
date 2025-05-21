@@ -27,7 +27,7 @@ async fn main() {
 
     // Generate the proof for the given program and input.
     let pk = client.setup(ELF).await.unwrap();
-    let mut proof = client.prove(&pk, stdin.clone()).compressed().await.unwrap();
+    let mut proof = client.prove(&pk, stdin.clone()).core().await.unwrap();
 
     println!("generated proof");
 

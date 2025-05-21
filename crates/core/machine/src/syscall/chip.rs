@@ -64,10 +64,13 @@ pub struct SyscallCols<T: Copy> {
     pub syscall_id: T,
 
     /// The arg1.
-    pub arg1: T,
+    pub arg1: [T; 3],
 
     /// The arg2.
-    pub arg2: T,
+    pub arg2: [T; 3],
+
+    /// The message (TODO u64: still needs to be constrained)
+    pub message: [T; 8],
 
     pub is_real: T,
 }
@@ -104,11 +107,12 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                 message: [
                     event.shard,
                     event.clk,
-                    event.syscall_id,
-                    event.arg1 as u32, // TODO: u64
-                    event.arg2 as u32,
-                    0,
-                    0,
+                    event.syscall_id + (1 << 8) * (event.arg1 & 0xFFFF) as u32,
+                    ((event.arg1 >> 16) & 0xFFFF) as u32,
+                    ((event.arg1 >> 32) & 0xFFFF) as u32,
+                    (event.arg2 & 0xFFFF) as u32,
+                    ((event.arg2 >> 16) & 0xFFFF) as u32,
+                    ((event.arg2 >> 32) & 0xFFFF) as u32,
                 ],
                 is_receive: self.shard_kind == SyscallShardKind::Precompile,
                 kind: InteractionKind::Syscall as u8,
@@ -150,8 +154,29 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             cols.shard = F::from_canonical_u32(syscall_event.shard);
             cols.clk = F::from_canonical_u32(syscall_event.clk);
             cols.syscall_id = F::from_canonical_u32(syscall_event.syscall_code.syscall_id());
-            cols.arg1 = F::from_canonical_u64(syscall_event.arg1);
-            cols.arg2 = F::from_canonical_u64(syscall_event.arg2);
+            cols.arg1 = [
+                F::from_canonical_u64((syscall_event.arg1 & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg1 >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg1 >> 32) & 0xFFFF) as u64),
+            ];
+            cols.arg2 = [
+                F::from_canonical_u64((syscall_event.arg2 & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg2 >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg2 >> 32) & 0xFFFF) as u64),
+            ];
+            cols.message = [
+                F::from_canonical_u32(syscall_event.shard),
+                F::from_canonical_u32(syscall_event.clk),
+                F::from_canonical_u32(
+                    syscall_event.syscall_code.syscall_id()
+                        + (1 << 8) * (syscall_event.arg1 & 0xFFFF) as u32,
+                ),
+                F::from_canonical_u64(((syscall_event.arg1 >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg1 >> 32) & 0xFFFF) as u64),
+                F::from_canonical_u64((syscall_event.arg2 & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg2 >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg2 >> 32) & 0xFFFF) as u64),
+            ];
             cols.is_real = F::one();
             row
         };
@@ -235,8 +260,8 @@ where
                     local.shard,
                     local.clk,
                     local.syscall_id,
-                    local.arg1,
-                    local.arg2,
+                    local.arg1.map(Into::into),
+                    local.arg2.map(Into::into),
                     local.is_real,
                     InteractionScope::Local,
                 );
@@ -245,13 +270,14 @@ where
                 builder.send(
                     AirInteraction::new(
                         vec![
-                            local.shard.into(),
-                            local.clk.into(),
-                            local.syscall_id.into(),
-                            local.arg1.into(),
-                            local.arg2.into(),
-                            AB::Expr::zero(),
-                            AB::Expr::zero(),
+                            local.message[0].into(),
+                            local.message[1].into(),
+                            local.message[2].into(),
+                            local.message[3].into(),
+                            local.message[4].into(),
+                            local.message[5].into(),
+                            local.message[6].into(),
+                            local.message[7].into(),
                             AB::Expr::one(),
                             AB::Expr::zero(),
                             AB::Expr::from_canonical_u8(InteractionKind::Syscall as u8),
@@ -267,8 +293,8 @@ where
                     local.shard,
                     local.clk,
                     local.syscall_id,
-                    local.arg1,
-                    local.arg2,
+                    local.arg1.map(Into::into),
+                    local.arg2.map(Into::into),
                     local.is_real,
                     InteractionScope::Local,
                 );
@@ -277,13 +303,14 @@ where
                 builder.send(
                     AirInteraction::new(
                         vec![
-                            local.shard.into(),
-                            local.clk.into(),
-                            local.syscall_id.into(),
-                            local.arg1.into(),
-                            local.arg2.into(),
-                            AB::Expr::zero(),
-                            AB::Expr::zero(),
+                            local.message[0].into(),
+                            local.message[1].into(),
+                            local.message[2].into(),
+                            local.message[3].into(),
+                            local.message[4].into(),
+                            local.message[5].into(),
+                            local.message[6].into(),
+                            local.message[7].into(),
                             AB::Expr::zero(),
                             AB::Expr::one(),
                             AB::Expr::from_canonical_u8(InteractionKind::Syscall as u8),

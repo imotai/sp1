@@ -26,8 +26,8 @@ pub struct ShaCompressCols<T> {
     /// Inputs.
     pub shard: T,
     pub clk: T,
-    pub w_ptr: T,
-    pub h_ptr: T,
+    pub w_ptr: [T; 3],
+    pub h_ptr: [T; 3],
 
     pub index: T,
 
@@ -49,7 +49,7 @@ pub struct ShaCompressCols<T> {
 
     /// Current memory address being written/read. During init and finalize, this is A-H. During
     /// compression, this is w[i] being read only.
-    pub mem_addr: T,
+    pub mem_addr: [T; 3],
 
     pub a: Word<T>,
     pub b: Word<T>,

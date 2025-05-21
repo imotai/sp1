@@ -25,7 +25,7 @@ use sp1_core_executor::{
 use sp1_curves::{
     edwards::{
         ed25519::{ed25519_sqrt, Ed25519BaseField},
-        EdwardsParameters, WordsFieldElement,
+        EdwardsParameters, WordsFieldElement, WORDS_FIELD_ELEMENT,
     },
     params::{FieldParameters, Limbs},
 };
@@ -56,6 +56,8 @@ pub struct EdDecompressCols<T> {
     pub shard: T,
     pub clk: T,
     pub ptr: SyscallAddrOperation<T>,
+    pub read_ptrs: [[T; 3]; WORDS_FIELD_ELEMENT],
+    pub addrs: [[T; 3]; WORDS_FIELD_ELEMENT],
     pub sign: T,
     pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
     pub x_value: GenericArray<Word<T>, WordsFieldElement>,
@@ -82,18 +84,32 @@ impl<F: PrimeField32> EdDecompressCols<F> {
         self.shard = F::from_canonical_u32(event.shard);
         self.clk = F::from_canonical_u32(event.clk);
         self.ptr.populate(record, event.ptr, 64);
+
+        // WORDS_FIELD_ELEMENT * 8 = 32
+        let read_ptr = event.ptr + 32;
+
         self.sign = F::from_bool(event.sign);
-        for i in 0..8 {
+        for i in 0..WORDS_FIELD_ELEMENT {
             let x_record = MemoryRecordEnum::Write(event.x_memory_records[i]);
             self.x_access[i].populate(x_record, &mut new_byte_lookup_events);
             let current_x_record = x_record.current_record();
             self.x_value[i] = Word::from(current_x_record.value);
             let y_record = MemoryRecordEnum::Read(event.y_memory_records[i]);
             self.y_access[i].populate(y_record, &mut new_byte_lookup_events);
+            self.addrs[i] = [
+                F::from_canonical_u16((event.ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16),
+                F::from_canonical_u16((event.ptr.wrapping_add((i * 8) as u64) >> 16) as u16),
+                F::from_canonical_u16((event.ptr.wrapping_add((i * 8) as u64) >> 32) as u16),
+            ];
+            self.read_ptrs[i] = [
+                F::from_canonical_u16((read_ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16),
+                F::from_canonical_u16((read_ptr.wrapping_add((i * 8) as u64) >> 16) as u16),
+                F::from_canonical_u16((read_ptr.wrapping_add((i * 8) as u64) >> 32) as u16),
+            ];
         }
 
-        let y = &BigUint::from_bytes_le(&event.y_bytes);
-        self.populate_field_ops::<E>(&mut new_byte_lookup_events, y);
+        // let y = &BigUint::from_bytes_le(&event.y_bytes);
+        // self.populate_field_ops::<E>(&mut new_byte_lookup_events, y);
 
         record.add_byte_lookup_events(new_byte_lookup_events);
     }
@@ -172,24 +188,24 @@ impl<V: Copy> EdDecompressCols<V> {
         // // Constrain that `neg_x.result` is also canonical.
         // self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
 
-        // let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
+        let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
 
-        // builder.eval_memory_access_slice_write(
-        //     self.shard,
-        //     self.clk,
-        //     ptr.clone(),
-        //     &self.x_access,
-        //     self.x_value.to_vec(),
-        //     self.is_real,
-        // );
+        builder.eval_memory_access_slice_write(
+            self.shard,
+            self.clk,
+            &self.addrs.map(|addr| addr.map(Into::into)),
+            &self.x_access,
+            self.x_value.to_vec(),
+            self.is_real,
+        );
 
-        // builder.eval_memory_access_slice_read(
-        //     self.shard,
-        //     self.clk,
-        //     ptr.clone() + AB::F::from_canonical_u32(32),
-        //     &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     self.is_real,
-        // );
+        builder.eval_memory_access_slice_read(
+            self.shard,
+            self.clk,
+            &self.read_ptrs.map(|ptr| ptr.map(Into::into)),
+            &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
+            self.is_real,
+        );
 
         // // Constrain that x_value is correct.
         // // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
@@ -210,15 +226,15 @@ impl<V: Copy> EdDecompressCols<V> {
         //         .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
         // }
 
-        // builder.receive_syscall(
-        //     self.shard,
-        //     self.clk,
-        //     AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
-        //     ptr,
-        //     self.sign,
-        //     self.is_real,
-        //     InteractionScope::Local,
-        // );
+        builder.receive_syscall(
+            self.shard,
+            self.clk,
+            AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
+            ptr,
+            [self.sign.into(), AB::Expr::zero(), AB::Expr::zero()],
+            self.is_real,
+            InteractionScope::Local,
+        );
     }
 }
 

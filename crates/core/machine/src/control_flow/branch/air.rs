@@ -26,58 +26,58 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &BranchColumns<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &BranchColumns<AB::Var> = (*local).borrow();
 
-        // // SAFETY: All selectors `is_beq`, `is_bne`, `is_blt`, `is_bge`, `is_bltu`, `is_bgeu` are
-        // // checked to be boolean. Each "real" row has exactly one selector turned on, as
-        // // `is_real`, the sum of the six selectors, is boolean. Therefore, the `opcode`
-        // // matches the corresponding opcode.
-        // builder.assert_bool(local.is_beq);
-        // builder.assert_bool(local.is_bne);
-        // builder.assert_bool(local.is_blt);
-        // builder.assert_bool(local.is_bge);
-        // builder.assert_bool(local.is_bltu);
-        // builder.assert_bool(local.is_bgeu);
-        // let is_real = local.is_beq
-        //     + local.is_bne
-        //     + local.is_blt
-        //     + local.is_bge
-        //     + local.is_bltu
-        //     + local.is_bgeu;
-        // builder.assert_bool(is_real.clone());
+        // SAFETY: All selectors `is_beq`, `is_bne`, `is_blt`, `is_bge`, `is_bltu`, `is_bgeu` are
+        // checked to be boolean. Each "real" row has exactly one selector turned on, as
+        // `is_real`, the sum of the six selectors, is boolean. Therefore, the `opcode`
+        // matches the corresponding opcode.
+        builder.assert_bool(local.is_beq);
+        builder.assert_bool(local.is_bne);
+        builder.assert_bool(local.is_blt);
+        builder.assert_bool(local.is_bge);
+        builder.assert_bool(local.is_bltu);
+        builder.assert_bool(local.is_bgeu);
+        let is_real = local.is_beq
+            + local.is_bne
+            + local.is_blt
+            + local.is_bge
+            + local.is_bltu
+            + local.is_bgeu;
+        builder.assert_bool(is_real.clone());
 
-        // let opcode = local.is_beq * Opcode::BEQ.as_field::<AB::F>()
-        //     + local.is_bne * Opcode::BNE.as_field::<AB::F>()
-        //     + local.is_blt * Opcode::BLT.as_field::<AB::F>()
-        //     + local.is_bge * Opcode::BGE.as_field::<AB::F>()
-        //     + local.is_bltu * Opcode::BLTU.as_field::<AB::F>()
-        //     + local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
+        let opcode = local.is_beq * Opcode::BEQ.as_field::<AB::F>()
+            + local.is_bne * Opcode::BNE.as_field::<AB::F>()
+            + local.is_blt * Opcode::BLT.as_field::<AB::F>()
+            + local.is_bge * Opcode::BGE.as_field::<AB::F>()
+            + local.is_bltu * Opcode::BLTU.as_field::<AB::F>()
+            + local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
 
-        // // Constrain the state of the CPU.
-        // // The `next_pc` is constrained by the AIR.
-        // // The clock is incremented by `4`.
-        // CPUState::<AB::F>::eval(
-        //     builder,
-        //     local.state,
-        //     local.next_pc.into(),
-        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-        //     is_real.clone(),
-        // );
+        // Constrain the state of the CPU.
+        // The `next_pc` is constrained by the AIR.
+        // The clock is incremented by `4`.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.next_pc.into(),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            is_real.clone(),
+        );
 
-        // // Constrain the program and register reads.
-        // ITypeReader::<AB::F>::eval_op_a_immutable(
-        //     builder,
-        //     local.state.shard::<AB>(),
-        //     local.state.clk::<AB>(),
-        //     local.state.pc,
-        //     opcode,
-        //     local.adapter,
-        //     is_real.clone(),
-        // );
+        // Constrain the program and register reads.
+        ITypeReader::<AB::F>::eval_op_a_immutable(
+            builder,
+            local.state.shard::<AB>(),
+            local.state.clk::<AB>(),
+            local.state.pc,
+            opcode,
+            local.adapter,
+            is_real.clone(),
+        );
 
-        // // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
+        // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
         // let use_signed_comparison = local.is_blt + local.is_bge;
         // LtOperationSigned::<AB::F>::eval_lt_signed(
         //     builder,

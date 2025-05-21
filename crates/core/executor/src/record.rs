@@ -42,12 +42,18 @@ pub struct ExecutionRecord {
     pub cpu_event_count: u32,
     /// A trace of the ADD, and ADDI events.
     pub add_events: Vec<(AluEvent, RTypeRecord)>,
+    /// A trace of the ADDW events.
+    pub addw_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the ADDI events.
     pub addi_events: Vec<(AluEvent, ITypeRecord)>,
+    /// A trace of the ADDIW events.
+    pub addiw_events: Vec<(AluEvent, ITypeRecord)>,
     /// A trace of the MUL events.
     pub mul_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SUB events.
     pub sub_events: Vec<(AluEvent, RTypeRecord)>,
+    /// A trace of the SUBW events.
+    pub subw_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the XOR, XORI, OR, ORI, AND, and ANDI events.
     pub bitwise_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SLL and SLLI events.
@@ -66,12 +72,16 @@ pub struct ExecutionRecord {
     pub memory_load_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of load instructions with `op_a = x0`.
     pub memory_load_x0_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of load double instructions.
+    pub memory_load_double_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store byte instructions.
     pub memory_store_byte_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store half instructions.
     pub memory_store_half_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store word instructions.
     pub memory_store_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of store double instructions.
+    pub memory_store_double_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of the AUIPC events.
     pub auipc_events: Vec<(AUIPCEvent, JTypeRecord)>,
     /// A trace of the branch events.

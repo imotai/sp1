@@ -46,6 +46,9 @@ pub struct LoadX0Columns<T> {
     /// The bit decomposition of the offset.
     pub offset_bit: [T; 2],
 
+    /// Aligned address. (TODO: u64 will not need later)
+    pub aligned_addr: [T; 3],
+
     /// Whether this is a load byte instruction.
     pub is_lb: T,
 
@@ -60,6 +63,12 @@ pub struct LoadX0Columns<T> {
 
     /// Whether this is a load word instruction.
     pub is_lw: T,
+
+    /// Whether this is a load word unsigned instruction.
+    pub is_lwu: T,
+
+    /// Whether this is a load double word instruction.
+    pub is_ld: T,
 }
 
 impl<F> BaseAir<F> for LoadX0Chip {
@@ -150,17 +159,28 @@ impl LoadX0Chip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        let memory_addr = event.b.wrapping_add(event.c);
         let bit0 = (memory_addr & 1) as u16;
         let bit1 = ((memory_addr >> 1) & 1) as u16;
+        let bit2 = ((memory_addr >> 2) & 1) as u16;
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
+
+        let aligned_addr = memory_addr - 4 * bit2 as u64 - 2 * bit1 as u64 - bit0 as u64;
+        cols.aligned_addr = [
+            F::from_canonical_u64(aligned_addr & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
+        ];
 
         cols.is_lb = F::from_bool(event.opcode == Opcode::LB);
         cols.is_lbu = F::from_bool(event.opcode == Opcode::LBU);
         cols.is_lh = F::from_bool(event.opcode == Opcode::LH);
         cols.is_lhu = F::from_bool(event.opcode == Opcode::LHU);
         cols.is_lw = F::from_bool(event.opcode == Opcode::LW);
+        cols.is_lwu = F::from_bool(event.opcode == Opcode::LWU);
+        cols.is_ld = F::from_bool(event.opcode == Opcode::LD);
     }
 }
 
@@ -171,23 +191,31 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &LoadX0Columns<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &LoadX0Columns<AB::Var> = (*local).borrow();
 
-        // let shard = local.state.shard::<AB>();
-        // let clk = local.state.clk::<AB>();
+        let shard = local.state.shard::<AB>();
+        let clk = local.state.clk::<AB>();
 
-        // // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw` are checked to be
-        // // boolean. Each "real" row has exactly one selector turned on, as `is_real`, the
-        // // sum of the selectors, is boolean. Therefore, the `opcode` matches the
-        // // corresponding opcode.
-        // let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
-        //     + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu
-        //     + AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
-        //     + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu
-        //     + AB::Expr::from_canonical_u32(Opcode::LW as u32) * local.is_lw;
-        // let is_real = local.is_lb + local.is_lbu + local.is_lh + local.is_lhu + local.is_lw;
+        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw` are checked to be
+        // boolean. Each "real" row has exactly one selector turned on, as `is_real`, the
+        // sum of the selectors, is boolean. Therefore, the `opcode` matches the
+        // corresponding opcode.
+        let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
+            + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu
+            + AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
+            + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu
+            + AB::Expr::from_canonical_u32(Opcode::LW as u32) * local.is_lw
+            + AB::Expr::from_canonical_u32(Opcode::LWU as u32) * local.is_lwu
+            + AB::Expr::from_canonical_u32(Opcode::LD as u32) * local.is_ld;
+        let is_real = local.is_lb
+            + local.is_lbu
+            + local.is_lh
+            + local.is_lhu
+            + local.is_lw
+            + local.is_lwu
+            + local.is_ld;
         // builder.assert_bool(local.is_lb);
         // builder.assert_bool(local.is_lbu);
         // builder.assert_bool(local.is_lh);
@@ -211,37 +239,37 @@ where
         // builder.when(local.is_lw).assert_zero(local.offset_bit[1]);
         // builder.when(local.is_lh + local.is_lhu).assert_zero(local.offset_bit[0]);
 
-        // // Step 2. Read the memory address.
-        // builder.eval_memory_access_read(
-        //     shard.clone(),
-        //     clk.clone(),
-        //     aligned_addr.clone(),
-        //     local.memory_access,
-        //     is_real.clone(),
-        // );
+        // Step 2. Read the memory address.
+        builder.eval_memory_access_read(
+            shard.clone(),
+            clk.clone(),
+            &local.aligned_addr.map(Into::into),
+            local.memory_access,
+            is_real.clone(),
+        );
 
         // // This chip is specifically for load operations with `op_a = x0`.
         // builder.when(is_real.clone()).assert_one(local.adapter.op_a_0);
 
-        // // Constrain the state of the CPU.
-        // CPUState::<AB::F>::eval(
-        //     builder,
-        //     local.state,
-        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-        //     is_real.clone(),
-        // );
+        // Constrain the state of the CPU.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            is_real.clone(),
+        );
 
-        // // Constrain the program and register reads.
-        // // Since `op_a = x0`, it's immutable.
-        // ITypeReader::<AB::F>::eval_op_a_immutable(
-        //     builder,
-        //     shard,
-        //     clk,
-        //     local.state.pc,
-        //     opcode,
-        //     local.adapter,
-        //     is_real.clone(),
-        // );
+        // Constrain the program and register reads.
+        // Since `op_a = x0`, it's immutable.
+        ITypeReader::<AB::F>::eval_op_a_immutable(
+            builder,
+            shard,
+            clk,
+            local.state.pc,
+            opcode,
+            local.adapter,
+            is_real.clone(),
+        );
     }
 }

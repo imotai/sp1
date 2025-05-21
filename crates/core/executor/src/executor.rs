@@ -1174,23 +1174,35 @@ impl<'a> Executor<'a> {
     ) {
         let event = AluEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
         match opcode {
-            Opcode::ADD | Opcode::ADDW => {
+            Opcode::ADD => {
                 let record = RTypeRecord::from(record);
                 self.record.add_events.push((event, record));
             }
-            Opcode::ADDI | Opcode::ADDIW => {
+            Opcode::ADDW => {
+                let record = RTypeRecord::from(record);
+                self.record.addw_events.push((event, record));
+            }
+            Opcode::ADDI => {
                 let record = ITypeRecord::from(record);
                 self.record.addi_events.push((event, record));
+            }
+            Opcode::ADDIW => {
+                let record = ITypeRecord::from(record);
+                self.record.addiw_events.push((event, record));
             }
             Opcode::SUB => {
                 let record = RTypeRecord::from(record);
                 self.record.sub_events.push((event, record));
             }
+            Opcode::SUBW => {
+                let record = RTypeRecord::from(record);
+                self.record.subw_events.push((event, record));
+            }
             Opcode::XOR | Opcode::OR | Opcode::AND => {
                 let record = ALUTypeRecord::from(record);
                 self.record.bitwise_events.push((event, record));
             }
-            Opcode::SLL | Opcode::SLLW => {
+            Opcode::SLL | Opcode::SLLW | Opcode::SLLIW => {
                 let record = ALUTypeRecord::from(record);
                 self.record.shift_left_events.push((event, record));
             }
@@ -1198,7 +1210,6 @@ impl<'a> Executor<'a> {
             | Opcode::SRA
             | Opcode::SRLW
             | Opcode::SRAW
-            | Opcode::SLLIW
             | Opcode::SRLIW
             | Opcode::SRAIW => {
                 let record = ALUTypeRecord::from(record);
@@ -1251,14 +1262,18 @@ impl<'a> Executor<'a> {
             self.record.memory_load_byte_events.push((event, record));
         } else if matches!(opcode, Opcode::LH | Opcode::LHU) {
             self.record.memory_load_half_events.push((event, record));
-        } else if opcode == Opcode::LW {
+        } else if matches!(opcode, Opcode::LW | Opcode::LWU) {
             self.record.memory_load_word_events.push((event, record));
+        } else if opcode == Opcode::LD {
+            self.record.memory_load_double_events.push((event, record));
         } else if opcode == Opcode::SB {
             self.record.memory_store_byte_events.push((event, record));
         } else if opcode == Opcode::SH {
             self.record.memory_store_half_events.push((event, record));
         } else if opcode == Opcode::SW {
             self.record.memory_store_word_events.push((event, record));
+        } else if opcode == Opcode::SD {
+            self.record.memory_store_double_events.push((event, record));
         }
     }
 
@@ -1456,6 +1471,14 @@ impl<'a> Executor<'a> {
     /// Fetch the instruction at the current program counter.
     #[inline]
     fn fetch(&self) -> Instruction {
+        // if 2500 <= self.state.global_clk && self.state.global_clk <= 2600 {
+        //     tracing::info!(
+        //         "global_clk: {}, pc: {}, instruction: {:?}",
+        //         self.state.global_clk,
+        //         self.state.pc,
+        //         self.program.fetch(self.state.pc)
+        //     );
+        // }
         *self.program.fetch(self.state.pc)
     }
 

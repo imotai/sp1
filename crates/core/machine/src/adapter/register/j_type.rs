@@ -82,7 +82,7 @@ impl<F: Field> JTypeReader<F> {
         builder.eval_memory_access_in_shard_write(
             shard.clone(),
             clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real,

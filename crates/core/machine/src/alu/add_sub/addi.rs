@@ -83,12 +83,12 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
                         let event = merged_events[idx];
                         let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        // cols.state.populate(
-                        //     &mut byte_lookup_events,
-                        //     input.public_values.execution_shard,
-                        //     event.0.clk,
-                        //     event.0.pc,
-                        // );
+                        cols.state.populate(
+                            &mut byte_lookup_events,
+                            input.public_values.execution_shard as u32,
+                            event.0.clk,
+                            event.0.pc,
+                        );
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -113,12 +113,12 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
                     let cols: &mut AddiCols<F> = row.as_mut_slice().borrow_mut();
                     let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    // cols.state.populate(
-                    //     &mut blu,
-                    //     input.public_values.execution_shard,
-                    //     event.0.clk,
-                    //     event.0.pc,
-                    // );
+                    cols.state.populate(
+                        &mut blu,
+                        input.public_values.execution_shard as u32,
+                        event.0.clk,
+                        event.0.pc,
+                    );
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -174,13 +174,13 @@ where
         let opcode = AB::Expr::from_f(Opcode::ADDI.as_field());
 
         // Constrain the add operation over `op_b` and `op_c`.
-        AddOperation::<AB::F>::eval(
-            builder,
-            local.adapter.b().map(|x| x.into()),
-            local.adapter.c().map(|x| x.into()),
-            local.add_operation,
-            local.is_real.into(),
-        );
+        // AddOperation::<AB::F>::eval(
+        //     builder,
+        //     local.adapter.b().map(|x| x.into()),
+        //     local.adapter.c().map(|x| x.into()),
+        //     local.add_operation,
+        //     local.is_real.into(),
+        // );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4`.

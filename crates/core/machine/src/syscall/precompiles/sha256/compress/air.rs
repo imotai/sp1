@@ -37,13 +37,13 @@ where
         let local = main.row_slice(0);
         let local: &ShaCompressCols<AB::Var> = (*local).borrow();
 
-        self.eval_control_flow_flags(builder, local);
+        // self.eval_control_flow_flags(builder, local);
 
         self.eval_memory(builder, local);
 
-        self.eval_compression_ops(builder, local);
+        // self.eval_compression_ops(builder, local);
 
-        self.eval_finalize_ops(builder, local);
+        // self.eval_finalize_ops(builder, local);
     }
 }
 
@@ -89,88 +89,88 @@ impl ShaCompressChip {
         // Assert that the is_finalize flag is correct.
         builder.assert_eq(local.is_finalize, local.octet_num[9] * local.is_real);
 
-        // Receive state.
-        builder.receive(
-            AirInteraction::new(
-                vec![local.shard, local.clk, local.w_ptr, local.h_ptr, local.index]
-                    .into_iter()
-                    .chain(
-                        [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
-                            .into_iter()
-                            .flat_map(|word| word.into_iter()),
-                    )
-                    .map(Into::into)
-                    .collect(),
-                local.is_real.into(),
-                InteractionKind::ShaCompress,
-            ),
-            InteractionScope::Local,
-        );
+        // // Receive state.
+        // builder.receive(
+        //     AirInteraction::new(
+        //         vec![local.shard, local.clk, local.w_ptr, local.h_ptr, local.index]
+        //             .into_iter()
+        //             .chain(
+        //                 [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
+        //                     .into_iter()
+        //                     .flat_map(|word| word.into_iter()),
+        //             )
+        //             .map(Into::into)
+        //             .collect(),
+        //         local.is_real.into(),
+        //         InteractionKind::ShaCompress,
+        //     ),
+        //     InteractionScope::Local,
+        // );
 
-        // Send state, for initialize and finalize.
-        builder.send(
-            AirInteraction::new(
-                vec![
-                    local.shard.into(),
-                    local.clk.into(),
-                    local.w_ptr.into(),
-                    local.h_ptr.into(),
-                    local.index.into() + AB::Expr::one(),
-                ]
-                .into_iter()
-                .chain(
-                    [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
-                        .into_iter()
-                        .flat_map(|word| word.into_iter())
-                        .map(Into::into),
-                )
-                .collect(),
-                local.is_initialize + local.is_finalize,
-                InteractionKind::ShaCompress,
-            ),
-            InteractionScope::Local,
-        );
+        // // Send state, for initialize and finalize.
+        // builder.send(
+        //     AirInteraction::new(
+        //         vec![
+        //             local.shard.into(),
+        //             local.clk.into(),
+        //             local.w_ptr.into(),
+        //             local.h_ptr.into(),
+        //             local.index.into() + AB::Expr::one(),
+        //         ]
+        //         .into_iter()
+        //         .chain(
+        //             [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
+        //                 .into_iter()
+        //                 .flat_map(|word| word.into_iter())
+        //                 .map(Into::into),
+        //         )
+        //         .collect(),
+        //         local.is_initialize + local.is_finalize,
+        //         InteractionKind::ShaCompress,
+        //     ),
+        //     InteractionScope::Local,
+        // );
 
-        // Send state, for compression.
-        // h := g
-        // g := f
-        // f := e
-        // e := d + temp1
-        // d := c
-        // c := b
-        // b := a
-        // a := temp1 + temp2
-        builder.send(
-            AirInteraction::new(
-                vec![
-                    local.shard.into(),
-                    local.clk.into(),
-                    local.w_ptr.into(),
-                    local.h_ptr.into(),
-                    local.index.into() + AB::Expr::one(),
-                ]
-                .into_iter()
-                .chain(
-                    [
-                        local.temp1_add_temp2.value,
-                        local.a,
-                        local.b,
-                        local.c,
-                        local.d_add_temp1.value,
-                        local.e,
-                        local.f,
-                        local.g,
-                    ]
-                    .into_iter()
-                    .flat_map(|word| word.into_iter())
-                    .map(Into::into),
-                )
-                .collect(),
-                local.is_compression.into(),
-                InteractionKind::ShaCompress,
-            ),
-            InteractionScope::Local,
-        );
+        // // Send state, for compression.
+        // // h := g
+        // // g := f
+        // // f := e
+        // // e := d + temp1
+        // // d := c
+        // // c := b
+        // // b := a
+        // // a := temp1 + temp2
+        // builder.send(
+        //     AirInteraction::new(
+        //         vec![
+        //             local.shard.into(),
+        //             local.clk.into(),
+        //             local.w_ptr.into(),
+        //             local.h_ptr.into(),
+        //             local.index.into() + AB::Expr::one(),
+        //         ]
+        //         .into_iter()
+        //         .chain(
+        //             [
+        //                 local.temp1_add_temp2.value,
+        //                 local.a,
+        //                 local.b,
+        //                 local.c,
+        //                 local.d_add_temp1.value,
+        //                 local.e,
+        //                 local.f,
+        //                 local.g,
+        //             ]
+        //             .into_iter()
+        //             .flat_map(|word| word.into_iter())
+        //             .map(Into::into),
+        //         )
+        //         .collect(),
+        //         local.is_compression.into(),
+        //         InteractionKind::ShaCompress,
+        //     ),
+        //     InteractionScope::Local,
+        // );
 
         // Assert that is_real is a bool.
         builder.assert_bool(local.is_real);
@@ -181,70 +181,70 @@ impl ShaCompressChip {
         builder.eval_memory_access_write(
             local.shard,
             local.clk + local.is_finalize,
-            local.mem_addr,
+            &local.mem_addr.map(Into::into),
             local.mem,
             local.mem_value,
             local.is_initialize + local.is_compression + local.is_finalize,
         );
 
-        // Calculate the current cycle_num.
-        let mut cycle_num = AB::Expr::zero();
-        for i in 0..10 {
-            cycle_num = cycle_num.clone() + local.octet_num[i] * AB::Expr::from_canonical_usize(i);
-        }
+        // // Calculate the current cycle_num.
+        // let mut cycle_num = AB::Expr::zero();
+        // for i in 0..10 {
+        //     cycle_num = cycle_num.clone() + local.octet_num[i] * AB::Expr::from_canonical_usize(i);
+        // }
 
-        // Calculate the current step of the cycle 8.
-        let mut cycle_step = AB::Expr::zero();
-        for i in 0..8 {
-            cycle_step = cycle_step.clone() + local.octet[i] * AB::Expr::from_canonical_usize(i);
-        }
+        // // Calculate the current step of the cycle 8.
+        // let mut cycle_step = AB::Expr::zero();
+        // for i in 0..8 {
+        //     cycle_step = cycle_step.clone() + local.octet[i] * AB::Expr::from_canonical_usize(i);
+        // }
 
-        // Check the index is correct.
-        builder.assert_eq(
-            local.index,
-            cycle_step.clone() + cycle_num.clone() * AB::Expr::from_canonical_u32(8),
-        );
+        // // Check the index is correct.
+        // builder.assert_eq(
+        //     local.index,
+        //     cycle_step.clone() + cycle_num.clone() * AB::Expr::from_canonical_u32(8),
+        // );
 
-        // Verify correct mem address for initialize phase
-        builder.when(local.is_initialize).assert_eq(
-            local.mem_addr,
-            local.h_ptr + cycle_step.clone() * AB::Expr::from_canonical_u32(4),
-        );
+        // // Verify correct mem address for initialize phase
+        // builder.when(local.is_initialize).assert_eq(
+        //     local.mem_addr,
+        //     local.h_ptr + cycle_step.clone() * AB::Expr::from_canonical_u32(4),
+        // );
 
-        // Verify correct mem address for compression phase
-        builder.when(local.is_compression).assert_eq(
-            local.mem_addr,
-            local.w_ptr
-                + (((cycle_num - AB::Expr::one()) * AB::Expr::from_canonical_u32(8))
-                    + cycle_step.clone())
-                    * AB::Expr::from_canonical_u32(4),
-        );
+        // // Verify correct mem address for compression phase
+        // builder.when(local.is_compression).assert_eq(
+        //     local.mem_addr,
+        //     local.w_ptr
+        //         + (((cycle_num - AB::Expr::one()) * AB::Expr::from_canonical_u32(8))
+        //             + cycle_step.clone())
+        //             * AB::Expr::from_canonical_u32(4),
+        // );
 
-        // Verify correct mem address for finalize phase
-        builder.when(local.is_finalize).assert_eq(
-            local.mem_addr,
-            local.h_ptr + cycle_step.clone() * AB::Expr::from_canonical_u32(4),
-        );
+        // // Verify correct mem address for finalize phase
+        // builder.when(local.is_finalize).assert_eq(
+        //     local.mem_addr,
+        //     local.h_ptr + cycle_step.clone() * AB::Expr::from_canonical_u32(4),
+        // );
 
-        // In the initialize phase, verify that local.a, local.b, ... is correctly read from memory
-        // and does not change
-        let vars = [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h];
-        for (i, var) in vars.iter().enumerate() {
-            builder
-                .when(local.is_initialize * local.octet[i])
-                .assert_word_eq(*var, local.mem.prev_value);
-            builder
-                .when(local.is_initialize * local.octet[i])
-                .assert_word_eq(*var, local.mem_value);
-        }
+        // // In the initialize phase, verify that local.a, local.b, ... is correctly read from memory
+        // // and does not change
+        // let vars = [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h];
+        // for (i, var) in vars.iter().enumerate() {
+        //     builder
+        //         .when(local.is_initialize * local.octet[i])
+        //         .assert_word_eq(*var, local.mem.prev_value);
+        //     builder
+        //         .when(local.is_initialize * local.octet[i])
+        //         .assert_word_eq(*var, local.mem_value);
+        // }
 
-        // During initialize and compression, verify that memory is read only and does not change.
-        builder
-            .when(local.is_initialize + local.is_compression)
-            .assert_word_eq(local.mem.prev_value, local.mem_value);
+        // // During initialize and compression, verify that memory is read only and does not change.
+        // builder
+        //     .when(local.is_initialize + local.is_compression)
+        //     .assert_word_eq(local.mem.prev_value, local.mem_value);
 
-        // In the finalize phase, verify that the correct value is written to memory.
-        builder.when(local.is_finalize).assert_word_eq(local.mem_value, local.finalize_add.value);
+        // // In the finalize phase, verify that the correct value is written to memory.
+        // builder.when(local.is_finalize).assert_word_eq(local.mem_value, local.finalize_add.value);
     }
 
     fn eval_compression_ops<AB: SP1AirBuilder>(

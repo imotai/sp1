@@ -146,50 +146,50 @@ where
             InteractionScope::Local,
         );
 
-        // Send the initial state.
-        builder.send(
-            AirInteraction::new(
-                vec![
-                    local.shard.into(),
-                    local.clk.into(),
-                    w_ptr.clone(),
-                    h_ptr.clone(),
-                    AB::Expr::from_canonical_u32(0),
-                ]
-                .into_iter()
-                .chain(
-                    local
-                        .initial_state
-                        .into_iter()
-                        .flat_map(|word| word.into_iter())
-                        .map(Into::into),
-                )
-                .collect(),
-                local.is_real.into(),
-                InteractionKind::ShaCompress,
-            ),
-            InteractionScope::Local,
-        );
+        // // Send the initial state.
+        // builder.send(
+        //     AirInteraction::new(
+        //         vec![
+        //             local.shard.into(),
+        //             local.clk.into(),
+        //             w_ptr.clone(),
+        //             h_ptr.clone(),
+        //             AB::Expr::from_canonical_u32(0),
+        //         ]
+        //         .into_iter()
+        //         .chain(
+        //             local
+        //                 .initial_state
+        //                 .into_iter()
+        //                 .flat_map(|word| word.into_iter())
+        //                 .map(Into::into),
+        //         )
+        //         .collect(),
+        //         local.is_real.into(),
+        //         InteractionKind::ShaCompress,
+        //     ),
+        //     InteractionScope::Local,
+        // );
 
-        // Receive the final state.
-        builder.receive(
-            AirInteraction::new(
-                vec![
-                    local.shard.into(),
-                    local.clk.into(),
-                    w_ptr.clone(),
-                    h_ptr.clone(),
-                    AB::Expr::from_canonical_u32(80),
-                ]
-                .into_iter()
-                .chain(
-                    local.final_state.into_iter().flat_map(|word| word.into_iter()).map(Into::into),
-                )
-                .collect(),
-                local.is_real.into(),
-                InteractionKind::ShaCompress,
-            ),
-            InteractionScope::Local,
-        );
+        // // Receive the final state.
+        // builder.receive(
+        //     AirInteraction::new(
+        //         vec![
+        //             local.shard.into(),
+        //             local.clk.into(),
+        //             w_ptr.clone(),
+        //             h_ptr.clone(),
+        //             AB::Expr::from_canonical_u32(80),
+        //         ]
+        //         .into_iter()
+        //         .chain(
+        //             local.final_state.into_iter().flat_map(|word| word.into_iter()).map(Into::into),
+        //         )
+        //         .collect(),
+        //         local.is_real.into(),
+        //         InteractionKind::ShaCompress,
+        //     ),
+        //     InteractionScope::Local,
+        // );
     }
 }

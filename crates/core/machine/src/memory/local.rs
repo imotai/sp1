@@ -25,7 +25,13 @@ pub(crate) const NUM_MEMORY_LOCAL_INIT_COLS: usize = size_of::<MemoryLocalCols<u
 #[repr(C)]
 pub struct SingleMemoryLocal<T: Copy> {
     /// The address of the memory access.
-    pub addr: T,
+    pub addr: [T; 3],
+
+    /// The message of the initial global interaction.
+    pub initial_message: [T; 8],
+
+    /// The message of the final global interaction.
+    pub final_message: [T; 8],
 
     /// The initial shard of the memory access.
     pub initial_shard: T,
@@ -91,28 +97,38 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
         let mut events = Vec::new();
 
         input.get_local_mem_events().for_each(|mem_event| {
+            let initial_value_byte0 = ((mem_event.initial_mem_access.value >> 32) & 0xFF) as u32;
+            let initial_value_byte1 = ((mem_event.initial_mem_access.value >> 40) & 0xFF) as u32;
             events.push(GlobalInteractionEvent {
                 message: [
                     mem_event.initial_mem_access.shard,
                     mem_event.initial_mem_access.timestamp,
-                    mem_event.addr as u32,
-                    (mem_event.initial_mem_access.value & 0xFFFF) as u32,
-                    ((mem_event.initial_mem_access.value >> 16) & 0xFFFF) as u32, //TODO: u64
-                    0u32,
-                    0u32,
+                    (mem_event.addr & 0xFFFF) as u32,
+                    ((mem_event.addr >> 16) & 0xFFFF) as u32,
+                    ((mem_event.addr >> 32) & 0xFFFF) as u32,
+                    (mem_event.initial_mem_access.value & 0xFFFF) as u32
+                        + (1 << 16) * initial_value_byte0,
+                    ((mem_event.initial_mem_access.value >> 16) & 0xFFFF) as u32
+                        + (1 << 16) * initial_value_byte1,
+                    ((mem_event.initial_mem_access.value >> 48) & 0xFFFF) as u32,
                 ],
                 is_receive: true,
                 kind: InteractionKind::Memory as u8,
             });
+            let final_value_byte0 = ((mem_event.final_mem_access.value >> 32) & 0xFF) as u32;
+            let final_value_byte1 = ((mem_event.final_mem_access.value >> 40) & 0xFF) as u32;
             events.push(GlobalInteractionEvent {
                 message: [
                     mem_event.final_mem_access.shard,
                     mem_event.final_mem_access.timestamp,
-                    mem_event.addr as u32,
-                    (mem_event.final_mem_access.value & 0xFFFF) as u32,
-                    ((mem_event.final_mem_access.value >> 16) & 0xFFFF) as u32,
-                    0u32,
-                    0u32,
+                    (mem_event.addr & 0xFFFF) as u32,
+                    ((mem_event.addr >> 16) & 0xFFFF) as u32,
+                    ((mem_event.addr >> 32) & 0xFFFF) as u32,
+                    (mem_event.final_mem_access.value & 0xFFFF) as u32
+                        + (1 << 16) * final_value_byte0,
+                    ((mem_event.final_mem_access.value >> 16) & 0xFFFF) as u32
+                        + (1 << 16) * final_value_byte1,
+                    ((mem_event.final_mem_access.value >> 48) & 0xFFFF) as u32,
                 ],
                 is_receive: false,
                 kind: InteractionKind::Memory as u8,
@@ -154,7 +170,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                     let cols = &mut cols.memory_local_entries[k];
                     if idx + k < events.len() {
                         let event = &events[idx + k];
-                        cols.addr = F::from_canonical_u64(event.addr);
+                        cols.addr = [
+                            F::from_canonical_u64(event.addr & 0xFFFF),
+                            F::from_canonical_u64((event.addr >> 16) & 0xFFFF),
+                            F::from_canonical_u64((event.addr >> 32) & 0xFFFF),
+                        ];
                         cols.initial_shard = F::from_canonical_u32(event.initial_mem_access.shard);
                         cols.final_shard = F::from_canonical_u32(event.final_mem_access.shard);
                         cols.initial_clk =
@@ -163,6 +183,43 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                         cols.initial_value = event.initial_mem_access.value.into();
                         cols.final_value = event.final_mem_access.value.into();
                         cols.is_real = F::one();
+                        // split the third limb of initial value into 2 limbs of 8 bits
+                        let initial_value_byte0 = (event.initial_mem_access.value >> 32) & 0xFF;
+                        let initial_value_byte1 = (event.initial_mem_access.value >> 40) & 0xFF;
+                        cols.initial_message = [
+                            F::from_canonical_u32(event.initial_mem_access.shard),
+                            F::from_canonical_u32(event.initial_mem_access.timestamp),
+                            F::from_canonical_u64(event.addr & 0xFFFF),
+                            F::from_canonical_u64((event.addr >> 16) & 0xFFFF),
+                            F::from_canonical_u64((event.addr >> 32) & 0xFFFF),
+                            F::from_canonical_u64(
+                                (event.initial_mem_access.value & 0xFFFF) as u64
+                                    + (1 << 16) * initial_value_byte0,
+                            ),
+                            F::from_canonical_u64(
+                                ((event.initial_mem_access.value >> 16) & 0xFFFF) as u64
+                                    + (1 << 16) * initial_value_byte1,
+                            ),
+                            F::from_canonical_u64((event.initial_mem_access.value >> 48) & 0xFFFF),
+                        ];
+                        let final_value_byte0 = (event.final_mem_access.value >> 32) & 0xFF;
+                        let final_value_byte1 = (event.final_mem_access.value >> 40) & 0xFF;
+                        cols.final_message = [
+                            F::from_canonical_u32(event.final_mem_access.shard),
+                            F::from_canonical_u32(event.final_mem_access.timestamp),
+                            F::from_canonical_u64(event.addr & 0xFFFF),
+                            F::from_canonical_u64((event.addr >> 16) & 0xFFFF),
+                            F::from_canonical_u64((event.addr >> 32) & 0xFFFF),
+                            F::from_canonical_u64(
+                                (event.final_mem_access.value & 0xFFFF) as u64
+                                    + (1 << 16) * final_value_byte0,
+                            ),
+                            F::from_canonical_u64(
+                                ((event.final_mem_access.value >> 16) & 0xFFFF) as u64
+                                    + (1 << 16) * final_value_byte1,
+                            ),
+                            F::from_canonical_u64((event.final_mem_access.value >> 48) & 0xFFFF),
+                        ];
                     }
                 }
             });
@@ -203,8 +260,8 @@ where
                 local.is_real * local.is_real * local.is_real,
             );
 
-            let mut values =
-                vec![local.initial_shard.into(), local.initial_clk.into(), local.addr.into()];
+            let mut values = vec![local.initial_shard.into(), local.initial_clk.into()];
+            values.extend(local.addr.map(Into::into));
             values.extend(local.initial_value.map(Into::into));
             builder.receive(
                 AirInteraction::new(values.clone(), local.is_real.into(), InteractionKind::Memory),
@@ -215,13 +272,14 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.initial_shard.into(),
-                        local.initial_clk.into(),
-                        local.addr.into(),
-                        local.initial_value[0].into(),
-                        local.initial_value[1].into(),
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
+                        local.initial_message[0].into(),
+                        local.initial_message[1].into(),
+                        local.initial_message[2].into(),
+                        local.initial_message[3].into(),
+                        local.initial_message[4].into(),
+                        local.initial_message[5].into(),
+                        local.initial_message[6].into(),
+                        local.initial_message[7].into(),
                         AB::Expr::zero(),
                         AB::Expr::one(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
@@ -236,13 +294,14 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.final_shard.into(),
-                        local.final_clk.into(),
-                        local.addr.into(),
-                        local.final_value[0].into(),
-                        local.final_value[1].into(),
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
+                        local.final_message[0].into(),
+                        local.final_message[1].into(),
+                        local.final_message[2].into(),
+                        local.final_message[3].into(),
+                        local.final_message[4].into(),
+                        local.final_message[5].into(),
+                        local.final_message[6].into(),
+                        local.final_message[7].into(),
                         AB::Expr::one(),
                         AB::Expr::zero(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
@@ -253,8 +312,8 @@ where
                 InteractionScope::Local,
             );
 
-            let mut values =
-                vec![local.final_shard.into(), local.final_clk.into(), local.addr.into()];
+            let mut values = vec![local.final_shard.into(), local.final_clk.into()];
+            values.extend(local.addr.map(Into::into));
             values.extend(local.final_value.map(Into::into));
             builder.send(
                 AirInteraction::new(values.clone(), local.is_real.into(), InteractionKind::Memory),

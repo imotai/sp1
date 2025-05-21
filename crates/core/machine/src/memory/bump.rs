@@ -28,7 +28,7 @@ pub(crate) const NUM_MEMORY_BUMP_COLS: usize = size_of::<MemoryBumpCols<u8>>();
 pub struct MemoryBumpCols<T: Copy> {
     pub access: MemoryAccessCols<T>,
     pub shard: T,
-    pub addr: T,
+    pub addr: [T; 3],
     pub is_real: T,
 }
 
@@ -115,7 +115,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                     });
                     cols.access.populate(bump_event, &mut byte_lookup_events);
                     cols.shard = F::from_canonical_u64(input.public_values.execution_shard);
-                    cols.addr = F::from_canonical_u64(addr);
+                    cols.addr = [
+                        F::from_canonical_u16((addr & 0xFFFF) as u16),
+                        F::from_canonical_u16((addr >> 16) as u16),
+                        F::from_canonical_u16((addr >> 32) as u16),
+                    ];
                     cols.is_real = F::one();
                 }
             });
@@ -146,7 +150,7 @@ where
         builder.eval_memory_access_read(
             local.shard,
             AB::Expr::zero(),
-            local.addr,
+            &local.addr.map(Into::into),
             local.access,
             local.is_real,
         );

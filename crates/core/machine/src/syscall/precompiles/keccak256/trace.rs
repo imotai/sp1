@@ -140,7 +140,11 @@ impl KeccakPermuteChip {
 
             cols.shard = F::from_canonical_u32(shard);
             cols.clk = F::from_canonical_u32(start_clk);
-            cols.state_addr = F::from_canonical_u64(event.state_addr);
+            cols.state_addr = [
+                F::from_canonical_u16((event.state_addr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.state_addr >> 16) as u16),
+                F::from_canonical_u16((event.state_addr >> 32) as u16),
+            ];
             cols.index = F::from_canonical_u32(i as u32);
             cols.is_real = F::one();
         }

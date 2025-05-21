@@ -127,7 +127,7 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
     }
 
     pub fn to_words_le(&self) -> Vec<u64> {
-        let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE / 2;
+        let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
         let num_bytes = num_words * 8;
         let half_words = num_words / 2;
 

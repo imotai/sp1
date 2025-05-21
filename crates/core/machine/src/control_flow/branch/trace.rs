@@ -101,36 +101,36 @@ impl BranchChip {
         cols.is_bltu = F::from_bool(matches!(event.opcode, Opcode::BLTU));
         cols.is_bgeu = F::from_bool(matches!(event.opcode, Opcode::BGEU));
 
-        let a_eq_b = event.a == event.b;
+        // let a_eq_b = event.a == event.b;
 
-        let use_signed_comparison = matches!(event.opcode, Opcode::BLT | Opcode::BGE);
+        // let use_signed_comparison = matches!(event.opcode, Opcode::BLT | Opcode::BGE);
 
-        let a_lt_b = if use_signed_comparison {
-            (event.a as i32) < (event.b as i32)
-        } else {
-            event.a < event.b
-        };
+        // let a_lt_b = if use_signed_comparison {
+        //     (event.a as i32) < (event.b as i32)
+        // } else {
+        //     event.a < event.b
+        // };
 
-        let branching = match event.opcode {
-            Opcode::BEQ => a_eq_b,
-            Opcode::BNE => !a_eq_b,
-            Opcode::BLT | Opcode::BLTU => a_lt_b,
-            Opcode::BGE | Opcode::BGEU => !a_lt_b,
-            _ => unreachable!(),
-        };
+        // let branching = match event.opcode {
+        //     Opcode::BEQ => a_eq_b,
+        //     Opcode::BNE => !a_eq_b,
+        //     Opcode::BLT | Opcode::BLTU => a_lt_b,
+        //     Opcode::BGE | Opcode::BGEU => !a_lt_b,
+        //     _ => unreachable!(),
+        // };
 
-        cols.compare_operation.populate_signed(
-            blu,
-            a_lt_b as u64,
-            event.a,
-            event.b,
-            use_signed_comparison,
-        );
+        // cols.compare_operation.populate_signed(
+        //     blu,
+        //     a_lt_b as u64,
+        //     event.a,
+        //     event.b,
+        //     use_signed_comparison,
+        // );
 
         cols.next_pc = F::from_canonical_u64(event.next_pc);
 
-        if branching {
-            cols.is_branching = F::one();
-        }
+        // if branching {
+        //     cols.is_branching = F::one();
+        // }
     }
 }

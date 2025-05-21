@@ -139,11 +139,23 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
+        input.addw_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
         input.addi_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
+        input.addiw_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
         input.sub_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.subw_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
@@ -191,6 +203,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
+        input.memory_load_double_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
         input.memory_store_byte_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
@@ -200,6 +216,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_store_word_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_store_double_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });

@@ -43,6 +43,9 @@ pub struct StoreHalfColumns<T> {
     /// Instance of `AddressOperation` to constrain the memory address.
     pub address_operation: AddressOperation<T>,
 
+    /// Aligned address. (TODO: u64 will not need later)
+    pub aligned_addr: [T; 3],
+
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
@@ -144,11 +147,19 @@ impl StoreHalfChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        let memory_addr = event.b.wrapping_add(event.c);
         debug_assert!(memory_addr % 2 == 0);
 
-        let bit = ((memory_addr >> 1) & 1) as u16;
-        cols.offset_bit = F::from_canonical_u16(bit);
+        let bit1 = ((memory_addr >> 1) & 1) as u16;
+        let bit2 = ((memory_addr >> 2) & 1) as u16;
+        let aligned_addr = memory_addr - 4 * bit2 as u64 - 2 * bit1 as u64;
+        cols.aligned_addr = [
+            F::from_canonical_u64(aligned_addr & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
+        ];
+        cols.offset_bit = F::from_canonical_u16(bit1);
         cols.store_value = Word::from(event.mem_access.value());
         cols.is_real = F::one();
     }
@@ -161,14 +172,14 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &StoreHalfColumns<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &StoreHalfColumns<AB::Var> = (*local).borrow();
 
-        // let shard = local.state.shard::<AB>();
-        // let clk = local.state.clk::<AB>();
+        let shard = local.state.shard::<AB>();
+        let clk = local.state.clk::<AB>();
 
-        // let opcode = AB::Expr::from_canonical_u32(Opcode::SH as u32);
+        let opcode = AB::Expr::from_canonical_u32(Opcode::SH as u32);
         // builder.assert_bool(local.is_real);
 
         // // Step 1. Compute the address, and check offsets and address bounds.
@@ -182,16 +193,16 @@ where
         //     local.address_operation,
         // );
 
-        // // Step 2. Write the memory address.
-        // // The `store_value` will be constrained in Step 3.
-        // builder.eval_memory_access_write(
-        //     shard.clone(),
-        //     clk.clone(),
-        //     aligned_addr.clone(),
-        //     local.memory_access,
-        //     local.store_value,
-        //     local.is_real.into(),
-        // );
+        // Step 2. Write the memory address.
+        // The `store_value` will be constrained in Step 3.
+        builder.eval_memory_access_write(
+            shard.clone(),
+            clk.clone(),
+            &local.aligned_addr.map(Into::into),
+            local.memory_access,
+            local.store_value,
+            local.is_real.into(),
+        );
 
         // // Step 3. Use the memory value to compute the write value.
         // let store_limb = local.adapter.prev_a().0[0];
@@ -206,24 +217,24 @@ where
         //         + store_limb * local.offset_bit,
         // );
 
-        // // Constrain the state of the CPU.
-        // CPUState::<AB::F>::eval(
-        //     builder,
-        //     local.state,
-        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-        //     local.is_real.into(),
-        // );
+        // Constrain the state of the CPU.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.is_real.into(),
+        );
 
-        // // Constrain the program and register reads.
-        // ITypeReader::<AB::F>::eval_op_a_immutable(
-        //     builder,
-        //     shard,
-        //     clk,
-        //     local.state.pc,
-        //     opcode,
-        //     local.adapter,
-        //     local.is_real.into(),
-        // );
+        // Constrain the program and register reads.
+        ITypeReader::<AB::F>::eval_op_a_immutable(
+            builder,
+            shard,
+            clk,
+            local.state.pc,
+            opcode,
+            local.adapter,
+            local.is_real.into(),
+        );
     }
 }

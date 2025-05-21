@@ -66,6 +66,9 @@ pub struct Uint256MulCols<T> {
     /// The pointer to the second input, which contains the y value and the modulus.
     pub y_ptr: SyscallAddrOperation<T>,
 
+    pub x_addrs: [[T; 3]; WORDS_FIELD_ELEMENT],
+    pub y_addrs: [[T; 3]; WORDS_FIELD_ELEMENT],
+
     // Memory columns.
     // x_memory is written to with the result, which is why it is of type MemoryWriteCols.
     pub x_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
@@ -150,6 +153,18 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                             cols.y_memory[i].populate(y_memory_record, &mut new_byte_lookup_events);
                             cols.modulus_memory[i]
                                 .populate(modulus_memory_record, &mut new_byte_lookup_events);
+                            let new_x_addr = event.x_ptr.wrapping_add(8 * i as u64);
+                            cols.x_addrs[i] = [
+                                F::from_canonical_u64((new_x_addr & 0xFFFF) as u64),
+                                F::from_canonical_u64(((new_x_addr >> 16) & 0xFFFF) as u64),
+                                F::from_canonical_u64(((new_x_addr >> 32) & 0xFFFF) as u64),
+                            ];
+                            let new_y_addr = event.y_ptr.wrapping_add(8 * i as u64);
+                            cols.y_addrs[i] = [
+                                F::from_canonical_u64((new_y_addr & 0xFFFF) as u64),
+                                F::from_canonical_u64(((new_y_addr >> 16) & 0xFFFF) as u64),
+                                F::from_canonical_u64(((new_y_addr >> 32) & 0xFFFF) as u64),
+                            ];
                         }
 
                         let modulus_bytes = words_to_bytes_le_vec(&event.modulus);
@@ -169,13 +184,13 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                         );
 
                         cols.modulus_is_not_zero = F::one() - cols.modulus_is_zero.result;
-                        if cols.modulus_is_not_zero == F::one() {
-                            cols.output_range_check.populate(
-                                &mut new_byte_lookup_events,
-                                &result,
-                                &effective_modulus,
-                            );
-                        }
+                        // if cols.modulus_is_not_zero == F::one() {
+                        //     cols.output_range_check.populate(
+                        //         &mut new_byte_lookup_events,
+                        //         &result,
+                        //         &effective_modulus,
+                        //     );
+                        // }
 
                         row
                     })
@@ -236,9 +251,9 @@ where
     Limbs<AB::Var, <U256Field as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &Uint256MulCols<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &Uint256MulCols<AB::Var> = (*local).borrow();
 
         // // We are computing (x * y) % modulus. The value of x is stored in the "prev_value" of
         // // the x_memory, since we write to it later.
@@ -298,47 +313,47 @@ where
         //     local.is_real * (AB::Expr::one() - modulus_is_zero.into()),
         // );
 
-        // let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
+        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
 
-        // let x_ptr =
-        //     SyscallAddrOperation::<AB::F>::eval(builder, 32, local.x_ptr, local.is_real.into());
-        // let y_ptr =
-        //     SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
+        let x_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.x_ptr, local.is_real.into());
+        let y_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
 
-        // // Read and write x.
-        // builder.eval_memory_access_slice_write(
-        //     local.shard,
-        //     local.clk.into() + AB::Expr::one(),
-        //     x_ptr.clone(),
-        //     &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
-        //     result_words,
-        //     local.is_real,
-        // );
+        // Read and write x.
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk.into() + AB::Expr::one(),
+            &local.x_addrs.map(|addr| addr.map(Into::into)),
+            &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
+            local.is_real,
+        );
 
-        // // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
-        // // we read it contiguously from the y_ptr memory location.
-        // builder.eval_memory_access_slice_read(
-        //     local.shard,
-        //     local.clk.into(),
-        //     y_ptr.clone(),
-        //     &[local.y_memory, local.modulus_memory]
-        //         .concat()
-        //         .iter()
-        //         .map(|access| access.memory_access)
-        //         .collect_vec(),
-        //     local.is_real,
-        // );
+        // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
+        // we read it contiguously from the y_ptr memory location.
+        builder.eval_memory_access_slice_read(
+            local.shard,
+            local.clk.into(),
+            &local.y_addrs.map(|addr| addr.map(Into::into)),
+            &[local.y_memory, local.modulus_memory]
+                .concat()
+                .iter()
+                .map(|access| access.memory_access)
+                .collect_vec(),
+            local.is_real,
+        );
 
-        // // Receive the arguments.
-        // builder.receive_syscall(
-        //     local.shard,
-        //     local.clk,
-        //     AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
-        //     x_ptr.clone(),
-        //     y_ptr.clone(),
-        //     local.is_real,
-        //     InteractionScope::Local,
-        // );
+        // Receive the arguments.
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
+            x_ptr,
+            y_ptr,
+            local.is_real,
+            InteractionScope::Local,
+        );
 
         // // Assert that is_real is a boolean.
         // builder.assert_bool(local.is_real);

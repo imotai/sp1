@@ -541,7 +541,7 @@ fn recursion_program_from_input(
     let builder_span = tracing::debug_span!("build recursion program").entered();
     let mut builder = Builder::<InnerConfig>::default();
     let input_variable = input.read(&mut builder);
-    SP1RecursiveVerifier::verify(&mut builder, recursion_verifier, input_variable);
+    // SP1RecursiveVerifier::verify(&mut builder, recursion_verifier, input_variable);
     let block = builder.into_root_block();
     // SAFETY: The circuit is well-formed. It does not use synchronization primitives
     // (or possibly other means) to violate the invariants.

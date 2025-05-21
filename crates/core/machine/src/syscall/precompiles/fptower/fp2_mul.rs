@@ -21,6 +21,7 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_curves::{
+    edwards::WORDS_CURVE_POINT,
     params::{FieldParameters, Limbs, NumLimbs, NumWords},
     weierstrass::{FieldType, FpOpField},
 };
@@ -48,6 +49,8 @@ pub struct Fp2MulAssignCols<T, P: FieldParameters + NumWords> {
     pub clk: T,
     pub x_ptr: SyscallAddrOperation<T>,
     pub y_ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
+    pub y_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub(crate) a0_mul_b0: FieldOpCols<T, P>,
@@ -123,8 +126,8 @@ impl<P: FpOpField> Fp2MulAssignChip<P> {
             &modulus,
             FieldOperation::Add,
         );
-        cols.c0_range.populate(blu_events, &c0, &modulus);
-        cols.c1_range.populate(blu_events, &c1, &modulus);
+        // cols.c0_range.populate(blu_events, &c0, &modulus);
+        // cols.c1_range.populate(blu_events, &c1, &modulus);
     }
 }
 
@@ -179,8 +182,8 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u32 * 2);
-            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u32 * 2);
+            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u64 * 2);
+            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u64 * 2);
 
             Self::populate_field_ops(&mut new_byte_lookup_events, cols, p_x, p_y, q_x, q_y);
 
@@ -188,10 +191,22 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
+                let new_addr = event.y_ptr.wrapping_add(8 * i as u64);
+                cols.y_addrs[i] = [
+                    F::from_canonical_u16((new_addr & 0xFFFF) as u16),
+                    F::from_canonical_u16((new_addr >> 16) as u16),
+                    F::from_canonical_u16((new_addr >> 32) as u16),
+                ];
             }
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                let new_addr = event.x_ptr.wrapping_add(8 * i as u64);
+                cols.x_addrs[i] = [
+                    F::from_canonical_u16((new_addr & 0xFFFF) as u16),
+                    F::from_canonical_u16((new_addr >> 16) as u16),
+                    F::from_canonical_u16((new_addr >> 32) as u16),
+                ];
             }
             rows.push(row);
         }
@@ -253,9 +268,9 @@ where
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &Fp2MulAssignCols<AB::Var, P> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &Fp2MulAssignCols<AB::Var, P> = (*local).borrow();
 
         // let num_words_field_element = <P as NumLimbs>::Limbs::USIZE / 4;
 
@@ -338,59 +353,59 @@ where
         //     );
         // }
 
-        // let c0_result_words = limbs_to_words::<AB>(local.c0.result.0.to_vec());
-        // let c1_result_words = limbs_to_words::<AB>(local.c1.result.0.to_vec());
+        let c0_result_words = limbs_to_words::<AB>(local.c0.result.0.to_vec());
+        let c1_result_words = limbs_to_words::<AB>(local.c1.result.0.to_vec());
 
-        // let result_words = c0_result_words.into_iter().chain(c1_result_words).collect_vec();
+        let result_words = c0_result_words.into_iter().chain(c1_result_words).collect_vec();
 
         // local.c0_range.eval(builder, &local.c0.result, &p_modulus, local.is_real);
         // local.c1_range.eval(builder, &local.c1.result, &p_modulus, local.is_real);
 
-        // let x_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     P::NB_LIMBS as u32 * 2,
-        //     local.x_ptr,
-        //     local.is_real.into(),
-        // );
-        // let y_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     P::NB_LIMBS as u32 * 2,
-        //     local.y_ptr,
-        //     local.is_real.into(),
-        // );
+        let x_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32 * 2,
+            local.x_ptr,
+            local.is_real.into(),
+        );
+        let y_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32 * 2,
+            local.y_ptr,
+            local.is_real.into(),
+        );
 
-        // builder.eval_memory_access_slice_read(
-        //     local.shard,
-        //     local.clk.into(),
-        //     y_ptr.clone(),
-        //     &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     local.is_real,
-        // );
-        // // We read p at +1 since p, q could be the same.
-        // builder.eval_memory_access_slice_write(
-        //     local.shard,
-        //     local.clk + AB::F::from_canonical_u32(1),
-        //     x_ptr.clone(),
-        //     &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     result_words,
-        //     local.is_real,
-        // );
+        builder.eval_memory_access_slice_read(
+            local.shard,
+            local.clk.into(),
+            &local.y_addrs.iter().map(|addr| addr.map(Into::into)).collect_vec(),
+            &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
+            local.is_real,
+        );
+        // We read p at +1 since p, q could be the same.
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk + AB::F::from_canonical_u32(1),
+            &local.x_addrs.iter().map(|addr| addr.map(Into::into)).collect_vec(),
+            &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
+            local.is_real,
+        );
 
-        // let syscall_id_felt = match P::FIELD_TYPE {
-        //     FieldType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_FP2_MUL.syscall_id()),
-        //     FieldType::Bls12381 => {
-        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_FP2_MUL.syscall_id())
-        //     }
-        // };
+        let syscall_id_felt = match P::FIELD_TYPE {
+            FieldType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_FP2_MUL.syscall_id()),
+            FieldType::Bls12381 => {
+                AB::F::from_canonical_u32(SyscallCode::BLS12381_FP2_MUL.syscall_id())
+            }
+        };
 
-        // builder.receive_syscall(
-        //     local.shard,
-        //     local.clk,
-        //     syscall_id_felt,
-        //     x_ptr,
-        //     y_ptr,
-        //     local.is_real,
-        //     InteractionScope::Local,
-        // );
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            syscall_id_felt,
+            x_ptr,
+            y_ptr,
+            local.is_real,
+            InteractionScope::Local,
+        );
     }
 }

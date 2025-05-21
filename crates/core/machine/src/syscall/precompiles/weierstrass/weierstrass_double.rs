@@ -51,6 +51,7 @@ pub struct WeierstrassDoubleAssignCols<T, P: FieldParameters + NumWords> {
     pub shard: T,
     pub clk: T,
     pub p_ptr: SyscallAddrOperation<T>,
+    pub p_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub slope_denominator: FieldOpCols<T, P>,
     pub slope_numerator: FieldOpCols<T, P>,
@@ -133,7 +134,7 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
                 &p_x_plus_p_x,
                 FieldOperation::Sub,
             );
-            cols.x3_range.populate(blu_events, &x3, &E::BaseField::modulus());
+            // cols.x3_range.populate(blu_events, &x3, &E::BaseField::modulus());
             x3
         };
 
@@ -152,7 +153,7 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
                 &p_y,
                 FieldOperation::Sub,
             );
-            cols.y3_range.populate(blu_events, &y3, &E::BaseField::modulus());
+            // cols.y3_range.populate(blu_events, &y3, &E::BaseField::modulus());
         }
     }
 }
@@ -250,7 +251,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut values = zeroed_f_vec(num_rows * num_cols);
         let chunk_size = 64;
 
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         let mut dummy_row = zeroed_f_vec(num_cols);
         let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> =
             dummy_row.as_mut_slice().borrow_mut();
@@ -335,7 +336,7 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
         cols.is_real = F::one();
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u32 * 2);
+        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u64 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y);
 
@@ -343,6 +344,12 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
         for i in 0..cols.p_access.len() {
             let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
             cols.p_access[i].populate(record, new_byte_lookup_events);
+            let new_p_addr = event.p_ptr.wrapping_add(8 * i as u64);
+            cols.p_addrs[i] = [
+                F::from_canonical_u64(new_p_addr & 0xFFFF),
+                F::from_canonical_u64((new_p_addr >> 16) & 0xFFFF),
+                F::from_canonical_u64((new_p_addr >> 32) & 0xFFFF),
+            ];
         }
     }
 }
@@ -359,11 +366,11 @@ where
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &WeierstrassDoubleAssignCols<AB::Var, E::BaseField> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &WeierstrassDoubleAssignCols<AB::Var, E::BaseField> = (*local).borrow();
 
-        // let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         // let p_x_limbs = builder
         //     .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
         // let p_y_limbs = builder
@@ -456,50 +463,50 @@ where
         // local.x3_range.eval(builder, &local.x3_ins.result, &modulus, local.is_real);
         // local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        // let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
-        // let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
-        // let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
+        let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
+        let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
-        // let p_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     E::NB_LIMBS as u32 * 2,
-        //     local.p_ptr,
-        //     local.is_real.into(),
-        // );
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.p_ptr,
+            local.is_real.into(),
+        );
 
-        // builder.eval_memory_access_slice_write(
-        //     local.shard,
-        //     local.clk.into(),
-        //     p_ptr.clone(),
-        //     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     result_words,
-        //     local.is_real,
-        // );
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk.into(),
+            &local.p_addrs.iter().map(|addr| addr.map(Into::into)).collect_vec(),
+            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
+            local.is_real,
+        );
 
-        // // Fetch the syscall id for the curve type.
-        // let syscall_id_felt = match E::CURVE_TYPE {
-        //     CurveType::Secp256k1 => {
-        //         AB::F::from_canonical_u32(SyscallCode::SECP256K1_DOUBLE.syscall_id())
-        //     }
-        //     CurveType::Secp256r1 => {
-        //         AB::F::from_canonical_u32(SyscallCode::SECP256R1_DOUBLE.syscall_id())
-        //     }
-        //     CurveType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_DOUBLE.syscall_id()),
-        //     CurveType::Bls12381 => {
-        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_DOUBLE.syscall_id())
-        //     }
-        //     _ => panic!("Unsupported curve"),
-        // };
+        // Fetch the syscall id for the curve type.
+        let syscall_id_felt = match E::CURVE_TYPE {
+            CurveType::Secp256k1 => {
+                AB::F::from_canonical_u32(SyscallCode::SECP256K1_DOUBLE.syscall_id())
+            }
+            CurveType::Secp256r1 => {
+                AB::F::from_canonical_u32(SyscallCode::SECP256R1_DOUBLE.syscall_id())
+            }
+            CurveType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_DOUBLE.syscall_id()),
+            CurveType::Bls12381 => {
+                AB::F::from_canonical_u32(SyscallCode::BLS12381_DOUBLE.syscall_id())
+            }
+            _ => panic!("Unsupported curve"),
+        };
 
-        // builder.receive_syscall(
-        //     local.shard,
-        //     local.clk,
-        //     syscall_id_felt,
-        //     p_ptr,
-        //     AB::Expr::zero(),
-        //     local.is_real,
-        //     InteractionScope::Local,
-        // );
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            syscall_id_felt,
+            p_ptr,
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.is_real,
+            InteractionScope::Local,
+        );
     }
 }
 

@@ -282,23 +282,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         shard: impl Into<Self::Expr> + Clone,
         clk: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [impl Into<Self::Expr>; 3],
+        arg2: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1.map(Into::into))
+            .chain(arg2.map(Into::into))
+            .collect::<Vec<_>>();
+
         self.send(
-            AirInteraction::new(
-                vec![
-                    shard.clone().into(),
-                    clk.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }
@@ -310,23 +307,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         shard: impl Into<Self::Expr> + Clone,
         clk: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [Self::Expr; 3],
+        arg2: [Self::Expr; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1)
+            .chain(arg2)
+            .collect::<Vec<_>>();
+
         self.receive(
-            AirInteraction::new(
-                vec![
-                    shard.clone().into(),
-                    clk.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }

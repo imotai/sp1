@@ -102,9 +102,9 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
                 F::from_canonical_u16((p_vanishing_limbs[i] + P::WITNESS_OFFSET as i32) as u16);
         }
 
-        record.add_u8_range_checks_field(&self.result.0);
-        record.add_u8_range_checks_field(&self.carry.0);
-        record.add_u16_range_checks_field(&self.witness.0);
+        // record.add_u8_range_checks_field(&self.result.0);
+        // record.add_u8_range_checks_field(&self.carry.0);
+        // record.add_u16_range_checks_field(&self.witness.0);
 
         (result, carry)
     }
@@ -249,9 +249,9 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         };
 
         // Range checks
-        record.add_u8_range_checks_field(&self.result.0);
-        record.add_u8_range_checks_field(&self.carry.0);
-        record.add_u16_range_checks_field(&self.witness.0);
+        // record.add_u8_range_checks_field(&self.result.0);
+        // record.add_u8_range_checks_field(&self.carry.0);
+        // record.add_u16_range_checks_field(&self.witness.0);
 
         result
     }

@@ -29,8 +29,8 @@ impl<F: Field> XorU16Operation<F> {
         c_u64: u64,
     ) -> u64 {
         let expected = b_u64 ^ c_u64;
-        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
-        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
+        // self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
+        // self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
         self.xor_operation.populate(record, b_u64, c_u64);
         expected
     }

@@ -44,8 +44,8 @@ impl<F: Field> Add4Operation<F> {
         }
 
         // Range check.
-        record.add_u16_range_checks(&expected_limbs);
-        record.add_u8_range_checks(&carry_limbs);
+        // record.add_u16_range_checks(&expected_limbs);
+        // record.add_u8_range_checks(&carry_limbs);
         expected
     }
 

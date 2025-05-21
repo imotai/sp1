@@ -50,8 +50,11 @@ pub struct LoadHalfColumns<T> {
     /// Whether or not the offset is `0` or `2`.
     pub offset_bit: T,
 
+    /// Aligned address. (TODO: u64 will not need later)
+    pub aligned_addr: [T; 3],
+
     /// The selected limb value.
-    pub selected_limb: T,
+    pub selected_half: T,
 
     /// The `MSB` of the half, if the opcode is `LH`.
     pub msb: U16MSBOperation<T>,
@@ -151,13 +154,23 @@ impl LoadHalfChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        let memory_addr = event.b.wrapping_add(event.c);
         debug_assert!(memory_addr % 2 == 0);
 
-        let bit = ((memory_addr >> 1) & 1) as u16;
+        let bit = ((memory_addr >> 2) & 1) as u16;
+        let bit_1 = ((memory_addr >> 1) & 1) as u16;
+        let limb_number = 2 * bit + bit_1;
         cols.offset_bit = F::from_canonical_u16(bit);
-        let limb = u64_to_u16_limbs(event.mem_access.value())[bit as usize];
-        cols.selected_limb = F::from_canonical_u16(limb);
+        let limb = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize];
+        // let limb_2 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize + 1];
+        cols.selected_half = F::from_canonical_u16(limb);
+        let aligned_addr = memory_addr - 4 * bit as u64 - 2 * bit_1 as u64;
+        cols.aligned_addr = [
+            F::from_canonical_u64(aligned_addr & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
+            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
+        ];
 
         if event.opcode == Opcode::LH {
             cols.is_lh = F::one();
@@ -175,19 +188,19 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &LoadHalfColumns<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &LoadHalfColumns<AB::Var> = (*local).borrow();
 
-        // let shard = local.state.shard::<AB>();
-        // let clk = local.state.clk::<AB>();
+        let shard = local.state.shard::<AB>();
+        let clk = local.state.clk::<AB>();
 
-        // // SAFETY: All selectors `is_lh`, `is_lhu` are checked to be boolean.
-        // // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
-        // // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
-        // let opcode = AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
-        //     + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu;
-        // let is_real = local.is_lh + local.is_lhu;
+        // SAFETY: All selectors `is_lh`, `is_lhu` are checked to be boolean.
+        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the
+        // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
+        let opcode = AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
+            + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu;
+        let is_real = local.is_lh + local.is_lhu;
         // builder.assert_bool(local.is_lh);
         // builder.assert_bool(local.is_lhu);
         // builder.assert_bool(is_real.clone());
@@ -203,14 +216,14 @@ where
         //     local.address_operation,
         // );
 
-        // // Step 2. Read the memory address.
-        // builder.eval_memory_access_read(
-        //     shard.clone(),
-        //     clk.clone(),
-        //     aligned_addr.clone(),
-        //     local.memory_access,
-        //     is_real.clone(),
-        // );
+        // Step 2. Read the memory address.
+        builder.eval_memory_access_read(
+            shard.clone(),
+            clk.clone(),
+            &local.aligned_addr.map(Into::into),
+            local.memory_access,
+            is_real.clone(),
+        );
 
         // // This chip requires `op_a != x0`.
         // builder.assert_zero(local.adapter.op_a_0);
@@ -232,28 +245,30 @@ where
         //     local.is_lh.into(),
         // );
 
-        // // Constrain the state of the CPU.
-        // CPUState::<AB::F>::eval(
-        //     builder,
-        //     local.state,
-        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-        //     is_real.clone(),
-        // );
+        // Constrain the state of the CPU.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            is_real.clone(),
+        );
 
         // Constrain the program and register reads.
-        // ITypeReader::<AB::F>::eval(
-        //     builder,
-        //     shard,
-        //     clk,
-        //     local.state.pc,
-        //     opcode,
-        //     Word([
-        //         local.selected_limb.into(),
-        //         AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
-        //     ]),
-        //     local.adapter,
-        //     is_real.clone(),
-        // );
+        ITypeReader::<AB::F>::eval(
+            builder,
+            shard,
+            clk,
+            local.state.pc,
+            opcode,
+            Word([
+                local.selected_half.into(),
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+            ]),
+            local.adapter,
+            is_real.clone(),
+        );
     }
 }

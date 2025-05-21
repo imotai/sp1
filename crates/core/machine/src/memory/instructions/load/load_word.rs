@@ -1,6 +1,7 @@
 use p3_air::{Air, BaseAir};
 use p3_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -10,7 +11,7 @@ use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
     air::SP1CoreAirBuilder,
     memory::MemoryAccessCols,
-    operations::AddressOperation,
+    operations::{AddressOperation, U16MSBOperation},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 use hashbrown::HashMap;
@@ -23,7 +24,7 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
 
-use sp1_stark::air::MachineAir;
+use sp1_stark::{air::MachineAir, Word};
 
 #[derive(Default)]
 pub struct LoadWordChip;
@@ -40,14 +41,29 @@ pub struct LoadWordColumns<T> {
     /// The adapter to read program and register information.
     pub adapter: ITypeReader<T>,
 
+    /// The address of the memory access. //TODO: u64 (need to modify the address operation)
+    pub aligned_address: [T; 3],
+
     /// Instance of `AddressOperation` to constrain the memory address.
     pub address_operation: AddressOperation<T>,
 
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
+    /// The selected word of the memory access.
+    pub selected_word: [T; 2],
+
     /// Whether this is a real load word instruction.
     pub is_real: T,
+
+    /// The `MSB` of the half, if the opcode is `LH`.
+    pub msb: U16MSBOperation<T>,
+
+    /// Whether this is a load half instruction.
+    pub is_lw: T,
+
+    /// Whether this is a load half unsigned instruction.
+    pub is_lwu: T,
 }
 
 impl<F> BaseAir<F> for LoadWordChip {
@@ -138,10 +154,33 @@ impl LoadWordChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        let memory_addr = event.b.wrapping_add(event.c);
         debug_assert!(memory_addr % 4 == 0);
+        let bit_2 = (memory_addr >> 2) & 1;
+        let bit_1 = (memory_addr >> 1) & 1;
+        let aligned_addrs = memory_addr - 4 * bit_2 as u64;
 
+        let limb_number = 2 * bit_2 + bit_1;
+
+        let limb_1 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize];
+        let limb_2 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize + 1];
+
+        cols.selected_word = [F::from_canonical_u16(limb_1), F::from_canonical_u16(limb_2)];
+
+        cols.aligned_address = [
+            F::from_canonical_u16(aligned_addrs as u16),
+            F::from_canonical_u16((aligned_addrs >> 16) as u16),
+            F::from_canonical_u16((aligned_addrs >> 32) as u16),
+        ];
         cols.is_real = F::one();
+
+        if event.opcode == Opcode::LW {
+            cols.is_lw = F::one();
+            cols.msb.populate_msb(blu, limb_2);
+        } else {
+            cols.is_lwu = F::one();
+        }
     }
 }
 
@@ -152,18 +191,19 @@ where
 {
     #[inline(never)]
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &LoadWordColumns<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &LoadWordColumns<AB::Var> = (*local).borrow();
 
-        // let shard = local.state.shard::<AB>();
-        // let clk = local.state.clk::<AB>();
+        let shard = local.state.shard::<AB>();
+        let clk = local.state.clk::<AB>();
 
-        // let opcode = AB::Expr::from_canonical_u32(Opcode::LW as u32);
+        let opcode = local.is_lw.into() * AB::Expr::from_canonical_u32(Opcode::LW as u32)
+            + local.is_lwu.into() * AB::Expr::from_canonical_u32(Opcode::LWU as u32);
 
         // builder.assert_bool(local.is_real);
 
-        // // Step 1. Compute the address, and check offsets and address bounds.
+        // Step 1. Compute the address, and check offsets and address bounds.
         // let aligned_addr = AddressOperation::<AB::F>::eval(
         //     builder,
         //     local.adapter.b().map(Into::into),
@@ -174,37 +214,42 @@ where
         //     local.address_operation,
         // );
 
-        // // Step 2. Read the memory address.
-        // builder.eval_memory_access_read(
-        //     shard.clone(),
-        //     clk.clone(),
-        //     aligned_addr.clone(),
-        //     local.memory_access,
-        //     local.is_real,
-        // );
+        // Step 2. Read the memory address.
+        builder.eval_memory_access_read(
+            shard.clone(),
+            clk.clone(),
+            &local.aligned_address.map(Into::into),
+            local.memory_access,
+            local.is_real,
+        );
 
         // // This chip requires `op_a != x0`.
         // builder.assert_zero(local.adapter.op_a_0);
 
-        // // Constrain the state of the CPU.
-        // CPUState::<AB::F>::eval(
-        //     builder,
-        //     local.state,
-        //     local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-        //     AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-        //     local.is_real.into(),
-        // );
+        // Constrain the state of the CPU.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.is_real.into(),
+        );
 
-        // // Constrain the program and register reads.
-        // ITypeReader::<AB::F>::eval(
-        //     builder,
-        //     shard,
-        //     clk,
-        //     local.state.pc,
-        //     opcode,
-        //     local.memory_access.prev_value,
-        //     local.adapter,
-        //     local.is_real.into(),
-        // );
+        // Constrain the program and register reads.
+        ITypeReader::<AB::F>::eval(
+            builder,
+            shard,
+            clk,
+            local.state.pc,
+            opcode,
+            Word([
+                local.selected_word[0].into(),
+                local.selected_word[1].into(),
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+            ]),
+            local.adapter,
+            local.is_real.into(),
+        );
     }
 }

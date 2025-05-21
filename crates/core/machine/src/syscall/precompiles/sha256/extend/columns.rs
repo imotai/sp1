@@ -17,7 +17,12 @@ pub struct ShaExtendCols<T> {
     /// Inputs.
     pub shard: T,
     pub clk: T,
-    pub w_ptr: T,
+    pub w_ptr: [T; 3],
+    pub w_i_minus_15_ptr: [T; 3],
+    pub w_i_minus_2_ptr: [T; 3],
+    pub w_i_minus_16_ptr: [T; 3],
+    pub w_i_minus_7_ptr: [T; 3],
+    pub w_i_ptr: [T; 3],
 
     /// Control flags.
     pub i: T,

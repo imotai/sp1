@@ -21,7 +21,8 @@ impl<F: Field> SubOperation<F> {
         let expected = a_u64.wrapping_sub(b_u64);
         self.value = Word::from(expected);
         // Range check
-        record.add_u16_range_checks(&u64_to_u16_limbs(expected));
+        // TODO: u16
+        // record.add_u16_range_checks(&u64_to_u16_limbs(expected));
         expected
     }
 

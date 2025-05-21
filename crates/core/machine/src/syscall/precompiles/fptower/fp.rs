@@ -22,6 +22,7 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_curves::{
+    edwards::WORDS_FIELD_ELEMENT,
     params::{Limbs, NumLimbs},
     weierstrass::{FieldType, FpOpField},
 };
@@ -54,6 +55,8 @@ pub struct FpOpCols<T, P: FpOpField> {
     pub is_mul: T,
     pub x_ptr: SyscallAddrOperation<T>,
     pub y_ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
+    pub y_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub(crate) output: FieldOpCols<T, P>,
@@ -76,7 +79,7 @@ impl<P: FpOpField> FpOpChip<P> {
         let modulus_bytes = P::MODULUS;
         let modulus = BigUint::from_bytes_le(modulus_bytes);
         let output = cols.output.populate_with_modulus(blu_events, &p, &q, &modulus, op);
-        cols.output_range.populate(blu_events, &output, &modulus);
+        // cols.output_range.populate(blu_events, &output, &modulus);
     }
 }
 
@@ -134,8 +137,8 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u32);
-            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u32);
+            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u64);
+            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u64);
 
             Self::populate_field_ops(&mut new_byte_lookup_events, cols, p, q, event.op);
 
@@ -143,10 +146,32 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.y_addrs[i] = [
+                    F::from_canonical_u16(
+                        (event.y_ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16,
+                    ),
+                    F::from_canonical_u16(
+                        ((event.y_ptr.wrapping_add((i * 8) as u64) >> 16) & 0xFFFF) as u16,
+                    ),
+                    F::from_canonical_u16(
+                        ((event.y_ptr.wrapping_add((i * 8) as u64) >> 32) & 0xFFFF) as u16,
+                    ),
+                ];
             }
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.x_addrs[i] = [
+                    F::from_canonical_u16(
+                        (event.x_ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16,
+                    ),
+                    F::from_canonical_u16(
+                        ((event.x_ptr.wrapping_add((i * 8) as u64) >> 16) & 0xFFFF) as u16,
+                    ),
+                    F::from_canonical_u16(
+                        ((event.x_ptr.wrapping_add((i * 8) as u64) >> 32) & 0xFFFF) as u16,
+                    ),
+                ];
             }
             rows.push(row);
         }
@@ -218,9 +243,9 @@ where
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &FpOpCols<AB::Var, P> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &FpOpCols<AB::Var, P> = (*local).borrow();
 
         // // Check that operations flags are boolean.
         // builder.assert_bool(local.is_add);
@@ -255,66 +280,66 @@ where
 
         // local.output_range.eval(builder, &local.output.result, &p_modulus, local.is_real);
 
-        // let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
+        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
 
-        // let x_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     P::NB_LIMBS as u32,
-        //     local.x_ptr,
-        //     local.is_real.into(),
-        // );
-        // let y_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     P::NB_LIMBS as u32,
-        //     local.y_ptr,
-        //     local.is_real.into(),
-        // );
+        let x_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32,
+            local.x_ptr,
+            local.is_real.into(),
+        );
+        let y_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32,
+            local.y_ptr,
+            local.is_real.into(),
+        );
 
-        // builder.eval_memory_access_slice_read(
-        //     local.shard,
-        //     local.clk.into(),
-        //     y_ptr.clone(),
-        //     &local.y_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
-        //     local.is_real,
-        // );
+        builder.eval_memory_access_slice_read(
+            local.shard,
+            local.clk.into(),
+            &local.y_addrs.iter().map(|addr| addr.map(Into::into)).collect::<Vec<_>>(),
+            &local.y_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
+            local.is_real,
+        );
 
-        // // We read p at +1 since p, q could be the same.
-        // builder.eval_memory_access_slice_write(
-        //     local.shard,
-        //     local.clk + AB::F::from_canonical_u32(1),
-        //     x_ptr.clone(),
-        //     &local.x_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
-        //     result_words,
-        //     local.is_real,
-        // );
+        // We read p at +1 since p, q could be the same.
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk + AB::F::from_canonical_u32(1),
+            &local.x_addrs.iter().map(|addr| addr.map(Into::into)).collect::<Vec<_>>(),
+            &local.x_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
+            result_words,
+            local.is_real,
+        );
 
-        // // Select the correct syscall id based on the operation flags.
-        // //
-        // // *Remark*: If support for division is added, we will need to add the division syscall id.
-        // let (add_syscall_id, sub_syscall_id, mul_syscall_id) = match P::FIELD_TYPE {
-        //     FieldType::Bn254 => (
-        //         AB::F::from_canonical_u32(SyscallCode::BN254_FP_ADD.syscall_id()),
-        //         AB::F::from_canonical_u32(SyscallCode::BN254_FP_SUB.syscall_id()),
-        //         AB::F::from_canonical_u32(SyscallCode::BN254_FP_MUL.syscall_id()),
-        //     ),
-        //     FieldType::Bls12381 => (
-        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_ADD.syscall_id()),
-        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_SUB.syscall_id()),
-        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_MUL.syscall_id()),
-        //     ),
-        // };
-        // let syscall_id_felt = local.is_add * add_syscall_id
-        //     + local.is_sub * sub_syscall_id
-        //     + local.is_mul * mul_syscall_id;
+        // Select the correct syscall id based on the operation flags.
+        //
+        // *Remark*: If support for division is added, we will need to add the division syscall id.
+        let (add_syscall_id, sub_syscall_id, mul_syscall_id) = match P::FIELD_TYPE {
+            FieldType::Bn254 => (
+                AB::F::from_canonical_u32(SyscallCode::BN254_FP_ADD.syscall_id()),
+                AB::F::from_canonical_u32(SyscallCode::BN254_FP_SUB.syscall_id()),
+                AB::F::from_canonical_u32(SyscallCode::BN254_FP_MUL.syscall_id()),
+            ),
+            FieldType::Bls12381 => (
+                AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_ADD.syscall_id()),
+                AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_SUB.syscall_id()),
+                AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_MUL.syscall_id()),
+            ),
+        };
+        let syscall_id_felt = local.is_add * add_syscall_id
+            + local.is_sub * sub_syscall_id
+            + local.is_mul * mul_syscall_id;
 
-        // builder.receive_syscall(
-        //     local.shard,
-        //     local.clk,
-        //     syscall_id_felt,
-        //     x_ptr,
-        //     y_ptr,
-        //     local.is_real,
-        //     InteractionScope::Local,
-        // );
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            syscall_id_felt,
+            x_ptr,
+            y_ptr,
+            local.is_real,
+            InteractionScope::Local,
+        );
     }
 }

@@ -70,7 +70,7 @@ impl<F: Field> U16toU8Operation<F> {
         is_real: AB::Expr,
     ) -> [AB::Expr; WORD_BYTE_SIZE] {
         let ret = U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, u16_values, cols);
-        builder.slice_range_check_u8(&ret, is_real);
+        builder.slice_range_check_u8(&ret, is_real); // TODO u64: Uncomment this
         ret
     }
 }

@@ -54,6 +54,8 @@ pub struct EdAddAssignCols<T> {
     pub clk: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub q_ptr: SyscallAddrOperation<T>,
+    pub p_addrs: [[T; 3]; WORDS_CURVE_POINT],
+    pub q_addrs: [[T; 3]; WORDS_CURVE_POINT],
     pub p_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
     pub q_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
     pub(crate) x3_numerator: FieldInnerProductCols<T, Ed25519BaseField>,
@@ -107,8 +109,8 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
         let x3 = cols.x3_ins.populate(record, &x3_numerator, &d_mul_f, true);
         let y3 = cols.y3_ins.populate(record, &y3_numerator, &d_mul_f, false);
 
-        cols.x3_range.populate(record, &x3, &Ed25519BaseField::modulus());
-        cols.y3_range.populate(record, &y3, &Ed25519BaseField::modulus());
+        // cols.x3_range.populate(record, &x3, &Ed25519BaseField::modulus());
+        // cols.y3_range.populate(record, &y3, &Ed25519BaseField::modulus());
     }
 }
 
@@ -234,18 +236,30 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
         cols.is_real = F::one();
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u32 * 4);
-        cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u32 * 4);
+        cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u64 * 8);
+        cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u64 * 8);
 
         Self::populate_field_ops(blu, cols, p_x, p_y, q_x, q_y);
 
         // Populate the memory access columns.
         for i in 0..WORDS_CURVE_POINT {
             let record = MemoryRecordEnum::Read(event.q_memory_records[i]);
+            let new_qaddr = event.q_ptr.wrapping_add((i * 8) as u64);
+            cols.q_addrs[i] = [
+                F::from_canonical_u16((new_qaddr & 0xFFFF) as u16),
+                F::from_canonical_u16((new_qaddr >> 16) as u16),
+                F::from_canonical_u16((new_qaddr >> 32) as u16),
+            ];
             cols.q_access[i].populate(record, blu);
         }
         for i in 0..WORDS_CURVE_POINT {
             let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
+            let new_paddr = event.p_ptr.wrapping_add((i * 8) as u64);
+            cols.p_addrs[i] = [
+                F::from_canonical_u16((new_paddr & 0xFFFF) as u16),
+                F::from_canonical_u16((new_paddr >> 16) as u16),
+                F::from_canonical_u16((new_paddr >> 32) as u16),
+            ];
             cols.p_access[i].populate(record, blu);
         }
     }
@@ -262,9 +276,9 @@ where
     AB: SP1AirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &EdAddAssignCols<AB::Var> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &EdAddAssignCols<AB::Var> = (*local).borrow();
 
         // let x1_limbs = builder.generate_limbs(&local.p_access[0..8], local.is_real.into());
         // let x1: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
@@ -322,51 +336,51 @@ where
         // local.y3_ins.eval(builder, &local.y3_numerator.result, &d_mul_f, false, local.is_real);
         // local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        // let x_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
-        // let y_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
+        let x_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        let y_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
 
-        // let result_words = x_result_words.into_iter().chain(y_result_words).collect_vec();
+        let result_words = x_result_words.into_iter().chain(y_result_words).collect_vec();
 
-        // let p_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     WORDS_CURVE_POINT as u32 * 4,
-        //     local.p_ptr,
-        //     local.is_real.into(),
-        // );
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            WORDS_CURVE_POINT as u32 * 8,
+            local.p_ptr,
+            local.is_real.into(),
+        );
 
-        // let q_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     WORDS_CURVE_POINT as u32 * 4,
-        //     local.q_ptr,
-        //     local.is_real.into(),
-        // );
+        let q_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            WORDS_CURVE_POINT as u32 * 8,
+            local.q_ptr,
+            local.is_real.into(),
+        );
 
-        // builder.eval_memory_access_slice_read(
-        //     local.shard,
-        //     local.clk.into(),
-        //     q_ptr.clone(),
-        //     &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     local.is_real,
-        // );
+        builder.eval_memory_access_slice_read(
+            local.shard,
+            local.clk.into(),
+            &local.q_addrs.map(|addr| addr.map(Into::into)),
+            &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
+            local.is_real,
+        );
 
-        // builder.eval_memory_access_slice_write(
-        //     local.shard,
-        //     local.clk + AB::F::from_canonical_u32(1),
-        //     p_ptr.clone(),
-        //     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     result_words,
-        //     local.is_real,
-        // );
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk + AB::F::from_canonical_u32(1),
+            &local.p_addrs.map(|addr| addr.map(Into::into)),
+            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
+            local.is_real,
+        );
 
-        // builder.receive_syscall(
-        //     local.shard,
-        //     local.clk,
-        //     AB::F::from_canonical_u32(SyscallCode::ED_ADD.syscall_id()),
-        //     p_ptr,
-        //     q_ptr,
-        //     local.is_real,
-        //     InteractionScope::Local,
-        // );
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            AB::F::from_canonical_u32(SyscallCode::ED_ADD.syscall_id()),
+            p_ptr,
+            q_ptr,
+            local.is_real,
+            InteractionScope::Local,
+        );
     }
 }
 

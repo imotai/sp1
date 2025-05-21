@@ -54,6 +54,8 @@ pub struct WeierstrassAddAssignCols<T, P: FieldParameters + NumWords> {
     pub clk: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub q_ptr: SyscallAddrOperation<T>,
+    pub p_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
+    pub q_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub q_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub slope_denominator: FieldOpCols<T, P>,
@@ -127,7 +129,7 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
                 &p_x_plus_q_x,
                 FieldOperation::Sub,
             );
-            cols.x3_range.populate(blu_events, &x3, &E::BaseField::modulus());
+            // cols.x3_range.populate(blu_events, &x3, &E::BaseField::modulus());
             x3
         };
 
@@ -146,7 +148,7 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
                 &p_y,
                 FieldOperation::Sub,
             );
-            cols.y3_range.populate(blu_events, &y3, &E::BaseField::modulus());
+            // cols.y3_range.populate(blu_events, &y3, &E::BaseField::modulus());
         }
     }
 }
@@ -242,7 +244,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut dummy_row = zeroed_f_vec(num_weierstrass_add_cols::<E::BaseField>());
         let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> =
             dummy_row.as_mut_slice().borrow_mut();
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         let dummy_memory_record =
             MemoryReadRecord { value: 1, shard: 0, timestamp: 1, prev_shard: 0, prev_timestamp: 0 };
         let zero = BigUint::zero();
@@ -314,9 +316,9 @@ where
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
-        // let main = builder.main();
-        // let local = main.row_slice(0);
-        // let local: &WeierstrassAddAssignCols<AB::Var, E::BaseField> = (*local).borrow();
+        let main = builder.main();
+        let local = main.row_slice(0);
+        let local: &WeierstrassAddAssignCols<AB::Var, E::BaseField> = (*local).borrow();
 
         // let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 4;
 
@@ -411,63 +413,64 @@ where
         // local.x3_range.eval(builder, &local.x3_ins.result, &modulus, local.is_real);
         // local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        // let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
-        // let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
-        // let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
+        let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
+        let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
-        // let p_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     E::NB_LIMBS as u32 * 2,
-        //     local.p_ptr,
-        //     local.is_real.into(),
-        // );
-        // let q_ptr = SyscallAddrOperation::<AB::F>::eval(
-        //     builder,
-        //     E::NB_LIMBS as u32 * 2,
-        //     local.q_ptr,
-        //     local.is_real.into(),
-        // );
-        // builder.eval_memory_access_slice_read(
-        //     local.shard,
-        //     local.clk.into(),
-        //     q_ptr.clone(),
-        //     &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     local.is_real,
-        // );
-        // // We read p at +1 since p, q could be the same.
-        // builder.eval_memory_access_slice_write(
-        //     local.shard,
-        //     local.clk + AB::F::from_canonical_u32(1),
-        //     p_ptr.clone(),
-        //     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
-        //     result_words,
-        //     local.is_real,
-        // );
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.p_ptr,
+            local.is_real.into(),
+        );
+        let q_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.q_ptr,
+            local.is_real.into(),
+        );
 
-        // // Fetch the syscall id for the curve type.
-        // let syscall_id_felt = match E::CURVE_TYPE {
-        //     CurveType::Secp256k1 => {
-        //         AB::F::from_canonical_u32(SyscallCode::SECP256K1_ADD.syscall_id())
-        //     }
-        //     CurveType::Secp256r1 => {
-        //         AB::F::from_canonical_u32(SyscallCode::SECP256R1_ADD.syscall_id())
-        //     }
-        //     CurveType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_ADD.syscall_id()),
-        //     CurveType::Bls12381 => {
-        //         AB::F::from_canonical_u32(SyscallCode::BLS12381_ADD.syscall_id())
-        //     }
-        //     _ => panic!("Unsupported curve"),
-        // };
+        builder.eval_memory_access_slice_read(
+            local.shard,
+            local.clk.into(),
+            &local.q_addrs.iter().map(|addr| addr.map(Into::into)).collect::<Vec<_>>(),
+            &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
+            local.is_real,
+        );
+        // We read p at +1 since p, q could be the same.
+        builder.eval_memory_access_slice_write(
+            local.shard,
+            local.clk + AB::F::from_canonical_u32(1),
+            &local.p_addrs.iter().map(|addr| addr.map(Into::into)).collect::<Vec<_>>(),
+            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
+            local.is_real,
+        );
 
-        // builder.receive_syscall(
-        //     local.shard,
-        //     local.clk,
-        //     syscall_id_felt,
-        //     p_ptr,
-        //     q_ptr,
-        //     local.is_real,
-        //     InteractionScope::Local,
-        // );
+        // Fetch the syscall id for the curve type.
+        let syscall_id_felt = match E::CURVE_TYPE {
+            CurveType::Secp256k1 => {
+                AB::F::from_canonical_u32(SyscallCode::SECP256K1_ADD.syscall_id())
+            }
+            CurveType::Secp256r1 => {
+                AB::F::from_canonical_u32(SyscallCode::SECP256R1_ADD.syscall_id())
+            }
+            CurveType::Bn254 => AB::F::from_canonical_u32(SyscallCode::BN254_ADD.syscall_id()),
+            CurveType::Bls12381 => {
+                AB::F::from_canonical_u32(SyscallCode::BLS12381_ADD.syscall_id())
+            }
+            _ => panic!("Unsupported curve"),
+        };
+
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            syscall_id_felt,
+            p_ptr,
+            q_ptr,
+            local.is_real,
+            InteractionScope::Local,
+        );
     }
 }
 
@@ -489,8 +492,8 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
         cols.is_real = F::one();
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u32 * 2);
-        cols.q_ptr.populate(new_byte_lookup_events, event.q_ptr, E::NB_LIMBS as u32 * 2);
+        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u64 * 2);
+        cols.q_ptr.populate(new_byte_lookup_events, event.q_ptr, E::NB_LIMBS as u64 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y, q_x, q_y);
 
@@ -498,10 +501,22 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
         for i in 0..cols.q_access.len() {
             let record = MemoryRecordEnum::Read(event.q_memory_records[i]);
             cols.q_access[i].populate(record, new_byte_lookup_events);
+            let new_q_addr = event.q_ptr.wrapping_add(8 * i as u64);
+            cols.q_addrs[i] = [
+                F::from_canonical_u64(new_q_addr & 0xFFFF),
+                F::from_canonical_u64((new_q_addr >> 16) & 0xFFFF),
+                F::from_canonical_u64((new_q_addr >> 32) & 0xFFFF),
+            ];
         }
         for i in 0..cols.p_access.len() {
             let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
             cols.p_access[i].populate(record, new_byte_lookup_events);
+            let new_p_addr = event.p_ptr.wrapping_add(8 * i as u64);
+            cols.p_addrs[i] = [
+                F::from_canonical_u64(new_p_addr & 0xFFFF),
+                F::from_canonical_u64((new_p_addr >> 16) & 0xFFFF),
+                F::from_canonical_u64((new_p_addr >> 32) & 0xFFFF),
+            ];
         }
     }
 }
