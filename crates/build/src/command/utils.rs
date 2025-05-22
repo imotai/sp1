@@ -53,16 +53,70 @@ pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
 pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Version) -> String {
     // Note: as of 1.81.0, the `-C passes=loweratomic` flag is deprecated, because of a change to
     // llvm.
-    let atomic_lower_pass = if version > &semver::Version::new(1, 81, 0) {
-        "passes=lower-atomic"
-    } else {
-        "passes=loweratomic"
-    };
+    let atomic_lower_pass =
+        if version > &semver::Version::new(1, 81, 0) { "lower-atomic" } else { "loweratomic" };
 
-    let rust_flags =
-        ["-C", atomic_lower_pass, "-C", "link-arg=-Ttext=0x00200800", "-C", "panic=abort"];
+    // Check if rustflags already contains a passes flag
+    let mut has_passes = false;
+    let mut modified_rustflags = Vec::with_capacity(args.rustflags.len());
+    let mut i = 0;
+
+    while i < args.rustflags.len() {
+        // Handle the case where passes is specified as two separate arguments: `-C passes=...`
+        if i + 1 < args.rustflags.len()
+            && args.rustflags[i] == "-C"
+            && args.rustflags[i + 1].starts_with("passes=")
+        {
+            // Found existing passes flag
+            let existing_passes = &args.rustflags[i + 1];
+
+            // Check if the atomic pass is already included
+            if existing_passes.contains(atomic_lower_pass) {
+                modified_rustflags.push("-C".to_string());
+                modified_rustflags.push(existing_passes.to_string());
+            } else {
+                // Append our atomic pass
+                let combined_passes = format!("{},{}", existing_passes, atomic_lower_pass);
+                modified_rustflags.push("-C".to_string());
+                modified_rustflags.push(combined_passes);
+            }
+
+            has_passes = true;
+            i += 2; // Skip the next item since we've processed it
+        }
+        // Handle the case where passes is specified as a single argument: `-Cpasses=...`
+        else if args.rustflags[i].starts_with("-Cpasses=") {
+            // Found existing passes flag
+            let existing_passes = &args.rustflags[i];
+
+            // Check if the atomic pass is already included
+            if existing_passes.contains(atomic_lower_pass) {
+                modified_rustflags.push(existing_passes.to_string());
+            } else {
+                // Append our atomic pass
+                let combined_passes = format!("{},{}", existing_passes, atomic_lower_pass);
+                modified_rustflags.push(combined_passes);
+            }
+
+            has_passes = true;
+            i += 1;
+        } else {
+            // Copy the flag as is
+            modified_rustflags.push(args.rustflags[i].clone());
+            i += 1;
+        }
+    }
+
+    // If no passes flag was found or atomic pass wasn't included, add our atomic pass
+    if !has_passes {
+        modified_rustflags.push("-C".to_string());
+        modified_rustflags.push(format!("passes={}", atomic_lower_pass));
+    }
+
+    let rust_flags = ["-C", "link-arg=-Ttext=0x00200800", "-C", "panic=abort"];
     let rust_flags: Vec<_> =
-        rust_flags.into_iter().chain(args.rustflags.iter().map(String::as_str)).collect();
+        rust_flags.into_iter().chain(modified_rustflags.iter().map(String::as_str)).collect();
+
     rust_flags.join("\x1f")
 }
 
