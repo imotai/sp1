@@ -390,6 +390,7 @@ impl<C: MachineProverComponents> ShardProver<C> {
             // perform this optimization for now.
             let gkr_opening_batch_randomness_powers = gkr_opening_batch_randomness
                 .powers()
+                .skip(1)
                 .take(
                     main_opening.num_polynomials()
                         + prep_opening.as_ref().map_or(0, MleEval::num_polynomials),

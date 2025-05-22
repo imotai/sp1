@@ -185,7 +185,7 @@ where
             .unwrap_or(0);
 
         let gkr_batch_open_challenge_powers =
-            gkr_batch_open_challenge.powers().take(max_elements).collect::<Vec<_>>();
+            gkr_batch_open_challenge.powers().skip(1).take(max_elements).collect::<Vec<_>>();
 
         for ((chip, openings), zerocheck_eq_val) in
             shard_chips.iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)

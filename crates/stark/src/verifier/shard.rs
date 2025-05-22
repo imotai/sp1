@@ -304,7 +304,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
                 .iter()
                 .chain(openings.preprocessed.local.iter())
                 .copied()
-                .zip(gkr_batch_open_challenge.powers())
+                .zip(gkr_batch_open_challenge.powers().skip(1))
                 .map(|(opening, power)| opening * power)
                 .sum::<C::EF>();
 
@@ -334,7 +334,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
                             .iter()
                             .flat_map(|&evals| evals.deref().iter().copied()),
                     )
-                    .zip(gkr_batch_open_challenge.powers())
+                    .zip(gkr_batch_open_challenge.powers().skip(1))
                     .map(|(opening, power)| opening * power)
                     .sum::<C::EF>()
             })
