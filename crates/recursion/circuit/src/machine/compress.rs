@@ -133,8 +133,7 @@ where
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-
-        let mut exit_code: Felt<_> = builder.uninit();
+        let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         let mut execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
@@ -184,8 +183,6 @@ where
             // }
 
             // Set the exit code, it is already constrained to be zero in the previous proof.
-            exit_code = current_public_values.exit_code;
-
             if i == 0 {
                 // Initialize global and accumulated values.
 
@@ -218,6 +215,9 @@ where
                 compress_public_values.start_execution_shard =
                     current_public_values.start_execution_shard;
                 execution_shard = current_public_values.start_execution_shard;
+
+                compress_public_values.prev_exit_code = current_public_values.prev_exit_code;
+                current_exit_code = current_public_values.prev_exit_code;
 
                 // Initialize the MemoryInitialize address word.
                 for (limb, (first_limb, current_limb)) in init_addr_word.0.iter_mut().zip(
@@ -283,6 +283,9 @@ where
 
             // Verify that the shard is equal to the current shard.
             builder.assert_felt_eq(shard, current_public_values.start_shard);
+
+            // Assert that the prev_exit_code is equal to the current prev_exit_code.
+            builder.assert_felt_eq(current_exit_code, current_public_values.prev_exit_code);
 
             // Execution shard constraints.
             {
@@ -393,6 +396,9 @@ where
             // Update the shard to be the next shard.
             shard = current_public_values.next_shard;
 
+            // Update the current exit code.
+            current_exit_code = current_public_values.exit_code;
+
             // Update the MemoryInitialize address limbs.
             for (limb, next_limb) in
                 init_addr_word.0.iter_mut().zip(current_public_values.last_init_addr_word.0.iter())
@@ -440,7 +446,7 @@ where
         // Assign the `is_complete` flag.
         compress_public_values.is_complete = is_complete;
         // Set the exit code.
-        compress_public_values.exit_code = exit_code;
+        compress_public_values.exit_code = current_exit_code;
         // Reflect the vk root.
         compress_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
         // Set the digest according to the previous values.

@@ -10,6 +10,7 @@ use sp1_primitives::{
     consts::WORD_SIZE,
     io::{blake3_hash, SP1PublicValues},
 };
+use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
 };
@@ -145,9 +146,25 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], Word<_>, _> =
                 shard_proof.public_values.as_slice().borrow();
-            if public_values.exit_code != BabyBear::zero() {
+            if public_values.shard == BabyBear::one()
+                && public_values.prev_exit_code != BabyBear::zero()
+            {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "exit_code != 0: exit code should be zero for all shards",
+                    "prev_exit_code != 0: previous exit code should be zero for first shard",
+                ));
+            }
+            if public_values.execution_shard == public_values.next_execution_shard
+                && public_values.prev_exit_code != public_values.exit_code
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "prev_exit_code != exit_code: exit code should be same in non-cpu shards",
+                ));
+            }
+            if public_values.prev_exit_code != BabyBear::zero()
+                && public_values.prev_exit_code != public_values.exit_code
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "prev_exit_code != exit_code: exit code should change at most once",
                 ));
             }
         }
@@ -282,8 +299,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             .verify_shard(compress_vk, proof, &mut challenger)
             .map_err(MachineVerifierError::InvalidShardProof)?;
 
-        // // Validate public values
-        // let public_values: &RecursionPublicValues<_> = proof.public_values.as_slice().borrow();
+        // Validate public values
+        let public_values: &RecursionPublicValues<_> = proof.public_values.as_slice().borrow();
+
         // assert_recursion_public_values_valid(
         //     self.compress_prover.machine().config(),
         //     public_values,
@@ -294,11 +312,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //     return Err(MachineVerifierError::InvalidVerificationKey);
         // }
 
-        // // `is_complete` should be 1. In the reduce program, this ensures that the proof is fully
-        // // reduced.
-        // if public_values.is_complete != BabyBear::one() {
-        //     return Err(MachineVerifierError::InvalidPublicValues("is_complete is not 1"));
-        // }
+        // `is_complete` should be 1. In the reduce program, this ensures that the proof is fully
+        // reduced.
+        if public_values.is_complete != BabyBear::one() {
+            return Err(MachineVerifierError::InvalidPublicValues("is_complete is not 1"));
+        }
 
         // // Verify that the proof is for the sp1 vkey we are expecting.
         // let vkey_hash = vk.hash_babybear();
@@ -356,9 +374,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         let vkey_hash = BigUint::from_str(&proof.public_inputs[0])?;
         let committed_values_digest = BigUint::from_str(&proof.public_inputs[1])?;
+        let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
 
         // Verify the proof with the corresponding public inputs.
-        prover.verify(proof, &vkey_hash, &committed_values_digest, build_dir);
+        prover.verify(proof, &vkey_hash, &committed_values_digest, &exit_code, build_dir);
 
         verify_plonk_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
 
@@ -377,9 +396,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         let vkey_hash = BigUint::from_str(&proof.public_inputs[0])?;
         let committed_values_digest = BigUint::from_str(&proof.public_inputs[1])?;
+        let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
 
         // Verify the proof with the corresponding public inputs.
-        prover.verify(proof, &vkey_hash, &committed_values_digest, build_dir);
+        prover.verify(proof, &vkey_hash, &committed_values_digest, &exit_code, build_dir);
 
         verify_groth16_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
 

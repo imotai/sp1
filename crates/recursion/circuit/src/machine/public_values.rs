@@ -68,6 +68,7 @@ where
         .sp1_vk_digest
         .into_iter()
         .chain(public_values.committed_value_digest.into_iter().flat_map(|word| word.into_iter()))
+        .chain(std::iter::once(public_values.exit_code))
         .collect::<Vec<_>>();
     H::poseidon2_hash(builder, &input)
 }

@@ -459,6 +459,10 @@ impl<C: Config> Builder<C> {
         self.push_op(DslIr::CircuitCommitCommittedValuesDigest(var));
     }
 
+    pub fn commit_exit_code_circuit(&mut self, var: Var<C::N>) {
+        self.push_op(DslIr::CircuitCommitExitCode(var));
+    }
+
     pub fn reduce_e(&mut self, ext: Ext<C::F, C::EF>) {
         self.push_op(DslIr::ReduceE(ext));
     }

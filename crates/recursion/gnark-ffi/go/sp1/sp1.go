@@ -28,6 +28,7 @@ var groth16WitnessPath string = "groth16_witness.json"
 type Circuit struct {
 	VkeyHash              frontend.Variable `gnark:",public"`
 	CommittedValuesDigest frontend.Variable `gnark:",public"`
+	ExitCode              frontend.Variable `gnark:",public"`
 	Vars                  []frontend.Variable
 	Felts                 []babybear.Variable
 	Exts                  []babybear.ExtensionVariable
@@ -44,10 +45,11 @@ type WitnessInput struct {
 	Exts                  [][]string `json:"exts"`
 	VkeyHash              string     `json:"vkey_hash"`
 	CommittedValuesDigest string     `json:"committed_values_digest"`
+	ExitCode              string     `json:"exit_code"`
 }
 
 type Proof struct {
-	PublicInputs [2]string `json:"public_inputs"`
+	PublicInputs [3]string `json:"public_inputs"`
 	EncodedProof string    `json:"encoded_proof"`
 	RawProof     string    `json:"raw_proof"`
 }
@@ -223,6 +225,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		case "CommitCommitedValuesDigest":
 			element := vars[cs.Args[0][0]]
 			api.AssertIsEqual(circuit.CommittedValuesDigest, element)
+		case "CommitExitCode":
+			element := vars[cs.Args[0][0]]
+			api.AssertIsEqual(circuit.ExitCode, element)
 		case "CircuitFelts2Ext":
 			exts[cs.Args[0][0]] = babybear.Felts2Ext(felts[cs.Args[1][0]], felts[cs.Args[2][0]], felts[cs.Args[3][0]], felts[cs.Args[4][0]])
 		case "CircuitFelt2Var":

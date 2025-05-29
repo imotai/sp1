@@ -12,6 +12,7 @@ pub struct GnarkWitness {
     pub exts: Vec<Vec<String>>,
     pub vkey_hash: String,
     pub committed_values_digest: String,
+    pub exit_code: String,
 }
 
 impl GnarkWitness {
@@ -39,6 +40,7 @@ impl GnarkWitness {
                 .committed_values_digest
                 .as_canonical_biguint()
                 .to_string(),
+            exit_code: witness.exit_code.as_canonical_biguint().to_string(),
         }
     }
 

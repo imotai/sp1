@@ -118,6 +118,7 @@ fn verify(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
 ) -> Result<()> {
     let mut proof_file = tempfile::NamedTempFile::new()?;
     proof_file.write_all(proof.as_bytes())?;
@@ -137,6 +138,7 @@ fn verify(
             "/proof",
             vkey_hash,
             committed_values_digest,
+            exit_code,
             "/output",
         ],
         &mounts,
@@ -154,8 +156,9 @@ pub fn verify_plonk_bn254(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
 ) -> Result<()> {
-    verify(ProofSystem::Plonk, data_dir, proof, vkey_hash, committed_values_digest)
+    verify(ProofSystem::Plonk, data_dir, proof, vkey_hash, committed_values_digest, exit_code)
 }
 
 pub fn verify_groth16_bn254(
@@ -163,8 +166,9 @@ pub fn verify_groth16_bn254(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
 ) -> Result<()> {
-    verify(ProofSystem::Groth16, data_dir, proof, vkey_hash, committed_values_digest)
+    verify(ProofSystem::Groth16, data_dir, proof, vkey_hash, committed_values_digest, exit_code)
 }
 
 fn test(system: ProofSystem, witness_json: &str, constraints_json: &str) -> Result<()> {

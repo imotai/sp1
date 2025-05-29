@@ -194,7 +194,8 @@ where
             unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize the exit code variable.
-        let mut exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut prev_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize the public values digest.
         let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
@@ -255,7 +256,8 @@ where
                 }
 
                 // Exit code.
-                exit_code = public_values.exit_code;
+                prev_exit_code = public_values.prev_exit_code;
+                current_exit_code = public_values.prev_exit_code;
 
                 // Committed public values digests.
                 for (word, first_word) in committed_value_digest
@@ -389,7 +391,22 @@ where
             // Exit code constraints.
             {
                 // Assert that the exit code is zero (success) for all proofs.
-                builder.assert_felt_eq(exit_code, C::F::zero());
+                builder.assert_felt_eq(current_exit_code, public_values.prev_exit_code);
+
+                // If `prev_exit_code` is non-zero, then the exit code shouldn't change.
+                builder.assert_felt_eq(
+                    current_exit_code * (current_exit_code - public_values.exit_code),
+                    C::F::zero(),
+                );
+
+                // If it's not a shard with "CPU", then the exit code shouldn't change.
+                builder.assert_felt_eq(
+                    not_cpu_shard * (public_values.prev_exit_code - public_values.exit_code),
+                    C::F::zero(),
+                );
+
+                // Update the exit code.
+                current_exit_code = public_values.exit_code;
             }
 
             // Memory initialization & finalization constraints.
@@ -480,9 +497,6 @@ where
                     }
                 }
 
-                // Update the exit code.
-                exit_code = public_values.exit_code;
-
                 // If `deferred_proofs_digest` is not zero, then the current value should be equal
                 // to `public_values.deferred_proofs_digest.
 
@@ -532,9 +546,6 @@ where
         // We sum the digests in `global_cumulative_sums` to get the overall global cumulative sum.
         let global_cumulative_sum = builder.sum_digest_v2(global_cumulative_sums);
 
-        // Assert that the last exit code is zero.
-        builder.assert_felt_eq(exit_code, C::F::zero());
-
         // Write all values to the public values struct and commit to them.
         {
             // Compute the vk digest.
@@ -562,7 +573,8 @@ where
             recursion_public_values.global_cumulative_sum = global_cumulative_sum;
             recursion_public_values.start_reconstruct_deferred_digest = reconstruct_deferred_digest;
             recursion_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
-            recursion_public_values.exit_code = exit_code;
+            recursion_public_values.prev_exit_code = prev_exit_code;
+            recursion_public_values.exit_code = current_exit_code;
             recursion_public_values.is_complete = is_complete;
             recursion_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
 

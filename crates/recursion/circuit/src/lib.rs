@@ -688,6 +688,10 @@ impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFr
 
         let vkey_hash = felts_to_bn254_var(builder, &public_values.sp1_vk_digest);
         builder.commit_vkey_hash_circuit(vkey_hash);
+
+        let exit_code = public_values.exit_code;
+        let var_exit_code: Var<C::N> = builder.felt2var_circuit(exit_code);
+        builder.commit_exit_code_circuit(var_exit_code);
     }
 }
 

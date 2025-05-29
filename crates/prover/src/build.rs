@@ -2,7 +2,9 @@
 
 use std::{borrow::Borrow, path::PathBuf};
 
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
@@ -138,13 +140,14 @@ pub fn build_constraints_and_witness(
     let committed_values_digest_bytes: [BabyBear; 32] =
         words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
     let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
+    let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
 
     tracing::info!("building template witness");
     let mut witness = OuterWitness::default();
     template_input.write(&mut witness);
     witness.write_committed_values_digest(committed_values_digest);
     witness.write_vkey_hash(vkey_hash);
-
+    witness.write_exit_code(exit_code);
     (constraints, witness)
 }
 

@@ -46,6 +46,7 @@ pub enum ConstraintOpcode {
     WitnessE,
     CommitVkeyHash,
     CommitCommitedValuesDigest,
+    CommitExitCode,
     CircuitFelts2Ext,
     CircuitFelt2Var,
     PermuteBabyBear,

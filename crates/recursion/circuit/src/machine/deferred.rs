@@ -230,6 +230,7 @@ where
         deferred_public_values.deferred_proofs_digest = deferred_proofs_digest;
 
         // Set the exit code to be zero for now.
+        deferred_public_values.prev_exit_code = builder.eval(C::F::zero());
         deferred_public_values.exit_code = builder.eval(C::F::zero());
         // Assign the deferred proof digests.
         deferred_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;

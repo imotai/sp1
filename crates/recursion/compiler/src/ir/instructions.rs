@@ -281,6 +281,9 @@ pub enum DslIr<C: Config> {
     /// Asserts that the inputted var is equal the circuit's committed values digest public input.
     /// Should only be used when target is a gnark circuit.
     CircuitCommitCommittedValuesDigest(Var<C::N>),
+    /// Asserts that the inputted var is equal the circuit's exit code public input. Should only be
+    /// used when target is a gnark circuit.
+    CircuitCommitExitCode(Var<C::N>),
 
     /// Adds two elliptic curve points. (sum, point_1, point_2).
     CircuitV2HintAddCurve(

@@ -132,7 +132,10 @@ pub struct RecursionPublicValues<T> {
     /// Whether the proof completely proves the program execution.
     pub is_complete: T,
 
-    /// The exit code of the program.
+    /// The expected exit code of the program before this shard.
+    pub prev_exit_code: T,
+
+    /// The expected exit code of the program up to this shard.
     pub exit_code: T,
 
     /// The digest of all the previous public values elements.

@@ -18,6 +18,7 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
 ) {
     let RecursionPublicValues {
         deferred_proofs_digest,
+        prev_exit_code,
         next_pc,
         start_shard,
         next_shard,
@@ -43,6 +44,9 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
 
     // Assert that the start execution shard is equal to 1.
     builder.assert_felt_eq(is_complete * (*start_execution_shard - C::F::one()), C::F::zero());
+
+    // Assert that the starting prev_exit_code is equal to 0.
+    builder.assert_felt_eq(is_complete * *prev_exit_code, C::F::zero());
 
     // The start reconstruct deferred digest should be zero.
     for start_digest_word in start_reconstruct_deferred_digest {

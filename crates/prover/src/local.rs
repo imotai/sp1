@@ -3,30 +3,10 @@ use futures::{
     prelude::*,
     stream::{FuturesOrdered, FuturesUnordered},
 };
-use slop_algebra::PrimeField;
-use slop_futures::queue::WorkerQueue;
-use sp1_recursion_circuit::{
-    machine::{SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues},
-    utils::{babybear_bytes_to_bn254, babybears_to_bn254, words_to_bytes},
-    witness::{OuterWitness, Witnessable},
-    InnerSC,
-};
-use sp1_recursion_executor::RecursionPublicValues;
-use sp1_recursion_gnark_ffi::{
-    Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
-};
-use sp1_stark::ChipDimensions;
-use std::{
-    borrow::Borrow,
-    collections::{BTreeMap, VecDeque},
-    env,
-    ops::Range,
-    path::Path,
-    sync::Arc,
-};
-
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
+use slop_futures::queue::WorkerQueue;
 use sp1_core_executor::{
     subproof::SubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Executor,
     Program, SP1Context, SP1CoreOpts, SP1ReduceProof,
@@ -36,10 +16,27 @@ use sp1_core_machine::{
     io::SP1Stdin,
 };
 use sp1_primitives::io::SP1PublicValues;
-use sp1_recursion_executor::ExecutionRecord as RecursionRecord;
+use sp1_recursion_circuit::{
+    machine::{SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues},
+    utils::{babybear_bytes_to_bn254, babybears_to_bn254, words_to_bytes},
+    witness::{OuterWitness, Witnessable},
+    InnerSC,
+};
+use sp1_recursion_executor::{ExecutionRecord as RecursionRecord, RecursionPublicValues};
+use sp1_recursion_gnark_ffi::{
+    Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
+};
 use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
+    BabyBearPoseidon2, ChipDimensions, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
+};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, VecDeque},
+    env,
+    ops::Range,
+    path::Path,
+    sync::Arc,
 };
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -515,11 +512,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let committed_values_digest_bytes: [BabyBear; 32] =
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
         let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
+        let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
         witness.write_committed_values_digest(committed_values_digest);
         witness.write_vkey_hash(vkey_hash);
-
+        witness.write_exit_code(exit_code);
         let prover = PlonkBn254Prover::new();
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
@@ -528,6 +526,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             &proof,
             &vkey_hash.as_canonical_biguint(),
             &committed_values_digest.as_canonical_biguint(),
+            &exit_code.as_canonical_biguint(),
             build_dir,
         );
 
@@ -552,10 +551,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let committed_values_digest_bytes: [BabyBear; 32] =
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
         let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
+        let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
         witness.write_committed_values_digest(committed_values_digest);
         witness.write_vkey_hash(vkey_hash);
+        witness.write_exit_code(exit_code);
 
         let prover = Groth16Bn254Prover::new();
         let proof = prover.prove(witness, build_dir.to_path_buf());
@@ -565,6 +566,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             &proof,
             &vkey_hash.as_canonical_biguint(),
             &committed_values_digest.as_canonical_biguint(),
+            &exit_code.as_canonical_biguint(),
             build_dir,
         );
 
@@ -835,16 +837,12 @@ impl RecursionTree {
                     self.insert(split);
                 }
 
-                if proofs.is_complete(full_range) {
-                    return Ok(proofs.proofs.into_iter().collect());
-                }
-
                 if proofs.len() > self.batch_size {
                     tracing::error!("Proofs are larger than the batch size: {:?}", proofs.len());
                     panic!("Proofs are larger than the batch size: {:?}", proofs.len());
                 }
 
-                if proofs.len() == self.batch_size {
+                if proofs.len() == self.batch_size || proofs.is_complete(full_range) {
                     // Compress all the proofs into a single proof.
                     let (range, input) = proofs.into_witness(full_range);
                     let input = SP1CircuitWitness::Compress(input);

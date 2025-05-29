@@ -34,7 +34,11 @@ pub struct PublicValues<W1, W2, T> {
     /// The expected start program counter for the next shard.
     pub next_pc: T,
 
-    /// The exit code of the program.  Only valid if halt has been executed.
+    /// The expected exit code of the program before this shard.
+    pub prev_exit_code: T,
+
+    /// The expected exit code code of the program up to this shard.
+    /// This value is only valid if halt has been executed.
     pub exit_code: T,
 
     /// The shard number.
@@ -152,6 +156,7 @@ impl<F: AbstractField> From<PublicValues<u32, u32, u32>> for PublicValues<[F; 4]
             deferred_proofs_digest,
             start_pc,
             next_pc,
+            prev_exit_code,
             exit_code,
             shard,
             execution_shard,
@@ -183,6 +188,7 @@ impl<F: AbstractField> From<PublicValues<u32, u32, u32>> for PublicValues<[F; 4]
 
         let start_pc = F::from_canonical_u32(start_pc);
         let next_pc = F::from_canonical_u32(next_pc);
+        let prev_exit_code = F::from_canonical_u32(prev_exit_code);
         let exit_code = F::from_canonical_u32(exit_code);
         let shard = F::from_canonical_u32(shard);
         let execution_shard = F::from_canonical_u32(execution_shard);
@@ -204,6 +210,7 @@ impl<F: AbstractField> From<PublicValues<u32, u32, u32>> for PublicValues<[F; 4]
             deferred_proofs_digest,
             start_pc,
             next_pc,
+            prev_exit_code,
             exit_code,
             shard,
             execution_shard,

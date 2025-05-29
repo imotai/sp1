@@ -1747,11 +1747,6 @@ impl<'a> Executor<'a> {
             let res = (syscall_impl.handler)(&mut precompile_rt, syscall, b, c);
             let a = if let Some(val) = res { val } else { syscall_id };
 
-            // If the syscall is `HALT` and the exit code is non-zero, return an error.
-            if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
-                return Err(ExecutionError::HaltWithNonZeroExitCode(precompile_rt.exit_code));
-            }
-
             (a, precompile_rt.next_pc, syscall_impl.num_extra_cycles, precompile_rt.exit_code)
         };
 
@@ -2210,6 +2205,7 @@ impl<'a> Executor<'a> {
                 record.public_values.start_pc = last_next_pc;
                 record.public_values.next_pc = last_next_pc;
                 record.public_values.last_timestamp = 1;
+                record.public_values.prev_exit_code = last_exit_code;
                 record.public_values.exit_code = last_exit_code;
             }
         }
@@ -2554,7 +2550,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_panic() {
         let program = Arc::new(panic_program());
         let mut runtime = Executor::new(program, SP1CoreOpts::default());

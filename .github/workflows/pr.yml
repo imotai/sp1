@@ -66,7 +66,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk -- --test-threads=4
+          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark -- --test-threads=4
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
@@ -117,7 +117,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk
+          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
