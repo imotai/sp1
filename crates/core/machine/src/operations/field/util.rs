@@ -23,15 +23,17 @@ pub fn compute_root_quotient_and_shift<F: PrimeField32>(
 ) -> Vec<F> {
     // Evaluate the vanishing polynomial at x = 2^nb_bits_per_limb.
 
-    let p_vanishing_eval = p_vanishing
-        .coefficients()
-        .iter()
-        .enumerate()
-        .map(|(i, x)| {
-            biguint_to_field::<F>(BigUint::from(2u32) << (nb_bits_per_limb * i as u32)) * *x
-        })
-        .sum::<F>();
-    debug_assert_eq!(p_vanishing_eval, F::zero());
+    debug_assert_eq!(
+        p_vanishing
+            .coefficients()
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                biguint_to_field::<F>(BigUint::from(2u32) << (nb_bits_per_limb * i as u32)) * *x
+            })
+            .sum::<F>(),
+        F::zero()
+    );
 
     // Compute the witness polynomial by witness(x) = vanishing(x) / (x - 2^nb_bits_per_limb).
     let root_monomial = F::from_canonical_u32(2u32.pow(nb_bits_per_limb));
