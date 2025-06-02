@@ -11,10 +11,8 @@ use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::SP1AirBuilder;
 
-use super::{util::compute_root_quotient_and_shift, util_air::eval_field_operation};
+use super::util_air::eval_field_operation;
 use sp1_curves::params::{FieldParameters, Limbs};
-
-use typenum::Unsigned;
 
 /// A set of columns to compute an emulated modular arithmetic operation.
 ///
@@ -49,9 +47,12 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         c: &BigUint,
         modulus: &BigUint,
     ) -> (BigUint, BigUint) {
-        let p_a: Polynomial<F> = P::to_limbs_field::<F, _>(a).into();
-        let p_b: Polynomial<F> = P::to_limbs_field::<F, _>(b).into();
-        let p_c: Polynomial<F> = P::to_limbs_field::<F, _>(c).into();
+        let mut p_a: Vec<u8> = a.to_bytes_le();
+        p_a.resize(P::NB_LIMBS, 0);
+        let mut p_b: Vec<u8> = b.to_bytes_le();
+        p_b.resize(P::NB_LIMBS, 0);
+        let mut p_c: Vec<u8> = c.to_bytes_le();
+        p_c.resize(P::NB_LIMBS, 0);
 
         let mul_add = a * b + c;
         let result = &mul_add % modulus;
@@ -60,27 +61,45 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         debug_assert!(&carry < modulus);
         debug_assert_eq!(&carry * modulus, a * b + c - &result);
 
-        let p_modulus_limbs =
-            modulus.to_bytes_le().iter().map(|x| F::from_canonical_u8(*x)).collect::<Vec<F>>();
-        let p_modulus: Polynomial<F> = p_modulus_limbs.iter().into();
-        let p_result: Polynomial<F> = P::to_limbs_field::<F, _>(&result).into();
-        let p_carry: Polynomial<F> = P::to_limbs_field::<F, _>(&carry).into();
+        let mut p_modulus: Vec<u8> = modulus.to_bytes_le();
+        p_modulus.resize(P::MODULUS_LIMBS, 0);
+        let mut p_result: Vec<u8> = result.to_bytes_le();
+        p_result.resize(P::NB_LIMBS, 0);
+        let mut p_carry: Vec<u8> = carry.to_bytes_le();
+        p_carry.resize(P::NB_LIMBS, 0);
 
-        let p_op = &p_a * &p_b + &p_c;
-        let p_vanishing = &p_op - &p_result - &p_carry * &p_modulus;
+        let mut p_vanishing_limbs = vec![0i32; P::NB_WITNESS_LIMBS + 1];
+        for i in 0..P::NB_LIMBS {
+            for j in 0..P::NB_LIMBS {
+                p_vanishing_limbs[i + j] += (p_a[i] as u16 * p_b[j] as u16) as i32;
+            }
+        }
+        for i in 0..P::NB_LIMBS {
+            p_vanishing_limbs[i] += (p_c[i] as u16) as i32;
+        }
+        for i in 0..P::NB_LIMBS {
+            for j in 0..P::MODULUS_LIMBS {
+                p_vanishing_limbs[i + j] -= (p_carry[i] as u16 * p_modulus[j] as u16) as i32;
+            }
+        }
 
-        let mut p_witness = compute_root_quotient_and_shift(
-            &p_vanishing,
-            P::WITNESS_OFFSET,
-            P::NB_BITS_PER_LIMB as u32,
-            P::NB_WITNESS_LIMBS,
-        );
+        let len = P::NB_WITNESS_LIMBS + 1;
+        let mut pol_carry = p_vanishing_limbs[len - 1];
+        for i in (0..len - 1).rev() {
+            let ai = p_vanishing_limbs[i];
+            p_vanishing_limbs[i] = pol_carry;
+            pol_carry = ai + pol_carry * 256;
+        }
+        debug_assert_eq!(pol_carry, 0);
 
-        self.result = p_result.into();
-        self.carry = p_carry.into();
-        p_witness.resize(P::Witness::USIZE, F::zero());
-
-        self.witness = Limbs(p_witness.try_into().unwrap());
+        for i in 0..P::NB_LIMBS {
+            self.result[i] = F::from_canonical_u8(p_result[i]);
+            self.carry[i] = F::from_canonical_u8(p_carry[i]);
+        }
+        for i in 0..P::NB_WITNESS_LIMBS {
+            self.witness[i] =
+                F::from_canonical_u16((p_vanishing_limbs[i] + P::WITNESS_OFFSET as i32) as u16);
+        }
 
         record.add_u8_range_checks_field(&self.result.0);
         record.add_u8_range_checks_field(&self.carry.0);
@@ -96,8 +115,10 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         op: FieldOperation,
         modulus: &BigUint,
     ) -> BigUint {
-        let p_a: Polynomial<F> = P::to_limbs_field::<F, _>(a).into();
-        let p_b: Polynomial<F> = P::to_limbs_field::<F, _>(b).into();
+        let mut p_a: Vec<u8> = a.to_bytes_le();
+        p_a.resize(P::NB_LIMBS, 0);
+        let mut p_b: Vec<u8> = b.to_bytes_le();
+        p_b.resize(P::NB_LIMBS, 0);
         let (result, carry) = match op {
             FieldOperation::Add => ((a + b) % modulus, (a + b - (a + b) % modulus) / modulus),
             FieldOperation::Mul => ((a * b) % modulus, (a * b - (a * b) % modulus) / modulus),
@@ -112,35 +133,55 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         }
 
         // Here we have special logic for p_modulus because to_limbs_field only works for numbers in
-        // the field, but modulus can == the field modulus so it can have 1 extra limb (ex.
-        // uint256).
-        let p_modulus_limbs =
-            modulus.to_bytes_le().iter().map(|x| F::from_canonical_u8(*x)).collect::<Vec<F>>();
-        let p_modulus: Polynomial<F> = p_modulus_limbs.iter().into();
-        let p_result: Polynomial<F> = P::to_limbs_field::<F, _>(&result).into();
-        let p_carry: Polynomial<F> = P::to_limbs_field::<F, _>(&carry).into();
+        // the field, but modulus can == the field modulus so it can have 1 extra limb (uint256).
+        let mut p_modulus: Vec<u8> = modulus.to_bytes_le();
+        p_modulus.resize(P::MODULUS_LIMBS, 0);
+        let mut p_result: Vec<u8> = result.to_bytes_le();
+        p_result.resize(P::NB_LIMBS, 0);
+        let mut p_carry: Vec<u8> = carry.to_bytes_le();
+        p_carry.resize(P::NB_LIMBS, 0);
 
-        // Compute the vanishing polynomial.
-        let p_op = match op {
-            FieldOperation::Add => &p_a + &p_b,
-            FieldOperation::Mul => &p_a * &p_b,
+        let mut p_vanishing = vec![0i32; P::NB_WITNESS_LIMBS + 1];
+        match op {
+            FieldOperation::Add => {
+                for i in 0..P::NB_LIMBS {
+                    p_vanishing[i] += (p_a[i] as u16 + p_b[i] as u16) as i32;
+                }
+            }
+            FieldOperation::Mul => {
+                for i in 0..P::NB_LIMBS {
+                    for j in 0..P::NB_LIMBS {
+                        p_vanishing[i + j] += (p_a[i] as u16 * p_b[j] as u16) as i32;
+                    }
+                }
+            }
             FieldOperation::Sub | FieldOperation::Div => unreachable!(),
-        };
-        let p_vanishing: Polynomial<F> = &p_op - &p_result - &p_carry * &p_modulus;
+        }
 
-        let mut p_witness = compute_root_quotient_and_shift(
-            &p_vanishing,
-            P::WITNESS_OFFSET,
-            P::NB_BITS_PER_LIMB as u32,
-            P::NB_WITNESS_LIMBS,
-        );
+        for i in 0..P::NB_LIMBS {
+            p_vanishing[i] -= p_result[i] as i32;
+            for j in 0..P::MODULUS_LIMBS {
+                p_vanishing[i + j] -= (p_carry[i] as u16 * p_modulus[j] as u16) as i32;
+            }
+        }
 
-        self.result = p_result.into();
-        self.carry = p_carry.into();
+        let len = P::NB_WITNESS_LIMBS + 1;
+        let mut carry = p_vanishing[len - 1];
+        for i in (0..len - 1).rev() {
+            let ai = p_vanishing[i];
+            p_vanishing[i] = carry;
+            carry = ai + carry * 256;
+        }
+        debug_assert_eq!(carry, 0);
 
-        p_witness.resize(P::Witness::USIZE, F::zero());
-
-        self.witness = Limbs(p_witness.try_into().unwrap());
+        for i in 0..P::NB_LIMBS {
+            self.result[i] = F::from_canonical_u8(p_result[i]);
+            self.carry[i] = F::from_canonical_u8(p_carry[i]);
+        }
+        for i in 0..P::NB_WITNESS_LIMBS {
+            self.witness[i] =
+                F::from_canonical_u16((p_vanishing[i] + P::WITNESS_OFFSET as i32) as u16);
+        }
 
         result
     }

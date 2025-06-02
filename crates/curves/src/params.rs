@@ -31,6 +31,7 @@ pub trait FieldParameters:
 {
     const NB_BITS_PER_LIMB: usize = NB_BITS_PER_LIMB;
     const NB_LIMBS: usize = Self::Limbs::USIZE;
+    const MODULUS_LIMBS: usize = Self::MODULUS.len();
     const NB_WITNESS_LIMBS: usize = Self::Witness::USIZE;
     const WITNESS_OFFSET: usize;
 

@@ -1,5 +1,8 @@
 use std::fmt::Debug;
 
+use super::util_air::eval_field_operation;
+use crate::air::WordAirBuilder;
+use itertools::Itertools;
 use num::{BigUint, Zero};
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, PrimeField32};
@@ -8,9 +11,6 @@ use sp1_curves::params::{FieldParameters, Limbs};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::SP1AirBuilder;
-
-use super::{util::compute_root_quotient_and_shift, util_air::eval_field_operation};
-use crate::air::WordAirBuilder;
 
 /// A set of columns to compute `InnerProduct([a], [b])` where a, b are emulated elements.
 ///
@@ -34,42 +34,73 @@ impl<F: PrimeField32, P: FieldParameters> FieldInnerProductCols<F, P> {
         a: &[BigUint],
         b: &[BigUint],
     ) -> BigUint {
-        let p_a_vec: Vec<Polynomial<F>> =
-            a.iter().map(|x| P::to_limbs_field::<F, _>(x).into()).collect();
-        let p_b_vec: Vec<Polynomial<F>> =
-            b.iter().map(|x| P::to_limbs_field::<F, _>(x).into()).collect();
-
         let modulus = &P::modulus();
         let inner_product = a.iter().zip(b.iter()).fold(BigUint::zero(), |acc, (c, d)| acc + c * d);
 
         let result = &(&inner_product % modulus);
         let carry = &((&inner_product - result) / modulus);
-        assert!(result < modulus);
-        assert!(carry < &(2u32 * modulus));
-        assert_eq!(carry * modulus, inner_product - result);
+        debug_assert!(result < modulus);
+        debug_assert!(carry < &(2u32 * modulus));
+        debug_assert_eq!(carry * modulus, inner_product - result);
 
-        let p_modulus: Polynomial<F> = P::to_limbs_field::<F, _>(modulus).into();
-        let p_result: Polynomial<F> = P::to_limbs_field::<F, _>(result).into();
-        let p_carry: Polynomial<F> = P::to_limbs_field::<F, _>(carry).into();
+        let p_a_vec: Vec<Vec<u8>> = a
+            .iter()
+            .map(|x| {
+                let mut bytes = x.to_bytes_le();
+                bytes.resize(P::NB_LIMBS, 0);
+                bytes
+            })
+            .collect();
+        let p_b_vec: Vec<Vec<u8>> = b
+            .iter()
+            .map(|x| {
+                let mut bytes = x.to_bytes_le();
+                bytes.resize(P::NB_LIMBS, 0);
+                bytes
+            })
+            .collect();
 
-        // Compute the vanishing polynomial.
-        let p_inner_product = p_a_vec
-            .into_iter()
-            .zip(p_b_vec)
-            .fold(Polynomial::<F>::new(vec![F::zero()]), |acc, (c, d)| acc + &c * &d);
-        let p_vanishing = p_inner_product - &p_result - &p_carry * &p_modulus;
-        assert_eq!(p_vanishing.degree(), P::NB_WITNESS_LIMBS);
+        let mut p_modulus: Vec<u8> = modulus.to_bytes_le();
+        p_modulus.resize(P::MODULUS_LIMBS, 0);
+        let mut p_result: Vec<u8> = result.to_bytes_le();
+        p_result.resize(P::NB_LIMBS, 0);
+        let mut p_carry: Vec<u8> = carry.to_bytes_le();
+        p_carry.resize(P::NB_LIMBS, 0);
 
-        let p_witness = compute_root_quotient_and_shift(
-            &p_vanishing,
-            P::WITNESS_OFFSET,
-            P::NB_BITS_PER_LIMB as u32,
-            P::NB_WITNESS_LIMBS,
-        );
+        let mut p_vanishing_limbs = vec![0i32; P::NB_WITNESS_LIMBS + 1];
+        for (p_a, p_b) in p_a_vec.into_iter().zip_eq(p_b_vec) {
+            for i in 0..P::NB_LIMBS {
+                for j in 0..P::NB_LIMBS {
+                    p_vanishing_limbs[i + j] += (p_a[i] as u16 * p_b[j] as u16) as i32;
+                }
+            }
+        }
+        for i in 0..P::NB_LIMBS {
+            p_vanishing_limbs[i] -= p_result[i] as i32;
+        }
+        for i in 0..P::NB_LIMBS {
+            for j in 0..P::MODULUS_LIMBS {
+                p_vanishing_limbs[i + j] -= (p_carry[i] as u16 * p_modulus[j] as u16) as i32;
+            }
+        }
 
-        self.result = p_result.into();
-        self.carry = p_carry.into();
-        self.witness = Limbs(p_witness.try_into().unwrap());
+        let len = P::NB_WITNESS_LIMBS + 1;
+        let mut pol_carry = p_vanishing_limbs[len - 1];
+        for i in (0..len - 1).rev() {
+            let ai = p_vanishing_limbs[i];
+            p_vanishing_limbs[i] = pol_carry;
+            pol_carry = ai + pol_carry * 256;
+        }
+        debug_assert_eq!(pol_carry, 0);
+
+        for i in 0..P::NB_LIMBS {
+            self.result[i] = F::from_canonical_u8(p_result[i]);
+            self.carry[i] = F::from_canonical_u8(p_carry[i]);
+        }
+        for i in 0..P::NB_WITNESS_LIMBS {
+            self.witness[i] =
+                F::from_canonical_u16((p_vanishing_limbs[i] + P::WITNESS_OFFSET as i32) as u16);
+        }
 
         // Range checks
         record.add_u8_range_checks_field(&self.result.0);

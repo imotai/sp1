@@ -9,7 +9,7 @@ use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::SP1AirBuilder;
 
-use super::{util::compute_root_quotient_and_shift, util_air::eval_field_operation};
+use super::util_air::eval_field_operation;
 use crate::air::WordAirBuilder;
 
 /// A set of columns to compute `FieldDen(a, b)` where `a`, `b` are field elements.
@@ -51,30 +51,61 @@ impl<F: PrimeField32, P: FieldParameters> FieldDenCols<F, P> {
         debug_assert!(carry < p);
         debug_assert_eq!(&carry * &p, &equation_lhs - &equation_rhs);
 
-        let p_a: Polynomial<F> = P::to_limbs_field::<F, _>(a).into();
-        let p_b: Polynomial<F> = P::to_limbs_field::<F, _>(b).into();
-        let p_p: Polynomial<F> = P::to_limbs_field::<F, _>(&p).into();
-        let p_result: Polynomial<F> = P::to_limbs_field::<F, _>(&result).into();
-        let p_carry: Polynomial<F> = P::to_limbs_field::<F, _>(&carry).into();
+        let mut p_a: Vec<u8> = a.to_bytes_le();
+        p_a.resize(P::NB_LIMBS, 0);
+        let mut p_b: Vec<u8> = b.to_bytes_le();
+        p_b.resize(P::NB_LIMBS, 0);
+        let mut p_p: Vec<u8> = p.to_bytes_le();
+        p_p.resize(P::MODULUS_LIMBS, 0);
+        let mut p_result: Vec<u8> = result.to_bytes_le();
+        p_result.resize(P::NB_LIMBS, 0);
+        let mut p_carry: Vec<u8> = carry.to_bytes_le();
+        p_carry.resize(P::NB_LIMBS, 0);
 
-        // Compute the vanishing polynomial.
-        let vanishing_poly = if sign {
-            &p_b * &p_result + &p_result - &p_a - &p_carry * &p_p
+        let mut p_vanishing_limbs = vec![0; P::NB_WITNESS_LIMBS + 1];
+
+        for i in 0..P::NB_LIMBS {
+            for j in 0..P::NB_LIMBS {
+                p_vanishing_limbs[i + j] += (p_b[i] as u16 * p_result[j] as u16) as i32;
+            }
+        }
+
+        for i in 0..P::NB_LIMBS {
+            for j in 0..P::MODULUS_LIMBS {
+                p_vanishing_limbs[i + j] -= (p_carry[i] as u16 * p_p[j] as u16) as i32;
+            }
+        }
+
+        if sign {
+            for i in 0..P::NB_LIMBS {
+                p_vanishing_limbs[i] += p_result[i] as i32;
+                p_vanishing_limbs[i] -= p_a[i] as i32;
+            }
         } else {
-            &p_b * &p_result + &p_a - &p_result - &p_carry * &p_p
-        };
-        debug_assert_eq!(vanishing_poly.degree(), P::NB_WITNESS_LIMBS);
+            for i in 0..P::NB_LIMBS {
+                p_vanishing_limbs[i] -= p_result[i] as i32;
+                p_vanishing_limbs[i] += p_a[i] as i32;
+            }
+        }
 
-        let p_witness = compute_root_quotient_and_shift(
-            &vanishing_poly,
-            P::WITNESS_OFFSET,
-            P::NB_BITS_PER_LIMB as u32,
-            P::NB_WITNESS_LIMBS,
-        );
+        let len = P::NB_WITNESS_LIMBS + 1;
+        let mut pol_carry = p_vanishing_limbs[len - 1];
 
-        self.result = p_result.into();
-        self.carry = p_carry.into();
-        self.witness = Limbs(p_witness.try_into().unwrap());
+        for i in (0..len - 1).rev() {
+            let ai = p_vanishing_limbs[i];
+            p_vanishing_limbs[i] = pol_carry;
+            pol_carry = ai + pol_carry * 256;
+        }
+        debug_assert_eq!(pol_carry, 0);
+
+        for i in 0..P::NB_LIMBS {
+            self.result[i] = F::from_canonical_u8(p_result[i]);
+            self.carry[i] = F::from_canonical_u8(p_carry[i]);
+        }
+        for i in 0..P::NB_WITNESS_LIMBS {
+            self.witness[i] =
+                F::from_canonical_u16((p_vanishing_limbs[i] + P::WITNESS_OFFSET as i32) as u16);
+        }
 
         // Range checks
         record.add_u8_range_checks_field(&self.result.0);
