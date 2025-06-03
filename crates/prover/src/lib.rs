@@ -996,12 +996,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
         // Verify the proof.
-        prover.verify(
-            &proof,
-            &vkey_hash.as_canonical_biguint(),
-            &committed_values_digest.as_canonical_biguint(),
-            build_dir,
-        );
+        prover
+            .verify(
+                &proof,
+                &vkey_hash.as_canonical_biguint(),
+                &committed_values_digest.as_canonical_biguint(),
+                build_dir,
+            )
+            .unwrap();
 
         proof
     }
@@ -1029,12 +1031,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
         // Verify the proof.
-        prover.verify(
-            &proof,
-            &vkey_hash.as_canonical_biguint(),
-            &committed_values_digest.as_canonical_biguint(),
-            build_dir,
-        );
+        prover
+            .verify(
+                &proof,
+                &vkey_hash.as_canonical_biguint(),
+                &committed_values_digest.as_canonical_biguint(),
+                build_dir,
+            )
+            .unwrap();
 
         proof
     }
@@ -1252,20 +1256,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         core_inputs
     }
 
-    pub fn get_recursion_deferred_inputs<'a>(
-        &'a self,
-        vk: &'a StarkVerifyingKey<CoreSC>,
-        deferred_proofs: &[SP1ReduceProof<InnerSC>],
-        batch_size: usize,
-    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
-        self.get_recursion_deferred_inputs_with_initial_digest(
-            vk,
-            deferred_proofs,
-            [BabyBear::zero(); 8],
-            batch_size,
-        )
-    }
-
     pub fn get_recursion_deferred_inputs_with_initial_digest<'a>(
         &'a self,
         vk: &'a StarkVerifyingKey<CoreSC>,
@@ -1303,6 +1293,20 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             deferred_digest = Self::hash_deferred_proofs(deferred_digest, batch);
         }
         (deferred_inputs, deferred_digest)
+    }
+
+    pub fn get_recursion_deferred_inputs<'a>(
+        &'a self,
+        vk: &'a StarkVerifyingKey<CoreSC>,
+        deferred_proofs: &[SP1ReduceProof<InnerSC>],
+        batch_size: usize,
+    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
+        self.get_recursion_deferred_inputs_with_initial_digest(
+            vk,
+            deferred_proofs,
+            [Val::<CoreSC>::zero(); DIGEST_SIZE],
+            batch_size,
+        )
     }
 
     /// Generate the inputs for the first layer of recursive proofs.
