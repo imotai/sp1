@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use alloy_primitives::B256;
+use alloy_primitives::{Address, B256};
 use anyhow::Result;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_prover::SP1ProvingKey;
@@ -33,6 +33,8 @@ pub struct NetworkProveBuilder<'a> {
     pub(crate) cycle_limit: Option<u64>,
     pub(crate) gas_limit: Option<u64>,
     pub(crate) tee_2fa: bool,
+    pub(crate) min_auction_period: u64,
+    pub(crate) whitelist: Vec<Address>,
 }
 
 impl NetworkProveBuilder<'_> {
@@ -314,156 +316,210 @@ impl NetworkProveBuilder<'_> {
         self
     }
 
-    /// Request a proof from the prover network.
+    /// Set the minimum auction period for the proof request in seconds.
     ///
     /// # Details
-    /// This method will request a proof from the prover network. If the prover fails to request
-    /// a proof, the method will return an error. It will not wait for the proof to be generated.
+    /// This method sets the minimum auction period for the proof request. Only relevant if the
+    /// strategy is set to [`FulfillmentStrategy::Auction`].
     ///
     /// # Example
     /// ```rust,no_run
     /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use std::time::Duration;
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let request_id = client.prove(pk, stdin).request().unwrap();
+    /// let (pk, vk) = client.setup(elf);
+    /// let builder = client.prove(&pk, &stdin).min_auction_period(60).run();
     /// ```
-    pub fn request(self) -> Result<B256> {
-        block_on(self.request_async())
+    #[must_use]
+    pub fn min_auction_period(mut self, min_auction_period: u64) -> Self {
+        self.min_auction_period = min_auction_period;
+        self
     }
 
-    /// Request a proof from the prover network asynchronously.
+    /// Set the whitelist for the proof request.
     ///
     /// # Details
-    /// This method will request a proof from the prover network asynchronously. If the prover fails
-    /// to request a proof, the method will return an error. It will not wait for the proof to be
-    /// generated.
+    /// Only provers specified in the whitelist will be able to bid and prove on the request. Only
+    /// relevant if the strategy is set to [`FulfillmentStrategy::Auction`].
     ///
     /// # Example
     /// ```rust,no_run
+    /// use alloy_primitives::Address;
     /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// tokio_test::block_on(async {
-    ///     let elf = &[1, 2, 3];
-    ///     let stdin = SP1Stdin::new();
-    ///
-    ///     let client = ProverClient::builder().network().build();
-    ///     let (pk, vk) = client.setup(elf).await;
-    ///     let request_id = client.prove(pk, stdin).request_async().await.unwrap();
-    /// })
-    /// ```
-    pub async fn request_async(self) -> Result<B256> {
-        let Self {
-            prover,
-            mode,
-            pk,
-            stdin,
-            timeout,
-            strategy,
-            skip_simulation,
-            cycle_limit,
-            gas_limit,
-            tee_2fa: _,
-        } = self;
-        prover
-            .request_proof_impl(
-                &pk,
-                &stdin,
-                mode,
-                strategy,
-                timeout,
-                skip_simulation,
-                cycle_limit,
-                gas_limit,
-            )
-            .await
-    }
-
-    /// Run the prover with the built arguments.
-    ///
-    /// # Details
-    /// This method will run the prover with the built arguments. If the prover fails to run, the
-    /// method will return an error.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use std::str::FromStr;
     ///
     /// let elf = &[1, 2, 3];
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let proof = client.prove(pk, stdin).run().unwrap();
+    /// let (pk, vk) = client.setup(elf);
+    /// let whitelist = vec![Address::from_str("0x123").unwrap(), Address::from_str("0x456").unwrap()];
+    /// let builder = client.prove(&pk, &stdin).whitelist(whitelist).run();
     /// ```
-    pub fn run(self) -> Result<SP1ProofWithPublicValues> {
-        block_on(self.run_async())
+    #[must_use]
+    pub fn whitelist(mut self, whitelist: Vec<Address>) -> Self {
+        self.whitelist = whitelist;
+        self
     }
 
-    /// Run the prover with the built arguments asynchronously.
-    ///
-    /// # Details
-    /// This method will run the prover with the built arguments asynchronously.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let proof = client.prove(pk, stdin).run_async();
-    /// ```
-    pub async fn run_async(mut self) -> Result<SP1ProofWithPublicValues> {
-        let NetworkProveBuilder {
-            prover,
-            mode,
-            pk,
-            stdin,
-            timeout,
-            strategy,
-            skip_simulation,
-            cycle_limit,
-            gas_limit,
-            tee_2fa,
-        } = self;
-        // Check for deprecated environment variable
-        if let Ok(val) = std::env::var("SKIP_SIMULATION") {
-            eprintln!(
-                "Warning: SKIP_SIMULATION environment variable is deprecated. Please use .skip_simulation() instead."
-            );
-            self.skip_simulation = matches!(val.to_lowercase().as_str(), "true" | "1");
-        }
+    // / Request a proof from the prover network.
+    // /
+    // / # Details
+    // / This method will request a proof from the prover network. If the prover fails to request
+    // / a proof, the method will return an error. It will not wait for the proof to be generated.
+    // /
+    // / # Example
+    // / ```rust,no_run
+    // / use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    // /
+    // / let elf = &[1, 2, 3];
+    // / let stdin = SP1Stdin::new();
+    // /
+    // / let client = ProverClient::builder().network().build();
+    // / let (pk, vk) = client.setup(elf).await;
+    // / let request_id = client.prove(pk, stdin).request().unwrap();
+    // / ```
+    // pub fn request(self) -> Result<B256> {
+    //     block_on(self.request_async())
+    // }
 
-        sp1_dump(&pk.elf, &stdin);
+    // / Request a proof from the prover network asynchronously.
+    // /
+    // / # Details
+    // / This method will request a proof from the prover network asynchronously. If the prover fails
+    // / to request a proof, the method will return an error. It will not wait for the proof to be
+    // / generated.
+    // /
+    // / # Example
+    // / ```rust,no_run
+    // / use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    // /
+    // / tokio_test::block_on(async {
+    // /     let elf = &[1, 2, 3];
+    // /     let stdin = SP1Stdin::new();
+    // /
+    // /     let client = ProverClient::builder().network().build();
+    // /     let (pk, vk) = client.setup(elf).await;
+    // /     let request_id = client.prove(pk, stdin).request_async().await.unwrap();
+    // / })
+    // / ```
+    // pub async fn request_async(self) -> Result<B256> {
+    //     let Self {
+    //         prover,
+    //         mode,
+    //         pk,
+    //         stdin,
+    //         timeout,
+    //         strategy,
+    //         skip_simulation,
+    //         cycle_limit,
+    //         gas_limit,
+    //         tee_2fa: _,
+    //     } = self;
+    //     prover
+    //         .request_proof_impl(
+    //             self.pk,
+    //             &self.stdin,
+    //             self.mode,
+    //             self.strategy,
+    //             self.timeout,
+    //             self.skip_simulation,
+    //             self.cycle_limit,
+    //             self.gas_limit,
+    //             self.min_auction_period,
+    //             self.whitelist,
+    //         )
+    //         .await
+    // }
 
-        prover
-            .prove_impl(
-                pk,
-                stdin,
-                mode,
-                strategy,
-                timeout,
-                skip_simulation,
-                cycle_limit,
-                gas_limit,
-                tee_2fa,
-            )
-            .await
-    }
+    // / Run the prover with the built arguments.
+    // /
+    // / # Details
+    // / This method will run the prover with the built arguments. If the prover fails to run, the
+    // / method will return an error.
+    // /
+    // / # Example
+    // / ```rust,no_run
+    // / use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    // /
+    // / let elf = &[1, 2, 3];
+    // / let stdin = SP1Stdin::new();
+    // /
+    // / let client = ProverClient::builder().network().build();
+    // / let (pk, vk) = client.setup(elf).await;
+    // / let proof = client.prove(pk, stdin).run().unwrap();
+    // / ```
+    // pub fn run(self) -> Result<SP1ProofWithPublicValues> {
+    //     block_on(self.run_async())
+    // }
+
+    // / Run the prover with the built arguments asynchronously.
+    // /
+    // / # Details
+    // / This method will run the prover with the built arguments asynchronously.
+    // /
+    // / # Example
+    // / ```rust,no_run
+    // / use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    // /
+    // / let elf = &[1, 2, 3];
+    // / let stdin = SP1Stdin::new();
+    // /
+    // / let client = ProverClient::builder().network().build();
+    // / let (pk, vk) = client.setup(elf).await;
+    //  let proof = client.prove(pk, stdin).run_async();
+    // ```
+    // pub async fn run_async(mut self) -> Result<SP1ProofWithPublicValues> {
+    //     let NetworkProveBuilder {
+    //         prover,
+    //         mode,
+    //         pk,
+    //         stdin,
+    //         timeout,
+    //         strategy,
+    //         skip_simulation,
+    //         cycle_limit,
+    //         gas_limit,
+    //         tee_2fa,
+    //     } = self;
+    //     // Check for deprecated environment variable
+    //     if let Ok(val) = std::env::var("SKIP_SIMULATION") {
+    //         eprintln!(
+    //             "Warning: SKIP_SIMULATION environment variable is deprecated. Please use .skip_simulation() instead."
+    //         );
+    //         self.skip_simulation = matches!(val.to_lowercase().as_str(), "true" | "1");
+    //     }
+
+    //     sp1_dump(&pk.elf, &stdin);
+
+    //     prover
+    //         .prove_impl(
+    //             self.pk,
+    //             &self.stdin,
+    //             self.mode,
+    //             self.strategy,
+    //             self.timeout,
+    //             self.skip_simulation,
+    //             self.cycle_limit,
+    //             self.gas_limit,
+    //             self.tee_2fa,
+    //             self.min_auction_period,
+    //             self.whitelist,
+    //         )
+    //         .await
+    // }
 }
 
-impl<'a> IntoFuture for NetworkProveBuilder<'a> {
-    type Output = Result<SP1ProofWithPublicValues>;
+// impl<'a> IntoFuture for NetworkProveBuilder<'a> {
+//     type Output = Result<SP1ProofWithPublicValues>;
 
-    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send + 'a>>;
+//     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send + 'a>>;
 
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.run_async())
-    }
-}
+//     fn into_future(self) -> Self::IntoFuture {
+//         Box::pin(self.run_async())
+//     }
+// }
