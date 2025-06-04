@@ -6,6 +6,8 @@ use build::build_program_internal;
 pub use build::{execute_build_program, generate_elf_paths};
 pub use command::TOOLCHAIN_NAME;
 
+pub use sp1_primitives::types::Elf;
+
 use clap::{Parser, ValueEnum};
 
 const DEFAULT_DOCKER_TAG: &str = concat!("v", env!("CARGO_PKG_VERSION"));
@@ -218,6 +220,6 @@ pub fn build_program_with_args(path: &str, args: BuildArgs) {
 #[macro_export]
 macro_rules! include_elf {
     ($arg:tt) => {{
-        include_bytes!(env!(concat!("SP1_ELF_", $arg)))
+        $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
     }};
 }

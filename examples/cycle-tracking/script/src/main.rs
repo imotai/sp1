@@ -1,19 +1,21 @@
-use sp1_sdk::{include_elf, utils, ProverClient, SP1Stdin};
+use sp1_sdk::prelude::*;
+use sp1_sdk::ProverClient;
 
 /// The ELF we want to execute inside the zkVM.
-const REPORT_ELF: &[u8] = include_elf!("report");
-const NORMAL_ELF: &[u8] = include_elf!("normal");
+const REPORT_ELF: Elf = include_elf!("report");
+const NORMAL_ELF: Elf = include_elf!("normal");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Setup a tracer for logging.
-    utils::setup_logger();
+    sp1_sdk::utils::setup_logger();
 
     // Execute the normal program.
-    let client = ProverClient::from_env();
-    let (_, _) = client.execute(NORMAL_ELF, &SP1Stdin::new()).run().expect("proving failed");
+    let client = ProverClient::from_env().await;
+    let (_, _) = client.execute(NORMAL_ELF, Default::default()).await.expect("proving failed");
 
     // Execute the report program.
-    let (_, report) = client.execute(REPORT_ELF, &SP1Stdin::new()).run().expect("proving failed");
+    let (_, report) = client.execute(REPORT_ELF, Default::default()).await.expect("proving failed");
 
     // Get the "setup" cycle count from the report program.
     let setup_cycles = report.cycle_tracker.get("setup").unwrap();

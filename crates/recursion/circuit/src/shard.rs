@@ -353,7 +353,7 @@ where
                     .copied()
                     .zip(height_felts.iter().copied())
                     .flat_map(|(column_count, height)| {
-                        std::iter::repeat(height).take(column_count).collect::<Vec<_>>()
+                        std::iter::repeat_n(height, column_count).collect::<Vec<_>>()
                     })
                     .collect::<Vec<_>>()
             })
@@ -397,7 +397,7 @@ mod tests {
 
     use slop_algebra::extension::BinomialExtensionField;
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
-    use slop_jagged::BabyBearPoseidon2;
+    use slop_jagged::{BabyBearPoseidon2, Poseidon2BabyBearJaggedCpuProverComponents};
     use sp1_core_executor::{Program, SP1Context, SP1CoreOpts};
     use sp1_core_machine::{
         io::SP1Stdin,
@@ -450,11 +450,10 @@ mod tests {
         );
 
         let elf = test_artifacts::FIBONACCI_ELF;
-        let program = Arc::new(Program::from(elf).unwrap());
-        let prover = Arc::new(CpuShardProver::<
-            slop_jagged::Poseidon2BabyBearJaggedCpuProverComponents,
-            _,
-        >::new(verifier.clone()));
+        let program = Arc::new(Program::from(&elf).unwrap());
+        let prover = Arc::new(
+            CpuShardProver::<Poseidon2BabyBearJaggedCpuProverComponents, _>::new(verifier.clone()),
+        );
 
         let (pk, vk) = prover.setup(program.clone(), ProverSemaphore::new(1)).await;
         let pk = unsafe { pk.into_inner() };

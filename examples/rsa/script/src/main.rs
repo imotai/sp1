@@ -2,18 +2,19 @@ use rsa::{
     pkcs8::{DecodePrivateKey, DecodePublicKey},
     RsaPrivateKey, RsaPublicKey,
 };
-use sp1_sdk::{include_elf, utils, ProverClient, SP1ProofWithPublicValues, SP1Stdin};
-use std::vec;
+use sp1_sdk::prelude::*;
+use sp1_sdk::ProverClient;
 
 /// The ELF we want to execute inside the zkVM.
-const RSA_ELF: &[u8] = include_elf!("rsa-program");
+const RSA_ELF: Elf = include_elf!("rsa-program");
 
 const RSA_2048_PRIV_DER: &[u8] = include_bytes!("rsa2048-priv.der");
 const RSA_2048_PUB_DER: &[u8] = include_bytes!("rsa2048-pub.der");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Setup a tracer for logging.
-    utils::setup_logger();
+    sp1_sdk::utils::setup_logger();
 
     // Create a new stdin with the input for the program.
     let mut stdin = SP1Stdin::new();
@@ -52,12 +53,12 @@ fn main() {
     // let verified = stdout.read::<bool>();
 
     // Generate the proof for the given program and input.
-    let client = ProverClient::from_env();
-    let (pk, vk) = client.setup(RSA_ELF);
-    let proof = client.prove(&pk, &stdin).run().expect("proving failed");
+    let client = ProverClient::from_env().await;
+    let pk = client.setup(RSA_ELF).await.expect("setup failed");
+    let proof = client.prove(&pk, stdin).await.expect("proving failed");
 
     // Verify proof.
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key()).expect("verification failed");
 
     // Test a round trip of proof serialization and deserialization.
     proof.save("proof-with-pis").expect("saving proof failed");
@@ -65,7 +66,7 @@ fn main() {
         SP1ProofWithPublicValues::load("proof-with-pis").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
+    client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 use anyhow::Result;
 use clap::{Args, Parser};
 use sp1_build::{generate_elf_paths, BuildArgs};
-use sp1_sdk::{HashableKey, ProverClient};
+use sp1_sdk::{HashableKey, Prover, ProverClient, ProvingKey};
 
 #[derive(Parser)]
 #[command(name = "vkey", about = "View the verification key hash for a program.")]
@@ -25,7 +25,7 @@ pub struct Elf {
 }
 
 impl VkeyCmd {
-    pub fn run(&self) -> Result<()> {
+    pub async fn run(&self) -> Result<()> {
         let elf_paths = if let Some(path) = &self.elf.path {
             vec![(None, path.clone())]
         } else if let Some(program) = &self.elf.program {
@@ -48,8 +48,9 @@ impl VkeyCmd {
             file.read_to_end(&mut elf)?;
 
             // Get the verification key
-            let prover = ProverClient::from_env();
-            let (_, vk) = prover.setup(&elf);
+            let prover = ProverClient::from_env().await;
+            let pk = prover.setup(elf.into()).await?;
+            let vk = pk.verifying_key();
 
             // Print the verification key hash
             if let Some(target) = target {

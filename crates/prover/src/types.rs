@@ -35,6 +35,7 @@ use crate::{
     CoreSC,
 };
 
+// todo!(n): remove
 pub struct SP1ProvingKey {
     pub pk: Arc<MachineProvingKey<<CpuSP1ProverComponents as SP1ProverComponents>::CoreComponents>>,
     pub elf: Arc<Vec<u8>>,

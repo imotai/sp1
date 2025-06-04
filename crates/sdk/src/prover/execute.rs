@@ -1,27 +1,25 @@
-//! # CPU Execution
-//!
-//! This module provides a builder for simulating the execution of a program on the CPU.
-
-use std::sync::Arc;
-
-use anyhow::Result;
-use sp1_core_executor::{ExecutionReport, HookEnv, IoWriter, SP1ContextBuilder};
+use super::Prover;
+use sp1_core_executor::{ExecutionError, ExecutionReport, HookEnv, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_primitives::io::SP1PublicValues;
-use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver};
+use sp1_primitives::{io::SP1PublicValues, Elf};
+use std::{
+    future::{Future, IntoFuture},
+    pin::Pin,
+};
 
-/// A builder for simulating the execution of a program on the CPU.
-///
-/// This builder providers a typed interface for configuring the SP1 RISC-V executor. The builder
-/// is used for all the different variants of the [`crate::ProverClient`].
-pub struct CpuExecuteBuilder<'a> {
-    pub(crate) elf: &'a [u8],
+/// A request for executing a program.
+pub struct ExecuteRequest<'a, P: Prover> {
+    pub(crate) prover: &'a P,
+    pub(crate) elf: Elf,
     pub(crate) stdin: SP1Stdin,
-    pub(crate) prover: Arc<LocalProver<CpuSP1ProverComponents>>,
-    pub(crate) context_builder: SP1ContextBuilder<'a>,
+    pub(crate) context_builder: SP1ContextBuilder<'static>,
 }
 
-impl<'a> CpuExecuteBuilder<'a> {
+impl<'a, P: Prover> ExecuteRequest<'a, P> {
+    pub(crate) fn new(prover: &'a P, elf: Elf, stdin: SP1Stdin) -> Self {
+        Self { prover, elf, stdin, context_builder: SP1ContextBuilder::new() }
+    }
+
     /// Add a executor [`sp1_core_executor::Hook`] into the context.
     ///
     /// # Arguments
@@ -53,7 +51,7 @@ impl<'a> CpuExecuteBuilder<'a> {
     pub fn with_hook(
         mut self,
         fd: u32,
-        f: impl FnMut(HookEnv, &[u8]) -> Vec<Vec<u8>> + Send + Sync + 'a,
+        f: impl FnMut(HookEnv, &[u8]) -> Vec<Vec<u8>> + Send + Sync + 'static,
     ) -> Self {
         self.context_builder.hook(fd, f);
         self
@@ -104,7 +102,7 @@ impl<'a> CpuExecuteBuilder<'a> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().cpu().build();
-    /// let builder = client.execute(elf, &stdin).deferred_proof_verification(false).run();
+    /// let builder = client.execute(elf, &stdin).deferred_proof_verification(false).await;
     /// ```
     #[must_use]
     pub fn deferred_proof_verification(mut self, value: bool) -> Self {
@@ -141,66 +139,70 @@ impl<'a> CpuExecuteBuilder<'a> {
         self
     }
 
-    /// Override the default stdout of the guest program.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
-    ///
-    /// let mut stdout = Vec::new();
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// client.execute(elf, &stdin).stdout(&mut stdout).run();
-    /// ```
-    #[must_use]
-    pub fn stdout<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
-        self.context_builder.stdout(writer);
-        self
-    }
+    // todo!(n): workaround this
+    // /// Override the default stdout of the guest program.
+    // ///
+    // /// # Example
+    // /// ```rust,no_run
+    // /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    // ///
+    // /// let mut stdout = Vec::new();
+    // ///
+    // /// let elf = &[1, 2, 3];
+    // /// let stdin = SP1Stdin::new();
+    // ///
+    // /// let client = ProverClient::builder().cpu().build();
+    // /// client.execute(elf, &stdin).stdout(&mut stdout).run();
+    // /// ```
+    // #[must_use]
+    // pub fn stdout<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
+    //     self.context_builder.stdout(writer);
+    //     self
+    // }
 
-    /// Override the default stdout of the guest program.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
-    ///
-    /// let mut stderr = Vec::new();
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// client.execute(elf, &stdin).stderr(&mut stderr).run();
-    /// ```
-    #[must_use]
-    pub fn stderr<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
-        self.context_builder.stderr(writer);
-        self
-    }
+    // /// Override the default stdout of the guest program.
+    // ///
+    // /// # Example
+    // /// ```rust,no_run
+    // /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    // ///
+    // /// let mut stderr = Vec::new();
+    // ///
+    // /// let elf = &[1, 2, 3];
+    // /// let stdin = SP1Stdin::new();
+    // ///
+    // /// let client = ProverClient::builder().cpu().build();
+    // /// client.execute(elf, &stdin).stderr(&mut stderr).run();
+    // /// ```
+    // #[must_use]
+    // pub fn stderr<W: IoWriter>(mut self, writer: &'a mut W) -> Self {
+    //     self.context_builder.stderr(writer);
+    //     self
+    // }
+}
 
-    /// Executes the program on the input with the built arguments.
-    ///
-    /// # Details
-    /// This method will execute the program on the input with the built arguments. If the program
-    /// fails to execute, the method will return an error.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (public_values, execution_report) = client.execute(elf, &stdin).run().unwrap();
-    /// ```
-    pub fn run(self) -> Result<(SP1PublicValues, ExecutionReport)> {
-        let Self { prover, elf, stdin, mut context_builder } = self;
-        let context = context_builder.build();
-        let (pv, _, report) = prover.execute(elf, &stdin, context)?;
-        Ok((pv, report))
+impl<'a, P: Prover> IntoFuture for ExecuteRequest<'a, P> {
+    type Output = Result<(SP1PublicValues, ExecutionReport), ExecutionError>;
+
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send + 'a>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        let task = async move {
+            let Self { prover, elf, stdin, mut context_builder } = self;
+            let inner = prover.inner();
+            let context = context_builder.build();
+
+            let result_handle = tokio::task::spawn_blocking(move || {
+                let (pv, _, report) = inner.execute(&elf, &stdin, context)?;
+                Ok((pv, report))
+            });
+
+            // todo!(n): if there exists stdout/stderr pipes can just forward them with an mpsc
+            // here, and then write to the actual stdout/stderr writers from this
+            // future.
+
+            result_handle.await.unwrap()
+        };
+        Box::pin(task)
     }
 }

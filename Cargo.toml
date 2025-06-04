@@ -5,7 +5,6 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/succinctlabs/sp1"
 keywords = ["sp1", "succinct", "zero-knowledge", "zkvm"]
 categories = ["cryptography"]
-
 include = ["SP1_VERSION"]
 
 [workspace]
@@ -28,12 +27,12 @@ members = [
   "crates/zkvm/*",
   "crates/sdk",
   "crates/primitives",
+  "crates/cuda",
+  "crates/cli",
   # "crates/verifier",
 ]
 exclude = [
   "examples/target",
-  "crates/cli",
-  "crates/cuda",
   "crates/eval",
   "crates/perf",
   "crates/recursion/circuit-old",

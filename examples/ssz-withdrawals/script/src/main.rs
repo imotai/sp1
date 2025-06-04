@@ -1,19 +1,21 @@
-use sp1_sdk::{include_elf, utils, ProverClient, SP1ProofWithPublicValues, SP1Stdin};
+use sp1_sdk::prelude::*;
+use sp1_sdk::ProverClient;
 
-const ELF: &[u8] = include_elf!("ssz-withdrawals-program");
+const ELF: Elf = include_elf!("ssz-withdrawals-program");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Generate proof.
     // utils::setup_tracer();
-    utils::setup_logger();
+    sp1_sdk::utils::setup_logger();
 
     let stdin = SP1Stdin::new();
-    let client = ProverClient::from_env();
-    let (pk, vk) = client.setup(ELF);
-    let proof = client.prove(&pk, &stdin).run().expect("proving failed");
+    let client = ProverClient::from_env().await;
+    let pk = client.setup(ELF).await.expect("setup failed");
+    let proof = client.prove(&pk, stdin).await.expect("proving failed");
 
     // Verify proof.
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key()).expect("verification failed");
 
     // Test a round trip of proof serialization and deserialization.
     proof.save("proof-with-pis.bin").expect("saving proof failed");
@@ -21,7 +23,7 @@ fn main() {
         SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
+    client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

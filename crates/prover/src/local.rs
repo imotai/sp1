@@ -181,7 +181,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     pub async fn prove_core(
         self: Arc<Self>,
         pk: Arc<MachineProvingKey<C::CoreComponents>>,
-        program: Program,
+        program: Arc<Program>,
         stdin: SP1Stdin,
         mut context: SP1Context<'static>,
     ) -> Result<SP1CoreProof, SP1ProverError> {
@@ -193,8 +193,6 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             mpsc::channel::<ExecutionRecord>(self.records_task_capacity);
 
         let prover = self.clone();
-
-        let program = Arc::new(program);
 
         let prover_task_capacity = prover.prover_task_capacity;
         let shard_proofs = tokio::spawn(async move {
@@ -519,7 +517,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 &exit_code.as_canonical_biguint(),
                 build_dir,
             )
-            .expect("Failed to verify wrap proof");
+            .expect("Failed to verify proof");
 
         proof
     }
@@ -1008,7 +1006,7 @@ pub mod tests {
         };
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
-        test_e2e_prover::<CpuSP1ProverComponents>(prover, elf, SP1Stdin::default(), Test::Compress)
+        test_e2e_prover::<CpuSP1ProverComponents>(prover, &elf, SP1Stdin::default(), Test::Compress)
             .await
     }
 
@@ -1028,12 +1026,14 @@ pub mod tests {
         let verify_elf = test_artifacts::VERIFY_PROOF_ELF;
 
         tracing::info!("setup keccak elf");
-        let (keccak_pk, keccak_program, keccak_vk) = prover.prover().core().setup(keccak_elf).await;
+        let (keccak_pk, keccak_program, keccak_vk) =
+            prover.prover().core().setup(&keccak_elf).await;
 
         let keccak_pk = unsafe { keccak_pk.into_inner() };
 
         tracing::info!("setup verify elf");
-        let (verify_pk, verify_program, verify_vk) = prover.prover().core().setup(verify_elf).await;
+        let (verify_pk, verify_program, verify_vk) =
+            prover.prover().core().setup(&verify_elf).await;
 
         let verify_pk = unsafe { verify_pk.into_inner() };
 

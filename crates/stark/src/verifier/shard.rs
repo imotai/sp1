@@ -525,12 +525,12 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         let column_counts = heights
             .iter()
             .zip_eq(&unfiltered_preprocessed_column_count)
-            .flat_map(|(&h, &c)| std::iter::repeat(h).take(c))
+            .flat_map(|(&h, &c)| std::iter::repeat_n(h, c))
             .chain(
                 heights
                     .iter()
                     .zip_eq(&main_column_count)
-                    .flat_map(|(&h, &c)| std::iter::repeat(h).take(c)),
+                    .flat_map(|(&h, &c)| std::iter::repeat_n(h, c)),
             )
             .collect::<Vec<C::F>>();
         let preprocessed_column_count_total =

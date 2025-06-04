@@ -30,14 +30,15 @@ pub enum ProveCliCommands {
     Vkey(VkeyCmd),
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let Cargo::Prove(args) = Cargo::parse();
 
     match args.command {
         ProveCliCommands::New(cmd) => cmd.run(),
         ProveCliCommands::Build(cmd) => cmd.run(),
         ProveCliCommands::BuildToolchain(cmd) => cmd.run(),
-        ProveCliCommands::InstallToolchain(cmd) => cmd.run(),
-        ProveCliCommands::Vkey(cmd) => cmd.run(),
+        ProveCliCommands::InstallToolchain(cmd) => cmd.run().await,
+        ProveCliCommands::Vkey(cmd) => cmd.run().await,
     }
 }

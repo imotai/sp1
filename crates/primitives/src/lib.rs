@@ -10,6 +10,10 @@ pub mod consts;
 pub mod io;
 pub mod polynomial;
 pub mod types;
+pub use types::Elf;
+
+/// The canonical version of the SP1 crate.
+pub const SP1_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 lazy_static! {
     // These constants are created by a RNG.

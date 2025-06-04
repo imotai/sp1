@@ -17,6 +17,12 @@ pub struct NetworkProverBuilder {
 }
 
 impl NetworkProverBuilder {
+    /// Creates a new [`NetworkProverBuilder`].
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { private_key: None, rpc_url: None, tee_signers: None }
+    }
+
     /// Sets the Secp256k1 private key (same format as the one used by Ethereum).
     ///
     /// # Details
@@ -73,7 +79,7 @@ impl NetworkProverBuilder {
     /// let prover = ProverClient::builder().network().private_key("...").rpc_url("...").build();
     /// ```
     #[must_use]
-    pub fn build(self) -> NetworkProver {
+    pub async fn build(self) -> NetworkProver {
         let private_key = match self.private_key {
             Some(private_key) => private_key,
             None => std::env::var("NETWORK_PRIVATE_KEY").ok().filter(|k| !k.is_empty()).expect(
@@ -89,11 +95,11 @@ impl NetworkProverBuilder {
 
         let tee_signers = match self.tee_signers {
             Some(tee_signers) => tee_signers,
-            None => crate::utils::block_on(async {
+            None => {
                 crate::network::tee::get_tee_signers().await.expect("Failed to get TEE signers")
-            }),
+            }
         };
 
-        NetworkProver::new(&private_key, &rpc_url).with_tee_signers(tee_signers)
+        NetworkProver::new(&private_key, &rpc_url).await.with_tee_signers(tee_signers)
     }
 }

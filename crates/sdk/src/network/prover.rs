@@ -8,9 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::prove::NetworkProveBuilder;
+use super::{prove::NetworkProveBuilder, tee::verify_tee_proof};
 use crate::{
-    cpu::{execute::CpuExecuteBuilder, CpuProver},
+    cpu::{CPUProvingKey, CpuProver},
     network::{
         client::NetworkClient,
         proto::network::{
@@ -20,27 +20,66 @@ use crate::{
         Error, DEFAULT_CYCLE_LIMIT, DEFAULT_GAS_LIMIT, DEFAULT_NETWORK_RPC_URL,
         DEFAULT_TIMEOUT_SECS,
     },
-    prover::verify_proof,
-    ProofFromNetwork, Prover, SP1ProofMode, SP1ProofWithPublicValues, SP1ProvingKey,
-    SP1VerifyingKey,
+    prover::{verify_proof, BaseProveRequest, SendFutureResult},
+    ProofFromNetwork, Prover, SP1ProofMode, SP1ProofWithPublicValues, SP1VerifyingKey,
 };
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256};
 use anyhow::{Context, Result};
-use sp1_core_executor::{SP1Context, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{
-    components::CpuSP1ProverComponents, local::LocalProver, HashableKey, SP1_CIRCUIT_VERSION,
-};
+use sp1_primitives::Elf;
+use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver, SP1_CIRCUIT_VERSION};
 
 use crate::network::tee::client::Client as TeeClient;
 
 use tokio::time::sleep;
 
 /// An implementation of [`crate::ProverClient`] that can generate proofs on a remote RPC server.
+#[derive(Clone)]
 pub struct NetworkProver {
-    pub(crate) client: NetworkClient,
+    pub(crate) client: Arc<NetworkClient>,
     pub(crate) prover: CpuProver,
-    pub(crate) tee_signers: Vec<Address>,
+    pub(crate) tee_signers: Arc<[Address]>,
+}
+
+impl Prover for NetworkProver {
+    // todo!(n): Remove usage of anyhow.
+    type ProvingKey = CPUProvingKey;
+    type Error = anyhow::Error;
+    type ProveRequest<'a> = NetworkProveBuilder<'a>;
+
+    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+        self.prover.prover.clone()
+    }
+
+    fn setup(&self, elf: Elf) -> impl SendFutureResult<Self::ProvingKey, Self::Error> {
+        async move { Ok(self.prover.setup(elf).await?) }
+    }
+
+    fn prove<'a>(&'a self, pk: &'a Self::ProvingKey, stdin: SP1Stdin) -> Self::ProveRequest<'a> {
+        NetworkProveBuilder {
+            base: BaseProveRequest::new(self, pk, stdin),
+            timeout: None,
+            strategy: FulfillmentStrategy::Hosted,
+            skip_simulation: false,
+            cycle_limit: None,
+            gas_limit: None,
+            tee_2fa: false,
+            min_auction_period: 0,
+            whitelist: vec![],
+        }
+    }
+
+    fn verify(
+        &self,
+        proof: &SP1ProofWithPublicValues,
+        vkey: &SP1VerifyingKey,
+    ) -> Result<(), crate::SP1VerificationError> {
+        if let Some(tee_proof) = &proof.tee_proof {
+            verify_tee_proof(&self.tee_signers, tee_proof, vkey, proof.public_values.as_ref())?;
+        }
+
+        verify_proof(self.inner().prover(), self.version(), proof, vkey)
+    }
 }
 
 impl NetworkProver {
@@ -57,94 +96,18 @@ impl NetworkProver {
     /// let prover = NetworkProver::new("...", "...");
     /// ```
     #[must_use]
-    pub fn new(private_key: &str, rpc_url: &str) -> Self {
-        let prover = CpuProver::new();
+    pub async fn new(private_key: &str, rpc_url: &str) -> Self {
+        let prover = CpuProver::new().await;
         let client = NetworkClient::new(private_key, rpc_url);
-        Self { client, prover, tee_signers: vec![] }
+        Self { client: Arc::new(client), prover, tee_signers: Arc::new([]) }
     }
 
     /// Sets the list of TEE signers, used for verifying TEE proofs.
     #[must_use]
     pub fn with_tee_signers(mut self, tee_signers: Vec<Address>) -> Self {
-        self.tee_signers = tee_signers;
+        self.tee_signers = tee_signers.into();
 
         self
-    }
-
-    /// Get the credit balance of your account on the prover network.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin};
-    ///
-    /// tokio_test::block_on(async {
-    ///     let client = ProverClient::builder().network().build();
-    ///     let balance = client.get_balance().await.unwrap();
-    /// })
-    /// ```
-    pub async fn get_balance(&self) -> Result<U256> {
-        self.client.get_balance().await
-    }
-
-    /// Creates a new [`CpuExecuteBuilder`] for simulating the execution of a program on the CPU.
-    ///
-    /// # Details
-    /// Note that this does not use the network in any capacity. The method is provided for
-    /// convenience.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (public_values, execution_report) = client.execute(elf, &stdin).run().unwrap();
-    /// ```
-    #[must_use]
-    pub fn execute<'a>(&'a self, elf: &'a [u8], stdin: &SP1Stdin) -> CpuExecuteBuilder<'a> {
-        CpuExecuteBuilder {
-            prover: self.prover.prover.clone(),
-            elf,
-            stdin: stdin.clone(),
-            context_builder: SP1ContextBuilder::default(),
-        }
-    }
-
-    /// A request to generate a proof for a given proving key and input.
-    ///
-    /// # Details
-    /// * `pk`: The proving key to use for the proof.
-    /// * `stdin`: The input to use for the proof.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let proof = client.prove(pk, stdin).run();
-    /// ```
-    #[must_use]
-    pub fn prove(&self, pk: SP1ProvingKey, stdin: SP1Stdin) -> NetworkProveBuilder {
-        NetworkProveBuilder {
-            prover: self,
-            mode: SP1ProofMode::Core,
-            pk,
-            stdin,
-            timeout: None,
-            strategy: FulfillmentStrategy::Hosted,
-            skip_simulation: false,
-            cycle_limit: None,
-            gas_limit: None,
-            tee_2fa: false,
-            min_auction_period: 0,
-            whitelist: vec![],
-        }
     }
 
     /// Registers a program if it is not already registered.
@@ -369,7 +332,7 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn request_proof_impl(
         &self,
-        pk: &SP1ProvingKey,
+        pk: &CPUProvingKey,
         stdin: &SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
@@ -381,8 +344,10 @@ impl NetworkProver {
         whitelist: Vec<Address>,
     ) -> Result<B256> {
         let vk_hash = self.register_program(&pk.vk, &pk.elf).await?;
-        let (cycle_limit, gas_limit) =
-            self.get_execution_limits(cycle_limit, gas_limit, &pk.elf, stdin, skip_simulation)?;
+        let (cycle_limit, gas_limit) = self
+            .get_execution_limits(cycle_limit, gas_limit, pk.elf.clone(), stdin, skip_simulation)
+            .await?;
+
         self.request_proof(
             vk_hash,
             stdin,
@@ -400,7 +365,7 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn prove_impl(
         &self,
-        pk: SP1ProvingKey,
+        pk: &CPUProvingKey,
         stdin: SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
@@ -414,7 +379,7 @@ impl NetworkProver {
     ) -> Result<SP1ProofWithPublicValues> {
         let request_id = self
             .request_proof_impl(
-                &pk,
+                pk,
                 &stdin,
                 mode,
                 strategy,
@@ -434,7 +399,8 @@ impl NetworkProver {
             let request = super::tee::api::TEERequest::new(
                 &self.client.signer,
                 *request_id,
-                pk.elf.clone(),
+                // todo!(n): make this not dumb, probably requires changing the tee api.
+                Arc::new(pk.elf.to_vec()),
                 stdin.clone(),
                 cycle_limit.unwrap_or(DEFAULT_CYCLE_LIMIT),
             );
@@ -473,11 +439,11 @@ impl NetworkProver {
     /// 2. If simulation is enabled, calculate the limits by simulating the execution of the
     ///    program. This is the default behavior.
     /// 3. Otherwise, use the default limits ([`DEFAULT_CYCLE_LIMIT`] and [`DEFAULT_GAS_LIMIT`]).
-    fn get_execution_limits(
+    async fn get_execution_limits(
         &self,
         cycle_limit: Option<u64>,
         gas_limit: Option<u64>,
-        elf: &[u8],
+        elf: Elf,
         stdin: &SP1Stdin,
         skip_simulation: bool,
     ) -> Result<(u64, u64)> {
@@ -504,15 +470,9 @@ impl NetworkProver {
             return Ok((cycle_limit_value, gas_limit_value));
         }
 
-        // One of the limits were not provided and simulation is not skipped, so simulate to get one
-        // or both limits
-        let execute_result = self
-            .prover
-            .inner()
-            .execute(elf, stdin, SP1Context::builder().calculate_gas(true).build())
-            .map_err(|_| Error::SimulationFailed)?;
-
-        let (_, _, report) = execute_result;
+        let mut request = self.execute(elf, stdin.clone());
+        request.context_builder.calculate_gas(true);
+        let (_, report) = request.await?;
 
         // Use simulated values for the ones that are not explicitly provided.
         let final_cycle_limit = if cycle_limit.is_none() {
@@ -529,97 +489,6 @@ impl NetworkProver {
         Ok((final_cycle_limit, final_gas_limit))
     }
 }
-
-// impl Prover<CpuSP1ProverComponents> for NetworkProver {
-//     async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
-//         self.prover.setup(elf).await
-//     }
-
-//     fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
-//         self.prover.prover.clone()
-//     }
-
-//     async fn prove(
-//         &self,
-//         pk: SP1ProvingKey,
-//         stdin: SP1Stdin,
-//         mode: SP1ProofMode,
-//     ) -> Result<SP1ProofWithPublicValues> {
-//         self.prove_impl(
-//             pk,
-//             stdin,
-//             mode,
-//             FulfillmentStrategy::Hosted,
-//             None,
-//             false,
-//             None,
-//             None,
-//             false,
-//             0,
-//             vec![],
-//         )
-//     }
-
-//     fn verify(
-//         &self,
-//         bundle: &SP1ProofWithPublicValues,
-//         vkey: &SP1VerifyingKey,
-//     ) -> Result<(), crate::SP1VerificationError> {
-//         if let Some(tee_proof) = &bundle.tee_proof {
-//             if self.tee_signers.is_empty() {
-//                 return Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
-//                     "TEE integrity proof verification is enabled, but no TEE signers are
-// provided"                 )));
-//             }
-
-//             let mut bytes = Vec::new();
-
-//             // Push the version hash.
-//             let version_hash =
-//                 alloy_primitives::keccak256(crate::network::tee::SP1_TEE_VERSION.to_le_bytes());
-//             bytes.extend_from_slice(version_hash.as_ref());
-
-//             // Push the vkey.
-//             bytes.extend_from_slice(&vkey.bytes32_raw());
-
-//             // Push the public values hash.
-//             let public_values_hash = alloy_primitives::keccak256(&bundle.public_values);
-//             bytes.extend_from_slice(public_values_hash.as_ref());
-
-//             // Compute the message digest.
-//             let message_digest = alloy_primitives::keccak256(&bytes);
-
-//             // Parse the signature.
-//             let signature = k256::ecdsa::Signature::from_bytes(tee_proof[5..69].into())
-//                 .expect("Invalid signature");
-//             // The recovery id is the last byte of the signature minus 27.
-//             let recovery_id =
-//                 k256::ecdsa::RecoveryId::from_byte(tee_proof[4] - 27).expect("Invalid recovery
-// id");
-
-//             // Recover the signer.
-//             let signer = k256::ecdsa::VerifyingKey::recover_from_prehash(
-//                 message_digest.as_ref(),
-//                 &signature,
-//                 recovery_id,
-//             )
-//             .unwrap();
-//             let address = alloy_primitives::Address::from_public_key(&signer);
-
-//             // Verify the proof.
-//             if self.tee_signers.contains(&address) {
-//                 verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
-//             } else {
-//                 Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
-//                     "Invalid TEE proof, signed by unknown address {}",
-//                     address
-//                 )))
-//             }
-//         } else {
-//             verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
-//         }
-//     }
-// }
 
 impl From<SP1ProofMode> for ProofMode {
     fn from(value: SP1ProofMode) -> Self {

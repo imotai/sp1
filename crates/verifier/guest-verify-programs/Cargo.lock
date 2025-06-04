@@ -3621,6 +3621,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
 ]
 

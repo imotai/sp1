@@ -26,7 +26,7 @@ pub struct InstallToolchainCmd {
 }
 
 impl InstallToolchainCmd {
-    pub fn run(&self) -> Result<()> {
+    pub async fn run(&self) -> Result<()> {
         // Check if rust is installed.
         if Command::new("rustup")
             .arg("--version")
@@ -68,10 +68,10 @@ impl InstallToolchainCmd {
                     if let Ok(entry) = entry {
                         let entry_path = entry.path();
                         let entry_name = entry_path.file_name().unwrap();
-                        if entry_path.is_dir() &&
-                            entry_name != "bin" &&
-                            entry_name != "circuits" &&
-                            entry_name != "toolchains"
+                        if entry_path.is_dir()
+                            && entry_name != "bin"
+                            && entry_name != "circuits"
+                            && entry_name != "toolchains"
                         {
                             if let Err(err) = fs::remove_dir_all(&entry_path) {
                                 println!("Failed to remove directory {:?}: {}", entry_path, err);
@@ -113,8 +113,8 @@ impl InstallToolchainCmd {
         }
 
         // Download the toolchain.
-        let mut file = fs::File::create(toolchain_archive_path)?;
-        rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file)).unwrap();
+        let mut file = tokio::fs::File::create(toolchain_archive_path).await.unwrap();
+        download_file(&client, toolchain_download_url.as_str(), &mut file).await.unwrap();
 
         // Remove the existing toolchain from rustup, if it exists.
         let mut child = Command::new("rustup")

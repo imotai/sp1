@@ -12,6 +12,8 @@ members = [
   "cycle-tracking/script",
   "fibonacci/program",
   "fibonacci/script",
+  "fibonacci-cuda/script",
+  "fibonacci-cuda/program",
   "groth16/program",
   "groth16/script",
   "io/program",
@@ -55,6 +57,8 @@ sp1-recursion-circuit = { path = "../crates/recursion/circuit", default-features
 sp1-sdk = { path = "../crates/sdk" }
 sp1-lib = { path = "../crates/zkvm/lib", default-features = false }
 sp1-zkvm = { path = "../crates/zkvm/entrypoint", default-features = false }
+sp1-cuda = { path = "../crates/cuda" }
+tokio = { version = "1.4", features = ["full"] }
 
 # misc
 serde = "1.0.204"

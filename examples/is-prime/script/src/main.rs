@@ -1,11 +1,13 @@
 //! A program that takes a number `n` as input, and writes if `n` is prime as an output.
-use sp1_sdk::{include_elf, utils, ProverClient, SP1ProofWithPublicValues, SP1Stdin};
+use sp1_sdk::ProverClient;
+use sp1_sdk::prelude::*;
 
-const ELF: &[u8] = include_elf!("is-prime-program");
+const ELF: Elf = include_elf!("is-prime-program");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Setup a tracer for logging.
-    utils::setup_logger();
+    sp1_sdk::utils::setup_logger();
 
     let mut stdin = SP1Stdin::new();
 
@@ -14,14 +16,14 @@ fn main() {
     stdin.write(&n);
 
     // Generate and verify the proof
-    let client = ProverClient::from_env();
-    let (pk, vk) = client.setup(ELF);
-    let mut proof = client.prove(&pk, &stdin).run().unwrap();
+    let client = ProverClient::from_env().await;
+    let pk = client.setup(ELF).await.unwrap();
+    let mut proof = client.prove(&pk, stdin).await.unwrap();
 
     let is_prime = proof.public_values.read::<bool>();
     println!("Is 29 prime? {}", is_prime);
 
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key()).expect("verification failed");
 
     // Test a round trip of proof serialization and deserialization.
     proof.save("proof-with-is-prime.bin").expect("saving proof failed");
@@ -29,7 +31,7 @@ fn main() {
         SP1ProofWithPublicValues::load("proof-with-is-prime.bin").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
+    client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

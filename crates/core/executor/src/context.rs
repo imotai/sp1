@@ -57,16 +57,7 @@ pub struct SP1ContextBuilder<'a> {
 
 impl Default for SP1ContextBuilder<'_> {
     fn default() -> Self {
-        Self {
-            no_default_hooks: false,
-            hook_registry_entries: Vec::new(),
-            subproof_verifier: None,
-            max_cycles: None,
-            // Always verify deferred proofs by default.
-            deferred_proof_verification: true,
-            calculate_gas: true,
-            io_options: IoOptions::default(),
-        }
+        Self::new()
     }
 }
 
@@ -83,8 +74,17 @@ impl<'a> SP1ContextBuilder<'a> {
     ///
     /// Prefer using [`SP1Context::builder`].
     #[must_use]
-    pub fn new() -> Self {
-        SP1ContextBuilder::default()
+    pub const fn new() -> Self {
+        Self {
+            no_default_hooks: false,
+            hook_registry_entries: Vec::new(),
+            subproof_verifier: None,
+            max_cycles: None,
+            // Always verify deferred proofs by default.
+            deferred_proof_verification: true,
+            calculate_gas: true,
+            io_options: IoOptions::new(),
+        }
     }
 
     /// Build and return the [`SP1Context`].
@@ -207,6 +207,8 @@ impl<'a> SP1ContextBuilder<'a> {
 /// The IO options for the [`SP1Executor`].
 ///
 /// This struct is used to redirect the `stdout` and `stderr` of the [`SP1Executor`].
+///
+/// Note: Cloning this type will not clone the writers.
 #[derive(Default)]
 pub struct IoOptions<'a> {
     /// A writer to redirect `stdout` to.
@@ -215,6 +217,13 @@ pub struct IoOptions<'a> {
     pub stderr: Option<&'a mut dyn IoWriter>,
 }
 
+impl IoOptions<'_> {
+    /// Create a new [`IoOptions`] with no writers.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { stdout: None, stderr: None }
+    }
+}
 impl Clone for IoOptions<'_> {
     fn clone(&self) -> Self {
         IoOptions { stdout: None, stderr: None }

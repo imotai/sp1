@@ -2,62 +2,101 @@
 //!
 //! A trait that each prover variant must implement.
 
-use std::{borrow::Borrow, future::Future, sync::Arc};
+use std::{
+    borrow::Borrow,
+    future::{Future, IntoFuture},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use itertools::Itertools;
 use p3_field::PrimeField32;
-use sp1_core_executor::{ExecutionReport, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_primitives::io::SP1PublicValues;
+use sp1_primitives::types::Elf;
 use sp1_prover::{
-    components::SP1ProverComponents, local::LocalProver, CoreSC, InnerSC, SP1CoreProofData,
-    SP1Prover, SP1ProvingKey, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
+    components::{CpuSP1ProverComponents, SP1ProverComponents},
+    local::LocalProver,
+    CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
 use sp1_stark::{air::PublicValues, MachineVerifierError, Word};
 use thiserror::Error;
 
-// use crate::install::try_install_circuit_artifacts;
-use crate::{SP1Proof, SP1ProofMode, SP1ProofWithPublicValues};
+/// The module that exposes the [`ExecuteRequest`] type.
+mod execute;
 
-/// A basic set of primitives that each prover variant must implement.
-pub trait Prover<C: SP1ProverComponents>: Send + Sync {
+/// The module that exposes the [`ProveRequest`] trait.
+mod prove;
+
+pub use execute::ExecuteRequest;
+pub(crate) use prove::BaseProveRequest;
+pub use prove::ProveRequest;
+
+use crate::{SP1Proof, SP1ProofWithPublicValues};
+
+/// The entire user-facing functionality of a prover.
+pub trait Prover: Clone + Send + Sync {
+    /// The proving key used for this prover type.
+    type ProvingKey: ProvingKey;
+
+    /// The possible errors that can occur when proving.
+    type Error;
+
+    /// The prove request builder.
+    type ProveRequest<'a>: ProveRequest<'a, Self>
+    where
+        Self: 'a;
+
     /// The inner [`LocalProver`] struct used by the prover.
-    fn inner(&self) -> Arc<LocalProver<C>>;
+    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>>;
 
     /// The version of the current SP1 circuit.
     fn version(&self) -> &str {
         SP1_CIRCUIT_VERSION
     }
 
-    /// Generate the proving and verifying keys for the given program.
-    fn setup(&self, elf: &[u8]) -> impl Future<Output = (SP1ProvingKey, SP1VerifyingKey)> + Send;
+    /// Setup the prover with the given ELF.
+    fn setup(&self, elf: Elf) -> impl SendFutureResult<Self::ProvingKey, Self::Error>;
 
-    /// Executes the program on the given input.
-    fn execute(&self, elf: &[u8], stdin: &SP1Stdin) -> Result<(SP1PublicValues, ExecutionReport)> {
-        let (pv, _, report) = self.inner().execute(elf, stdin, SP1Context::default())?;
-        Ok((pv, report))
+    /// Prove the given program on the given input in the given proof mode.
+    fn prove<'a>(&'a self, pk: &'a Self::ProvingKey, stdin: SP1Stdin) -> Self::ProveRequest<'a>;
+
+    /// Execute the program on the given input.
+    fn execute(&self, elf: Elf, stdin: SP1Stdin) -> ExecuteRequest<Self> {
+        ExecuteRequest::new(self, elf, stdin)
     }
 
-    /// Proves the given program on the given input in the given proof mode.
-    fn prove(
-        &self,
-        pk: SP1ProvingKey,
-        stdin: SP1Stdin,
-        mode: SP1ProofMode,
-    ) -> impl Future<Output = Result<SP1ProofWithPublicValues>> + Send;
-
-    /// Verify that an SP1 proof is valid given its vkey and metadata.
-    /// For Plonk proofs, verifies that the public inputs of the `PlonkBn254` proof match
-    /// the hash of the VK and the committed public values of the `SP1ProofWithPublicValues`.
+    /// Verify the given proof.
     fn verify(
         &self,
-        bundle: &SP1ProofWithPublicValues,
+        proof: &SP1ProofWithPublicValues,
         vkey: &SP1VerifyingKey,
     ) -> Result<(), SP1VerificationError> {
-        verify_proof(self.inner().prover(), self.version(), bundle, vkey)
+        verify_proof(self.inner().prover(), self.version(), proof, vkey)
     }
 }
+
+/// A trait that represents a prover's proving key.
+pub trait ProvingKey: Clone + Send + Sync {
+    /// Get the verifying key corresponding to the proving key.
+    fn verifying_key(&self) -> &SP1VerifyingKey;
+
+    /// Get the ELF corresponding to the proving key.
+    fn elf(&self) -> &[u8];
+}
+
+/// A trait for [`Future`]s that are send and return a [`Result`].
+///
+/// This is just slightly better for the [`_Prover`] trait signature.
+pub trait SendFutureResult<T, E>: Future<Output = Result<T, E>> + Send {}
+
+impl<F, T, E> SendFutureResult<T, E> for F where F: Future<Output = Result<T, E>> + Send {}
+
+/// A trait for [`IntoFuture`]s that are send and return a [`Result`].
+///
+/// This is just slightly better for the [`_Prover`] trait signature.
+pub trait IntoSendFutureResult<T, E>: IntoFuture<Output = Result<T, E>> + Send {}
+
+impl<F, T, E> IntoSendFutureResult<T, E> for F where F: IntoFuture<Output = Result<T, E>> + Send {}
 
 /// An error that occurs when calling [`Prover::verify`].
 #[derive(Error, Debug)]

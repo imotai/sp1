@@ -93,7 +93,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn fibonacci_program() -> Program {
-            Program::from(FIBONACCI_ELF).unwrap()
+            Program::from(&FIBONACCI_ELF).unwrap()
         }
 
         /// Get the secp256r1 add program.
@@ -103,7 +103,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn secp256r1_add_program() -> Program {
-            Program::from(SECP256R1_ADD_ELF).unwrap()
+            Program::from(&SECP256R1_ADD_ELF).unwrap()
         }
 
         /// Get the secp256r1 double program.
@@ -113,7 +113,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn secp256r1_double_program() -> Program {
-            Program::from(SECP256R1_DOUBLE_ELF).unwrap()
+            Program::from(&SECP256R1_DOUBLE_ELF).unwrap()
         }
 
         /// Get the u256x2048 mul program.
@@ -123,7 +123,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn u256xu2048_mul_program() -> Program {
-            Program::from(U256XU2048_MUL_ELF).unwrap()
+            Program::from(&U256XU2048_MUL_ELF).unwrap()
         }
 
         /// Get the SSZ withdrawals program.
@@ -133,7 +133,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn ssz_withdrawals_program() -> Program {
-            Program::from(SSZ_WITHDRAWALS_ELF).unwrap()
+            Program::from(&SSZ_WITHDRAWALS_ELF).unwrap()
         }
 
         /// Get the panic program.
@@ -143,7 +143,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn panic_program() -> Program {
-            Program::from(PANIC_ELF).unwrap()
+            Program::from(&PANIC_ELF).unwrap()
         }
 
         #[must_use]

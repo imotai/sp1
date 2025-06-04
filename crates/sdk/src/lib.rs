@@ -27,29 +27,30 @@
 pub mod artifacts;
 pub mod client;
 pub mod cpu;
-// pub mod cuda;
-// pub mod env;
+pub use cpu::CpuProver;
+pub mod mock;
+pub use mock::MockProver;
+pub mod cuda;
+pub use cuda::CudaProver;
+pub mod env;
+
 pub mod install;
 #[cfg(feature = "network")]
 pub mod network;
+#[cfg(feature = "network")]
+pub use network::prover::NetworkProver;
 pub mod utils;
 
 // Re-export the client.
 pub use crate::client::ProverClient;
-
-// Re-export the provers.
-pub use crate::cpu::CpuProver;
-// pub use crate::cuda::CudaProver;
-// pub use crate::env::EnvProver;
-#[cfg(feature = "network")]
-pub use crate::network::prover::NetworkProver;
 
 // Re-export the proof and prover traits.
 pub mod proof;
 pub use proof::*;
 pub mod prover;
 
-pub use prover::{Prover, SP1VerificationError};
+/// The traits that define how to interact with the prover.
+pub use prover::{ProveRequest, Prover, ProvingKey, SP1VerificationError};
 
 // Re-export the build utilities and executor primitives.
 pub use sp1_build::include_elf;
@@ -57,10 +58,18 @@ pub use sp1_core_executor::{ExecutionReport, Executor, HookEnv, SP1Context, SP1C
 
 // Re-export the machine/prover primitives.
 pub use sp1_core_machine::io::SP1Stdin;
-pub use sp1_primitives::io::SP1PublicValues;
+pub use sp1_primitives::{io::SP1PublicValues, Elf};
 pub use sp1_prover::{
     HashableKey, ProverMode, SP1Prover, SP1ProvingKey, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
+
+/// A prelude, including all the types and traits that are commonly used.
+pub mod prelude {
+    pub use super::{
+        include_elf, Elf, HashableKey, ProveRequest, Prover, ProvingKey, SP1ProofWithPublicValues,
+        SP1Stdin,
+    };
+}
 
 // Re-export the utilities.
 pub use utils::setup_logger;
@@ -189,20 +198,4 @@ mod tests {
     //     let proof = client.prove(pk, stdin).plonk().run().await.unwrap();
     //     client.verify(&proof, &vk).unwrap();
     // }
-}
-
-#[cfg(all(feature = "cuda", not(sp1_ci_in_progress)))]
-mod deprecated_check {
-    #[deprecated(
-        since = "4.0.0",
-        note = "The `cuda` feature is deprecated, as the CudaProver is now supported by default."
-    )]
-    #[allow(unused)]
-    fn cuda_is_deprecated() {}
-
-    /// Show a warning if the `cuda` feature is enabled.
-    #[allow(unused, deprecated)]
-    fn show_cuda_warning() {
-        cuda_is_deprecated();
-    }
 }

@@ -83,10 +83,10 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
     pub async fn setup(
         &self,
         elf: &[u8],
-    ) -> (PreprocessedData<MachineProvingKey<C>>, Program, SP1VerifyingKey) {
+    ) -> (PreprocessedData<MachineProvingKey<C>>, Arc<Program>, SP1VerifyingKey) {
         let program = Program::from(elf).unwrap();
         let (pk, vk) = self.prover.setup(Arc::new(program.clone()), None).await.unwrap();
-        (pk, program, SP1VerifyingKey { vk })
+        (pk, Arc::new(program), SP1VerifyingKey { vk })
     }
 
     /// Prove a core shard

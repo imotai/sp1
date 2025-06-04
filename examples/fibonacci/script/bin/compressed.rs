@@ -1,9 +1,10 @@
-use sp1_sdk::{include_elf, utils, ProverClient, SP1Stdin};
+use sp1_sdk::{include_elf, Elf, utils, ProverClient, SP1Stdin, Prover, ProveRequest, ProvingKey};
 
 /// The ELF we want to execute inside the zkVM.
-const ELF: &[u8] = include_elf!("fibonacci-program");
+const ELF: Elf = include_elf!("fibonacci-program");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Setup logging.
     utils::setup_logger();
 
@@ -13,9 +14,9 @@ fn main() {
     stdin.write(&n);
 
     // Generate the constant-sized proof for the given program and input.
-    let client = ProverClient::from_env();
-    let (pk, vk) = client.setup(ELF);
-    let mut proof = client.prove(&pk, &stdin).compressed().run().unwrap();
+    let client = ProverClient::builder().cpu().build().await;
+    let pk = client.setup(ELF).await.unwrap();
+    let mut proof = client.prove(&pk, stdin).compressed().await.unwrap();
 
     println!("generated proof");
     // Read and verify the output.
@@ -24,7 +25,7 @@ fn main() {
     println!("a: {}, b: {}", a, b);
 
     // Verify proof and public values
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key()).expect("verification failed");
 
     // Save the proof.
     proof.save("compressed-proof-with-pis.bin").expect("saving proof failed");

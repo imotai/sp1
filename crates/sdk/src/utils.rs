@@ -18,24 +18,6 @@ pub(crate) fn sp1_dump(elf: &[u8], stdin: &SP1Stdin) {
     }
 }
 
-/// Utility method for blocking on an async function.
-///
-/// If we're already in a tokio runtime, we'll block in place. Otherwise, we'll create a new
-/// runtime.
-#[cfg(feature = "network")]
-pub(crate) fn block_on<T>(fut: impl std::future::Future<Output = T>) -> T {
-    use tokio::task::block_in_place;
-
-    // Handle case if we're already in an tokio runtime.
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        block_in_place(|| handle.block_on(fut))
-    } else {
-        // Otherwise create a new runtime.
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create a new runtime");
-        rt.block_on(fut)
-    }
-}
-
 // Re-enable when the EnvProver is reimplemented.
 // /// Check that SP1 SDK was built in release mode. Ensures that the prover and executor
 // /// will be performant, which is important for benchmarking.
