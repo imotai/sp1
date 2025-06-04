@@ -24,7 +24,7 @@ use crate::{
     ProofFromNetwork, Prover, SP1ProofMode, SP1ProofWithPublicValues, SP1ProvingKey,
     SP1VerifyingKey,
 };
-use alloy_primitives::{Address, B256};
+use alloy_primitives::{Address, B256, U256};
 use anyhow::{Context, Result};
 use sp1_core_executor::{SP1Context, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
@@ -69,6 +69,21 @@ impl NetworkProver {
         self.tee_signers = tee_signers;
 
         self
+    }
+
+    /// Get the credit balance of your account on the prover network.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use sp1_sdk::{ProverClient, SP1Stdin};
+    ///
+    /// tokio_test::block_on(async {
+    ///     let client = ProverClient::builder().network().build();
+    ///     let balance = client.get_balance().await.unwrap();
+    /// })
+    /// ```
+    pub async fn get_balance(&self) -> Result<U256> {
+        self.client.get_balance().await
     }
 
     /// Creates a new [`CpuExecuteBuilder`] for simulating the execution of a program on the CPU.
@@ -127,6 +142,8 @@ impl NetworkProver {
             cycle_limit: None,
             gas_limit: None,
             tee_2fa: false,
+            min_auction_period: 0,
+            whitelist: vec![],
         }
     }
 
@@ -246,6 +263,8 @@ impl NetworkProver {
     /// * `cycle_limit`: The cycle limit to use for the proof.
     /// * `gas_limit`: The gas limit to use for the proof.
     /// * `timeout`: The timeout for the proof request.
+    /// * `min_auction_period`: The minimum auction period for the proof request in seconds.
+    /// * `whitelist`: The auction whitelist for the proof request.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn request_proof(
         &self,
@@ -256,6 +275,8 @@ impl NetworkProver {
         cycle_limit: u64,
         gas_limit: u64,
         timeout: Option<Duration>,
+        min_auction_period: u64,
+        whitelist: Vec<Address>,
     ) -> Result<B256> {
         // Get the timeout.
         let timeout_secs = timeout.map_or(DEFAULT_TIMEOUT_SECS, |dur| dur.as_secs());
@@ -269,6 +290,11 @@ impl NetworkProver {
         tracing::info!("├─ Timeout: {timeout_secs} seconds");
         tracing::info!("└─ Circuit version: {SP1_CIRCUIT_VERSION}");
 
+        if strategy == FulfillmentStrategy::Auction {
+            tracing::info!("├─ Minimum auction period: {:?}", min_auction_period);
+            tracing::info!("├─ Whitelist: {:?}", whitelist);
+        }
+
         // Request the proof.
         let response = self
             .client
@@ -281,6 +307,8 @@ impl NetworkProver {
                 timeout_secs,
                 cycle_limit,
                 gas_limit,
+                min_auction_period,
+                whitelist,
             )
             .await?;
 
@@ -349,12 +377,24 @@ impl NetworkProver {
         skip_simulation: bool,
         cycle_limit: Option<u64>,
         gas_limit: Option<u64>,
+        min_auction_period: u64,
+        whitelist: Vec<Address>,
     ) -> Result<B256> {
         let vk_hash = self.register_program(&pk.vk, &pk.elf).await?;
         let (cycle_limit, gas_limit) =
             self.get_execution_limits(cycle_limit, gas_limit, &pk.elf, stdin, skip_simulation)?;
-        self.request_proof(vk_hash, stdin, mode.into(), strategy, cycle_limit, gas_limit, timeout)
-            .await
+        self.request_proof(
+            vk_hash,
+            stdin,
+            mode.into(),
+            strategy,
+            cycle_limit,
+            gas_limit,
+            timeout,
+            min_auction_period,
+            whitelist,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -369,6 +409,8 @@ impl NetworkProver {
         cycle_limit: Option<u64>,
         gas_limit: Option<u64>,
         tee_2fa: bool,
+        min_auction_period: u64,
+        whitelist: Vec<Address>,
     ) -> Result<SP1ProofWithPublicValues> {
         let request_id = self
             .request_proof_impl(
@@ -380,6 +422,8 @@ impl NetworkProver {
                 skip_simulation,
                 cycle_limit,
                 gas_limit,
+                min_auction_period,
+                whitelist,
             )
             .await?;
 
@@ -511,8 +555,9 @@ impl Prover<CpuSP1ProverComponents> for NetworkProver {
             None,
             None,
             false,
-        )
-        .await
+            0,
+            vec![],
+        ))
     }
 
     fn verify(

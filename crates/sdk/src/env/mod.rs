@@ -56,7 +56,7 @@ impl EnvProver {
             },
             "cuda" => {
                 check_release_build();
-                Box::new(CudaProver::new(SP1Prover::new(), None))
+                Box::new(CudaProver::new(SP1Prover::new(), MoongateServer::default()))
             }
             "network" => {
                 #[cfg(not(feature = "network"))]

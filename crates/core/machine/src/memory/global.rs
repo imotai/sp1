@@ -157,7 +157,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let mut rows: Vec<[F; NUM_MEMORY_INIT_COLS]> = memory_events
             .par_iter()
             .map(|event| {
-                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp, used } =
+                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp } =
                     event.to_owned();
 
                 let mut blu = vec![];

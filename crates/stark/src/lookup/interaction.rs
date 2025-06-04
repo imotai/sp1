@@ -83,12 +83,6 @@ impl InteractionKind {
             InteractionKind::State,
             InteractionKind::Syscall,
             InteractionKind::Global,
-            InteractionKind::ShaExtend,
-            InteractionKind::ShaCompress,
-            InteractionKind::Keccak,
-            InteractionKind::GlobalAccumulation,
-            InteractionKind::MemoryGlobalInitControl,
-            InteractionKind::MemoryGlobalFinalizeControl,
         ]
     }
 }

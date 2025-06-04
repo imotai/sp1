@@ -2,6 +2,7 @@
 //!
 //! This module provides a builder for the [`CpuProver`].
 
+use sp1_cuda::MoongateServer;
 use sp1_prover::SP1Prover;
 
 use super::CudaProver;
@@ -11,11 +12,11 @@ use super::CudaProver;
 /// The builder is used to configure the [`CudaProver`] before it is built.
 #[derive(Debug, Default)]
 pub struct CudaProverBuilder {
-    moongate_endpoint: Option<String>,
+    moongate_server: Option<MoongateServer>,
 }
 
 impl CudaProverBuilder {
-    /// Sets the Moongate server endpoint.
+    /// Uses an external Moongate server with the provided endpoint.
     ///
     /// # Details
     /// Run the CUDA prover with the provided endpoint for the Moongate (GPU prover) server.
@@ -25,19 +26,35 @@ impl CudaProverBuilder {
     /// ```rust,no_run
     /// use sp1_sdk::ProverClient;
     ///
-    /// let prover = ProverClient::builder().cuda().with_moongate_endpoint("http://...").build();
+    /// let prover = ProverClient::builder().cuda().server("http://...").build();
     /// ```
     #[must_use]
-    pub fn with_moongate_endpoint(mut self, endpoint: &str) -> Self {
-        self.moongate_endpoint = Some(endpoint.to_string());
-        self
+    pub fn server(self, endpoint: &str) -> ExternalMoongateServerCudaProverBuilder {
+        ExternalMoongateServerCudaProverBuilder { endpoint: endpoint.to_string() }
+    }
+
+    /// Allows to customize the embedded Moongate server.
+    ///
+    /// # Details
+    /// The builder returned by this method allow to customize the embedded Moongate server port and
+    /// visible device. It is therefore possible to instantiate multiple [`CudaProver`s], each one
+    /// linked to a different GPU.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use sp1_sdk::ProverClient;
+    ///
+    /// let prover = ProverClient::builder().cuda().local().port(3200).build();
+    /// ```
+    #[must_use]
+    pub fn local(self) -> LocalMoongateServerCudaProverBuilder {
+        LocalMoongateServerCudaProverBuilder::default()
     }
 
     /// Builds a [`CudaProver`].
     ///
     /// # Details
-    /// This method will build a [`CudaProver`] with the given parameters. In particular, it will
-    /// build a mock prover if the `mock` flag is set.
+    /// This method will build a [`CudaProver`] with the given parameters.
     ///
     /// # Example
     /// ```rust,no_run

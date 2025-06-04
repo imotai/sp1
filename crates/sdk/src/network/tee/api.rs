@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
-use crate::SP1Stdin;
+use crate::{network::utils::sign_raw, SP1Stdin};
 use alloy_primitives::{Address, Signature as AlloySignature};
-use alloy_signer::SignerSync;
 use serde::{Deserialize, Serialize};
 
 use k256::ecdsa::Signature;
@@ -24,16 +21,16 @@ pub struct TEERequest {
 
 impl TEERequest {
     /// The selector for the TEE verifier.
-    pub(crate) fn new<S: SignerSync>(
-        signer: &S,
+    pub(crate) fn new(
+        signer: &k256::ecdsa::SigningKey,
         id: [u8; 32],
         program: Arc<Vec<u8>>,
         stdin: SP1Stdin,
         cycle_limit: u64,
     ) -> Self {
-        let signature = signer.sign_message_sync(&id).expect("Failed to sign request id");
+        let k256_signature = sign_raw(&id, signer);
 
-        Self { id, program, cycle_limit, stdin, signature }
+        Self { id, program, cycle_limit, stdin, signature: AlloySignature::from(k256_signature) }
     }
 }
 

@@ -25,8 +25,8 @@ pub struct CudaProver {
 
 impl CudaProver {
     /// Creates a new [`CudaProver`].
-    pub fn new(prover: SP1Prover, moongate_endpoint: Option<String>) -> Self {
-        let cuda_prover = SP1CudaProver::new(moongate_endpoint);
+    pub fn new(prover: SP1Prover, moongate_server: MoongateServer) -> Self {
+        let cuda_prover = SP1CudaProver::new(moongate_server);
         Self {
             cpu_prover: prover,
             cuda_prover: cuda_prover.expect("Failed to initialize CUDA prover"),
@@ -181,6 +181,6 @@ impl Prover<CpuProverComponents> for CudaProver {
 
 impl Default for CudaProver {
     fn default() -> Self {
-        Self::new(SP1Prover::new(), None)
+        Self::new(SP1Prover::new(), MoongateServer::default())
     }
 }
