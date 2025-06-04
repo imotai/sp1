@@ -42,6 +42,7 @@ use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
     Semaphore,
 };
+use tracing::Instrument;
 
 use crate::{
     components::SP1ProverComponents, error::SP1ProverError, recursion::SP1RecursionProver, CoreSC,
@@ -263,14 +264,15 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 }
             }
             Result::<_, SP1ProverError>::Ok(shard_proofs)
-        });
+        }.in_current_span());
 
         // Run the machine executor.
         let prover = self.clone();
         let inputs = stdin.clone();
-        let output = tokio::spawn(async move {
-            prover.executor.execute(program, inputs, context, records_tx).await
-        });
+        let output = tokio::spawn(
+            async move { prover.executor.execute(program, inputs, context, records_tx).await }
+                .in_current_span(),
+        );
 
         // Wait for the executor to finish.
         let output = output.await.unwrap().map_err(SP1ProverError::CoreExecutorError)?;
@@ -315,7 +317,9 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             recursion_executors.push(executor_tx);
             let prover = self.clone();
             let prove_task_tx = prove_task_tx.clone();
+            let parent = tracing::Span::current();
             tokio::task::spawn_blocking(move || {
+                let _guard = parent.enter();
                 while let Some(task) = executor_rx.blocking_recv() {
                     let ExecuteTask { input, range } = task;
                     let keys = prover.prover().recursion().keys(&input);
@@ -340,14 +344,17 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         // Spawn the recursion tasks for the core shards.
         let executors = recursion_executors.clone();
-        tokio::spawn(async move {
-            for (i, input) in inputs.into_iter().enumerate() {
-                // Get an executor for the input
-                let executor = executors.clone().pop().await.unwrap();
-                let range = i..i + 1;
-                executor.send(ExecuteTask { input, range }).unwrap();
+        tokio::spawn(
+            async move {
+                for (i, input) in inputs.into_iter().enumerate() {
+                    // Get an executor for the input
+                    let executor = executors.clone().pop().await.unwrap();
+                    let range = i..i + 1;
+                    executor.send(ExecuteTask { input, range }).unwrap();
+                }
             }
-        });
+            .in_current_span(),
+        );
 
         // Spawn the prover controller task
         let prover = self.clone();
@@ -394,7 +401,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     }
                 }
             }
-        });
+        }.in_current_span());
 
         // Reduce the proofs in the tree.
         let mut reduce_batch_size = self.reduce_batch_size;
