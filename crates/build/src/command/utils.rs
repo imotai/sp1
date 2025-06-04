@@ -53,8 +53,11 @@ pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
 pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Version) -> String {
     // Note: as of 1.81.0, the `-C passes=loweratomic` flag is deprecated, because of a change to
     // llvm.
-    let atomic_lower_pass =
-        if version > &semver::Version::new(1, 81, 0) { "lower-atomic" } else { "loweratomic" };
+    let atomic_lower_pass = if version > &semver::Version::new(1, 81, 0) {
+        "passes=lower-atomic"
+    } else {
+        "passes=loweratomic"
+    };
 
     let rust_flags = [
         "-C",
@@ -66,6 +69,8 @@ pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Versio
         "-C",
         "panic=abort",
     ];
+
+    rust_flags.join("\x1f")
 }
 
 /// Execute the command and handle the output depending on the context.

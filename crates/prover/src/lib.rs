@@ -39,7 +39,7 @@ use sp1_stark::{prover::MachineProvingKey, BabyBearPoseidon2};
 
 pub use types::*;
 
-use components::{CpuSP1ProverComponents, SP1ProverComponents};
+pub use components::{CpuSP1ProverComponents, SP1ProverComponents};
 
 /// The global version for all components of SP1.
 ///

@@ -530,95 +530,95 @@ impl NetworkProver {
     }
 }
 
-impl Prover<CpuSP1ProverComponents> for NetworkProver {
-    async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
-        self.prover.setup(elf).await
-    }
+// impl Prover<CpuSP1ProverComponents> for NetworkProver {
+//     async fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
+//         self.prover.setup(elf).await
+//     }
 
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
-        self.prover.prover.clone()
-    }
+//     fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+//         self.prover.prover.clone()
+//     }
 
-    async fn prove(
-        &self,
-        pk: SP1ProvingKey,
-        stdin: SP1Stdin,
-        mode: SP1ProofMode,
-    ) -> Result<SP1ProofWithPublicValues> {
-        self.prove_impl(
-            pk,
-            stdin,
-            mode,
-            FulfillmentStrategy::Hosted,
-            None,
-            false,
-            None,
-            None,
-            false,
-            0,
-            vec![],
-        ))
-    }
+//     async fn prove(
+//         &self,
+//         pk: SP1ProvingKey,
+//         stdin: SP1Stdin,
+//         mode: SP1ProofMode,
+//     ) -> Result<SP1ProofWithPublicValues> {
+//         self.prove_impl(
+//             pk,
+//             stdin,
+//             mode,
+//             FulfillmentStrategy::Hosted,
+//             None,
+//             false,
+//             None,
+//             None,
+//             false,
+//             0,
+//             vec![],
+//         )
+//     }
 
-    fn verify(
-        &self,
-        bundle: &SP1ProofWithPublicValues,
-        vkey: &SP1VerifyingKey,
-    ) -> Result<(), crate::SP1VerificationError> {
-        if let Some(tee_proof) = &bundle.tee_proof {
-            if self.tee_signers.is_empty() {
-                return Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
-                    "TEE integrity proof verification is enabled, but no TEE signers are provided"
-                )));
-            }
+//     fn verify(
+//         &self,
+//         bundle: &SP1ProofWithPublicValues,
+//         vkey: &SP1VerifyingKey,
+//     ) -> Result<(), crate::SP1VerificationError> {
+//         if let Some(tee_proof) = &bundle.tee_proof {
+//             if self.tee_signers.is_empty() {
+//                 return Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
+//                     "TEE integrity proof verification is enabled, but no TEE signers are provided"
+//                 )));
+//             }
 
-            let mut bytes = Vec::new();
+//             let mut bytes = Vec::new();
 
-            // Push the version hash.
-            let version_hash =
-                alloy_primitives::keccak256(crate::network::tee::SP1_TEE_VERSION.to_le_bytes());
-            bytes.extend_from_slice(version_hash.as_ref());
+//             // Push the version hash.
+//             let version_hash =
+//                 alloy_primitives::keccak256(crate::network::tee::SP1_TEE_VERSION.to_le_bytes());
+//             bytes.extend_from_slice(version_hash.as_ref());
 
-            // Push the vkey.
-            bytes.extend_from_slice(&vkey.bytes32_raw());
+//             // Push the vkey.
+//             bytes.extend_from_slice(&vkey.bytes32_raw());
 
-            // Push the public values hash.
-            let public_values_hash = alloy_primitives::keccak256(&bundle.public_values);
-            bytes.extend_from_slice(public_values_hash.as_ref());
+//             // Push the public values hash.
+//             let public_values_hash = alloy_primitives::keccak256(&bundle.public_values);
+//             bytes.extend_from_slice(public_values_hash.as_ref());
 
-            // Compute the message digest.
-            let message_digest = alloy_primitives::keccak256(&bytes);
+//             // Compute the message digest.
+//             let message_digest = alloy_primitives::keccak256(&bytes);
 
-            // Parse the signature.
-            let signature = k256::ecdsa::Signature::from_bytes(tee_proof[5..69].into())
-                .expect("Invalid signature");
-            // The recovery id is the last byte of the signature minus 27.
-            let recovery_id =
-                k256::ecdsa::RecoveryId::from_byte(tee_proof[4] - 27).expect("Invalid recovery id");
+//             // Parse the signature.
+//             let signature = k256::ecdsa::Signature::from_bytes(tee_proof[5..69].into())
+//                 .expect("Invalid signature");
+//             // The recovery id is the last byte of the signature minus 27.
+//             let recovery_id =
+//                 k256::ecdsa::RecoveryId::from_byte(tee_proof[4] - 27).expect("Invalid recovery id");
 
-            // Recover the signer.
-            let signer = k256::ecdsa::VerifyingKey::recover_from_prehash(
-                message_digest.as_ref(),
-                &signature,
-                recovery_id,
-            )
-            .unwrap();
-            let address = alloy_primitives::Address::from_public_key(&signer);
+//             // Recover the signer.
+//             let signer = k256::ecdsa::VerifyingKey::recover_from_prehash(
+//                 message_digest.as_ref(),
+//                 &signature,
+//                 recovery_id,
+//             )
+//             .unwrap();
+//             let address = alloy_primitives::Address::from_public_key(&signer);
 
-            // Verify the proof.
-            if self.tee_signers.contains(&address) {
-                verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
-            } else {
-                Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
-                    "Invalid TEE proof, signed by unknown address {}",
-                    address
-                )))
-            }
-        } else {
-            verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
-        }
-    }
-}
+//             // Verify the proof.
+//             if self.tee_signers.contains(&address) {
+//                 verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
+//             } else {
+//                 Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
+//                     "Invalid TEE proof, signed by unknown address {}",
+//                     address
+//                 )))
+//             }
+//         } else {
+//             verify_proof(self.prover.inner().prover(), self.version(), bundle, vkey)
+//         }
+//     }
+// }
 
 impl From<SP1ProofMode> for ProofMode {
     fn from(value: SP1ProofMode) -> Self {

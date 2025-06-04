@@ -1,6 +1,7 @@
 use crate::{network::utils::sign_raw, SP1Stdin};
 use alloy_primitives::{Address, Signature as AlloySignature};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use k256::ecdsa::Signature;
 

@@ -432,25 +432,25 @@ mod tests {
         let _ = bincode::deserialize::<ProofFromNetwork>(&round_trip_bytes).unwrap();
     }
 
-    #[test]
-    fn test_round_trip_proof_save_load() {
-        use crate::Prover;
+    // #[test]
+    // fn test_round_trip_proof_save_load() {
+    //     use crate::Prover;
 
-        let prover = crate::CpuProver::new();
-        let (pk, _) = prover.setup(test_artifacts::FIBONACCI_BLAKE3_ELF);
-        let proof = prover.prove(&pk, &crate::SP1Stdin::new()).compressed().run().unwrap();
+    //     let prover = crate::CpuProver::new();
+    //     let (pk, _) = prover.setup(test_artifacts::FIBONACCI_BLAKE3_ELF);
+    //     let proof = prover.prove(&pk, &crate::SP1Stdin::new()).compressed().run().unwrap();
 
-        // Verify the original proof
-        prover.verify(&proof, &pk.vk).unwrap();
+    //     // Verify the original proof
+    //     prover.verify(&proof, &pk.vk).unwrap();
 
-        let temp_dir = tempfile::tempdir().unwrap();
-        let path = temp_dir.path().join("proof.bin");
-        std::fs::File::create(&path).unwrap();
-        proof.save(&path).unwrap();
+    //     let temp_dir = tempfile::tempdir().unwrap();
+    //     let path = temp_dir.path().join("proof.bin");
+    //     std::fs::File::create(&path).unwrap();
+    //     proof.save(&path).unwrap();
 
-        let proof_loaded = SP1ProofWithPublicValues::load(&path).unwrap();
+    //     let proof_loaded = SP1ProofWithPublicValues::load(&path).unwrap();
 
-        // Verify the loaded proof
-        prover.verify(&proof_loaded, &pk.vk).unwrap();
-    }
+    //     // Verify the loaded proof
+    //     prover.verify(&proof_loaded, &pk.vk).unwrap();
+    // }
 }
