@@ -68,7 +68,6 @@ native-gnark = ["sp1-prover/native-gnark"]
 network = [
   "dep:prost",
   "dep:alloy-primitives",
-  "dep:tokio",
   "dep:reqwest",
   "dep:twirp",
   "dep:reqwest-middleware",

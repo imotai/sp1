@@ -8,7 +8,7 @@ use elf::{
 };
 use eyre::OptionExt;
 use hashbrown::HashMap;
-use sp1_primitives::consts::{BABYBEAR_PRIME, MAXIMUM_MEMORY_SIZE, WORD_SIZE};
+use sp1_primitives::consts::{BABYBEAR_PRIME, MAXIMUM_MEMORY_SIZE, WORD_BYTE_SIZE};
 
 /// RISC-V 32IM ELF (Executable and Linkable Format) File.
 ///
@@ -115,9 +115,9 @@ impl Elf {
                 {
                     let sec_start = sh.sh_addr;
                     let seg_start = segment.p_vaddr;
-                    if sec_start < seg_start + segment.p_filesz &&
-                        seg_start < sec_start + sh.sh_size &&
-                        (sh.sh_type == 1 || sh.sh_type == 8)
+                    if sec_start < seg_start + segment.p_filesz
+                        && seg_start < sec_start + sh.sh_size
+                        && (sh.sh_type == 1 || sh.sh_type == 8)
                     {
                         eyre::bail!("program data is not allowed to overlap with program headers with vaddr < 0x00200800");
                     }

@@ -66,10 +66,6 @@ pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Versio
         "-C",
         "panic=abort",
     ];
-    let rust_flags: Vec<_> =
-        rust_flags.into_iter().chain(modified_rustflags.iter().map(String::as_str)).collect();
-
-    rust_flags.join("\x1f")
 }
 
 /// Execute the command and handle the output depending on the context.
