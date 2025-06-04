@@ -19,3 +19,19 @@ When running `csl-perf` and comparing results, ensure you are using the same pro
 settings. The `lto` profile is likely sufficient for this particular use case.
 
 Further reading: [The Cargo Book, "3.5 Profiles," section on LTO](https://doc.rust-lang.org/cargo/reference/profiles.html#lto).
+
+## Profiling
+
+### Jaeger
+
+Setup Jaeger:
+```
+sudo docker run -it --rm -d -p4318:4318 -p4317:4317 -p16686:16686 jaegertracing/all-in-one:latest
+```
+
+Run a benchmark:
+```
+RUST_LOG=debug cargo run --release -p csl-perf --bin e2e -- --program fibonacci-200m --trace telemetry
+```
+
+To see the traces, go to http://localhost:16686/search.

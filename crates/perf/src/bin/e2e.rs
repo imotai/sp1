@@ -1,6 +1,8 @@
-use clap::{arg, Parser};
-use csl_perf::{make_measurement, Stage, FIBONACCI_LONG_ELF};
+use clap::{arg, Parser, ValueEnum};
+use csl_perf::{make_measurement, telemetry, Stage, FIBONACCI_LONG_ELF};
 use csl_tracing::init_tracer;
+use opentelemetry::KeyValue;
+use opentelemetry_sdk::Resource;
 use sp1_core_machine::io::SP1Stdin;
 
 #[derive(Parser, Debug)]
@@ -12,6 +14,14 @@ struct Args {
     pub skip_verify: bool,
     #[arg(long, default_value = "core")]
     pub stage: Stage,
+    #[arg(long, default_value = "nvtx")]
+    pub trace: Trace,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum Trace {
+    Nvtx,
+    Telemetry,
 }
 
 fn get_program_and_input(program: String) -> (Vec<u8>, SP1Stdin) {
@@ -53,9 +63,17 @@ fn get_program_and_input(program: String) -> (Vec<u8>, SP1Stdin) {
 
 #[tokio::main]
 async fn main() {
-    init_tracer();
-
     let args = Args::parse();
+
+    // Initialize the tracer.
+    match args.trace {
+        Trace::Nvtx => init_tracer(),
+        Trace::Telemetry => {
+            let resource = Resource::new(vec![KeyValue::new("service.name", "csl-perf")]);
+            telemetry::init(resource);
+        }
+    }
+
     let name = args.program.clone();
     let stage = args.stage;
     let (elf, stdin) = get_program_and_input(args.program);

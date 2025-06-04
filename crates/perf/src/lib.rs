@@ -12,6 +12,7 @@ use tracing::Instrument;
 pub use report::{write_measurements_to_csv, Measurement};
 
 mod report;
+pub mod telemetry;
 
 pub const FIBONACCI_LONG_ELF: &[u8] =
     include_bytes!("../../prover/programs/fibonacci/riscv32im-succinct-zkvm-elf");
@@ -64,7 +65,7 @@ pub async fn make_measurement(
     let core_proof = prover
         .clone()
         .prove_core(pk, program, stdin, SP1Context::default())
-        .instrument(tracing::info_span!("prove core"))
+        .instrument(tracing::debug_span!("prove core"))
         .await
         .unwrap();
     let core_time = time.elapsed();
