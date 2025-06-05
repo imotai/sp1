@@ -45,6 +45,7 @@ where
         z_index: Point<EF>,
         merged_prefix_sums: Arc<Vec<Point<F>>>,
         _z_col_eq_vals: Vec<EF>,
+        t: TaskScope,
     ) -> Self
     where
         TaskScope: Backend,
@@ -54,56 +55,51 @@ where
         // and needs to be spawned. The issue here is that the task sciope should not live beyond
         // the execution, but nothing really enforces this. It should be fixed in the future, but
         // for now this hack should suffice since tasks are owned.
-        csl_cuda::run_in_place(|t| async move {
-            let z_row_device = t.into_device(z_row).await.unwrap();
+        let z_row_device = t.into_device(z_row).await.unwrap();
 
-            let z_index_device = t.into_device(z_index).await.unwrap();
+        let z_index_device = t.into_device(z_index).await.unwrap();
 
-            // Chop up the merged prefix sums into current and next prefix sums.
-            let mut flattened_current_prefix_sums = Vec::new();
-            let mut flattened_next_prefix_sums = Vec::new();
-            for prefix_sum in merged_prefix_sums.iter() {
-                let (current, next) = prefix_sum.split_at(prefix_sum.dimension() / 2);
-                flattened_current_prefix_sums.extend(current.to_vec());
-                flattened_next_prefix_sums.extend(next.to_vec());
-            }
+        // Chop up the merged prefix sums into current and next prefix sums.
+        let mut flattened_current_prefix_sums = Vec::new();
+        let mut flattened_next_prefix_sums = Vec::new();
+        for prefix_sum in merged_prefix_sums.iter() {
+            let (current, next) = prefix_sum.split_at(prefix_sum.dimension() / 2);
+            flattened_current_prefix_sums.extend(current.to_vec());
+            flattened_next_prefix_sums.extend(next.to_vec());
+        }
 
-            let mut curr_prefix_sum_tensor: Tensor<F> = flattened_current_prefix_sums.into();
-            let mut next_prefix_sum_tensor: Tensor<F> = flattened_next_prefix_sums.into();
+        let mut curr_prefix_sum_tensor: Tensor<F> = flattened_current_prefix_sums.into();
+        let mut next_prefix_sum_tensor: Tensor<F> = flattened_next_prefix_sums.into();
 
-            let num_columns = merged_prefix_sums.len();
-            let prefix_sum_length = merged_prefix_sums[0].dimension() / 2;
-            curr_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
-            next_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
+        let num_columns = merged_prefix_sums.len();
+        let prefix_sum_length = merged_prefix_sums[0].dimension() / 2;
+        curr_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
+        next_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
 
-            let curr_prefix_sums_tensor_transposed = curr_prefix_sum_tensor.transpose();
-            let next_prefix_sums_tensor_transposed = next_prefix_sum_tensor.transpose();
+        let curr_prefix_sums_tensor_transposed = curr_prefix_sum_tensor.transpose();
+        let next_prefix_sums_tensor_transposed = next_prefix_sum_tensor.transpose();
 
-            let curr_prefix_sums_device =
-                t.into_device(curr_prefix_sums_tensor_transposed).await.unwrap();
-            let next_prefix_sums_device =
-                t.into_device(next_prefix_sums_tensor_transposed).await.unwrap();
+        let curr_prefix_sums_device =
+            t.into_device(curr_prefix_sums_tensor_transposed).await.unwrap();
+        let next_prefix_sums_device =
+            t.into_device(next_prefix_sums_tensor_transposed).await.unwrap();
 
-            let half = EF::two().inverse();
+        let half = EF::two().inverse();
 
-            let lambdas = vec![EF::zero(), half];
-            let lambdas_tensor: Tensor<EF> = lambdas.into();
-            let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
+        let lambdas = vec![EF::zero(), half];
+        let lambdas_tensor: Tensor<EF> = lambdas.into();
+        let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
 
-            Self {
-                z_row: z_row_device,
-                z_index: z_index_device,
-                current_prefix_sums: curr_prefix_sums_device,
-                next_prefix_sums: next_prefix_sums_device,
-                prefix_sum_length,
-                num_columns,
-                lambdas: lambdas_device,
-                _marker: PhantomData,
-            }
-        })
-        .await
-        .await
-        .unwrap()
+        Self {
+            z_row: z_row_device,
+            z_index: z_index_device,
+            current_prefix_sums: curr_prefix_sums_device,
+            next_prefix_sums: next_prefix_sums_device,
+            prefix_sum_length,
+            num_columns,
+            lambdas: lambdas_device,
+            _marker: PhantomData,
+        }
     }
 
     async fn sum_as_poly_and_sample_into_point(
