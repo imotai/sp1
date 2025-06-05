@@ -30,6 +30,7 @@ pub trait JaggedAssistSumAsPoly<
         z_index: Point<EF>,
         merged_prefix_sums: Arc<Vec<Point<F>>>,
         z_col_eq_vals: Vec<EF>,
+        backend: A,
     ) -> impl Future<Output = Self> + Send + Sync;
 
     #[allow(clippy::too_many_arguments)]
@@ -120,6 +121,7 @@ impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F> + Send + Sy
         z_index: Point<EF>,
         merged_prefix_sums: Arc<Vec<Point<F>>>,
         _z_col_eq_vals: Vec<EF>,
+        _backend: CpuBackend,
     ) -> Self {
         let branching_program = BranchingProgram::new(z_row, z_index);
 

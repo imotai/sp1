@@ -129,8 +129,14 @@ impl<
         let z_col_device = backend.copy_to(&z_col).await.unwrap();
 
         let half = EF::two().inverse();
-        let bp_batch_eval =
-            BPE::new(z_row, z_index, merged_prefix_sums.clone(), z_col_eq_vals.clone()).await;
+        let bp_batch_eval = BPE::new(
+            z_row,
+            z_index,
+            merged_prefix_sums.clone(),
+            z_col_eq_vals.clone(),
+            backend.clone(),
+        )
+        .await;
 
         let z_col_eq_vals_device: Buffer<EF, A> =
             backend.copy_into(Buffer::<EF>::from(z_col_eq_vals)).await.unwrap();
