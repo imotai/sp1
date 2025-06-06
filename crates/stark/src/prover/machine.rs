@@ -4,6 +4,8 @@ use futures::{
 };
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
+use slop_algebra::{ExtensionField, Field};
+use slop_jagged::JaggedConfig;
 use thiserror::Error;
 use tracing::{Instrument, Span};
 
@@ -14,18 +16,49 @@ use slop_futures::{handle::TaskHandle, queue::WorkerQueue};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    air::MachineAir, prover::CoreProofShape, Machine, MachineProof, MachineVerifier,
-    MachineVerifierError, MachineVerifyingKey, ShardProof, ShardVerifier, VerifierConstraintFolder,
+    air::MachineAir,
+    prover::{shard::AirProver, CoreProofShape, ProvingKey},
+    Machine, MachineConfig, MachineProof, MachineVerifier, MachineVerifierError,
+    MachineVerifyingKey, ShardProof, ShardVerifier, VerifierConstraintFolder,
 };
 
-use super::{
-    MachineProverComponents, MachineProvingKey, PreprocessedData, ProverSemaphore, ShardProver,
-};
+use super::{PreprocessedData, ProverSemaphore};
+
+/// The components of a machine prover.
+pub trait MachineProverComponents: 'static + Send + Sync {
+    /// The base field.
+    type F: Field;
+    /// The extension field from which challenges are drawn.            
+    type EF: ExtensionField<Self::F>;
+    /// The machine configuration.
+    type Config: MachineConfig<F = Self::F, EF = Self::EF>;
+    /// The AIR.
+    type Air: MachineAir<Self::F>;
+    /// The prover.
+    type Prover: AirProver<Self::Config, Self::Air>;
+}
+
+/// The type of program this prover can make proofs for.
+pub type Program<C> = <<C as MachineProverComponents>::Air as MachineAir<
+    <<C as MachineProverComponents>::Config as JaggedConfig>::F,
+>>::Program;
+
+/// The execution record for this prover.
+pub type Record<C> = <<C as MachineProverComponents>::Air as MachineAir<
+    <<C as MachineProverComponents>::Config as JaggedConfig>::F,
+>>::Record;
+
+/// An alias for the proving key for a machine prover.
+pub type MachineProvingKey<C> = ProvingKey<
+    <C as MachineProverComponents>::Config,
+    <C as MachineProverComponents>::Air,
+    <C as MachineProverComponents>::Prover,
+>;
 
 /// A builder for a machine prover.
 pub struct MachineProverBuilder<C: MachineProverComponents> {
     verifier: MachineVerifier<C::Config, C::Air>,
-    base_workers: Vec<Arc<ShardProver<C>>>,
+    base_workers: Vec<Arc<C::Prover>>,
     worker_permits: Vec<ProverSemaphore>,
     num_workers: Vec<usize>,
 }
@@ -70,10 +103,13 @@ enum Task<C: MachineProverComponents> {
 
 #[allow(clippy::type_complexity)]
 struct SetupTask<C: MachineProverComponents> {
-    program: Arc<C::Program>,
+    program: Arc<Program<C>>,
     vk: Option<MachineVerifyingKey<C::Config>>,
     output_tx: oneshot::Sender<
-        Result<(PreprocessedData<C>, MachineVerifyingKey<C::Config>), MachineProverError>,
+        Result<
+            (PreprocessedData<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>),
+            MachineProverError,
+        >,
     >,
     abort_registration: AbortRegistration,
     span: Span,
@@ -81,7 +117,7 @@ struct SetupTask<C: MachineProverComponents> {
 
 struct ProveTask<C: MachineProverComponents> {
     pk: Arc<MachineProvingKey<C>>,
-    record: C::Record,
+    record: Record<C>,
     proof_tx: oneshot::Sender<Result<ShardProof<C::Config>, MachineProverError>>,
     abort_registration: AbortRegistration,
     span: Span,
@@ -89,23 +125,14 @@ struct ProveTask<C: MachineProverComponents> {
 
 #[allow(clippy::type_complexity)]
 struct SetupAndProveTask<C: MachineProverComponents> {
-    program: Arc<C::Program>,
+    program: Arc<Program<C>>,
     vk: Option<MachineVerifyingKey<C::Config>>,
-    record: C::Record,
+    record: Record<C>,
     proof_tx: oneshot::Sender<
         Result<(MachineVerifyingKey<C::Config>, ShardProof<C::Config>), MachineProverError>,
     >,
     abort_registration: AbortRegistration,
     span: Span,
-}
-
-async fn setup_from_vk<C: MachineProverComponents>(
-    prover: &ShardProver<C>,
-    program: Arc<C::Program>,
-    vk: Option<MachineVerifyingKey<C::Config>>,
-    prover_permits: ProverSemaphore,
-) -> (PreprocessedData<C>, MachineVerifyingKey<C::Config>) {
-    prover.setup_from_vk(program, vk, prover_permits).await
 }
 
 impl<C: MachineProverComponents> MachineProverBuilder<C> {
@@ -116,7 +143,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
     pub fn new(
         shard_verifier: ShardVerifier<C::Config, C::Air>,
         worker_permits: Vec<ProverSemaphore>,
-        base_workers: Vec<Arc<ShardProver<C>>>,
+        base_workers: Vec<Arc<C::Prover>>,
     ) -> Self {
         assert!(
             base_workers.len() == worker_permits.len(),
@@ -136,7 +163,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
     #[must_use]
     pub fn new_single_kind(
         shard_verifier: ShardVerifier<C::Config, C::Air>,
-        shard_prover: ShardProver<C>,
+        shard_prover: C::Prover,
         permits: ProverSemaphore,
     ) -> Self {
         let base_workers = vec![Arc::new(shard_prover)];
@@ -190,7 +217,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                                 let SetupTask { program, vk, output_tx, abort_registration, span } =
                                     task;
                                 let setup_result = Abortable::new(
-                                    setup_from_vk(&worker, program, vk, prover_permits.clone()),
+                                    worker.setup_from_vk(program, vk, prover_permits.clone()),
                                     abort_registration,
                                 )
                                 .map_err(|_| MachineProverError::TaskAborted)
@@ -208,7 +235,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
                                         // Create a challenger.
                                         let mut challenger = verifier.challenger();
                                         // Observe the preprocessed information.
-                                        pk.observe_into(&mut challenger);
+                                        pk.vk.observe_into(&mut challenger);
                                         // Prove the shard.
                                         let (proof, permit) = worker
                                             .prove_shard_with_pk(
@@ -318,7 +345,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
     /// Get a new challenger.
     #[must_use]
     #[inline]
-    pub fn challenger(&self) -> C::Challenger {
+    pub fn challenger(&self) -> <C::Config as JaggedConfig>::Challenger {
         self.inner.verifier.challenger()
     }
 
@@ -342,7 +369,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
     }
 
     /// Given a record, compute the shape of the resulting shard proof.
-    pub fn shape_from_record(&self, record: &C::Record) -> Option<CoreProofShape<C::F, C::Air>> {
+    pub fn shape_from_record(&self, record: &Record<C>) -> Option<CoreProofShape<C::F, C::Air>> {
         let log_stacking_height = self.inner.verifier.log_stacking_height() as usize;
         let airs = self.machine().chips();
         let shard_chips: BTreeSet<_> =
@@ -386,11 +413,15 @@ impl<C: MachineProverComponents> MachineProver<C> {
     /// Send a setup task to the machine prover.
     #[inline]
     #[must_use]
+    #[allow(clippy::type_complexity)]
     pub fn setup(
         &self,
-        program: Arc<C::Program>,
+        program: Arc<Program<C>>,
         vk: Option<MachineVerifyingKey<C::Config>>,
-    ) -> TaskHandle<(PreprocessedData<C>, MachineVerifyingKey<C::Config>), MachineProverError> {
+    ) -> TaskHandle<
+        (PreprocessedData<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>),
+        MachineProverError,
+    > {
         // Create a span for this task.
         let span = tracing::Span::current();
         // Create a channel for the output.
@@ -409,7 +440,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
     pub fn prove_shard(
         &self,
         pk: Arc<MachineProvingKey<C>>,
-        record: C::Record,
+        record: Record<C>,
     ) -> TaskHandle<ShardProof<C::Config>, MachineProverError> {
         // Create a span for this task.
         let span = tracing::Span::current();
@@ -431,9 +462,9 @@ impl<C: MachineProverComponents> MachineProver<C> {
     #[allow(clippy::type_complexity)]
     pub fn setup_and_prove_shard(
         &self,
-        program: Arc<C::Program>,
+        program: Arc<Program<C>>,
         vk: Option<MachineVerifyingKey<C::Config>>,
-        record: C::Record,
+        record: Record<C>,
     ) -> TaskHandle<(MachineVerifyingKey<C::Config>, ShardProof<C::Config>), MachineProverError>
     {
         // Create a span for this task.

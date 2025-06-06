@@ -13,10 +13,7 @@ use thiserror::Error;
 use p3_field::PrimeField32;
 use sp1_stark::{
     air::PublicValues,
-    prover::{
-        MachineProverBuilder, MachineProverComponents, MachineProvingKey, ProverSemaphore,
-        ShardProver,
-    },
+    prover::{MachineProverBuilder, MachineProverComponents, MachineProvingKey, ProverSemaphore},
     Machine, MachineProof, MachineRecord, ShardProof, ShardVerifier, Word,
 };
 
@@ -152,7 +149,7 @@ pub fn generate_records<F: PrimeField32>(
 
 pub async fn prove_core<F, PC>(
     verifier: ShardVerifier<PC::Config, RiscvAir<F>>,
-    prover: Arc<ShardProver<PC>>,
+    prover: Arc<PC::Prover>,
     pk: Arc<MachineProvingKey<PC>>,
     program: Arc<Program>,
     stdin: SP1Stdin,
@@ -160,13 +157,13 @@ pub async fn prove_core<F, PC>(
     context: SP1Context<'static>,
 ) -> Result<(MachineProof<PC::Config>, u64), SP1CoreProverError>
 where
-    PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
+    PC: MachineProverComponents<F = F, Air = RiscvAir<F>>,
     F: PrimeField32,
 {
     let (proof_tx, mut proof_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let (_, cycles) =
-        prove_core_stream(verifier, prover, pk, program, stdin, opts, context, proof_tx)
+        prove_core_stream::<F, PC>(verifier, prover, pk, program, stdin, opts, context, proof_tx)
             .await
             .unwrap();
 
@@ -186,7 +183,7 @@ where
 pub(crate) async fn prove_core_stream<F, PC>(
     // TODO: clean this up
     verifier: ShardVerifier<PC::Config, RiscvAir<F>>,
-    prover: Arc<ShardProver<PC>>,
+    prover: Arc<PC::Prover>,
     pk: Arc<MachineProvingKey<PC>>,
     program: Arc<Program>,
     stdin: SP1Stdin,
@@ -195,7 +192,7 @@ pub(crate) async fn prove_core_stream<F, PC>(
     proof_tx: UnboundedSender<ShardProof<PC::Config>>,
 ) -> Result<(Vec<u8>, u64), SP1CoreProverError>
 where
-    PC: MachineProverComponents<F = F, Air = RiscvAir<F>, Record = ExecutionRecord>,
+    PC: MachineProverComponents<F = F, Air = RiscvAir<F>>,
     F: PrimeField32,
 {
     // TODO: get this from input

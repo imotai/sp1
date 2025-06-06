@@ -28,7 +28,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, ChipDimensions, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
+    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
 };
 use std::{
     borrow::Borrow,
@@ -185,25 +185,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         stdin: SP1Stdin,
         mut context: SP1Context<'static>,
     ) -> Result<SP1CoreProof, SP1ProverError> {
-        let dummy_vk = MachineVerifyingKey::<CoreSC> {
-            pc_start: pk.pc_start,
-            initial_global_cumulative_sum: pk.initial_global_cumulative_sum,
-            preprocessed_commit: Some([BabyBear::zero(); 8]),
-            preprocessed_chip_information: pk
-                .preprocessed_traces
-                .named_traces
-                .iter()
-                .map(|(name, trace)| {
-                    (
-                        name.clone(),
-                        ChipDimensions {
-                            height: trace.num_real_entries(),
-                            num_polynomials: trace.num_polynomials(),
-                        },
-                    )
-                })
-                .collect(),
-        };
+        let dummy_vk = pk.as_ref().vk.clone();
 
         context.subproof_verifier = Some(Arc::new(self.clone()));
 
@@ -529,13 +511,15 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
         // Verify the proof.
-        prover.verify(
-            &proof,
-            &vkey_hash.as_canonical_biguint(),
-            &committed_values_digest.as_canonical_biguint(),
-            &exit_code.as_canonical_biguint(),
-            build_dir,
-        );
+        prover
+            .verify(
+                &proof,
+                &vkey_hash.as_canonical_biguint(),
+                &committed_values_digest.as_canonical_biguint(),
+                &exit_code.as_canonical_biguint(),
+                build_dir,
+            )
+            .expect("Failed to verify wrap proof");
 
         proof
     }
@@ -569,13 +553,15 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
         // Verify the proof.
-        prover.verify(
-            &proof,
-            &vkey_hash.as_canonical_biguint(),
-            &committed_values_digest.as_canonical_biguint(),
-            &exit_code.as_canonical_biguint(),
-            build_dir,
-        );
+        prover
+            .verify(
+                &proof,
+                &vkey_hash.as_canonical_biguint(),
+                &committed_values_digest.as_canonical_biguint(),
+                &exit_code.as_canonical_biguint(),
+                build_dir,
+            )
+            .expect("Failed to verify wrap proof");
 
         proof
     }

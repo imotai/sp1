@@ -16,23 +16,47 @@ use slop_jagged::{
 };
 
 use crate::{
-    air::MachineAir, BabyBearPoseidon2, ConstraintSumcheckFolder, GkrProverImpl,
-    LogupGkrCpuProverComponents, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator, ShardVerifier,
+    air::MachineAir, prover::MachineProverComponents, BabyBearPoseidon2, ConstraintSumcheckFolder,
+    GkrProverImpl, LogupGkrCpuProverComponents, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator,
+    ShardVerifier,
 };
 
 use super::{
-    DefaultTraceGenerator, MachineProver, MachineProverBuilder, MachineProverComponents,
-    ProverSemaphore, ShardProver, ZerocheckAir, ZerocheckCpuProverData,
+    DefaultTraceGenerator, MachineProver, MachineProverBuilder, ProverSemaphore, ShardProver,
+    ShardProverComponents, ZerocheckAir, ZerocheckCpuProverData,
 };
+
+/// The components of a CPU shard prover.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct CpuShardProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
 
 /// The components of a CPU prover.
 #[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct CpuProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
+pub struct CpuMachineProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
+
+impl<PcsComponents, A> MachineProverComponents for CpuMachineProverComponents<PcsComponents, A>
+where
+    PcsComponents: JaggedProverComponents<A = CpuBackend>,
+    A: std::fmt::Debug
+        + MachineAir<PcsComponents::F>
+        + Air<SymbolicAirBuilder<PcsComponents::F>>
+        + for<'b> Air<
+            ConstraintSumcheckFolder<'b, PcsComponents::F, PcsComponents::F, PcsComponents::EF>,
+        > + for<'b> Air<
+            ConstraintSumcheckFolder<'b, PcsComponents::F, PcsComponents::EF, PcsComponents::EF>,
+        > + MachineAir<PcsComponents::F>,
+{
+    type F = PcsComponents::F;
+    type EF = PcsComponents::EF;
+    type Config = <PcsComponents as JaggedProverComponents>::Config;
+    type Air = A;
+    type Prover = ShardProver<CpuShardProverComponents<PcsComponents, A>>;
+}
 
 /// A CPU prover.
-pub type CpuProver<PcsComponents, A> = MachineProver<CpuProverComponents<PcsComponents, A>>;
+pub type CpuProver<PcsComponents, A> = MachineProver<CpuShardProverComponents<PcsComponents, A>>;
 /// A CPU shard prover.
-pub type CpuShardProver<PcsComponents, A> = ShardProver<CpuProverComponents<PcsComponents, A>>;
+pub type CpuShardProver<PcsComponents, A> = ShardProver<CpuShardProverComponents<PcsComponents, A>>;
 /// A CPU prover builder.
 pub struct CpuProverBuilder<PcsComponents, A>
 where
@@ -46,7 +70,7 @@ where
             ConstraintSumcheckFolder<'b, PcsComponents::F, PcsComponents::EF, PcsComponents::EF>,
         > + MachineAir<PcsComponents::F>,
 {
-    inner: MachineProverBuilder<CpuProverComponents<PcsComponents, A>>,
+    inner: MachineProverBuilder<CpuMachineProverComponents<PcsComponents, A>>,
 }
 
 impl<PcsComponents, A> Deref for CpuProverBuilder<PcsComponents, A>
@@ -61,7 +85,7 @@ where
             ConstraintSumcheckFolder<'b, PcsComponents::F, PcsComponents::EF, PcsComponents::EF>,
         > + MachineAir<PcsComponents::F>,
 {
-    type Target = MachineProverBuilder<CpuProverComponents<PcsComponents, A>>;
+    type Target = MachineProverBuilder<CpuMachineProverComponents<PcsComponents, A>>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -85,7 +109,7 @@ where
     }
 }
 
-impl<A, PcsComponents> MachineProverComponents for CpuProverComponents<PcsComponents, A>
+impl<A, PcsComponents> ShardProverComponents for CpuShardProverComponents<PcsComponents, A>
 where
     PcsComponents: JaggedProverComponents<A = CpuBackend>,
     A: std::fmt::Debug

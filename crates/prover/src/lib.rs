@@ -32,10 +32,10 @@ use std::{collections::BTreeMap, sync::Arc};
 use slop_baby_bear::BabyBear;
 
 use sp1_recursion_executor::RecursionProgram;
-use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphore, ShardProver};
+use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphore, MachineProvingKey};
 
 use slop_jagged::Bn254JaggedConfig;
-use sp1_stark::{prover::MachineProvingKey, BabyBearPoseidon2};
+use sp1_stark::BabyBearPoseidon2;
 
 pub use types::*;
 
@@ -64,6 +64,8 @@ pub type OuterSC = Bn254JaggedConfig;
 //     RiscvAir<BabyBear>,
 // >>::DeviceProvingKey;
 use sp1_recursion_machine::RecursionAir;
+
+use crate::components::{CoreProver, RecursionProver, WrapProver};
 
 const COMPRESS_DEGREE: usize = 3;
 const SHRINK_DEGREE: usize = 3;
@@ -94,16 +96,16 @@ pub struct SP1ProverBuilder<C: SP1ProverComponents> {
 impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
     #[allow(clippy::too_many_arguments)]
     pub fn new_multi_permits(
-        base_core_provers: Vec<Arc<ShardProver<C::CoreComponents>>>,
+        base_core_provers: Vec<Arc<CoreProver<C>>>,
         core_prover_permits: Vec<ProverSemaphore>,
         nums_core_workers: Vec<usize>,
-        base_recursion_provers: Vec<Arc<ShardProver<C::RecursionComponents>>>,
+        base_recursion_provers: Vec<Arc<RecursionProver<C>>>,
         recursion_prover_permits: Vec<ProverSemaphore>,
         nums_recursion_workers: Vec<usize>,
-        base_shrink_provers: Vec<Arc<ShardProver<C::RecursionComponents>>>,
+        base_shrink_provers: Vec<Arc<RecursionProver<C>>>,
         shrink_prover_permits: Vec<ProverSemaphore>,
         nums_shrink_workers: Vec<usize>,
-        base_wrap_provers: Vec<Arc<ShardProver<C::WrapComponents>>>,
+        base_wrap_provers: Vec<Arc<WrapProver<C>>>,
         wrap_prover_permits: Vec<ProverSemaphore>,
         nums_wrap_workers: Vec<usize>,
         recursion_programs_cache_size: usize,
@@ -157,16 +159,16 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
     }
 
     pub fn new_single_permit(
-        core_prover: ShardProver<C::CoreComponents>,
+        core_prover: CoreProver<C>,
         core_prover_permit: ProverSemaphore,
         num_core_workers: usize,
-        recursion_prover: ShardProver<C::RecursionComponents>,
+        recursion_prover: RecursionProver<C>,
         recursion_prover_permit: ProverSemaphore,
         num_recursion_workers: usize,
-        shrink_prover: ShardProver<C::RecursionComponents>,
+        shrink_prover: RecursionProver<C>,
         shrink_prover_permit: ProverSemaphore,
         num_shrink_workers: usize,
-        wrap_prover: ShardProver<C::WrapComponents>,
+        wrap_prover: WrapProver<C>,
         wrap_prover_permit: ProverSemaphore,
         num_wrap_workers: usize,
         recursion_programs_cache_size: usize,

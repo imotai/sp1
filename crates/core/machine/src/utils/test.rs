@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
+use p3_baby_bear::BabyBear;
 use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
-    prover::{CpuShardProver, ProverSemaphore},
+    prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
     BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError, ShardVerifier,
 };
 use tracing::Instrument;
@@ -91,7 +92,13 @@ pub async fn run_test_core(
         .await;
     let pk = unsafe { pk.into_inner() };
     let challenger = verifier.pcs_verifier.challenger();
-    let (proof, _) = prove_core(
+    let (proof, _) = prove_core::<
+        BabyBear,
+        CpuMachineProverComponents<
+            slop_jagged::Poseidon2BabyBearJaggedCpuProverComponents,
+            RiscvAir<BabyBear>,
+        >,
+    >(
         verifier.clone(),
         Arc::new(prover),
         pk,

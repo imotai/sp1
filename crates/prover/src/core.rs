@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use slop_baby_bear::BabyBear;
 use slop_futures::handle::TaskHandle;
-use slop_jagged::{JaggedConfig, JaggedProverComponents};
+use slop_jagged::JaggedConfig;
 use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_stark::{
@@ -26,12 +26,8 @@ const CORE_MAX_LOG_ROW_COUNT: usize = 22;
 pub trait CoreProverComponents:
     MachineProverComponents<
     Config = CoreSC,
-    Program = Program,
     F = <CoreSC as JaggedConfig>::F,
-    Record = sp1_core_executor::ExecutionRecord,
     Air = RiscvAir<<CoreSC as JaggedConfig>::F>,
-    Challenger = <CoreSC as JaggedConfig>::Challenger,
-    PcsProverComponents: JaggedProverComponents<Config = CoreSC>,
 >
 {
     /// The default verifier for the core prover.
@@ -58,12 +54,8 @@ pub trait CoreProverComponents:
 impl<C> CoreProverComponents for C where
     C: MachineProverComponents<
         Config = CoreSC,
-        Program = Program,
         F = <CoreSC as JaggedConfig>::F,
-        Record = sp1_core_executor::ExecutionRecord,
         Air = RiscvAir<<CoreSC as JaggedConfig>::F>,
-        Challenger = <CoreSC as JaggedConfig>::Challenger,
-        PcsProverComponents: JaggedProverComponents<Config = CoreSC>,
     >
 {
 }
@@ -88,8 +80,11 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
 
     /// Setup the core prover
     #[must_use]
-    pub async fn setup(&self, elf: &[u8]) -> (PreprocessedData<C>, C::Program, SP1VerifyingKey) {
-        let program = <C as MachineProverComponents>::Program::from(elf).unwrap();
+    pub async fn setup(
+        &self,
+        elf: &[u8],
+    ) -> (PreprocessedData<MachineProvingKey<C>>, Program, SP1VerifyingKey) {
+        let program = Program::from(elf).unwrap();
         let (pk, vk) = self.prover.setup(Arc::new(program.clone()), None).await.unwrap();
         (pk, program, SP1VerifyingKey { vk })
     }

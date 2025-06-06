@@ -5,7 +5,10 @@ use slop_jagged::{
 };
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_recursion_circuit::machine::InnerVal;
-use sp1_stark::{prover::CpuProverComponents, MachineVerifier};
+use sp1_stark::{
+    prover::{CpuMachineProverComponents, MachineProverComponents},
+    MachineVerifier,
+};
 
 use crate::{
     core::CoreProverComponents,
@@ -14,6 +17,15 @@ use crate::{
 };
 
 pub struct SP1Config {}
+
+pub type CoreProver<C> =
+    <<C as SP1ProverComponents>::CoreComponents as MachineProverComponents>::Prover;
+
+pub type RecursionProver<C> =
+    <<C as SP1ProverComponents>::RecursionComponents as MachineProverComponents>::Prover;
+
+pub type WrapProver<C> =
+    <<C as SP1ProverComponents>::WrapComponents as MachineProverComponents>::Prover;
 
 pub trait SP1ProverComponents: Send + Sync + 'static {
     /// The prover for making SP1 core proofs.
@@ -44,15 +56,15 @@ pub trait SP1ProverComponents: Send + Sync + 'static {
 pub struct CpuSP1ProverComponents;
 
 impl SP1ProverComponents for CpuSP1ProverComponents {
-    type CoreComponents = CpuProverComponents<
+    type CoreComponents = CpuMachineProverComponents<
         Poseidon2BabyBearJaggedCpuProverComponents,
         RiscvAir<<CoreSC as JaggedConfig>::F>,
     >;
-    type RecursionComponents = CpuProverComponents<
+    type RecursionComponents = CpuMachineProverComponents<
         Poseidon2BabyBearJaggedCpuProverComponents,
         CompressAir<<InnerSC as JaggedConfig>::F>,
     >;
-    type WrapComponents = CpuProverComponents<
+    type WrapComponents = CpuMachineProverComponents<
         Poseidon2Bn254JaggedCpuProverComponents,
         WrapAir<<OuterSC as JaggedConfig>::F>,
     >;

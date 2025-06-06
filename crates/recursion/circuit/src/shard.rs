@@ -410,7 +410,7 @@ mod tests {
     };
     use sp1_recursion_machine::test::run_recursion_test_machines;
     use sp1_stark::{
-        prover::{CpuShardProver, ProverSemaphore},
+        prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
         MachineVerifier, ShardVerifier,
     };
 
@@ -458,7 +458,13 @@ mod tests {
 
         let (pk, vk) = prover.setup(program.clone(), ProverSemaphore::new(1)).await;
         let pk = unsafe { pk.into_inner() };
-        let (proof, _) = prove_core(
+        let (proof, _) = prove_core::<
+            BabyBear,
+            CpuMachineProverComponents<
+                slop_jagged::Poseidon2BabyBearJaggedCpuProverComponents,
+                RiscvAir<BabyBear>,
+            >,
+        >(
             verifier.clone(),
             prover,
             pk,

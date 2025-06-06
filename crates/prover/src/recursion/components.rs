@@ -1,7 +1,6 @@
 use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
 use sp1_recursion_circuit::machine::InnerVal;
-use sp1_recursion_executor::{ExecutionRecord, RecursionProgram};
 use sp1_stark::{prover::MachineProverComponents, MachineVerifier, ShardVerifier};
 
 use crate::{CompressAir, InnerSC, OuterSC, WrapAir};
@@ -17,9 +16,6 @@ pub trait RecursionProverComponents:
     MachineProverComponents<
     F = <InnerSC as JaggedConfig>::F,
     Config = InnerSC,
-    Record = ExecutionRecord<<InnerSC as JaggedConfig>::F>,
-    Program = RecursionProgram<<InnerSC as JaggedConfig>::F>,
-    Challenger = <InnerSC as JaggedConfig>::Challenger,
     Air = CompressAir<<InnerSC as JaggedConfig>::F>,
 >
 {
@@ -60,9 +56,6 @@ pub trait WrapProverComponents:
     MachineProverComponents<
     F = <OuterSC as JaggedConfig>::F,
     Config = OuterSC,
-    Record = ExecutionRecord<<OuterSC as JaggedConfig>::F>,
-    Program = RecursionProgram<<OuterSC as JaggedConfig>::F>,
-    Challenger = <OuterSC as JaggedConfig>::Challenger,
     Air = WrapAir<<OuterSC as JaggedConfig>::F>,
 >
 {
@@ -87,9 +80,6 @@ impl<C> RecursionProverComponents for C where
     C: MachineProverComponents<
         F = <InnerSC as JaggedConfig>::F,
         Config = InnerSC,
-        Record = ExecutionRecord<<InnerSC as JaggedConfig>::F>,
-        Program = RecursionProgram<<InnerSC as JaggedConfig>::F>,
-        Challenger = <InnerSC as JaggedConfig>::Challenger,
         Air = CompressAir<<InnerSC as JaggedConfig>::F>,
     >
 {
@@ -99,9 +89,6 @@ impl<C> WrapProverComponents for C where
     C: MachineProverComponents<
         F = <OuterSC as JaggedConfig>::F,
         Config = OuterSC,
-        Record = ExecutionRecord<<OuterSC as JaggedConfig>::F>,
-        Program = RecursionProgram<<OuterSC as JaggedConfig>::F>,
-        Challenger = <OuterSC as JaggedConfig>::Challenger,
         Air = WrapAir<<OuterSC as JaggedConfig>::F>,
     >
 {

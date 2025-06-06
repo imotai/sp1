@@ -377,7 +377,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
 
         // Verify the proof with the corresponding public inputs.
-        prover.verify(proof, &vkey_hash, &committed_values_digest, &exit_code, build_dir);
+        prover.verify(proof, &vkey_hash, &committed_values_digest, &exit_code, build_dir)?;
 
         verify_plonk_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
 
@@ -399,7 +399,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
 
         // Verify the proof with the corresponding public inputs.
-        prover.verify(proof, &vkey_hash, &committed_values_digest, &exit_code, build_dir);
+        prover.verify(proof, &vkey_hash, &committed_values_digest, &exit_code, build_dir)?;
 
         verify_groth16_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
 
