@@ -169,7 +169,6 @@ impl LtChip {
             event.b,
             event.c,
             event.opcode == Opcode::SLT,
-            true,
         );
 
         cols.is_slt = F::from_bool(event.opcode == Opcode::SLT);

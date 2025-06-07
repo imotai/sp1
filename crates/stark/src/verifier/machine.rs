@@ -36,6 +36,9 @@ pub enum MachineVerifierError<C: MachineConfig> {
     /// Invalid verification key.
     #[error("invalid verification key")]
     InvalidVerificationKey,
+    /// Empty proof.
+    #[error("empty proof")]
+    EmptyProof,
 }
 
 /// A verifier for a machine proof.

@@ -124,9 +124,11 @@ impl SyscallInstrsChip {
         let syscall_id = prev_a_byte[0].clone();
         let send_to_table = prev_a_byte[1].clone();
 
-        // SAFETY: Assert that for non real row, the send_to_table value is 0 so that the
-        // `send_syscall` interaction is not activated.
+        // SAFETY: Assert that for padding rows, the interactions from `send_syscall` and
+        // BabyBearWordRangeChecker do not have non-zero multiplicities.
         builder.when_not(local.is_real).assert_zero(send_to_table.clone());
+        builder.when_not(local.is_real).assert_zero(local.is_halt);
+        builder.when_not(local.is_real).assert_zero(local.is_commit_deferred_proofs.result);
 
         builder.send_syscall(
             local.state.shard::<AB>(),
@@ -136,6 +138,25 @@ impl SyscallInstrsChip {
             local.adapter.c().reduce::<AB>(),
             send_to_table.clone(),
             InteractionScope::Local,
+        );
+
+        // Check if `op_b` and `op_c` are a valid BabyBear words.
+        // SAFETY: The multiplicities are zero when `is_real = 0`.
+        // Note that `send_to_table = 1` implies `is_halt, is_commit_deferred_proofs` are zero,
+        // since the syscall cannot be `HALT` or `COMMIT_DEFERRED_PROOFS`.
+        BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
+            builder,
+            *local.adapter.b(),
+            local.op_b_range_check,
+            send_to_table.clone() + local.is_halt,
+        );
+
+        // Check if `op_c` is a valid BabyBear word.
+        BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
+            builder,
+            *local.adapter.c(),
+            local.op_c_range_check,
+            send_to_table.clone() + local.is_commit_deferred_proofs.result,
         );
 
         // Compute whether this ecall is ENTER_UNCONSTRAINED.
@@ -181,30 +202,6 @@ impl SyscallInstrsChip {
         // As this is a syscall for HINT, the value itself being arbitrary is fine, as long as it is
         // a valid word.
         builder.slice_range_check_u16(&local.op_a_value.0, local.is_real);
-
-        // Verify value of ecall_range_check_operand column.
-        // SAFETY: If `is_real = 0`, then `ecall_range_check_operand = 0`.
-        // If `is_real = 1`, then `is_halt_check` and `is_commit_deferred_proofs` are constrained.
-        // The two results will both be boolean due to `IsZeroOperation`, and both cannot be `1` at
-        // the same time. Both of them being `1` will require `syscall_id` being `HALT` and
-        // `COMMIT_DEFERRED_PROOFS` at the same time. This implies that if `is_real = 1`,
-        // `ecall_range_check_operand` will be correct, and boolean.
-        builder.assert_eq(
-            local.ecall_range_check_operand,
-            local.is_real * (local.is_halt_check.result + local.is_commit_deferred_proofs.result),
-        );
-
-        // SAFETY: `ecall_range_check_operand` is boolean, and no interactions can be made in
-        // padding rows. `operand_to_check` is already known to be a valid word, as it is
-        // either
-        // - `op_b_val` in the case of `HALT`
-        // - `op_c_val` in the case of `COMMIT_DEFERRED_PROOFS`
-        BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
-            builder,
-            local.operand_to_check,
-            local.operand_range_check_cols,
-            local.ecall_range_check_operand.into(),
-        );
     }
 
     /// Constraints related to the COMMIT and COMMIT_DEFERRED_PROOFS instructions.
@@ -293,12 +290,6 @@ impl SyscallInstrsChip {
         let expected_deferred_proofs_digest_element =
             builder.index_array(&deferred_proofs_digest, &local.index_bitmap);
 
-        // Verify that the operand that was range checked is digest_word.
-        builder
-            .when(local.is_real)
-            .when(is_commit_deferred_proofs.clone())
-            .assert_word_eq(*digest_word, local.operand_to_check);
-
         builder
             .when(local.is_real)
             .when(is_commit_deferred_proofs.clone())
@@ -314,9 +305,6 @@ impl SyscallInstrsChip {
     ) {
         // `next_pc` is constrained for the case where `is_halt` is true to be `0`
         builder.when(local.is_halt).assert_zero(local.next_pc);
-
-        // Verify that the operand that was range checked is op_b.
-        builder.when(local.is_halt).assert_word_eq(*local.adapter.b(), local.operand_to_check);
 
         // Check that the `op_b_value` reduced is the `public_values.exit_code`.
         builder

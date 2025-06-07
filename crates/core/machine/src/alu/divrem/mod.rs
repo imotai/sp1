@@ -318,9 +318,9 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 // Insert the MSB lookup events.
                 {
                     let mut blu_events: Vec<ByteLookupEvent> = vec![];
-                    cols.b_msb.populate_msb(&mut blu_events, (event.b >> 16) as u16, true);
-                    cols.c_msb.populate_msb(&mut blu_events, (event.c >> 16) as u16, true);
-                    cols.rem_msb.populate_msb(&mut blu_events, (remainder >> 16) as u16, true);
+                    cols.b_msb.populate_msb(&mut blu_events, (event.b >> 16) as u16);
+                    cols.c_msb.populate_msb(&mut blu_events, (event.c >> 16) as u16);
+                    cols.rem_msb.populate_msb(&mut blu_events, (remainder >> 16) as u16);
 
                     output.add_byte_lookup_events(blu_events);
                 }
@@ -330,13 +330,14 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             {
                 let mut blu_events = vec![];
                 cols.remainder_check_multiplicity = cols.is_real * (F::one() - cols.is_c_0.result);
-                cols.remainder_lt_operation.populate_unsigned(
-                    &mut blu_events,
-                    1u32,
-                    cols.abs_remainder.to_u32(),
-                    cols.max_abs_c_or_1.to_u32(),
-                    cols.remainder_check_multiplicity.is_one(),
-                );
+                if cols.remainder_check_multiplicity.is_one() {
+                    cols.remainder_lt_operation.populate_unsigned(
+                        &mut blu_events,
+                        1u32,
+                        cols.abs_remainder.to_u32(),
+                        cols.max_abs_c_or_1.to_u32(),
+                    );
+                }
 
                 output.add_byte_lookup_events(blu_events);
             }
@@ -451,14 +452,6 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             cols.max_abs_c_or_1[0] = F::one();
 
             cols.is_c_0.populate(1);
-            let mut blu_events = vec![];
-            cols.remainder_lt_operation.populate_unsigned(
-                &mut blu_events,
-                1,
-                cols.abs_remainder.to_u32(),
-                cols.max_abs_c_or_1.to_u32(),
-                false,
-            );
 
             row
         };

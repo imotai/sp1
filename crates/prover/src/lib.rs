@@ -32,7 +32,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use slop_baby_bear::BabyBear;
 
 use sp1_recursion_executor::RecursionProgram;
-use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphore, MachineProvingKey};
+use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, MachineProvingKey, ProverSemaphore};
 
 use slop_jagged::Bn254JaggedConfig;
 use sp1_stark::BabyBearPoseidon2;

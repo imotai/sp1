@@ -56,14 +56,11 @@ pub struct SyscallInstrColumns<T> {
     /// The expected public values digest.
     pub expected_public_values_digest: [T; 4],
 
-    /// Columns to babybear range check the halt/commit_deferred_proofs operand.
-    pub operand_range_check_cols: BabyBearWordRangeChecker<T>,
+    /// The check if `op_b` is a valid BabyBear.
+    pub op_b_range_check: BabyBearWordRangeChecker<T>,
 
-    /// The operand value to babybear range check.
-    pub operand_to_check: Word<T>,
-
-    /// The result of is_real * (is_halt || is_commit_deferred_proofs)
-    pub ecall_range_check_operand: T,
+    /// The check if `op_c` is a valid BabyBear.
+    pub op_c_range_check: BabyBearWordRangeChecker<T>,
 
     /// Whether the current instruction is a real instruction.
     pub is_real: T,

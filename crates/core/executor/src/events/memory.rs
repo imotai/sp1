@@ -284,8 +284,6 @@ pub struct MemoryInitializeFinalizeEvent {
     pub shard: u32,
     /// The timestamp.
     pub timestamp: u32,
-    /// The used flag.
-    pub used: u32,
 }
 
 impl MemoryReadRecord {
@@ -344,8 +342,8 @@ impl MemoryRecordEnum {
 impl MemoryInitializeFinalizeEvent {
     /// Creates a new [``MemoryInitializeFinalizeEvent``] for an initialization.
     #[must_use]
-    pub const fn initialize(addr: u32, value: u32, used: bool) -> Self {
-        Self { addr, value, shard: 1, timestamp: 1, used: if used { 1 } else { 0 } }
+    pub const fn initialize(addr: u32, value: u32) -> Self {
+        Self { addr, value, shard: 0, timestamp: 0 }
     }
 
     /// Creates a new [``MemoryInitializeFinalizeEvent``] for a finalization.
@@ -356,7 +354,6 @@ impl MemoryInitializeFinalizeEvent {
             value: record.value,
             shard: record.lshard.shard().get(),
             timestamp: record.timestamp,
-            used: 1,
         }
     }
 }

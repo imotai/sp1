@@ -20,13 +20,7 @@ pub struct BabyBearWordRangeChecker<T> {
 impl<F: PrimeField32> BabyBearWordRangeChecker<F> {
     pub fn populate(&mut self, value: Word<F>, record: &mut impl ByteRecord) {
         let ms_limb = value[1].as_canonical_u32() as u16;
-        self.most_sig_limb_lt_30720.populate(
-            record,
-            (ms_limb < 30720) as u16,
-            ms_limb,
-            30720u16,
-            true,
-        );
+        self.most_sig_limb_lt_30720.populate(record, (ms_limb < 30720) as u16, ms_limb, 30720u16);
     }
 }
 

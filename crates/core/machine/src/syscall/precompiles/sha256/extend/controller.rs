@@ -1,10 +1,14 @@
 use super::ShaExtendControlChip;
-use crate::utils::next_multiple_of_32;
+use crate::{operations::SyscallAddrOperation, utils::next_multiple_of_32};
 use core::borrow::Borrow;
 use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use sp1_core_executor::{events::PrecompileEvent, syscalls::SyscallCode, ExecutionRecord, Program};
+use sp1_core_executor::{
+    events::{ByteRecord, PrecompileEvent},
+    syscalls::SyscallCode,
+    ExecutionRecord, Program,
+};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
@@ -25,7 +29,7 @@ pub const NUM_SHA_EXTEND_CONTROL_COLS: usize = size_of::<ShaExtendControlCols<u8
 pub struct ShaExtendControlCols<T> {
     pub shard: T,
     pub clk: T,
-    pub w_ptr: T,
+    pub w_ptr: SyscallAddrOperation<T>,
     pub is_real: T,
 }
 
@@ -53,8 +57,9 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
+        output: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
+        let mut blu_events = vec![];
         let mut rows = Vec::new();
         for (_, event) in input.get_precompile_events(SyscallCode::SHA_EXTEND).iter() {
             let event =
@@ -63,10 +68,12 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             let cols: &mut ShaExtendControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
+            cols.w_ptr.populate(&mut blu_events, event.w_ptr, 256);
             cols.is_real = F::one();
             rows.push(row);
         }
+
+        output.add_byte_lookup_events(blu_events);
 
         let nb_rows = rows.len();
         let mut padded_nb_rows = nb_rows.next_multiple_of(32);
@@ -110,12 +117,15 @@ where
 
         builder.assert_bool(local.is_real);
 
+        let w_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.w_ptr, local.is_real.into());
+
         // Receive the syscall.
         builder.receive_syscall(
             local.shard,
             local.clk,
             AB::F::from_canonical_u32(SyscallCode::SHA_EXTEND.syscall_id()),
-            local.w_ptr,
+            w_ptr.clone(),
             AB::Expr::zero(),
             local.is_real,
             InteractionScope::Local,
@@ -127,7 +137,7 @@ where
                 vec![
                     local.shard.into(),
                     local.clk.into(),
-                    local.w_ptr.into(),
+                    w_ptr.clone(),
                     AB::Expr::from_canonical_u32(16),
                 ],
                 local.is_real.into(),
@@ -142,7 +152,7 @@ where
                 vec![
                     local.shard.into(),
                     local.clk.into(),
-                    local.w_ptr.into(),
+                    w_ptr.clone(),
                     AB::Expr::from_canonical_u32(64),
                 ],
                 local.is_real.into(),

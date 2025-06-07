@@ -16,18 +16,16 @@ pub struct U16MSBOperation<T> {
 }
 
 impl<F: Field> U16MSBOperation<F> {
-    pub fn populate_msb(&mut self, record: &mut impl ByteRecord, a_u16: u16, is_real: bool) -> u32 {
+    pub fn populate_msb(&mut self, record: &mut impl ByteRecord, a_u16: u16) -> u32 {
         let msb = (a_u16 >> 15) & 1;
         self.msb = F::from_canonical_u16(msb);
         let diff = a_u16.wrapping_mul(2u16);
-        if is_real {
-            record.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::Range,
-                a: diff,
-                b: 16,
-                c: 0,
-            });
-        }
+        record.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::Range,
+            a: diff,
+            b: 16,
+            c: 0,
+        });
         msb as u32
     }
 

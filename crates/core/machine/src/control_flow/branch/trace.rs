@@ -125,7 +125,6 @@ impl BranchChip {
             event.a,
             event.b,
             use_signed_comparison,
-            true,
         );
 
         cols.next_pc = F::from_canonical_u32(event.next_pc);

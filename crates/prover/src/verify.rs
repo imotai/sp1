@@ -69,6 +69,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierError<CoreSC>> {
         let SP1VerifyingKey { vk } = vk;
+
+        if proof.0.is_empty() {
+            return Err(MachineVerifierError::EmptyProof);
+        }
+
         // // First shard has a "CPU" constraint.
         // //
         // // Assert that the first shard has a "CPU".

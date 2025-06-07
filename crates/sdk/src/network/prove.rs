@@ -390,9 +390,9 @@ impl NetworkProveBuilder<'_> {
     // / Request a proof from the prover network asynchronously.
     // /
     // / # Details
-    // / This method will request a proof from the prover network asynchronously. If the prover fails
-    // / to request a proof, the method will return an error. It will not wait for the proof to be
-    // / generated.
+    // / This method will request a proof from the prover network asynchronously. If the prover
+    // fails / to request a proof, the method will return an error. It will not wait for the
+    // proof to be / generated.
     // /
     // / # Example
     // / ```rust,no_run

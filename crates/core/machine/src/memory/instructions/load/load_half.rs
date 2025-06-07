@@ -161,7 +161,7 @@ impl LoadHalfChip {
 
         if event.opcode == Opcode::LH {
             cols.is_lh = F::one();
-            cols.msb.populate_msb(blu, limb, true);
+            cols.msb.populate_msb(blu, limb);
         } else {
             cols.is_lhu = F::one();
         }

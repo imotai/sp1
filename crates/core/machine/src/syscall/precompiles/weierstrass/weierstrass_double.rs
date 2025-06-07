@@ -7,7 +7,10 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
-    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
+    operations::{
+        field::{field_op::FieldOpCols, range::FieldLtCols},
+        SyscallAddrOperation,
+    },
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
@@ -47,7 +50,7 @@ pub struct WeierstrassDoubleAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
     pub shard: T,
     pub clk: T,
-    pub p_ptr: T,
+    pub p_ptr: SyscallAddrOperation<T>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub slope_denominator: FieldOpCols<T, P>,
     pub slope_numerator: FieldOpCols<T, P>,
@@ -332,7 +335,7 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
         cols.is_real = F::one();
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr = F::from_canonical_u32(event.p_ptr);
+        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u32 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y);
 
@@ -457,10 +460,17 @@ where
         let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
         let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.p_ptr,
+            local.is_real.into(),
+        );
+
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into(),
-            local.p_ptr,
+            p_ptr.clone(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -485,7 +495,7 @@ where
             local.shard,
             local.clk,
             syscall_id_felt,
-            local.p_ptr,
+            p_ptr,
             AB::Expr::zero(),
             local.is_real,
             InteractionScope::Local,

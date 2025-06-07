@@ -7,7 +7,10 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
-    operations::field::range::FieldLtCols,
+    operations::{
+        field::{field_op::FieldOpCols, range::FieldLtCols},
+        SyscallAddrOperation,
+    },
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
@@ -35,8 +38,6 @@ use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
 use typenum::Unsigned;
 
-use crate::operations::field::field_op::FieldOpCols;
-
 pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassAddAssignCols<u8, P>>()
 }
@@ -51,8 +52,8 @@ pub struct WeierstrassAddAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
     pub shard: T,
     pub clk: T,
-    pub p_ptr: T,
-    pub q_ptr: T,
+    pub p_ptr: SyscallAddrOperation<T>,
+    pub q_ptr: SyscallAddrOperation<T>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub q_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub slope_denominator: FieldOpCols<T, P>,
@@ -414,10 +415,22 @@ where
         let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
         let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.p_ptr,
+            local.is_real.into(),
+        );
+        let q_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.q_ptr,
+            local.is_real.into(),
+        );
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            local.q_ptr,
+            q_ptr.clone(),
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -425,7 +438,7 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk + AB::F::from_canonical_u32(1),
-            local.p_ptr,
+            p_ptr.clone(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -450,8 +463,8 @@ where
             local.shard,
             local.clk,
             syscall_id_felt,
-            local.p_ptr,
-            local.q_ptr,
+            p_ptr,
+            q_ptr,
             local.is_real,
             InteractionScope::Local,
         );
@@ -476,8 +489,8 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
         cols.is_real = F::one();
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr = F::from_canonical_u32(event.p_ptr);
-        cols.q_ptr = F::from_canonical_u32(event.q_ptr);
+        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u32 * 2);
+        cols.q_ptr.populate(new_byte_lookup_events, event.q_ptr, E::NB_LIMBS as u32 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y, q_x, q_y);
 

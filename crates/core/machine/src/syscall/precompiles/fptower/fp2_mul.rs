@@ -6,6 +6,7 @@ use std::{
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
+    operations::SyscallAddrOperation,
     utils::zeroed_f_vec,
 };
 use generic_array::GenericArray;
@@ -45,8 +46,8 @@ pub struct Fp2MulAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
     pub shard: T,
     pub clk: T,
-    pub x_ptr: T,
-    pub y_ptr: T,
+    pub x_ptr: SyscallAddrOperation<T>,
+    pub y_ptr: SyscallAddrOperation<T>,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub(crate) a0_mul_b0: FieldOpCols<T, P>,
@@ -178,8 +179,8 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.x_ptr = F::from_canonical_u32(event.x_ptr);
-            cols.y_ptr = F::from_canonical_u32(event.y_ptr);
+            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u32 * 2);
+            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u32 * 2);
 
             Self::populate_field_ops(&mut new_byte_lookup_events, cols, p_x, p_y, q_x, q_y);
 
@@ -345,10 +346,23 @@ where
         local.c0_range.eval(builder, &local.c0.result, &p_modulus, local.is_real);
         local.c1_range.eval(builder, &local.c1.result, &p_modulus, local.is_real);
 
+        let x_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32 * 2,
+            local.x_ptr,
+            local.is_real.into(),
+        );
+        let y_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32 * 2,
+            local.y_ptr,
+            local.is_real.into(),
+        );
+
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            local.y_ptr,
+            y_ptr.clone(),
             &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -356,7 +370,7 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk + AB::F::from_canonical_u32(1),
-            local.x_ptr,
+            x_ptr.clone(),
             &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -373,8 +387,8 @@ where
             local.shard,
             local.clk,
             syscall_id_felt,
-            local.x_ptr,
-            local.y_ptr,
+            x_ptr,
+            y_ptr,
             local.is_real,
             InteractionScope::Local,
         );

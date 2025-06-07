@@ -208,7 +208,7 @@ impl ShiftRightChip {
             blu.add_bit_range_check(higher_limb, 16 - bit_shift);
         }
         if event.opcode == Opcode::SRA {
-            cols.b_msb.populate_msb(blu, b[1], true);
+            cols.b_msb.populate_msb(blu, b[1]);
         }
     }
 }

@@ -7,9 +7,12 @@ use std::fmt::Debug;
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::field::{
-        field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
-        field_sqrt::FieldSqrtCols, range::FieldLtCols,
+    operations::{
+        field::{
+            field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
+            field_sqrt::FieldSqrtCols, range::FieldLtCols,
+        },
+        SyscallAddrOperation,
     },
     utils::{
         bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
@@ -55,7 +58,7 @@ pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
     pub shard: T,
     pub clk: T,
-    pub ptr: T,
+    pub ptr: SyscallAddrOperation<T>,
     pub sign_bit: T,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub y_access: GenericArray<MemoryAccessCols<T>, P::WordsFieldElement>,
@@ -213,7 +216,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             cols.is_real = F::from_bool(true);
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
-            cols.ptr = F::from_canonical_u32(event.ptr);
+            cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u32 * 2);
             cols.sign_bit = F::from_bool(event.sign_bit);
 
             let x = BigUint::from_bytes_le(&event.x_bytes);
@@ -505,11 +508,18 @@ where
             }
         }
 
+        let ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.ptr,
+            local.is_real.into(),
+        );
+
         for i in 0..num_words_field_element {
             builder.eval_memory_access_read(
                 local.shard,
                 local.clk,
-                local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
+                ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
                 local.x_access[i].memory_access,
                 local.is_real,
             );
@@ -518,7 +528,7 @@ where
             builder.eval_memory_access_write(
                 local.shard,
                 local.clk,
-                local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4),
+                ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4),
                 local.y_access[i],
                 local.y_value[i],
                 local.is_real,
@@ -542,7 +552,7 @@ where
             local.shard,
             local.clk,
             syscall_id,
-            local.ptr,
+            ptr,
             local.sign_bit,
             local.is_real,
             InteractionScope::Local,

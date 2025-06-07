@@ -2,7 +2,7 @@ use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols
 
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
-    operations::{field::range::FieldLtCols, IsZeroOperation},
+    operations::{field::range::FieldLtCols, IsZeroOperation, SyscallAddrOperation},
     utils::{
         limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
         words_to_bytes_le_vec,
@@ -61,10 +61,10 @@ pub struct Uint256MulCols<T> {
     pub clk: T,
 
     /// The pointer to the first input.
-    pub x_ptr: T,
+    pub x_ptr: SyscallAddrOperation<T>,
 
     /// The pointer to the second input, which contains the y value and the modulus.
-    pub y_ptr: T,
+    pub y_ptr: SyscallAddrOperation<T>,
 
     // Memory columns.
     // x_memory is written to with the result, which is why it is of type MemoryWriteCols.
@@ -136,8 +136,8 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                         cols.is_real = F::one();
                         cols.shard = F::from_canonical_u32(event.shard);
                         cols.clk = F::from_canonical_u32(event.clk);
-                        cols.x_ptr = F::from_canonical_u32(event.x_ptr);
-                        cols.y_ptr = F::from_canonical_u32(event.y_ptr);
+                        cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, 32);
+                        cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, 64);
 
                         // Populate memory columns.
                         for i in 0..WORDS_FIELD_ELEMENT {
@@ -300,11 +300,16 @@ where
 
         let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
 
+        let x_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.x_ptr, local.is_real.into());
+        let y_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
+
         // Read and write x.
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into() + AB::Expr::one(),
-            local.x_ptr,
+            x_ptr.clone(),
             &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -315,7 +320,7 @@ where
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            local.y_ptr,
+            y_ptr.clone(),
             &[local.y_memory, local.modulus_memory]
                 .concat()
                 .iter()
@@ -329,8 +334,8 @@ where
             local.shard,
             local.clk,
             AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
-            local.x_ptr,
-            local.y_ptr,
+            x_ptr.clone(),
+            y_ptr.clone(),
             local.is_real,
             InteractionScope::Local,
         );

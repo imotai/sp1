@@ -76,6 +76,7 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         }
         for i in 0..P::NB_LIMBS {
             p_vanishing_limbs[i] += (p_c[i] as u16) as i32;
+            p_vanishing_limbs[i] -= (p_result[i] as u16) as i32;
         }
         for i in 0..P::NB_LIMBS {
             for j in 0..P::MODULUS_LIMBS {

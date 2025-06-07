@@ -7,6 +7,7 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
+    operations::SyscallAddrOperation,
     utils::{limbs_to_words, next_multiple_of_32},
 };
 use hashbrown::HashMap;
@@ -51,8 +52,8 @@ pub struct EdAddAssignCols<T> {
     pub is_real: T,
     pub shard: T,
     pub clk: T,
-    pub p_ptr: T,
-    pub q_ptr: T,
+    pub p_ptr: SyscallAddrOperation<T>,
+    pub q_ptr: SyscallAddrOperation<T>,
     pub p_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
     pub q_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
     pub(crate) x3_numerator: FieldInnerProductCols<T, Ed25519BaseField>,
@@ -233,8 +234,8 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
         cols.is_real = F::one();
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr = F::from_canonical_u32(event.p_ptr);
-        cols.q_ptr = F::from_canonical_u32(event.q_ptr);
+        cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u32 * 4);
+        cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u32 * 4);
 
         Self::populate_field_ops(blu, cols, p_x, p_y, q_x, q_y);
 
@@ -326,10 +327,24 @@ where
 
         let result_words = x_result_words.into_iter().chain(y_result_words).collect_vec();
 
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            WORDS_CURVE_POINT as u32 * 4,
+            local.p_ptr,
+            local.is_real.into(),
+        );
+
+        let q_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            WORDS_CURVE_POINT as u32 * 4,
+            local.q_ptr,
+            local.is_real.into(),
+        );
+
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            local.q_ptr,
+            q_ptr.clone(),
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -337,7 +352,7 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk + AB::F::from_canonical_u32(1),
-            local.p_ptr,
+            p_ptr.clone(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -347,8 +362,8 @@ where
             local.shard,
             local.clk,
             AB::F::from_canonical_u32(SyscallCode::ED_ADD.syscall_id()),
-            local.p_ptr,
-            local.q_ptr,
+            p_ptr,
+            q_ptr,
             local.is_real,
             InteractionScope::Local,
         );

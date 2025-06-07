@@ -41,23 +41,16 @@ impl<F: Field> LtOperationSigned<F> {
         b_u32: u32,
         c_u32: u32,
         is_signed: bool,
-        is_real: bool,
     ) {
         let b_comp = u32_to_u16_limbs(b_u32);
         let c_comp = u32_to_u16_limbs(c_u32);
         if is_signed {
-            self.b_msb.populate_msb(record, b_comp[1], is_real);
-            self.c_msb.populate_msb(record, c_comp[1], is_real);
+            self.b_msb.populate_msb(record, b_comp[1]);
+            self.c_msb.populate_msb(record, c_comp[1]);
             // (a as i32) < (b as i32) if and only if (a ^ (1 << 31)) < (b ^ (1 << 31))
-            self.result.populate_unsigned(
-                record,
-                a_u32,
-                b_u32 ^ (1 << 31),
-                c_u32 ^ (1 << 31),
-                is_real,
-            );
+            self.result.populate_unsigned(record, a_u32, b_u32 ^ (1 << 31), c_u32 ^ (1 << 31));
         } else {
-            self.result.populate_unsigned(record, a_u32, b_u32, c_u32, is_real);
+            self.result.populate_unsigned(record, a_u32, b_u32, c_u32);
         }
     }
 
@@ -132,7 +125,6 @@ impl<F: Field> LtOperationUnsigned<F> {
         a_u32: u32,
         b_u32: u32,
         c_u32: u32,
-        is_real: bool,
     ) {
         let a_limbs = u32_to_u16_limbs(a_u32);
         let b_limbs = u32_to_u16_limbs(b_u32);
@@ -150,9 +142,7 @@ impl<F: Field> LtOperationUnsigned<F> {
                 comparison_limbs[1] = *c_limb;
                 let b_limb = F::from_canonical_u16(*b_limb);
                 let c_limb = F::from_canonical_u16(*c_limb);
-                if is_real {
-                    self.not_eq_inv = (b_limb - c_limb).inverse();
-                }
+                self.not_eq_inv = (b_limb - c_limb).inverse();
                 self.comparison_limbs = [b_limb, c_limb];
                 break;
             }
@@ -162,7 +152,6 @@ impl<F: Field> LtOperationUnsigned<F> {
             a_u16,
             comparison_limbs[0],
             comparison_limbs[1],
-            is_real,
         );
     }
 
@@ -205,7 +194,7 @@ impl<F: Field> LtOperationUnsigned<F> {
 
             // If inequality is not visited, assert that the limbs are equal.
             builder
-                .when_not(is_inequality_visited.clone())
+                .when(is_real.clone() - is_inequality_visited.clone())
                 .assert_eq(b_limb.clone(), c_limb.clone());
 
             b_comparison_limb = b_comparison_limb.clone() + b_limb.clone() * flag.into();

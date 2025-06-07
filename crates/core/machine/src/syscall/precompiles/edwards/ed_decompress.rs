@@ -1,6 +1,7 @@
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
+    operations::SyscallAddrOperation,
     utils::{limbs_to_words, next_multiple_of_32},
 };
 use core::{
@@ -54,7 +55,7 @@ pub struct EdDecompressCols<T> {
     pub is_real: T,
     pub shard: T,
     pub clk: T,
-    pub ptr: T,
+    pub ptr: SyscallAddrOperation<T>,
     pub sign: T,
     pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
     pub x_value: GenericArray<Word<T>, WordsFieldElement>,
@@ -80,7 +81,7 @@ impl<F: PrimeField32> EdDecompressCols<F> {
         self.is_real = F::from_bool(true);
         self.shard = F::from_canonical_u32(event.shard);
         self.clk = F::from_canonical_u32(event.clk);
-        self.ptr = F::from_canonical_u32(event.ptr);
+        self.ptr.populate(record, event.ptr, 64);
         self.sign = F::from_bool(event.sign);
         for i in 0..8 {
             let x_record = MemoryRecordEnum::Write(event.x_memory_records[i]);
@@ -171,10 +172,12 @@ impl<V: Copy> EdDecompressCols<V> {
         // Constrain that `neg_x.result` is also canonical.
         self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
 
+        let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
+
         builder.eval_memory_access_slice_write(
             self.shard,
             self.clk,
-            self.ptr,
+            ptr.clone(),
             &self.x_access,
             self.x_value.to_vec(),
             self.is_real,
@@ -183,7 +186,7 @@ impl<V: Copy> EdDecompressCols<V> {
         builder.eval_memory_access_slice_read(
             self.shard,
             self.clk,
-            self.ptr.into() + AB::F::from_canonical_u32(32),
+            ptr.clone() + AB::F::from_canonical_u32(32),
             &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
             self.is_real,
         );
@@ -211,7 +214,7 @@ impl<V: Copy> EdDecompressCols<V> {
             self.shard,
             self.clk,
             AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
-            self.ptr,
+            ptr,
             self.sign,
             self.is_real,
             InteractionScope::Local,

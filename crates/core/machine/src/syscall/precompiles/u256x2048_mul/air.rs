@@ -1,12 +1,12 @@
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::field::field_op::FieldOpCols,
+    operations::{field::field_op::FieldOpCols, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le},
 };
 use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
@@ -57,18 +57,16 @@ pub struct U256x2048MulCols<T> {
     pub clk: T,
 
     /// The pointer to the first input.
-    pub a_ptr: T,
+    pub a_ptr: SyscallAddrOperation<T>,
 
     /// The pointer to the second input.
-    pub b_ptr: T,
+    pub b_ptr: SyscallAddrOperation<T>,
 
-    pub lo_ptr: T,
-    pub hi_ptr: T,
+    pub lo_ptr: SyscallAddrOperation<T>,
+    pub hi_ptr: SyscallAddrOperation<T>,
 
     pub lo_ptr_memory: MemoryAccessCols<T>,
-    pub lo_ptr_memory_value: T,
     pub hi_ptr_memory: MemoryAccessCols<T>,
-    pub hi_ptr_memory_value: T,
 
     // Memory columns.
     pub a_memory: [MemoryAccessColsU8<T>; WORDS_FIELD_ELEMENT],
@@ -131,20 +129,18 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                         cols.is_real = F::one();
                         cols.shard = F::from_canonical_u32(event.shard);
                         cols.clk = F::from_canonical_u32(event.clk);
-                        cols.a_ptr = F::from_canonical_u32(event.a_ptr);
-                        cols.b_ptr = F::from_canonical_u32(event.b_ptr);
-                        cols.lo_ptr = F::from_canonical_u32(event.lo_ptr);
-                        cols.hi_ptr = F::from_canonical_u32(event.hi_ptr);
+                        cols.a_ptr.populate(&mut new_byte_lookup_events, event.a_ptr, 32);
+                        cols.b_ptr.populate(&mut new_byte_lookup_events, event.b_ptr, 256);
+                        cols.lo_ptr.populate(&mut new_byte_lookup_events, event.lo_ptr, 256);
+                        cols.hi_ptr.populate(&mut new_byte_lookup_events, event.hi_ptr, 32);
 
                         // Populate memory accesses for lo_ptr and hi_ptr.
                         let lo_ptr_memory_record = MemoryRecordEnum::Read(event.lo_ptr_memory);
-                        let current_lo_ptr_memory_record = lo_ptr_memory_record.current_record();
-                        cols.lo_ptr_memory_value =
-                            F::from_canonical_u32(current_lo_ptr_memory_record.value);
                         let hi_ptr_memory_record = MemoryRecordEnum::Read(event.hi_ptr_memory);
-                        let current_hi_ptr_memory_record = hi_ptr_memory_record.current_record();
-                        cols.hi_ptr_memory_value =
-                            F::from_canonical_u32(current_hi_ptr_memory_record.value);
+
+                        assert_eq!(lo_ptr_memory_record.prev_value(), event.lo_ptr);
+                        assert_eq!(hi_ptr_memory_record.prev_value(), event.hi_ptr);
+
                         cols.lo_ptr_memory
                             .populate(lo_ptr_memory_record, &mut new_byte_lookup_events);
                         cols.hi_ptr_memory
@@ -280,13 +276,22 @@ where
         // Assert that is_real is a boolean.
         builder.assert_bool(local.is_real);
 
+        let a_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.a_ptr, local.is_real.into());
+        let b_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.b_ptr, local.is_real.into());
+        let lo_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.lo_ptr, local.is_real.into());
+        let hi_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.hi_ptr, local.is_real.into());
+
         // Receive the arguments.
         builder.receive_syscall(
             local.shard,
             local.clk,
             AB::F::from_canonical_u32(SyscallCode::U256XU2048_MUL.syscall_id()),
-            local.a_ptr,
-            local.b_ptr,
+            a_ptr.clone(),
+            b_ptr.clone(),
             local.is_real,
             InteractionScope::Local,
         );
@@ -299,6 +304,7 @@ where
             local.lo_ptr_memory,
             local.is_real,
         );
+        builder.assert_word_eq(local.lo_ptr_memory.prev_value, local.lo_ptr.addr_word);
 
         builder.eval_memory_access_read(
             local.shard,
@@ -307,12 +313,13 @@ where
             local.hi_ptr_memory,
             local.is_real,
         );
+        builder.assert_word_eq(local.hi_ptr_memory.prev_value, local.hi_ptr.addr_word);
 
         // Evaluate the memory accesses for a_memory and b_memory.
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            local.a_ptr,
+            a_ptr.clone(),
             &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -320,7 +327,7 @@ where
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            local.b_ptr,
+            b_ptr.clone(),
             &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -390,7 +397,7 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into() + AB::Expr::one(),
-            local.lo_ptr,
+            lo_ptr.clone(),
             &local.lo_memory,
             result_words,
             local.is_real,
@@ -400,16 +407,10 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into() + AB::Expr::one(),
-            local.hi_ptr,
+            hi_ptr.clone(),
             &local.hi_memory,
             output_carry_words,
             local.is_real,
         );
-
-        // Constrain that the lo_ptr is the value of lo_ptr_memory.
-        builder.when(local.is_real).assert_eq(local.lo_ptr, local.lo_ptr_memory_value);
-
-        // Constrain that the hi_ptr is the value of hi_ptr_memory.
-        builder.when(local.is_real).assert_eq(local.hi_ptr, local.hi_ptr_memory_value);
     }
 }

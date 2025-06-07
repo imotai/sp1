@@ -568,8 +568,8 @@ impl NetworkProver {
 //         if let Some(tee_proof) = &bundle.tee_proof {
 //             if self.tee_signers.is_empty() {
 //                 return Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
-//                     "TEE integrity proof verification is enabled, but no TEE signers are provided"
-//                 )));
+//                     "TEE integrity proof verification is enabled, but no TEE signers are
+// provided"                 )));
 //             }
 
 //             let mut bytes = Vec::new();
@@ -594,7 +594,8 @@ impl NetworkProver {
 //                 .expect("Invalid signature");
 //             // The recovery id is the last byte of the signature minus 27.
 //             let recovery_id =
-//                 k256::ecdsa::RecoveryId::from_byte(tee_proof[4] - 27).expect("Invalid recovery id");
+//                 k256::ecdsa::RecoveryId::from_byte(tee_proof[4] - 27).expect("Invalid recovery
+// id");
 
 //             // Recover the signer.
 //             let signer = k256::ecdsa::VerifyingKey::recover_from_prehash(

@@ -102,7 +102,9 @@ impl SyscallInstrsChip {
         cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
         blu.add_u16_range_checks(&u32_to_u16_limbs(record.a.value()));
         let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
+
         let syscall_id = a_prev_value[0];
+        let send_to_table = a_prev_value[1];
         let num_cycles = a_prev_value[2];
 
         cols.num_extra_cycles = num_cycles;
@@ -150,18 +152,15 @@ impl SyscallInstrsChip {
             blu.add_u8_range_checks(&digest_bytes);
         }
 
-        // For halt and commit deferred proofs syscalls, we need to baby bear range check one of
-        // it's operands.
-        if cols.is_halt == F::one() {
-            cols.operand_to_check = event.arg1.into();
-            cols.operand_range_check_cols.populate(cols.operand_to_check, blu);
-            cols.ecall_range_check_operand = F::one();
+        // Add the BabyBear range check of the operands.
+        if send_to_table == F::one() || cols.is_halt == F::one() {
+            cols.op_b_range_check.populate(Word::from(event.arg1), blu);
         }
 
-        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()) {
-            cols.operand_to_check = event.arg2.into();
-            cols.operand_range_check_cols.populate(cols.operand_to_check, blu);
-            cols.ecall_range_check_operand = F::one();
+        if send_to_table == F::one()
+            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
+        {
+            cols.op_c_range_check.populate(Word::from(event.arg2), blu);
         }
     }
 }

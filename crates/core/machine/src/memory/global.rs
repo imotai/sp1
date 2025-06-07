@@ -99,7 +99,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                     cols.prev_addr_range_checker.populate(Word::from(prev_addr), &mut blu);
                     cols.addr_range_checker.populate(Word::from(addr), &mut blu);
                     if i != 0 || prev_addr != 0 {
-                        cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr, true);
+                        cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
                     }
                 });
                 blu
@@ -157,7 +157,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let mut rows: Vec<[F; NUM_MEMORY_INIT_COLS]> = memory_events
             .par_iter()
             .map(|event| {
-                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp, used } =
+                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp } =
                     event.to_owned();
 
                 let mut blu = vec![];
@@ -168,7 +168,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 cols.shard = F::from_canonical_u32(shard);
                 cols.timestamp = F::from_canonical_u32(timestamp);
                 cols.value = Word::from(value);
-                cols.is_real = F::from_canonical_u32(used);
+                cols.is_real = F::one();
                 row
             })
             .collect::<Vec<_>>();
@@ -190,7 +190,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             cols.is_index_zero.populate(i as u32);
             if prev_addr != 0 || i != 0 {
                 cols.is_comp = F::one();
-                cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr, true);
+                cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
             }
         }
 
@@ -425,11 +425,6 @@ where
         let is_not_comp = local.is_real - local.is_comp;
         builder.when(is_not_comp.clone()).assert_word_zero(local.addr);
         builder.when(is_not_comp.clone()).assert_word_zero(local.value);
-
-        // Make assertions for specific types of memory chips.
-        if self.kind == MemoryChipType::Initialize {
-            builder.when(local.is_real).assert_eq(local.timestamp, AB::F::one());
-        }
     }
 }
 
