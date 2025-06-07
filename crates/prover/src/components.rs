@@ -16,31 +16,33 @@ use sp1_core_machine::riscv::RiscvAir;
 use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, OuterSC, WrapAir};
 use sp1_stark::{
     air::MachineAir,
-    prover::{MachineProverComponents, ShardProver, ZerocheckAir},
+    prover::{MachineProverComponents, ShardProver, ShardProverComponents, ZerocheckAir},
     GkrProverImpl, MachineConfig, ShardVerifier,
 };
 
 pub struct CudaSP1ProverComponents;
 
 impl SP1ProverComponents for CudaSP1ProverComponents {
-    type CoreComponents =
-        CudaProverComponents<Poseidon2BabyBearJaggedCudaProverComponents, RiscvAir<BabyBear>>;
-    type RecursionComponents = CudaProverComponents<
+    type CoreComponents = CudaMachineProverComponents<
+        Poseidon2BabyBearJaggedCudaProverComponents,
+        RiscvAir<BabyBear>,
+    >;
+    type RecursionComponents = CudaMachineProverComponents<
         Poseidon2BabyBearJaggedCudaProverComponents,
         CompressAir<<InnerSC as JaggedConfig>::F>,
     >;
-    type WrapComponents = CudaProverComponents<
+    type WrapComponents = CudaMachineProverComponents<
         Poseidon2Bn254JaggedCudaProverComponents,
         WrapAir<<OuterSC as JaggedConfig>::F>,
     >;
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct CudaProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
+pub struct CudaShardProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
 
-pub type CudaProver<PcsComponents, A> = ShardProver<CudaProverComponents<PcsComponents, A>>;
+pub type CudaProver<PcsComponents, A> = ShardProver<CudaShardProverComponents<PcsComponents, A>>;
 
-impl<JC, A> MachineProverComponents for CudaProverComponents<JC, A>
+impl<JC, A> ShardProverComponents for CudaShardProverComponents<JC, A>
 where
     JC: JaggedProverComponents<
         F = BabyBear,
@@ -98,4 +100,23 @@ where
         zerocheck_prover_data: zerocheck_data,
         pcs_prover,
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CudaMachineProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
+
+impl<JC, A> MachineProverComponents for CudaMachineProverComponents<JC, A>
+where
+    JC: JaggedProverComponents<
+        F = BabyBear,
+        EF = BinomialExtensionField<BabyBear, 4>,
+        A = TaskScope,
+    >,
+    A: CudaTracegenAir<JC::F> + ZerocheckAir<JC::F, JC::EF> + std::fmt::Debug,
+{
+    type F = JC::F;
+    type EF = JC::EF;
+    type Config = JC::Config;
+    type Prover = ShardProver<CudaShardProverComponents<JC, A>>;
+    type Air = A;
 }
