@@ -14,7 +14,7 @@ use sp1_core_machine::air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder}
 use sp1_core_machine::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
 use sp1_core_machine::operations::poseidon2::permutation::Poseidon2Cols;
 use sp1_core_machine::operations::poseidon2::WIDTH;
-use sp1_core_machine::operations::GlobalAccumulationOperation;
+use sp1_core_machine::operations::{GlobalAccumulationOperation, SyscallAddrOperation};
 use sp1_core_machine::riscv::{WeierstrassAddAssignChip, WeierstrassDoubleAssignChip};
 use sp1_core_machine::syscall::precompiles::weierstrass::{
     WeierstrassAddAssignCols, WeierstrassDoubleAssignCols,
@@ -589,10 +589,23 @@ where
                     limbs_to_words::<SymbolicProverFolder>(local.y3_ins.result.0.to_vec());
                 let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
+                let p_ptr = SyscallAddrOperation::<F>::eval(
+                    builder,
+                    E::NB_LIMBS as u32 * 2,
+                    local.p_ptr,
+                    local.is_real.into(),
+                );
+                let q_ptr = SyscallAddrOperation::<F>::eval(
+                    builder,
+                    E::NB_LIMBS as u32 * 2,
+                    local.q_ptr,
+                    local.is_real.into(),
+                );
+
                 builder.eval_memory_access_slice_read(
                     local.shard,
                     local.clk,
-                    local.q_ptr,
+                    q_ptr,
                     &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
                     local.is_real,
                 );
@@ -600,7 +613,7 @@ where
                 builder.eval_memory_access_slice_write(
                     local.shard,
                     local.clk + F::from_canonical_u32(1),
-                    local.p_ptr,
+                    p_ptr,
                     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
                     result_words,
                     local.is_real,
@@ -625,8 +638,8 @@ where
                     local.shard,
                     local.clk,
                     syscall_id_felt,
-                    local.p_ptr,
-                    local.q_ptr,
+                    p_ptr,
+                    q_ptr,
                     local.is_real,
                     InteractionScope::Local,
                 );
@@ -765,10 +778,17 @@ where
                     limbs_to_words::<SymbolicProverFolder>(local.y3_ins.result.0.to_vec());
                 let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
 
+                let p_ptr = SyscallAddrOperation::<F>::eval(
+                    builder,
+                    E::NB_LIMBS as u32 * 2,
+                    local.p_ptr,
+                    local.is_real.into(),
+                );
+
                 builder.eval_memory_access_slice_write(
                     local.shard,
                     local.clk,
-                    local.p_ptr,
+                    p_ptr,
                     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
                     result_words,
                     local.is_real,
@@ -795,7 +815,7 @@ where
                     local.shard,
                     local.clk,
                     syscall_id_felt,
-                    local.p_ptr,
+                    p_ptr,
                     SymbolicExprF::zero(),
                     local.is_real,
                     InteractionScope::Local,
