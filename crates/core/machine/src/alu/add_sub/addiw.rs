@@ -2,7 +2,6 @@ use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-use std::num::Wrapping;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
@@ -22,7 +21,7 @@ use sp1_stark::{
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
-    operations::AddOperation,
+    operations::AddwOperation,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -44,8 +43,7 @@ pub struct AddiwCols<T> {
     pub adapter: ITypeReader<T>,
 
     /// Instance of `AddOperation` to handle addition logic in `AddiChip`'s ALU operations.
-    // pub add_operation: AddOperation<T>,
-    pub value: Word<T>,
+    pub addw_operation: AddwOperation<T>,
 
     /// Boolean to indicate whether the row is not a padding row.
     pub is_real: T,
@@ -155,9 +153,9 @@ impl AddiwChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        let value = (Wrapping(event.b as i32) + Wrapping(event.c as i32)).0 as u64;
-        cols.value = Word::from(value);
-        // cols.add_operation.populate(blu, event.b, event.c);
+        // let value = (Wrapping(event.b as i32) + Wrapping(event.c as i32)).0 as u64;
+        // cols.value = Word::from(value);
+        cols.addw_operation.populate(blu, event.b, event.c, true);
     }
 }
 
@@ -181,13 +179,13 @@ where
         let opcode = AB::Expr::from_f(Opcode::ADDIW.as_field());
 
         // Constrain the add operation over `op_b` and `op_c`.
-        // AddOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(|x| x.into()),
-        //     local.adapter.c().map(|x| x.into()),
-        //     local.add_operation,
-        //     local.is_real.into(),
-        // );
+        AddwOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(|x| x.into()),
+            local.adapter.c().map(|x| x.into()),
+            local.addw_operation,
+            local.is_real.into(),
+        );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4`.
@@ -199,6 +197,15 @@ where
             local.is_real.into(),
         );
 
+        let u16_max = AB::F::from_canonical_u32((1 << 16) - 1 as u32);
+
+        let word: Word<AB::Expr> = Word([
+            local.addw_operation.value[0].into(),
+            local.addw_operation.value[1].into(),
+            local.addw_operation.msb.msb * u16_max,
+            local.addw_operation.msb.msb * u16_max,
+        ]);
+
         // Constrain the program and register reads.
         ITypeReader::<AB::F>::eval(
             builder,
@@ -206,7 +213,7 @@ where
             local.state.clk::<AB>(),
             local.state.pc,
             opcode,
-            local.value,
+            word,
             local.adapter,
             local.is_real.into(),
         );

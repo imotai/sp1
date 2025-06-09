@@ -30,8 +30,8 @@ impl<F: Field> BitwiseU16Operation<F> {
         c_u64: u64,
         opcode: Opcode,
     ) {
-        // self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
-        // self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
+        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
+        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
         self.bitwise_operation.populate_bitwise(record, a_u64, b_u64, c_u64, opcode);
     }
 
@@ -50,21 +50,21 @@ impl<F: Field> BitwiseU16Operation<F> {
     ) -> Word<AB::Expr> {
         builder.assert_bool(is_real.clone());
 
-        // // Convert the two words to bytes using the unsafe API.
-        // // SAFETY: This is safe because the `BitwiseOperation` will range check the bytes.
-        // let b_bytes =
-        //     U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, b.0, cols.b_low_bytes);
-        // let c_bytes =
-        //     U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, c.0, cols.c_low_bytes);
-        // // SAFETY: This is safe because `is_real` is constrained to be boolean.
-        // BitwiseOperation::<AB::F>::eval_bitwise(
-        //     builder,
-        //     b_bytes,
-        //     c_bytes,
-        //     cols.bitwise_operation,
-        //     opcode,
-        //     is_real,
-        // );
+        // Convert the two words to bytes using the unsafe API.
+        // SAFETY: This is safe because the `BitwiseOperation` will range check the bytes.
+        let b_bytes =
+            U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, b.0, cols.b_low_bytes);
+        let c_bytes =
+            U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, c.0, cols.c_low_bytes);
+        // SAFETY: This is safe because `is_real` is constrained to be boolean.
+        BitwiseOperation::<AB::F>::eval_bitwise(
+            builder,
+            b_bytes,
+            c_bytes,
+            cols.bitwise_operation,
+            opcode,
+            is_real,
+        );
 
         // Combine the byte results into two u16 limbs.
         let result_limb0 = cols.bitwise_operation.result[0]

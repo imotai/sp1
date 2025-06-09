@@ -21,8 +21,7 @@ impl<F: Field> SubOperation<F> {
         let expected = a_u64.wrapping_sub(b_u64);
         self.value = Word::from(expected);
         // Range check
-        // TODO: u16
-        // record.add_u16_range_checks(&u64_to_u16_limbs(expected));
+        record.add_u16_range_checks(&u64_to_u16_limbs(expected));
         expected
     }
 
@@ -44,7 +43,7 @@ impl<F: Field> SubOperation<F> {
         let mut carry = AB::Expr::one();
         let one = AB::Expr::one();
 
-        // Use the same logic as addition, for (a + (2^32 - b)).
+        // Use the same logic as addition, for (a + (2^64 - b)).
         // This by using `2^16 - 1 - b[i]` as the added limb, and initializing the carry to 1.
         for i in 0..WORD_SIZE {
             carry = (a[i] + base - one.clone() - b[i] - cols.value[i] + carry) * base.inverse();

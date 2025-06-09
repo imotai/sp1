@@ -157,7 +157,7 @@ impl<F: Field> MulOperation<F> {
         let one: AB::Expr = AB::F::one().into();
         let byte_mask = AB::F::from_canonical_u8(BYTE_MASK);
 
-        // Uses the safe API to convert the words into four bytes.
+        // Uses the safe API to convert the words into eight bytes.
         let b = U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
             builder,
             b_word.0,

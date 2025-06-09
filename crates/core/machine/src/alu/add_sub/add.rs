@@ -175,13 +175,13 @@ where
         let opcode = AB::Expr::from_f(Opcode::ADD.as_field());
 
         // Constrain the add operation over `op_b` and `op_c`.
-        // AddOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(|x| x.into()),
-        //     local.adapter.c().map(|x| x.into()),
-        //     local.add_operation,
-        //     local.is_real.into(),
-        // );
+        AddOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(|x| x.into()),
+            local.adapter.c().map(|x| x.into()),
+            local.add_operation,
+            local.is_real.into(),
+        );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4`.

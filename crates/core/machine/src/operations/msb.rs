@@ -20,12 +20,12 @@ impl<F: Field> U16MSBOperation<F> {
         let msb = (a_u16 >> 15) & 1;
         self.msb = F::from_canonical_u16(msb);
         let diff = a_u16.wrapping_mul(2u16);
-        // record.add_byte_lookup_event(ByteLookupEvent {
-        //     opcode: ByteOpcode::Range,
-        //     a: diff,
-        //     b: 16,
-        //     c: 0,
-        // });
+        record.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::Range,
+            a: diff,
+            b: 16,
+            c: 0,
+        });
         msb as u32
     }
 

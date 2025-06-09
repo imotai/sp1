@@ -226,6 +226,13 @@ where
         // // This chip requires `op_a != x0`.
         // builder.assert_zero(local.adapter.op_a_0);
 
+        U16MSBOperation::<AB::F>::eval_msb(
+            builder,
+            local.selected_word[1].into(),
+            local.msb,
+            local.is_lw.into(),
+        );
+
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(
             builder,

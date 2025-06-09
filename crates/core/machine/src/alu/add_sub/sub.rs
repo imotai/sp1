@@ -174,13 +174,13 @@ where
         let opcode = AB::Expr::from_f(Opcode::SUB.as_field());
 
         // Constrain the sub operation over `op_b` and `op_c`.
-        // SubOperation::<AB::F>::eval(
-        //     builder,
-        //     *local.adapter.b(),
-        //     *local.adapter.c(),
-        //     local.sub_operation,
-        //     local.is_real.into(),
-        // );
+        SubOperation::<AB::F>::eval(
+            builder,
+            *local.adapter.b(),
+            *local.adapter.c(),
+            local.sub_operation,
+            local.is_real.into(),
+        );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4`.

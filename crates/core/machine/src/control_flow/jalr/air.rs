@@ -29,13 +29,13 @@ where
         let opcode = Opcode::JALR.as_field::<AB::F>();
 
         // We constrain `next_pc` to be the sum of `op_b` and `op_c`.
-        // AddOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(|x| x.into()),
-        //     local.adapter.c().map(|x| x.into()),
-        //     local.add_operation,
-        //     local.is_real.into(),
-        // );
+        AddOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(|x| x.into()),
+            local.adapter.c().map(|x| x.into()),
+            local.add_operation,
+            local.is_real.into(),
+        );
 
         let next_pc = local.add_operation.value;
 

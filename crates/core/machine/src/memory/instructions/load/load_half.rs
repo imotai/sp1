@@ -238,12 +238,12 @@ where
         // // Get the MSB of the selected limb if the opcode is `LH`.
         // // If the opcode is `LHU`, the MSB is constrained to be zero.
         // builder.when(local.is_lhu).assert_zero(local.msb.msb);
-        // U16MSBOperation::<AB::F>::eval_msb(
-        //     builder,
-        //     local.selected_limb.into(),
-        //     local.msb,
-        //     local.is_lh.into(),
-        // );
+        U16MSBOperation::<AB::F>::eval_msb(
+            builder,
+            local.selected_half.into(),
+            local.msb,
+            local.is_lh.into(),
+        );
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(

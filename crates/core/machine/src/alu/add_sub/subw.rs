@@ -22,7 +22,7 @@ use sp1_stark::{
 
 use crate::{
     adapter::{register::r_type::RTypeReader, state::CPUState},
-    operations::SubOperation,
+    operations::SubwOperation,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -43,11 +43,8 @@ pub struct SubwCols<T> {
     /// The adapter to read program and register information.
     pub adapter: RTypeReader<T>,
 
-    /// Instance of `SubOperation` to handle subtraction logic in `SubChip`'s ALU operations.
-    // pub sub_operation: SubOperation<T>,
-
-    /// The value of the subw operation.
-    pub value: Word<T>,
+    /// Instance of `SubwOperation` to handle subtraction logic in `SubChip`'s ALU operations.
+    pub subw_operation: SubwOperation<T>,
 
     /// Boolean to indicate whether the row is not a padding row.
     pub is_real: T,
@@ -157,9 +154,7 @@ impl SubwChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        let value = (Wrapping(event.b as i32) - Wrapping(event.c as i32)).0 as i64 as u64;
-        cols.value = Word::from(value);
-        // cols.sub_operation.populate(blu, event.b, event.c);
+        cols.subw_operation.populate(blu, event.b, event.c, true);
     }
 }
 
@@ -183,13 +178,13 @@ where
         let opcode = AB::Expr::from_f(Opcode::SUBW.as_field());
 
         // Constrain the sub operation over `op_b` and `op_c`.
-        // SubOperation::<AB::F>::eval(
-        //     builder,
-        //     *local.adapter.b(),
-        //     *local.adapter.c(),
-        //     local.sub_operation,
-        //     local.is_real.into(),
-        // );
+        SubwOperation::<AB::F>::eval(
+            builder,
+            *local.adapter.b(),
+            *local.adapter.c(),
+            local.subw_operation,
+            local.is_real.into(),
+        );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4`.
@@ -201,6 +196,15 @@ where
             local.is_real.into(),
         );
 
+        let u16_max = AB::F::from_canonical_u32((1 << 16) - 1 as u32);
+
+        let word: Word<AB::Expr> = Word([
+            local.subw_operation.value[0].into(),
+            local.subw_operation.value[1].into(),
+            local.subw_operation.msb.msb * u16_max,
+            local.subw_operation.msb.msb * u16_max,
+        ]);
+
         // Constrain the program and register reads.
         RTypeReader::<AB::F>::eval(
             builder,
@@ -208,7 +212,7 @@ where
             local.state.clk::<AB>(),
             local.state.pc,
             opcode,
-            local.value,
+            word,
             local.adapter,
             local.is_real.into(),
         );
