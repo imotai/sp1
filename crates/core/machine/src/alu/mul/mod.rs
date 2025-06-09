@@ -196,13 +196,14 @@ impl MulChip {
         cols: &mut MulCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        // cols.mul_operation.populate(
-        //     blu,
-        //     event.b,
-        //     event.c,
-        //     event.opcode == Opcode::MULH,
-        //     event.opcode == Opcode::MULHSU,
-        // );
+        cols.mul_operation.populate(
+            blu,
+            event.b,
+            event.c,
+            event.opcode == Opcode::MULH,
+            event.opcode == Opcode::MULHSU,
+            event.opcode == Opcode::MULW,
+        );
 
         cols.is_mul = F::from_bool(event.opcode == Opcode::MUL);
         cols.is_mulh = F::from_bool(event.opcode == Opcode::MULH);
@@ -231,18 +232,19 @@ where
         let local: &MulCols<AB::Var> = (*local).borrow();
 
         // Constrain the multiplication operation over `op_b`, `op_c` and the selectors.
-        // MulOperation::<AB::F>::eval(
-        //     builder,
-        //     local.a.map(|x| x.into()),
-        //     local.adapter.b().map(|x| x.into()),
-        //     local.adapter.c().map(|x| x.into()),
-        //     local.mul_operation,
-        //     local.is_real.into(),
-        //     local.is_mul.into(),
-        //     local.is_mulh.into(),
-        //     local.is_mulhu.into(),
-        //     local.is_mulhsu.into(),
-        // );
+        MulOperation::<AB::F>::eval(
+            builder,
+            local.a.map(|x| x.into()),
+            local.adapter.b().map(|x| x.into()),
+            local.adapter.c().map(|x| x.into()),
+            local.mul_operation,
+            local.is_real.into(),
+            local.is_mul.into(),
+            local.is_mulh.into(),
+            local.is_mulw.into(),
+            local.is_mulhu.into(),
+            local.is_mulhsu.into(),
+        );
 
         // Calculate the opcode.
         let opcode = {
@@ -254,6 +256,7 @@ where
             builder.assert_bool(local.is_mul);
             builder.assert_bool(local.is_mulh);
             builder.assert_bool(local.is_mulhu);
+            builder.assert_bool(local.is_mulw);
             builder.assert_bool(local.is_mulhsu);
             builder.assert_bool(local.is_real);
 
