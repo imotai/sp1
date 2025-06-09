@@ -18,12 +18,12 @@ impl<F: Field> U16CompareOperation<F> {
     pub fn populate(&mut self, record: &mut impl ByteRecord, a_u16: u16, b_u16: u16, c_u16: u16) {
         self.bit = F::from_canonical_u16(a_u16);
         let diff = b_u16.wrapping_sub(c_u16);
-        // record.add_byte_lookup_event(ByteLookupEvent {
-        //     opcode: ByteOpcode::Range,
-        //     a: diff as u16,
-        //     b: 16,
-        //     c: 0,
-        // });
+        record.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::Range,
+            a: diff as u16,
+            b: 16,
+            c: 0,
+        });
     }
 
     /// Evaluate the compare operation.

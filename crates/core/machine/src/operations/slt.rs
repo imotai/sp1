@@ -45,9 +45,9 @@ impl<F: Field> LtOperationSigned<F> {
         let b_comp = u64_to_u16_limbs(b_u64);
         let c_comp = u64_to_u16_limbs(c_u64);
         if is_signed {
-            // self.b_msb.populate_msb(record, b_comp[1]);
-            // self.c_msb.populate_msb(record, c_comp[1]);
-            // (a as i32) < (b as i32) if and only if (a ^ (1 << 31)) < (b ^ (1 << 31))
+            self.b_msb.populate_msb(record, b_comp[3]);
+            self.c_msb.populate_msb(record, c_comp[3]);
+            // (a as i64) < (b as i64) if and only if (a ^ (1 << 63)) < (b ^ (1 << 63))
             self.result.populate_unsigned(record, a_u64, b_u64 ^ (1 << 63), c_u64 ^ (1 << 63));
         } else {
             self.result.populate_unsigned(record, a_u64, b_u64, c_u64);
@@ -170,9 +170,12 @@ impl<F: Field> LtOperationUnsigned<F> {
 
         // Verify that the limb equality flags are set correctly, i.e. all are boolean and only
         // at most a single byte flag is set.
-        let sum_flags = cols.u16_flags[0] + cols.u16_flags[1];
+        let sum_flags =
+            cols.u16_flags[0] + cols.u16_flags[1] + cols.u16_flags[2] + cols.u16_flags[3];
         builder.assert_bool(cols.u16_flags[0]);
         builder.assert_bool(cols.u16_flags[1]);
+        builder.assert_bool(cols.u16_flags[2]);
+        builder.assert_bool(cols.u16_flags[3]);
         builder.assert_bool(sum_flags.clone());
 
         let is_comp_eq = AB::Expr::one() - sum_flags;
