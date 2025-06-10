@@ -1,5 +1,5 @@
 [package]
-name = "cuslop"
+name = "cuslop-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,21 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+tokio = { workspace = true }
+sp1-cuda = { workspace = true }
+sp1-core-machine = { workspace = true }
+sp1-stark = { workspace = true }
+sp1-core-executor = { workspace = true }
+sp1-prover = { workspace = true }
+sp1-primitives = { workspace = true }
+csl-prover = { workspace = true }
+csl-cuda = { workspace = true }
+sha2 = "0.10.9"
+bincode = "1.3.3"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing = { workspace = true }
+clap = { version = "4.5.38", features = ["derive"] }
+
 
 [lints]
 workspace = true

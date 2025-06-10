@@ -54,7 +54,7 @@ public:
 
     inline size_t len() const { return 1; }
 
-    inline bb31_t() {}
+    __host__ __device__ constexpr bb31_t() = default;
 
     inline constexpr bb31_t(const uint32_t a) : val(a) {}
 

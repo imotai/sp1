@@ -1,0 +1,52 @@
+# Start with a base image that includes CUDA
+FROM nvidia/cuda:12.5.1-devel-ubuntu22.04 AS builder
+
+# Install necessary packages
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    protobuf-compiler \
+    libssl-dev \
+    git \   
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Define a TMPDIR on the same "filesystem" as /root for rustup
+ENV RUSTUP_TMPDIR=/root/rustup_tmp
+# For general temp operations, also good to ensure it's not on a different device
+ENV TMPDIR=${RUSTUP_TMPDIR}
+
+RUN mkdir -p /root/rustup_tmp
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Succinct toolchain
+RUN curl -L https://sp1.succinct.xyz | bash && \
+    export PATH="$PATH:/root/.sp1/bin" && \
+    sp1up && \
+    cargo prove --version
+
+# Set the working directory in the container
+WORKDIR /usr/src/app
+
+# Copy the Rust project files
+COPY . .
+
+# Add the SSH private key to the container
+RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh \
+    && ssh-keyscan github.com >> /root/.ssh/known_hosts \
+    && git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+# Build the Rust project
+RUN --mount=type=ssh CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build -p cuslop-server --release
+
+# Runtime stage
+FROM nvidia/cuda:12.5.1-runtime-ubuntu22.04
+
+# Copy the binary from the builder stage
+COPY --from=builder /usr/src/app/target/release/cuslop-server /usr/local/bin/cuslop-server
+
+# Set the entrypoint to run the binary
+ENTRYPOINT ["cuslop-server"]
