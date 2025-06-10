@@ -154,7 +154,7 @@ pub struct Executor<'a> {
     pub hook_registry: HookRegistry<'a>,
 
     /// The costs of the program.
-    pub costs: HashMap<RiscvAirId, u64>,
+    pub costs: EnumMap<RiscvAirId, u64>,
 
     /// Skip deferred proof verification. This check is informational only, not related to circuit
     /// correctness.
@@ -376,7 +376,7 @@ impl<'a> Executor<'a> {
 
         let costs: HashMap<String, usize> =
             serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
-        let costs: HashMap<RiscvAirId, usize> =
+        let costs: EnumMap<RiscvAirId, usize> =
             costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v)).collect();
 
         let program_len = program.instructions.len() as u64;
