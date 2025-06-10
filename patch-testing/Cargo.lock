@@ -2589,7 +2589,6 @@ source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5c491a01e
 dependencies = [
  "p3-field",
  "p3-matrix",
- "serde",
 ]
 
 [[package]]
@@ -4443,6 +4442,7 @@ dependencies = [
  "slop-alloc",
  "slop-baby-bear",
  "slop-basefold",
+ "slop-bn254",
  "slop-challenger",
  "slop-commit",
  "slop-futures",

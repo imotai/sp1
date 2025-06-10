@@ -98,6 +98,24 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         Self { x, y, _marker: std::marker::PhantomData }
     }
 
+    pub fn to_sec1_uncompressed(&self) -> Vec<u8> {
+        fn le_to_fixed_be<E: EllipticCurveParameters>(n: &BigUint) -> Vec<u8> {
+            let le = n.to_bytes_le();
+
+            // todo: make this const
+            let mut buf = vec![0_u8; E::BaseField::NB_BYTES];
+            buf[..le.len()].copy_from_slice(&le);
+            buf.reverse();
+            buf
+        }
+
+        let mut out = vec![0u8; E::BaseField::NB_BYTES * 2 + 1];
+        out[0] = 0x04;
+        out[1..E::BaseField::NB_BYTES + 1].copy_from_slice(&le_to_fixed_be::<E>(&self.x));
+        out[E::BaseField::NB_BYTES + 1..].copy_from_slice(&le_to_fixed_be::<E>(&self.y));
+        out
+    }
+
     pub fn from_words_le(words: &[u32]) -> Self {
         let x_bytes =
             words[0..words.len() / 2].iter().flat_map(|n| n.to_le_bytes()).collect::<Vec<_>>();

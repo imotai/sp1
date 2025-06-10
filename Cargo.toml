@@ -30,11 +30,11 @@ members = [
   "crates/cuda",
   "crates/cli",
   # "crates/verifier",
+  # "crates/perf"
 ]
 exclude = [
   "examples/target",
   "crates/eval",
-  "crates/perf",
   "crates/recursion/circuit-old",
   "crates/recursion/gnark-cli",
   # "crates/verifier",
