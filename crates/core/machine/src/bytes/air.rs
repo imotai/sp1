@@ -48,6 +48,7 @@ impl<AB: SP1AirBuilder + PairBuilder> Air<AB> for ByteChip<AB::F> {
                 ByteOpcode::MSB => {
                     builder.receive_byte(field_op, local.msb, local.b, AB::F::zero(), mult)
                 }
+                ByteOpcode::SR => builder.receive_byte(field_op, local.sr, local.b, local.c, mult),
                 _ => panic!("invalid opcode found in byte table"),
             }
         }

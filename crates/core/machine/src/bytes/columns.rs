@@ -32,6 +32,9 @@ pub struct BytePreprocessedCols<T> {
 
     /// The most significant bit of `b`.
     pub msb: T,
+
+    /// The result of the `SR` operation on `b` and `c` (b shifted right by c bits).
+    pub sr: T,
 }
 
 /// For each byte operation in the preprocessed table, a corresponding ByteMultCols row tracks the
