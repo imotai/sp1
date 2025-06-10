@@ -89,6 +89,18 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
         (pk, Arc::new(program), SP1VerifyingKey { vk })
     }
 
+    /// Setup the core prover with a vk already known.
+    #[must_use]
+    pub async fn setup_with_vk(
+        &self,
+        program: Arc<Program>,
+        vk: SP1VerifyingKey,
+    ) -> PreprocessedData<MachineProvingKey<C>> {
+        let (pk, _) = self.prover.setup(program, Some(vk.vk)).await.unwrap();
+
+        pk
+    }
+
     /// Prove a core shard
     #[inline]
     #[must_use]

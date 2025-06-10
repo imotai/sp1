@@ -1,6 +1,6 @@
 // use std::{fs::File, path::Path};
 
-use std::{borrow::Borrow, fs::File, path::Path, sync::Arc};
+use std::{borrow::Borrow, fs::File, path::Path};
 
 use anyhow::Result;
 use clap::ValueEnum;
@@ -24,24 +24,10 @@ use sp1_recursion_circuit::{
     utils::babybears_to_bn254,
     InnerSC,
 };
-use sp1_stark::{
-    prover::MachineProvingKey, ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof,
-    DIGEST_SIZE,
-};
+use sp1_stark::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
 use thiserror::Error;
 
-use crate::{
-    components::{CpuSP1ProverComponents, SP1ProverComponents},
-    CoreSC,
-};
-
-// todo!(n): remove
-pub struct SP1ProvingKey {
-    pub pk: Arc<MachineProvingKey<<CpuSP1ProverComponents as SP1ProverComponents>::CoreComponents>>,
-    pub elf: Arc<Vec<u8>>,
-    /// Verifying key is also included as we need it for recursion
-    pub vk: SP1VerifyingKey,
-}
+use crate::CoreSC;
 
 /// The information necessary to verify a proof for a given RISC-V program.
 #[derive(Clone, Serialize, Deserialize)]
