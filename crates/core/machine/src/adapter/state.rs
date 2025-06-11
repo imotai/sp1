@@ -37,8 +37,8 @@ impl<F: Field> CPUState<F> {
         self.clk_high_limb = F::from_canonical_u16(clk_high_limb);
         self.clk_low_limb = F::from_canonical_u16(clk_low_limb);
         self.pc = F::from_canonical_u64(pc);
-        // blu_events.add_bit_range_check(clk_high_limb, 14);
-        // blu_events.add_bit_range_check(clk_low_limb, 14);
+        blu_events.add_bit_range_check(clk_high_limb, 14);
+        blu_events.add_bit_range_check(clk_low_limb, 14);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -56,19 +56,19 @@ impl<F: Field> CPUState<F> {
         builder.send_state(shard, clk + clk_increment, next_pc, is_real.clone());
         // Range check the clock to be 28 bits.
         // Since the clock increment is bounded, the clock will not overflow.
-        // builder.send_byte(
-        //     AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
-        //     cols.clk_high_limb.into(),
-        //     AB::Expr::from_canonical_u32(14),
-        //     AB::Expr::zero(),
-        //     is_real.clone(),
-        // );
-        // builder.send_byte(
-        //     AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
-        //     cols.clk_low_limb.into(),
-        //     AB::Expr::from_canonical_u32(14),
-        //     AB::Expr::zero(),
-        //     is_real.clone(),
-        // );
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            cols.clk_high_limb.into(),
+            AB::Expr::from_canonical_u32(14),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            cols.clk_low_limb.into(),
+            AB::Expr::from_canonical_u32(14),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
     }
 }
