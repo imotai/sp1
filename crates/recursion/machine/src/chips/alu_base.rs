@@ -13,7 +13,7 @@ use sp1_recursion_executor::{
 use sp1_stark::air::MachineAir;
 use std::{borrow::BorrowMut, iter::zip};
 
-pub const NUM_BASE_ALU_ENTRIES_PER_ROW: usize = 4;
+pub const NUM_BASE_ALU_ENTRIES_PER_ROW: usize = 1;
 
 #[derive(Default)]
 pub struct BaseAluChip;

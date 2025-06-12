@@ -51,6 +51,7 @@ impl ProofSystem {
         *mut c_char,
         *mut c_char,
         *mut c_char,
+        *mut c_char,
     ) -> *mut c_char {
         match self {
             ProofSystem::Plonk => bind::VerifyPlonkBn254,
@@ -105,6 +106,7 @@ fn verify(
     vkey_hash: &str,
     committed_values_digest: &str,
     exit_code: &str,
+    vk_root: &str,
 ) -> Result<(), String> {
     let data_dir = CString::new(data_dir).expect("CString::new failed");
     let proof = CString::new(proof).expect("CString::new failed");
@@ -112,6 +114,7 @@ fn verify(
     let committed_values_digest =
         CString::new(committed_values_digest).expect("CString::new failed");
     let exit_code = CString::new(exit_code).expect("CString::new failed");
+    let vk_root = CString::new(vk_root).expect("CString::new failed");
 
     let err_ptr = unsafe {
         (system.verify_fn())(
@@ -120,6 +123,7 @@ fn verify(
             vkey_hash.as_ptr() as *mut c_char,
             committed_values_digest.as_ptr() as *mut c_char,
             exit_code.as_ptr() as *mut c_char,
+            vk_root.as_ptr() as *mut c_char,
         )
     };
     if err_ptr.is_null() {
@@ -166,8 +170,17 @@ pub fn verify_plonk_bn254(
     vkey_hash: &str,
     committed_values_digest: &str,
     exit_code: &str,
+    vk_root: &str,
 ) -> Result<(), String> {
-    verify(ProofSystem::Plonk, data_dir, proof, vkey_hash, committed_values_digest, exit_code)
+    verify(
+        ProofSystem::Plonk,
+        data_dir,
+        proof,
+        vkey_hash,
+        committed_values_digest,
+        exit_code,
+        vk_root,
+    )
 }
 
 pub fn test_plonk_bn254(witness_json: &str, constraints_json: &str) {
@@ -191,8 +204,17 @@ pub fn verify_groth16_bn254(
     vkey_hash: &str,
     committed_values_digest: &str,
     exit_code: &str,
+    vk_root: &str,
 ) -> Result<(), String> {
-    verify(ProofSystem::Groth16, data_dir, proof, vkey_hash, committed_values_digest, exit_code)
+    verify(
+        ProofSystem::Groth16,
+        data_dir,
+        proof,
+        vkey_hash,
+        committed_values_digest,
+        exit_code,
+        vk_root,
+    )
 }
 
 pub fn test_groth16_bn254(witness_json: &str, constraints_json: &str) {
@@ -236,6 +258,7 @@ impl PlonkBn254Proof {
                 ptr_to_string_cloned((*c_proof).PublicInputs[0]),
                 ptr_to_string_cloned((*c_proof).PublicInputs[1]),
                 ptr_to_string_cloned((*c_proof).PublicInputs[2]),
+                ptr_to_string_cloned((*c_proof).PublicInputs[3]),
             ],
             encoded_proof: ptr_to_string_cloned((*c_proof).EncodedProof),
             raw_proof: ptr_to_string_cloned((*c_proof).RawProof),
@@ -253,6 +276,7 @@ impl Groth16Bn254Proof {
                 ptr_to_string_cloned((*c_proof).PublicInputs[0]),
                 ptr_to_string_cloned((*c_proof).PublicInputs[1]),
                 ptr_to_string_cloned((*c_proof).PublicInputs[2]),
+                ptr_to_string_cloned((*c_proof).PublicInputs[3]),
             ],
             encoded_proof: ptr_to_string_cloned((*c_proof).EncodedProof),
             raw_proof: ptr_to_string_cloned((*c_proof).RawProof),

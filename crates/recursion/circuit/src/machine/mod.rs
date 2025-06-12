@@ -14,8 +14,8 @@ pub use core::*;
 pub use deferred::*;
 pub use public_values::*;
 pub use root::*;
-// pub use vkey_proof::*;
-// pub use wrap::*;
+pub use vkey_proof::*;
+pub use wrap::*;
 
 #[allow(unused_imports)]
 pub use witness::*;

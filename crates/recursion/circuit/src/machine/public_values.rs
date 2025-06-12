@@ -69,6 +69,7 @@ where
         .into_iter()
         .chain(public_values.committed_value_digest.into_iter().flat_map(|word| word.into_iter()))
         .chain(std::iter::once(public_values.exit_code))
+        .chain(public_values.vk_root)
         .collect::<Vec<_>>();
     H::poseidon2_hash(builder, &input)
 }
@@ -91,5 +92,15 @@ impl<T> RootPublicValues<T> {
     #[inline]
     pub const fn digest(&self) -> &[T; DIGEST_SIZE] {
         &self.inner.digest
+    }
+
+    #[inline]
+    pub const fn exit_code(&self) -> &T {
+        &self.inner.exit_code
+    }
+
+    #[inline]
+    pub const fn vk_root(&self) -> &[T; DIGEST_SIZE] {
+        &self.inner.vk_root
     }
 }

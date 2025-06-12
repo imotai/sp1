@@ -10,6 +10,10 @@ use slop_algebra::AbstractField;
 use slop_baby_bear::BabyBear;
 // use slop_commit::Mmcs;
 // use slop_matrix::dense::RowMajorMatrix;
+use crate::machine::{
+    assert_recursion_public_values_valid, SP1MerkleProofVerifier, SP1MerkleProofWitnessValues,
+    SP1MerkleProofWitnessVariable,
+};
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS},
@@ -55,7 +59,7 @@ pub struct SP1DeferredShape {
 ))]
 pub struct SP1DeferredWitnessValues<SC: BabyBearFriConfig + FieldHasher<BabyBear> + Send + Sync> {
     pub vks_and_proofs: Vec<(MachineVerifyingKey<SC>, ShardProof<SC>)>,
-    // pub vk_merkle_data: SP1MerkleProofWitnessValues<SC>,
+    pub vk_merkle_data: SP1MerkleProofWitnessValues<SC>,
     pub start_reconstruct_deferred_digest: [SC::F; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [SC::F; DIGEST_SIZE],
     pub committed_value_digest: [[SC::F; 4]; PV_DIGEST_NUM_WORDS],
@@ -77,7 +81,7 @@ pub struct SP1DeferredWitnessVariable<
     >,
 > {
     pub vks_and_proofs: Vec<(MachineVerifyingKeyVariable<C, SC>, ShardProofVariable<C, SC, JC>)>,
-    // pub vk_merkle_data: SP1MerkleProofWitnessVariable<C, SC>,
+    pub vk_merkle_data: SP1MerkleProofWitnessVariable<C, SC>,
     pub start_reconstruct_deferred_digest: [Felt<C::F>; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [Felt<C::F>; DIGEST_SIZE],
     pub committed_value_digest: [[Felt<C::F>; 4]; PV_DIGEST_NUM_WORDS],
@@ -124,11 +128,11 @@ where
         builder: &mut Builder<C>,
         machine: &RecursiveShardVerifier<A, SC, C, JC>,
         input: SP1DeferredWitnessVariable<C, SC, JC>,
-        // value_assertions: bool,
+        value_assertions: bool,
     ) {
         let SP1DeferredWitnessVariable {
             vks_and_proofs,
-            // vk_merkle_data,
+            vk_merkle_data,
             start_reconstruct_deferred_digest,
             sp1_vk_digest,
             committed_value_digest,
@@ -142,9 +146,9 @@ where
         } = input;
 
         // First, verify the merkle tree proofs.
-        // let vk_root = vk_merkle_data.root;
-        // let values = vks_and_proofs.iter().map(|(vk, _)| vk.hash(builder)).collect::<Vec<_>>();
-        // SP1MerkleProofVerifier::verify(builder, values, vk_merkle_data, value_assertions);
+        let vk_root = vk_merkle_data.root;
+        let values = vks_and_proofs.iter().map(|(vk, _)| vk.hash(builder)).collect::<Vec<_>>();
+        SP1MerkleProofVerifier::verify(builder, values, vk_merkle_data, value_assertions);
 
         let mut deferred_public_values_stream: Vec<Felt<C::F>> =
             (0..RECURSIVE_PROOF_NUM_PV_ELTS).map(|_| builder.uninit()).collect();
@@ -179,14 +183,14 @@ where
             let current_public_values: &RecursionPublicValues<Felt<C::F>> =
                 shard_proof.public_values.as_slice().borrow();
             // Assert that the `vk_root` is the same as the witnessed one.
-            // for (elem, expected) in current_public_values.vk_root.iter().zip(vk_root.iter()) {
-            //     builder.assert_felt_eq(*elem, *expected);
-            // }
+            for (elem, expected) in current_public_values.vk_root.iter().zip(vk_root.iter()) {
+                builder.assert_felt_eq(*elem, *expected);
+            }
             // Assert that the public values are valid.
-            // assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
+            assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
 
             // Assert that the proof is complete.
-            // builder.assert_felt_eq(current_public_values.is_complete, C::F::one());
+            builder.assert_felt_eq(current_public_values.is_complete, C::F::one());
 
             // Update deferred proof digest
             // poseidon2( current_digest[..8] || pv.sp1_vk_digest[..8] ||
@@ -242,8 +246,7 @@ where
                 builder.eval(value)
             }));
         // Set the vk root from the witness.
-        // deferred_public_values.vk_root = vk_root;
-        deferred_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
+        deferred_public_values.vk_root = vk_root;
         // Set the digest according to the previous values.
         deferred_public_values.digest =
             recursion_public_values_digest::<C, SC>(builder, deferred_public_values);

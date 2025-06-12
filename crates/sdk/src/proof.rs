@@ -335,7 +335,7 @@ mod tests {
             proof: SP1Proof::Plonk(PlonkBn254Proof {
                 encoded_proof: "ab".to_string(),
                 plonk_vkey_hash: [0; 32],
-                public_inputs: [String::new(), String::new(), String::new()],
+                public_inputs: [String::new(), String::new(), String::new(), String::new()],
                 raw_proof: String::new(),
             }),
             public_values: SP1PublicValues::new(),
@@ -352,7 +352,7 @@ mod tests {
             proof: SP1Proof::Groth16(Groth16Bn254Proof {
                 encoded_proof: "ab".to_string(),
                 groth16_vkey_hash: [0; 32],
-                public_inputs: [String::new(), String::new(), String::new()],
+                public_inputs: [String::new(), String::new(), String::new(), String::new()],
                 raw_proof: String::new(),
             }),
             public_values: SP1PublicValues::new(),
@@ -369,7 +369,7 @@ mod tests {
             proof: SP1Proof::Plonk(PlonkBn254Proof {
                 encoded_proof: String::new(),
                 plonk_vkey_hash: [0; 32],
-                public_inputs: [String::new(), String::new(), String::new()],
+                public_inputs: [String::new(), String::new(), String::new(), String::new()],
                 raw_proof: String::new(),
             }),
             public_values: SP1PublicValues::new(),
@@ -385,7 +385,7 @@ mod tests {
             proof: SP1Proof::Groth16(Groth16Bn254Proof {
                 encoded_proof: String::new(),
                 groth16_vkey_hash: [0; 32],
-                public_inputs: [String::new(), String::new(), String::new()],
+                public_inputs: [String::new(), String::new(), String::new(), String::new()],
                 raw_proof: String::new(),
             }),
             public_values: SP1PublicValues::new(),

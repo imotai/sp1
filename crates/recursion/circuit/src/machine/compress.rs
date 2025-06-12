@@ -111,7 +111,7 @@ where
         builder: &mut Builder<C>,
         machine: &RecursiveShardVerifier<A, SC, C, JC>,
         input: SP1CompressWitnessVariable<C, SC, JC>,
-        //vk_root: [Felt<C::F>; DIGEST_SIZE],
+        vk_root: [Felt<C::F>; DIGEST_SIZE],
         kind: PublicValuesOutputDigest,
     ) {
         // Read input.
@@ -178,9 +178,9 @@ where
             // Assert that the public values are valid.
             assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
             // Assert that the vk root is the same as the witnessed one.
-            // for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
-            //     builder.assert_felt_eq(*expected, *actual);
-            // }
+            for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
+                builder.assert_felt_eq(*expected, *actual);
+            }
 
             // Set the exit code, it is already constrained to be zero in the previous proof.
             if i == 0 {
@@ -448,7 +448,7 @@ where
         // Set the exit code.
         compress_public_values.exit_code = current_exit_code;
         // Reflect the vk root.
-        compress_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
+        compress_public_values.vk_root = vk_root;
         // Set the digest according to the previous values.
         compress_public_values.digest = match kind {
             PublicValuesOutputDigest::Reduce => {
@@ -460,7 +460,6 @@ where
         };
 
         // If the proof is complete, make completeness assertions.
-        // TODO: comment back in
         assert_complete(builder, compress_public_values, is_complete);
 
         SC::commit_recursion_public_values(builder, *compress_public_values);

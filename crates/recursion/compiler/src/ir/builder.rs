@@ -463,6 +463,10 @@ impl<C: Config> Builder<C> {
         self.push_op(DslIr::CircuitCommitExitCode(var));
     }
 
+    pub fn commit_vk_root_circuit(&mut self, var: Var<C::N>) {
+        self.push_op(DslIr::CircuitCommitVkRoot(var));
+    }
+
     pub fn reduce_e(&mut self, ext: Ext<C::F, C::EF>) {
         self.push_op(DslIr::ReduceE(ext));
     }

@@ -8,7 +8,7 @@ use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
-    machine::{SP1CompressRootVerifier, SP1CompressWitnessValues},
+    machine::{SP1CompressWitnessValues, SP1WrapVerifier},
     utils::{babybear_bytes_to_bn254, babybears_to_bn254},
 };
 use sp1_recursion_compiler::{
@@ -141,6 +141,7 @@ pub fn build_constraints_and_witness(
         words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
     let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
     let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
+    let vk_root = babybears_to_bn254(&pv.vk_root);
 
     tracing::info!("building template witness");
     let mut witness = OuterWitness::default();
@@ -148,6 +149,7 @@ pub fn build_constraints_and_witness(
     witness.write_committed_values_digest(committed_values_digest);
     witness.write_vkey_hash(vkey_hash);
     witness.write_exit_code(exit_code);
+    witness.write_vk_root(vk_root);
     (constraints, witness)
 }
 
@@ -216,7 +218,7 @@ fn build_outer_circuit(template_input: &SP1CompressWitnessValues<OuterSC>) -> Ve
     builder.assert_felt_eq(vk.pc_start, template_vk.pc_start);
 
     // Verify the proof.
-    SP1CompressRootVerifier::verify(&mut builder, &recursive_wrap_verifier, input);
+    SP1WrapVerifier::verify(&mut builder, &recursive_wrap_verifier, input);
 
     let mut backend = ConstraintCompiler::<OuterConfig>::default();
     let operations = backend.emit(builder.into_operations());

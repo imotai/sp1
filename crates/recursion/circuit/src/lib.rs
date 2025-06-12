@@ -692,6 +692,9 @@ impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFr
         let exit_code = public_values.exit_code;
         let var_exit_code: Var<C::N> = builder.felt2var_circuit(exit_code);
         builder.commit_exit_code_circuit(var_exit_code);
+
+        let vk_root: Var<_> = felts_to_bn254_var(builder, &public_values.vk_root);
+        builder.commit_vk_root_circuit(vk_root);
     }
 }
 

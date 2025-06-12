@@ -58,6 +58,7 @@ pub struct Witness<C: Config> {
     pub vkey_hash: C::N,
     pub committed_values_digest: C::N,
     pub exit_code: C::N,
+    pub vk_root: C::N,
 }
 
 impl<C: Config> Witness<C> {
@@ -78,6 +79,11 @@ impl<C: Config> Witness<C> {
     pub fn write_exit_code(&mut self, exit_code: C::N) {
         self.vars.push(exit_code);
         self.exit_code = exit_code;
+    }
+
+    pub fn write_vk_root(&mut self, vk_root: C::N) {
+        self.vars.push(vk_root);
+        self.vk_root = vk_root;
     }
 }
 

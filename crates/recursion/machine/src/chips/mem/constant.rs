@@ -15,7 +15,7 @@ use crate::builder::SP1RecursionAirBuilder;
 
 use super::MemoryAccessCols;
 
-pub const NUM_CONST_MEM_ENTRIES_PER_ROW: usize = 2;
+pub const NUM_CONST_MEM_ENTRIES_PER_ROW: usize = 1;
 
 #[derive(Default)]
 pub struct MemoryConstChip<F> {

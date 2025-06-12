@@ -14,7 +14,7 @@ use std::{borrow::BorrowMut, iter::zip};
 
 use crate::builder::SP1RecursionAirBuilder;
 
-pub const NUM_EXT_ALU_ENTRIES_PER_ROW: usize = 4;
+pub const NUM_EXT_ALU_ENTRIES_PER_ROW: usize = 1;
 
 #[derive(Default)]
 pub struct ExtAluChip;

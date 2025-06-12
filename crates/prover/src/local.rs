@@ -303,7 +303,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 while let Some(task) = executor_rx.blocking_recv() {
                     let ExecuteTask { input, range } = task;
                     let keys = prover.prover().recursion().keys(&input);
-                    let record = prover.prover().recursion().execute(&input).unwrap();
+                    let record = prover.prover().recursion().execute(input).unwrap();
                     let prove_task = ProveTask { keys, range, record };
                     prove_task_tx.send(prove_task).unwrap();
                 }
@@ -428,18 +428,20 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             is_complete: true,
         };
 
+        let input = self.prover.recursion().make_merkle_proofs(input);
         let witness = SP1CircuitWitness::Shrink(input);
-        let record = self
-            .prover
-            .recursion()
-            .execute(&witness)
-            .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {:?}", e)))?;
 
         let (_, vk) = self
             .prover
             .recursion()
             .keys(&witness)
             .expect("Failed to find key for shrink program (arity 1");
+
+        let record = self
+            .prover
+            .recursion()
+            .execute(witness)
+            .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {:?}", e)))?;
 
         let proof = self
             .prover
@@ -461,12 +463,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             vks_and_proofs: vec![(compressed_vk.clone(), compressed_proof)],
             is_complete: true,
         };
-
+        let input = self.prover.recursion().make_merkle_proofs(input);
         let witness = SP1CircuitWitness::Wrap(input);
         let record = self
             .prover
             .recursion()
-            .execute(&witness)
+            .execute(witness)
             .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {:?}", e)))?;
 
         let (_, vk) = self.prover.recursion().wrap_keys();
@@ -500,11 +502,13 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
         let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
+        let vk_root = babybears_to_bn254(&pv.vk_root);
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
         witness.write_committed_values_digest(committed_values_digest);
         witness.write_vkey_hash(vkey_hash);
         witness.write_exit_code(exit_code);
+        witness.write_vk_root(vk_root);
         let prover = PlonkBn254Prover::new();
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
@@ -515,6 +519,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 &vkey_hash.as_canonical_biguint(),
                 &committed_values_digest.as_canonical_biguint(),
                 &exit_code.as_canonical_biguint(),
+                &vk_root.as_canonical_biguint(),
                 build_dir,
             )
             .expect("Failed to verify proof");
@@ -541,12 +546,13 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
         let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
+        let vk_root = babybears_to_bn254(&pv.vk_root);
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
         witness.write_committed_values_digest(committed_values_digest);
         witness.write_vkey_hash(vkey_hash);
         witness.write_exit_code(exit_code);
-
+        witness.write_vk_root(vk_root);
         let prover = Groth16Bn254Prover::new();
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
@@ -557,6 +563,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 &vkey_hash.as_canonical_biguint(),
                 &committed_values_digest.as_canonical_biguint(),
                 &exit_code.as_canonical_biguint(),
+                &vk_root.as_canonical_biguint(),
                 build_dir,
             )
             .expect("Failed to verify wrap proof");
@@ -622,12 +629,11 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 batch.iter().cloned().map(|proof| (proof.vk, proof.proof)).collect::<Vec<_>>();
 
             let input = SP1CompressWitnessValues { vks_and_proofs, is_complete: true };
-            // let input = self.make_merkle_proofs(input);
-            // let SP1CompressWitnessValues { compress_val } = input;
+            let input = self.prover.recursion().make_merkle_proofs(input);
 
             deferred_inputs.push(SP1DeferredWitnessValues {
-                vks_and_proofs: input.vks_and_proofs,
-                // vk_merkle_data: merkle_val,
+                vks_and_proofs: input.compress_val.vks_and_proofs,
+                vk_merkle_data: input.merkle_val,
                 start_reconstruct_deferred_digest: deferred_digest,
                 is_complete: false,
                 sp1_vk_digest: vk.hash_babybear(),
@@ -664,7 +670,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 shard_proofs: proofs.clone(),
                 is_complete,
                 is_first_shard: batch_idx == 0,
-                // vk_root: self.recursion_vk_root,
+                vk_root: self.prover.recursion().recursion_vk_root,
                 reconstruct_deferred_digest: deferred_digest,
             });
         }

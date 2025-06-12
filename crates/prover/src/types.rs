@@ -4,26 +4,21 @@ use std::{borrow::Borrow, fs::File, path::Path};
 
 use anyhow::Result;
 use clap::ValueEnum;
-// use clap::ValueEnum;
-// use p3_baby_bear::BabyBear;
-// use p3_bn254_fr::Bn254Fr;
-// use p3_commit::{Pcs, TwoAdicMultiplicativeCoset};
-// use p3_field::{AbstractField, PrimeField, PrimeField32, TwoAdicField};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::{io::SP1PublicValues, poseidon2_hash};
-pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
-// use sp1_recursion_circuit::machine::{
-//     SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues,
-// };
-use slop_bn254::Bn254Fr;
 use sp1_recursion_circuit::{
-    machine::{SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues},
+    machine::{
+        SP1CompressWithVKeyWitnessValues, SP1CompressWitnessValues, SP1DeferredWitnessValues,
+        SP1RecursionWitnessValues,
+    },
     utils::babybears_to_bn254,
     InnerSC,
 };
+pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
 use sp1_stark::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
 use thiserror::Error;
 
@@ -244,6 +239,6 @@ pub enum SP1CircuitWitness {
     Core(SP1RecursionWitnessValues<CoreSC>),
     Deferred(SP1DeferredWitnessValues<InnerSC>),
     Compress(SP1CompressWitnessValues<InnerSC>),
-    Shrink(SP1CompressWitnessValues<InnerSC>),
-    Wrap(SP1CompressWitnessValues<InnerSC>),
+    Shrink(SP1CompressWithVKeyWitnessValues<InnerSC>),
+    Wrap(SP1CompressWithVKeyWitnessValues<InnerSC>),
 }

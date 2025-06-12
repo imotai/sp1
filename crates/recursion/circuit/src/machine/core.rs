@@ -54,7 +54,7 @@ pub struct SP1RecursionWitnessVariable<
     pub reconstruct_deferred_digest: [Felt<C::F>; DIGEST_SIZE],
     pub is_complete: Felt<C::F>,
     pub is_first_shard: Felt<C::F>,
-    // pub vk_root: [Felt<C::F>; DIGEST_SIZE],
+    pub vk_root: [Felt<C::F>; DIGEST_SIZE],
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -65,7 +65,7 @@ pub struct SP1RecursionWitnessValues<SC: MachineConfig> {
     pub shard_proofs: Vec<ShardProof<SC>>,
     pub is_complete: bool,
     pub is_first_shard: bool,
-    // pub vk_root: [SC::F; DIGEST_SIZE],
+    pub vk_root: [SC::F; DIGEST_SIZE],
     pub reconstruct_deferred_digest: [SC::F; 8],
 }
 
@@ -167,7 +167,7 @@ where
             shard_proofs,
             is_complete,
             is_first_shard,
-            // vk_root,
+            vk_root,
             reconstruct_deferred_digest,
         } = input;
 
@@ -576,7 +576,7 @@ where
             recursion_public_values.prev_exit_code = prev_exit_code;
             recursion_public_values.exit_code = current_exit_code;
             recursion_public_values.is_complete = is_complete;
-            recursion_public_values.vk_root = [builder.eval(C::F::zero()); DIGEST_SIZE];
+            recursion_public_values.vk_root = vk_root;
 
             // Calculate the digest and set it in the public values.
             recursion_public_values.digest =
