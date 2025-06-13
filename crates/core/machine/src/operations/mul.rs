@@ -77,7 +77,9 @@ impl<F: Field> MulOperation<F> {
 
         self.is_mulw = F::from_canonical_u8(is_mulw as u8);
 
-        self.product_msb.populate_msb(record, limbs[1], is_mulw);
+        if is_mulw {
+            self.product_msb.populate_msb(record, limbs[1]);
+        }
 
         let mut b = b_word.to_vec();
         let mut c = c_word.to_vec();

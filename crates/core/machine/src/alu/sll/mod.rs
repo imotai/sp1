@@ -213,7 +213,7 @@ impl ShiftLeft {
         if event.opcode == Opcode::SLLW || event.opcode == Opcode::SLLIW {
             let sllw_val = ((event.b as i64) << (c & 0x1f)) as u32;
             let sllw_limbs = u32_to_u16_limbs(sllw_val);
-            cols.sllw_msb.populate_msb(blu, sllw_limbs[1], true);
+            cols.sllw_msb.populate_msb(blu, sllw_limbs[1]);
         }
 
         let b_bytes = event.b.to_le_bytes();
