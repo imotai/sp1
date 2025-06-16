@@ -1,6 +1,7 @@
-use sp1_build::include_elf;
+use sp1_build::{include_elf, Elf};
 use sp1_core_executor::{Executor, Program, RetainedEventsPreset, SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
+use sp1_core_machine::utils::setup_logger;
 use sp1_primitives::io::SP1PublicValues;
 use sp1_prover::SP1CoreProofData;
 use sp1_prover::{
@@ -10,11 +11,9 @@ use sp1_prover::{
 };
 use std::sync::Arc;
 use tracing::Instrument;
-use sp1_core_machine::utils::setup_logger;
-
 
 /// The ELF we want to execute inside the zkVM.
-const ELF: &[u8] = include_elf!("ssz-withdrawals-program");
+const ELF: Elf = include_elf!("ssz-withdrawals-program");
 
 #[tokio::main]
 async fn main() {
@@ -31,9 +30,10 @@ async fn main() {
     };
     let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
-
-    let (pk, program, vk) = prover.prover().core()
-        .setup(ELF)
+    let (pk, program, vk) = prover
+        .prover()
+        .core()
+        .setup(&*ELF)
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
 

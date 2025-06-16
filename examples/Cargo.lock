@@ -6862,8 +6862,6 @@ name = "sp1-zkvm-64"
 version = "5.0.0"
 dependencies = [
  "cfg-if",
- "critical-section",
- "embedded-alloc",
  "getrandom 0.2.16",
  "lazy_static",
  "libm",
