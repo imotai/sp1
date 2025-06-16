@@ -90,8 +90,8 @@ pub fn generate_records<F: PrimeField32>(
                 state.shard += 1;
                 state.execution_shard = record.public_values.execution_shard;
                 state.next_execution_shard = record.public_values.execution_shard + 1;
-                state.start_pc = record.public_values.start_pc;
-                state.next_pc = record.public_values.next_pc;
+                state.pc_start_rel = record.public_values.pc_start_rel;
+                state.next_pc_rel = record.public_values.next_pc_rel;
                 state.last_timestamp = record.public_values.last_timestamp;
                 state.last_timestamp_inv =
                     F::from_canonical_u64(state.last_timestamp - 1).inverse().as_canonical_u64();
@@ -121,7 +121,7 @@ pub fn generate_records<F: PrimeField32>(
                 state.previous_finalize_addr_word =
                     record.public_values.previous_finalize_addr_word;
                 state.last_finalize_addr_word = record.public_values.last_finalize_addr_word;
-                state.start_pc = state.next_pc;
+                state.pc_start_rel = state.next_pc_rel;
                 state.last_timestamp = 1;
                 state.last_timestamp_inv = 0;
                 state.next_execution_shard = state.execution_shard;

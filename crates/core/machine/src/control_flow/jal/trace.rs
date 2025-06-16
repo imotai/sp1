@@ -11,7 +11,7 @@ use sp1_core_executor::{
 };
 use sp1_stark::air::MachineAir;
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::utils::{next_multiple_of_32, zeroed_f_vec, InstructionExt as _};
 
 use super::{JalChip, JalColumns, NUM_JAL_COLS};
 
@@ -51,18 +51,16 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
 
                     if idx < input.jal_events.len() {
                         let event = &input.jal_events[idx];
-                        let mut instruction = *input.program.fetch(event.0.pc);
+                        let instruction = input
+                            .program
+                            .fetch(event.0.pc_rel)
+                            .preprocess_jal::<F>(input.program.pc_base, event.0.pc_rel);
                         cols.is_real = F::one();
-                        instruction.op_b = event.0.pc.wrapping_add(instruction.op_b);
-                        instruction.op_c = event.0.pc.wrapping_add(4);
-                        if instruction.op_a == 0 {
-                            instruction.op_c = 0;
-                        }
                         cols.state.populate(
                             &mut blu,
                             input.public_values.execution_shard as u32,
                             event.0.clk,
-                            event.0.pc,
+                            event.0.pc_rel,
                         );
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }

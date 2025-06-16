@@ -198,7 +198,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         shard: impl Into<Self::Expr> + Clone,
         clk: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
-        next_pc: impl Into<Self::Expr>,
+        next_pc_rel: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
         opcode: impl Into<Self::Expr>,
         a: Word<impl Into<Self::Expr>>,
@@ -214,7 +214,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         let values = once(shard.into())
             .chain(once(clk.into()))
             .chain(once(pc.into()))
-            .chain(once(next_pc.into()))
+            .chain(once(next_pc_rel.into()))
             .chain(once(num_extra_cycles.into()))
             .chain(once(opcode.into()))
             .chain(a.0.into_iter().map(Into::into))
@@ -240,7 +240,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         shard: impl Into<Self::Expr> + Clone,
         clk: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
-        next_pc: impl Into<Self::Expr>,
+        next_pc_rel: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
         opcode: impl Into<Self::Expr>,
         a: Word<impl Into<Self::Expr>>,
@@ -256,7 +256,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         let values = once(shard.into())
             .chain(once(clk.into()))
             .chain(once(pc.into()))
-            .chain(once(next_pc.into()))
+            .chain(once(next_pc_rel.into()))
             .chain(once(num_extra_cycles.into()))
             .chain(once(opcode.into()))
             .chain(a.0.into_iter().map(Into::into))

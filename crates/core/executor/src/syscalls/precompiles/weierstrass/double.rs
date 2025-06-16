@@ -20,7 +20,7 @@ pub(crate) fn weierstrass_double_assign_syscall<E: EllipticCurve, Ex: ExecutorCo
         arg1,
         arg2,
         false,
-        ctx.next_pc,
+        ctx.next_pc_rel,
         ctx.exit_code,
     );
     match E::CURVE_TYPE {

@@ -197,6 +197,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             cols.index = F::from_canonical_u32(i as u32);
             cols.prev_addr = Word::from(prev_addr);
             // cols.prev_addr_range_checker.populate(cols.prev_addr, &mut blu);
+            // TODO these populate functions are INCORRECT. Fix them when we fix this AIR.
+            // Should use IsZeroWordOperation.
             cols.is_prev_addr_zero.populate(prev_addr);
             cols.is_index_zero.populate(i as u64);
             if prev_addr != 0 || i != 0 {

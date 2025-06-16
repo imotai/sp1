@@ -76,7 +76,7 @@ impl<F: Field> ByteChip<F> {
                         // Cast to u16 first to handle shifts >= 8 correctly.
                         // For example, 244u8 >> 8 would still be 244 due to u8 overflow,
                         // but (244u16 >> 8) gives us the expected 0.
-                        let sr = (b as u16 >> c) as u8;
+                        let sr = (b as u16).overflowing_shr(c as u32).0 as u8;
                         col.sr = F::from_canonical_u8(sr);
                     }
                     _ => panic!("invalid opcode found in byte table"),

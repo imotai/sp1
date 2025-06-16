@@ -10,7 +10,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
@@ -135,13 +135,13 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.shift_right_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(
                             &mut byte_lookup_events,
                             input.public_values.execution_shard as u32,
                             event.0.clk,
-                            event.0.pc,
+                            event.0.pc_rel,
                         );
 
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
@@ -169,13 +169,13 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SHIFT_RIGHT_COLS];
                     let cols: &mut ShiftRightCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
+                    let instruction = input.program.fetch(event.0.pc_rel);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(
                         &mut blu,
                         input.public_values.execution_shard as u32,
                         event.0.clk,
-                        event.0.pc,
+                        event.0.pc_rel,
                     );
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
@@ -559,8 +559,8 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(PC_INC),
             is_real.clone(),
         );
 
@@ -569,7 +569,7 @@ where
             builder,
             local.state.shard::<AB>(),
             local.state.clk::<AB>(),
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             local.a,
             local.adapter,

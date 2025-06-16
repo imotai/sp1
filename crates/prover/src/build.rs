@@ -215,7 +215,7 @@ fn build_outer_circuit(template_input: &SP1CompressWitnessValues<OuterSC>) -> Ve
         vk.preprocessed_commit.expect("expected preprocessed commitment"),
     );
     // Constrain `pc_start` to be the same as the template `vk`.
-    builder.assert_felt_eq(vk.pc_start, template_vk.pc_start);
+    builder.assert_felt_eq(vk.pc_start_rel, template_vk.pc_start_rel);
 
     // Verify the proof.
     SP1WrapVerifier::verify(&mut builder, &recursive_wrap_verifier, input);

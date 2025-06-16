@@ -131,7 +131,7 @@ where
         // Initialize the consistency check variables.
         let mut sp1_vk_digest: [Felt<_>; DIGEST_SIZE] =
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
-        let mut pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut pc_rel: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
@@ -159,7 +159,7 @@ where
                 if let Some(vk) = vk.preprocessed_commit.as_ref() {
                     challenger.observe(builder, *vk)
                 }
-                challenger.observe(builder, vk.pc_start);
+                challenger.observe(builder, vk.pc_start_rel);
                 challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
                 challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
                 // Observe the padding.
@@ -204,8 +204,8 @@ where
                 }
 
                 // Initiallize start pc.
-                compress_public_values.start_pc = current_public_values.start_pc;
-                pc = current_public_values.start_pc;
+                compress_public_values.pc_start_rel = current_public_values.pc_start_rel;
+                pc_rel = current_public_values.pc_start_rel;
 
                 // Initialize start shard.
                 compress_public_values.start_shard = current_public_values.start_shard;
@@ -279,7 +279,7 @@ where
             }
 
             // Assert that the start pc is equal to the current pc.
-            builder.assert_felt_eq(pc, current_public_values.start_pc);
+            builder.assert_felt_eq(pc_rel, current_public_values.pc_start_rel);
 
             // Verify that the shard is equal to the current shard.
             builder.assert_felt_eq(shard, current_public_values.start_shard);
@@ -391,7 +391,7 @@ where
             }
 
             // Update pc to be the next pc.
-            pc = current_public_values.next_pc;
+            pc_rel = current_public_values.next_pc_rel;
 
             // Update the shard to be the next shard.
             shard = current_public_values.next_shard;
@@ -425,8 +425,8 @@ where
         // Update the global values from the last accumulated values.
         // Set sp1_vk digest to the one from the proof values.
         compress_public_values.sp1_vk_digest = sp1_vk_digest;
-        // Set next_pc to be the last pc (which is the same as accumulated pc)
-        compress_public_values.next_pc = pc;
+        // Set next_pc_rel to be the last pc (which is the same as accumulated pc)
+        compress_public_values.next_pc_rel = pc_rel;
         // Set next shard to be the last shard
         compress_public_values.next_shard = shard;
         // Set next execution shard to be the last execution shard

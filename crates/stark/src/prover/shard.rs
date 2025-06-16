@@ -298,7 +298,7 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
         challenger: &mut C::Challenger,
     ) -> (MachineVerifyingKey<C::Config>, ShardProof<C::Config>, ProverPermit) {
         // Get the initial global cumulative sum and pc start.
-        let pc_start = program.pc_start();
+        let pc_start_rel = program.pc_start_rel();
         let initial_global_cumulative_sum = if let Some(vk) = vk {
             vk.initial_global_cumulative_sum
         } else {
@@ -320,7 +320,7 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
 
         let (pk, vk) = self
             .setup_from_preprocessed_data_and_traces(
-                pc_start,
+                pc_start_rel,
                 initial_global_cumulative_sum,
                 preprocessed_traces,
             )
@@ -392,7 +392,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
     /// Setup from preprocessed data and traces.
     pub async fn setup_from_preprocessed_data_and_traces(
         &self,
-        pc_start: C::F,
+        pc_start_rel: C::F,
         initial_global_cumulative_sum: SepticDigest<C::F>,
         preprocessed_traces: Traces<C::F, C::B>,
     ) -> (ShardProverData<C>, MachineVerifyingKey<C::Config>) {
@@ -420,7 +420,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
             .collect::<BTreeMap<_, _>>();
 
         let vk = MachineVerifyingKey {
-            pc_start,
+            pc_start_rel,
             initial_global_cumulative_sum,
             preprocessed_commit,
             preprocessed_chip_information,
@@ -439,7 +439,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
         setup_permits: ProverSemaphore,
     ) -> (PreprocessedData<ProvingKey<C::Config, C::Air, Self>>, MachineVerifyingKey<C::Config>)
     {
-        let pc_start = program.pc_start();
+        let pc_start_rel = program.pc_start_rel();
         let preprocessed_data = self
             .trace_generator
             .generate_preprocessed_traces(program, self.max_log_row_count(), setup_permits)
@@ -449,7 +449,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
 
         let (pk, vk) = self
             .setup_from_preprocessed_data_and_traces(
-                pc_start,
+                pc_start_rel,
                 initial_global_cumulative_sum,
                 preprocessed_traces,
             )

@@ -84,10 +84,10 @@ pub struct RecursionPublicValues<T> {
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The start pc of shards being proven.
-    pub start_pc: T,
+    pub pc_start_rel: T,
 
     /// The expected start pc for the next shard.
-    pub next_pc: T,
+    pub next_pc_rel: T,
 
     /// First shard being proven.
     pub start_shard: T,

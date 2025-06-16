@@ -170,7 +170,7 @@ where
             if let Some(commit) = vk.preprocessed_commit {
                 challenger.observe(builder, commit);
             }
-            challenger.observe(builder, vk.pc_start);
+            challenger.observe(builder, vk.pc_start_rel);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
             // Observe the padding.
@@ -213,8 +213,8 @@ where
         // Set the public values.
 
         // Set initial_pc, end_pc, initial_shard, and end_shard to be the hitned values.
-        deferred_public_values.start_pc = end_pc;
-        deferred_public_values.next_pc = end_pc;
+        deferred_public_values.pc_start_rel = end_pc;
+        deferred_public_values.next_pc_rel = end_pc;
         deferred_public_values.start_shard = end_shard;
         deferred_public_values.next_shard = end_shard;
         deferred_public_values.start_execution_shard = end_execution_shard;

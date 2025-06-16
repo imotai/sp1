@@ -74,7 +74,7 @@ pub(crate) fn u256x2048_mul<E: ExecutorConfig>(
     });
 
     let sycall_event =
-        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
+        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc_rel, rt.exit_code);
     rt.add_precompile_event(syscall_code, sycall_event, event);
 
     None

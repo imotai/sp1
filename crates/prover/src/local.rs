@@ -637,7 +637,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 start_reconstruct_deferred_digest: deferred_digest,
                 is_complete: false,
                 sp1_vk_digest: vk.hash_babybear(),
-                end_pc: vk.pc_start,
+                end_pc: vk.pc_start_rel,
                 end_shard: BabyBear::one(),
                 end_execution_shard: BabyBear::one(),
                 init_addr_word: Word([BabyBear::zero(); 4]),

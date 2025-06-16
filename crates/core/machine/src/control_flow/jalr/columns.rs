@@ -1,4 +1,4 @@
-use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
+use crate::adapter::{register::jalr_type::JalrTypeReader, state::CPUState};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 use std::mem::size_of;
@@ -14,7 +14,7 @@ pub struct JalrColumns<T> {
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
-    pub adapter: ITypeReader<T>,
+    pub adapter: JalrTypeReader<T>,
 
     /// The range checker for the next program counter.
     pub next_pc_range_checker: BabyBearWordRangeChecker<T>,
@@ -27,7 +27,4 @@ pub struct JalrColumns<T> {
 
     /// Instance of `AddOperation` to handle addition logic in `JumpChip`.
     pub add_operation: AddOperation<T>,
-
-    // A range checker for `op_a` which may contain `pc + 4`.
-    pub op_a_range_checker: BabyBearWordRangeChecker<T>,
 }

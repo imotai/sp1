@@ -1214,7 +1214,7 @@ pub mod tests {
     //     let deserialized_pk: StarkProvingKey<BabyBearPoseidon2> =
     //         bincode::deserialize(&serialized_pk).unwrap();
     //     assert_eq!(pk.preprocessed_commit, deserialized_pk.preprocessed_commit);
-    //     assert_eq!(pk.pc_start, deserialized_pk.pc_start);
+    //     assert_eq!(pk.pc_start_rel, deserialized_pk.pc_start_rel);
     //     assert_eq!(pk.traces, deserialized_pk.traces);
     //     // assert_eq!(pk.data, deserialized_pk.data);
     //     assert_eq!(pk.chip_ordering, deserialized_pk.chip_ordering);
@@ -1223,7 +1223,7 @@ pub mod tests {
     //     let serialized_vk = bincode::serialize(&vk).unwrap();
     //     let deserialized_vk: StarkVerifyingKey<BabyBearPoseidon2> =
     //         bincode::deserialize(&serialized_vk).unwrap();
-    //     assert_eq!(vk.pc_start, deserialized_vk.pc_start);
+    //     assert_eq!(vk.pc_start_rel, deserialized_vk.pc_start_rel);
     //     assert_eq!(vk.chip_information.len(), deserialized_vk.chip_information.len());
     //     for (a, b) in vk.chip_information.iter().zip(deserialized_vk.chip_information.iter()) {
     //         assert_eq!(a.0, b.0);

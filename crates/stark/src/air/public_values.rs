@@ -29,10 +29,10 @@ pub struct PublicValues<W1, W2, T> {
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The shard's start program counter.
-    pub start_pc: T,
+    pub pc_start_rel: T,
 
     /// The expected start program counter for the next shard.
-    pub next_pc: T,
+    pub next_pc_rel: T,
 
     /// The expected exit code of the program before this shard.
     pub prev_exit_code: T,
@@ -103,8 +103,8 @@ impl PublicValues<u64, u64, u64> {
         let mut copy = *self;
         copy.shard = 0;
         copy.execution_shard = 0;
-        copy.start_pc = 0;
-        copy.next_pc = 0;
+        copy.pc_start_rel = 0;
+        copy.next_pc_rel = 0;
         copy.previous_init_addr_word = 0;
         copy.last_init_addr_word = 0;
         copy.previous_finalize_addr_word = 0;
@@ -154,8 +154,8 @@ impl<F: AbstractField> From<PublicValues<u64, u64, u64>> for PublicValues<[F; 4]
         let PublicValues {
             committed_value_digest,
             deferred_proofs_digest,
-            start_pc,
-            next_pc,
+            pc_start_rel,
+            next_pc_rel,
             prev_exit_code,
             exit_code,
             shard,
@@ -186,8 +186,8 @@ impl<F: AbstractField> From<PublicValues<u64, u64, u64>> for PublicValues<[F; 4]
         let deferred_proofs_digest: [_; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|i| F::from_canonical_u64(deferred_proofs_digest[i]));
 
-        let start_pc = F::from_canonical_u64(start_pc);
-        let next_pc = F::from_canonical_u64(next_pc);
+        let pc_start_rel = F::from_canonical_u64(pc_start_rel);
+        let next_pc_rel = F::from_canonical_u64(next_pc_rel);
         let exit_code = F::from_canonical_u64(exit_code);
         let prev_exit_code = F::from_canonical_u64(prev_exit_code);
         let shard = F::from_canonical_u64(shard);
@@ -208,8 +208,8 @@ impl<F: AbstractField> From<PublicValues<u64, u64, u64>> for PublicValues<[F; 4]
         Self {
             committed_value_digest,
             deferred_proofs_digest,
-            start_pc,
-            next_pc,
+            pc_start_rel,
+            next_pc_rel,
             prev_exit_code,
             exit_code,
             shard,

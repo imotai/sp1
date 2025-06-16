@@ -21,7 +21,7 @@ pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The clock cycle.
     pub clk: u32,
     /// The next program counter.
-    pub next_pc: u64,
+    pub next_pc_rel: u64,
     /// The exit code.
     pub exit_code: u32,
     /// The runtime.
@@ -40,7 +40,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
         Self {
             lshard,
             clk,
-            next_pc: runtime.state.pc.wrapping_add(4),
+            next_pc_rel: runtime.state.pc_rel.wrapping_add(4),
             exit_code: 0,
             rt: runtime,
             local_memory_access: external.then_some(HashMap::new()),
@@ -195,8 +195,8 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     }
 
     /// Set the next program counter.
-    pub fn set_next_pc(&mut self, next_pc: u64) {
-        self.next_pc = next_pc;
+    pub fn set_next_pc(&mut self, next_pc_rel: u64) {
+        self.next_pc_rel = next_pc_rel;
     }
 
     /// Set the exit code.

@@ -1,5 +1,6 @@
 use sp1_sdk::{
-    include_elf, utils, Elf, ProveRequest, Prover, ProverClient, SP1ProofWithPublicValues, SP1Stdin, ProvingKey
+    include_elf, utils, Elf, ProveRequest, Prover, ProverClient, ProvingKey,
+    SP1ProofWithPublicValues, SP1Stdin,
 };
 
 /// The ELF we want to execute inside the zkVM.

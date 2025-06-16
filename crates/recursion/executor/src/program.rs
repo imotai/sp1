@@ -69,7 +69,7 @@ impl<F> DerefMut for RecursionProgram<F> {
 }
 
 impl<F: Field> MachineProgram<F> for RecursionProgram<F> {
-    fn pc_start(&self) -> F {
+    fn pc_start_rel(&self) -> F {
         F::zero()
     }
 

@@ -21,13 +21,13 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
     ctx.rt.unconstrained_state = Box::new(ForkState {
         global_clk: ctx.rt.state.global_clk,
         clk: ctx.rt.state.clk,
-        pc: ctx.rt.state.pc,
+        pc: ctx.rt.state.pc_rel,
         memory_diff: Memory::default(),
     });
 
     // Write `1` to `x5` to indicate that unconstrained execution is active, and advance the PC.
     ctx.rt.rw_cpu::<Unconstrained>(crate::Register::X5, 1);
-    ctx.rt.state.pc = ctx.rt.state.pc.wrapping_add(4);
+    ctx.rt.state.pc_rel = ctx.rt.state.pc_rel.wrapping_add(4);
 
     // Run unconstrained execution until a call to `exit_unconstrained`.
     ctx.rt.run_unconstrained().expect("Unconstrained execution failed");
@@ -35,8 +35,8 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
     // Update the state of the runtime to match the saved state.
     ctx.rt.state.global_clk = ctx.rt.unconstrained_state.global_clk;
     ctx.rt.state.clk = ctx.rt.unconstrained_state.clk;
-    ctx.rt.state.pc = ctx.rt.unconstrained_state.pc;
-    ctx.next_pc = ctx.rt.state.pc.wrapping_add(4);
+    ctx.rt.state.pc_rel = ctx.rt.unconstrained_state.pc;
+    ctx.next_pc_rel = ctx.rt.state.pc_rel.wrapping_add(4);
 
     let memory_diff = std::mem::take(&mut ctx.rt.unconstrained_state.memory_diff);
     for (addr, value) in memory_diff {

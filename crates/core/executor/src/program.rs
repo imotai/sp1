@@ -28,8 +28,8 @@ use sp1_stark::{
 pub struct Program {
     /// The instructions of the program.
     pub instructions: Vec<Instruction>,
-    /// The start address of the program.
-    pub pc_start: u64,
+    /// The start address of the program. It is absolute, meaning not relative to `pc_base`.
+    pub pc_start_abs: u64,
     /// The base address of the program.
     pub pc_base: u64,
     /// The initial memory image, useful for global constants.
@@ -41,10 +41,10 @@ pub struct Program {
 impl Program {
     /// Create a new [Program].
     #[must_use]
-    pub fn new(instructions: Vec<Instruction>, pc_start: u64, pc_base: u64) -> Self {
+    pub fn new(instructions: Vec<Instruction>, pc_start_abs: u64, pc_base: u64) -> Self {
         Self {
             instructions,
-            pc_start,
+            pc_start_abs,
             pc_base,
             memory_image: HashMap::new(),
             preprocessed_shape: None,
@@ -68,7 +68,7 @@ impl Program {
         // Return the program.
         Ok(Program {
             instructions,
-            pc_start: elf.pc_start,
+            pc_start_abs: elf.pc_start,
             pc_base: elf.pc_base,
             memory_image: elf.memory_image,
             preprocessed_shape: None,
@@ -98,15 +98,24 @@ impl Program {
 
     #[must_use]
     /// Fetch the instruction at the given program counter.
-    pub fn fetch(&self, pc: u64) -> &Instruction {
-        let idx = ((pc - self.pc_base) / 4) as usize;
+    pub fn fetch(&self, pc_rel: u64) -> &Instruction {
+        let idx = (pc_rel / 4) as usize;
         &self.instructions[idx]
+    }
+
+    /// Returns `self.pc_start - self.pc_base`, that is, the relative `pc_start`.
+    #[must_use]
+    pub fn pc_start_rel_u64(&self) -> u64 {
+        self.pc_start_abs.checked_sub(self.pc_base).expect("expected pc_base <= pc_start")
     }
 }
 
 impl<F: PrimeField32> MachineProgram<F> for Program {
-    fn pc_start(&self) -> F {
-        F::from_canonical_u64(self.pc_start)
+    fn pc_start_rel(&self) -> F {
+        let pc_start_rel = self.pc_start_rel_u64();
+        assert!(pc_start_rel < F::ORDER_U64);
+        // Casting to u32 and truncating is okay, since F: PrimeField32 means it fits.
+        F::from_wrapped_u32(pc_start_rel as u32)
     }
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {

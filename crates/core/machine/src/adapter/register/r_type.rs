@@ -63,7 +63,7 @@ impl<F: Field> RTypeReader<F> {
         builder: &mut AB,
         shard: impl Into<AB::Expr> + Clone,
         clk: AB::Expr,
-        pc: AB::Var,
+        pc_rel: AB::Var,
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: RTypeReader<AB::Var>,
@@ -79,7 +79,7 @@ impl<F: Field> RTypeReader<F> {
             imm_b: AB::Expr::zero(),
             imm_c: AB::Expr::zero(),
         };
-        builder.send_program(pc, instruction, is_real.clone());
+        builder.send_program(pc_rel, instruction, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
@@ -110,11 +110,11 @@ impl<F: Field> RTypeReader<F> {
         builder: &mut AB,
         shard: impl Into<AB::Expr> + Clone,
         clk: AB::Expr,
-        pc: AB::Var,
+        pc_rel: AB::Var,
         opcode: impl Into<AB::Expr>,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
-        Self::eval(builder, shard, clk, pc, opcode, cols.op_a_memory.prev_value, cols, is_real);
+        Self::eval(builder, shard, clk, pc_rel, opcode, cols.op_a_memory.prev_value, cols, is_real);
     }
 }

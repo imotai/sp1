@@ -20,7 +20,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, PC_INC,
 };
 
 use sp1_stark::air::MachineAir;
@@ -97,13 +97,13 @@ impl<F: PrimeField32> MachineAir<F> for LoadDoubleChip {
 
                     if idx < input.memory_load_double_events.len() {
                         let event = &input.memory_load_double_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(
                             &mut blu,
                             input.public_values.execution_shard as u32,
                             event.0.clk,
-                            event.0.pc,
+                            event.0.pc_rel,
                         );
                         cols.adapter.populate(&mut blu, instruction, event.1);
                     }
@@ -199,8 +199,8 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(PC_INC),
             local.is_real.into(),
         );
 
@@ -209,7 +209,7 @@ where
             builder,
             shard,
             clk,
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             local.memory_access.prev_value,
             local.adapter,

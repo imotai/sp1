@@ -54,11 +54,11 @@ where
 
         // Constrain the state of the CPU.
         // The extra timestamp increment is `num_extra_cycles`.
-        // The `next_pc` is constrained in the AIR.
+        // The `next_pc_rel` is constrained in the AIR.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.next_pc.into(),
+            local.next_pc_rel.into(),
             local.num_extra_cycles + AB::F::from_canonical_u32(4),
             local.is_real.into(),
         );
@@ -68,7 +68,7 @@ where
             builder,
             local.state.shard::<AB>(),
             local.state.clk::<AB>(),
-            local.state.pc,
+            local.state.pc_rel,
             AB::Expr::from_canonical_u32(Opcode::ECALL as u32),
             local.op_a_value,
             local.adapter,
@@ -76,12 +76,12 @@ where
         );
         builder.when(local.is_real).assert_zero(local.adapter.op_a_0);
 
-        // // If the syscall is not halt, then next_pc should be pc + 4.
-        // // `next_pc` is constrained for the case where `is_halt` is false to be `pc + 4`.
+        // // If the syscall is not halt, then next_pc_rel should be pc + 4.
+        // // `next_pc_rel` is constrained for the case where `is_halt` is false to be `pc + 4`.
         // builder
         //     .when(local.is_real)
         //     .when(AB::Expr::one() - local.is_halt)
-        //     .assert_eq(local.next_pc, local.state.pc + AB::Expr::from_canonical_u32(4));
+        //     .assert_eq(local.next_pc_rel, local.state.pc + AB::Expr::from_canonical_u32(4));
 
         // `num_extra_cycles` is checked to be equal to the return value of
         // `get_num_extra_ecall_cycles`
@@ -318,8 +318,8 @@ impl SyscallInstrsChip {
         local: &SyscallInstrColumns<AB::Var>,
         public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
     ) {
-        // `next_pc` is constrained for the case where `is_halt` is true to be `0`
-        builder.when(local.is_halt).assert_zero(local.next_pc);
+        // `next_pc_rel` is constrained for the case where `is_halt` is true to be `0`
+        builder.when(local.is_halt).assert_zero(local.next_pc_rel);
 
         // Check that the `op_b_value` reduced is the `public_values.exit_code`.
         builder

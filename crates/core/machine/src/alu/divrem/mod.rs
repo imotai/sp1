@@ -71,7 +71,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     get_msb, get_quotient_and_remainder, is_signed_operation, ExecutionRecord, Opcode, Program,
-    DEFAULT_PC_INC,
+    PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
@@ -258,12 +258,12 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
             {
                 let mut blu = vec![];
-                let instruction = input.program.fetch(event.pc);
+                let instruction = input.program.fetch(event.pc_rel);
                 cols.state.populate(
                     &mut blu,
                     input.public_values.execution_shard as u32,
                     event.clk,
-                    event.pc,
+                    event.pc_rel,
                 );
                 cols.adapter.populate(&mut blu, instruction, alu_record);
                 output.add_byte_lookup_events(blu);
@@ -885,8 +885,8 @@ where
             CPUState::<AB::F>::eval(
                 builder,
                 local.state,
-                local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-                AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+                local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+                AB::Expr::from_canonical_u32(PC_INC),
                 local.is_real.into(),
             );
 
@@ -895,7 +895,7 @@ where
                 builder,
                 local.state.shard::<AB>(),
                 local.state.clk::<AB>(),
-                local.state.pc,
+                local.state.pc_rel,
                 opcode,
                 local.a,
                 local.adapter,

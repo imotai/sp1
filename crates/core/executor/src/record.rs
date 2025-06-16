@@ -123,9 +123,9 @@ pub struct ExecutionRecord {
     /// The final timestamp of the shard.
     pub last_timestamp: u32,
     /// The start program counter.
-    pub start_pc: Option<u64>,
+    pub pc_start_rel: Option<u64>,
     /// The final program counter.
-    pub next_pc: u64,
+    pub next_pc_rel: u64,
     /// The exit code.
     pub exit_code: u32,
 }
@@ -558,13 +558,13 @@ impl ExecutionRecord {
         builder.send_state(
             public_values.execution_shard,
             AB::Expr::one(),
-            public_values.start_pc,
+            public_values.pc_start_rel,
             AB::Expr::one(),
         );
         builder.receive_state(
             public_values.execution_shard,
             public_values.last_timestamp,
-            public_values.next_pc,
+            public_values.next_pc_rel,
             AB::Expr::one(),
         );
         let increment_execution_shard =

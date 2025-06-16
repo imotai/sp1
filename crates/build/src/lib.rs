@@ -235,15 +235,17 @@ pub fn build_program_with_args(path: &str, args: BuildArgs) {
 /// file at `src/bin/my_entry.rs` would result in the program target being named `my_entry`, in
 /// which case the invocation should be `include_elf!("my_entry")` instead.
 #[macro_export]
+#[cfg(all(feature = "64bit"))]
 macro_rules! include_elf {
     ($arg:tt) => {{
-        #[cfg(all(feature = "64bit"))]
-        {
-            $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_64_", $arg))))
-        }
-        #[cfg(not(all(feature = "64bit")))]
-        {
-            $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
-        }
+        // TODO: --all-features forces this branch. feature flags may not be the right solution here
+        $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
+    }};
+}
+#[macro_export]
+#[cfg(not(all(feature = "64bit")))]
+macro_rules! include_elf {
+    ($arg:tt) => {{
+        $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
     }};
 }
