@@ -982,18 +982,18 @@ pub mod tests {
 
     use crate::{io::SP1Stdin, utils::run_test};
 
-    // #[tokio::test]
-    // async fn test_add_prove() {
-    //     // setup_logger();
-    //     let instructions = vec![
-    //         Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
-    //         Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
-    //         Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
-    //     ];
-    //     let program = Program::new(instructions, 0, 0);
-    //     let stdin = SP1Stdin::new();
-    //     run_test(program, stdin).await.unwrap();
-    // }
+    #[tokio::test]
+    async fn test_add_prove() {
+        setup_logger();
+        let instructions = vec![
+            Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+            Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
+            Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
+        ];
+        let program = Program::new(instructions, 0, 0);
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
 
     #[test]
     fn test_chips_main_width_interaction_ratio() {
@@ -1012,20 +1012,39 @@ pub mod tests {
     async fn test_mul_prove() {
         let mul_ops = [Opcode::MUL, Opcode::MULH, Opcode::MULHU, Opcode::MULHSU];
         setup_logger();
-        let operands =
-            [(1, 1), (1234, 5678), (8765, 4321), (0xffff, 0xffff - 1), (u32::MAX - 1, u32::MAX)];
+        let operands = [
+            (1, 1),
+            (1234, 5678),
+            (8765, 4321),
+            (0xffff, 0xffff - 1),
+            (u64::MAX - 1, u64::MAX),
+            (1 << 31, u32::MAX as u64),
+        ];
+        let mut instructions = vec![];
         for mul_op in mul_ops.iter() {
             for operand in operands.iter() {
-                let instructions = vec![
-                    Instruction::new(Opcode::ADDI, 29, 0, operand.0 as u64, false, true),
-                    Instruction::new(Opcode::ADDI, 30, 0, operand.1 as u64, false, true),
-                    Instruction::new(*mul_op, 31, 30, 29, false, false),
-                ];
-                let program = Program::new(instructions, 0, 0);
-                let stdin = SP1Stdin::new();
-                run_test(program, stdin).await.unwrap();
+                instructions.push(Instruction::new(
+                    Opcode::ADDI,
+                    29,
+                    0,
+                    operand.0 as u64,
+                    false,
+                    true,
+                ));
+                instructions.push(Instruction::new(
+                    Opcode::ADDI,
+                    30,
+                    0,
+                    operand.1 as u64,
+                    false,
+                    true,
+                ));
+                instructions.push(Instruction::new(*mul_op, 31, 30, 29, false, false));
             }
         }
+        let program = Program::new(instructions, 0, 0);
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1064,16 +1083,37 @@ pub mod tests {
     #[tokio::test]
     async fn test_divrem_prove() {
         setup_logger();
-        let div_rem_ops = [Opcode::DIV, Opcode::DIVU, Opcode::REM, Opcode::REMU];
+        let div_rem_ops = [
+            Opcode::DIV,
+            Opcode::DIVU,
+            Opcode::REM,
+            Opcode::REMU,
+            Opcode::DIVW,
+            Opcode::DIVUW,
+            Opcode::REMUW,
+            Opcode::REMW,
+        ];
         let operands = [
             (1, 1),
             (123, 456 * 789),
             (123 * 456, 789),
             (0xffff * (0xffff - 1), 0xffff),
-            (u32::MAX - 5, u32::MAX - 7),
-            (1 << 31, u32::MAX),
+            (u64::MAX - 5, u64::MAX - 7),
+            (u64::MAX - 5, 7),
+            (1 << 63, u64::MAX),
+            ((1 << 31) as u32 as u64, u32::MAX as i32 as i64 as u64),
             (1, 0),
             (0, 0),
+            (0xffffffffu32 as u64, 0xffffffffu32 as u64),
+            (0x80000000u32 as u64, 0x80000000u32 as u64),
+            (0x7fffffffu32 as u64, 0x7fffffffu32 as u64),
+            (0xffff0000, 0xffff0000),
+            (0x0000ffff, 0x0000ffff),
+            (i32::MIN as u64, 1u64),
+            (i32::MAX as u64, -1i32 as u64),
+            (u32::MAX as u64, u32::MAX as u64),
+            (0xffffffff, 2),
+            (0xffffffff, 3),
         ];
         let mut instructions = vec![];
         for div_rem_op in div_rem_ops.iter() {

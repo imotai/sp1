@@ -1233,7 +1233,14 @@ impl<'a> Executor<'a> {
                 let record = ALUTypeRecord::from(record);
                 self.record.mul_events.push((event, record));
             }
-            Opcode::DIVU | Opcode::REMU | Opcode::DIV | Opcode::REM => {
+            Opcode::DIVU
+            | Opcode::REMU
+            | Opcode::DIV
+            | Opcode::REM
+            | Opcode::DIVW
+            | Opcode::DIVUW
+            | Opcode::REMUW
+            | Opcode::REMW => {
                 let record = ALUTypeRecord::from(record);
                 self.record.divrem_events.push((event, record));
             }
@@ -1634,21 +1641,21 @@ impl<'a> Executor<'a> {
                 if c == 0 {
                     M64
                 } else {
-                    ((b as i32).wrapping_div(c as i32) as u32) as u64
+                    (b as i64).wrapping_div(c as i64) as u64
                 }
             }
             Opcode::DIVU => {
                 if c == 0 {
                     M64
                 } else {
-                    (b.wrapping_div(c) as i64) as u64
+                    b / c
                 }
             }
             Opcode::REM => {
                 if c == 0 {
                     b
                 } else {
-                    (((b as i64) as i128) % ((c as i64) as i128)) as u64
+                    (b as i64).wrapping_rem(c as i64) as u64
                 }
             }
             Opcode::REMU => {
@@ -1666,28 +1673,28 @@ impl<'a> Executor<'a> {
                 if c as i32 == 0 {
                     M64
                 } else {
-                    (((b as i32) as i64) / ((c as i32) as i64)) as u64
+                    (b as i32).wrapping_div(c as i32) as i64 as u64
                 }
             }
             Opcode::DIVUW => {
                 if c as i32 == 0 {
                     M64
                 } else {
-                    ((b as u32 / c as u32) as i32) as u64
+                    ((b as u32 / c as u32) as i32) as i64 as u64
                 }
             }
             Opcode::REMW => {
                 if c as i32 == 0 {
                     (b as i32) as u64
                 } else {
-                    (((b as i32) as i64) % ((c as i32) as i64)) as u64
+                    (b as i32).wrapping_rem(c as i32) as i64 as u64
                 }
             }
             Opcode::REMUW => {
                 if c as u32 == 0 {
                     (b as i32) as u64
                 } else {
-                    (((b as u32) % (c as u32)) as i32) as u64
+                    (((b as u32) % (c as u32)) as i32) as i64 as u64
                 }
             }
             // RISC-V 64-bit operations

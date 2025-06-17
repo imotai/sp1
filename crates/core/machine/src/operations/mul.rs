@@ -1,4 +1,4 @@
-use std::{ffi::c_uint, num::Wrapping};
+use std::num::Wrapping;
 
 use crate::{air::WordAirBuilder, operations::U16MSBOperation};
 use sp1_core_executor::{
@@ -122,6 +122,7 @@ impl<F: Field> MulOperation<F> {
                 record.add_byte_lookup_events(blu_events);
             }
         }
+        // tracing::info!("b mulh: {:?}, c mulh: {:?}", b, c);
 
         let mut product = [0u32; LONG_WORD_BYTE_SIZE];
         for i in 0..b.len() {
@@ -255,9 +256,11 @@ impl<F: Field> MulOperation<F> {
         let product = {
             for i in 0..LONG_WORD_BYTE_SIZE {
                 if i == 0 {
-                    builder.assert_eq(cols.product[i], m[i].clone() - cols.carry[i] * base);
+                    builder
+                        .when(is_real.clone())
+                        .assert_eq(cols.product[i], m[i].clone() - cols.carry[i] * base);
                 } else {
-                    builder.assert_eq(
+                    builder.when(is_real.clone()).assert_eq(
                         cols.product[i],
                         m[i].clone() + cols.carry[i - 1] - cols.carry[i] * base,
                     );
