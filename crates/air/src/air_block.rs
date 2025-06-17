@@ -260,7 +260,7 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for KeccakPermuteChip {
                 // Receive state.
                 builder.receive(
                     AirInteraction::new(
-                        vec![local.shard, local.clk, local.state_addr, local.index]
+                        vec![local.clk_high, local.clk_low, local.state_addr, local.index]
                             .into_iter()
                             .chain(local.keccak.a.into_iter().flat_map(|two_d| {
                                 two_d.into_iter().flat_map(|one_d| one_d.into_iter())
@@ -276,8 +276,8 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for KeccakPermuteChip {
                 builder.send(
                     AirInteraction::new(
                         vec![
-                            local.shard.into(),
-                            local.clk.into(),
+                            local.clk_high.into(),
+                            local.clk_low.into(),
                             local.state_addr.into(),
                             local.index + SymbolicExprF::one(),
                         ]
@@ -603,16 +603,16 @@ where
                 );
 
                 builder.eval_memory_access_slice_read(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     q_ptr,
                     &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
                     local.is_real,
                 );
                 // We read p at +1 since p, q could be the same.
                 builder.eval_memory_access_slice_write(
-                    local.shard,
-                    local.clk + F::from_canonical_u32(1),
+                    local.clk_high,
+                    local.clk_low + F::from_canonical_u32(1),
                     p_ptr,
                     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
                     result_words,
@@ -635,8 +635,8 @@ where
                 };
 
                 builder.receive_syscall(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     syscall_id_felt,
                     p_ptr,
                     q_ptr,
@@ -786,8 +786,8 @@ where
                 );
 
                 builder.eval_memory_access_slice_write(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     p_ptr,
                     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
                     result_words,
@@ -812,8 +812,8 @@ where
                 };
 
                 builder.receive_syscall(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     syscall_id_felt,
                     p_ptr,
                     SymbolicExprF::zero(),
