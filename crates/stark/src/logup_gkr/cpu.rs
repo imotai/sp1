@@ -10,7 +10,12 @@ use slop_challenger::FieldChallenger;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
 
-use crate::{air::MachineAir, prover::Traces, Chip, LogupRoundPolynomial, PolynomialLayer};
+use crate::{
+    air::{InteractionScope, MachineAir},
+    debug_interactions_with_all_chips,
+    prover::Traces,
+    Chip, InteractionKind, LogupRoundPolynomial, PolynomialLayer,
+};
 
 use super::{
     LogUpGkrCircuit, LogUpGkrOutput, LogUpGkrProverComponents, LogUpGkrRoundProver,
@@ -101,6 +106,17 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F
                 (chip.name(), interactions)
             })
             .collect::<BTreeMap<_, _>>();
+
+        tracing::debug_span!("debug local interactions").in_scope(|| {
+            debug_interactions_with_all_chips::<F, A>(
+                &chips.iter().cloned().collect::<Vec<_>>(),
+                &preprocessed_traces,
+                &traces,
+                InteractionKind::all_kinds(),
+                InteractionScope::Local,
+            )
+        });
+
         let first_layer = self
             .generate_first_layer(&interactions, &traces, &preprocessed_traces, alpha, beta)
             .await;

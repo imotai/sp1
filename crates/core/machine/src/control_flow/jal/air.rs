@@ -4,7 +4,7 @@ use crate::adapter::{register::j_type::JTypeReader, state::CPUState};
 use p3_air::Air;
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_PC_INC};
+use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
 use sp1_stark::air::SP1AirBuilder;
 
 use super::{JalChip, JalColumns};
@@ -32,7 +32,7 @@ where
             builder,
             local.state,
             local.adapter.b().reduce::<AB>(),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
             local.is_real.into(),
         );
 
@@ -44,8 +44,8 @@ where
         // Set `op_c` immediate as `op_a_not_0 * (pc + 4)` in the instruction encoding.
         JTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
             *local.adapter.c(),

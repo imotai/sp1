@@ -146,7 +146,7 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 
     match &bundle.proof {
         SP1Proof::Core(proof) => {
-            let public_values: &PublicValues<[_; 4], Word<_>, _> =
+            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
                 proof.last().unwrap().public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.
@@ -171,7 +171,7 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 .map_err(SP1VerificationError::Core)
         }
         SP1Proof::Compressed(proof) => {
-            let public_values: &PublicValues<[_; 4], Word<_>, _> =
+            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
                 proof.proof.public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.

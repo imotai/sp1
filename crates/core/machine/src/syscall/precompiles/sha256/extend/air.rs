@@ -11,7 +11,8 @@ use super::{ShaExtendChip, ShaExtendCols, NUM_SHA_EXTEND_COLS};
 use crate::{
     air::MemoryAirBuilder,
     operations::{
-        Add4Operation, FixedRotateRightOperation, FixedShiftRightOperation, XorU16Operation,
+        Add4Operation, ClkOperation, FixedRotateRightOperation, FixedShiftRightOperation,
+        XorU16Operation,
     },
 };
 
@@ -36,10 +37,18 @@ where
         let i_start = AB::F::from_canonical_u32(16);
         let nb_bytes_in_word = AB::F::from_canonical_u32(4);
 
+        ClkOperation::<AB::F>::eval(
+            builder,
+            local.clk_low.into(),
+            local.i - i_start,
+            local.next_clk,
+            local.is_real.into(),
+        );
+
         // Read w[i-15].
         builder.eval_memory_access_read(
-            local.shard,
-            local.clk + (local.i - i_start),
+            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_low::<AB>(),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(15)) * nb_bytes_in_word,
             local.w_i_minus_15,
             local.is_real,
@@ -47,8 +56,8 @@ where
 
         // Read w[i-2].
         builder.eval_memory_access_read(
-            local.shard,
-            local.clk + (local.i - i_start),
+            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_low::<AB>(),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(2)) * nb_bytes_in_word,
             local.w_i_minus_2,
             local.is_real,
@@ -56,8 +65,8 @@ where
 
         // Read w[i-16].
         builder.eval_memory_access_read(
-            local.shard,
-            local.clk + (local.i - i_start),
+            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_low::<AB>(),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(16)) * nb_bytes_in_word,
             local.w_i_minus_16,
             local.is_real,
@@ -65,8 +74,8 @@ where
 
         // Read w[i-7].
         builder.eval_memory_access_read(
-            local.shard,
-            local.clk + (local.i - i_start),
+            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_low::<AB>(),
             local.w_ptr + (local.i - AB::F::from_canonical_u32(7)) * nb_bytes_in_word,
             local.w_i_minus_7,
             local.is_real,
@@ -169,8 +178,8 @@ where
 
         // Write `s2` to `w[i]`.
         builder.eval_memory_access_write(
-            local.shard,
-            local.clk + (local.i - i_start),
+            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_low::<AB>(),
             local.w_ptr + local.i * nb_bytes_in_word,
             local.w_i,
             local.s2.value,
@@ -180,7 +189,12 @@ where
         // Receive the state.
         builder.receive(
             AirInteraction::new(
-                vec![local.shard.into(), local.clk.into(), local.w_ptr.into(), local.i.into()],
+                vec![
+                    local.clk_high.into(),
+                    local.clk_low.into(),
+                    local.w_ptr.into(),
+                    local.i.into(),
+                ],
                 local.is_real.into(),
                 InteractionKind::ShaExtend,
             ),
@@ -191,8 +205,8 @@ where
         builder.send(
             AirInteraction::new(
                 vec![
-                    local.shard.into(),
-                    local.clk.into(),
+                    local.clk_high.into(),
+                    local.clk_low.into(),
                     local.w_ptr.into(),
                     local.i.into() + AB::Expr::one(),
                 ],

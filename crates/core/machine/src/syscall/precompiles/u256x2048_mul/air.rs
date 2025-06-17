@@ -50,11 +50,11 @@ const HI_REGISTER: u32 = Register::X13 as u32;
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct U256x2048MulCols<T> {
-    /// The shard number of the syscall.
-    pub shard: T,
+    /// The high bits of the clk of the syscall.
+    pub clk_high: T,
 
-    /// The clock cycle of the syscall.
-    pub clk: T,
+    /// The low bits of the clk of the syscall.
+    pub clk_low: T,
 
     /// The pointer to the first input.
     pub a_ptr: SyscallAddrOperation<T>,
@@ -127,8 +127,10 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
 
                         // Assign basic values to the columns.
                         cols.is_real = F::one();
-                        cols.shard = F::from_canonical_u32(event.shard);
-                        cols.clk = F::from_canonical_u32(event.clk);
+
+                        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+                        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
                         cols.a_ptr.populate(&mut new_byte_lookup_events, event.a_ptr, 32);
                         cols.b_ptr.populate(&mut new_byte_lookup_events, event.b_ptr, 256);
                         cols.lo_ptr.populate(&mut new_byte_lookup_events, event.lo_ptr, 256);
@@ -287,8 +289,8 @@ where
 
         // Receive the arguments.
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::U256XU2048_MUL.syscall_id()),
             a_ptr.clone(),
             b_ptr.clone(),
@@ -298,8 +300,8 @@ where
 
         // Evaluate that the lo_ptr and hi_ptr are read from the correct memory locations.
         builder.eval_memory_access_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             AB::Expr::from_canonical_u32(LO_REGISTER),
             local.lo_ptr_memory,
             local.is_real,
@@ -307,8 +309,8 @@ where
         builder.assert_word_eq(local.lo_ptr_memory.prev_value, local.lo_ptr.addr_word);
 
         builder.eval_memory_access_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             AB::Expr::from_canonical_u32(HI_REGISTER),
             local.hi_ptr_memory,
             local.is_real,
@@ -317,16 +319,16 @@ where
 
         // Evaluate the memory accesses for a_memory and b_memory.
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             a_ptr.clone(),
             &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
 
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             b_ptr.clone(),
             &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
@@ -394,9 +396,10 @@ where
             let output_words = limbs_to_words::<AB>(outputs[i].result.0.to_vec());
             result_words.extend(output_words);
         }
+
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             lo_ptr.clone(),
             &local.lo_memory,
             result_words,
@@ -405,8 +408,8 @@ where
 
         let output_carry_words = limbs_to_words::<AB>(outputs[outputs.len() - 1].carry.0.to_vec());
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             hi_ptr.clone(),
             &local.hi_memory,
             output_carry_words,

@@ -48,8 +48,8 @@ pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usi
 #[repr(C)]
 pub struct WeierstrassDoubleAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub slope_denominator: FieldOpCols<T, P>,
@@ -333,8 +333,8 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
 
         // Populate basic columns.
         cols.is_real = F::one();
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
+        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
         cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u32 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y);
@@ -468,8 +468,8 @@ where
         );
 
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             p_ptr.clone(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -492,8 +492,8 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id_felt,
             p_ptr,
             AB::Expr::zero(),

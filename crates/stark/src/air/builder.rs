@@ -158,14 +158,14 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     /// Sends the current CPU state.
     fn send_state(
         &mut self,
-        shard: impl Into<Self::Expr>,
-        clk: impl Into<Self::Expr>,
+        clk_high: impl Into<Self::Expr>,
+        clk_low: impl Into<Self::Expr>,
         pc: impl Into<Self::Expr>,
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.send(
             AirInteraction::new(
-                vec![shard.into(), clk.into(), pc.into()],
+                vec![clk_high.into(), clk_low.into(), pc.into()],
                 multiplicity.into(),
                 InteractionKind::State,
             ),
@@ -176,14 +176,14 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     /// Receives the current CPU state.
     fn receive_state(
         &mut self,
-        shard: impl Into<Self::Expr>,
-        clk: impl Into<Self::Expr>,
+        clk_high: impl Into<Self::Expr>,
+        clk_low: impl Into<Self::Expr>,
         pc: impl Into<Self::Expr>,
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.receive(
             AirInteraction::new(
-                vec![shard.into(), clk.into(), pc.into()],
+                vec![clk_high.into(), clk_low.into(), pc.into()],
                 multiplicity.into(),
                 InteractionKind::State,
             ),
@@ -195,8 +195,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     #[allow(clippy::too_many_arguments)]
     fn send_instruction(
         &mut self,
-        shard: impl Into<Self::Expr> + Clone,
-        clk: impl Into<Self::Expr> + Clone,
+        clk_high: impl Into<Self::Expr> + Clone,
+        clk_low: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
         next_pc: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
@@ -211,8 +211,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         is_halt: impl Into<Self::Expr>,
         multiplicity: impl Into<Self::Expr>,
     ) {
-        let values = once(shard.into())
-            .chain(once(clk.into()))
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
             .chain(once(pc.into()))
             .chain(once(next_pc.into()))
             .chain(once(num_extra_cycles.into()))
@@ -237,8 +237,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     #[allow(clippy::too_many_arguments)]
     fn receive_instruction(
         &mut self,
-        shard: impl Into<Self::Expr> + Clone,
-        clk: impl Into<Self::Expr> + Clone,
+        clk_high: impl Into<Self::Expr> + Clone,
+        clk_low: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
         next_pc: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
@@ -253,8 +253,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         is_halt: impl Into<Self::Expr>,
         multiplicity: impl Into<Self::Expr>,
     ) {
-        let values = once(shard.into())
-            .chain(once(clk.into()))
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
             .chain(once(pc.into()))
             .chain(once(next_pc.into()))
             .chain(once(num_extra_cycles.into()))
@@ -279,8 +279,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     #[allow(clippy::too_many_arguments)]
     fn send_syscall(
         &mut self,
-        shard: impl Into<Self::Expr> + Clone,
-        clk: impl Into<Self::Expr> + Clone,
+        clk_high: impl Into<Self::Expr> + Clone,
+        clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
         arg1: impl Into<Self::Expr> + Clone,
         arg2: impl Into<Self::Expr> + Clone,
@@ -290,8 +290,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         self.send(
             AirInteraction::new(
                 vec![
-                    shard.clone().into(),
-                    clk.clone().into(),
+                    clk_high.clone().into(),
+                    clk_low.clone().into(),
                     syscall_id.clone().into(),
                     arg1.clone().into(),
                     arg2.clone().into(),
@@ -307,8 +307,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     #[allow(clippy::too_many_arguments)]
     fn receive_syscall(
         &mut self,
-        shard: impl Into<Self::Expr> + Clone,
-        clk: impl Into<Self::Expr> + Clone,
+        clk_high: impl Into<Self::Expr> + Clone,
+        clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
         arg1: impl Into<Self::Expr> + Clone,
         arg2: impl Into<Self::Expr> + Clone,
@@ -318,8 +318,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         self.receive(
             AirInteraction::new(
                 vec![
-                    shard.clone().into(),
-                    clk.clone().into(),
+                    clk_high.clone().into(),
+                    clk_low.clone().into(),
                     syscall_id.clone().into(),
                     arg1.clone().into(),
                     arg2.clone().into(),

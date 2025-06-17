@@ -5,7 +5,8 @@ use sp1_derive::AlignedBorrow;
 use crate::{
     memory::MemoryAccessCols,
     operations::{
-        Add4Operation, FixedRotateRightOperation, FixedShiftRightOperation, XorU16Operation,
+        Add4Operation, ClkOperation, FixedRotateRightOperation, FixedShiftRightOperation,
+        XorU16Operation,
     },
 };
 
@@ -15,8 +16,9 @@ pub const NUM_SHA_EXTEND_COLS: usize = size_of::<ShaExtendCols<u8>>();
 #[repr(C)]
 pub struct ShaExtendCols<T> {
     /// Inputs.
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
+    pub next_clk: ClkOperation<T>,
     pub w_ptr: T,
 
     /// Control flags.

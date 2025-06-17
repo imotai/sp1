@@ -11,7 +11,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
@@ -83,12 +83,7 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                         let event = merged_events[idx];
                         let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(
-                            &mut byte_lookup_events,
-                            input.public_values.execution_shard,
-                            event.0.clk,
-                            event.0.pc,
-                        );
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -113,12 +108,7 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                     let cols: &mut AddCols<F> = row.as_mut_slice().borrow_mut();
                     let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(
-                        &mut blu,
-                        input.public_values.execution_shard,
-                        event.0.clk,
-                        event.0.pc,
-                    );
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -183,20 +173,20 @@ where
         );
 
         // Constrain the state of the CPU.
-        // The program counter and timestamp increment by `4`.
+        // The program counter and timestamp increment by `4` and `8`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
             local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
             local.is_real.into(),
         );
 
         // Constrain the program and register reads.
         RTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
             local.add_operation.value,

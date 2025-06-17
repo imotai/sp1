@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_PC_INC};
+use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
 use sp1_stark::air::SP1AirBuilder;
 
 use crate::{
@@ -62,15 +62,15 @@ where
             builder,
             local.state,
             local.next_pc.into(),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
             is_real.clone(),
         );
 
         // Constrain the program and register reads.
         ITypeReader::<AB::F>::eval_op_a_immutable(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
             local.adapter,

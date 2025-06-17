@@ -71,7 +71,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     get_msb, get_quotient_and_remainder, is_signed_operation, ExecutionRecord, Opcode, Program,
-    DEFAULT_PC_INC,
+    DEFAULT_CLK_INC, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
@@ -247,12 +247,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             {
                 let mut blu = vec![];
                 let instruction = input.program.fetch(event.pc);
-                cols.state.populate(
-                    &mut blu,
-                    input.public_values.execution_shard,
-                    event.clk,
-                    event.pc,
-                );
+                cols.state.populate(&mut blu, event.clk, event.pc);
                 cols.adapter.populate(&mut blu, instruction, alu_record);
                 output.add_byte_lookup_events(blu);
             }
@@ -850,20 +845,20 @@ where
             };
 
             // Constrain the state of the CPU.
-            // The program counter and timestamp increment by `4`.
+            // The program counter and timestamp increment by `4` and `8`.
             CPUState::<AB::F>::eval(
                 builder,
                 local.state,
                 local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-                AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+                AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
                 local.is_real.into(),
             );
 
             // Constrain the program and register reads.
             ALUTypeReader::<AB::F>::eval(
                 builder,
-                local.state.shard::<AB>(),
-                local.state.clk::<AB>(),
+                local.state.clk_high::<AB>(),
+                local.state.clk_low::<AB>(),
                 local.state.pc,
                 opcode,
                 local.a,

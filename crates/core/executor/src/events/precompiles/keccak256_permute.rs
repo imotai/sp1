@@ -15,7 +15,7 @@ pub struct KeccakPermuteEvent {
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The pre-state as a list of u64 words.
     pub pre_state: [u64; STATE_SIZE],
     /// The post-state as a list of u64 words.

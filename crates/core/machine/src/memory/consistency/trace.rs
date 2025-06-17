@@ -41,27 +41,28 @@ impl<F: PrimeField32> MemoryAccessTimestamp<F> {
         current_record: MemoryRecord,
         output: &mut impl ByteRecord,
     ) {
-        self.prev_shard = F::from_canonical_u32(prev_record.shard);
-        self.prev_clk = F::from_canonical_u32(prev_record.timestamp);
+        let prev_high = (prev_record.timestamp >> 24) as u32;
+        let prev_low = (prev_record.timestamp & 0xFFFFFF) as u32;
+        let current_high = (current_record.timestamp >> 24) as u32;
+        let current_low = (current_record.timestamp & 0xFFFFFF) as u32;
+        self.prev_high = F::from_canonical_u32(prev_high);
+        self.prev_low = F::from_canonical_u32(prev_low);
 
-        // Fill columns used for verifying current memory access time value is greater than
-        // previous's.
-        let use_clk_comparison = prev_record.shard == current_record.shard;
-        self.compare_clk = F::from_bool(use_clk_comparison);
-        let prev_time_value =
-            if use_clk_comparison { prev_record.timestamp } else { prev_record.shard };
-        let current_time_value =
-            if use_clk_comparison { current_record.timestamp } else { current_record.shard };
+        // Fill columns used for verifying memory access time is increasing.
+        let use_low_comparison = prev_high == current_high;
+        self.compare_low = F::from_bool(use_low_comparison);
+        let prev_time_value = if use_low_comparison { prev_low } else { prev_high };
+        let current_time_value = if use_low_comparison { current_low } else { current_high };
 
         let diff_minus_one = current_time_value - prev_time_value - 1;
-        let diff_low_limb = (diff_minus_one & ((1 << 14) - 1)) as u16;
+        let diff_low_limb = (diff_minus_one & 0xFFFF) as u16;
         self.diff_low_limb = F::from_canonical_u16(diff_low_limb);
-        let diff_high_limb = (diff_minus_one >> 14) as u16;
-        self.diff_high_limb = F::from_canonical_u16(diff_high_limb);
+        let diff_high_limb = (diff_minus_one >> 16) as u8;
+        self.diff_high_limb = F::from_canonical_u8(diff_high_limb);
 
         // Add a byte table lookup with the u16 range check.
-        output.add_bit_range_check(diff_low_limb, 14);
-        output.add_bit_range_check(diff_high_limb, 14);
+        output.add_bit_range_check(diff_low_limb, 16);
+        output.add_u8_range_check(diff_high_limb, 0);
     }
 }
 
@@ -72,16 +73,20 @@ impl<F: PrimeField32> MemoryAccessInShardTimestamp<F> {
         current_record: MemoryRecord,
         output: &mut impl ByteRecord,
     ) {
-        let old_timestamp =
-            if prev_record.shard == current_record.shard { prev_record.timestamp } else { 0 };
-        self.prev_clk = F::from_canonical_u32(old_timestamp);
-        let diff_minus_one = current_record.timestamp - old_timestamp - 1;
-        let diff_low_limb = (diff_minus_one & ((1 << 14) - 1)) as u16;
+        let prev_high = (prev_record.timestamp >> 24) as u32;
+        let prev_low = (prev_record.timestamp & 0xFFFFFF) as u32;
+        let current_high = (current_record.timestamp >> 24) as u32;
+        let current_low = (current_record.timestamp & 0xFFFFFF) as u32;
+
+        let old_timestamp = if prev_high == current_high { prev_low } else { 0 };
+        self.prev_low = F::from_canonical_u32(old_timestamp);
+        let diff_minus_one = current_low - old_timestamp - 1;
+        let diff_low_limb = (diff_minus_one & 0xFFFF) as u16;
         self.diff_low_limb = F::from_canonical_u16(diff_low_limb);
-        let diff_high_limb = (diff_minus_one >> 14) as u16;
+        let diff_high_limb = (diff_minus_one >> 16) as u8;
 
         // Add a byte table lookup with the u16 range check.
-        output.add_bit_range_check(diff_low_limb, 14);
-        output.add_bit_range_check(diff_high_limb, 14);
+        output.add_bit_range_check(diff_low_limb, 16);
+        output.add_u8_range_check(diff_high_limb, 0);
     }
 }

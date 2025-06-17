@@ -1,6 +1,7 @@
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
+use p3_air::AirBuilder;
 use p3_field::{AbstractField, PrimeField};
 use sp1_stark::{
     air::{
@@ -28,7 +29,7 @@ use crate::{
     },
     program::Program,
     syscalls::SyscallCode,
-    RetainedEventsPreset, RiscvAirId, SplitOpts,
+    ByteOpcode, RetainedEventsPreset, RiscvAirId, SplitOpts,
 };
 
 /// A record of the execution of a program.
@@ -98,10 +99,12 @@ pub struct ExecutionRecord {
     pub global_cumulative_sum: Arc<Mutex<SepticDigest<u32>>>,
     /// The global interaction event count.
     pub global_interaction_event_count: u32,
-    /// Memory records with `prev_shard` different from `shard`.
-    pub shard_bump_memory_events: Vec<(MemoryRecordEnum, u32)>,
+    /// Memory records with `prev_clk >> 24` different from `clk >> 24`.
+    pub bump_memory_events: Vec<(MemoryRecordEnum, u32)>,
+    /// Record where the `clk >> 24` has incremented.
+    pub bump_clk_high_events: Vec<(u64, u64, u32)>,
     /// The public values.
-    pub public_values: PublicValues<u32, u32, u32>,
+    pub public_values: PublicValues<u32, u32, u64, u32>,
     /// The next nonce to use for a new lookup.
     pub next_nonce: u64,
     /// The shape of the proof.
@@ -110,8 +113,10 @@ pub struct ExecutionRecord {
     pub counts: Option<EnumMap<RiscvAirId, u64>>,
     /// The estimated total trace area of the proof.
     pub estimated_trace_area: u64,
+    /// The initial timestamp of the shard.
+    pub initial_timestamp: u64,
     /// The final timestamp of the shard.
-    pub last_timestamp: u32,
+    pub last_timestamp: u64,
     /// The start program counter.
     pub start_pc: Option<u32>,
     /// The final program counter.
@@ -485,8 +490,8 @@ impl MachineRecord for ExecutionRecord {
         self.jalr_events.append(&mut other.jalr_events);
         self.auipc_events.append(&mut other.auipc_events);
         self.syscall_events.append(&mut other.syscall_events);
-        self.shard_bump_memory_events.append(&mut other.shard_bump_memory_events);
-
+        self.bump_memory_events.append(&mut other.bump_memory_events);
+        self.bump_clk_high_events.append(&mut other.bump_clk_high_events);
         self.precompile_events.append(&mut other.precompile_events);
 
         if self.byte_lookups.is_empty() {
@@ -509,11 +514,16 @@ impl MachineRecord for ExecutionRecord {
     }
 
     /// Constrains the public values.
+    #[allow(clippy::type_complexity)]
     fn eval_public_values<AB: SP1AirBuilder>(builder: &mut AB) {
         let public_values_slice: [AB::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
             core::array::from_fn(|i| builder.public_values()[i]);
-        let public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar> =
-            public_values_slice.as_slice().borrow();
+        let public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            Word<AB::PublicVar>,
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        > = public_values_slice.as_slice().borrow();
 
         Self::eval_state(public_values, builder);
         Self::eval_global_sum(public_values, builder);
@@ -541,38 +551,136 @@ impl ByteRecord for ExecutionRecord {
 }
 
 impl ExecutionRecord {
+    #[allow(clippy::type_complexity)]
     fn eval_state<AB: SP1AirBuilder>(
-        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            Word<AB::PublicVar>,
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
         builder: &mut AB,
     ) {
-        builder.send_state(
-            public_values.execution_shard,
+        let initial_timestamp_high = public_values.initial_timestamp[1].into()
+            + public_values.initial_timestamp[0].into() * AB::Expr::from_canonical_u32(1 << 8);
+        let initial_timestamp_low = public_values.initial_timestamp[3].into()
+            + public_values.initial_timestamp[2].into() * AB::Expr::from_canonical_u32(1 << 16);
+        let last_timestamp_high = public_values.last_timestamp[1].into()
+            + public_values.last_timestamp[0].into() * AB::Expr::from_canonical_u32(1 << 8);
+        let last_timestamp_low = public_values.last_timestamp[3].into()
+            + public_values.last_timestamp[2].into() * AB::Expr::from_canonical_u32(1 << 16);
+
+        // Range check all the timestamp limbs.
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            public_values.initial_timestamp[0].into(),
+            AB::Expr::from_canonical_u32(16),
+            AB::Expr::zero(),
             AB::Expr::one(),
+        );
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            public_values.initial_timestamp[3].into(),
+            AB::Expr::from_canonical_u32(16),
+            AB::Expr::zero(),
+            AB::Expr::one(),
+        );
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            public_values.last_timestamp[0].into(),
+            AB::Expr::from_canonical_u32(16),
+            AB::Expr::zero(),
+            AB::Expr::one(),
+        );
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            public_values.last_timestamp[3].into(),
+            AB::Expr::from_canonical_u32(16),
+            AB::Expr::zero(),
+            AB::Expr::one(),
+        );
+        builder.send_byte(
+            AB::Expr::from_canonical_u8(ByteOpcode::U8Range as u8),
+            AB::Expr::zero(),
+            public_values.initial_timestamp[1],
+            public_values.initial_timestamp[2],
+            AB::Expr::one(),
+        );
+        builder.send_byte(
+            AB::Expr::from_canonical_u8(ByteOpcode::U8Range as u8),
+            AB::Expr::zero(),
+            public_values.last_timestamp[1],
+            public_values.last_timestamp[2],
+            AB::Expr::one(),
+        );
+
+        // Send and receive the initial and last state.
+        builder.send_state(
+            initial_timestamp_high.clone(),
+            initial_timestamp_low.clone(),
             public_values.start_pc,
             AB::Expr::one(),
         );
         builder.receive_state(
-            public_values.execution_shard,
-            public_values.last_timestamp,
+            last_timestamp_high.clone(),
+            last_timestamp_low.clone(),
             public_values.next_pc,
             AB::Expr::one(),
         );
+
+        // If execution shard is not incremented, assert that timestamp and pc remains equal.
         let increment_execution_shard =
             public_values.next_execution_shard.into() - public_values.execution_shard.into();
         builder.assert_bool(increment_execution_shard.clone());
-        builder.assert_zero(
-            (public_values.last_timestamp.into() - AB::Expr::one())
-                * (AB::Expr::one() - increment_execution_shard.clone()),
-        );
+        builder
+            .when_not(increment_execution_shard.clone())
+            .assert_eq(initial_timestamp_low.clone(), last_timestamp_low.clone());
+        builder
+            .when_not(increment_execution_shard.clone())
+            .assert_eq(initial_timestamp_high.clone(), last_timestamp_high.clone());
+        builder
+            .when_not(increment_execution_shard.clone())
+            .assert_eq(public_values.start_pc, public_values.next_pc);
+
+        // IsZeroOperation on the high bits of the timestamp.
+        builder.assert_bool(public_values.is_timestamp_high_eq);
         builder.assert_eq(
-            (public_values.last_timestamp.into() - AB::Expr::one())
-                * public_values.last_timestamp_inv.into(),
-            increment_execution_shard,
+            (last_timestamp_high.clone() - initial_timestamp_high.clone())
+                * public_values.inv_timestamp_high.into(),
+            AB::Expr::one() - public_values.is_timestamp_high_eq.into(),
+        );
+        builder.assert_zero(
+            (last_timestamp_high.clone() - initial_timestamp_high.clone())
+                * public_values.is_timestamp_high_eq.into(),
+        );
+
+        // IsZeroOperation on the low bits of the timestamp.
+        builder.assert_bool(public_values.is_timestamp_low_eq);
+        builder.assert_eq(
+            (last_timestamp_low.clone() - initial_timestamp_low.clone())
+                * public_values.inv_timestamp_low.into(),
+            AB::Expr::one() - public_values.is_timestamp_low_eq.into(),
+        );
+        builder.assert_zero(
+            (last_timestamp_low.clone() - initial_timestamp_low.clone())
+                * public_values.is_timestamp_low_eq.into(),
+        );
+
+        // If the execution shard is incremented, then the timestamp is different.
+        builder.assert_eq(
+            AB::Expr::one() - increment_execution_shard.clone(),
+            public_values.is_timestamp_high_eq.into() * public_values.is_timestamp_low_eq.into(),
         );
     }
 
+    #[allow(clippy::type_complexity)]
     fn eval_global_sum<AB: SP1AirBuilder>(
-        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            Word<AB::PublicVar>,
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
         builder: &mut AB,
     ) {
         let initial_sum = SepticDigest::<AB::F>::zero().0;
@@ -600,8 +708,14 @@ impl ExecutionRecord {
         );
     }
 
+    #[allow(clippy::type_complexity)]
     fn eval_global_memory_init<AB: SP1AirBuilder>(
-        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            Word<AB::PublicVar>,
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
         builder: &mut AB,
     ) {
         builder.send(
@@ -628,8 +742,14 @@ impl ExecutionRecord {
         );
     }
 
+    #[allow(clippy::type_complexity)]
     fn eval_global_memory_finalize<AB: SP1AirBuilder>(
-        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            Word<AB::PublicVar>,
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
         builder: &mut AB,
     ) {
         builder.send(

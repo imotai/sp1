@@ -4,7 +4,7 @@ use itertools::Itertools;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{syscalls::SyscallCode, Opcode};
+use sp1_core_executor::{syscalls::SyscallCode, Opcode, DEFAULT_CLK_INC};
 use sp1_stark::{
     air::{
         BaseAirBuilder, InteractionScope, PublicValues, SP1AirBuilder, POSEIDON_NUM_WORDS,
@@ -34,8 +34,12 @@ where
 
         let public_values_slice: [AB::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
             core::array::from_fn(|i| builder.public_values()[i]);
-        let public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar> =
-            public_values_slice.as_slice().borrow();
+        let public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            Word<AB::PublicVar>,
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        > = public_values_slice.as_slice().borrow();
 
         // Convert the syscall code to four bytes using the safe API.
         let a = U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
@@ -59,15 +63,15 @@ where
             builder,
             local.state,
             local.next_pc.into(),
-            local.num_extra_cycles + AB::F::from_canonical_u32(4),
+            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC + 256),
             local.is_real.into(),
         );
 
         // Constrain the program and register reads.
         RTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc,
             AB::Expr::from_canonical_u32(Opcode::ECALL as u32),
             local.op_a_value,
@@ -131,8 +135,8 @@ impl SyscallInstrsChip {
         builder.when_not(local.is_real).assert_zero(local.is_commit_deferred_proofs.result);
 
         builder.send_syscall(
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             syscall_id.clone(),
             local.adapter.b().reduce::<AB>(),
             local.adapter.c().reduce::<AB>(),
@@ -301,7 +305,12 @@ impl SyscallInstrsChip {
         &self,
         builder: &mut AB,
         local: &SyscallInstrColumns<AB::Var>,
-        public_values: &PublicValues<[AB::PublicVar; 4], Word<AB::PublicVar>, AB::PublicVar>,
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            Word<AB::PublicVar>,
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
     ) {
         // `next_pc` is constrained for the case where `is_halt` is true to be `0`
         builder.when(local.is_halt).assert_zero(local.next_pc);

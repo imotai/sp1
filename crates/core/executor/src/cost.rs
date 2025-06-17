@@ -9,6 +9,7 @@ const RANGE_NUM_ROWS: u64 = 1 << 17;
 #[must_use]
 pub fn estimate_trace_elements(
     num_events_per_air: EnumMap<RiscvAirId, u64>,
+    bump_clk_high: u64,
     costs_per_air: &EnumMap<RiscvAirId, u64>,
     program_size: u64,
     internal_syscalls_override: &[SyscallCode],
@@ -24,8 +25,9 @@ pub fn estimate_trace_elements(
     // Compute the program chip contribution.
     cells += program_size * costs_per_air[RiscvAirId::Program];
 
-    // Compute the memory bump contribution.
-    cells += 32 * costs_per_air[RiscvAirId::MemoryBump];
+    // Compute the bump contribution.
+    cells += 32 * (bump_clk_high + 1) * costs_per_air[RiscvAirId::MemoryBump];
+    cells += (32 + bump_clk_high) * costs_per_air[RiscvAirId::StateBump];
 
     // Compute the add chip contribution.
     cells +=

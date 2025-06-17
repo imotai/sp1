@@ -108,12 +108,13 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         output.add_byte_lookup_events(blu_batches.into_iter().flatten().collect());
 
         let events = memory_events.into_iter().map(|event| {
-            let interaction_shard = if is_receive { event.shard } else { 0 };
-            let interaction_clk = if is_receive { event.timestamp } else { 0 };
+            let interaction_clk_high = if is_receive { (event.timestamp >> 24) as u32 } else { 0 };
+            let interaction_clk_low =
+                if is_receive { (event.timestamp & 0xFFFFFF) as u32 } else { 0 };
             GlobalInteractionEvent {
                 message: [
-                    interaction_shard,
-                    interaction_clk,
+                    interaction_clk_high,
+                    interaction_clk_low,
                     event.addr,
                     (event.value & 0xFFFF) as u32,
                     (event.value >> 16) as u32,
@@ -157,7 +158,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let mut rows: Vec<[F; NUM_MEMORY_INIT_COLS]> = memory_events
             .par_iter()
             .map(|event| {
-                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp } =
+                let MemoryInitializeFinalizeEvent { addr, value, shard: _, timestamp } =
                     event.to_owned();
 
                 let mut blu = vec![];
@@ -165,8 +166,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
                 cols.addr = Word::from(addr);
                 cols.addr_range_checker.populate(cols.addr, &mut blu);
-                cols.shard = F::from_canonical_u32(shard);
-                cols.timestamp = F::from_canonical_u32(timestamp);
+                cols.clk_high = F::from_canonical_u32((timestamp >> 24) as u32);
+                cols.clk_low = F::from_canonical_u32((timestamp & 0xFFFFFF) as u32);
                 cols.value = Word::from(value);
                 cols.is_real = F::one();
                 row
@@ -226,11 +227,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
 #[derive(AlignedBorrow, Clone, Copy)]
 #[repr(C)]
 pub struct MemoryInitCols<T: Copy> {
-    /// The shard number of the memory access.
-    pub shard: T,
+    /// The top bits of the timestamp of the memory access.
+    pub clk_high: T,
 
-    /// The timestamp of the memory access.
-    pub timestamp: T,
+    /// The low bits of the timestamp of the memory access.
+    pub clk_low: T,
 
     /// The index of the memory access.
     pub index: T,
@@ -350,8 +351,8 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.shard.into(),
-                        local.timestamp.into(),
+                        local.clk_high.into(),
+                        local.clk_low.into(),
                         local.addr.reduce::<AB>(),
                         local.value.0[0].into(),
                         local.value.0[1].into(),

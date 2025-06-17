@@ -54,11 +54,11 @@ impl SyscallChip {
 #[derive(AlignedBorrow, Clone, Copy)]
 #[repr(C)]
 pub struct SyscallCols<T: Copy> {
-    /// The shard number of the syscall.
-    pub shard: T,
+    /// The high bits of the clk of the syscall.
+    pub clk_high: T,
 
-    /// The clk of the syscall.
-    pub clk: T,
+    /// The low bits of clk of the syscall.
+    pub clk_low: T,
 
     /// The syscall_id of the syscall.
     pub syscall_id: T,
@@ -101,7 +101,15 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             .iter()
             .filter(|e| e.should_send)
             .map(|event| GlobalInteractionEvent {
-                message: [event.shard, event.clk, event.syscall_id, event.arg1, event.arg2, 0, 0],
+                message: [
+                    (event.clk >> 24) as u32,
+                    (event.clk & 0xFFFFFF) as u32,
+                    event.syscall_id,
+                    event.arg1,
+                    event.arg2,
+                    0,
+                    0,
+                ],
                 is_receive: self.shard_kind == SyscallShardKind::Precompile,
                 kind: InteractionKind::Syscall as u8,
             })
@@ -139,8 +147,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             let mut row = [F::zero(); NUM_SYSCALL_COLS];
             let cols: &mut SyscallCols<F> = row.as_mut_slice().borrow_mut();
 
-            cols.shard = F::from_canonical_u32(syscall_event.shard);
-            cols.clk = F::from_canonical_u32(syscall_event.clk);
+            cols.clk_high = F::from_canonical_u32((syscall_event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((syscall_event.clk & 0xFFFFFF) as u32);
             cols.syscall_id = F::from_canonical_u32(syscall_event.syscall_code.syscall_id());
             cols.arg1 = F::from_canonical_u32(syscall_event.arg1);
             cols.arg2 = F::from_canonical_u32(syscall_event.arg2);
@@ -224,8 +232,8 @@ where
         match self.shard_kind {
             SyscallShardKind::Core => {
                 builder.receive_syscall(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     local.syscall_id,
                     local.arg1,
                     local.arg2,
@@ -237,8 +245,8 @@ where
                 builder.send(
                     AirInteraction::new(
                         vec![
-                            local.shard.into(),
-                            local.clk.into(),
+                            local.clk_high.into(),
+                            local.clk_low.into(),
                             local.syscall_id.into(),
                             local.arg1.into(),
                             local.arg2.into(),
@@ -256,8 +264,8 @@ where
             }
             SyscallShardKind::Precompile => {
                 builder.send_syscall(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     local.syscall_id,
                     local.arg1,
                     local.arg2,
@@ -269,8 +277,8 @@ where
                 builder.send(
                     AirInteraction::new(
                         vec![
-                            local.shard.into(),
-                            local.clk.into(),
+                            local.clk_high.into(),
+                            local.clk_low.into(),
                             local.syscall_id.into(),
                             local.arg1.into(),
                             local.arg2.into(),

@@ -51,7 +51,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         //                     event,
         //                     cols,
         //                     &mut byte_lookup_events,
-        //                     input.public_values.execution_shard,
+        //
         //                     instruction,
         //                 );
         //             }
@@ -82,7 +82,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         //                 op,
         //                 cols,
         //                 &mut blu,
-        //                 input.public_values.execution_shard,
+        //
         //                 instruction,
         //             );
         //         });

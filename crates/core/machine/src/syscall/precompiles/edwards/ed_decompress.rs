@@ -53,8 +53,8 @@ pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
 #[repr(C)]
 pub struct EdDecompressCols<T> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub ptr: SyscallAddrOperation<T>,
     pub sign: T,
     pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
@@ -79,8 +79,8 @@ impl<F: PrimeField32> EdDecompressCols<F> {
     ) {
         let mut new_byte_lookup_events = Vec::new();
         self.is_real = F::from_bool(true);
-        self.shard = F::from_canonical_u32(event.shard);
-        self.clk = F::from_canonical_u32(event.clk);
+        self.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        self.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
         self.ptr.populate(record, event.ptr, 64);
         self.sign = F::from_bool(event.sign);
         for i in 0..8 {
@@ -175,8 +175,8 @@ impl<V: Copy> EdDecompressCols<V> {
         let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
 
         builder.eval_memory_access_slice_write(
-            self.shard,
-            self.clk,
+            self.clk_high,
+            self.clk_low,
             ptr.clone(),
             &self.x_access,
             self.x_value.to_vec(),
@@ -184,8 +184,8 @@ impl<V: Copy> EdDecompressCols<V> {
         );
 
         builder.eval_memory_access_slice_read(
-            self.shard,
-            self.clk,
+            self.clk_high,
+            self.clk_low,
             ptr.clone() + AB::F::from_canonical_u32(32),
             &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
             self.is_real,
@@ -211,8 +211,8 @@ impl<V: Copy> EdDecompressCols<V> {
         }
 
         builder.receive_syscall(
-            self.shard,
-            self.clk,
+            self.clk_high,
+            self.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
             ptr,
             self.sign,

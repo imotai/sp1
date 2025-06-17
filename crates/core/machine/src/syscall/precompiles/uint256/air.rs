@@ -54,11 +54,11 @@ const WORDS_FIELD_ELEMENT: usize = WordsFieldElement::USIZE;
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct Uint256MulCols<T> {
-    /// The shard number of the syscall.
-    pub shard: T,
+    /// The high bits of the clk of the syscall.
+    pub clk_high: T,
 
-    /// The clock cycle of the syscall.
-    pub clk: T,
+    /// The low bits of the clk of the syscall.
+    pub clk_low: T,
 
     /// The pointer to the first input.
     pub x_ptr: SyscallAddrOperation<T>,
@@ -134,8 +134,10 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
 
                         // Assign basic values to the columns.
                         cols.is_real = F::one();
-                        cols.shard = F::from_canonical_u32(event.shard);
-                        cols.clk = F::from_canonical_u32(event.clk);
+
+                        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+                        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
                         cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, 32);
                         cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, 64);
 
@@ -307,8 +309,8 @@ where
 
         // Read and write x.
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             x_ptr.clone(),
             &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -318,8 +320,8 @@ where
         // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
         // we read it contiguously from the y_ptr memory location.
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             y_ptr.clone(),
             &[local.y_memory, local.modulus_memory]
                 .concat()
@@ -331,8 +333,8 @@ where
 
         // Receive the arguments.
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low.into(),
             AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
             x_ptr.clone(),
             y_ptr.clone(),

@@ -11,7 +11,7 @@ use super::MemoryRecordEnum;
 #[repr(C)]
 pub struct AluEvent {
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The program counter.
     pub pc: u32,
     /// The opcode.
@@ -30,7 +30,7 @@ impl AluEvent {
     /// Create a new [`AluEvent`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    pub fn new(clk: u32, pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
+    pub fn new(clk: u64, pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
         Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }
@@ -44,7 +44,7 @@ pub struct MemInstrEvent {
     /// The shard.
     pub shard: u32,
     /// The clk.
-    pub clk: u32,
+    pub clk: u64,
     /// The program counter.
     pub pc: u32,
     /// The opcode.
@@ -67,7 +67,7 @@ impl MemInstrEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         shard: u32,
-        clk: u32,
+        clk: u64,
         pc: u32,
         opcode: Opcode,
         a: u32,
@@ -87,7 +87,7 @@ impl MemInstrEvent {
 #[repr(C)]
 pub struct BranchEvent {
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The program counter.
     pub pc: u32,
     /// The next program counter.
@@ -109,7 +109,7 @@ impl BranchEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        clk: u32,
+        clk: u64,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
@@ -129,7 +129,7 @@ impl BranchEvent {
 #[repr(C)]
 pub struct JumpEvent {
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The program counter.
     pub pc: u32,
     /// The next program counter.
@@ -151,7 +151,7 @@ impl JumpEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        clk: u32,
+        clk: u64,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
@@ -170,7 +170,7 @@ impl JumpEvent {
 #[repr(C)]
 pub struct AUIPCEvent {
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The program counter.
     pub pc: u32,
     /// The opcode.
@@ -189,7 +189,7 @@ impl AUIPCEvent {
     /// Create a new [`AUIPCEvent`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    pub fn new(clk: u32, pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
+    pub fn new(clk: u64, pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
         Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }

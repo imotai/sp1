@@ -109,8 +109,9 @@ impl ShaExtendChip {
             let cols: &mut ShaExtendCols<F> = row.as_mut_slice().borrow_mut();
             cols.is_real = F::one();
             cols.i = F::from_canonical_u32(j as u32 + 16);
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            cols.next_clk.populate(blu, event.clk, j as u64);
             cols.w_ptr = F::from_canonical_u32(event.w_ptr);
 
             let w_i_minus_15_read = MemoryRecordEnum::Read(event.w_i_minus_15_reads[j]);

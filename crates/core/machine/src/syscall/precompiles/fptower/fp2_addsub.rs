@@ -43,8 +43,8 @@ pub const fn num_fp2_addsub_cols<P: FpOpField>() -> usize {
 #[repr(C)]
 pub struct Fp2AddSubAssignCols<T, P: FpOpField> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub is_add: T,
     pub x_ptr: SyscallAddrOperation<T>,
     pub y_ptr: SyscallAddrOperation<T>,
@@ -140,8 +140,9 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
 
             cols.is_real = F::one();
             cols.is_add = F::from_bool(event.op == FieldOperation::Add);
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u32 * 2);
             cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u32 * 2);
 
@@ -316,8 +317,8 @@ where
         );
 
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             y_ptr.clone(),
             &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
@@ -325,8 +326,8 @@ where
 
         // We read p at +1 since p, q could be the same.
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             x_ptr.clone(),
             &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -348,8 +349,8 @@ where
             local.is_add * add_syscall_id + (AB::Expr::one() - local.is_add) * sub_syscall_id;
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id_felt,
             x_ptr,
             y_ptr,

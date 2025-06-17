@@ -640,6 +640,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 end_pc: vk.pc_start,
                 end_shard: BabyBear::one(),
                 end_execution_shard: BabyBear::one(),
+                end_timestamp: [
+                    BabyBear::zero(),
+                    BabyBear::zero(),
+                    BabyBear::zero(),
+                    BabyBear::one(),
+                ],
                 init_addr_word: Word([BabyBear::zero(); 2]),
                 finalize_addr_word: Word([BabyBear::zero(); 2]),
                 committed_value_digest: [[BabyBear::zero(); 4]; 8],
@@ -918,6 +924,9 @@ pub mod tests {
     pub enum Test {
         Core,
         Compress,
+        Shrink,
+        Wrap,
+        OnChain,
     }
 
     pub async fn test_e2e_prover<C: SP1ProverComponents>(
@@ -967,11 +976,23 @@ pub mod tests {
         // Verify the compress proof
         prover.prover().verify_compressed(&compress_proof, &vk).unwrap();
 
+        if let Test::Compress = test_kind {
+            return Ok(());
+        }
+
         let shrink_proof = prover.clone().shrink(compress_proof).await.unwrap();
         prover.prover().verify_shrink(&shrink_proof, &vk).unwrap();
 
+        if let Test::Shrink = test_kind {
+            return Ok(());
+        }
+
         let wrap_proof = prover.clone().wrap(shrink_proof).await.unwrap();
         prover.prover().verify_wrap_bn254(&wrap_proof, &vk).unwrap();
+
+        if let Test::Wrap = test_kind {
+            return Ok(());
+        }
 
         let artifacts_dir = try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
         let plonk_bn254_proof = prover.wrap_plonk_bn254(wrap_proof.clone(), &artifacts_dir).await;
@@ -1012,7 +1033,7 @@ pub mod tests {
         };
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
-        test_e2e_prover::<CpuSP1ProverComponents>(prover, &elf, SP1Stdin::default(), Test::Compress)
+        test_e2e_prover::<CpuSP1ProverComponents>(prover, &elf, SP1Stdin::default(), Test::OnChain)
             .await
     }
 

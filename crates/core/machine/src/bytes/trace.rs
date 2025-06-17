@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
-use sp1_core_executor::{ByteOpcode, ExecutionRecord, Program};
+use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
 use sp1_stark::air::MachineAir;
 
 use crate::utils::zeroed_f_vec;
@@ -36,8 +36,14 @@ impl<F: PrimeField32> MachineAir<F> for ByteChip<F> {
         Some(trace)
     }
 
-    fn generate_dependencies(&self, _input: &ExecutionRecord, _output: &mut ExecutionRecord) {
-        // Do nothing since this chip has no dependencies.
+    fn generate_dependencies(&self, input: &ExecutionRecord, output: &mut ExecutionRecord) {
+        let initial_timestamp_1 = ((input.public_values.initial_timestamp >> 24) & 0xFF) as u8;
+        let initial_timestamp_2 = ((input.public_values.initial_timestamp >> 16) & 0xFF) as u8;
+        let last_timestamp_1 = ((input.public_values.last_timestamp >> 24) & 0xFF) as u8;
+        let last_timestamp_2 = ((input.public_values.last_timestamp >> 16) & 0xFF) as u8;
+
+        output.add_u8_range_check(initial_timestamp_1, initial_timestamp_2);
+        output.add_u8_range_check(last_timestamp_1, last_timestamp_2);
     }
 
     fn generate_trace(

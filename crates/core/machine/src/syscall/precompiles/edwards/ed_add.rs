@@ -50,8 +50,8 @@ pub const NUM_ED_ADD_COLS: usize = size_of::<EdAddAssignCols<u8>>();
 #[repr(C)]
 pub struct EdAddAssignCols<T> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub q_ptr: SyscallAddrOperation<T>,
     pub p_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
@@ -232,8 +232,9 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
 
         // Populate basic columns.
         cols.is_real = F::one();
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
+        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
         cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u32 * 4);
         cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u32 * 4);
 
@@ -342,16 +343,16 @@ where
         );
 
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low,
             q_ptr.clone(),
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
 
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             p_ptr.clone(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -359,8 +360,8 @@ where
         );
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_ADD.syscall_id()),
             p_ptr,
             q_ptr,

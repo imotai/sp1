@@ -27,17 +27,17 @@ pub struct SingleMemoryLocal<T: Copy> {
     /// The address of the memory access.
     pub addr: T,
 
-    /// The initial shard of the memory access.
-    pub initial_shard: T,
+    /// The high bits of initial clk of the memory access.
+    pub initial_clk_high: T,
 
-    /// The final shard of the memory access.
-    pub final_shard: T,
+    /// The high bits of final clk of the memory access.
+    pub final_clk_high: T,
 
-    /// The initial clk of the memory access.
-    pub initial_clk: T,
+    /// The low bits of initial clk of the memory access.
+    pub initial_clk_low: T,
 
-    /// The final clk of the memory access.
-    pub final_clk: T,
+    /// The low bits of final clk of the memory access.
+    pub final_clk_low: T,
 
     /// The initial value of the memory access.
     pub initial_value: Word<T>,
@@ -93,8 +93,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
         input.get_local_mem_events().for_each(|mem_event| {
             events.push(GlobalInteractionEvent {
                 message: [
-                    mem_event.initial_mem_access.shard,
-                    mem_event.initial_mem_access.timestamp,
+                    (mem_event.initial_mem_access.timestamp >> 24) as u32,
+                    (mem_event.initial_mem_access.timestamp & 0xFFFFFF) as u32,
                     mem_event.addr,
                     mem_event.initial_mem_access.value & 0xFFFF,
                     (mem_event.initial_mem_access.value >> 16) & 0xFFFF,
@@ -106,8 +106,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
             });
             events.push(GlobalInteractionEvent {
                 message: [
-                    mem_event.final_mem_access.shard,
-                    mem_event.final_mem_access.timestamp,
+                    (mem_event.final_mem_access.timestamp >> 24) as u32,
+                    (mem_event.final_mem_access.timestamp & 0xFFFFFF) as u32,
                     mem_event.addr,
                     mem_event.final_mem_access.value & 0xFFFF,
                     (mem_event.final_mem_access.value >> 16) & 0xFFFF,
@@ -155,11 +155,17 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                     if idx + k < events.len() {
                         let event = &events[idx + k];
                         cols.addr = F::from_canonical_u32(event.addr);
-                        cols.initial_shard = F::from_canonical_u32(event.initial_mem_access.shard);
-                        cols.final_shard = F::from_canonical_u32(event.final_mem_access.shard);
-                        cols.initial_clk =
-                            F::from_canonical_u32(event.initial_mem_access.timestamp);
-                        cols.final_clk = F::from_canonical_u32(event.final_mem_access.timestamp);
+                        cols.initial_clk_high = F::from_canonical_u32(
+                            (event.initial_mem_access.timestamp >> 24) as u32,
+                        );
+                        cols.final_clk_high =
+                            F::from_canonical_u32((event.final_mem_access.timestamp >> 24) as u32);
+                        cols.initial_clk_low = F::from_canonical_u32(
+                            (event.initial_mem_access.timestamp & 0xFFFFFF) as u32,
+                        );
+                        cols.final_clk_low = F::from_canonical_u32(
+                            (event.final_mem_access.timestamp & 0xFFFFFF) as u32,
+                        );
                         cols.initial_value = event.initial_mem_access.value.into();
                         cols.final_value = event.final_mem_access.value.into();
                         cols.is_real = F::one();
@@ -203,8 +209,11 @@ where
                 local.is_real * local.is_real * local.is_real,
             );
 
-            let mut values =
-                vec![local.initial_shard.into(), local.initial_clk.into(), local.addr.into()];
+            let mut values = vec![
+                local.initial_clk_high.into(),
+                local.initial_clk_low.into(),
+                local.addr.into(),
+            ];
             values.extend(local.initial_value.map(Into::into));
             builder.receive(
                 AirInteraction::new(values.clone(), local.is_real.into(), InteractionKind::Memory),
@@ -215,8 +224,8 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.initial_shard.into(),
-                        local.initial_clk.into(),
+                        local.initial_clk_high.into(),
+                        local.initial_clk_low.into(),
                         local.addr.into(),
                         local.initial_value[0].into(),
                         local.initial_value[1].into(),
@@ -236,8 +245,8 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.final_shard.into(),
-                        local.final_clk.into(),
+                        local.final_clk_high.into(),
+                        local.final_clk_low.into(),
                         local.addr.into(),
                         local.final_value[0].into(),
                         local.final_value[1].into(),
@@ -254,7 +263,7 @@ where
             );
 
             let mut values =
-                vec![local.final_shard.into(), local.final_clk.into(), local.addr.into()];
+                vec![local.final_clk_high.into(), local.final_clk_low.into(), local.addr.into()];
             values.extend(local.final_value.map(Into::into));
             builder.send(
                 AirInteraction::new(values.clone(), local.is_real.into(), InteractionKind::Memory),

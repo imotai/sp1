@@ -54,12 +54,7 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
                         self.event_to_row(&event.0, cols, &mut blu);
                         let mut instruction = *input.program.fetch(event.0.pc);
                         instruction.op_c = event.0.pc.wrapping_add(instruction.op_c);
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard,
-                            event.0.clk,
-                            event.0.pc,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

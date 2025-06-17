@@ -58,12 +58,7 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
                         if instruction.op_a == 0 {
                             instruction.op_c = 0;
                         }
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard,
-                            event.0.clk,
-                            event.0.pc,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

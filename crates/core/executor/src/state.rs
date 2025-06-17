@@ -35,7 +35,7 @@ pub struct ExecutionState {
 
     /// The clock increments by 4 (possibly more in syscalls) for each instruction that has been
     /// executed in this shard.
-    pub clk: u32,
+    pub clk: u64,
 
     /// Uninitialized memory addresses that have a specific value they should be initialized with.
     /// `SyscallHintRead` uses this to write hint data into uninitialized memory.
@@ -91,7 +91,7 @@ pub struct ForkState {
     /// The `global_clk` value at the fork point.
     pub global_clk: u64,
     /// The original `clk` value at the fork point.
-    pub clk: u32,
+    pub clk: u64,
     /// The original `pc` value at the fork point.
     pub pc: u32,
     /// All memory changes since the fork point.

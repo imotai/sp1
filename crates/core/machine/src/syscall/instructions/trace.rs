@@ -59,12 +59,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
                         let event = &input.syscall_events[idx];
                         let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, &event.1, cols, &mut blu);
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard,
-                            event.0.clk,
-                            event.0.pc,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });

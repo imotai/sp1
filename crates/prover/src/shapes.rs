@@ -132,9 +132,9 @@ impl SP1ReduceShape {
             1 | 2 => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 200640),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254080),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 242976),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243008),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 348544),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 58784),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 58816),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 403488),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
@@ -143,10 +143,10 @@ impl SP1ReduceShape {
             .collect(),
             3 => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 301280),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 385184),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 364416),
+                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 385216),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 364448),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 544224),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 89120),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 89152),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 605248),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
@@ -156,9 +156,9 @@ impl SP1ReduceShape {
             4 => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485824),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485856),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 751232),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120064),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 806976),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
@@ -173,7 +173,7 @@ impl SP1ReduceShape {
     pub fn shrink_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             4 => [
-                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 121568),
+                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 121600),
                 (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 187808),
                 (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 100736),
                 (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 129472),
@@ -793,13 +793,13 @@ mod tests {
         // .collect();
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485824),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 751232),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120064),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 200640),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254080),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243008),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 348544),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 58816),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-            (CompressAir::<BabyBear>::Select(SelectChip), 806976),
+            (CompressAir::<BabyBear>::Select(SelectChip), 403488),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()

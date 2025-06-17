@@ -31,8 +31,8 @@ pub const NUM_KECCAK_PERMUTE_CONTROL_COLS: usize = size_of::<KeccakPermuteContro
 #[derive(AlignedBorrow, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct KeccakPermuteControlCols<T> {
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub state_addr: SyscallAddrOperation<T>,
     pub is_real: T,
     pub initial_memory_access: [MemoryAccessCols<T>; 50],
@@ -100,8 +100,8 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             };
             let mut row = [F::zero(); NUM_KECCAK_PERMUTE_CONTROL_COLS];
             let cols: &mut KeccakPermuteControlCols<F> = row.as_mut_slice().borrow_mut();
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.state_addr.populate(&mut blu_events, event.state_addr, 200);
             cols.is_real = F::one();
             for (j, read_record) in event.state_read_records.iter().enumerate() {
@@ -168,8 +168,8 @@ where
 
         // Receive the syscall.
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::KECCAK_PERMUTE.syscall_id()),
             state_addr.clone(),
             AB::Expr::zero(),
@@ -180,16 +180,21 @@ where
         // Send the initial state.
         builder.send(
             AirInteraction::new(
-                vec![local.shard.into(), local.clk.into(), state_addr.clone(), AB::Expr::zero()]
-                    .into_iter()
-                    .chain(
-                        local
-                            .initial_memory_access
-                            .into_iter()
-                            .flat_map(|access| access.prev_value.into_iter())
-                            .map(Into::into),
-                    )
-                    .collect(),
+                vec![
+                    local.clk_high.into(),
+                    local.clk_low.into(),
+                    state_addr.clone(),
+                    AB::Expr::zero(),
+                ]
+                .into_iter()
+                .chain(
+                    local
+                        .initial_memory_access
+                        .into_iter()
+                        .flat_map(|access| access.prev_value.into_iter())
+                        .map(Into::into),
+                )
+                .collect(),
                 local.is_real.into(),
                 InteractionKind::Keccak,
             ),
@@ -200,8 +205,8 @@ where
         builder.receive(
             AirInteraction::new(
                 vec![
-                    local.shard.into(),
-                    local.clk.into(),
+                    local.clk_high.into(),
+                    local.clk_low.into(),
                     state_addr.clone(),
                     AB::Expr::from_canonical_u32(24),
                 ]
@@ -219,15 +224,15 @@ where
         // Evaluate the memory accesses.
         for i in 0..STATE_NUM_WORDS {
             builder.eval_memory_access_read(
-                local.shard,
-                local.clk,
+                local.clk_high,
+                local.clk_low,
                 state_addr.clone() + AB::Expr::from_canonical_u32(4 * i as u32),
                 local.initial_memory_access[i],
                 local.is_real,
             );
             builder.eval_memory_access_write(
-                local.shard,
-                local.clk + AB::Expr::one(),
+                local.clk_high,
+                local.clk_low + AB::Expr::one(),
                 state_addr.clone() + AB::Expr::from_canonical_u32(4 * i as u32),
                 local.final_memory_access[i],
                 local.final_value[i],

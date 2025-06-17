@@ -762,6 +762,7 @@ fn dummy_deferred_input<C: RecursionProverComponents>(
         end_pc: BabyBear::zero(),
         end_shard: BabyBear::zero(),
         end_execution_shard: BabyBear::zero(),
+        end_timestamp: [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()],
         init_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
         finalize_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
         is_complete: false,

@@ -85,7 +85,7 @@ struct RecordTask {
     done: bool,
     program: Arc<Program>,
     record_gen_sync: Arc<TurnBasedSync>,
-    state: Arc<Mutex<PublicValues<u32, u32, u32>>>,
+    state: Arc<Mutex<PublicValues<u32, u32, u64, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     record_tx: mpsc::Sender<ExecutionRecord>,
     abort_handle: AbortHandle,
@@ -173,14 +173,38 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         state.exit_code = record.public_values.exit_code;
                         state.start_pc = record.public_values.start_pc;
                         state.next_pc = record.public_values.next_pc;
+                        state.initial_timestamp = record.public_values.initial_timestamp;
                         state.last_timestamp = record.public_values.last_timestamp;
-                        state.last_timestamp_inv = F::from_canonical_u32(state.last_timestamp - 1)
+
+                        let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
+                        let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
+                        let last_timestamp_high = (state.last_timestamp >> 24) as u32;
+                        let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
+                        if initial_timestamp_high == last_timestamp_high {
+                            state.is_timestamp_high_eq = 1;
+                        } else {
+                            state.is_timestamp_high_eq = 0;
+                            state.inv_timestamp_high = (F::from_canonical_u32(last_timestamp_high)
+                                - F::from_canonical_u32(initial_timestamp_high))
                             .inverse()
                             .as_canonical_u32();
+                        }
+
+                        if initial_timestamp_low == last_timestamp_low {
+                            state.is_timestamp_low_eq = 1;
+                        } else {
+                            state.is_timestamp_low_eq = 0;
+                            state.inv_timestamp_low = (F::from_canonical_u32(last_timestamp_low)
+                                - F::from_canonical_u32(initial_timestamp_low))
+                            .inverse()
+                            .as_canonical_u32();
+                        }
+
                         state.committed_value_digest = record.public_values.committed_value_digest;
                         state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
                         record.public_values = *state;
                         state.prev_exit_code = record.public_values.exit_code;
+                        state.initial_timestamp = record.public_values.last_timestamp;
                     }
 
                     // Defer events that are too expensive to include in every shard.
@@ -218,8 +242,9 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         state.last_finalize_addr_word =
                             record.public_values.last_finalize_addr_word;
                         state.start_pc = state.next_pc;
-                        state.last_timestamp = 1;
-                        state.last_timestamp_inv = 0;
+                        state.last_timestamp = state.initial_timestamp;
+                        state.is_timestamp_high_eq = 1;
+                        state.is_timestamp_low_eq = 1;
                         state.next_execution_shard = state.execution_shard;
                         record.public_values = *state;
                     }
@@ -272,7 +297,8 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
 
                 // Initialize the record generation state.
                 let record_gen_sync = Arc::new(TurnBasedSync::new());
-                let state = Arc::new(Mutex::new(PublicValues::<u32, u32, u32>::default().reset()));
+                let state =
+                    Arc::new(Mutex::new(PublicValues::<u32, u32, u64, u32>::default().reset()));
                 let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
 
                 // Check if the task was aborted again.

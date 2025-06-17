@@ -61,8 +61,8 @@ impl<F: Field> RTypeReader<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn eval<AB: SP1CoreAirBuilder>(
         builder: &mut AB,
-        shard: impl Into<AB::Expr> + Clone,
-        clk: AB::Expr,
+        clk_high: AB::Expr,
+        clk_low: AB::Expr,
         pc: AB::Var,
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
@@ -83,23 +83,23 @@ impl<F: Field> RTypeReader<F> {
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
-            shard.clone(),
-            clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
+            clk_high.clone(),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
             cols.op_a,
             cols.op_a_memory,
             op_a_write_value,
             is_real.clone(),
         );
         builder.eval_memory_access_in_shard_read(
-            shard.clone(),
-            clk.clone() + AB::F::from_canonical_u32(MemoryAccessPosition::B as u32),
+            clk_high.clone(),
+            clk_low.clone() + AB::F::from_canonical_u32(MemoryAccessPosition::B as u32),
             cols.op_b,
             cols.op_b_memory,
             is_real.clone(),
         );
         builder.eval_memory_access_in_shard_read(
-            shard,
-            clk + AB::F::from_canonical_u32(MemoryAccessPosition::C as u32),
+            clk_high.clone(),
+            clk_low.clone() + AB::F::from_canonical_u32(MemoryAccessPosition::C as u32),
             cols.op_c,
             cols.op_c_memory,
             is_real,
@@ -108,13 +108,22 @@ impl<F: Field> RTypeReader<F> {
 
     pub fn eval_op_a_immutable<AB: SP1AirBuilder>(
         builder: &mut AB,
-        shard: impl Into<AB::Expr> + Clone,
-        clk: AB::Expr,
+        clk_high: AB::Expr,
+        clk_low: AB::Expr,
         pc: AB::Var,
         opcode: impl Into<AB::Expr>,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
-        Self::eval(builder, shard, clk, pc, opcode, cols.op_a_memory.prev_value, cols, is_real);
+        Self::eval(
+            builder,
+            clk_high,
+            clk_low,
+            pc,
+            opcode,
+            cols.op_a_memory.prev_value,
+            cols,
+            is_real,
+        );
     }
 }

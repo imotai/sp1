@@ -2,7 +2,7 @@ use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_PC_INC};
+use sp1_core_executor::{Opcode, DEFAULT_CLK_INC, DEFAULT_PC_INC};
 use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
 use std::borrow::Borrow;
 
@@ -46,15 +46,15 @@ where
             builder,
             local.state,
             next_pc.reduce::<AB>(),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
             local.is_real.into(),
         );
 
         // Constrain the program and register reads.
         ITypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
             local.op_a_value,

@@ -6,7 +6,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 
@@ -66,7 +66,7 @@ where
             builder,
             local.state,
             local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
             local.is_real.into(),
         );
 
@@ -74,8 +74,8 @@ where
         // Set `op_b` immediate as `op_a_not_0 * (pc + op_b)` value in the instruction encoding.
         JTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
             *local.adapter.b(),
@@ -128,12 +128,7 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
                         }
                         cols.is_real = F::one();
 
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard,
-                            event.0.clk,
-                            event.0.pc,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

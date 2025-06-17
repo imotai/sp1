@@ -56,8 +56,8 @@ pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() ->
 #[repr(C)]
 pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub ptr: SyscallAddrOperation<T>,
     pub sign_bit: T,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
@@ -214,8 +214,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 row[0..weierstrass_width].borrow_mut();
 
             cols.is_real = F::from_bool(true);
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u32 * 2);
             cols.sign_bit = F::from_bool(event.sign_bit);
 
@@ -517,8 +517,8 @@ where
 
         for i in 0..num_words_field_element {
             builder.eval_memory_access_read(
-                local.shard,
-                local.clk,
+                local.clk_high,
+                local.clk_low,
                 ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
                 local.x_access[i].memory_access,
                 local.is_real,
@@ -526,8 +526,8 @@ where
         }
         for i in 0..num_words_field_element {
             builder.eval_memory_access_write(
-                local.shard,
-                local.clk,
+                local.clk_high,
+                local.clk_low,
                 ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4),
                 local.y_access[i],
                 local.y_value[i],
@@ -549,8 +549,8 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id,
             ptr,
             local.sign_bit,

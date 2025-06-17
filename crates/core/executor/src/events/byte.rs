@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::{ByteOpcode, Opcode};
 
 /// The number of different byte operations.
-/// (TODO: rkm0959) is this number correct?
 pub const NUM_BYTE_OPS: usize = 7;
 
 /// Byte Lookup Event.

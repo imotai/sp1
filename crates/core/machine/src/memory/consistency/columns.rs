@@ -7,20 +7,19 @@ use crate::operations::U16toU8Operation;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct MemoryAccessTimestamp<T> {
-    /// The previous shard and timestamp that this memory access is being read from.
-    pub prev_shard: T,
-    pub prev_clk: T,
-    /// This will be true if the current shard == prev_access's shard, else false.
-    pub compare_clk: T,
+    /// The previous timestamp's high 24 bits that this memory access is being read from.
+    pub prev_high: T,
+    /// The previous timestamp's low 24 bits that this memory access is being read from.
+    pub prev_low: T,
+    /// This will be true if the top 24 bits do not match.
+    pub compare_low: T,
     /// The following columns are decomposed limbs for the difference between the current access's
     /// timestamp and the previous access's timestamp.  Note the actual value of the timestamp
-    /// is either the accesses' shard or clk depending on the value of compare_clk.
+    /// is either the accesses' high or low 24 bits depending on the value of compare_low.
     ///
-    /// This column is the least significant 14 bit limb of current access timestamp - prev access
-    /// timestamp - 1.
+    /// This column is the least significant 16 bit limb of the difference.
     pub diff_low_limb: T,
-    /// This column is the most significant 14 bit limb of current access timestamp - prev access
-    /// timestamp - 1.
+    /// This column is the most significant 8 bit limb of the difference.
     pub diff_high_limb: T,
 }
 
@@ -45,8 +44,8 @@ pub struct MemoryAccessColsU8<T> {
 #[repr(C)]
 pub struct MemoryAccessInShardTimestamp<T> {
     /// The previous timestamp that this memory access is being read from.
-    pub prev_clk: T,
-    /// The difference in timestamp's least significant 14 bit limb.
+    pub prev_low: T,
+    /// The difference in timestamp's least significant 16 bit limb.
     pub diff_low_limb: T,
 }
 

@@ -161,7 +161,7 @@ where
         // Receive state.
         builder.receive(
             AirInteraction::new(
-                vec![local.shard, local.clk, local.state_addr, local.index]
+                vec![local.clk_high, local.clk_low, local.state_addr, local.index]
                     .into_iter()
                     .chain(
                         local.keccak.a.into_iter().flat_map(|two_d| {
@@ -180,8 +180,8 @@ where
         builder.send(
             AirInteraction::new(
                 vec![
-                    local.shard.into(),
-                    local.clk.into(),
+                    local.clk_high.into(),
+                    local.clk_low.into(),
                     local.state_addr.into(),
                     local.index + AB::Expr::one(),
                 ]

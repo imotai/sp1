@@ -134,6 +134,7 @@ where
         let mut pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut current_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
 
         let mut execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
@@ -216,6 +217,17 @@ where
                     current_public_values.start_execution_shard;
                 execution_shard = current_public_values.start_execution_shard;
 
+                // Initialize timestamp.
+                for (limb, (first_limb, current_limb)) in current_timestamp.iter_mut().zip(
+                    compress_public_values
+                        .initial_timestamp
+                        .iter_mut()
+                        .zip(current_public_values.initial_timestamp.iter()),
+                ) {
+                    *limb = *current_limb;
+                    *first_limb = *current_limb;
+                }
+
                 compress_public_values.prev_exit_code = current_public_values.prev_exit_code;
                 current_exit_code = current_public_values.prev_exit_code;
 
@@ -291,6 +303,15 @@ where
             {
                 builder
                     .assert_felt_eq(execution_shard, current_public_values.start_execution_shard);
+            }
+
+            // Timestamp constraints.
+            {
+                for (limb, current_limb) in
+                    current_timestamp.iter().zip(current_public_values.initial_timestamp.iter())
+                {
+                    builder.assert_felt_eq(*limb, *current_limb);
+                }
             }
 
             // Assert that the MemoryInitialize address limbs are the same.
@@ -396,6 +417,13 @@ where
             // Update the shard to be the next shard.
             shard = current_public_values.next_shard;
 
+            // Update the timestamp.
+            for (limb, current_limb) in
+                current_timestamp.iter_mut().zip(current_public_values.last_timestamp.iter())
+            {
+                *limb = *current_limb;
+            }
+
             // Update the current exit code.
             current_exit_code = current_public_values.exit_code;
 
@@ -431,6 +459,8 @@ where
         compress_public_values.next_shard = shard;
         // Set next execution shard to be the last execution shard
         compress_public_values.next_execution_shard = execution_shard;
+        // Set the timestamp to be the last timestamp.
+        compress_public_values.last_timestamp = current_timestamp;
         // Set the MemoryInitialize address word to be the last MemoryInitialize address word.
         compress_public_values.last_init_addr_word = init_addr_word;
         // Set the MemoryFinalize address word to be the last MemoryFinalize address word.

@@ -3640,6 +3640,7 @@ dependencies = [
  "itertools 0.13.0",
  "nohash-hasher",
  "num",
+ "p3-air",
  "p3-baby-bear 0.1.0",
  "p3-field 0.1.0",
  "p3-maybe-rayon 0.1.0",
