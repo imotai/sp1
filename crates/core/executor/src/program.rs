@@ -98,22 +98,26 @@ impl Program {
 
     #[must_use]
     /// Fetch the instruction at the given program counter.
-    pub fn fetch(&self, pc_rel: u64) -> &Instruction {
+    pub fn fetch(&self, pc_rel: u32) -> &Instruction {
         let idx = (pc_rel / 4) as usize;
         &self.instructions[idx]
     }
 
     /// Returns `self.pc_start - self.pc_base`, that is, the relative `pc_start`.
     #[must_use]
-    pub fn pc_start_rel_u64(&self) -> u64 {
-        self.pc_start_abs.checked_sub(self.pc_base).expect("expected pc_base <= pc_start")
+    pub fn pc_start_rel_u32(&self) -> u32 {
+        self.pc_start_abs
+            .checked_sub(self.pc_base)
+            .expect("expected pc_base <= pc_start")
+            .try_into()
+            .expect("pc_start_rel should fit in `u32")
     }
 }
 
 impl<F: PrimeField32> MachineProgram<F> for Program {
     fn pc_start_rel(&self) -> F {
-        let pc_start_rel = self.pc_start_rel_u64();
-        assert!(pc_start_rel < F::ORDER_U64);
+        let pc_start_rel = self.pc_start_rel_u32();
+        assert!(pc_start_rel < F::ORDER_U32);
         // Casting to u32 and truncating is okay, since F: PrimeField32 means it fits.
         F::from_wrapped_u32(pc_start_rel as u32)
     }

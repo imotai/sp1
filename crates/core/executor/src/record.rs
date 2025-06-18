@@ -105,13 +105,13 @@ pub struct ExecutionRecord {
     /// A trace of all the global interaction events.
     pub global_interaction_events: Vec<GlobalInteractionEvent>,
     /// The global culmulative sum.
-    pub global_cumulative_sum: Arc<Mutex<SepticDigest<u64>>>,
+    pub global_cumulative_sum: Arc<Mutex<SepticDigest<u32>>>,
     /// The global interaction event count.
     pub global_interaction_event_count: u32,
     /// Memory records with `prev_shard` different from `shard`.
     pub shard_bump_memory_events: Vec<(MemoryRecordEnum, u64)>,
     /// The public values.
-    pub public_values: PublicValues<u64, u64, u64>,
+    pub public_values: PublicValues<u64, u64, u32>,
     /// The next nonce to use for a new lookup.
     pub next_nonce: u64,
     /// The shape of the proof.
@@ -123,9 +123,9 @@ pub struct ExecutionRecord {
     /// The final timestamp of the shard.
     pub last_timestamp: u32,
     /// The start program counter.
-    pub pc_start_rel: Option<u64>,
+    pub pc_start_rel: Option<u32>,
     /// The final program counter.
-    pub next_pc_rel: u64,
+    pub next_pc_rel: u32,
     /// The exit code.
     pub exit_code: u32,
 }

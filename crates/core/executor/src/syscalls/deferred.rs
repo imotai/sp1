@@ -9,6 +9,6 @@ pub fn commit_deferred_proofs_syscall<E: ExecutorConfig>(
     word_idx: u64,
     word: u64,
 ) -> Option<u64> {
-    ctx.rt.record.public_values.deferred_proofs_digest[word_idx as usize] = word;
+    ctx.rt.record.public_values.deferred_proofs_digest[word_idx as usize] = word as u32;
     None
 }

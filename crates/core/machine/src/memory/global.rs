@@ -67,10 +67,10 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
 
         match self.kind {
             MemoryChipType::Initialize => {
-                output.public_values.global_init_count += memory_events.len() as u64;
+                output.public_values.global_init_count += memory_events.len() as u32;
             }
             MemoryChipType::Finalize => {
-                output.public_values.global_finalize_count += memory_events.len() as u64;
+                output.public_values.global_finalize_count += memory_events.len() as u32;
             }
         };
 

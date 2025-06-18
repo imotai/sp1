@@ -20,7 +20,7 @@ use crate::{
 #[repr(C)]
 pub struct ExecutionState {
     /// The program counter minus the program's `pc_base`.
-    pub pc_rel: u64,
+    pub pc_rel: u32,
 
     /// The shard clock keeps track of how many shards have been executed.
     pub current_shard: Shard,
@@ -65,7 +65,7 @@ pub struct ExecutionState {
 impl ExecutionState {
     #[must_use]
     /// Create a new [`ExecutionState`].
-    pub fn new(pc_start_rel: u64) -> Self {
+    pub fn new(pc_start_rel: u32) -> Self {
         Self {
             global_clk: 0,
             // Start at shard 1 since shard 0 is reserved for memory initialization.
@@ -93,7 +93,7 @@ pub struct ForkState {
     /// The original `clk` value at the fork point.
     pub clk: u32,
     /// The original `pc` value at the fork point.
-    pub pc: u64,
+    pub pc_rel: u32,
     /// All memory changes since the fork point.
     pub memory_diff: Memory<Option<MemoryEntry>>,
 }

@@ -65,7 +65,7 @@ pub fn generate_records<F: PrimeField32>(
     record_gen_sync: Arc<TurnBasedSync>,
     checkpoints_rx: Arc<Mutex<Receiver<(usize, File, bool, u64)>>>,
     records_tx: Sender<ExecutionRecord>,
-    state: Arc<Mutex<PublicValues<u64, u64, u64>>>,
+    state: Arc<Mutex<PublicValues<u64, u64, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     report_aggregate: Arc<Mutex<ExecutionReport>>,
     opts: SP1CoreOpts,
@@ -94,7 +94,7 @@ pub fn generate_records<F: PrimeField32>(
                 state.next_pc_rel = record.public_values.next_pc_rel;
                 state.last_timestamp = record.public_values.last_timestamp;
                 state.last_timestamp_inv =
-                    F::from_canonical_u64(state.last_timestamp - 1).inverse().as_canonical_u64();
+                    F::from_canonical_u32(state.last_timestamp - 1).inverse().as_canonical_u32();
                 state.committed_value_digest = record.public_values.committed_value_digest;
                 state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
                 record.public_values = *state;

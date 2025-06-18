@@ -114,7 +114,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                         timestamp: 0,
                     });
                     cols.access.populate(bump_event, &mut byte_lookup_events);
-                    cols.shard = F::from_canonical_u64(input.public_values.execution_shard);
+                    cols.shard = F::from_canonical_u32(input.public_values.execution_shard);
                     cols.addr = [
                         F::from_canonical_u16((addr & 0xFFFF) as u16),
                         F::from_canonical_u16((addr >> 16) as u16),

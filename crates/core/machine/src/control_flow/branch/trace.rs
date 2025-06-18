@@ -129,7 +129,7 @@ impl BranchChip {
             use_signed_comparison,
         );
 
-        cols.next_pc_rel = F::from_canonical_u64(event.next_pc_rel);
+        cols.next_pc_rel = F::from_canonical_u32(event.next_pc_rel);
 
         if branching {
             cols.is_branching = F::one();

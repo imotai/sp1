@@ -85,7 +85,7 @@ struct RecordTask {
     done: bool,
     program: Arc<Program>,
     record_gen_sync: Arc<TurnBasedSync>,
-    state: Arc<Mutex<PublicValues<u64, u64, u64>>>,
+    state: Arc<Mutex<PublicValues<u64, u64, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     record_tx: mpsc::Sender<ExecutionRecord>,
     abort_handle: AbortHandle,
@@ -173,9 +173,9 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         state.pc_start_rel = record.public_values.pc_start_rel;
                         state.next_pc_rel = record.public_values.next_pc_rel;
                         state.last_timestamp = record.public_values.last_timestamp;
-                        state.last_timestamp_inv = F::from_canonical_u64(state.last_timestamp - 1)
+                        state.last_timestamp_inv = F::from_canonical_u32(state.last_timestamp - 1)
                             .inverse()
-                            .as_canonical_u64();
+                            .as_canonical_u32();
                         state.committed_value_digest = record.public_values.committed_value_digest;
                         state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
                         state.prev_exit_code = record.public_values.exit_code;
@@ -271,7 +271,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
 
                 // Initialize the record generation state.
                 let record_gen_sync = Arc::new(TurnBasedSync::new());
-                let state = Arc::new(Mutex::new(PublicValues::<u64, u64, u64>::default().reset()));
+                let state = Arc::new(Mutex::new(PublicValues::<u64, u64, u32>::default().reset()));
                 let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
 
                 // Check if the task was aborted again.

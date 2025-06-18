@@ -41,7 +41,7 @@ pub extern "C" fn syscall_halt(exit_code: u8) -> ! {
                 let deferred_proofs_digest = zkvm::DEFERRED_PROOFS_DIGEST.as_mut().unwrap();
 
                 for i in 0..POSEIDON_NUM_WORDS {
-                    let word = deferred_proofs_digest[i].as_canonical_u32();
+                    let word = deferred_proofs_digest[i].as_canonical_u64();
                     asm!("ecall", in("t0") crate::syscalls::COMMIT_DEFERRED_PROOFS, in("a0") i, in("a1") word);
                 }
             } else {

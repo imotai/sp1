@@ -137,7 +137,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 ));
             } else if i == proof.0.len() - 1
                 && public_values.next_pc_rel
-                    != BabyBear::from_canonical_u64(sp1_core_executor::HALT_PC)
+                    != BabyBear::from_canonical_u32(sp1_core_executor::HALT_PC)
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "next_pc_rel != HALT_PC: execution should have halted",

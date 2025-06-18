@@ -13,7 +13,7 @@ pub struct AluEvent {
     /// The clock cycle.
     pub clk: u32,
     /// The program counter.
-    pub pc_rel: u64,
+    pub pc_rel: u32,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -32,7 +32,7 @@ impl AluEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         clk: u32,
-        pc_rel: u64,
+        pc_rel: u32,
         opcode: Opcode,
         a: u64,
         b: u64,
@@ -54,7 +54,7 @@ pub struct MemInstrEvent {
     /// The clk.
     pub clk: u32,
     /// The program counter.
-    pub pc_rel: u64,
+    pub pc_rel: u32,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -76,7 +76,7 @@ impl MemInstrEvent {
     pub fn new(
         shard: u32,
         clk: u32,
-        pc_rel: u64,
+        pc_rel: u32,
         opcode: Opcode,
         a: u64,
         b: u64,
@@ -97,9 +97,9 @@ pub struct BranchEvent {
     /// The clock cycle.
     pub clk: u32,
     /// The program counter.
-    pub pc_rel: u64,
+    pub pc_rel: u32,
     /// The next program counter.
-    pub next_pc_rel: u64,
+    pub next_pc_rel: u32,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -118,8 +118,8 @@ impl BranchEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         clk: u32,
-        pc_rel: u64,
-        next_pc_rel: u64,
+        pc_rel: u32,
+        next_pc_rel: u32,
         opcode: Opcode,
         a: u64,
         b: u64,
@@ -139,9 +139,9 @@ pub struct JumpEvent {
     /// The clock cycle.
     pub clk: u32,
     /// The program counter.
-    pub pc_rel: u64,
+    pub pc_rel: u32,
     /// The next program counter.
-    pub next_pc_rel: u64,
+    pub next_pc_rel: u32,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -160,8 +160,8 @@ impl JumpEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         clk: u32,
-        pc_rel: u64,
-        next_pc_rel: u64,
+        pc_rel: u32,
+        next_pc_rel: u32,
         opcode: Opcode,
         a: u64,
         b: u64,
@@ -180,7 +180,7 @@ pub struct AUIPCEvent {
     /// The clock cycle.
     pub clk: u32,
     /// The program counter.
-    pub pc_rel: u64,
+    pub pc_rel: u32,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -199,7 +199,7 @@ impl AUIPCEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         clk: u32,
-        pc_rel: u64,
+        pc_rel: u32,
         opcode: Opcode,
         a: u64,
         b: u64,

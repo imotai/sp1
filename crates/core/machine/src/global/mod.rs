@@ -95,7 +95,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events(blu_batches.into_iter().flatten().collect());
-        output.public_values.global_count = events.len() as u64;
+        output.public_values.global_count = events.len() as u32;
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
@@ -167,7 +167,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
         };
 
         let mut global_sum = input.global_cumulative_sum.lock().unwrap();
-        *global_sum = SepticDigest(SepticCurve::convert(final_digest, |x| F::as_canonical_u64(&x)));
+        *global_sum = SepticDigest(SepticCurve::convert(final_digest, |x| F::as_canonical_u32(&x)));
 
         output.global_interaction_event_count = nb_rows as u32;
         let dummy = SepticCurve::<F>::dummy();

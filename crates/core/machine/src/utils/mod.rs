@@ -160,19 +160,19 @@ pub fn zeroed_f_vec<F: Field>(len: usize) -> Vec<F> {
 /// Extension methods for `Instruction` that are relevant only for this crate.
 pub(crate) trait InstructionExt {
     /// Preprocess an instruction for use in arithmetization.
-    fn preprocess<F: PrimeField64>(self, pc_base: u64, pc_rel: u64) -> Self;
+    fn preprocess<F: PrimeField64>(self, pc_base: u64, pc_rel: u32) -> Self;
     /// Preprocess a branch (conditional jump) instruction for use in arithmetization.
-    fn preprocess_branch<F: PrimeField64>(self, pc_rel: u64) -> Self;
+    fn preprocess_branch<F: PrimeField64>(self, pc_rel: u32) -> Self;
     /// Preprocess a `JAL` instruction for use in arithmetization.
-    fn preprocess_jal<F: PrimeField64>(self, pc_base: u64, pc_rel: u64) -> Self;
+    fn preprocess_jal<F: PrimeField64>(self, pc_base: u64, pc_rel: u32) -> Self;
     /// Preprocess a `JALR` instruction for use in arithmetization.
-    fn preprocess_jalr(self, pc_base: u64, pc_rel: u64) -> Self;
+    fn preprocess_jalr(self, pc_base: u64, pc_rel: u32) -> Self;
     /// Preprocess an `AUIPC` instruction for use in arithmetization.
-    fn preprocess_auipc(self, pc_base: u64, pc_rel: u64) -> Self;
+    fn preprocess_auipc(self, pc_base: u64, pc_rel: u32) -> Self;
 }
 
 impl InstructionExt for Instruction {
-    fn preprocess<F: PrimeField64>(self, pc_base: u64, pc_rel: u64) -> Self {
+    fn preprocess<F: PrimeField64>(self, pc_base: u64, pc_rel: u32) -> Self {
         if self.is_branch_instruction() {
             self.preprocess_branch::<F>(pc_rel)
         } else if self.is_jal_instruction() {
@@ -186,21 +186,21 @@ impl InstructionExt for Instruction {
         }
     }
 
-    fn preprocess_branch<F: PrimeField64>(mut self, pc_rel: u64) -> Self {
+    fn preprocess_branch<F: PrimeField64>(mut self, pc_rel: u32) -> Self {
         // c is first imm, then pc_rel + imm.
-        self.op_c = pc_rel.wrapping_add(self.op_c);
+        self.op_c = (pc_rel as u64).wrapping_add(self.op_c);
         // Check that the resulting term of "type PC" fits.
         debug_assert!(self.op_c < F::ORDER_U64);
         self
     }
 
-    fn preprocess_jal<F: PrimeField64>(mut self, pc_base: u64, pc_rel: u64) -> Instruction {
+    fn preprocess_jal<F: PrimeField64>(mut self, pc_base: u64, pc_rel: u32) -> Instruction {
         // rd <- pc + 4; pc <- pc + imm
         // (a, b, c) is first (rd, imm, _) and then (rd, pc_rel + imm, pc + 4).
         // We have to translate the relative pc to an absolute pc before storing it
         // in the destination register.
-        self.op_b = pc_rel.wrapping_add(self.op_b);
-        self.op_c = pc_rel.wrapping_add(pc_base).wrapping_add(4);
+        self.op_b = (pc_rel as u64).wrapping_add(self.op_b);
+        self.op_c = (pc_rel as u64).wrapping_add(pc_base).wrapping_add(4);
         // Check that the resulting term of "type PC" fits.
         debug_assert!(self.op_b < F::ORDER_U64);
         if self.op_a == 0 {
@@ -209,23 +209,23 @@ impl InstructionExt for Instruction {
         self
     }
 
-    fn preprocess_jalr(mut self, pc_base: u64, pc_rel: u64) -> Instruction {
+    fn preprocess_jalr(mut self, pc_base: u64, pc_rel: u32) -> Instruction {
         // rd <- pc + 4; pc <- rs1 + imm
         // (a, b, c) is
         // - first (rd, rs1, imm)
         // - then (rd, [TODO] (pc + 4) * (1 << 8) + rs1, imm - pc_base).
         // We assume that absolute PCs must always fit within 6 bytes (< 2^48).
         self.op_c = self.op_c.wrapping_sub(pc_base);
-        let pc_abs_p4 = pc_rel.wrapping_add(pc_base).wrapping_add(4);
+        let pc_abs_p4 = (pc_rel as u64).wrapping_add(pc_base).wrapping_add(4);
         debug_assert!(self.op_b < (1 << 16));
         debug_assert!(pc_abs_p4 < (1 << 48));
         self.op_b += pc_abs_p4 << 16;
         self
     }
 
-    fn preprocess_auipc(mut self, pc_base: u64, pc_rel: u64) -> Instruction {
+    fn preprocess_auipc(mut self, pc_base: u64, pc_rel: u32) -> Instruction {
         // rd <- pc + imm
-        let pc_abs = pc_rel.wrapping_add(pc_base);
+        let pc_abs = (pc_rel as u64).wrapping_add(pc_base);
         self.op_b = pc_abs.wrapping_add(self.op_b);
         if self.op_a == 0 {
             self.op_b = 0;

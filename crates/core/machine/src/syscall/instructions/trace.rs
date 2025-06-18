@@ -96,7 +96,7 @@ impl SyscallInstrsChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.next_pc_rel = F::from_canonical_u64(event.next_pc_rel);
+        cols.next_pc_rel = F::from_canonical_u32(event.next_pc_rel);
 
         cols.op_a_value = Word::from(record.a.value());
         cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());

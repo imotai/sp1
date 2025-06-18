@@ -35,14 +35,14 @@ impl<F: Field> CPUState<F> {
         blu_events: &mut impl ByteRecord,
         shard: u32,
         clk: u32,
-        pc_rel: u64,
+        pc_rel: u32,
     ) {
         let clk_high_limb = (clk >> 14) as u16;
         let clk_low_limb = (clk & ((1 << 14) - 1)) as u16;
         self.shard = F::from_canonical_u32(shard);
         self.clk_high_limb = F::from_canonical_u16(clk_high_limb);
         self.clk_low_limb = F::from_canonical_u16(clk_low_limb);
-        self.pc_rel = F::from_canonical_u64(pc_rel);
+        self.pc_rel = F::from_canonical_u32(pc_rel);
         blu_events.add_bit_range_check(clk_high_limb, 14);
         blu_events.add_bit_range_check(clk_low_limb, 14);
     }
