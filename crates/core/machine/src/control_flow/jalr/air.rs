@@ -1,21 +1,21 @@
-use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
+use crate::{
+    adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
+};
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::{Opcode, DEFAULT_CLK_INC, DEFAULT_PC_INC};
-use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
+use sp1_stark::air::BaseAirBuilder;
 use std::borrow::Borrow;
 
-use crate::{
-    air::WordAirBuilder,
-    operations::{AddOperation, BabyBearWordRangeChecker},
-};
+use crate::operations::{AddOperation, BabyBearWordRangeChecker};
 
 use super::{JalrChip, JalrColumns};
 
 impl<AB> Air<AB> for JalrChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]

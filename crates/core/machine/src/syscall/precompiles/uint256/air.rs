@@ -1,7 +1,9 @@
-use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols};
+use crate::{
+    air::SP1Operation, memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols,
+};
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     operations::{field::range::FieldLtCols, IsZeroOperation, SyscallAddrOperation},
     utils::{
         limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
@@ -26,7 +28,7 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{InteractionScope, MachineAir, SP1AirBuilder},
+    air::{InteractionScope, MachineAir},
     MachineRecord,
 };
 use std::{
@@ -234,7 +236,7 @@ impl<F> BaseAir<F> for Uint256MulChip {
 
 impl<AB> Air<AB> for Uint256MulChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <U256Field as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -261,9 +263,7 @@ where
             modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
         IsZeroOperation::<AB::F>::eval(
             builder,
-            modulus_byte_sum,
-            local.modulus_is_zero,
-            local.is_real.into(),
+            (modulus_byte_sum, local.modulus_is_zero, local.is_real.into()),
         );
 
         // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.

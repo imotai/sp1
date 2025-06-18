@@ -1,12 +1,19 @@
+use p3_air::AirBuilder;
 use p3_field::Field;
+use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
+use crate::{
+    air::{SP1Operation, SP1OperationBuilder},
+    operations::IsZeroOperation,
+};
+
 use super::IsZeroWordOperation;
 
 /// A set of columns needed to compute the equality of two words.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct IsEqualWordOperation<T> {
     /// An operation to check whether the differences in limbs are all 0 (i.e., `a[0] - b[0]`,
@@ -30,7 +37,11 @@ impl<F: Field> IsEqualWordOperation<F> {
     /// Evaluate the `IsEqualWordOperation` on the given inputs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, it constrains that the result is `a == b`.
-    pub fn eval<AB: SP1AirBuilder>(
+    fn eval_is_equal_word<
+        AB: SP1AirBuilder
+            + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>
+            + SP1OperationBuilder<IsZeroWordOperation<<AB as AirBuilder>::F>>,
+    >(
         builder: &mut AB,
         a: Word<AB::Expr>,
         b: Word<AB::Expr>,
@@ -43,6 +54,21 @@ impl<F: Field> IsEqualWordOperation<F> {
         let diff = Word([a[0].clone() - b[0].clone(), a[1].clone() - b[1].clone()]);
 
         // Check if the difference is 0.
-        IsZeroWordOperation::<AB::F>::eval(builder, diff, cols.is_diff_zero, is_real.clone());
+        IsZeroWordOperation::<AB::F>::eval(builder, (diff, cols.is_diff_zero, is_real.clone()));
+    }
+}
+
+impl<
+        AB: SP1AirBuilder
+            + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>
+            + SP1OperationBuilder<IsZeroWordOperation<<AB as AirBuilder>::F>>,
+    > SP1Operation<AB> for IsEqualWordOperation<AB::F>
+{
+    type Input = (Word<AB::Expr>, Word<AB::Expr>, IsEqualWordOperation<AB::Var>, AB::Expr);
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) {
+        let (a, b, cols, is_real) = input;
+        Self::eval_is_equal_word(builder, a, b, cols, is_real);
     }
 }

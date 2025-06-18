@@ -14,11 +14,15 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use sp1_stark::air::MachineAir;
 
 use crate::{
-    adapter::{register::r_type::RTypeReader, state::CPUState},
-    operations::AddOperation,
+    adapter::{
+        register::r_type::{RTypeReader, RTypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::{AddOperation, AddOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -152,7 +156,7 @@ impl<F> BaseAir<F> for AddChip {
 
 impl<AB> Air<AB> for AddChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -164,27 +168,33 @@ where
         let opcode = AB::Expr::from_f(Opcode::ADD.as_field());
 
         // Constrain the add operation over `op_b` and `op_c`.
-        AddOperation::<AB::F>::eval(
-            builder,
+        // AddOperation::<AB::F>::eval(
+        //     builder,
+        //     local.adapter.b().map(|x| x.into()),
+        //     local.adapter.c().map(|x| x.into()),
+        //     local.add_operation,
+        //     local.is_real.into(),
+        // );
+        let op_input = AddOperationInput::<AB>::new(
             local.adapter.b().map(|x| x.into()),
             local.adapter.c().map(|x| x.into()),
             local.add_operation,
             local.is_real.into(),
         );
+        <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
 
         // Constrain the state of the CPU.
-        // The program counter and timestamp increment by `4` and `8`.
-        CPUState::<AB::F>::eval(
-            builder,
+        // The program counter and timestamp increment by `4`.
+        let cpu_state_input = CPUStateInput::<AB>::new(
             local.state,
             local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
             local.is_real.into(),
         );
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(builder, cpu_state_input);
 
         // Constrain the program and register reads.
-        RTypeReader::<AB::F>::eval(
-            builder,
+        let reader_input = RTypeReaderInput::<AB, AB::Var>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
@@ -193,5 +203,6 @@ where
             local.adapter,
             local.is_real.into(),
         );
+        <RTypeReader<AB::F> as SP1Operation<AB>>::eval(builder, reader_input);
     }
 }

@@ -10,7 +10,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use sp1_stark::air::MachineAir;
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -18,6 +18,7 @@ use std::{
 
 use crate::{
     adapter::{register::j_type::JTypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -48,7 +49,7 @@ pub struct AuipcColumns<T> {
 
 impl<AB> Air<AB> for AuipcChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]

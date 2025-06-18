@@ -5,7 +5,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_stark::Word;
 
 use crate::{
     air::{SP1CoreAirBuilder, WordAirBuilder},
@@ -89,7 +89,7 @@ impl<F: Field> JTypeReader<F> {
         );
     }
 
-    pub fn eval_op_a_immutable<AB: SP1AirBuilder>(
+    pub fn eval_op_a_immutable<AB: SP1CoreAirBuilder>(
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,

@@ -6,12 +6,15 @@
 //! is 0.
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
+use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
 
 use sp1_stark::air::SP1AirBuilder;
 
+use crate::air::SP1Operation;
+
 /// A set of columns needed to compute whether the given input is 0.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct IsZeroOperation<T> {
     /// The inverse of the input.
@@ -41,7 +44,7 @@ impl<F: Field> IsZeroOperation<F> {
 
     /// Evaluate the `IsZeroOperation` on the given inputs.
     /// If `is_real` is non-zero, it constrains that the result is `a == 0`.
-    pub fn eval<AB: SP1AirBuilder>(
+    fn eval_is_zero<AB: SP1AirBuilder>(
         builder: &mut AB,
         a: AB::Expr,
         cols: IsZeroOperation<AB::Var>,
@@ -65,5 +68,15 @@ impl<F: Field> IsZeroOperation<F> {
 
         // If the result is 1, then the input is 0.
         builder.when(is_real.clone()).when(cols.result).assert_zero(a.clone());
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for IsZeroOperation<AB::F> {
+    type Input = (AB::Expr, IsZeroOperation<AB::Var>, AB::Expr);
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) {
+        let (a, cols, is_real) = input;
+        Self::eval_is_zero(builder, a, cols, is_real);
     }
 }

@@ -1,6 +1,6 @@
 use super::MemoryChipType;
 use crate::{
-    air::WordAirBuilder,
+    air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{BabyBearWordRangeChecker, IsZeroOperation, LtOperationUnsigned},
     utils::next_multiple_of_32,
 };
@@ -19,7 +19,7 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::{
-    air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
+    air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind, Word,
 };
 use std::iter::once;
@@ -275,7 +275,7 @@ pub(crate) const NUM_MEMORY_INIT_COLS: usize = size_of::<MemoryInitCols<u8>>();
 
 impl<AB> Air<AB> for MemoryGlobalChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -388,15 +388,11 @@ where
         // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
         IsZeroOperation::<AB::F>::eval(
             builder,
-            local.prev_addr.reduce::<AB>(),
-            local.is_prev_addr_zero,
-            local.is_real.into(),
+            (local.prev_addr.reduce::<AB>(), local.is_prev_addr_zero, local.is_real.into()),
         );
         IsZeroOperation::<AB::F>::eval(
             builder,
-            local.index.into(),
-            local.is_index_zero,
-            local.is_real.into(),
+            (local.index.into(), local.is_index_zero, local.is_real.into()),
         );
 
         // Comparison will be done unless `prev_addr == 0` and `index == 0`.

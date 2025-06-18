@@ -5,7 +5,7 @@ use core::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::SyscallAddrOperation,
     utils::{limbs_to_words, next_multiple_of_32},
@@ -31,7 +31,7 @@ use sp1_curves::{
     AffinePoint, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::air::{InteractionScope, MachineAir};
 
 use crate::{
     operations::field::{
@@ -260,7 +260,7 @@ impl<F, E: EllipticCurve + EdwardsParameters> BaseAir<F> for EdAddAssignChip<E> 
 
 impl<AB, E: EllipticCurve + EdwardsParameters> Air<AB> for EdAddAssignChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();

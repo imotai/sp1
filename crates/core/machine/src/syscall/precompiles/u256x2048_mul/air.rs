@@ -1,5 +1,5 @@
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
     operations::{field::field_op::FieldOpCols, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le},
@@ -21,7 +21,7 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{InteractionScope, MachineAir, SP1AirBuilder},
+    air::{InteractionScope, MachineAir},
     MachineRecord,
 };
 use std::{
@@ -268,7 +268,7 @@ impl<F> BaseAir<F> for U256x2048MulChip {
 
 impl<AB> Air<AB> for U256x2048MulChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();

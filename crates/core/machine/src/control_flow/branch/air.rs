@@ -4,10 +4,10 @@ use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
-use sp1_stark::air::SP1AirBuilder;
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
     operations::LtOperationSigned,
 };
 
@@ -21,7 +21,7 @@ use super::{BranchChip, BranchColumns};
 /// 2. It verifies the correct value of branching based on the opcode and the comparison operation.
 impl<AB> Air<AB> for BranchChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]

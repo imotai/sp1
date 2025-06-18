@@ -14,13 +14,14 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
-    air::{MachineAir, SP1AirBuilder},
-    Word,
-};
+use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
-    adapter::{register::alu_type::ALUTypeReader, state::CPUState},
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::CPUState,
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     operations::LtOperationSigned,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
@@ -174,7 +175,7 @@ impl<F> BaseAir<F> for LtChip {
 
 impl<AB> Air<AB> for LtChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -214,8 +215,7 @@ where
             + local.is_sltu * AB::F::from_canonical_u32(Opcode::SLTU as u32);
 
         // Constrain the program and register reads.
-        ALUTypeReader::<AB::F>::eval(
-            builder,
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
@@ -224,6 +224,7 @@ where
             local.adapter,
             is_real,
         );
+        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }
 }
 

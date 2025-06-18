@@ -15,15 +15,17 @@ use sp1_stark::{
 
 use crate::{
     adapter::{register::r_type::RTypeReader, state::CPUState},
-    air::WordAirBuilder,
-    operations::{BabyBearWordRangeChecker, IsZeroOperation, U16toU8Operation},
+    air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
+    operations::{
+        BabyBearWordRangeChecker, IsZeroOperation, U16toU8OperationSafe, U16toU8OperationSafeInput,
+    },
 };
 
 use super::{columns::SyscallInstrColumns, SyscallInstrsChip};
 
 impl<AB> Air<AB> for SyscallInstrsChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]
@@ -42,12 +44,12 @@ where
         > = public_values_slice.as_slice().borrow();
 
         // Convert the syscall code to four bytes using the safe API.
-        let a = U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
-            builder,
+        let a_input = U16toU8OperationSafeInput::new(
             local.adapter.prev_a().0.map(Into::into),
             local.a_low_bytes,
             local.is_real.into(),
         );
+        let a = U16toU8OperationSafe::eval(builder, a_input);
 
         // SAFETY: Only `ECALL` opcode can be received in this chip.
         // `is_real` is checked to be boolean, and the `opcode` matches the corresponding opcode.
@@ -117,7 +119,7 @@ impl SyscallInstrsChip {
     /// This method will do the following:
     /// 1. Send the syscall to the precompile table, if needed.
     /// 2. Check for valid op_a values.
-    pub(crate) fn eval_ecall<AB: SP1AirBuilder>(
+    pub(crate) fn eval_ecall<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         prev_a_byte: &[AB::Expr; 4],
@@ -167,10 +169,14 @@ impl SyscallInstrsChip {
         let is_enter_unconstrained = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                syscall_id.clone()
-                    - AB::Expr::from_canonical_u32(SyscallCode::ENTER_UNCONSTRAINED.syscall_id()),
-                local.is_enter_unconstrained,
-                local.is_real.into(),
+                (
+                    syscall_id.clone()
+                        - AB::Expr::from_canonical_u32(
+                            SyscallCode::ENTER_UNCONSTRAINED.syscall_id(),
+                        ),
+                    local.is_enter_unconstrained,
+                    local.is_real.into(),
+                ),
             );
             local.is_enter_unconstrained.result
         };
@@ -179,10 +185,12 @@ impl SyscallInstrsChip {
         let is_hint_len = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                syscall_id.clone()
-                    - AB::Expr::from_canonical_u32(SyscallCode::HINT_LEN.syscall_id()),
-                local.is_hint_len,
-                local.is_real.into(),
+                (
+                    syscall_id.clone()
+                        - AB::Expr::from_canonical_u32(SyscallCode::HINT_LEN.syscall_id()),
+                    local.is_hint_len,
+                    local.is_real.into(),
+                ),
             );
             local.is_hint_len.result
         };
@@ -209,7 +217,7 @@ impl SyscallInstrsChip {
     }
 
     /// Constraints related to the COMMIT and COMMIT_DEFERRED_PROOFS instructions.
-    pub(crate) fn eval_commit<AB: SP1AirBuilder>(
+    pub(crate) fn eval_commit<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         prev_a_byte: &[AB::Expr; 4],
@@ -322,7 +330,7 @@ impl SyscallInstrsChip {
     }
 
     /// Returns a boolean expression indicating whether the instruction is a HALT instruction.
-    pub(crate) fn eval_is_halt_syscall<AB: SP1AirBuilder>(
+    pub(crate) fn eval_is_halt_syscall<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         prev_a_byte: &[AB::Expr; 4],
@@ -335,9 +343,12 @@ impl SyscallInstrsChip {
         let is_halt = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                syscall_id.clone() - AB::Expr::from_canonical_u32(SyscallCode::HALT.syscall_id()),
-                local.is_halt_check,
-                local.is_real.into(),
+                (
+                    syscall_id.clone()
+                        - AB::Expr::from_canonical_u32(SyscallCode::HALT.syscall_id()),
+                    local.is_halt_check,
+                    local.is_real.into(),
+                ),
             );
             local.is_halt_check.result
         };
@@ -351,7 +362,7 @@ impl SyscallInstrsChip {
 
     /// Returns two boolean expression indicating whether the instruction is a COMMIT or
     /// COMMIT_DEFERRED_PROOFS instruction.
-    pub(crate) fn get_is_commit_related_syscall<AB: SP1AirBuilder>(
+    pub(crate) fn get_is_commit_related_syscall<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         prev_a_byte: &[AB::Expr; 4],
@@ -363,9 +374,12 @@ impl SyscallInstrsChip {
         let is_commit = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                syscall_id.clone() - AB::Expr::from_canonical_u32(SyscallCode::COMMIT.syscall_id()),
-                local.is_commit,
-                local.is_real.into(),
+                (
+                    syscall_id.clone()
+                        - AB::Expr::from_canonical_u32(SyscallCode::COMMIT.syscall_id()),
+                    local.is_commit,
+                    local.is_real.into(),
+                ),
             );
             local.is_commit.result
         };
@@ -374,12 +388,14 @@ impl SyscallInstrsChip {
         let is_commit_deferred_proofs = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                syscall_id.clone()
-                    - AB::Expr::from_canonical_u32(
-                        SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id(),
-                    ),
-                local.is_commit_deferred_proofs,
-                local.is_real.into(),
+                (
+                    syscall_id.clone()
+                        - AB::Expr::from_canonical_u32(
+                            SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id(),
+                        ),
+                    local.is_commit_deferred_proofs,
+                    local.is_real.into(),
+                ),
             );
             local.is_commit_deferred_proofs.result
         };

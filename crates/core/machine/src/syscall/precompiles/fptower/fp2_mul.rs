@@ -4,9 +4,7 @@ use std::{
 };
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
-    memory::MemoryAccessColsU8,
-    operations::SyscallAddrOperation,
+    air::SP1CoreAirBuilder, memory::MemoryAccessColsU8, operations::SyscallAddrOperation,
     utils::zeroed_f_vec,
 };
 use generic_array::GenericArray;
@@ -26,7 +24,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::air::{InteractionScope, MachineAir};
 use std::mem::size_of;
 use typenum::Unsigned;
 
@@ -250,7 +248,7 @@ impl<F, P: FpOpField> BaseAir<F> for Fp2MulAssignChip<P> {
 
 impl<AB, P: FpOpField> Air<AB> for Fp2MulAssignChip<P>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {

@@ -5,7 +5,7 @@ use core::{
 use std::fmt::Debug;
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
     operations::{
         field::{
@@ -40,7 +40,7 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder},
+    air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };
 use std::marker::PhantomData;
@@ -342,7 +342,7 @@ impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassDecompressChip<E> {
 
 impl<AB, E: EllipticCurve + WeierstrassParameters> Air<AB> for WeierstrassDecompressChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {

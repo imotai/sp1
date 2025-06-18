@@ -18,8 +18,11 @@ use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
-    adapter::{register::alu_type::ALUTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::CPUState,
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
 
@@ -317,16 +320,16 @@ where
         );
 
         // Constrain the program and register reads.
-        ALUTypeReader::<AB::F>::eval(
-            builder,
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
-            AB::F::from_canonical_u32(Opcode::SLL as u32),
-            local.a,
+            AB::F::from_canonical_u32(Opcode::SLL as u32).into(),
+            local.a.map(|x| x.into()),
             local.adapter,
             local.is_real.into(),
         );
+        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }
 }
 

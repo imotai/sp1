@@ -1,17 +1,19 @@
 use std::borrow::Borrow;
 
-use crate::adapter::{register::j_type::JTypeReader, state::CPUState};
+use crate::{
+    adapter::{register::j_type::JTypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
+};
 use p3_air::Air;
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
-use sp1_stark::air::SP1AirBuilder;
 
 use super::{JalChip, JalColumns};
 
 impl<AB> Air<AB> for JalChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]

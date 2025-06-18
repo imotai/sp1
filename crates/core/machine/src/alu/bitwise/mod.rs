@@ -14,10 +14,14 @@ use sp1_core_executor::{
     ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use sp1_stark::air::MachineAir;
 
 use crate::{
-    adapter::{register::alu_type::ALUTypeReader, state::CPUState},
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     operations::BitwiseU16Operation,
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
@@ -161,7 +165,7 @@ impl<F> BaseAir<F> for BitwiseChip {
 
 impl<AB> Air<AB> for BitwiseChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -189,28 +193,29 @@ where
             + local.is_and * Opcode::AND.as_field::<AB::F>();
 
         // Constrain the bitwise operation over `op_b` and `op_c`.
-        let result = BitwiseU16Operation::<AB::F>::eval_bitwise_u16(
+        let result = BitwiseU16Operation::<AB::F>::eval(
             builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            local.bitwise_operation,
-            byte_opcode,
-            is_real.clone(),
+            (
+                local.adapter.b().map(Into::into),
+                local.adapter.c().map(Into::into),
+                local.bitwise_operation,
+                byte_opcode,
+                is_real.clone(),
+            ),
         );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.
-        CPUState::<AB::F>::eval(
-            builder,
+        let cpu_state_input = CPUStateInput::<AB>::new(
             local.state,
             local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
             is_real.clone(),
         );
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(builder, cpu_state_input);
 
         // Constrain the program and register reads.
-        ALUTypeReader::<AB::F>::eval(
-            builder,
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
@@ -219,6 +224,7 @@ where
             local.adapter,
             is_real,
         );
+        <ALUTypeReader<AB::F> as SP1Operation<AB>>::eval(builder, alu_reader_input);
     }
 }
 

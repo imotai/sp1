@@ -1,5 +1,5 @@
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
     operations::SyscallAddrOperation,
     utils::{limbs_to_words, next_multiple_of_32},
@@ -31,7 +31,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder},
+    air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };
 use std::marker::PhantomData;
@@ -120,7 +120,7 @@ impl<F: PrimeField32> EdDecompressCols<F> {
 }
 
 impl<V: Copy> EdDecompressCols<V> {
-    pub fn eval<AB: SP1AirBuilder<Var = V>, P: FieldParameters, E: EdwardsParameters>(
+    pub fn eval<AB: SP1CoreAirBuilder<Var = V>, P: FieldParameters, E: EdwardsParameters>(
         &self,
         builder: &mut AB,
     ) where
@@ -306,7 +306,7 @@ impl<F, E: EdwardsParameters> BaseAir<F> for EdDecompressChip<E> {
 
 impl<AB, E: EdwardsParameters> Air<AB> for EdDecompressChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();

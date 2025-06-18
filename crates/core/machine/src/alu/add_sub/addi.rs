@@ -14,10 +14,11 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use sp1_stark::air::MachineAir;
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
     operations::AddOperation,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
@@ -152,7 +153,7 @@ impl<F> BaseAir<F> for AddiChip {
 
 impl<AB> Air<AB> for AddiChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();

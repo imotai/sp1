@@ -46,8 +46,11 @@ use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
-    adapter::{register::alu_type::ALUTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::CPUState,
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     operations::MulOperation,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
@@ -264,16 +267,17 @@ where
         );
 
         // Constrain the program and register reads.
-        ALUTypeReader::<AB::F>::eval(
-            builder,
+        let a_expr = local.a.map(|x| x.into());
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
-            local.a,
+            a_expr,
             local.adapter,
             local.is_real.into(),
         );
+        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }
 }
 

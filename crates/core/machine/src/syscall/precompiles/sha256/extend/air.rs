@@ -3,13 +3,13 @@ use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::ByteOpcode;
 use sp1_stark::{
-    air::{AirInteraction, InteractionScope, SP1AirBuilder},
+    air::{AirInteraction, InteractionScope},
     InteractionKind,
 };
 
 use super::{ShaExtendChip, ShaExtendCols, NUM_SHA_EXTEND_COLS};
 use crate::{
-    air::MemoryAirBuilder,
+    air::SP1CoreAirBuilder,
     operations::{
         Add4Operation, ClkOperation, FixedRotateRightOperation, FixedShiftRightOperation,
         XorU16Operation,
@@ -26,7 +26,7 @@ impl<F> BaseAir<F> for ShaExtendChip {
 
 impl<AB> Air<AB> for ShaExtendChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         // Initialize columns.

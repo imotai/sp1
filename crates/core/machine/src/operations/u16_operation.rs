@@ -1,13 +1,14 @@
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::events::ByteRecord;
 use sp1_primitives::consts::{u32_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;
 
-use crate::air::WordAirBuilder;
+use crate::air::{SP1Operation, WordAirBuilder};
 use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 /// A set of columns for a u16 to u8 adapter.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct U16toU8Operation<T> {
     low_bytes: [T; WORD_SIZE], // least significant byte of each u16 limb
@@ -36,7 +37,7 @@ impl<F: Field> U16toU8Operation<F> {
 
     /// Converts two u16 limbs into four u8 limbs.
     /// This function assumes that the u8 limbs will be range checked.
-    pub fn eval_u16_to_u8_unsafe<AB: SP1AirBuilder>(
+    fn eval_u16_to_u8_unsafe<AB: SP1AirBuilder>(
         _: &mut AB,
         u16_values: [AB::Expr; WORD_SIZE],
         cols: U16toU8Operation<AB::Var>,
@@ -54,7 +55,7 @@ impl<F: Field> U16toU8Operation<F> {
 
     /// Converts two u16 limbs into four u8 limbs.
     /// This function range checks the four u8 limbs.
-    pub fn eval_u16_to_u8_safe<AB: SP1AirBuilder>(
+    fn eval_u16_to_u8_safe<AB: SP1AirBuilder>(
         builder: &mut AB,
         u16_values: [AB::Expr; WORD_SIZE],
         cols: U16toU8Operation<AB::Var>,
@@ -63,5 +64,63 @@ impl<F: Field> U16toU8Operation<F> {
         let ret = U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, u16_values, cols);
         builder.slice_range_check_u8(&ret, is_real);
         ret
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct U16toU8OperationSafe;
+
+#[derive(Debug, Clone)]
+pub struct U16toU8OperationSafeInput<AB: SP1AirBuilder> {
+    pub u16_values: [AB::Expr; WORD_SIZE],
+    pub cols: U16toU8Operation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> U16toU8OperationSafeInput<AB> {
+    pub fn new(
+        u16_values: [AB::Expr; WORD_SIZE],
+        cols: U16toU8Operation<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { u16_values, cols, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationSafe {
+    type Input = U16toU8OperationSafeInput<AB>;
+    type Output = [AB::Expr; WORD_BYTE_SIZE];
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
+            builder,
+            input.u16_values,
+            input.cols,
+            input.is_real,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct U16toU8OperationUnsafe;
+
+#[derive(Debug, Clone)]
+pub struct U16toU8OperationUnsafeInput<AB: SP1AirBuilder> {
+    pub u16_values: [AB::Expr; WORD_SIZE],
+    pub cols: U16toU8Operation<AB::Var>,
+}
+
+impl<AB: SP1AirBuilder> U16toU8OperationUnsafeInput<AB> {
+    pub fn new(u16_values: [AB::Expr; WORD_SIZE], cols: U16toU8Operation<AB::Var>) -> Self {
+        Self { u16_values, cols }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationUnsafe {
+    type Input = U16toU8OperationUnsafeInput<AB>;
+    type Output = [AB::Expr; WORD_BYTE_SIZE];
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, input.u16_values, input.cols)
     }
 }

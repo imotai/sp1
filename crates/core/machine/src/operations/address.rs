@@ -1,4 +1,5 @@
 use p3_field::{AbstractField, Field, PrimeField32};
+use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
@@ -8,7 +9,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 use super::{AddOperation, BabyBearWordRangeChecker};
 
 /// A set of columns needed to validate the address and return the aligned address.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AddressOperation<T> {
     /// Instance of `AddOperation` for addr_word.

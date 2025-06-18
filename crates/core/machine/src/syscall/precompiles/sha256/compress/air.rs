@@ -14,7 +14,7 @@ use super::{
     ShaCompressChip, SHA_COMPRESS_K,
 };
 use crate::{
-    air::{MemoryAirBuilder, WordAirBuilder},
+    air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder},
     operations::{
         Add5Operation, AddOperation, AndU16Operation, FixedRotateRightOperation, NotU16Operation,
         XorU16Operation,
@@ -30,7 +30,7 @@ impl<F> BaseAir<F> for ShaCompressChip {
 
 impl<AB> Air<AB> for ShaCompressChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -48,7 +48,7 @@ where
 }
 
 impl ShaCompressChip {
-    fn eval_control_flow_flags<AB: SP1AirBuilder>(
+    fn eval_control_flow_flags<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         local: &ShaCompressCols<AB::Var>,
@@ -247,7 +247,7 @@ impl ShaCompressChip {
         builder.when(local.is_finalize).assert_word_eq(local.mem_value, local.finalize_add.value);
     }
 
-    fn eval_compression_ops<AB: SP1AirBuilder>(
+    fn eval_compression_ops<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         local: &ShaCompressCols<AB::Var>,

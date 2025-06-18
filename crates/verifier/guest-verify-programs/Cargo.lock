@@ -3700,6 +3700,7 @@ dependencies = [
  "serde",
  "serde_json",
  "size",
+ "slop-algebra",
  "slop-futures",
  "slop-multilinear",
  "snowbridge-amcl",

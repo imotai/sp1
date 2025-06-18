@@ -1,5 +1,5 @@
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::SyscallAddrOperation,
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
@@ -21,7 +21,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::air::{InteractionScope, MachineAir};
 use std::{
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
@@ -235,7 +235,7 @@ impl<F, P: FpOpField> BaseAir<F> for Fp2AddSubAssignChip<P> {
 
 impl<AB, P: FpOpField> Air<AB> for Fp2AddSubAssignChip<P>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {

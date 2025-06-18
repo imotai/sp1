@@ -28,7 +28,7 @@ members = [
   "crates/sdk",
   "crates/primitives",
   "crates/cuda",
-  "crates/cli",
+  "crates/cli", "crates/core/compiler",
   # "crates/verifier",
   # "crates/perf"
 ]

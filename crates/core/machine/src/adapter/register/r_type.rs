@@ -1,4 +1,5 @@
 use p3_field::{AbstractField, Field, PrimeField32};
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     Instruction, RTypeRecord,
@@ -8,13 +9,13 @@ use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
-    air::{SP1CoreAirBuilder, WordAirBuilder},
+    air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},
     cpu::columns::InstructionCols,
     memory::MemoryAccessInShardCols,
 };
 
 /// A set of columns to read operations with op_a, op_b, op_c being registers.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct RTypeReader<T> {
     pub op_a: T,
@@ -59,7 +60,7 @@ impl<T> RTypeReader<T> {
 
 impl<F: Field> RTypeReader<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn eval<AB: SP1CoreAirBuilder>(
+    pub fn eval<AB: SP1AirBuilder + MemoryAirBuilder + ProgramAirBuilder>(
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
@@ -106,7 +107,7 @@ impl<F: Field> RTypeReader<F> {
         );
     }
 
-    pub fn eval_op_a_immutable<AB: SP1AirBuilder>(
+    pub fn eval_op_a_immutable<AB: SP1AirBuilder + MemoryAirBuilder + ProgramAirBuilder>(
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
@@ -125,5 +126,90 @@ impl<F: Field> RTypeReader<F> {
             cols,
             is_real,
         );
+    }
+}
+
+pub struct RTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
+    pub shard: AB::Expr,
+    pub clk: AB::Expr,
+    pub pc: AB::Var,
+    pub opcode: AB::Expr,
+    pub op_a_write_value: Word<T>,
+    pub cols: RTypeReader<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> RTypeReaderInput<AB, T> {
+    pub fn new(
+        shard: AB::Expr,
+        clk: AB::Expr,
+        pc: AB::Var,
+        opcode: AB::Expr,
+        op_a_write_value: Word<T>,
+        cols: RTypeReader<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { shard, clk, pc, opcode, op_a_write_value, cols, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
+    type Input = RTypeReaderInput<AB, AB::Var>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval(
+            builder,
+            input.shard,
+            input.clk,
+            input.pc,
+            input.opcode,
+            input.op_a_write_value,
+            input.cols,
+            input.is_real,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RTypeReaderImmutable;
+
+#[derive(Debug, Clone)]
+pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
+    pub shard: AB::Expr,
+    pub clk: AB::Expr,
+    pub pc: AB::Var,
+    pub opcode: AB::Expr,
+    pub cols: RTypeReader<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> RTypeReaderImmutableInput<AB> {
+    pub fn new(
+        shard: AB::Expr,
+        clk: AB::Expr,
+        pc: AB::Var,
+        opcode: AB::Expr,
+        cols: RTypeReader<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { shard, clk, pc, opcode, cols, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
+    type Input = RTypeReaderImmutableInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        RTypeReader::<AB::F>::eval_op_a_immutable(
+            builder,
+            input.shard,
+            input.clk,
+            input.pc,
+            input.opcode,
+            input.cols,
+            input.is_real,
+        )
     }
 }

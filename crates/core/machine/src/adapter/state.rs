@@ -1,13 +1,16 @@
 use crate::air::WordAirBuilder;
 use p3_field::{AbstractField, Field};
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::SP1AirBuilder;
 
+use crate::air::SP1Operation;
+
 /// A set of columns to describe the state of the CPU.
 /// The state is composed of the shard, clock, and the program counter.
 /// The clock is split into two 14-limb bits to range check it to 28 bits.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct CPUState<T> {
     pub clk_high: T,
@@ -77,5 +80,32 @@ impl<F: Field> CPUState<F> {
         );
 
         builder.slice_range_check_u8(&[cols.clk_16_24.into(), AB::Expr::zero()], is_real.clone());
+    }
+}
+
+pub struct CPUStateInput<AB: SP1AirBuilder> {
+    pub cols: CPUState<AB::Var>,
+    pub next_pc: AB::Expr,
+    pub clk_increment: AB::Expr,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> CPUStateInput<AB> {
+    pub fn new(
+        cols: CPUState<AB::Var>,
+        next_pc: AB::Expr,
+        clk_increment: AB::Expr,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { cols, next_pc, clk_increment, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for CPUState<AB::F> {
+    type Input = CPUStateInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval(builder, input.cols, input.next_pc, input.clk_increment, input.is_real);
     }
 }
