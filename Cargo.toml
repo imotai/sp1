@@ -127,6 +127,7 @@ sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "mult
 # sp1-recursion-executor = { path = "../sp1-wip/crates/recursion/executor" }
 # sp1-recursion-machine = { path = "../sp1-wip/crates/recursion/machine" }
 # sp1-curves = { path = "../sp1-wip/crates/curves" }
+# sp1-cuda = { path = "../sp1-wip/crates/cuda" }
 
 # async/concurrency
 tokio = { version = "1.42.0" }

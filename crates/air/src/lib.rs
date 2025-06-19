@@ -18,6 +18,7 @@ use slop_air::{
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use sp1_core_machine::air::TrivialOperationBuilder;
 use sp1_stark::septic_curve::SepticCurve;
 use sp1_stark::septic_extension::SepticExtension;
 use sp1_stark::{
@@ -29,7 +30,6 @@ use symbolic_expr_ef::SymbolicExprEF;
 use symbolic_expr_f::SymbolicExprF;
 use symbolic_var_ef::SymbolicVarEF;
 use symbolic_var_f::SymbolicVarF;
-
 pub type F = BabyBear;
 
 pub type EF = BinomialExtensionField<F, 4>;
@@ -148,6 +148,8 @@ impl<'a> AirBuilderWithPublicValues for SymbolicProverFolder<'a> {
 }
 
 impl<'a> EmptyMessageBuilder for SymbolicProverFolder<'a> {}
+
+impl<'a> TrivialOperationBuilder for SymbolicProverFolder<'a> {}
 
 /// Generates code in CUDA for evaluating the constraint polynomial on the device.
 #[allow(clippy::type_complexity)]
