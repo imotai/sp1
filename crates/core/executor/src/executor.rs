@@ -45,7 +45,7 @@ pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 pub const PC_INC: u32 = 4;
 /// The executor uses this PC to determine if the program has halted.
 /// As a PC, it is invalid since it is not a multiple of [`PC_INC`].
-pub const HALT_PC: u32 = 1;
+pub const HALT_PC_REL: u32 = 1;
 
 /// The maximum number of instructions in a program.
 pub const MAX_PROGRAM_SIZE: usize = 1 << 22;
@@ -2027,7 +2027,7 @@ impl<'a> Executor<'a> {
             }
         }
 
-        let done = self.state.pc_rel == HALT_PC
+        let done = self.state.pc_rel == HALT_PC_REL
             || self.state.pc_rel as usize >= self.program.instructions.len() * 4;
         if done && E::UNCONSTRAINED {
             tracing::error!("program ended in unconstrained mode at clk {}", self.state.global_clk);
@@ -2218,7 +2218,7 @@ impl<'a> Executor<'a> {
             // Execute the instruction.
             self.execute_instruction::<Unconstrained>(&instruction)?;
 
-            done = self.state.pc_rel == HALT_PC
+            done = self.state.pc_rel == HALT_PC_REL
                 || self.state.pc_rel as usize >= self.program.instructions.len() * 4;
         }
 
