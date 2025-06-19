@@ -4,7 +4,7 @@ use itertools::Itertools;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{syscalls::SyscallCode, Opcode, DEFAULT_CLK_INC};
+use sp1_core_executor::{syscalls::SyscallCode, Opcode, CLK_INC};
 use sp1_stark::{
     air::{
         BaseAirBuilder, InteractionScope, PublicValues, SP1AirBuilder, POSEIDON_NUM_WORDS,
@@ -65,7 +65,7 @@ where
             builder,
             local.state,
             local.next_pc.into(),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC + 256),
+            AB::Expr::from_canonical_u32(CLK_INC + 256),
             local.is_real.into(),
         );
 

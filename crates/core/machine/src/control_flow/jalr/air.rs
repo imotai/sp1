@@ -5,7 +5,7 @@ use crate::{
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_CLK_INC, DEFAULT_PC_INC};
+use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
 use sp1_stark::air::BaseAirBuilder;
 use std::borrow::Borrow;
 
@@ -46,7 +46,7 @@ where
             builder,
             local.state,
             next_pc.reduce::<AB>(),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -69,7 +69,7 @@ where
         // If `op_a_0` is set, the `op_a_value` will be constrained to be zero.
         builder.when(local.is_real).when_not(local.adapter.op_a_0).assert_eq(
             local.op_a_value.reduce::<AB>(),
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+            local.state.pc + AB::F::from_canonical_u32(PC_INC),
         );
 
         // Constrain the op_a value to be a valid word.

@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
+use sp1_core_executor::{Opcode, CLK_INC};
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
@@ -62,7 +62,7 @@ where
             builder,
             local.state,
             local.next_pc.into(),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
 

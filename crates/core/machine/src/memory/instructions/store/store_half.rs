@@ -21,7 +21,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_stark::air::MachineAir;
 
@@ -205,8 +205,8 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.state.pc + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 

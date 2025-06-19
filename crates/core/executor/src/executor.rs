@@ -39,9 +39,9 @@ use crate::{
 
 /// The default increment for the program counter.  Is used for all instructions except
 /// for branches and jumps.
-pub const DEFAULT_PC_INC: u32 = 4;
+pub const PC_INC: u32 = 4;
 /// The default increment for the timestamp.
-pub const DEFAULT_CLK_INC: u32 = 8;
+pub const CLK_INC: u32 = 8;
 /// This is used in the `InstrEvent` to indicate that the instruction is not from the CPU.
 /// A valid pc should be divisible by 4, so we use 1 to indicate that the pc is not used.
 pub const UNUSED_PC: u32 = 1;

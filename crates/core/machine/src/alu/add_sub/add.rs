@@ -11,7 +11,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
@@ -187,8 +187,8 @@ where
         // The program counter and timestamp increment by `4`.
         let cpu_state_input = CPUStateInput::<AB>::new(
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.state.pc + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
         <CPUState<AB::F> as SP1Operation<AB>>::eval(builder, cpu_state_input);
