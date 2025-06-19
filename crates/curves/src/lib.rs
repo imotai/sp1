@@ -56,7 +56,7 @@ use typenum::Unsigned;
 pub use num::{BigUint, Integer, One, Zero};
 use serde::{de::DeserializeOwned, Serialize};
 
-pub const NUM_WORDS_FIELD_ELEMENT: usize = 8;
+pub const NUM_WORDS_FIELD_ELEMENT: usize = 4;
 pub const NUM_BYTES_FIELD_ELEMENT: usize = NUM_WORDS_FIELD_ELEMENT * WORD_BYTE_SIZE;
 pub const COMPRESSED_POINT_BYTES: usize = 32;
 

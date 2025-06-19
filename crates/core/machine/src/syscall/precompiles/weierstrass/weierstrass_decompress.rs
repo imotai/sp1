@@ -12,7 +12,7 @@ use crate::{
             field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
             field_sqrt::FieldSqrtCols, range::FieldLtCols,
         },
-        SyscallAddrOperation,
+        AddrAddOperation, SyscallAddrOperation,
     },
     utils::{
         bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
@@ -59,8 +59,8 @@ pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub shard: T,
     pub clk: T,
     pub ptr: SyscallAddrOperation<T>,
-    pub x_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
-    pub y_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
     pub sign_bit: T,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub y_access: GenericArray<MemoryAccessCols<T>, P::WordsFieldElement>,
@@ -222,64 +222,58 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u64 * 2);
             cols.sign_bit = F::from_bool(event.sign_bit);
 
-            // let x = BigUint::from_bytes_le(&event.x_bytes);
-            // Self::populate_field_ops(&mut new_byte_lookup_events, cols, x);
+            let x = BigUint::from_bytes_le(&event.x_bytes);
+            Self::populate_field_ops(&mut new_byte_lookup_events, cols, x);
 
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Read(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
-                let new_x_addr = event.ptr.wrapping_add(8 * i as u64) + num_limbs as u64;
-                cols.x_addrs[i] = [
-                    F::from_canonical_u64(new_x_addr & 0xFFFF),
-                    F::from_canonical_u64((new_x_addr >> 16) & 0xFFFF),
-                    F::from_canonical_u64((new_x_addr >> 32) & 0xFFFF),
-                ];
+                cols.x_addrs[i].populate(
+                    &mut new_byte_lookup_events,
+                    event.ptr + num_limbs as u64,
+                    8 * i as u64,
+                );
             }
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Write(event.y_memory_records[i]);
                 let current_record = record.current_record();
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
                 cols.y_value[i] = Word::from(current_record.value);
-                let new_y_addr = event.ptr.wrapping_add(8 * i as u64);
-                cols.y_addrs[i] = [
-                    F::from_canonical_u64(new_y_addr & 0xFFFF),
-                    F::from_canonical_u64((new_y_addr >> 16) & 0xFFFF),
-                    F::from_canonical_u64((new_y_addr >> 32) & 0xFFFF),
-                ];
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.ptr, 8 * i as u64);
             }
 
-            // if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
-            //     let lsb = cols.y.lsb;
-            //     let choice_cols: &mut LexicographicChoiceCols<F, E::BaseField> =
-            //         row[weierstrass_width..width].borrow_mut();
+            if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
+                let lsb = cols.y.lsb;
+                let choice_cols: &mut LexicographicChoiceCols<F, E::BaseField> =
+                    row[weierstrass_width..width].borrow_mut();
 
-            //     let decompressed_y = BigUint::from_bytes_le(&event.decompressed_y_bytes);
-            //     let neg_y = &modulus - &decompressed_y;
+                let decompressed_y = BigUint::from_bytes_le(&event.decompressed_y_bytes);
+                let neg_y = &modulus - &decompressed_y;
 
-            //     let is_y_eq_sqrt_y_result =
-            //         F::from_canonical_u8(event.decompressed_y_bytes[0] % 2) == lsb;
-            //     choice_cols.is_y_eq_sqrt_y_result = F::from_bool(is_y_eq_sqrt_y_result);
+                let is_y_eq_sqrt_y_result =
+                    F::from_canonical_u8(event.decompressed_y_bytes[0] % 2) == lsb;
+                choice_cols.is_y_eq_sqrt_y_result = F::from_bool(is_y_eq_sqrt_y_result);
 
-            //     if event.sign_bit {
-            //         assert!(neg_y < decompressed_y);
-            //         choice_cols.when_sqrt_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
-            //         choice_cols.when_neg_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
-            //         choice_cols.comparison_lt_cols.populate(
-            //             &mut new_byte_lookup_events,
-            //             &neg_y,
-            //             &decompressed_y,
-            //         );
-            //     } else {
-            //         assert!(neg_y > decompressed_y);
-            //         choice_cols.when_sqrt_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
-            //         choice_cols.when_neg_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
-            //         choice_cols.comparison_lt_cols.populate(
-            //             &mut new_byte_lookup_events,
-            //             &decompressed_y,
-            //             &neg_y,
-            //         );
-            //     }
-            // }
+                if event.sign_bit {
+                    assert!(neg_y < decompressed_y);
+                    choice_cols.when_sqrt_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
+                    choice_cols.when_neg_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
+                    choice_cols.comparison_lt_cols.populate(
+                        &mut new_byte_lookup_events,
+                        &neg_y,
+                        &decompressed_y,
+                    );
+                } else {
+                    assert!(neg_y > decompressed_y);
+                    choice_cols.when_sqrt_y_res_is_lt = F::from_bool(is_y_eq_sqrt_y_result);
+                    choice_cols.when_neg_y_res_is_lt = F::from_bool(!is_y_eq_sqrt_y_result);
+                    choice_cols.comparison_lt_cols.populate(
+                        &mut new_byte_lookup_events,
+                        &decompressed_y,
+                        &neg_y,
+                    );
+                }
+            }
 
             rows.push(row);
         }
@@ -371,157 +365,157 @@ where
         let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
         let num_words_field_element = num_limbs / 8;
 
-        // builder.assert_bool(local.sign_bit);
+        builder.assert_bool(local.sign_bit);
 
-        // let x_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
-        // let x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
-        //     Limbs(x_limbs.try_into().expect("failed to convert limbs"));
-        // let max_num_limbs = E::BaseField::to_limbs_field_vec(&E::BaseField::modulus());
-        // local.range_x.eval(
-        //     builder,
-        //     &x,
-        //     &limbs_from_vec::<AB::Expr, <E::BaseField as NumLimbs>::Limbs, AB::F>(max_num_limbs),
-        //     local.is_real,
-        // );
-        // local.x_2.eval(builder, &x, &x, FieldOperation::Mul, local.is_real);
-        // local.x_3.eval(builder, &local.x_2.result, &x, FieldOperation::Mul, local.is_real);
-        // let b_const = E::BaseField::to_limbs_field::<AB::F, _>(&E::b_int());
-        // let a_const = E::BaseField::to_limbs_field::<AB::F, _>(&E::a_int());
-        // let params = [a_const, b_const];
-        // let p_x: Polynomial<AB::Expr> = x.into();
-        // let p_one: Polynomial<AB::Expr> =
-        //     E::BaseField::to_limbs_field::<AB::F, _>(&BigUint::one()).into();
-        // local.ax_plus_b.eval::<AB>(builder, &params, &[p_x, p_one], local.is_real);
-        // local.x_3_plus_b_plus_ax.eval(
-        //     builder,
-        //     &local.x_3.result,
-        //     &local.ax_plus_b.result,
-        //     FieldOperation::Add,
-        //     local.is_real,
-        // );
+        let x_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
+        let x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(x_limbs.try_into().expect("failed to convert limbs"));
+        let max_num_limbs = E::BaseField::to_limbs_field_vec(&E::BaseField::modulus());
+        local.range_x.eval(
+            builder,
+            &x,
+            &limbs_from_vec::<AB::Expr, <E::BaseField as NumLimbs>::Limbs, AB::F>(max_num_limbs),
+            local.is_real,
+        );
+        local.x_2.eval(builder, &x, &x, FieldOperation::Mul, local.is_real);
+        local.x_3.eval(builder, &local.x_2.result, &x, FieldOperation::Mul, local.is_real);
+        let b_const = E::BaseField::to_limbs_field::<AB::F, _>(&E::b_int());
+        let a_const = E::BaseField::to_limbs_field::<AB::F, _>(&E::a_int());
+        let params = [a_const, b_const];
+        let p_x: Polynomial<AB::Expr> = x.into();
+        let p_one: Polynomial<AB::Expr> =
+            E::BaseField::to_limbs_field::<AB::F, _>(&BigUint::one()).into();
+        local.ax_plus_b.eval::<AB>(builder, &params, &[p_x, p_one], local.is_real);
+        local.x_3_plus_b_plus_ax.eval(
+            builder,
+            &local.x_3.result,
+            &local.ax_plus_b.result,
+            FieldOperation::Add,
+            local.is_real,
+        );
 
-        // local.neg_y.eval(
-        //     builder,
-        //     &[AB::Expr::zero()].iter(),
-        //     &local.y.multiplication.result,
-        //     FieldOperation::Sub,
-        //     local.is_real,
-        // );
-        // // Range check the `neg_y.result` to be canonical.
-        // let modulus_limbs = E::BaseField::to_limbs_field_vec(&E::BaseField::modulus());
-        // let modulus_limbs =
-        //     limbs_from_vec::<AB::Expr, <E::BaseField as NumLimbs>::Limbs, AB::F>(modulus_limbs);
-        // local.neg_y_range_check.eval(builder, &local.neg_y.result, &modulus_limbs, local.is_real);
+        local.neg_y.eval(
+            builder,
+            &[AB::Expr::zero()].iter(),
+            &local.y.multiplication.result,
+            FieldOperation::Sub,
+            local.is_real,
+        );
+        // Range check the `neg_y.result` to be canonical.
+        let modulus_limbs = E::BaseField::to_limbs_field_vec(&E::BaseField::modulus());
+        let modulus_limbs =
+            limbs_from_vec::<AB::Expr, <E::BaseField as NumLimbs>::Limbs, AB::F>(modulus_limbs);
+        local.neg_y_range_check.eval(builder, &local.neg_y.result, &modulus_limbs, local.is_real);
 
-        // // Constrain that `y` is a square root. Note that `y.multiplication.result` is constrained
-        // // to be canonical here. Since `y_limbs` is constrained to be either
-        // // `y.multiplication.result` or `neg_y.result`, `y_limbs` will be canonical.
-        // local.y.eval(builder, &local.x_3_plus_b_plus_ax.result, local.y.lsb, local.is_real);
+        // Constrain that `y` is a square root. Note that `y.multiplication.result` is constrained
+        // to be canonical here. Since `y_limbs` is constrained to be either
+        // `y.multiplication.result` or `neg_y.result`, `y_limbs` will be canonical.
+        local.y.eval(builder, &local.x_3_plus_b_plus_ax.result, local.y.lsb, local.is_real);
 
-        // let neg_y_words = limbs_to_words::<AB>(local.neg_y.result.0.to_vec());
-        // let mul_words = limbs_to_words::<AB>(local.y.multiplication.result.0.to_vec());
-        // let y_value_words =
-        //     local.y_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
+        let neg_y_words = limbs_to_words::<AB>(local.neg_y.result.0.to_vec());
+        let mul_words = limbs_to_words::<AB>(local.y.multiplication.result.0.to_vec());
+        let y_value_words =
+            local.y_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
 
-        // // Constrain the y value according the sign rule convention.
-        // match self.sign_rule {
-        //     SignChoiceRule::LeastSignificantBit => {
-        //         // When the sign rule is LeastSignificantBit, the sign_bit should match the parity
-        //         // of the result. The parity of the square root result is given by the local.y.lsb
-        //         // value. Thus, if the sign_bit matches the local.y.lsb value, then the result
-        //         // should be the square root of the y value. Otherwise, the result should be the
-        //         // negative square root of the y value.
-        //         for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
-        //             builder
-        //                 .when(local.is_real)
-        //                 .when_ne(local.y.lsb, AB::Expr::one() - local.sign_bit)
-        //                 .assert_all_eq(mul_word.clone(), y_value_word.clone());
-        //         }
-        //         for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
-        //             builder
-        //                 .when(local.is_real)
-        //                 .when_ne(local.y.lsb, local.sign_bit)
-        //                 .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
-        //         }
-        //     }
-        //     SignChoiceRule::Lexicographic => {
-        //         // When the sign rule is Lexicographic, the sign_bit corresponds to whether
-        //         // the result is greater than or less its negative with respect to the lexicographic
-        //         // ordering, embedding prime field values as integers.
-        //         //
-        //         // In order to endorce these constraints, we will use the auxiliary choice columns.
+        // Constrain the y value according the sign rule convention.
+        match self.sign_rule {
+            SignChoiceRule::LeastSignificantBit => {
+                // When the sign rule is LeastSignificantBit, the sign_bit should match the parity
+                // of the result. The parity of the square root result is given by the local.y.lsb
+                // value. Thus, if the sign_bit matches the local.y.lsb value, then the result
+                // should be the square root of the y value. Otherwise, the result should be the
+                // negative square root of the y value.
+                for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_ne(local.y.lsb, AB::Expr::one() - local.sign_bit)
+                        .assert_all_eq(mul_word.clone(), y_value_word.clone());
+                }
+                for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_ne(local.y.lsb, local.sign_bit)
+                        .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
+                }
+            }
+            SignChoiceRule::Lexicographic => {
+                // When the sign rule is Lexicographic, the sign_bit corresponds to whether
+                // the result is greater than or less its negative with respect to the lexicographic
+                // ordering, embedding prime field values as integers.
+                //
+                // In order to endorce these constraints, we will use the auxiliary choice columns.
 
-        //         // Get the choice columns from the row slice
-        //         let choice_cols: &LexicographicChoiceCols<AB::Var, E::BaseField> = (*local_slice)
-        //             [weierstrass_cols
-        //                 ..weierstrass_cols
-        //                     + size_of::<LexicographicChoiceCols<u8, E::BaseField>>()]
-        //             .borrow();
+                // Get the choice columns from the row slice
+                let choice_cols: &LexicographicChoiceCols<AB::Var, E::BaseField> = (*local_slice)
+                    [weierstrass_cols
+                        ..weierstrass_cols
+                            + size_of::<LexicographicChoiceCols<u8, E::BaseField>>()]
+                    .borrow();
 
-        //         // Assert that the flags are booleans.
-        //         builder.assert_bool(choice_cols.is_y_eq_sqrt_y_result);
-        //         builder.assert_bool(choice_cols.when_sqrt_y_res_is_lt);
-        //         builder.assert_bool(choice_cols.when_neg_y_res_is_lt);
+                // Assert that the flags are booleans.
+                builder.assert_bool(choice_cols.is_y_eq_sqrt_y_result);
+                builder.assert_bool(choice_cols.when_sqrt_y_res_is_lt);
+                builder.assert_bool(choice_cols.when_neg_y_res_is_lt);
 
-        //         // Assert that the `when` flags are disjoint:
-        //         builder.when(local.is_real).assert_one(
-        //             choice_cols.when_sqrt_y_res_is_lt + choice_cols.when_neg_y_res_is_lt,
-        //         );
+                // Assert that the `when` flags are disjoint:
+                builder.when(local.is_real).assert_one(
+                    choice_cols.when_sqrt_y_res_is_lt + choice_cols.when_neg_y_res_is_lt,
+                );
 
-        //         // Assert that the value of `y` matches the claimed value by the flags.
-        //         for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
-        //             builder
-        //                 .when(local.is_real)
-        //                 .when(choice_cols.is_y_eq_sqrt_y_result)
-        //                 .assert_all_eq(mul_word.clone(), y_value_word.clone());
-        //         }
-        //         for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
-        //             builder
-        //                 .when(local.is_real)
-        //                 .when_not(choice_cols.is_y_eq_sqrt_y_result)
-        //                 .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
-        //         }
+                // Assert that the value of `y` matches the claimed value by the flags.
+                for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when(choice_cols.is_y_eq_sqrt_y_result)
+                        .assert_all_eq(mul_word.clone(), y_value_word.clone());
+                }
+                for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_not(choice_cols.is_y_eq_sqrt_y_result)
+                        .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
+                }
 
-        //         // Assert that the comparison only turns on when `is_real` is true.
-        //         builder.when_not(local.is_real).assert_zero(choice_cols.when_sqrt_y_res_is_lt);
-        //         builder.when_not(local.is_real).assert_zero(choice_cols.when_neg_y_res_is_lt);
+                // Assert that the comparison only turns on when `is_real` is true.
+                builder.when_not(local.is_real).assert_zero(choice_cols.when_sqrt_y_res_is_lt);
+                builder.when_not(local.is_real).assert_zero(choice_cols.when_neg_y_res_is_lt);
 
-        //         // Assert that the flags are set correctly. When the sign_bit is true, we want that
-        //         // `neg_y < y`, and vice versa when the sign_bit is false. Hence, when should have:
-        //         // - When `sign_bit` is true , then when_sqrt_y_res_is_lt = (y != sqrt(y)).
-        //         // - When `sign_bit` is false, then when_neg_y_res_is_lt = (y == sqrt(y)).
-        //         // - When `sign_bit` is true , then when_sqrt_y_res_is_lt = (y != sqrt(y)).
-        //         // - When `sign_bit` is false, then when_neg_y_res_is_lt = (y == sqrt(y)).
-        //         //
-        //         // Since the when less-than flags are disjoint, we can assert that:
-        //         // - When `sign_bit` is true , then is_y_eq_sqrt_y_result == when_neg_y_res_is_lt.
-        //         // - When `sign_bit` is false, then is_y_eq_sqrt_y_result == when_sqrt_y_res_is_lt.
-        //         builder
-        //             .when(local.is_real)
-        //             .when(local.sign_bit)
-        //             .assert_eq(choice_cols.is_y_eq_sqrt_y_result, choice_cols.when_neg_y_res_is_lt);
-        //         builder.when(local.is_real).when_not(local.sign_bit).assert_eq(
-        //             choice_cols.is_y_eq_sqrt_y_result,
-        //             choice_cols.when_sqrt_y_res_is_lt,
-        //         );
+                // Assert that the flags are set correctly. When the sign_bit is true, we want that
+                // `neg_y < y`, and vice versa when the sign_bit is false. Hence, when should have:
+                // - When `sign_bit` is true , then when_sqrt_y_res_is_lt = (y != sqrt(y)).
+                // - When `sign_bit` is false, then when_neg_y_res_is_lt = (y == sqrt(y)).
+                // - When `sign_bit` is true , then when_sqrt_y_res_is_lt = (y != sqrt(y)).
+                // - When `sign_bit` is false, then when_neg_y_res_is_lt = (y == sqrt(y)).
+                //
+                // Since the when less-than flags are disjoint, we can assert that:
+                // - When `sign_bit` is true , then is_y_eq_sqrt_y_result == when_neg_y_res_is_lt.
+                // - When `sign_bit` is false, then is_y_eq_sqrt_y_result == when_sqrt_y_res_is_lt.
+                builder
+                    .when(local.is_real)
+                    .when(local.sign_bit)
+                    .assert_eq(choice_cols.is_y_eq_sqrt_y_result, choice_cols.when_neg_y_res_is_lt);
+                builder.when(local.is_real).when_not(local.sign_bit).assert_eq(
+                    choice_cols.is_y_eq_sqrt_y_result,
+                    choice_cols.when_sqrt_y_res_is_lt,
+                );
 
-        //         // Assert the less-than comparisons according to the flags.
+                // Assert the less-than comparisons according to the flags.
 
-        //         choice_cols.comparison_lt_cols.eval(
-        //             builder,
-        //             &local.y.multiplication.result,
-        //             &local.neg_y.result,
-        //             choice_cols.when_sqrt_y_res_is_lt,
-        //         );
+                choice_cols.comparison_lt_cols.eval(
+                    builder,
+                    &local.y.multiplication.result,
+                    &local.neg_y.result,
+                    choice_cols.when_sqrt_y_res_is_lt,
+                );
 
-        //         choice_cols.comparison_lt_cols.eval(
-        //             builder,
-        //             &local.neg_y.result,
-        //             &local.y.multiplication.result,
-        //             choice_cols.when_neg_y_res_is_lt,
-        //         );
-        //     }
-        // }
+                choice_cols.comparison_lt_cols.eval(
+                    builder,
+                    &local.neg_y.result,
+                    &local.y.multiplication.result,
+                    choice_cols.when_neg_y_res_is_lt,
+                );
+            }
+        }
 
         let ptr = SyscallAddrOperation::<AB::F>::eval(
             builder,
@@ -530,11 +524,51 @@ where
             local.is_real.into(),
         );
 
+        let num_limbs_as_f = AB::F::from_canonical_u32(num_limbs as u32);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            ptr.clone(),
+            [num_limbs_as_f.into(), AB::Expr::zero(), AB::Expr::zero()],
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        let eight = AB::F::from_canonical_u32(8u32);
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.x_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.y_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.y_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         for i in 0..num_words_field_element {
             builder.eval_memory_access_read(
                 local.shard,
                 local.clk,
-                &local.x_addrs[i].map(Into::into),
+                &local.x_addrs[i].value.map(Into::into),
                 local.x_access[i].memory_access,
                 local.is_real,
             );
@@ -543,7 +577,7 @@ where
             builder.eval_memory_access_write(
                 local.shard,
                 local.clk,
-                &local.y_addrs[i].map(Into::into),
+                &local.y_addrs[i].value.map(Into::into),
                 local.y_access[i],
                 local.y_value[i],
                 local.is_real,

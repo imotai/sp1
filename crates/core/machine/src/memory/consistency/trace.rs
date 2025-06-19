@@ -29,7 +29,7 @@ impl<F: PrimeField32> MemoryAccessColsU8<F> {
         let prev_record = record.previous_record();
         let current_record = record.current_record();
         self.memory_access.prev_value = prev_record.value.into();
-        // self.prev_value_u8.populate_u16_to_u8_safe(output, prev_record.value);
+        self.prev_value_u8.populate_u16_to_u8_safe(output, prev_record.value);
         self.memory_access.access_timestamp.populate_timestamp(prev_record, current_record, output);
     }
 }

@@ -28,14 +28,14 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
 
     // First read the words for the x value. We can read a slice_unsafe here because we write
     // the computed result to x later.
-    let x = rt.slice_unsafe(x_ptr, WORDS_FIELD_ELEMENT / 2);
+    let x = rt.slice_unsafe(x_ptr, WORDS_FIELD_ELEMENT);
 
     // Read the y value.
-    let (y_memory_records, y) = rt.mr_slice(y_ptr, WORDS_FIELD_ELEMENT / 2);
+    let (y_memory_records, y) = rt.mr_slice(y_ptr, WORDS_FIELD_ELEMENT);
 
     // The modulus is stored after the y value. We increment the pointer by the number of words.
     let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u64 * WORD_BYTE_SIZE as u64;
-    let (modulus_memory_records, modulus) = rt.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT / 2);
+    let (modulus_memory_records, modulus) = rt.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT);
 
     // Get the BigUint values for x, y, and the modulus.
     let uint256_x = BigUint::from_bytes_le(&words_to_bytes_le_vec(&x));

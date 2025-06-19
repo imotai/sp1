@@ -1,7 +1,7 @@
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::SyscallAddrOperation,
+    operations::{AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32},
 };
 use core::{
@@ -56,8 +56,8 @@ pub struct EdDecompressCols<T> {
     pub shard: T,
     pub clk: T,
     pub ptr: SyscallAddrOperation<T>,
-    pub read_ptrs: [[T; 3]; WORDS_FIELD_ELEMENT],
-    pub addrs: [[T; 3]; WORDS_FIELD_ELEMENT],
+    pub read_ptrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+    pub addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
     pub sign: T,
     pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
     pub x_value: GenericArray<Word<T>, WordsFieldElement>,
@@ -96,20 +96,12 @@ impl<F: PrimeField32> EdDecompressCols<F> {
             self.x_value[i] = Word::from(current_x_record.value);
             let y_record = MemoryRecordEnum::Read(event.y_memory_records[i]);
             self.y_access[i].populate(y_record, &mut new_byte_lookup_events);
-            self.addrs[i] = [
-                F::from_canonical_u16((event.ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16),
-                F::from_canonical_u16((event.ptr.wrapping_add((i * 8) as u64) >> 16) as u16),
-                F::from_canonical_u16((event.ptr.wrapping_add((i * 8) as u64) >> 32) as u16),
-            ];
-            self.read_ptrs[i] = [
-                F::from_canonical_u16((read_ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16),
-                F::from_canonical_u16((read_ptr.wrapping_add((i * 8) as u64) >> 16) as u16),
-                F::from_canonical_u16((read_ptr.wrapping_add((i * 8) as u64) >> 32) as u16),
-            ];
+            self.addrs[i].populate(record, event.ptr, i as u64 * 8);
+            self.read_ptrs[i].populate(record, read_ptr, i as u64 * 8);
         }
 
-        // let y = &BigUint::from_bytes_le(&event.y_bytes);
-        // self.populate_field_ops::<E>(&mut new_byte_lookup_events, y);
+        let y = &BigUint::from_bytes_le(&event.y_bytes);
+        self.populate_field_ops::<E>(&mut new_byte_lookup_events, y);
 
         record.add_byte_lookup_events(new_byte_lookup_events);
     }
@@ -142,58 +134,99 @@ impl<V: Copy> EdDecompressCols<V> {
     ) where
         V: Into<AB::Expr>,
     {
-        // builder.assert_bool(self.sign);
+        builder.assert_bool(self.sign);
 
-        // let y_limbs = builder.generate_limbs(&self.y_access, self.is_real.into());
-        // let y: Limbs<AB::Expr, U32> = Limbs(y_limbs.try_into().expect("failed to convert limbs"));
-        // let max_num_limbs =
-        //     Ed25519BaseField::to_limbs_field::<AB::Expr, AB::F>(&Ed25519BaseField::modulus());
-        // self.y_range.eval(builder, &y, &max_num_limbs, self.is_real);
-        // self.yy.eval(builder, &y, &y, FieldOperation::Mul, self.is_real);
-        // self.u.eval(
-        //     builder,
-        //     &self.yy.result,
-        //     &[AB::Expr::one()].iter(),
-        //     FieldOperation::Sub,
-        //     self.is_real,
-        // );
-        // let d_biguint = E::d_biguint();
-        // let d_const = E::BaseField::to_limbs_field::<AB::F, _>(&d_biguint);
-        // self.dyy.eval(builder, &d_const, &self.yy.result, FieldOperation::Mul, self.is_real);
-        // self.v.eval(
-        //     builder,
-        //     &[AB::Expr::one()].iter(),
-        //     &self.dyy.result,
-        //     FieldOperation::Add,
-        //     self.is_real,
-        // );
-        // self.u_div_v.eval(
-        //     builder,
-        //     &self.u.result,
-        //     &self.v.result,
-        //     FieldOperation::Div,
-        //     self.is_real,
-        // );
+        let y_limbs = builder.generate_limbs(&self.y_access, self.is_real.into());
+        let y: Limbs<AB::Expr, U32> = Limbs(y_limbs.try_into().expect("failed to convert limbs"));
+        let max_num_limbs =
+            Ed25519BaseField::to_limbs_field::<AB::Expr, AB::F>(&Ed25519BaseField::modulus());
+        self.y_range.eval(builder, &y, &max_num_limbs, self.is_real);
+        self.yy.eval(builder, &y, &y, FieldOperation::Mul, self.is_real);
+        self.u.eval(
+            builder,
+            &self.yy.result,
+            &[AB::Expr::one()].iter(),
+            FieldOperation::Sub,
+            self.is_real,
+        );
+        let d_biguint = E::d_biguint();
+        let d_const = E::BaseField::to_limbs_field::<AB::F, _>(&d_biguint);
+        self.dyy.eval(builder, &d_const, &self.yy.result, FieldOperation::Mul, self.is_real);
+        self.v.eval(
+            builder,
+            &[AB::Expr::one()].iter(),
+            &self.dyy.result,
+            FieldOperation::Add,
+            self.is_real,
+        );
+        self.u_div_v.eval(
+            builder,
+            &self.u.result,
+            &self.v.result,
+            FieldOperation::Div,
+            self.is_real,
+        );
 
-        // // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained
-        // // to be canonical here.
-        // self.x.eval(builder, &self.u_div_v.result, AB::F::zero(), self.is_real);
-        // self.neg_x.eval(
-        //     builder,
-        //     &[AB::Expr::zero()].iter(),
-        //     &self.x.multiplication.result,
-        //     FieldOperation::Sub,
-        //     self.is_real,
-        // );
-        // // Constrain that `neg_x.result` is also canonical.
-        // self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
+        // Constrain that `x` is a square root. Note that `x.multiplication.result` is constrained
+        // to be canonical here.
+        self.x.eval(builder, &self.u_div_v.result, AB::F::zero(), self.is_real);
+        self.neg_x.eval(
+            builder,
+            &[AB::Expr::zero()].iter(),
+            &self.x.multiplication.result,
+            FieldOperation::Sub,
+            self.is_real,
+        );
+        // Constrain that `neg_x.result` is also canonical.
+        self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
 
         let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
+
+        // addrs[0] = ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            self.addrs[0],
+            self.is_real.into(),
+        );
+        let eight = AB::F::from_canonical_u32(8u32);
+        // addrs[i] = addrs[i - 1] + 8.
+        for i in 1..WORDS_FIELD_ELEMENT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                self.addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                self.addrs[i],
+                self.is_real.into(),
+            );
+        }
+
+        // read_ptrs[0] = ptr + 32.
+        let thirty_two = AB::F::from_canonical_u32(32u32);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            ptr.clone(),
+            [thirty_two.into(), AB::Expr::zero(), AB::Expr::zero()],
+            self.read_ptrs[0],
+            self.is_real.into(),
+        );
+
+        // read_ptrs[i] = read_ptrs[i - 1] + 8.
+        for i in 1..WORDS_FIELD_ELEMENT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                self.read_ptrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                self.read_ptrs[i],
+                self.is_real.into(),
+            );
+        }
 
         builder.eval_memory_access_slice_write(
             self.shard,
             self.clk,
-            &self.addrs.map(|addr| addr.map(Into::into)),
+            &self.addrs.map(|addr| addr.value.map(Into::into)),
             &self.x_access,
             self.x_value.to_vec(),
             self.is_real,
@@ -202,29 +235,29 @@ impl<V: Copy> EdDecompressCols<V> {
         builder.eval_memory_access_slice_read(
             self.shard,
             self.clk,
-            &self.read_ptrs.map(|ptr| ptr.map(Into::into)),
+            &self.read_ptrs.map(|ptr| ptr.value.map(Into::into)),
             &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
             self.is_real,
         );
 
-        // // Constrain that x_value is correct.
-        // // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
-        // // is canonical.
-        // let neg_x_words = limbs_to_words::<AB>(self.neg_x.result.0.to_vec());
-        // let mul_x_words = limbs_to_words::<AB>(self.x.multiplication.result.0.to_vec());
-        // let x_value_words = self.x_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
-        // for (neg_x_word, x_value_word) in neg_x_words.iter().zip(x_value_words.iter()) {
-        //     builder
-        //         .when(self.is_real)
-        //         .when(self.sign)
-        //         .assert_all_eq(neg_x_word.clone(), x_value_word.clone());
-        // }
-        // for (mul_x_word, x_value_word) in mul_x_words.iter().zip(x_value_words.iter()) {
-        //     builder
-        //         .when(self.is_real)
-        //         .when_not(self.sign)
-        //         .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
-        // }
+        // Constrain that x_value is correct.
+        // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
+        // is canonical.
+        let neg_x_words = limbs_to_words::<AB>(self.neg_x.result.0.to_vec());
+        let mul_x_words = limbs_to_words::<AB>(self.x.multiplication.result.0.to_vec());
+        let x_value_words = self.x_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
+        for (neg_x_word, x_value_word) in neg_x_words.iter().zip(x_value_words.iter()) {
+            builder
+                .when(self.is_real)
+                .when(self.sign)
+                .assert_all_eq(neg_x_word.clone(), x_value_word.clone());
+        }
+        for (mul_x_word, x_value_word) in mul_x_words.iter().zip(x_value_words.iter()) {
+            builder
+                .when(self.is_real)
+                .when_not(self.sign)
+                .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
+        }
 
         builder.receive_syscall(
             self.shard,

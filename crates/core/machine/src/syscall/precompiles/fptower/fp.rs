@@ -7,7 +7,7 @@ use std::{
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::MemoryAccessColsU8,
-    operations::{field::range::FieldLtCols, SyscallAddrOperation},
+    operations::{field::range::FieldLtCols, AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
@@ -22,7 +22,6 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_curves::{
-    edwards::WORDS_FIELD_ELEMENT,
     params::{Limbs, NumLimbs},
     weierstrass::{FieldType, FpOpField},
 };
@@ -55,8 +54,8 @@ pub struct FpOpCols<T, P: FpOpField> {
     pub is_mul: T,
     pub x_ptr: SyscallAddrOperation<T>,
     pub y_ptr: SyscallAddrOperation<T>,
-    pub x_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
-    pub y_addrs: GenericArray<[T; 3], P::WordsFieldElement>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub(crate) output: FieldOpCols<T, P>,
@@ -79,7 +78,7 @@ impl<P: FpOpField> FpOpChip<P> {
         let modulus_bytes = P::MODULUS;
         let modulus = BigUint::from_bytes_le(modulus_bytes);
         let output = cols.output.populate_with_modulus(blu_events, &p, &q, &modulus, op);
-        // cols.output_range.populate(blu_events, &output, &modulus);
+        cols.output_range.populate(blu_events, &output, &modulus);
     }
 }
 
@@ -146,32 +145,12 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
-                cols.y_addrs[i] = [
-                    F::from_canonical_u16(
-                        (event.y_ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16,
-                    ),
-                    F::from_canonical_u16(
-                        ((event.y_ptr.wrapping_add((i * 8) as u64) >> 16) & 0xFFFF) as u16,
-                    ),
-                    F::from_canonical_u16(
-                        ((event.y_ptr.wrapping_add((i * 8) as u64) >> 32) & 0xFFFF) as u16,
-                    ),
-                ];
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.y_ptr, i as u64 * 8);
             }
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
-                cols.x_addrs[i] = [
-                    F::from_canonical_u16(
-                        (event.x_ptr.wrapping_add((i * 8) as u64) & 0xFFFF) as u16,
-                    ),
-                    F::from_canonical_u16(
-                        ((event.x_ptr.wrapping_add((i * 8) as u64) >> 16) & 0xFFFF) as u16,
-                    ),
-                    F::from_canonical_u16(
-                        ((event.x_ptr.wrapping_add((i * 8) as u64) >> 32) & 0xFFFF) as u16,
-                    ),
-                ];
+                cols.x_addrs[i].populate(&mut new_byte_lookup_events, event.x_ptr, i as u64 * 8);
             }
             rows.push(row);
         }
@@ -247,38 +226,38 @@ where
         let local = main.row_slice(0);
         let local: &FpOpCols<AB::Var, P> = (*local).borrow();
 
-        // // Check that operations flags are boolean.
-        // builder.assert_bool(local.is_add);
-        // builder.assert_bool(local.is_sub);
-        // builder.assert_bool(local.is_mul);
+        // Check that operations flags are boolean.
+        builder.assert_bool(local.is_add);
+        builder.assert_bool(local.is_sub);
+        builder.assert_bool(local.is_mul);
 
-        // // Check that only one of them is set.
-        // builder.assert_eq(local.is_add + local.is_sub + local.is_mul, AB::Expr::one());
+        // Check that only one of them is set.
+        builder.assert_eq(local.is_add + local.is_sub + local.is_mul, AB::Expr::one());
 
-        // let p_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
-        // let p: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-        //     Limbs(p_limbs.try_into().expect("failed to convert limbs"));
-        // let q_limbs = builder.generate_limbs(&local.y_access, local.is_real.into());
-        // let q: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-        //     Limbs(q_limbs.try_into().expect("failed to convert limbs"));
+        let p_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
+        let p: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(p_limbs.try_into().expect("failed to convert limbs"));
+        let q_limbs = builder.generate_limbs(&local.y_access, local.is_real.into());
+        let q: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(q_limbs.try_into().expect("failed to convert limbs"));
 
-        // let modulus_coeffs =
-        //     P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
-        // let p_modulus = Polynomial::from_coefficients(&modulus_coeffs);
+        let modulus_coeffs =
+            P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
+        let p_modulus = Polynomial::from_coefficients(&modulus_coeffs);
 
-        // local.output.eval_variable(
-        //     builder,
-        //     &p,
-        //     &q,
-        //     &p_modulus,
-        //     local.is_add,
-        //     local.is_sub,
-        //     local.is_mul,
-        //     AB::F::zero(),
-        //     local.is_real,
-        // );
+        local.output.eval_variable(
+            builder,
+            &p,
+            &q,
+            &p_modulus,
+            local.is_add,
+            local.is_sub,
+            local.is_mul,
+            AB::F::zero(),
+            local.is_real,
+        );
 
-        // local.output_range.eval(builder, &local.output.result, &p_modulus, local.is_real);
+        local.output_range.eval(builder, &local.output.result, &p_modulus, local.is_real);
 
         let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
 
@@ -295,10 +274,51 @@ where
             local.is_real.into(),
         );
 
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            x_ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // x_addrs[i] = x_addrs[i - 1] + 8.
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.x_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // y_addrs[0] = y_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            y_ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.y_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.y_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            &local.y_addrs.iter().map(|addr| addr.map(Into::into)).collect::<Vec<_>>(),
+            &local.y_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
             &local.y_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
             local.is_real,
         );
@@ -307,7 +327,7 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk + AB::F::from_canonical_u32(1),
-            &local.x_addrs.iter().map(|addr| addr.map(Into::into)).collect::<Vec<_>>(),
+            &local.x_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
             &local.x_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
             result_words,
             local.is_real,

@@ -108,9 +108,9 @@ impl<F: PrimeField32, P: FieldParameters> FieldDenCols<F, P> {
         }
 
         // Range checks
-        // record.add_u8_range_checks_field(&self.result.0);
-        // record.add_u8_range_checks_field(&self.carry.0);
-        // record.add_u16_range_checks_field(&self.witness.0);
+        record.add_u8_range_checks_field(&self.result.0);
+        record.add_u8_range_checks_field(&self.carry.0);
+        record.add_u16_range_checks_field(&self.witness.0);
 
         result
     }

@@ -21,7 +21,6 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_curves::{
-    edwards::WORDS_CURVE_POINT,
     params::{FieldParameters, Limbs, NumLimbs, NumWords},
     weierstrass::{FieldType, FpOpField},
 };
@@ -126,8 +125,8 @@ impl<P: FpOpField> Fp2MulAssignChip<P> {
             &modulus,
             FieldOperation::Add,
         );
-        // cols.c0_range.populate(blu_events, &c0, &modulus);
-        // cols.c1_range.populate(blu_events, &c1, &modulus);
+        cols.c0_range.populate(blu_events, &c0, &modulus);
+        cols.c1_range.populate(blu_events, &c1, &modulus);
     }
 }
 
@@ -272,94 +271,94 @@ where
         let local = main.row_slice(0);
         let local: &Fp2MulAssignCols<AB::Var, P> = (*local).borrow();
 
-        // let num_words_field_element = <P as NumLimbs>::Limbs::USIZE / 4;
+        let num_words_field_element = <P as NumLimbs>::Limbs::USIZE / 8;
 
-        // let p_x_limbs = builder
-        //     .generate_limbs(&local.x_access[0..num_words_field_element], local.is_real.into());
-        // let p_x: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-        //     Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
-        // let q_x_limbs = builder
-        //     .generate_limbs(&local.y_access[0..num_words_field_element], local.is_real.into());
-        // let q_x: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-        //     Limbs(q_x_limbs.try_into().expect("failed to convert limbs"));
-        // let p_y_limbs = builder
-        //     .generate_limbs(&local.x_access[num_words_field_element..], local.is_real.into());
-        // let p_y: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-        //     Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
-        // let q_y_limbs = builder
-        //     .generate_limbs(&local.y_access[num_words_field_element..], local.is_real.into());
-        // let q_y: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
-        //     Limbs(q_y_limbs.try_into().expect("failed to convert limbs"));
+        let p_x_limbs = builder
+            .generate_limbs(&local.x_access[0..num_words_field_element], local.is_real.into());
+        let p_x: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
+        let q_x_limbs = builder
+            .generate_limbs(&local.y_access[0..num_words_field_element], local.is_real.into());
+        let q_x: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(q_x_limbs.try_into().expect("failed to convert limbs"));
+        let p_y_limbs = builder
+            .generate_limbs(&local.x_access[num_words_field_element..], local.is_real.into());
+        let p_y: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
+        let q_y_limbs = builder
+            .generate_limbs(&local.y_access[num_words_field_element..], local.is_real.into());
+        let q_y: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(q_y_limbs.try_into().expect("failed to convert limbs"));
 
-        // let modulus_coeffs =
-        //     P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
-        // let p_modulus = Polynomial::from_coefficients(&modulus_coeffs);
+        let modulus_coeffs =
+            P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
+        let p_modulus = Polynomial::from_coefficients(&modulus_coeffs);
 
-        // {
-        //     local.a0_mul_b0.eval_with_modulus(
-        //         builder,
-        //         &p_x,
-        //         &q_x,
-        //         &p_modulus,
-        //         FieldOperation::Mul,
-        //         local.is_real,
-        //     );
+        {
+            local.a0_mul_b0.eval_with_modulus(
+                builder,
+                &p_x,
+                &q_x,
+                &p_modulus,
+                FieldOperation::Mul,
+                local.is_real,
+            );
 
-        //     local.a1_mul_b1.eval_with_modulus(
-        //         builder,
-        //         &p_y,
-        //         &q_y,
-        //         &p_modulus,
-        //         FieldOperation::Mul,
-        //         local.is_real,
-        //     );
+            local.a1_mul_b1.eval_with_modulus(
+                builder,
+                &p_y,
+                &q_y,
+                &p_modulus,
+                FieldOperation::Mul,
+                local.is_real,
+            );
 
-        //     local.c0.eval_with_modulus(
-        //         builder,
-        //         &local.a0_mul_b0.result,
-        //         &local.a1_mul_b1.result,
-        //         &p_modulus,
-        //         FieldOperation::Sub,
-        //         local.is_real,
-        //     );
-        // }
+            local.c0.eval_with_modulus(
+                builder,
+                &local.a0_mul_b0.result,
+                &local.a1_mul_b1.result,
+                &p_modulus,
+                FieldOperation::Sub,
+                local.is_real,
+            );
+        }
 
-        // {
-        //     local.a0_mul_b1.eval_with_modulus(
-        //         builder,
-        //         &p_x,
-        //         &q_y,
-        //         &p_modulus,
-        //         FieldOperation::Mul,
-        //         local.is_real,
-        //     );
+        {
+            local.a0_mul_b1.eval_with_modulus(
+                builder,
+                &p_x,
+                &q_y,
+                &p_modulus,
+                FieldOperation::Mul,
+                local.is_real,
+            );
 
-        //     local.a1_mul_b0.eval_with_modulus(
-        //         builder,
-        //         &p_y,
-        //         &q_x,
-        //         &p_modulus,
-        //         FieldOperation::Mul,
-        //         local.is_real,
-        //     );
+            local.a1_mul_b0.eval_with_modulus(
+                builder,
+                &p_y,
+                &q_x,
+                &p_modulus,
+                FieldOperation::Mul,
+                local.is_real,
+            );
 
-        //     local.c1.eval_with_modulus(
-        //         builder,
-        //         &local.a0_mul_b1.result,
-        //         &local.a1_mul_b0.result,
-        //         &p_modulus,
-        //         FieldOperation::Add,
-        //         local.is_real,
-        //     );
-        // }
+            local.c1.eval_with_modulus(
+                builder,
+                &local.a0_mul_b1.result,
+                &local.a1_mul_b0.result,
+                &p_modulus,
+                FieldOperation::Add,
+                local.is_real,
+            );
+        }
 
         let c0_result_words = limbs_to_words::<AB>(local.c0.result.0.to_vec());
         let c1_result_words = limbs_to_words::<AB>(local.c1.result.0.to_vec());
 
         let result_words = c0_result_words.into_iter().chain(c1_result_words).collect_vec();
 
-        // local.c0_range.eval(builder, &local.c0.result, &p_modulus, local.is_real);
-        // local.c1_range.eval(builder, &local.c1.result, &p_modulus, local.is_real);
+        local.c0_range.eval(builder, &local.c0.result, &p_modulus, local.is_real);
+        local.c1_range.eval(builder, &local.c1.result, &p_modulus, local.is_real);
 
         let x_ptr = SyscallAddrOperation::<AB::F>::eval(
             builder,

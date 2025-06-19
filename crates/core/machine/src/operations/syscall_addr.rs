@@ -28,7 +28,7 @@ impl<F: PrimeField32> SyscallAddrOperation<F> {
         let addr_word_limbs = u64_to_u16_limbs(addr);
         record.add_u16_range_checks(&addr_word_limbs);
         self.most_sig_limb_inv = F::from_canonical_u16(addr_word_limbs[1]).inverse();
-        // self.range_check.populate_unsigned(record, 1, addr, ((1 << 48) - len) as u64);
+        self.range_check.populate_unsigned(record, 1, addr, ((1 << 48) - len) as u64);
         record.add_bit_range_check(addr_word_limbs[0] / 8, 13);
     }
 }
@@ -50,7 +50,7 @@ impl<F: Field> SyscallAddrOperation<F> {
         // If `is_real = 1`, then `addr.0[1] != 0`, so `addr >= 2^16`.
         builder.assert_eq(cols.most_sig_limb_inv * cols.addr_word.0[1], is_real.clone());
 
-        // Check `0 <= addr[0] / 4 < 2^14`, which shows `addr` is a multiple of `4` within `u16`.
+        // Check `0 <= addr[0] / 8 < 2^13`, which shows `addr` is a multiple of `8` within `u16`.
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
             cols.addr_word.0[0].into() * AB::F::from_canonical_u32(8).inverse(),
@@ -62,19 +62,20 @@ impl<F: Field> SyscallAddrOperation<F> {
         builder.slice_range_check_u16(&cols.addr_word.0, is_real.clone());
 
         // Check that `addr < upper_bound`.
-        // LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
-        //     builder,
-        //     cols.addr_word.map(Into::into),
-        //     Word([
-        //         AB::Expr::from_canonical_u16(((1 << 48) - len) & 0xFFFF as u16),
-        //         AB::Expr::from_canonical_u16(((1 << 48) - len) >> 16 as u16),
-        //         AB::Expr::from_canonical_u16(((1 << 48) - len) >> 32 as u16),
-        //         AB::Expr::from_canonical_u16(((1 << 48) - len) >> 48 as u16),
-        //     ]),
-        //     cols.range_check,
-        //     is_real.clone(),
-        // );
-        // builder.assert_eq(cols.range_check.u16_compare_operation.bit, is_real.clone());
+        let upper_bound = (1u64 << 48) - len as u64;
+        LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+            builder,
+            cols.addr_word.map(Into::into),
+            Word([
+                AB::Expr::from_canonical_u16((upper_bound & 0xFFFF) as u16),
+                AB::Expr::from_canonical_u16((upper_bound >> 16) as u16),
+                AB::Expr::from_canonical_u16((upper_bound >> 32) as u16),
+                AB::Expr::from_canonical_u16((upper_bound >> 48) as u16),
+            ]),
+            cols.range_check,
+            is_real.clone(),
+        );
+        builder.assert_eq(cols.range_check.u16_compare_operation.bit, is_real.clone());
 
         [cols.addr_word.0[0].into(), cols.addr_word.0[1].into(), cols.addr_word.0[2].into()]
     }

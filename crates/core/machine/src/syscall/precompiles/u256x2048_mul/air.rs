@@ -1,12 +1,12 @@
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder},
+    air::{MemoryAirBuilder, SP1CoreAirBuilder},
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::{field::field_op::FieldOpCols, SyscallAddrOperation},
+    operations::{field::field_op::FieldOpCols, AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le},
 };
 use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, BaseAir};
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
@@ -65,10 +65,10 @@ pub struct U256x2048MulCols<T> {
     pub lo_ptr: SyscallAddrOperation<T>,
     pub hi_ptr: SyscallAddrOperation<T>,
 
-    pub a_addrs: [[T; 3]; WORDS_FIELD_ELEMENT],
-    pub b_addrs: [[T; 3]; WORDS_FIELD_ELEMENT * 8],
-    pub lo_addrs: [[T; 3]; WORDS_FIELD_ELEMENT * 8],
-    pub hi_addrs: [[T; 3]; WORDS_FIELD_ELEMENT],
+    pub a_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+    pub b_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT * 8],
+    pub lo_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT * 8],
+    pub hi_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
 
     pub lo_ptr_memory: MemoryAccessCols<T>,
     pub lo_ptr_memory_value: [T; 3],
@@ -157,45 +157,40 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                         for i in 0..WORDS_FIELD_ELEMENT {
                             let record = MemoryRecordEnum::Read(event.a_memory_records[i]);
                             cols.a_memory[i].populate(record, &mut new_byte_lookup_events);
-                            let new_addr = event.a_ptr.wrapping_add(8 * i as u64);
-                            cols.a_addrs[i] = [
-                                F::from_canonical_u64((new_addr & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 16) & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 32) & 0xFFFF) as u64),
-                            ];
+                            cols.a_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.a_ptr,
+                                (i * 8) as u64,
+                            );
                         }
-
                         for i in 0..WORDS_FIELD_ELEMENT * 8 {
                             let record = MemoryRecordEnum::Read(event.b_memory_records[i]);
                             cols.b_memory[i].populate(record, &mut new_byte_lookup_events);
-                            let new_addr = event.b_ptr.wrapping_add(8 * i as u64);
-                            cols.b_addrs[i] = [
-                                F::from_canonical_u64((new_addr & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 16) & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 32) & 0xFFFF) as u64),
-                            ];
+                            cols.b_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.b_ptr,
+                                (i * 8) as u64,
+                            );
                         }
 
                         for i in 0..WORDS_FIELD_ELEMENT * 8 {
                             let record = MemoryRecordEnum::Write(event.lo_memory_records[i]);
                             cols.lo_memory[i].populate(record, &mut new_byte_lookup_events);
-                            let new_addr = event.lo_ptr.wrapping_add(8 * i as u64);
-                            cols.lo_addrs[i] = [
-                                F::from_canonical_u64((new_addr & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 16) & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 32) & 0xFFFF) as u64),
-                            ];
+                            cols.lo_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.lo_ptr,
+                                8 * i as u64,
+                            );
                         }
 
                         for i in 0..WORDS_FIELD_ELEMENT {
                             let record = MemoryRecordEnum::Write(event.hi_memory_records[i]);
                             cols.hi_memory[i].populate(record, &mut new_byte_lookup_events);
-                            let new_addr = event.hi_ptr.wrapping_add(8 * i as u64);
-                            cols.hi_addrs[i] = [
-                                F::from_canonical_u64((new_addr & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 16) & 0xFFFF) as u64),
-                                F::from_canonical_u64(((new_addr >> 32) & 0xFFFF) as u64),
-                            ];
+                            cols.hi_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.hi_ptr,
+                                8 * i as u64,
+                            );
                         }
 
                         let a = BigUint::from_bytes_le(&words_to_bytes_le::<32>(&event.a));
@@ -304,8 +299,8 @@ where
         let local = main.row_slice(0);
         let local: &U256x2048MulCols<AB::Var> = (*local).borrow();
 
-        // // Assert that is_real is a boolean.
-        // builder.assert_bool(local.is_real);
+        // Assert that is_real is a boolean.
+        builder.assert_bool(local.is_real);
 
         let a_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 32, local.a_ptr, local.is_real.into());
@@ -315,6 +310,87 @@ where
             SyscallAddrOperation::<AB::F>::eval(builder, 256, local.lo_ptr, local.is_real.into());
         let hi_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 32, local.hi_ptr, local.is_real.into());
+
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            a_ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.a_addrs[0],
+            local.is_real.into(),
+        );
+
+        // a_addrs[i] = a_addrs[i - 1] + 8.
+        let eight = AB::F::from_canonical_u32(8u32);
+        for i in 1..local.a_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.a_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.a_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // b_addrs[0] = b_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            b_ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.b_addrs[0],
+            local.is_real.into(),
+        );
+
+        // b_addrs[i] = b_addrs[i - 1] + 8.
+        for i in 1..local.b_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.b_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.b_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // lo_addrs[0] = lo_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            lo_ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.lo_addrs[0],
+            local.is_real.into(),
+        );
+
+        // lo_addrs[i] = lo_addrs[i - 1] + 8.
+        for i in 1..local.lo_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.lo_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.lo_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // hi_addrs[0] = hi_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            hi_ptr.clone(),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            local.hi_addrs[0],
+            local.is_real.into(),
+        );
+
+        // hi_addrs[i] = hi_addrs[i - 1] + 8.
+        for i in 1..local.hi_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                local.hi_addrs[i - 1].value.map(Into::into),
+                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                local.hi_addrs[i],
+                local.is_real.into(),
+            );
+        }
 
         // Receive the arguments.
         builder.receive_syscall(
@@ -348,7 +424,7 @@ where
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            &local.a_addrs.map(|addr| addr.map(Into::into)),
+            &local.a_addrs.map(|addr| addr.value.map(Into::into)),
             &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -356,33 +432,33 @@ where
         builder.eval_memory_access_slice_read(
             local.shard,
             local.clk.into(),
-            &local.b_addrs.map(|addr| addr.map(Into::into)),
+            &local.b_addrs.map(|addr| addr.value.map(Into::into)),
             &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
 
-        // let a_limbs_vec = builder.generate_limbs(&local.a_memory, local.is_real.into());
-        // let a_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
-        //     Limbs(a_limbs_vec.try_into().expect("failed to convert limbs"));
+        let a_limbs_vec = builder.generate_limbs(&local.a_memory, local.is_real.into());
+        let a_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(a_limbs_vec.try_into().expect("failed to convert limbs"));
 
-        // // Iterate through chunks of 8 for b_memory and convert each chunk to its limbs.
-        // let b_limb_array: Vec<Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs>> = local
-        //     .b_memory
-        //     .chunks(8)
-        //     .map(|access| {
-        //         Limbs(
-        //             builder
-        //                 .generate_limbs(access, local.is_real.into())
-        //                 .try_into()
-        //                 .expect("failed to convert limbs"),
-        //         )
-        //     })
-        //     .collect::<Vec<_>>();
+        // Iterate through chunks of 8 for b_memory and convert each chunk to its limbs.
+        let b_limb_array: Vec<Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs>> = local
+            .b_memory
+            .chunks(4)
+            .map(|access| {
+                Limbs(
+                    builder
+                        .generate_limbs(access, local.is_real.into())
+                        .try_into()
+                        .expect("failed to convert limbs"),
+                )
+            })
+            .collect::<Vec<_>>();
 
-        // let mut coeff_2_256 = Vec::new();
-        // coeff_2_256.resize(32, AB::Expr::zero());
-        // coeff_2_256.push(AB::Expr::one());
-        // let modulus_polynomial: Polynomial<AB::Expr> = Polynomial::from_coefficients(&coeff_2_256);
+        let mut coeff_2_256 = Vec::new();
+        coeff_2_256.resize(32, AB::Expr::zero());
+        coeff_2_256.push(AB::Expr::one());
+        let modulus_polynomial: Polynomial<AB::Expr> = Polynomial::from_coefficients(&coeff_2_256);
 
         // Evaluate that each of the mul and carry columns are valid.
         let outputs = [
@@ -396,26 +472,26 @@ where
             &local.ab8_plus_carry,
         ];
 
-        // outputs[0].eval_mul_and_carry(
-        //     builder,
-        //     &a_limbs,
-        //     &b_limb_array[0],
-        //     &Polynomial::from_coefficients(&[AB::Expr::zero()]), /* Zero polynomial for no
-        //                                                           * previous carry */
-        //     &modulus_polynomial,
-        //     local.is_real,
-        // );
+        outputs[0].eval_mul_and_carry(
+            builder,
+            &a_limbs,
+            &b_limb_array[0],
+            &Polynomial::from_coefficients(&[AB::Expr::zero()]), /* Zero polynomial for no
+                                                                  * previous carry */
+            &modulus_polynomial,
+            local.is_real,
+        );
 
-        // for i in 1..outputs.len() {
-        //     outputs[i].eval_mul_and_carry(
-        //         builder,
-        //         &a_limbs,
-        //         &b_limb_array[i],
-        //         &outputs[i - 1].carry,
-        //         &modulus_polynomial,
-        //         local.is_real,
-        //     );
-        // }
+        for i in 1..outputs.len() {
+            outputs[i].eval_mul_and_carry(
+                builder,
+                &a_limbs,
+                &b_limb_array[i],
+                &outputs[i - 1].carry,
+                &modulus_polynomial,
+                local.is_real,
+            );
+        }
 
         // Evaluate the memory accesses for lo_memory and hi_memory.
         let mut result_words = Vec::new();
@@ -426,7 +502,7 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into() + AB::Expr::one(),
-            &local.lo_addrs.map(|addr| addr.map(Into::into)),
+            &local.lo_addrs.map(|addr| addr.value.map(Into::into)),
             &local.lo_memory,
             result_words,
             local.is_real,
@@ -436,16 +512,26 @@ where
         builder.eval_memory_access_slice_write(
             local.shard,
             local.clk.into() + AB::Expr::one(),
-            &local.hi_addrs.map(|addr| addr.map(Into::into)),
+            &local.hi_addrs.map(|addr| addr.value.map(Into::into)),
             &local.hi_memory,
             output_carry_words,
             local.is_real,
         );
 
-        // // Constrain that the lo_ptr is the value of lo_ptr_memory.
-        // builder.when(local.is_real).assert_eq(local.lo_ptr, local.lo_ptr_memory_value);
+        // Constrain that the lo_ptr is the value of lo_ptr_memory.
+        for i in 0..3 {
+            builder
+                .when(local.is_real)
+                .assert_eq(lo_ptr[i].clone(), local.lo_ptr_memory.prev_value[i]);
+        }
+        builder.assert_eq(local.lo_ptr_memory.prev_value[3], AB::Expr::zero());
 
-        // // Constrain that the hi_ptr is the value of hi_ptr_memory.
-        // builder.when(local.is_real).assert_eq(local.hi_ptr, local.hi_ptr_memory_value);
+        // Constrain that the hi_ptr is the value of hi_ptr_memory.
+        for i in 0..3 {
+            builder
+                .when(local.is_real)
+                .assert_eq(hi_ptr[i].clone(), local.hi_ptr_memory.prev_value[i]);
+        }
+        builder.assert_eq(local.hi_ptr_memory.prev_value[3], AB::Expr::zero());
     }
 }

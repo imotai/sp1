@@ -108,7 +108,7 @@ impl BranchChip {
         let use_signed_comparison = matches!(event.opcode, Opcode::BLT | Opcode::BGE);
 
         let a_lt_b = if use_signed_comparison {
-            (event.a as i32) < (event.b as i32)
+            (event.a as i64) < (event.b as i64)
         } else {
             event.a < event.b
         };

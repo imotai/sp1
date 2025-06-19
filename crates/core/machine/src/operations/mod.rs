@@ -7,6 +7,7 @@
 mod add;
 mod add4;
 mod add5;
+mod addr_add;
 mod address;
 mod addw;
 mod and;
@@ -42,6 +43,7 @@ mod xor_u16;
 pub use add::*;
 pub use add4::*;
 pub use add5::*;
+pub use addr_add::*;
 pub use address::*;
 pub use addw::*;
 pub use and::*;
