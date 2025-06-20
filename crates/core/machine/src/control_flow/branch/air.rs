@@ -3,11 +3,11 @@ use std::borrow::Borrow;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, PC_INC};
-use sp1_stark::air::SP1AirBuilder;
+use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
     operations::LtOperationSigned,
 };
 
@@ -21,7 +21,7 @@ use super::{BranchChip, BranchColumns};
 /// 2. It verifies the correct value of branching based on the opcode and the comparison operation.
 impl<AB> Air<AB> for BranchChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]
@@ -62,15 +62,15 @@ where
             builder,
             local.state,
             local.next_pc_rel.into(),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
 
         // Constrain the program and register reads.
         ITypeReader::<AB::F>::eval_op_a_immutable(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc_rel,
             opcode,
             local.adapter,

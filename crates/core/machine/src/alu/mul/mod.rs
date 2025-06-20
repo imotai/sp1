@@ -40,14 +40,17 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
-    adapter::{register::alu_type::ALUTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::CPUState,
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     operations::MulOperation,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
@@ -131,12 +134,7 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                         let event = &input.mul_events[idx];
                         let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(
-                            &mut byte_lookup_events,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -160,12 +158,7 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                     let cols: &mut MulCols<F> = row.as_mut_slice().borrow_mut();
                     let instruction = input.program.fetch(event.0.pc_rel);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(
-                        &mut blu,
-                        input.public_values.execution_shard as u32,
-                        event.0.clk,
-                        event.0.pc_rel,
-                    );
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -273,26 +266,27 @@ where
         };
 
         // Constrain the state of the CPU.
-        // The program counter and timestamp increment by `4`.
+        // The program counter and timestamp increment by `4` and `8`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
             local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
         // Constrain the program and register reads.
-        ALUTypeReader::<AB::F>::eval(
-            builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+        let a_expr = local.a.map(|x| x.into());
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc_rel,
             opcode,
-            local.a,
+            a_expr,
             local.adapter,
             local.is_real.into(),
         );
+        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }
 }
 

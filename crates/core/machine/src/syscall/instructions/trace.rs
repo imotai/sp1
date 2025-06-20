@@ -59,12 +59,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
                         let event = &input.syscall_events[idx];
                         let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, &event.1, cols, &mut blu);
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
@@ -96,7 +91,7 @@ impl SyscallInstrsChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.next_pc_rel = F::from_canonical_u64(event.next_pc_rel);
+        cols.next_pc_rel = F::from_canonical_u32(event.next_pc_rel);
 
         cols.op_a_value = Word::from(record.a.value());
         cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());

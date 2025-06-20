@@ -99,12 +99,14 @@ fn test_groth16_verifier(#[case] elf: &[u8], #[case] groth16_elf: &[u8]) {
                 decode_sp1_vkey_hash, hash_public_inputs, load_ark_groth16_verifying_key_from_bytes,
                 load_ark_proof_from_bytes, load_ark_public_inputs_from_bytes,
             };
-            let ark_proof = load_ark_proof_from_bytes(&proof[4..]).unwrap();
+            let ark_proof = load_ark_proof_from_bytes(&proof[4 + 32 + 32..]).unwrap();
             let ark_vkey = load_ark_groth16_verifying_key_from_bytes(&crate::GROTH16_VK_BYTES).unwrap();
 
             let ark_public_inputs = load_ark_public_inputs_from_bytes(
                 &decode_sp1_vkey_hash(&vkey_hash).unwrap(),
                 &hash_public_inputs(&public_inputs),
+                &proof[4..4 + 32].try_into().unwrap(),
+                &proof[4 + 32..4 + 32 + 32].try_into().unwrap(),
             );
             Groth16::<Bn254, LibsnarkReduction>::verify_proof(&ark_vkey.into(), &ark_proof, &ark_public_inputs)
             .unwrap();
@@ -149,12 +151,14 @@ fn test_verify_invalid_groth16(#[case] elf: &[u8]) {
                 decode_sp1_vkey_hash, hash_public_inputs, load_ark_groth16_verifying_key_from_bytes,
                 load_ark_proof_from_bytes, load_ark_public_inputs_from_bytes,
             };
-            let ark_proof = load_ark_proof_from_bytes(&proof[4..]).unwrap();
+            let ark_proof = load_ark_proof_from_bytes(&proof[4 + 32 + 32..]).unwrap();
             let ark_vkey = load_ark_groth16_verifying_key_from_bytes(&crate::GROTH16_VK_BYTES).unwrap();
 
             let ark_public_inputs = load_ark_public_inputs_from_bytes(
                 &decode_sp1_vkey_hash(&vkey_hash).unwrap(),
                 &hash_public_inputs(&public_inputs),
+                &proof[4..4 + 32].try_into().unwrap(),
+                &proof[4 + 32..4 + 32 + 32].try_into().unwrap(),
             );
             Groth16::<Bn254, LibsnarkReduction>::verify_proof(&ark_vkey.into(), &ark_proof, &ark_public_inputs)
             .unwrap();

@@ -16,6 +16,7 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
+    adapter::bump::StateBumpChip,
     control_flow::{AuipcChip, BranchChip, JalChip, JalrChip},
     global::GlobalChip,
     memory::{
@@ -155,6 +156,8 @@ pub enum RiscvAir<F: PrimeField32> {
     MemoryLocal(MemoryLocalChip),
     /// A table for bumping memory timestamps.
     MemoryBump(MemoryBumpChip),
+    /// A table for bumping the state timestamps.
+    StateBump(StateBumpChip),
     /// A table for all the syscall invocations.
     SyscallCore(SyscallChip),
     /// A table for all the precompile invocations.
@@ -296,6 +299,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::Jalr(JalrChip::default()),
             RiscvAir::SyscallInstrs(SyscallInstrsChip::default()),
             RiscvAir::MemoryBump(MemoryBumpChip::new()),
+            RiscvAir::StateBump(StateBumpChip::new()),
             RiscvAir::MemoryGlobalInit(MemoryGlobalChip::new(MemoryChipType::Initialize)),
             RiscvAir::MemoryGlobalFinal(MemoryGlobalChip::new(MemoryChipType::Finalize)),
             RiscvAir::MemoryLocal(MemoryLocalChip::new()),
@@ -391,6 +395,7 @@ impl<F: PrimeField32> RiscvAir<F> {
                 Jalr,
                 SyscallInstrs,
                 MemoryBump,
+                StateBump,
                 MemoryLocal,
                 Global,
             ],
@@ -721,6 +726,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(memory_bump.name(), memory_bump.cost());
         chips.push(memory_bump);
 
+        let state_bump = Chip::new(RiscvAir::StateBump(StateBumpChip::new()));
+        costs.insert(state_bump.name(), state_bump.cost());
+        chips.push(state_bump);
+
         let memory_global_init = Chip::new(RiscvAir::MemoryGlobalInit(MemoryGlobalChip::new(
             MemoryChipType::Initialize,
         )));
@@ -776,7 +785,8 @@ impl<F: PrimeField32> RiscvAir<F> {
                     .into_iter()
                     .count(),
             ),
-            (RiscvAirId::MemoryBump, record.shard_bump_memory_events.len()),
+            (RiscvAirId::MemoryBump, record.bump_memory_events.len()),
+            (RiscvAirId::StateBump, record.bump_clk_high_events.len()),
             (RiscvAirId::LoadByte, record.memory_load_byte_events.len()),
             (RiscvAirId::LoadHalf, record.memory_load_half_events.len()),
             (RiscvAirId::LoadWord, record.memory_load_word_events.len()),
@@ -844,6 +854,7 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::StoreDouble => RiscvAirId::StoreDouble,
             RiscvAirDiscriminants::RangeLookup => RiscvAirId::Range,
             RiscvAirDiscriminants::MemoryBump => RiscvAirId::MemoryBump,
+            RiscvAirDiscriminants::StateBump => RiscvAirId::StateBump,
             RiscvAirDiscriminants::AUIPC => RiscvAirId::Auipc,
             RiscvAirDiscriminants::Branch => RiscvAirId::Branch,
             RiscvAirDiscriminants::Jal => RiscvAirId::Jal,

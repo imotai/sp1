@@ -4444,6 +4444,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-constraint-compiler"
+version = "5.0.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "slop-air",
+ "slop-algebra",
+ "slop-baby-bear",
+ "slop-matrix",
+ "sp1-core-machine",
+ "sp1-primitives",
+ "sp1-stark",
+ "strum",
+ "strum_macros",
+]
+
+[[package]]
 name = "sp1-core-executor"
 version = "5.0.0"
 dependencies = [
@@ -4461,6 +4479,7 @@ dependencies = [
  "itertools 0.13.0",
  "nohash-hasher",
  "num",
+ "p3-air",
  "p3-baby-bear",
  "p3-field",
  "p3-maybe-rayon",

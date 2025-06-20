@@ -1,6 +1,6 @@
 use super::MemoryChipType;
 use crate::{
-    air::WordAirBuilder,
+    air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{BabyBearWordRangeChecker, IsZeroOperation, LtOperationUnsigned},
     utils::next_multiple_of_32,
 };
@@ -19,7 +19,7 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{
-    air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
+    air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind, Word,
 };
 use std::iter::once;
@@ -67,10 +67,10 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
 
         match self.kind {
             MemoryChipType::Initialize => {
-                output.public_values.global_init_count += memory_events.len() as u64;
+                output.public_values.global_init_count += memory_events.len() as u32;
             }
             MemoryChipType::Finalize => {
-                output.public_values.global_finalize_count += memory_events.len() as u64;
+                output.public_values.global_finalize_count += memory_events.len() as u32;
             }
         };
 
@@ -108,8 +108,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         output.add_byte_lookup_events(blu_batches.into_iter().flatten().collect());
 
         let events = memory_events.into_iter().map(|event| {
-            let interaction_shard = if is_receive { event.shard } else { 0 };
-            let interaction_clk = if is_receive { event.timestamp } else { 0 };
+            let interaction_clk_high = if is_receive { (event.timestamp >> 24) as u32 } else { 0 };
+            let interaction_clk_low =
+                if is_receive { (event.timestamp & 0xFFFFFF) as u32 } else { 0 };
             let limb_1 =
                 (event.value & 0xFFFF) as u32 + (1 << 16) * (event.value >> 32 & 0xFF) as u32;
             let limb_2 =
@@ -117,8 +118,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
 
             GlobalInteractionEvent {
                 message: [
-                    interaction_shard,
-                    interaction_clk,
+                    interaction_clk_high,
+                    interaction_clk_low,
                     (event.addr & 0xFFFF) as u32,
                     ((event.addr >> 16) & 0xFFFF) as u32,
                     ((event.addr >> 32) & 0xFFFF) as u32,
@@ -163,7 +164,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let mut rows: Vec<[F; NUM_MEMORY_INIT_COLS]> = memory_events
             .par_iter()
             .map(|event| {
-                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp } =
+                let MemoryInitializeFinalizeEvent { addr, value, shard: _, timestamp } =
                     event.to_owned();
 
                 // let mut blu = vec![];
@@ -171,8 +172,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
                 cols.addr = Word::from(addr);
                 // cols.addr_range_checker.populate(cols.addr, &mut blu);
-                cols.shard = F::from_canonical_u32(shard);
-                cols.timestamp = F::from_canonical_u32(timestamp);
+                cols.clk_high = F::from_canonical_u32((timestamp >> 24) as u32);
+                cols.clk_low = F::from_canonical_u32((timestamp & 0xFFFFFF) as u32);
                 cols.value = Word::from(value);
                 cols.is_real = F::one();
                 let limb_1 = (value & 0xFFFF) as u32 + (1 << 16) * (value >> 32 & 0xFF) as u32;
@@ -239,11 +240,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
 #[derive(AlignedBorrow, Clone, Copy)]
 #[repr(C)]
 pub struct MemoryInitCols<T: Copy> {
-    /// The shard number of the memory access.
-    pub shard: T,
+    /// The top bits of the timestamp of the memory access.
+    pub clk_high: T,
 
-    /// The timestamp of the memory access.
-    pub timestamp: T,
+    /// The low bits of the timestamp of the memory access.
+    pub clk_low: T,
 
     /// The index of the memory access.
     pub index: T,
@@ -293,7 +294,7 @@ pub(crate) const NUM_MEMORY_INIT_COLS: usize = size_of::<MemoryInitCols<u8>>();
 
 impl<AB> Air<AB> for MemoryGlobalChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -370,8 +371,8 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.shard.into(),
-                        local.timestamp.into(),
+                        local.clk_high.into(),
+                        local.clk_low.into(),
                         local.addr.0[0].into(),
                         local.addr.0[1].into(),
                         local.addr.0[2].into(),
@@ -408,15 +409,11 @@ where
         // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
         // IsZeroOperation::<AB::F>::eval(
         //     builder,
-        //     local.prev_addr.reduce::<AB>(),
-        //     local.is_prev_addr_zero,
-        //     local.is_real.into(),
+        //     (local.prev_addr.reduce::<AB>(), local.is_prev_addr_zero, local.is_real.into()),
         // );
         // IsZeroOperation::<AB::F>::eval(
         //     builder,
-        //     local.index.into(),
-        //     local.is_index_zero,
-        //     local.is_real.into(),
+        //     (local.index.into(), local.is_index_zero, local.is_real.into()),
         // );
 
         // Comparison will be done unless `prev_addr == 0` and `index == 0`.

@@ -97,8 +97,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                     }
                     let cols: &mut ProgramPreprocessedCols<F> = row.borrow_mut();
                     // TODO add assertions to ensure the conversions to the field are accurate.
-                    let pc_rel = idx as u64 * 4;
-                    assert!(pc_rel < F::ORDER_U64);
+                    let pc_rel = idx as u32 * 4;
                     // Casting to u32 and truncating is okay, since F: PrimeField32 means it fits.
                     cols.pc_rel = F::from_wrapped_u32(pc_rel as u32);
                     let instruction =
@@ -237,7 +236,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             .into_iter()
             .enumerate()
             .map(|(i, _)| {
-                let pc_rel = i as u64 * 4;
+                let pc_rel = i as u32 * 4;
                 let mut row = [F::zero(); NUM_PROGRAM_MULT_COLS];
                 let cols: &mut ProgramMultiplicityCols<F> = row.as_mut_slice().borrow_mut();
                 cols.multiplicity =

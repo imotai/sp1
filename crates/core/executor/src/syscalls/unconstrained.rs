@@ -21,7 +21,7 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
     ctx.rt.unconstrained_state = Box::new(ForkState {
         global_clk: ctx.rt.state.global_clk,
         clk: ctx.rt.state.clk,
-        pc: ctx.rt.state.pc_rel,
+        pc_rel: ctx.rt.state.pc_rel,
         memory_diff: Memory::default(),
     });
 
@@ -35,7 +35,7 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
     // Update the state of the runtime to match the saved state.
     ctx.rt.state.global_clk = ctx.rt.unconstrained_state.global_clk;
     ctx.rt.state.clk = ctx.rt.unconstrained_state.clk;
-    ctx.rt.state.pc_rel = ctx.rt.unconstrained_state.pc;
+    ctx.rt.state.pc_rel = ctx.rt.unconstrained_state.pc_rel;
     ctx.next_pc_rel = ctx.rt.state.pc_rel.wrapping_add(4);
 
     let memory_diff = std::mem::take(&mut ctx.rt.unconstrained_state.memory_diff);

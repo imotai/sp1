@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::events::ByteRecord;
 use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
@@ -6,10 +7,10 @@ use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
-use crate::air::WordAirBuilder;
+use crate::air::{SP1Operation, WordAirBuilder};
 
 /// A set of columns needed to compute the add of two words.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AddOperation<T> {
     /// The result of `a + b`.
@@ -54,5 +55,32 @@ impl<F: Field> AddOperation<F> {
 
         // Range check each limb.
         builder.slice_range_check_u16(&cols.value.0, is_real);
+    }
+}
+
+pub struct AddOperationInput<AB: SP1AirBuilder> {
+    pub a: Word<AB::Expr>,
+    pub b: Word<AB::Expr>,
+    pub cols: AddOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> AddOperationInput<AB> {
+    pub fn new(
+        a: Word<AB::Expr>,
+        b: Word<AB::Expr>,
+        cols: AddOperation<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { a, b, cols, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for AddOperation<AB::F> {
+    type Input = AddOperationInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval(builder, input.a, input.b, input.cols, input.is_real);
     }
 }

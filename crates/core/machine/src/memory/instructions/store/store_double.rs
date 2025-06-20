@@ -20,7 +20,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_stark::air::MachineAir;
 
@@ -99,12 +99,7 @@ impl<F: PrimeField32> MachineAir<F> for StoreDoubleChip {
                         let event = &input.memory_store_double_events[idx];
                         let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut blu);
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
@@ -165,8 +160,8 @@ where
         let local = main.row_slice(0);
         let local: &StoreDoubleColumns<AB::Var> = (*local).borrow();
 
-        let shard = local.state.shard::<AB>();
-        let clk = local.state.clk::<AB>();
+        let clk_high = local.state.clk_high::<AB>();
+        let clk_low = local.state.clk_low::<AB>();
 
         let opcode = AB::Expr::from_canonical_u32(Opcode::SD as u32);
 
@@ -185,8 +180,8 @@ where
 
         // Step 2. Write at the memory address.
         builder.eval_memory_access_write(
-            shard.clone(),
-            clk.clone(),
+            clk_high.clone(),
+            clk_low.clone(),
             &local.aligned_addr.map(Into::into),
             local.memory_access,
             *local.adapter.prev_a(),
@@ -198,15 +193,15 @@ where
             builder,
             local.state,
             local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
         // Constrain the program and register reads.
         ITypeReader::<AB::F>::eval_op_a_immutable(
             builder,
-            shard,
-            clk,
+            clk_high,
+            clk_low,
             local.state.pc_rel,
             opcode,
             local.adapter,

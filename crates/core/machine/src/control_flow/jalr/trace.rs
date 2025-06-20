@@ -56,12 +56,7 @@ impl<F: PrimeField32> MachineAir<F> for JalrChip {
                             .fetch(event.0.pc_rel)
                             .preprocess_jalr(input.program.pc_base, event.0.pc_rel);
                         self.event_to_row(&event.0, instruction.op_c, cols, &mut blu);
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

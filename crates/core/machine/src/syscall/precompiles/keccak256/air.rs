@@ -159,8 +159,8 @@ where
         //     builder.assert_eq(computed_a_prime_prime_prime_0_0_limb, a_prime_prime_prime_0_0_limb);
         // }
 
-        let receive_values = once(local.shard)
-            .chain(once(local.clk))
+        let receive_values = once(local.clk_high)
+            .chain(once(local.clk_low))
             .chain(local.state_addr)
             .chain(once(local.index))
             .chain(
@@ -179,8 +179,8 @@ where
             InteractionScope::Local,
         );
 
-        let send_values = once(local.shard.into())
-            .chain(once(local.clk.into()))
+        let send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
             .chain(local.state_addr.map(Into::into))
             .chain(once(local.index + AB::Expr::one()))
             .chain((0..5).flat_map(|y| {

@@ -1,4 +1,7 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    fmt::Display,
+    ops::{Index, IndexMut},
+};
 
 use crate::air::SP1AirBuilder;
 use arrayref::array_ref;
@@ -124,5 +127,19 @@ impl<T: Clone> FromIterator<T> for Word<T> {
         let elements = iter.into_iter().take(WORD_SIZE).collect_vec();
 
         Word(array_ref![elements, 0, WORD_SIZE].clone())
+    }
+}
+
+impl<T: Display> Display for Word<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Word(")?;
+        for (i, value) in self.0.iter().enumerate() {
+            write!(f, "{value}")?;
+            if i < self.0.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, ")")?;
+        Ok(())
     }
 }

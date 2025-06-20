@@ -5,7 +5,7 @@ use core::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::{AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32},
@@ -31,7 +31,7 @@ use sp1_curves::{
     AffinePoint, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::air::{InteractionScope, MachineAir};
 
 use crate::{
     operations::field::{
@@ -50,8 +50,8 @@ pub const NUM_ED_ADD_COLS: usize = size_of::<EdAddAssignCols<u8>>();
 #[repr(C)]
 pub struct EdAddAssignCols<T> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub q_ptr: SyscallAddrOperation<T>,
     pub p_addrs_add: [AddrAddOperation<T>; WORDS_CURVE_POINT],
@@ -234,8 +234,9 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
 
         // Populate basic columns.
         cols.is_real = F::one();
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
+        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
         cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u64 * 8);
         cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u64 * 8);
 
@@ -263,7 +264,7 @@ impl<F, E: EllipticCurve + EdwardsParameters> BaseAir<F> for EdAddAssignChip<E> 
 
 impl<AB, E: EllipticCurve + EdwardsParameters> Air<AB> for EdAddAssignChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -387,16 +388,16 @@ where
         }
 
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low,
             &local.q_addrs_add.map(|addr| addr.value.map(Into::into)),
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
 
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             &local.p_addrs_add.map(|addr| addr.value.map(Into::into)),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -404,8 +405,8 @@ where
         );
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_ADD.syscall_id()),
             p_ptr,
             q_ptr,

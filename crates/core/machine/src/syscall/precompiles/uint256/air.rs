@@ -1,8 +1,10 @@
 use crate::operations::AddrAddOperation;
-use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols};
+use crate::{
+    air::SP1Operation, memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols,
+};
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     operations::{field::range::FieldLtCols, IsZeroOperation, SyscallAddrOperation},
     utils::{
         limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
@@ -27,7 +29,7 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{InteractionScope, MachineAir, SP1AirBuilder},
+    air::{InteractionScope, MachineAir},
     MachineRecord,
 };
 use std::{
@@ -55,11 +57,11 @@ const WORDS_FIELD_ELEMENT: usize = WordsFieldElement::USIZE;
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct Uint256MulCols<T> {
-    /// The shard number of the syscall.
-    pub shard: T,
+    /// The high bits of the clk of the syscall.
+    pub clk_high: T,
 
-    /// The clock cycle of the syscall.
-    pub clk: T,
+    /// The low bits of the clk of the syscall.
+    pub clk_low: T,
 
     /// The pointer to the first input.
     pub x_ptr: SyscallAddrOperation<T>,
@@ -138,8 +140,10 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
 
                         // Assign basic values to the columns.
                         cols.is_real = F::one();
-                        cols.shard = F::from_canonical_u32(event.shard);
-                        cols.clk = F::from_canonical_u32(event.clk);
+
+                        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+                        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
                         cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, 32);
                         cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, 64);
 
@@ -256,7 +260,7 @@ impl<F> BaseAir<F> for Uint256MulChip {
 
 impl<AB> Air<AB> for Uint256MulChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <U256Field as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -276,17 +280,15 @@ where
         let modulus_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
             Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
 
-        // If the modulus is zero, then we don't perform the modulus operation.
-        // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
-        // not overflow because we are summing 32 bytes.
-        let modulus_byte_sum =
-            modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
-        IsZeroOperation::<AB::F>::eval(
-            builder,
-            modulus_byte_sum,
-            local.modulus_is_zero,
-            local.is_real.into(),
-        );
+        // // If the modulus is zero, then we don't perform the modulus operation.
+        // // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
+        // // not overflow because we are summing 32 bytes.
+        // let modulus_byte_sum =
+        //     modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
+        // IsZeroOperation::<AB::F>::eval(
+        //     builder,
+        //     (modulus_byte_sum, local.modulus_is_zero, local.is_real.into()),
+        // );
 
         // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.
         // Otherwise, we use the modulus passed in.
@@ -372,8 +374,8 @@ where
 
         // Read and write x.
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             &local.x_addrs.map(|addr| addr.value.map(Into::into)),
             &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -383,8 +385,8 @@ where
         // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
         // we read it contiguously from the y_ptr memory location.
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             &local.y_and_modulus_addrs.map(|addr| addr.value.map(Into::into)),
             &[local.y_memory, local.modulus_memory]
                 .concat()
@@ -396,8 +398,8 @@ where
 
         // Receive the arguments.
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low.into(),
             AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
             x_ptr,
             y_ptr,

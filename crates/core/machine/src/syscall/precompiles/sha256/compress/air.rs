@@ -14,7 +14,7 @@ use super::{
     ShaCompressChip, SHA_COMPRESS_K,
 };
 use crate::{
-    air::{MemoryAirBuilder, WordAirBuilder},
+    air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder},
     operations::{
         Add5Operation, AddOperation, AndU16Operation, FixedRotateRightOperation, NotU16Operation,
         XorU16Operation,
@@ -30,7 +30,7 @@ impl<F> BaseAir<F> for ShaCompressChip {
 
 impl<AB> Air<AB> for ShaCompressChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -48,7 +48,7 @@ where
 }
 
 impl ShaCompressChip {
-    fn eval_control_flow_flags<AB: SP1AirBuilder>(
+    fn eval_control_flow_flags<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         local: &ShaCompressCols<AB::Var>,
@@ -92,7 +92,7 @@ impl ShaCompressChip {
         // // Receive state.
         // builder.receive(
         //     AirInteraction::new(
-        //         vec![local.shard, local.clk, local.w_ptr, local.h_ptr, local.index]
+        //         vec![local.clk_high, local.clk_low, local.w_ptr, local.h_ptr, local.index]
         //             .into_iter()
         //             .chain(
         //                 [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
@@ -111,8 +111,8 @@ impl ShaCompressChip {
         // builder.send(
         //     AirInteraction::new(
         //         vec![
-        //             local.shard.into(),
-        //             local.clk.into(),
+        //             local.clk_high.into(),
+        //             local.clk_low.into(),
         //             local.w_ptr.into(),
         //             local.h_ptr.into(),
         //             local.index.into() + AB::Expr::one(),
@@ -143,8 +143,8 @@ impl ShaCompressChip {
         // builder.send(
         //     AirInteraction::new(
         //         vec![
-        //             local.shard.into(),
-        //             local.clk.into(),
+        //             local.clk_high.into(),
+        //             local.clk_low.into(),
         //             local.w_ptr.into(),
         //             local.h_ptr.into(),
         //             local.index.into() + AB::Expr::one(),
@@ -179,8 +179,8 @@ impl ShaCompressChip {
     /// Constrains that memory address is correct and that memory is correctly written/read.
     fn eval_memory<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &ShaCompressCols<AB::Var>) {
         builder.eval_memory_access_write(
-            local.shard,
-            local.clk + local.is_finalize,
+            local.clk_high,
+            local.clk_low + local.is_finalize,
             &local.mem_addr.map(Into::into),
             local.mem,
             local.mem_value,
@@ -247,7 +247,7 @@ impl ShaCompressChip {
         // builder.when(local.is_finalize).assert_word_eq(local.mem_value, local.finalize_add.value);
     }
 
-    fn eval_compression_ops<AB: SP1AirBuilder>(
+    fn eval_compression_ops<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         local: &ShaCompressCols<AB::Var>,

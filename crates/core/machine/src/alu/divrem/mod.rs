@@ -72,15 +72,18 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     get_msb, get_quotient_and_remainder, is_signed_operation, is_signed_word_operation,
     is_unsigned_operation, is_unsigned_word_operation, is_word_operation, ExecutionRecord, Opcode,
-    Program, PC_INC,
+    Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
-    adapter::{register::alu_type::ALUTypeReader, state::CPUState},
-    air::{SP1CoreAirBuilder, WordAirBuilder},
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::CPUState,
+    },
+    air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
         AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned, MulOperation,
         U16MSBOperation,
@@ -291,12 +294,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             {
                 let mut blu = vec![];
                 let instruction = input.program.fetch(event.pc_rel);
-                cols.state.populate(
-                    &mut blu,
-                    input.public_values.execution_shard as u32,
-                    event.clk,
-                    event.pc_rel,
-                );
+                cols.state.populate(&mut blu, event.clk, event.pc_rel);
                 cols.adapter.populate(&mut blu, instruction, alu_record);
                 output.add_byte_lookup_events(blu);
             }
@@ -772,18 +770,22 @@ where
         {
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                local.adapter.b().map(|x| x.into()),
-                Word::from(i64::MIN as u64).map(|x: AB::F| x.into()),
-                local.is_overflow_b,
-                local.is_real_not_word.into(),
+                (
+                    local.adapter.b().map(|x| x.into()),
+                    Word::from(i64::MIN as u64).map(|x: AB::F| x.into()),
+                    local.is_overflow_b,
+                    local.is_real_not_word.into(),
+                ),
             );
 
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                local.adapter.c().map(|x| x.into()),
-                Word::from(-1i64 as u64).map(|x: AB::F| x.into()),
-                local.is_overflow_c,
-                local.is_real_not_word.into(),
+                (
+                    local.adapter.c().map(|x| x.into()),
+                    Word::from(-1i64 as u64).map(|x: AB::F| x.into()),
+                    local.is_overflow_c,
+                    local.is_real_not_word.into(),
+                ),
             );
 
             let mut truncated_b = local.adapter.b().map(|x| x.into());
@@ -795,18 +797,22 @@ where
 
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                truncated_b,
-                Word::from(i32::MIN as u32 as u64).map(|x: AB::F| x.into()),
-                local.is_overflow_b,
-                is_word_operation.clone(),
+                (
+                    truncated_b,
+                    Word::from(i32::MIN as u32 as u64).map(|x: AB::F| x.into()),
+                    local.is_overflow_b,
+                    is_word_operation.clone(),
+                ),
             );
 
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                truncated_c,
-                Word::from(-1i32 as u32 as u64).map(|x: AB::F| x.into()),
-                local.is_overflow_c,
-                is_word_operation.clone(),
+                (
+                    truncated_c,
+                    Word::from(-1i32 as u32 as u64).map(|x: AB::F| x.into()),
+                    local.is_overflow_c,
+                    is_word_operation.clone(),
+                ),
             );
 
             let is_signed = local.is_div + local.is_rem + local.is_divw + local.is_remw;
@@ -972,9 +978,7 @@ where
             // Calculate whether c is 0.
             IsZeroWordOperation::<AB::F>::eval(
                 builder,
-                local.adapter.c().map(|x| x.into()),
-                local.is_c_0,
-                local.is_real.into(),
+                (local.adapter.c().map(|x| x.into()), local.is_c_0, local.is_real.into()),
             );
 
             // If is_c_0 is true, then quotient must be 0xffffffff_ffffffff = u64::MAX.
@@ -1201,26 +1205,26 @@ where
             };
 
             // Constrain the state of the CPU.
-            // The program counter and timestamp increment by `4`.
+            // The program counter and timestamp increment by `4` and `8`.
             CPUState::<AB::F>::eval(
                 builder,
                 local.state,
                 local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-                AB::Expr::from_canonical_u32(PC_INC),
+                AB::Expr::from_canonical_u32(CLK_INC),
                 local.is_real.into(),
             );
 
             // Constrain the program and register reads.
-            ALUTypeReader::<AB::F>::eval(
-                builder,
-                local.state.shard::<AB>(),
-                local.state.clk::<AB>(),
+            let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
+                local.state.clk_high::<AB>(),
+                local.state.clk_low::<AB>(),
                 local.state.pc_rel,
                 opcode,
-                local.a,
+                local.a.map(|x| x.into()),
                 local.adapter,
                 local.is_real.into(),
             );
+            ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
         }
     }
 }

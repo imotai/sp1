@@ -1,6 +1,9 @@
 use std::num::Wrapping;
 
-use crate::{air::WordAirBuilder, operations::U16MSBOperation};
+use crate::{
+    air::{SP1Operation, SP1OperationBuilder, WordAirBuilder},
+    operations::{U16MSBOperation, U16toU8OperationSafe, U16toU8OperationSafeInput},
+};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
@@ -161,7 +164,7 @@ impl<F: Field> MulOperation<F> {
     /// Constrains that at most one of `is_mul`, `is_mulh`, `is_mulhu`, `is_mulhsu` is true.
     /// If `is_real` is true, constrains that the product is correctly placed at `a_word`.
     #[allow(clippy::too_many_arguments)]
-    pub fn eval<AB: SP1AirBuilder>(
+    pub fn eval<AB: SP1AirBuilder + SP1OperationBuilder<U16toU8OperationSafe>>(
         builder: &mut AB,
         a_word: Word<AB::Expr>,
         b_word: Word<AB::Expr>,
@@ -180,18 +183,10 @@ impl<F: Field> MulOperation<F> {
         let byte_mask = AB::F::from_canonical_u8(BYTE_MASK);
 
         // Uses the safe API to convert the words into eight bytes.
-        let b = U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
-            builder,
-            b_word.0,
-            cols.b_lower_byte,
-            is_real.clone(),
-        );
-        let c = U16toU8Operation::<AB::F>::eval_u16_to_u8_safe(
-            builder,
-            c_word.0,
-            cols.c_lower_byte,
-            is_real.clone(),
-        );
+        let b_input = U16toU8OperationSafeInput::new(b_word.0, cols.b_lower_byte, is_real.clone());
+        let b = U16toU8OperationSafe::eval(builder, b_input);
+        let c_input = U16toU8OperationSafeInput::new(c_word.0, cols.c_lower_byte, is_real.clone());
+        let c = U16toU8OperationSafe::eval(builder, c_input);
 
         // Calculate the MSBs.
         let msb_opcode = AB::F::from_canonical_u32(ByteOpcode::MSB as u32);

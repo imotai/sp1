@@ -19,9 +19,9 @@ pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The current shard.
     pub lshard: LogicalShard,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The next program counter.
-    pub next_pc_rel: u64,
+    pub next_pc_rel: u32,
     /// The exit code.
     pub exit_code: u32,
     /// The runtime.
@@ -195,7 +195,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     }
 
     /// Set the next program counter.
-    pub fn set_next_pc(&mut self, next_pc_rel: u64) {
+    pub fn set_next_pc(&mut self, next_pc_rel: u32) {
         self.next_pc_rel = next_pc_rel;
     }
 

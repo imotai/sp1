@@ -1,5 +1,5 @@
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
     operations::{AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32},
@@ -31,7 +31,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder},
+    air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };
 use std::marker::PhantomData;
@@ -53,8 +53,8 @@ pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
 #[repr(C)]
 pub struct EdDecompressCols<T> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub ptr: SyscallAddrOperation<T>,
     pub read_ptrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
     pub addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
@@ -81,8 +81,8 @@ impl<F: PrimeField32> EdDecompressCols<F> {
     ) {
         let mut new_byte_lookup_events = Vec::new();
         self.is_real = F::from_bool(true);
-        self.shard = F::from_canonical_u32(event.shard);
-        self.clk = F::from_canonical_u32(event.clk);
+        self.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        self.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
         self.ptr.populate(record, event.ptr, 64);
 
         // WORDS_FIELD_ELEMENT * 8 = 32
@@ -128,7 +128,7 @@ impl<F: PrimeField32> EdDecompressCols<F> {
 }
 
 impl<V: Copy> EdDecompressCols<V> {
-    pub fn eval<AB: SP1AirBuilder<Var = V>, P: FieldParameters, E: EdwardsParameters>(
+    pub fn eval<AB: SP1CoreAirBuilder<Var = V>, P: FieldParameters, E: EdwardsParameters>(
         &self,
         builder: &mut AB,
     ) where
@@ -224,8 +224,8 @@ impl<V: Copy> EdDecompressCols<V> {
         }
 
         builder.eval_memory_access_slice_write(
-            self.shard,
-            self.clk,
+            self.clk_high,
+            self.clk_low,
             &self.addrs.map(|addr| addr.value.map(Into::into)),
             &self.x_access,
             self.x_value.to_vec(),
@@ -233,8 +233,8 @@ impl<V: Copy> EdDecompressCols<V> {
         );
 
         builder.eval_memory_access_slice_read(
-            self.shard,
-            self.clk,
+            self.clk_high,
+            self.clk_low,
             &self.read_ptrs.map(|ptr| ptr.value.map(Into::into)),
             &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
             self.is_real,
@@ -260,8 +260,8 @@ impl<V: Copy> EdDecompressCols<V> {
         }
 
         builder.receive_syscall(
-            self.shard,
-            self.clk,
+            self.clk_high,
+            self.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
             ptr,
             [self.sign.into(), AB::Expr::zero(), AB::Expr::zero()],
@@ -355,7 +355,7 @@ impl<F, E: EdwardsParameters> BaseAir<F> for EdDecompressChip<E> {
 
 impl<AB, E: EdwardsParameters> Air<AB> for EdDecompressChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();

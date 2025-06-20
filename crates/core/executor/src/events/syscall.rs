@@ -10,13 +10,13 @@ use crate::syscalls::SyscallCode;
 #[repr(C)]
 pub struct SyscallEvent {
     /// The program counter.
-    pub pc_rel: u64,
+    pub pc_rel: u32,
     /// The next program counter.
-    pub next_pc_rel: u64,
+    pub next_pc_rel: u32,
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
     /// Whether this syscall should be sent.

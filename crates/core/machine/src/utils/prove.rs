@@ -65,7 +65,7 @@ pub fn generate_records<F: PrimeField32>(
     record_gen_sync: Arc<TurnBasedSync>,
     checkpoints_rx: Arc<Mutex<Receiver<(usize, File, bool, u64)>>>,
     records_tx: Sender<ExecutionRecord>,
-    state: Arc<Mutex<PublicValues<u64, u64, u64>>>,
+    state: Arc<Mutex<PublicValues<u64, u64, u64, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     report_aggregate: Arc<Mutex<ExecutionReport>>,
     opts: SP1CoreOpts,
@@ -92,13 +92,35 @@ pub fn generate_records<F: PrimeField32>(
                 state.next_execution_shard = record.public_values.execution_shard + 1;
                 state.pc_start_rel = record.public_values.pc_start_rel;
                 state.next_pc_rel = record.public_values.next_pc_rel;
+                state.initial_timestamp = record.public_values.initial_timestamp;
                 state.last_timestamp = record.public_values.last_timestamp;
-                state.last_timestamp_inv =
-                    F::from_canonical_u64(state.last_timestamp - 1).inverse().as_canonical_u64();
+                let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
+                let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
+                let last_timestamp_high = (state.last_timestamp >> 24) as u32;
+                let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
+                if initial_timestamp_high == last_timestamp_high {
+                    state.is_timestamp_high_eq = 1;
+                } else {
+                    state.is_timestamp_high_eq = 0;
+                    state.inv_timestamp_high = (F::from_canonical_u32(last_timestamp_high)
+                        - F::from_canonical_u32(initial_timestamp_high))
+                    .inverse()
+                    .as_canonical_u32();
+                }
+                if initial_timestamp_low == last_timestamp_low {
+                    state.is_timestamp_low_eq = 1;
+                } else {
+                    state.is_timestamp_low_eq = 0;
+                    state.inv_timestamp_low = (F::from_canonical_u32(last_timestamp_low)
+                        - F::from_canonical_u32(initial_timestamp_low))
+                    .inverse()
+                    .as_canonical_u32();
+                }
                 state.committed_value_digest = record.public_values.committed_value_digest;
                 state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
                 record.public_values = *state;
                 state.prev_exit_code = record.public_values.exit_code;
+                state.initial_timestamp = record.public_values.last_timestamp;
             }
 
             // Defer events that are too expensive to include in every shard.
@@ -122,8 +144,10 @@ pub fn generate_records<F: PrimeField32>(
                     record.public_values.previous_finalize_addr_word;
                 state.last_finalize_addr_word = record.public_values.last_finalize_addr_word;
                 state.pc_start_rel = state.next_pc_rel;
-                state.last_timestamp = 1;
-                state.last_timestamp_inv = 0;
+                state.prev_exit_code = state.exit_code;
+                state.last_timestamp = state.initial_timestamp;
+                state.is_timestamp_high_eq = 1;
+                state.is_timestamp_low_eq = 1;
                 state.next_execution_shard = state.execution_shard;
                 record.public_values = *state;
             }
@@ -167,7 +191,7 @@ where
 
     let mut shard_proofs = BTreeMap::new();
     while let Some(proof) = proof_rx.recv().await {
-        let public_values: &PublicValues<[F; 4], Word<F>, F> =
+        let public_values: &PublicValues<[F; 4], Word<F>, [F; 4], F> =
             proof.public_values.as_slice().borrow();
         shard_proofs.insert(public_values.shard, proof);
     }

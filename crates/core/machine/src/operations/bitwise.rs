@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode, Opcode,
@@ -8,8 +9,10 @@ use sp1_stark::air::SP1AirBuilder;
 use p3_field::Field;
 use sp1_derive::AlignedBorrow;
 
+use crate::air::SP1Operation;
+
 /// A set of columns needed to compute the bitwise operation over four bytes.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BitwiseOperation<T> {
     /// The result of the bitwise operation in bytes.
@@ -42,7 +45,7 @@ impl<F: Field> BitwiseOperation<F> {
     /// Assumes that `is_real` is boolean.
     /// If `is_real` is true, constrains that the inputs are valid bytes.
     /// If `is_real` is true, constrains that the `result` is the correct result.
-    pub fn eval_bitwise<AB: SP1AirBuilder>(
+    fn eval_bitwise<AB: SP1AirBuilder>(
         builder: &mut AB,
         a: [AB::Expr; WORD_BYTE_SIZE],
         b: [AB::Expr; WORD_BYTE_SIZE],
@@ -62,5 +65,21 @@ impl<F: Field> BitwiseOperation<F> {
                 is_real.clone(),
             );
         }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for BitwiseOperation<AB::F> {
+    type Input = (
+        [AB::Expr; WORD_BYTE_SIZE],
+        [AB::Expr; WORD_BYTE_SIZE],
+        BitwiseOperation<AB::Var>,
+        AB::Expr,
+        AB::Expr,
+    );
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) {
+        let (a, b, cols, opcode, is_real) = input;
+        BitwiseOperation::<AB::F>::eval_bitwise(builder, a, b, cols, opcode, is_real);
     }
 }

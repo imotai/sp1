@@ -140,8 +140,9 @@ impl ShaCompressChip {
             let mut row = [F::zero(); NUM_SHA_COMPRESS_COLS];
             let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
 
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
             cols.w_ptr = [
                 F::from_canonical_u16((event.w_ptr & 0xFFFF) as u16),
                 F::from_canonical_u16((event.w_ptr >> 16) as u16),
@@ -195,8 +196,8 @@ impl ShaCompressChip {
             cols.octet[j % 8] = F::one();
             cols.octet_num[octet_num_idx] = F::one();
 
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.w_ptr = [
                 F::from_canonical_u16((event.w_ptr & 0xFFFF) as u16),
                 F::from_canonical_u16((event.w_ptr >> 16) as u16),
@@ -207,6 +208,7 @@ impl ShaCompressChip {
                 F::from_canonical_u16((event.h_ptr >> 16) as u16),
                 F::from_canonical_u16((event.h_ptr >> 32) as u16),
             ];
+
             cols.mem.populate(MemoryRecordEnum::Read(event.w_i_read_records[j]), blu);
             cols.mem_value = Word::from(event.w_i_read_records[j].value);
             cols.mem_addr = [
@@ -296,8 +298,8 @@ impl ShaCompressChip {
             let mut row = [F::zero(); NUM_SHA_COMPRESS_COLS];
             let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
 
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.w_ptr = [
                 F::from_canonical_u16((event.w_ptr & 0xFFFF) as u16),
                 F::from_canonical_u16((event.w_ptr >> 16) as u16),

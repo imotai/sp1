@@ -1,17 +1,19 @@
 use std::borrow::Borrow;
 
-use crate::adapter::{register::j_type::JTypeReader, state::CPUState};
+use crate::{
+    adapter::{register::j_type::JTypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
+};
 use p3_air::Air;
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, PC_INC};
-use sp1_stark::air::SP1AirBuilder;
+use sp1_core_executor::{Opcode, CLK_INC};
 
 use super::{JalChip, JalColumns};
 
 impl<AB> Air<AB> for JalChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]
@@ -32,7 +34,7 @@ where
             builder,
             local.state,
             local.adapter.b().reduce::<AB>(),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -44,8 +46,8 @@ where
         // Set `op_c` immediate as `op_a_not_0 * (pc + 4)` in the instruction encoding.
         JTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc_rel,
             opcode,
             *local.adapter.c(),
