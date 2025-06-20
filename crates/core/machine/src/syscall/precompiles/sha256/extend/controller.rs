@@ -14,7 +14,7 @@ use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
     InteractionKind,
 };
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, iter::once};
 
 impl ShaExtendControlChip {
     pub const fn new() -> Self {
@@ -131,34 +131,26 @@ where
             InteractionScope::Local,
         );
 
-        // // Send the initial state.
-        // builder.send(
-        //     AirInteraction::new(
-        //         vec![
-        //             local.clk_high.into(),
-        //             local.clk_low.into(),
-        //             w_ptr.clone(),
-        //             AB::Expr::from_canonical_u32(16),
-        //         ],
-        //         local.is_real.into(),
-        //         InteractionKind::ShaExtend,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        // Send the initial state.
+        let send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(w_ptr.clone())
+            .chain(once(AB::Expr::from_canonical_u32(16)))
+            .collect::<Vec<_>>();
+        builder.send(
+            AirInteraction::new(send_values, local.is_real.into(), InteractionKind::ShaExtend),
+            InteractionScope::Local,
+        );
 
-        // // Receive the final state.
-        // builder.receive(
-        //     AirInteraction::new(
-        //         vec![
-        //             local.clk_high.into(),
-        //             local.clk_low.into(),
-        //             w_ptr.clone(),
-        //             AB::Expr::from_canonical_u32(64),
-        //         ],
-        //         local.is_real.into(),
-        //         InteractionKind::ShaExtend,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        // Receive the final state.
+        let receive_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(w_ptr.clone())
+            .chain(once(AB::Expr::from_canonical_u32(64)))
+            .collect::<Vec<_>>();
+        builder.receive(
+            AirInteraction::new(receive_values, local.is_real.into(), InteractionKind::ShaExtend),
+            InteractionScope::Local,
+        );
     }
 }

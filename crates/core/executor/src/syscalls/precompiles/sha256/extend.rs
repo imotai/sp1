@@ -27,14 +27,18 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
         w_i_minus_15_reads.push(record);
 
         // Compute `s0`.
-        let s0 = w_i_minus_15.rotate_right(7) ^ w_i_minus_15.rotate_right(18) ^ (w_i_minus_15 >> 3);
+        let s0 = (w_i_minus_15 as u32).rotate_right(7)
+            ^ (w_i_minus_15 as u32).rotate_right(18)
+            ^ ((w_i_minus_15 as u32) >> 3);
 
         // Read w[i-2].
         let (record, w_i_minus_2) = rt.mr(w_ptr + (i - 2) * 8);
         w_i_minus_2_reads.push(record);
 
         // Compute `s1`.
-        let s1 = w_i_minus_2.rotate_right(17) ^ w_i_minus_2.rotate_right(19) ^ (w_i_minus_2 >> 10);
+        let s1 = (w_i_minus_2 as u32).rotate_right(17)
+            ^ (w_i_minus_2 as u32).rotate_right(19)
+            ^ ((w_i_minus_2 as u32) >> 10);
 
         // Read w[i-16].
         let (record, w_i_minus_16) = rt.mr(w_ptr + (i - 16) * 8);
@@ -45,10 +49,11 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
         w_i_minus_7_reads.push(record);
 
         // Compute `w_i`.
-        let w_i = s1.wrapping_add(w_i_minus_16).wrapping_add(s0).wrapping_add(w_i_minus_7);
+        let w_i =
+            s1.wrapping_add(w_i_minus_16 as u32).wrapping_add(s0).wrapping_add(w_i_minus_7 as u32);
 
         // Write w[i].
-        w_i_writes.push(rt.mw(w_ptr + i * 8, w_i));
+        w_i_writes.push(rt.mw(w_ptr + i * 8, w_i as u64));
         rt.clk += 1;
     }
 
@@ -65,8 +70,15 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
         w_i_writes,
         local_mem_access: rt.postprocess(),
     });
-    let syscall_event =
-        rt.rt.syscall_event(clk_init, syscall_code, arg1, arg2, false, rt.next_pc_rel, rt.exit_code);
+    let syscall_event = rt.rt.syscall_event(
+        clk_init,
+        syscall_code,
+        arg1,
+        arg2,
+        false,
+        rt.next_pc_rel,
+        rt.exit_code,
+    );
     rt.add_precompile_event(syscall_code, syscall_event, event);
 
     None

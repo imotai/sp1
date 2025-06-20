@@ -1,4 +1,7 @@
-use crate::{operations::SyscallAddrOperation, utils::next_multiple_of_32};
+use crate::{
+    operations::SyscallAddrOperation,
+    utils::{next_multiple_of_32, u32_to_half_word},
+};
 
 use super::ShaCompressControlChip;
 use core::borrow::Borrow;
@@ -11,11 +14,12 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
     InteractionKind, Word,
 };
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, iter::once};
 
 impl ShaCompressControlChip {
     pub const fn new() -> Self {
@@ -33,8 +37,8 @@ pub struct ShaCompressControlCols<T> {
     pub w_ptr: SyscallAddrOperation<T>,
     pub h_ptr: SyscallAddrOperation<T>,
     pub is_real: T,
-    pub initial_state: [Word<T>; 8],
-    pub final_state: [Word<T>; 8],
+    pub initial_state: [[T; WORD_SIZE / 2]; 8],
+    pub final_state: [[T; WORD_SIZE / 2]; 8],
 }
 
 impl<F> BaseAir<F> for ShaCompressControlChip {
@@ -81,8 +85,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
             for i in 0..8 {
                 let prev_value = event.h[i];
                 let value = event.h_write_records[i].value;
-                cols.initial_state[i] = Word::from(prev_value);
-                cols.final_state[i] = Word::from(value.wrapping_sub(prev_value as u64));
+                cols.initial_state[i] = u32_to_half_word(prev_value);
+                cols.final_state[i] = u32_to_half_word((value as u32).wrapping_sub(prev_value));
             }
             rows.push(row);
         }
@@ -146,50 +150,32 @@ where
             InteractionScope::Local,
         );
 
-        // // Send the initial state.
-        // builder.send(
-        //     AirInteraction::new(
-        //         vec![
-        //             local.clk_high.into(),
-        //             local.clk_low.into(),
-        //             w_ptr.clone(),
-        //             h_ptr.clone(),
-        //             AB::Expr::from_canonical_u32(0),
-        //         ]
-        //         .into_iter()
-        //         .chain(
-        //             local
-        //                 .initial_state
-        //                 .into_iter()
-        //                 .flat_map(|word| word.into_iter())
-        //                 .map(Into::into),
-        //         )
-        //         .collect(),
-        //         local.is_real.into(),
-        //         InteractionKind::ShaCompress,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        // Send the initial state.
+        let send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(w_ptr.clone().map(Into::into))
+            .chain(h_ptr.clone().map(Into::into))
+            .chain(once(AB::Expr::from_canonical_u32(0)))
+            .chain(
+                local.initial_state.into_iter().flat_map(|word| word.into_iter()).map(Into::into),
+            )
+            .collect::<Vec<_>>();
+        builder.send(
+            AirInteraction::new(send_values, local.is_real.into(), InteractionKind::ShaCompress),
+            InteractionScope::Local,
+        );
 
-        // // Receive the final state.
-        // builder.receive(
-        //     AirInteraction::new(
-        //         vec![
-        //             local.clk_high.into(),
-        //             local.clk_low.into(),
-        //             w_ptr.clone(),
-        //             h_ptr.clone(),
-        //             AB::Expr::from_canonical_u32(80),
-        //         ]
-        //         .into_iter()
-        //         .chain(
-        //             local.final_state.into_iter().flat_map(|word| word.into_iter()).map(Into::into),
-        //         )
-        //         .collect(),
-        //         local.is_real.into(),
-        //         InteractionKind::ShaCompress,
-        //     ),
-        //     InteractionScope::Local,
-        // );
+        // Receive the final state.
+        let receive_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(w_ptr.map(Into::into))
+            .chain(h_ptr.map(Into::into))
+            .chain(once(AB::Expr::from_canonical_u32(80)))
+            .chain(local.final_state.into_iter().flat_map(|word| word.into_iter()).map(Into::into))
+            .collect::<Vec<_>>();
+        builder.receive(
+            AirInteraction::new(receive_values, local.is_real.into(), InteractionKind::ShaCompress),
+            InteractionScope::Local,
+        );
     }
 }

@@ -24,13 +24,13 @@ impl<F: Field> XorOperation<F> {
             let xor = x_bytes[i] ^ y_bytes[i];
             self.value[i] = F::from_canonical_u8(xor);
 
-            // let byte_event = ByteLookupEvent {
-            //     opcode: ByteOpcode::XOR,
-            //     a: xor as u16,
-            //     b: x_bytes[i],
-            //     c: y_bytes[i],
-            // };
-            // record.add_byte_lookup_event(byte_event);
+            let byte_event = ByteLookupEvent {
+                opcode: ByteOpcode::XOR,
+                a: xor as u16,
+                b: x_bytes[i],
+                c: y_bytes[i],
+            };
+            record.add_byte_lookup_event(byte_event);
         }
         expected
     }

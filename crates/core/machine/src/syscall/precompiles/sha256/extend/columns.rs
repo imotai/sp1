@@ -6,7 +6,7 @@ use crate::{
     memory::MemoryAccessCols,
     operations::{
         Add4Operation, ClkOperation, FixedRotateRightOperation, FixedShiftRightOperation,
-        XorU16Operation,
+        XorU32Operation,
     },
 };
 
@@ -34,20 +34,20 @@ pub struct ShaExtendCols<T> {
     pub w_i_minus_15_rr_7: FixedRotateRightOperation<T>,
     pub w_i_minus_15_rr_18: FixedRotateRightOperation<T>,
     pub w_i_minus_15_rs_3: FixedShiftRightOperation<T>,
-    pub s0_intermediate: XorU16Operation<T>,
+    pub s0_intermediate: XorU32Operation<T>,
 
     /// `s0 := (w[i-15] rightrotate  7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift 3)`.
-    pub s0: XorU16Operation<T>,
+    pub s0: XorU32Operation<T>,
 
     /// Inputs to `s1`.
     pub w_i_minus_2: MemoryAccessCols<T>,
     pub w_i_minus_2_rr_17: FixedRotateRightOperation<T>,
     pub w_i_minus_2_rr_19: FixedRotateRightOperation<T>,
     pub w_i_minus_2_rs_10: FixedShiftRightOperation<T>,
-    pub s1_intermediate: XorU16Operation<T>,
+    pub s1_intermediate: XorU32Operation<T>,
 
     /// `s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift 10)`.
-    pub s1: XorU16Operation<T>,
+    pub s1: XorU32Operation<T>,
 
     /// Inputs to `s2`.
     pub w_i_minus_16: MemoryAccessCols<T>,

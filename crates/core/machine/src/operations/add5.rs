@@ -2,17 +2,17 @@ use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
-use crate::air::WordAirBuilder;
+use crate::{air::WordAirBuilder, utils::u32_to_half_word};
 
 /// A set of columns needed to compute the sum of five words.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Add5Operation<T> {
     /// The result of `a + b + c + d + e`.
-    pub value: Word<T>,
+    pub value: [T; WORD_SIZE / 2],
 }
 
 impl<F: Field> Add5Operation<F> {
@@ -20,39 +20,39 @@ impl<F: Field> Add5Operation<F> {
     pub fn populate(
         &mut self,
         record: &mut impl ByteRecord,
-        a_u64: u64,
-        b_u64: u64,
-        c_u64: u64,
-        d_u64: u64,
-        e_u64: u64,
-    ) -> u64 {
+        a_u32: u32,
+        b_u32: u32,
+        c_u32: u32,
+        d_u32: u32,
+        e_u32: u32,
+    ) -> u32 {
         let expected =
-            a_u64.wrapping_add(b_u64).wrapping_add(c_u64).wrapping_add(d_u64).wrapping_add(e_u64);
-        let expected_limbs = u64_to_u16_limbs(expected);
-        self.value = Word::from(expected);
-        let a = u64_to_u16_limbs(a_u64);
-        let b = u64_to_u16_limbs(b_u64);
-        let c = u64_to_u16_limbs(c_u64);
-        let d = u64_to_u16_limbs(d_u64);
-        let e = u64_to_u16_limbs(e_u64);
-        let base = 65536u64;
+            a_u32.wrapping_add(b_u32).wrapping_add(c_u32).wrapping_add(d_u32).wrapping_add(e_u32);
+        let expected_limbs = u32_to_u16_limbs(expected);
+        self.value = u32_to_half_word(expected);
+        let a = u32_to_u16_limbs(a_u32);
+        let b = u32_to_u16_limbs(b_u32);
+        let c = u32_to_u16_limbs(c_u32);
+        let d = u32_to_u16_limbs(d_u32);
+        let e = u32_to_u16_limbs(e_u32);
+        let base = 65536u32;
         let mut carry = 0;
-        let mut carry_limbs = [0u8; WORD_SIZE];
-        for i in 0..WORD_SIZE {
-            carry = ((a[i] as u64)
-                + (b[i] as u64)
-                + (c[i] as u64)
-                + (d[i] as u64)
-                + (e[i] as u64)
+        let mut carry_limbs = [0u8; WORD_SIZE / 2];
+        for i in 0..WORD_SIZE / 2 {
+            carry = ((a[i] as u32)
+                + (b[i] as u32)
+                + (c[i] as u32)
+                + (d[i] as u32)
+                + (e[i] as u32)
                 + carry
-                - expected_limbs[i] as u64)
+                - expected_limbs[i] as u32)
                 / base;
             carry_limbs[i] = carry as u8;
         }
 
         // Range check.
         record.add_u8_range_checks(&carry_limbs);
-        record.add_u16_range_checks(&u64_to_u16_limbs(expected));
+        record.add_u16_range_checks(&u32_to_u16_limbs(expected));
         expected
     }
 
@@ -62,36 +62,36 @@ impl<F: Field> Add5Operation<F> {
     /// If `is_real` is true, the `value` is constrained to a valid `Word` representing the sum.
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
-        words: &[Word<AB::Expr>; 5],
+        words: &[[AB::Expr; WORD_SIZE / 2]; 5],
         is_real: AB::Var,
         cols: Add5Operation<AB::Var>,
     ) {
-        // builder.assert_bool(is_real);
+        builder.assert_bool(is_real);
 
-        // let base = AB::F::from_canonical_u32(1 << 16);
-        // let mut carry_limbs = [AB::Expr::zero(), AB::Expr::zero()];
-        // let mut carry = AB::Expr::zero(); // Initialize carry to zero
+        let base = AB::F::from_canonical_u32(1 << 16);
+        let mut carry_limbs = [AB::Expr::zero(), AB::Expr::zero()];
+        let mut carry = AB::Expr::zero(); // Initialize carry to zero
 
-        // // The set of constraints are
-        // //  - carry is initialized to zero
-        // //  - 2^16 * carry_next + value[i] = sum(word[i]) + carry
-        // //  - 0 <= carry < 2^8
-        // //  - 0 <= value[i] < 2^16
-        // // Since the carries are bounded by 2^8, no BabyBear overflows are possible.
-        // // The maximum carry possible is less than 2^8, so the circuit is complete.
-        // for i in 0..WORD_SIZE {
-        //     carry = (words[0][i].clone()
-        //         + words[1][i].clone()
-        //         + words[2][i].clone()
-        //         + words[3][i].clone()
-        //         + words[4][i].clone()
-        //         - cols.value[i]
-        //         + carry.clone())
-        //         * base.inverse();
-        //     carry_limbs[i] = carry.clone();
-        // }
-        // // Range check each limb.
-        // builder.slice_range_check_u16(&cols.value.0, is_real);
-        // builder.slice_range_check_u8(&carry_limbs, is_real);
+        // The set of constraints are
+        //  - carry is initialized to zero
+        //  - 2^16 * carry_next + value[i] = sum(word[i]) + carry
+        //  - 0 <= carry < 2^8
+        //  - 0 <= value[i] < 2^16
+        // Since the carries are bounded by 2^8, no BabyBear overflows are possible.
+        // The maximum carry possible is less than 2^8, so the circuit is complete.
+        for i in 0..WORD_SIZE / 2 {
+            carry = (words[0][i].clone()
+                + words[1][i].clone()
+                + words[2][i].clone()
+                + words[3][i].clone()
+                + words[4][i].clone()
+                - cols.value[i]
+                + carry.clone())
+                * base.inverse();
+            carry_limbs[i] = carry.clone();
+        }
+        // Range check each limb.
+        builder.slice_range_check_u16(&cols.value, is_real);
+        builder.slice_range_check_u8(&carry_limbs, is_real);
     }
 }

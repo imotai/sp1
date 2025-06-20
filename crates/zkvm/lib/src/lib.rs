@@ -30,10 +30,10 @@ extern "C" {
     pub fn syscall_read(fd: u32, read_buf: *mut u8, nbytes: usize);
 
     /// Executes the SHA-256 extend operation on the given word array.
-    pub fn syscall_sha256_extend(w: *mut [u32; 64]);
+    pub fn syscall_sha256_extend(w: *mut [u64; 64]);
 
     /// Executes the SHA-256 compress operation on the given word array and a given state.
-    pub fn syscall_sha256_compress(w: *mut [u32; 64], state: *mut [u32; 8]);
+    pub fn syscall_sha256_compress(w: *mut [u64; 64], state: *mut [u64; 8]);
 
     /// Executes an Ed25519 curve addition on the given points.
     pub fn syscall_ed_add(p: *mut [u64; 8], q: *const [u64; 8]);

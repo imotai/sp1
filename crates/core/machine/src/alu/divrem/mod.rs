@@ -331,11 +331,6 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
             cols.quotient = Word::from(quotient);
             cols.remainder = Word::from(remainder);
-            tracing::info!(
-                "quotient: {:?}, remainder: {:?}",
-                u64_to_u16_limbs(quotient),
-                u64_to_u16_limbs(remainder)
-            );
             let b = if is_signed_word_operation(event.opcode) {
                 event.b as i32 as i64 as u64
             } else if is_unsigned_word_operation(event.opcode) {
@@ -472,7 +467,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                         c_times_quotient_byte[2 * i + 1],
                     ])
                 });
-                tracing::info!("c_times_quotient_u16: {:?}", c_times_quotient_u16);
+
                 cols.c_times_quotient = c_times_quotient_u16.map(F::from_canonical_u16);
 
                 // Quotient needs to be truncated in the case of unsigned word operation for the

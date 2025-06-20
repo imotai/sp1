@@ -162,36 +162,39 @@ impl ShaExtendChip {
             // `s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift
             // 3)`.
             let w_i_minus_15 = event.w_i_minus_15_reads[j].value;
-            let w_i_minus_15_rr_7 = cols.w_i_minus_15_rr_7.populate(blu, w_i_minus_15, 7);
-            let w_i_minus_15_rr_18 = cols.w_i_minus_15_rr_18.populate(blu, w_i_minus_15, 18);
-            let w_i_minus_15_rs_3 = cols.w_i_minus_15_rs_3.populate(blu, w_i_minus_15, 3);
-            let s0_intermediate =
-                cols.s0_intermediate.populate_xor_u16(blu, w_i_minus_15_rr_7, w_i_minus_15_rr_18);
-            let s0 = cols.s0.populate_xor_u16(blu, s0_intermediate, w_i_minus_15_rs_3);
+            let w_i_minus_15_rr_7 = cols.w_i_minus_15_rr_7.populate(blu, w_i_minus_15 as u32, 7);
+            let w_i_minus_15_rr_18 = cols.w_i_minus_15_rr_18.populate(blu, w_i_minus_15 as u32, 18);
+            let w_i_minus_15_rs_3 = cols.w_i_minus_15_rs_3.populate(blu, w_i_minus_15 as u32, 3);
+            let s0_intermediate = cols.s0_intermediate.populate_xor_u32(
+                blu,
+                w_i_minus_15_rr_7 as u32,
+                w_i_minus_15_rr_18 as u32,
+            );
+            let s0 = cols.s0.populate_xor_u32(blu, s0_intermediate, w_i_minus_15_rs_3);
 
             // `s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift
             // 10)`.
             let w_i_minus_2 = event.w_i_minus_2_reads[j].value;
-            let w_i_minus_2_rr_17 = cols.w_i_minus_2_rr_17.populate(blu, w_i_minus_2, 17);
-            let w_i_minus_2_rr_19 = cols.w_i_minus_2_rr_19.populate(blu, w_i_minus_2, 19);
-            let w_i_minus_2_rs_10 = cols.w_i_minus_2_rs_10.populate(blu, w_i_minus_2, 10);
+            let w_i_minus_2_rr_17 = cols.w_i_minus_2_rr_17.populate(blu, w_i_minus_2 as u32, 17);
+            let w_i_minus_2_rr_19 = cols.w_i_minus_2_rr_19.populate(blu, w_i_minus_2 as u32, 19);
+            let w_i_minus_2_rs_10 = cols.w_i_minus_2_rs_10.populate(blu, w_i_minus_2 as u32, 10);
             let s1_intermediate =
-                cols.s1_intermediate.populate_xor_u16(blu, w_i_minus_2_rr_17, w_i_minus_2_rr_19);
-            let s1 = cols.s1.populate_xor_u16(blu, s1_intermediate, w_i_minus_2_rs_10);
+                cols.s1_intermediate.populate_xor_u32(blu, w_i_minus_2_rr_17, w_i_minus_2_rr_19);
+            let s1 = cols.s1.populate_xor_u32(blu, s1_intermediate, w_i_minus_2_rs_10);
 
             // Compute `s2`.
             let w_i_minus_7 = event.w_i_minus_7_reads[j].value;
             let w_i_minus_16 = event.w_i_minus_16_reads[j].value;
-            cols.s2.populate(blu, w_i_minus_16, s0, w_i_minus_7, s1);
+            cols.s2.populate(blu, w_i_minus_16 as u32, s0, w_i_minus_7 as u32, s1);
 
             let w_i_write = MemoryRecordEnum::Write(event.w_i_writes[j]);
             cols.w_i.populate(w_i_write, blu);
-            // blu.add_byte_lookup_event(ByteLookupEvent {
-            //     opcode: ByteOpcode::LTU,
-            //     a: 1u16,
-            //     b: j as u8,
-            //     c: 48,
-            // });
+            blu.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::LTU,
+                a: 1u16,
+                b: j as u8,
+                c: 48,
+            });
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

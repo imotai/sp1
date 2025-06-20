@@ -58,6 +58,10 @@ pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Ex
     result_words
 }
 
+pub fn u32_to_half_word<F: Field>(value: u32) -> [F; 2] {
+    [F::from_canonical_u16((value & 0xFFFF) as u16), F::from_canonical_u16((value >> 16) as u16)]
+}
+
 /// Pad to a power of two, with an option to specify the power.
 //
 // The `rows` argument represents the rows of a matrix stored in row-major order. The function will

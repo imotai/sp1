@@ -33,8 +33,8 @@ impl<F: Field> AndU16Operation<F> {
         b_u64: u64,
         c_u64: u64,
     ) -> u64 {
-        // self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
-        // self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
+        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
+        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
         self.and_operation.populate(record, b_u64, c_u64)
     }
 
