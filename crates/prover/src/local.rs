@@ -303,7 +303,9 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 while let Some(task) = executor_rx.blocking_recv() {
                     let ExecuteTask { input, range } = task;
                     let keys = prover.prover().recursion().keys(&input);
+                    let span = tracing::debug_span!("execute recursion program").entered();
                     let record = prover.prover().recursion().execute(input).unwrap();
+                    span.exit();
                     let prove_task = ProveTask { keys, range, record };
                     prove_task_tx.send(prove_task).unwrap();
                 }

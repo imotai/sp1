@@ -15,6 +15,7 @@ use sp1_core_executor::{
 use sp1_stark::{air::PublicValues, Machine, MachineRecord};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
+use tracing::Span;
 
 use crate::{io::SP1Stdin, riscv::RiscvAir, utils::concurrency::TurnBasedSync};
 
@@ -31,11 +32,14 @@ impl<F: PrimeField32> MachineExecutor<F> {
         context: SP1Context<'static>,
         record_tx: mpsc::Sender<ExecutionRecord>,
     ) -> TaskHandle<ExecutionOutput, MachineExecutorError> {
+        // Create a span for this task.
+        let span = tracing::Span::current();
+        // Create a channel for the output.
         let (output_tx, output_rx) = oneshot::channel();
         // Create an abortable task.
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let task =
-            ExecuteTask { program, stdin, context, output_tx, record_tx, abort_registration };
+            ExecuteTask { program, stdin, context, output_tx, record_tx, abort_registration, span };
         self.task_tx.send(task).unwrap();
         TaskHandle::new(output_rx, abort_handle)
     }
@@ -65,6 +69,7 @@ pub enum MachineExecutorError {
     ExecutorPanicked(#[from] oneshot::error::RecvError),
 }
 
+#[allow(dead_code)]
 struct ExecuteTask {
     program: Arc<Program>,
     stdin: SP1Stdin,
@@ -72,6 +77,7 @@ struct ExecuteTask {
     record_tx: mpsc::Sender<ExecutionRecord>,
     output_tx: oneshot::Sender<Result<ExecutionOutput, MachineExecutorError>>,
     abort_registration: AbortRegistration,
+    span: Span,
 }
 
 pub struct ExecutionOutput {
@@ -79,6 +85,7 @@ pub struct ExecutionOutput {
     pub cycles: u64,
 }
 
+#[allow(dead_code)]
 struct RecordTask {
     index: usize,
     checkpoint_file: File,
@@ -89,6 +96,7 @@ struct RecordTask {
     deferred: Arc<Mutex<ExecutionRecord>>,
     record_tx: mpsc::Sender<ExecutionRecord>,
     abort_handle: AbortHandle,
+    span: Span,
 }
 
 pub fn trace_checkpoint(
@@ -147,10 +155,13 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         deferred,
                         record_tx,
                         abort_handle,
+                        // TODO: Use the span.
+                        span: _,
                     } = task;
                     if abort_handle.is_aborted() {
                         continue;
                     }
+
                     let (mut records, _) =
                         tracing::debug_span!("trace checkpoint").in_scope(|| {
                             trace_checkpoint(program.clone(), &checkpoint_file, opts.clone())
@@ -286,6 +297,8 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                     record_tx,
                     output_tx,
                     abort_registration,
+                    // TODO: Use the span.
+                    span: _,
                 } = task;
 
                 if abort_registration.handle().is_aborted() {
@@ -336,6 +349,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                                 deferred: deferred.clone(),
                                 record_tx: record_tx.clone(),
                                 abort_handle: abort_registration.handle(),
+                                span: tracing::debug_span!("execute record"),
                             };
                             // Send the checkpoint to the record generation worker.
                             let (out_tx, out_rx) = oneshot::channel();
