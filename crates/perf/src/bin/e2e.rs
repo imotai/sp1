@@ -84,5 +84,10 @@ async fn main() {
         )
         .await
         .unwrap();
+
+    if let Trace::Telemetry = args.trace {
+        tokio::task::spawn_blocking(opentelemetry::global::shutdown_tracer_provider).await.unwrap();
+    }
+
     println!("{}", measurement);
 }

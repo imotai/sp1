@@ -103,7 +103,7 @@ pub async fn make_measurement(
     let compress_proof = prover
         .clone()
         .compress(&vk, core_proof, vec![])
-        .instrument(tracing::info_span!("compress"))
+        .instrument(tracing::debug_span!("compress"))
         .await
         .unwrap();
     let compress_time = time.elapsed();
