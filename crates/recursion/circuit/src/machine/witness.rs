@@ -170,6 +170,7 @@ where
         let end_pc = self.end_pc.read(builder);
         let end_shard = self.end_shard.read(builder);
         let end_execution_shard = self.end_execution_shard.read(builder);
+        let end_timestamp = self.end_timestamp.read(builder);
         let init_addr_word = self.init_addr_word.read(builder);
         let finalize_addr_word = self.finalize_addr_word.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
@@ -184,6 +185,7 @@ where
             end_pc,
             end_shard,
             end_execution_shard,
+            end_timestamp,
             init_addr_word,
             finalize_addr_word,
             is_complete,
@@ -200,6 +202,7 @@ where
         self.end_pc.write(witness);
         self.end_shard.write(witness);
         self.end_execution_shard.write(witness);
+        self.end_timestamp.write(witness);
         self.init_addr_word.write(witness);
         self.finalize_addr_word.write(witness);
         self.is_complete.write(witness);

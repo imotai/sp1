@@ -13,7 +13,7 @@ pub struct MemoryRecord {
     /// The shard number.
     pub shard: u32,
     /// The timestamp.
-    pub timestamp: u32,
+    pub timestamp: u64,
     /// The value.
     pub value: u64,
 }
@@ -82,7 +82,7 @@ pub struct MemoryEntry {
     /// The shard number.
     pub lshard: LogicalShard,
     /// The timestamp.
-    pub timestamp: u32,
+    pub timestamp: u64,
     /// The value.
     pub value: u64,
 }
@@ -191,11 +191,11 @@ pub struct MemoryReadRecord {
     /// The shard number.
     pub shard: u32,
     /// The timestamp.
-    pub timestamp: u32,
+    pub timestamp: u64,
     /// The previous shard number.
     pub prev_shard: u32,
     /// The previous timestamp.
-    pub prev_timestamp: u32,
+    pub prev_timestamp: u64,
 }
 
 /// Memory Write Record.
@@ -211,13 +211,13 @@ pub struct MemoryWriteRecord {
     /// The shard number.
     pub shard: u32,
     /// The timestamp.
-    pub timestamp: u32,
+    pub timestamp: u64,
     /// The previous value.
     pub prev_value: u64,
     /// The previous shard number.
     pub prev_shard: u32,
     /// The previous timestamp.
-    pub prev_timestamp: u32,
+    pub prev_timestamp: u64,
 }
 
 /// Memory Record Enum.
@@ -283,7 +283,7 @@ pub struct MemoryInitializeFinalizeEvent {
     /// The shard number.
     pub shard: u32,
     /// The timestamp.
-    pub timestamp: u32,
+    pub timestamp: u64,
 }
 
 impl MemoryReadRecord {

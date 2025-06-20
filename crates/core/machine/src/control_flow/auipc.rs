@@ -6,11 +6,11 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use sp1_stark::air::MachineAir;
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -18,6 +18,7 @@ use std::{
 
 use crate::{
     adapter::{register::j_type::JTypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
     utils::{next_multiple_of_32, zeroed_f_vec, InstructionExt as _},
 };
 
@@ -48,7 +49,7 @@ pub struct AuipcColumns<T> {
 
 impl<AB> Air<AB> for AuipcChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]
@@ -66,7 +67,7 @@ where
             builder,
             local.state,
             local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -74,8 +75,8 @@ where
         // Set `op_b` immediate as `op_a_not_0 * (pc + op_b)` value in the instruction encoding.
         JTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc_rel,
             opcode,
             *local.adapter.b(),
@@ -126,12 +127,8 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
                             .fetch(event.0.pc_rel)
                             .preprocess_auipc(input.program.pc_base, event.0.pc_rel);
                         cols.is_real = F::one();
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

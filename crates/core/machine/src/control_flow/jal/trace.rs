@@ -56,12 +56,7 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
                             .fetch(event.0.pc_rel)
                             .preprocess_jal::<F>(input.program.pc_base, event.0.pc_rel);
                         cols.is_real = F::one();
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

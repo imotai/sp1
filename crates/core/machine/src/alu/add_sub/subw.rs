@@ -87,12 +87,7 @@ impl<F: PrimeField32> MachineAir<F> for SubwChip {
                         let event = merged_events[idx];
                         let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(
-                            &mut byte_lookup_events,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -117,12 +112,7 @@ impl<F: PrimeField32> MachineAir<F> for SubwChip {
                     let cols: &mut SubwCols<F> = row.as_mut_slice().borrow_mut();
                     let instruction = input.program.fetch(event.0.pc_rel);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(
-                        &mut blu,
-                        input.public_values.execution_shard as u32,
-                        event.0.clk,
-                        event.0.pc_rel,
-                    );
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -208,8 +198,8 @@ where
         // Constrain the program and register reads.
         RTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc_rel,
             opcode,
             word,

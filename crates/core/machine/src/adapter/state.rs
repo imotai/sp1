@@ -1,50 +1,55 @@
+use crate::air::WordAirBuilder;
 use p3_field::{AbstractField, Field};
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::SP1AirBuilder;
 
+use crate::air::SP1Operation;
+
 /// A set of columns to describe the state of the CPU.
 /// The state is composed of the shard, clock, and the program counter.
 /// The clock is split into two 14-limb bits to range check it to 28 bits.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct CPUState<T> {
-    pub shard: T,
-    pub clk_high_limb: T,
-    pub clk_low_limb: T,
+    pub clk_high: T,
+    pub clk_16_24: T,
+    pub clk_0_16: T,
     pub pc_rel: T,
 }
 
 impl<T: Copy> CPUState<T> {
-    pub fn shard<AB>(&self) -> AB::Expr
+    pub fn clk_high<AB>(&self) -> AB::Expr
     where
         AB: SP1AirBuilder<Var = T>,
         T: Into<AB::Expr>,
     {
-        self.shard.into()
+        self.clk_high.into()
     }
-    pub fn clk<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr {
-        AB::Expr::from_canonical_u32(1 << 14) * self.clk_high_limb + self.clk_low_limb
+    pub fn clk_low<AB>(&self) -> AB::Expr
+    where
+        AB: SP1AirBuilder<Var = T>,
+        T: Into<AB::Expr>,
+    {
+        self.clk_0_16.into() + self.clk_16_24.into() * AB::Expr::from_canonical_u32(1 << 16)
     }
 }
 
 impl<F: Field> CPUState<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn populate(
-        &mut self,
-        blu_events: &mut impl ByteRecord,
-        shard: u32,
-        clk: u32,
-        pc_rel: u32,
-    ) {
-        let clk_high_limb = (clk >> 14) as u16;
-        let clk_low_limb = (clk & ((1 << 14) - 1)) as u16;
-        self.shard = F::from_canonical_u32(shard);
-        self.clk_high_limb = F::from_canonical_u16(clk_high_limb);
-        self.clk_low_limb = F::from_canonical_u16(clk_low_limb);
+    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, clk: u64, pc_rel: u32) {
+        let clk_high = (clk >> 24) as u32;
+        let clk_16_24 = ((clk >> 16) & 0xFF) as u8;
+        let clk_0_16 = (clk & 0xFFFF) as u16;
+        self.clk_high = F::from_canonical_u32(clk_high);
+        self.clk_16_24 = F::from_canonical_u8(clk_16_24);
+        self.clk_0_16 = F::from_canonical_u16(clk_0_16);
         self.pc_rel = F::from_canonical_u32(pc_rel);
-        blu_events.add_bit_range_check(clk_high_limb, 14);
-        blu_events.add_bit_range_check(clk_low_limb, 14);
+
+        // 0 <= (clk_0_16 - 1) / 8 < 2^13 shows clk == 1 (mod 8) and clk_0_16 is 16 bits.
+        blu_events.add_bit_range_check((clk_0_16 - 1) / 8, 13);
+        blu_events.add_u8_range_checks(&[clk_16_24, 0]);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -55,26 +60,57 @@ impl<F: Field> CPUState<F> {
         clk_increment: AB::Expr,
         is_real: AB::Expr,
     ) {
-        let shard = cols.shard::<AB>();
-        let clk = cols.clk::<AB>();
+        let clk_high = cols.clk_high::<AB>();
+        let clk_low = cols.clk_low::<AB>();
         builder.assert_bool(is_real.clone());
-        builder.receive_state(shard.clone(), clk.clone(), cols.pc_rel.into(), is_real.clone());
-        builder.send_state(shard, clk + clk_increment, next_pc_rel, is_real.clone());
-        // Range check the clock to be 28 bits.
-        // Since the clock increment is bounded, the clock will not overflow.
+        builder.receive_state(
+            clk_high.clone(),
+            clk_low.clone(),
+            cols.pc_rel.into(),
+            is_real.clone(),
+        );
+        builder.send_state(
+            clk_high.clone(),
+            clk_low.clone() + clk_increment,
+            next_pc_rel,
+            is_real.clone(),
+        );
+
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
-            cols.clk_high_limb.into(),
-            AB::Expr::from_canonical_u32(14),
+            (cols.clk_0_16 - AB::Expr::one()) * AB::F::from_canonical_u8(8).inverse(),
+            AB::Expr::from_canonical_u32(13),
             AB::Expr::zero(),
             is_real.clone(),
         );
-        builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
-            cols.clk_low_limb.into(),
-            AB::Expr::from_canonical_u32(14),
-            AB::Expr::zero(),
-            is_real.clone(),
-        );
+
+        builder.slice_range_check_u8(&[cols.clk_16_24.into(), AB::Expr::zero()], is_real.clone());
+    }
+}
+
+pub struct CPUStateInput<AB: SP1AirBuilder> {
+    pub cols: CPUState<AB::Var>,
+    pub next_pc: AB::Expr,
+    pub clk_increment: AB::Expr,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> CPUStateInput<AB> {
+    pub fn new(
+        cols: CPUState<AB::Var>,
+        next_pc: AB::Expr,
+        clk_increment: AB::Expr,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { cols, next_pc, clk_increment, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for CPUState<AB::F> {
+    type Input = CPUStateInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval(builder, input.cols, input.next_pc, input.clk_increment, input.is_real);
     }
 }

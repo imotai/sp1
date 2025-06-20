@@ -19,7 +19,7 @@ pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The current shard.
     pub lshard: LogicalShard,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The next program counter.
     pub next_pc_rel: u32,
     /// The exit code.

@@ -1,5 +1,6 @@
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field, PrimeField32};
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::events::ByteRecord;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
@@ -10,7 +11,7 @@ use sp1_stark::{
 use super::U16CompareOperation;
 
 /// A set of columns needed to range check a BabyBear word.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BabyBearWordRangeChecker<T> {
     /// Most significant limb is less than 15 * 2^11 = 30720.

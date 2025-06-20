@@ -5,7 +5,7 @@ use core::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::{
         field::{field_op::FieldOpCols, range::FieldLtCols},
@@ -34,7 +34,7 @@ use sp1_curves::{
     AffinePoint, CurveType, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::air::{InteractionScope, MachineAir};
 
 pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDoubleAssignCols<u8, P>>()
@@ -48,8 +48,8 @@ pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usi
 #[repr(C)]
 pub struct WeierstrassDoubleAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub p_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
@@ -334,8 +334,8 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
 
         // Populate basic columns.
         cols.is_real = F::one();
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
+        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
         cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u64 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y);
@@ -357,7 +357,7 @@ impl<F, E: EllipticCurve + WeierstrassParameters> BaseAir<F> for WeierstrassDoub
 
 impl<AB, E: EllipticCurve + WeierstrassParameters> Air<AB> for WeierstrassDoubleAssignChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -490,8 +490,8 @@ where
         }
 
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             &local.p_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -514,8 +514,8 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id_felt,
             p_ptr,
             [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],

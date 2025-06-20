@@ -192,6 +192,8 @@ where
             unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_finalize_addr_word: Word<Felt<_>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut initial_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
+        let mut current_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
 
         // Initialize the exit code variable.
         let mut prev_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -218,7 +220,7 @@ where
             // let contains_memory_finalize = shard_proof.contains_memory_finalize();
 
             // Get the public values.
-            let public_values: &PublicValues<[Felt<_>; 4], Word<Felt<_>>, Felt<_>> =
+            let public_values: &PublicValues<[Felt<_>; 4], Word<Felt<_>>, [Felt<_>; 4], Felt<_>> =
                 shard_proof.public_values.as_slice().borrow();
 
             // If this is the first proof in the batch, initialize the variables.
@@ -230,6 +232,10 @@ where
                 // Execution shard.
                 initial_execution_shard = public_values.execution_shard;
                 current_execution_shard = public_values.execution_shard;
+
+                // Timestamp.
+                initial_timestamp = public_values.initial_timestamp;
+                current_timestamp = public_values.initial_timestamp;
 
                 // Program counter.
                 pc_start_rel = public_values.pc_start_rel;
@@ -322,6 +328,15 @@ where
                     C::F::zero(),
                 );
 
+                for limb in initial_timestamp.iter().take(3) {
+                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
+                }
+
+                builder.assert_felt_eq(
+                    is_first_shard * (initial_timestamp[3] - C::F::one()),
+                    C::F::zero(),
+                );
+
                 // Assert that `init_addr_word` and `finalize_addr_word` are zero for the first
                 for limb in current_init_addr_word.0.iter() {
                     builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
@@ -374,6 +389,21 @@ where
             {
                 builder.assert_felt_eq(current_execution_shard, public_values.execution_shard);
                 current_execution_shard = public_values.next_execution_shard;
+            }
+
+            // Timestamp constraints.
+            {
+                for (limb, pub_limb) in
+                    current_timestamp.iter().zip(public_values.initial_timestamp.iter())
+                {
+                    builder.assert_felt_eq(*limb, *pub_limb);
+                }
+                for (limb, pub_limb) in
+                    current_timestamp.iter_mut().zip(public_values.last_timestamp.iter())
+                {
+                    builder.assert_felt_eq(not_cpu_shard * (*limb - *pub_limb), C::F::zero());
+                    *limb = *pub_limb;
+                }
             }
 
             // Program counter constraints.
@@ -567,6 +597,8 @@ where
             recursion_public_values.next_shard = current_shard;
             recursion_public_values.start_execution_shard = initial_execution_shard;
             recursion_public_values.next_execution_shard = current_execution_shard;
+            recursion_public_values.initial_timestamp = initial_timestamp;
+            recursion_public_values.last_timestamp = current_timestamp;
             recursion_public_values.previous_init_addr_word = initial_previous_init_addr_word;
             recursion_public_values.last_init_addr_word = current_init_addr_word;
             recursion_public_values.previous_finalize_addr_word =

@@ -27,7 +27,7 @@ pub(crate) const NUM_MEMORY_BUMP_COLS: usize = size_of::<MemoryBumpCols<u8>>();
 #[repr(C)]
 pub struct MemoryBumpCols<T: Copy> {
     pub access: MemoryAccessCols<T>,
-    pub shard: T,
+    pub clk_high: T,
     pub addr: [T; 3],
     pub is_real: T,
 }
@@ -35,7 +35,6 @@ pub struct MemoryBumpCols<T: Copy> {
 pub struct MemoryBumpChip {}
 
 impl MemoryBumpChip {
-    /// Creates a new memory chip with a certain type.
     pub const fn new() -> Self {
         Self {}
     }
@@ -58,7 +57,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
         let chunk_size = 1;
-        let event_iter = input.shard_bump_memory_events.chunks(chunk_size);
+        let event_iter = input.bump_memory_events.chunks(chunk_size);
 
         let blu_batches = event_iter
             .map(|events| {
@@ -70,8 +69,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                         value: event.prev_value(),
                         prev_shard: event.previous_record().shard,
                         prev_timestamp: event.previous_record().timestamp,
-                        shard: input.public_values.execution_shard as u32,
-                        timestamp: 0,
+                        shard: 0,
+                        timestamp: (event.current_record().timestamp >> 24) << 24,
                     });
                     cols.access.populate(bump_event, &mut blu);
                 });
@@ -83,7 +82,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
-        let nb_rows = input.shard_bump_memory_events.len();
+        let nb_rows = input.bump_memory_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         Some(next_multiple_of_32(nb_rows, size_log2))
     }
@@ -93,7 +92,6 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
         input: &Self::Record,
         _output: &mut Self::Record,
     ) -> RowMajorMatrix<F> {
-        assert!(input.shard_bump_memory_events.len() <= 32);
         let chunk_size = 1;
         let padded_nb_rows = <MemoryBumpChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_MEMORY_BUMP_COLS);
@@ -103,18 +101,19 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                 let idx = i * chunk_size + j;
                 let cols: &mut MemoryBumpCols<F> = row.borrow_mut();
 
-                if idx < input.shard_bump_memory_events.len() {
+                if idx < input.bump_memory_events.len() {
                     let mut byte_lookup_events = Vec::new();
-                    let (event, addr) = input.shard_bump_memory_events[idx];
+                    let (event, addr) = input.bump_memory_events[idx];
                     let bump_event = MemoryRecordEnum::Read(MemoryReadRecord {
                         value: event.prev_value(),
                         prev_shard: event.previous_record().shard,
                         prev_timestamp: event.previous_record().timestamp,
-                        shard: input.public_values.execution_shard as u32,
-                        timestamp: 0,
+                        shard: 0,
+                        timestamp: (event.current_record().timestamp >> 24) << 24,
                     });
                     cols.access.populate(bump_event, &mut byte_lookup_events);
-                    cols.shard = F::from_canonical_u32(input.public_values.execution_shard);
+                    cols.clk_high =
+                        F::from_canonical_u32((event.current_record().timestamp >> 24) as u32);
                     cols.addr = [
                         F::from_canonical_u16((addr & 0xFFFF) as u16),
                         F::from_canonical_u16((addr >> 16) as u16),
@@ -148,7 +147,7 @@ where
         let local: &MemoryBumpCols<AB::Var> = (*local).borrow();
         builder.assert_bool(local.is_real);
         builder.eval_memory_access_read(
-            local.shard,
+            local.clk_high,
             AB::Expr::zero(),
             &local.addr.map(Into::into),
             local.access,

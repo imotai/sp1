@@ -1,10 +1,13 @@
-use crate::adapter::{register::jalr_type::JalrTypeReader, state::CPUState};
+use crate::{
+    adapter::{register::jalr_type::JalrTypeReader, state::CPUState},
+    air::SP1CoreAirBuilder,
+};
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, PC_INC};
+use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
+use sp1_stark::air::BaseAirBuilder;
 use std::borrow::Borrow;
 
 use crate::operations::{AddOperation, BabyBearWordRangeChecker};
@@ -13,7 +16,7 @@ use super::{JalrChip, JalrColumns};
 
 impl<AB> Air<AB> for JalrChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]
@@ -44,15 +47,15 @@ where
             builder,
             local.state,
             next_pc_rel.reduce::<AB>(),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
         // Constrain the program and register reads.
         JalrTypeReader::<AB::F>::eval(
             builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc_rel,
             opcode,
             local.op_a_value,

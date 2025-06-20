@@ -50,7 +50,7 @@ impl Groth16Verifier {
         sp1_vkey_hash: &str,
         groth16_vk: &[u8],
     ) -> Result<(), Groth16Error> {
-        if proof.len() < VK_HASH_PREFIX_LENGTH {
+        if proof.len() < VK_HASH_PREFIX_LENGTH + 32 + 32 {
             return Err(Groth16Error::GeneralError(Error::InvalidData));
         }
 
@@ -70,21 +70,34 @@ impl Groth16Verifier {
 
         let sp1_vkey_hash = decode_sp1_vkey_hash(sp1_vkey_hash)?;
 
+        let exit_code = proof[VK_HASH_PREFIX_LENGTH..VK_HASH_PREFIX_LENGTH + 32]
+            .try_into()
+            .map_err(|_| Groth16Error::GeneralError(Error::InvalidData))?;
+
+        let vk_root = proof[VK_HASH_PREFIX_LENGTH + 32..VK_HASH_PREFIX_LENGTH + 64]
+            .try_into()
+            .map_err(|_| Groth16Error::GeneralError(Error::InvalidData))?;
+
         // It is computationally infeasible to find two distinct inputs, one processed with
         // SHA256 and the other with Blake3, that yield the same hash value.
         if Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH..],
-            &[sp1_vkey_hash, hash_public_inputs(sp1_public_inputs)],
+            &proof[VK_HASH_PREFIX_LENGTH + 64..],
+            &[sp1_vkey_hash, hash_public_inputs(sp1_public_inputs), exit_code, vk_root],
             groth16_vk,
         )
         .is_ok()
         {
-            return Ok(())
+            return Ok(());
         }
 
         Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH..],
-            &[sp1_vkey_hash, hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash)],
+            &proof[VK_HASH_PREFIX_LENGTH + 64..],
+            &[
+                sp1_vkey_hash,
+                hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash),
+                exit_code,
+                vk_root,
+            ],
             groth16_vk,
         )
     }

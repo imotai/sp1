@@ -22,6 +22,7 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
         next_pc_rel,
         start_shard,
         next_shard,
+        initial_timestamp,
         start_execution_shard,
         start_reconstruct_deferred_digest,
         end_reconstruct_deferred_digest,
@@ -44,6 +45,13 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
 
     // Assert that the start execution shard is equal to 1.
     builder.assert_felt_eq(is_complete * (*start_execution_shard - C::F::one()), C::F::zero());
+
+    // Assert that the initial timestamp is equal to 1.
+    for limb in initial_timestamp.iter().take(3) {
+        builder.assert_felt_eq(is_complete * *limb, C::F::zero());
+    }
+
+    builder.assert_felt_eq(is_complete * (initial_timestamp[3] - C::F::one()), C::F::zero());
 
     // Assert that the starting prev_exit_code is equal to 0.
     builder.assert_felt_eq(is_complete * *prev_exit_code, C::F::zero());

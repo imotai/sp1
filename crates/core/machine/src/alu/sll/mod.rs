@@ -12,15 +12,18 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
-    adapter::{register::alu_type::ALUTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::CPUState,
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     operations::{U16MSBOperation, U16toU8Operation},
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
@@ -117,12 +120,7 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
             let mut blu = Vec::new();
             let instruction = input.program.fetch(event.0.pc_rel);
             self.event_to_row(&event.0, cols, &mut blu);
-            cols.state.populate(
-                &mut blu,
-                input.public_values.execution_shard as u32,
-                event.0.clk,
-                event.0.pc_rel,
-            );
+            cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
             cols.adapter.populate(&mut blu, instruction, event.1);
             rows.push(row);
         }
@@ -172,12 +170,7 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
                     let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
                     let instruction = input.program.fetch(event.0.pc_rel);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(
-                        &mut blu,
-                        input.public_values.execution_shard as u32,
-                        event.0.clk,
-                        event.0.pc_rel,
-                    );
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -470,21 +463,21 @@ where
             builder,
             local.state,
             local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
 
         // Constrain the program and register reads.
-        ALUTypeReader::<AB::F>::eval(
-            builder,
-            local.state.shard::<AB>(),
-            local.state.clk::<AB>(),
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
             local.state.pc_rel,
             opcode,
-            local.a,
+            local.a.map(|x| x.into()),
             local.adapter,
             is_real.clone(),
         );
+        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }
 }
 

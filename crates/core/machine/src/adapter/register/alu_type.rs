@@ -1,5 +1,6 @@
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field, PrimeField32};
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     ALUTypeRecord, Instruction,
@@ -9,14 +10,14 @@ use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
-    air::{SP1CoreAirBuilder, WordAirBuilder},
+    air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},
     cpu::columns::InstructionCols,
     memory::MemoryAccessInShardCols,
 };
 
 /// A set of columns to read operations with op_a and op_b being registers and op_c being a register
 /// or immediate.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ALUTypeReader<T> {
     pub op_a: T,
@@ -68,10 +69,10 @@ impl<F: PrimeField32> ALUTypeReader<F> {
 
 impl<F: Field> ALUTypeReader<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn eval<AB: SP1CoreAirBuilder>(
+    fn eval_alu_reader<AB: SP1AirBuilder + MemoryAirBuilder + ProgramAirBuilder>(
         builder: &mut AB,
-        shard: impl Into<AB::Expr> + Clone,
-        clk: AB::Expr,
+        clk_high: AB::Expr,
+        clk_low: AB::Expr,
         pc_rel: AB::Var,
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
@@ -95,24 +96,24 @@ impl<F: Field> ALUTypeReader<F> {
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
-            shard.clone(),
-            clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
+            clk_high.clone(),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
             [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real.clone(),
         );
         builder.eval_memory_access_in_shard_read(
-            shard.clone(),
-            clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
+            clk_high.clone(),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
             [cols.op_b.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_b_memory,
             is_real.clone(),
         );
         // Read the `op_c[0]` register only when `imm_c` is zero and `is_real` is true.
         builder.eval_memory_access_in_shard_read(
-            shard.clone(),
-            clk.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::C as u32),
+            clk_high.clone(),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::C as u32),
             [cols.op_c[0].into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_c_memory,
             is_real - cols.imm_c,
@@ -122,15 +123,66 @@ impl<F: Field> ALUTypeReader<F> {
         builder.when(cols.imm_c).assert_word_eq(cols.op_c_memory.prev_value, cols.op_c);
     }
 
-    pub fn eval_op_a_immutable<AB: SP1AirBuilder>(
+    pub fn eval_op_a_immutable<AB: SP1AirBuilder + MemoryAirBuilder + ProgramAirBuilder>(
         builder: &mut AB,
-        shard: impl Into<AB::Expr> + Clone,
-        clk: AB::Expr,
+        clk_high: AB::Expr,
+        clk_low: AB::Expr,
         pc_rel: AB::Var,
         opcode: impl Into<AB::Expr>,
         cols: ALUTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
-        Self::eval(builder, shard, clk, pc_rel, opcode, cols.op_a_memory.prev_value, cols, is_real);
+        Self::eval_alu_reader(
+            builder,
+            clk_high,
+            clk_low,
+            pc_rel,
+            opcode,
+            cols.op_a_memory.prev_value,
+            cols,
+            is_real,
+        );
+    }
+}
+
+pub struct ALUTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
+    pub clk_high: AB::Expr,
+    pub clk_low: AB::Expr,
+    pub pc: AB::Var,
+    pub opcode: AB::Expr,
+    pub op_a_write_value: Word<T>,
+    pub cols: ALUTypeReader<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> ALUTypeReaderInput<AB, T> {
+    pub fn new(
+        clk_high: AB::Expr,
+        clk_low: AB::Expr,
+        pc: AB::Var,
+        opcode: AB::Expr,
+        op_a_write_value: Word<T>,
+        cols: ALUTypeReader<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { clk_high, clk_low, pc, opcode, op_a_write_value, cols, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for ALUTypeReader<AB::F> {
+    type Input = ALUTypeReaderInput<AB, AB::Expr>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval_alu_reader(
+            builder,
+            input.clk_high,
+            input.clk_low,
+            input.pc,
+            input.opcode,
+            input.op_a_write_value,
+            input.cols,
+            input.is_real,
+        )
     }
 }

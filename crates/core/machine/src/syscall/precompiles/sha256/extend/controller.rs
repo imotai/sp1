@@ -27,8 +27,8 @@ pub const NUM_SHA_EXTEND_CONTROL_COLS: usize = size_of::<ShaExtendControlCols<u8
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ShaExtendControlCols<T> {
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub w_ptr: SyscallAddrOperation<T>,
     pub is_real: T,
 }
@@ -66,8 +66,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
                 if let PrecompileEvent::ShaExtend(event) = event { event } else { unreachable!() };
             let mut row = [F::zero(); NUM_SHA_EXTEND_CONTROL_COLS];
             let cols: &mut ShaExtendControlCols<F> = row.as_mut_slice().borrow_mut();
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.w_ptr.populate(&mut blu_events, event.w_ptr, 256);
             cols.is_real = F::one();
             rows.push(row);
@@ -122,8 +122,8 @@ where
 
         // Receive the syscall.
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::SHA_EXTEND.syscall_id()),
             w_ptr.clone(),
             [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
@@ -135,8 +135,8 @@ where
         // builder.send(
         //     AirInteraction::new(
         //         vec![
-        //             local.shard.into(),
-        //             local.clk.into(),
+        //             local.clk_high.into(),
+        //             local.clk_low.into(),
         //             w_ptr.clone(),
         //             AB::Expr::from_canonical_u32(16),
         //         ],
@@ -150,8 +150,8 @@ where
         // builder.receive(
         //     AirInteraction::new(
         //         vec![
-        //             local.shard.into(),
-        //             local.clk.into(),
+        //             local.clk_high.into(),
+        //             local.clk_low.into(),
         //             w_ptr.clone(),
         //             AB::Expr::from_canonical_u32(64),
         //         ],

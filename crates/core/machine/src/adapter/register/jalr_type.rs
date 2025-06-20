@@ -99,16 +99,4 @@ impl<F: Field> JalrTypeReader<F> {
             is_real,
         );
     }
-
-    pub fn eval_op_a_immutable<AB: SP1AirBuilder>(
-        builder: &mut AB,
-        shard: impl Into<AB::Expr> + Clone,
-        clk: AB::Expr,
-        pc_rel: AB::Var,
-        opcode: impl Into<AB::Expr>,
-        cols: JalrTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) {
-        Self::eval(builder, shard, clk, pc_rel, opcode, cols.op_a_memory.prev_value, cols, is_real);
-    }
 }

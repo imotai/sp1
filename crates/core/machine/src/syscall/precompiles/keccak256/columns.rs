@@ -11,8 +11,8 @@ use sp1_derive::AlignedBorrow;
 pub struct KeccakMemCols<T> {
     /// Keccak columns from p3_keccak_air. Note it is assumed in trace gen to be the first field.
     pub keccak: KeccakCols<T>,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub state_addr: [T; 3],
     pub index: T,
     pub is_real: T,

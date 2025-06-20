@@ -5,7 +5,7 @@ use core::{
 use std::fmt::Debug;
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
     operations::{
         field::{
@@ -40,7 +40,7 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder},
+    air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };
 use std::marker::PhantomData;
@@ -56,8 +56,8 @@ pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() ->
 #[repr(C)]
 pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub ptr: SyscallAddrOperation<T>,
     pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
     pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
@@ -217,8 +217,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 row[0..weierstrass_width].borrow_mut();
 
             cols.is_real = F::from_bool(true);
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u64 * 2);
             cols.sign_bit = F::from_bool(event.sign_bit);
 
@@ -351,7 +351,7 @@ impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassDecompressChip<E> {
 
 impl<AB, E: EllipticCurve + WeierstrassParameters> Air<AB> for WeierstrassDecompressChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -566,8 +566,8 @@ where
 
         for i in 0..num_words_field_element {
             builder.eval_memory_access_read(
-                local.shard,
-                local.clk,
+                local.clk_high,
+                local.clk_low,
                 &local.x_addrs[i].value.map(Into::into),
                 local.x_access[i].memory_access,
                 local.is_real,
@@ -575,8 +575,8 @@ where
         }
         for i in 0..num_words_field_element {
             builder.eval_memory_access_write(
-                local.shard,
-                local.clk,
+                local.clk_high,
+                local.clk_low,
                 &local.y_addrs[i].value.map(Into::into),
                 local.y_access[i],
                 local.y_value[i],
@@ -598,8 +598,8 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id,
             ptr,
             [local.sign_bit.into(), AB::Expr::zero(), AB::Expr::zero()],

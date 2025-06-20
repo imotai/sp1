@@ -4,9 +4,7 @@ use std::{
 };
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
-    memory::MemoryAccessColsU8,
-    operations::SyscallAddrOperation,
+    air::SP1CoreAirBuilder, memory::MemoryAccessColsU8, operations::SyscallAddrOperation,
     utils::zeroed_f_vec,
 };
 use generic_array::GenericArray;
@@ -26,7 +24,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::air::{InteractionScope, MachineAir};
 use std::mem::size_of;
 use typenum::Unsigned;
 
@@ -44,8 +42,9 @@ pub const fn num_fp2_mul_cols<P: FieldParameters + NumWords>() -> usize {
 #[repr(C)]
 pub struct Fp2MulAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
+
     pub x_ptr: SyscallAddrOperation<T>,
     pub y_ptr: SyscallAddrOperation<T>,
     pub x_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
@@ -179,8 +178,8 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
             let q_y = BigUint::from_bytes_le(&words_to_bytes_le_vec(&q[q.len() / 2..]));
 
             cols.is_real = F::one();
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u64 * 2);
             cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u64 * 2);
 
@@ -263,7 +262,7 @@ impl<F, P: FpOpField> BaseAir<F> for Fp2MulAssignChip<P> {
 
 impl<AB, P: FpOpField> Air<AB> for Fp2MulAssignChip<P>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -374,16 +373,16 @@ where
         );
 
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low,
             &local.y_addrs.iter().map(|addr| addr.map(Into::into)).collect_vec(),
             &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
         // We read p at +1 since p, q could be the same.
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             &local.x_addrs.iter().map(|addr| addr.map(Into::into)).collect_vec(),
             &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -398,8 +397,8 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id_felt,
             x_ptr,
             y_ptr,

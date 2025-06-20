@@ -1,11 +1,10 @@
 use std::borrow::BorrowMut;
 
+use crate::utils::zeroed_f_vec;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
-use sp1_core_executor::{ByteOpcode, ExecutionRecord, Program};
+use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
 use sp1_stark::air::MachineAir;
-
-use crate::utils::zeroed_f_vec;
 
 use super::{
     columns::{RangeMultCols, NUM_RANGE_MULT_COLS, NUM_RANGE_PREPROCESSED_COLS},
@@ -36,8 +35,16 @@ impl<F: PrimeField32> MachineAir<F> for RangeChip<F> {
         Some(trace)
     }
 
-    fn generate_dependencies(&self, _input: &ExecutionRecord, _output: &mut ExecutionRecord) {
-        // Do nothing since this chip has no dependencies.
+    fn generate_dependencies(&self, input: &ExecutionRecord, output: &mut ExecutionRecord) {
+        let initial_timestamp_0 = ((input.public_values.initial_timestamp >> 32) & 0xFFFF) as u16;
+        let initial_timestamp_3 = (input.public_values.initial_timestamp & 0xFFFF) as u16;
+        let last_timestamp_0 = ((input.public_values.last_timestamp >> 32) & 0xFFFF) as u16;
+        let last_timestamp_3 = (input.public_values.last_timestamp & 0xFFFF) as u16;
+
+        output.add_bit_range_check(initial_timestamp_0, 16);
+        output.add_bit_range_check(initial_timestamp_3, 16);
+        output.add_bit_range_check(last_timestamp_0, 16);
+        output.add_bit_range_check(last_timestamp_3, 16);
     }
 
     fn generate_trace(

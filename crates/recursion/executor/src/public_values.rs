@@ -101,6 +101,12 @@ pub struct RecursionPublicValues<T> {
     /// Next execution shard that should be proven.
     pub next_execution_shard: T,
 
+    /// The initial timestamp.
+    pub initial_timestamp: [T; 4],
+
+    /// The last timestamp.
+    pub last_timestamp: [T; 4],
+
     /// Previous MemoryInit address word.
     pub previous_init_addr_word: Word<T>,
 

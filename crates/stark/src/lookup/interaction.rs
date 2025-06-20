@@ -1,6 +1,7 @@
 use core::fmt::{Debug, Display};
 use std::ops::Mul;
 
+use serde::{Deserialize, Serialize};
 use slop_air::{PairCol, VirtualPairCol};
 use slop_algebra::{AbstractField, Field};
 use slop_multilinear::MleEval;
@@ -21,7 +22,7 @@ pub struct Interaction<F: Field> {
 }
 
 /// The type of interaction for a lookup argument.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum InteractionKind {
     /// Interaction with the memory table, such as read and write.
     Memory = 1,

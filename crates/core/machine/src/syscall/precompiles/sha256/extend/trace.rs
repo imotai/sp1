@@ -110,8 +110,9 @@ impl ShaExtendChip {
             cols.is_real = F::one();
             let i = j as u64 + 16;
             cols.i = F::from_canonical_u64(i);
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            cols.next_clk.populate(blu, event.clk, j as u64);
             cols.w_ptr = [
                 F::from_canonical_u64((event.w_ptr & 0xFFFF) as u64),
                 F::from_canonical_u64(((event.w_ptr >> 16) & 0xFFFF) as u64),

@@ -54,11 +54,11 @@ impl SyscallChip {
 #[derive(AlignedBorrow, Clone, Copy)]
 #[repr(C)]
 pub struct SyscallCols<T: Copy> {
-    /// The shard number of the syscall.
-    pub shard: T,
+    /// The high bits of the clk of the syscall.
+    pub clk_high: T,
 
-    /// The clk of the syscall.
-    pub clk: T,
+    /// The low bits of clk of the syscall.
+    pub clk_low: T,
 
     /// The syscall_id of the syscall.
     pub syscall_id: T,
@@ -105,8 +105,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             .filter(|e| e.should_send)
             .map(|event| GlobalInteractionEvent {
                 message: [
-                    event.shard,
-                    event.clk,
+                    (event.clk >> 24) as u32,
+                    (event.clk & 0xFFFFFF) as u32,
                     event.syscall_id + (1 << 8) * (event.arg1 & 0xFFFF) as u32,
                     ((event.arg1 >> 16) & 0xFFFF) as u32,
                     ((event.arg1 >> 32) & 0xFFFF) as u32,
@@ -151,8 +151,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             let mut row = [F::zero(); NUM_SYSCALL_COLS];
             let cols: &mut SyscallCols<F> = row.as_mut_slice().borrow_mut();
 
-            cols.shard = F::from_canonical_u32(syscall_event.shard);
-            cols.clk = F::from_canonical_u32(syscall_event.clk);
+            cols.clk_high = F::from_canonical_u32((syscall_event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((syscall_event.clk & 0xFFFFFF) as u32);
             cols.syscall_id = F::from_canonical_u32(syscall_event.syscall_code.syscall_id());
             cols.arg1 = [
                 F::from_canonical_u64((syscall_event.arg1 & 0xFFFF) as u64),
@@ -165,8 +165,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                 F::from_canonical_u64(((syscall_event.arg2 >> 32) & 0xFFFF) as u64),
             ];
             cols.message = [
-                F::from_canonical_u32(syscall_event.shard),
-                F::from_canonical_u32(syscall_event.clk),
+                F::from_canonical_u64(syscall_event.clk >> 24),
+                F::from_canonical_u64(syscall_event.clk & 0xFFFFFF),
                 F::from_canonical_u32(
                     syscall_event.syscall_code.syscall_id()
                         + (1 << 8) * (syscall_event.arg1 & 0xFFFF) as u32,
@@ -257,8 +257,8 @@ where
         match self.shard_kind {
             SyscallShardKind::Core => {
                 builder.receive_syscall(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     local.syscall_id,
                     local.arg1.map(Into::into),
                     local.arg2.map(Into::into),
@@ -290,8 +290,8 @@ where
             }
             SyscallShardKind::Precompile => {
                 builder.send_syscall(
-                    local.shard,
-                    local.clk,
+                    local.clk_high,
+                    local.clk_low,
                     local.syscall_id,
                     local.arg1.map(Into::into),
                     local.arg2.map(Into::into),

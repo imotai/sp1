@@ -56,12 +56,7 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
                             .program
                             .fetch(event.0.pc_rel)
                             .preprocess_branch::<F>(event.0.pc_rel);
-                        cols.state.populate(
-                            &mut blu,
-                            input.public_values.execution_shard as u32,
-                            event.0.clk,
-                            event.0.pc_rel,
-                        );
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

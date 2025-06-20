@@ -125,9 +125,6 @@ impl KeccakPermuteChip {
         chunk: &mut [F],
         _: &mut Vec<ByteLookupEvent>,
     ) {
-        let start_clk = event.clk;
-        let shard = event.shard;
-
         let p3_keccak_trace = generate_trace_rows::<F>(vec![event.pre_state]);
 
         // Create all the rows for the permutation.
@@ -137,9 +134,8 @@ impl KeccakPermuteChip {
             // Copy p3_keccak_row into start of cols
             row[..NUM_KECCAK_COLS].copy_from_slice(p3_keccak_row.collect::<Vec<_>>().as_slice());
             let cols: &mut KeccakMemCols<F> = row.borrow_mut();
-
-            cols.shard = F::from_canonical_u32(shard);
-            cols.clk = F::from_canonical_u32(start_clk);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             cols.state_addr = [
                 F::from_canonical_u16((event.state_addr & 0xFFFF) as u16),
                 F::from_canonical_u16((event.state_addr >> 16) as u16),

@@ -5,7 +5,7 @@ use core::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    air::{MemoryAirBuilder, SP1CoreAirBuilder},
+    air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::{
         field::{field_op::FieldOpCols, range::FieldLtCols},
@@ -35,7 +35,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::air::{InteractionScope, MachineAir};
 use typenum::Unsigned;
 
 pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize {
@@ -50,8 +50,8 @@ pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize 
 #[repr(C)]
 pub struct WeierstrassAddAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub q_ptr: SyscallAddrOperation<T>,
     pub p_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
@@ -312,7 +312,7 @@ impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassAddAssignChip<E> {
 
 impl<AB, E: EllipticCurve> Air<AB> for WeierstrassAddAssignChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -471,16 +471,16 @@ where
         }
 
         builder.eval_memory_access_slice_read(
-            local.shard,
-            local.clk.into(),
+            local.clk_high,
+            local.clk_low.into(),
             &local.q_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
         // We read p at +1 since p, q could be the same.
         builder.eval_memory_access_slice_write(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1),
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
             &local.p_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
@@ -503,8 +503,8 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low.into(),
             syscall_id_felt,
             p_ptr,
             q_ptr,
@@ -530,8 +530,9 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
 
         // Populate basic columns.
         cols.is_real = F::one();
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
+
+        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
         cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u64 * 2);
         cols.q_ptr.populate(new_byte_lookup_events, event.q_ptr, E::NB_LIMBS as u64 * 2);
 

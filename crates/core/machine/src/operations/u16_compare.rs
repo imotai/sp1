@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
@@ -7,7 +8,7 @@ use sp1_stark::air::SP1AirBuilder;
 use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct U16CompareOperation<T> {
     /// The result of the compare operation (1 if a < b, 0 if a >= b)

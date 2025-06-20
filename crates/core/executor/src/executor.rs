@@ -43,6 +43,8 @@ pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 /// The increment for the program counter.  Is used for all instructions except
 /// for branches and jumps.
 pub const PC_INC: u32 = 4;
+/// The default increment for the timestamp.
+pub const CLK_INC: u32 = 8;
 /// The executor uses this PC to determine if the program has halted.
 /// As a PC, it is invalid since it is not a multiple of [`PC_INC`].
 pub const HALT_PC_REL: u32 = 1;
@@ -550,8 +552,8 @@ impl<'a> Executor<'a> {
 
     /// Get the current timestamp for a given memory access position.
     #[must_use]
-    pub const fn timestamp(&self, position: &MemoryAccessPosition) -> u32 {
-        self.state.clk + *position as u32
+    pub const fn timestamp(&self, position: &MemoryAccessPosition) -> u64 {
+        self.state.clk + *position as u64
     }
 
     /// Get the current shard.
@@ -573,7 +575,7 @@ impl<'a> Executor<'a> {
         &mut self,
         addr: u64,
         lshard: LogicalShard,
-        timestamp: u32,
+        timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
         // Check that the memory address is within the babybear field and not within the registers'
@@ -659,7 +661,7 @@ impl<'a> Executor<'a> {
         &mut self,
         register: Register,
         lshard: LogicalShard,
-        timestamp: u32,
+        timestamp: u64,
     ) -> u64 {
         // Get the memory record entry.
         let addr = register as u64;
@@ -717,7 +719,7 @@ impl<'a> Executor<'a> {
         &mut self,
         register: Register,
         lshard: LogicalShard,
-        timestamp: u32,
+        timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
         // Get the memory record entry.
@@ -791,7 +793,7 @@ impl<'a> Executor<'a> {
         addr: u64,
         value: u64,
         lshard: LogicalShard,
-        timestamp: u32,
+        timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
         // Check that the memory address is within the babybear field and not within the registers'
@@ -877,7 +879,7 @@ impl<'a> Executor<'a> {
         register: Register,
         value: u64,
         lshard: LogicalShard,
-        timestamp: u32,
+        timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
         let addr = register as u64;
@@ -963,7 +965,7 @@ impl<'a> Executor<'a> {
         register: Register,
         value: u64,
         lshard: LogicalShard,
-        timestamp: u32,
+        timestamp: u64,
     ) {
         let addr = register as u64;
         // Get the memory record entry.
@@ -1109,7 +1111,7 @@ impl<'a> Executor<'a> {
     #[allow(clippy::too_many_arguments)]
     fn emit_events(
         &mut self,
-        clk: u32,
+        clk: u64,
         next_pc_rel: u32,
         instruction: &Instruction,
         syscall_code: SyscallCode,
@@ -1125,19 +1127,25 @@ impl<'a> Executor<'a> {
         self.record.exit_code = exit_code;
         self.record.cpu_event_count += 1;
 
+        let increment = self.state.clk + 8 - clk;
+
+        if clk % (1 << 24) + increment >= (1 << 24) {
+            self.record.bump_clk_high_events.push((clk, increment, next_pc_rel));
+        }
+
         if let Some(x) = self.memory_accesses.a {
-            if x.current_record().shard != x.previous_record().shard {
-                self.record.shard_bump_memory_events.push((x, instruction.op_a as u64));
+            if x.current_record().timestamp >> 24 != x.previous_record().timestamp >> 24 {
+                self.record.bump_memory_events.push((x, instruction.op_a as u64));
             }
         }
         if let Some(x) = self.memory_accesses.b {
-            if x.current_record().shard != x.previous_record().shard {
-                self.record.shard_bump_memory_events.push((x, instruction.op_b));
+            if x.current_record().timestamp >> 24 != x.previous_record().timestamp >> 24 {
+                self.record.bump_memory_events.push((x, instruction.op_b));
             }
         }
         if let Some(x) = self.memory_accesses.c {
-            if x.current_record().shard != x.previous_record().shard {
-                self.record.shard_bump_memory_events.push((x, instruction.op_c));
+            if x.current_record().timestamp >> 24 != x.previous_record().timestamp >> 24 {
+                self.record.bump_memory_events.push((x, instruction.op_c));
             }
         }
 
@@ -1397,7 +1405,7 @@ impl<'a> Executor<'a> {
     #[inline]
     pub(crate) fn syscall_event(
         &self,
-        clk: u32,
+        clk: u64,
         syscall_code: SyscallCode,
         arg1: u64,
         arg2: u64,
@@ -1427,7 +1435,7 @@ impl<'a> Executor<'a> {
     #[allow(clippy::too_many_arguments)]
     fn emit_syscall_event(
         &mut self,
-        clk: u32,
+        clk: u64,
         syscall_code: SyscallCode,
         arg1: u64,
         arg2: u64,
@@ -1602,7 +1610,7 @@ impl<'a> Executor<'a> {
         self.state.pc_rel = next_pc_rel;
 
         // Update the clk to the next cycle.
-        self.state.clk += 4;
+        self.state.clk += 8;
 
         Ok(())
     }
@@ -1824,7 +1832,7 @@ impl<'a> Executor<'a> {
     #[allow(clippy::type_complexity)]
     fn execute_ecall<E: ExecutorConfig>(
         &mut self,
-    ) -> Result<(u64, u64, u64, u32, u32, SyscallCode, u32), ExecutionError> {
+    ) -> Result<(u64, u64, u64, u64, u32, SyscallCode, u32), ExecutionError> {
         // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
         // register is that we write to it later.
         let t0 = Register::X5;
@@ -1866,7 +1874,7 @@ impl<'a> Executor<'a> {
         }
 
         let mut precompile_rt: SyscallContext<'_, '_, E> = SyscallContext::new(self, external);
-        let (a, precompile_next_pc, precompile_cycles, returned_exit_code) = {
+        let (a, precompile_next_pc, _, returned_exit_code) = {
             // Executing a syscall optionally returns a value to write to the t0
             // register. If it returns None, we just keep the
             // syscall_id in t0.
@@ -1912,7 +1920,7 @@ impl<'a> Executor<'a> {
         // Allow the syscall impl to modify state.clk/pc (exit unconstrained does this)
         self.rw_cpu::<E>(t0, a);
         let clk = self.state.clk;
-        self.state.clk += precompile_cycles;
+        self.state.clk += 256;
 
         Ok((a, b, c, clk, precompile_next_pc, syscall, returned_exit_code))
     }
@@ -1971,9 +1979,6 @@ impl<'a> Executor<'a> {
         }
 
         if !E::UNCONSTRAINED {
-            // If there's not enough cycles left for another instruction, move to the next shard.
-            let cpu_exit = self.max_syscall_cycles + self.state.clk >= self.shard_size;
-
             // Every N cycles, check if there exists at least one shape that fits.
             //
             // If we're close to not fitting, early stop the shard to ensure we don't OOM.
@@ -1993,8 +1998,11 @@ impl<'a> Executor<'a> {
                 {
                     let padded_event_counts =
                         pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
+                    let bump_clk_high =
+                        (self.state.clk >> 24) + 1 - (self.record.initial_timestamp >> 24);
                     let (padded_element_count, max_height) = estimate_trace_elements(
                         padded_event_counts,
+                        bump_clk_high,
                         &self.costs,
                         self.program_len,
                         &self.internal_syscalls_override,
@@ -2011,11 +2019,10 @@ impl<'a> Executor<'a> {
                 }
             }
 
-            if cpu_exit || !maximal_size_reached {
+            if !maximal_size_reached {
                 self.state.current_shard = Shard::new(self.state.current_shard.get() + 1)
                     .expect("Shard number should not overflow");
                 self.record.last_timestamp = self.state.clk;
-                self.state.clk = 1;
                 self.bump_record::<E>();
             }
 
@@ -2048,8 +2055,10 @@ impl<'a> Executor<'a> {
             // The above method estimates event counts only for core shards.
             estimator.core_records.push(self.event_counts);
         }
+        let bump_clk_high = (self.state.clk >> 24) + 1 - (self.record.initial_timestamp >> 24);
         self.record.estimated_trace_area = estimate_trace_elements(
             self.event_counts,
+            bump_clk_high,
             &self.costs,
             self.program_len,
             &self.internal_syscalls_override,
@@ -2072,6 +2081,7 @@ impl<'a> Executor<'a> {
         );
         let public_values = removed_record.public_values;
         self.record.public_values = public_values;
+        self.record.initial_timestamp = self.state.clk;
         self.records.push(removed_record);
     }
 
@@ -2101,7 +2111,7 @@ impl<'a> Executor<'a> {
     pub fn execute_state(
         &mut self,
         emit_global_memory_events: bool,
-    ) -> Result<(ExecutionState, PublicValues<u64, u64, u32>, bool), ExecutionError> {
+    ) -> Result<(ExecutionState, PublicValues<u64, u64, u64, u32>, bool), ExecutionError> {
         self.memory_checkpoint.clear();
         self.emit_global_memory_events = emit_global_memory_events;
 
@@ -2256,6 +2266,8 @@ impl<'a> Executor<'a> {
             self.initialize();
         }
 
+        self.record.initial_timestamp = self.state.clk;
+
         let unconstrained_cycle_limit =
             std::env::var("UNCONSTRAINED_CYCLE_LIMIT").map(|v| v.parse::<u64>().unwrap()).ok();
 
@@ -2329,13 +2341,13 @@ impl<'a> Executor<'a> {
                 record.public_values.pc_start_rel = record.pc_start_rel.unwrap();
                 record.public_values.next_pc_rel = record.next_pc_rel;
                 record.public_values.exit_code = record.exit_code as u32;
-                record.public_values.last_timestamp = record.last_timestamp as u32;
+                record.public_values.last_timestamp = record.last_timestamp;
+                record.public_values.initial_timestamp = record.initial_timestamp;
                 last_next_pc = record.public_values.next_pc_rel;
                 last_exit_code = record.public_values.exit_code;
             } else {
                 record.public_values.pc_start_rel = last_next_pc;
                 record.public_values.next_pc_rel = last_next_pc;
-                record.public_values.last_timestamp = 1;
                 record.public_values.prev_exit_code = last_exit_code;
                 record.public_values.exit_code = last_exit_code;
             }
