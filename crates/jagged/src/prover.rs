@@ -2,6 +2,7 @@ use derive_where::derive_where;
 use futures::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
+use tracing::Instrument;
 
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::mem::CopyError;
@@ -321,6 +322,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
                 &z_row_backend,
                 &z_col_backend,
             )
+            .instrument(tracing::debug_span!("create jagged sumcheck poly"))
             .await;
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
@@ -339,6 +341,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             1,
             C::EF::one(),
         )
+        .instrument(tracing::debug_span!("jagged sumcheck"))
         .await;
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
@@ -353,6 +356,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
                 challenger,
                 backend.clone(),
             )
+            .instrument(tracing::debug_span!("jagged evaluation proof"))
             .await;
 
         let (_, stack_point) = final_eval_point
@@ -378,6 +382,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
                 batch_evaluations,
                 challenger,
             )
+            .instrument(tracing::debug_span!("Dense PCS evaluation proof"))
             .await
             .unwrap();
 
