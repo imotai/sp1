@@ -201,9 +201,9 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
 
                         state.committed_value_digest = record.public_values.committed_value_digest;
                         state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
+                        record.public_values = *state;
                         state.prev_exit_code = record.public_values.exit_code;
                         state.initial_timestamp = record.public_values.last_timestamp;
-                        record.public_values = *state;
                     }
 
                     // Defer events that are too expensive to include in every shard.

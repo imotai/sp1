@@ -12,7 +12,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
@@ -182,7 +182,7 @@ where
             builder,
             local.state,
             local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-            AB::Expr::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 

@@ -211,8 +211,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                         let final_value_byte0 = (event.final_mem_access.value >> 32) & 0xFF;
                         let final_value_byte1 = (event.final_mem_access.value >> 40) & 0xFF;
                         cols.final_message = [
-                            F::from_canonical_u64(event.initial_mem_access.timestamp >> 24),
-                            F::from_canonical_u64(event.initial_mem_access.timestamp & 0xFFFFFF),
+                            F::from_canonical_u64(event.final_mem_access.timestamp >> 24),
+                            F::from_canonical_u64(event.final_mem_access.timestamp & 0xFFFFFF),
                             F::from_canonical_u64(event.addr & 0xFFFF),
                             F::from_canonical_u64((event.addr >> 16) & 0xFFFF),
                             F::from_canonical_u64((event.addr >> 32) & 0xFFFF),
