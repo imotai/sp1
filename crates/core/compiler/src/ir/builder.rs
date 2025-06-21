@@ -21,10 +21,10 @@ use sp1_core_machine::{
     },
     air::{SP1Operation, SP1OperationBuilder},
     operations::{
-        AddOperation, AddOperationInput, BitwiseOperation, BitwiseU16Operation,
-        IsEqualWordOperation, IsZeroOperation, IsZeroWordOperation, U16toU8Operation,
-        U16toU8OperationSafe, U16toU8OperationSafeInput, U16toU8OperationUnsafe,
-        U16toU8OperationUnsafeInput,
+        AddOperation, AddOperationInput, BitwiseOperation, BitwiseOperationInput,
+        BitwiseU16Operation, BitwiseU16OperationInput, IsEqualWordOperation, IsZeroOperation,
+        IsZeroWordOperation, U16toU8Operation, U16toU8OperationSafe, U16toU8OperationSafeInput,
+        U16toU8OperationUnsafe, U16toU8OperationUnsafeInput,
     },
 };
 use sp1_primitives::consts::WORD_BYTE_SIZE;
@@ -467,6 +467,10 @@ impl ConstraintCompiler {
     pub fn modules(&self) -> &BTreeMap<String, Func<Expr, ExprExt>> {
         &self.modules
     }
+
+    pub fn num_cols(&self) -> usize {
+        self.main.width
+    }
 }
 
 impl Drop for ConstraintCompiler {
@@ -548,8 +552,11 @@ impl SP1OperationBuilder<AddOperation<F>> for ConstraintCompiler {
 
             let func_input = AddOperationInput::new(input_a, input_b, cols, is_real);
 
+            // Get parameter names from the derive macro
+            let parameter_names = AddOperationInput::<Self>::PARAMETER_NAMES;
+
             self.register_module(
-                FuncDecl::new(
+                FuncDecl::with_parameter_names(
                     "AddOperation",
                     vec![
                         Ty::Word(input_a),
@@ -558,6 +565,7 @@ impl SP1OperationBuilder<AddOperation<F>> for ConstraintCompiler {
                         Ty::Expr(is_real),
                     ],
                     vec![],
+                    parameter_names,
                 ),
                 |body| {
                     AddOperation::<F>::lower(body, func_input);
@@ -630,10 +638,11 @@ impl SP1OperationBuilder<U16toU8OperationUnsafe> for ConstraintCompiler {
                 core::array::from_fn(|_| Expr::output_arg(&mut ctx));
 
             self.register_module(
-                FuncDecl::new(
+                FuncDecl::with_parameter_names(
                     "U16toU8OperationUnsafe",
                     vec![Ty::ArrWordSize(input_u16_values), Ty::U16toU8Operation(input_cols)],
                     vec![Ty::ArrWordByteSize(func_output)],
+                    U16toU8OperationUnsafeInput::<Self>::PARAMETER_NAMES,
                 ),
                 |body| {
                     let output = U16toU8OperationUnsafe::lower(body, func_input);
@@ -748,8 +757,7 @@ impl SP1OperationBuilder<IsEqualWordOperation<F>> for ConstraintCompiler {
 impl SP1OperationBuilder<BitwiseOperation<F>> for ConstraintCompiler {
     fn eval_operation(&mut self, input: <BitwiseOperation<F> as SP1Operation<Self>>::Input) {
         let mut ast = GLOBAL_AST.lock().unwrap();
-        let (a, b, cols, opcode, is_real) = input;
-        ast.bitwise_operation(a, b, cols, opcode, is_real);
+        ast.bitwise_operation(input.a, input.b, input.cols, input.opcode, input.is_real);
         drop(ast);
 
         if !self.modules.contains_key("BitwiseOperation") {
@@ -769,10 +777,16 @@ impl SP1OperationBuilder<BitwiseOperation<F>> for ConstraintCompiler {
             let input_cols = Expr::input_from_struct::<BitwiseOperation<Expr>>(&mut ctx);
             let input_opcode = Expr::input_arg(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
-            let func_input = (input_a, input_b, input_cols, input_opcode, input_is_real);
+            let func_input = BitwiseOperationInput::<Self>::new(
+                input_a,
+                input_b,
+                input_cols,
+                input_opcode,
+                input_is_real,
+            );
 
             self.register_module(
-                FuncDecl::new(
+                FuncDecl::with_parameter_names(
                     "BitwiseOperation",
                     vec![
                         Ty::ArrWordByteSize(input_a),
@@ -782,6 +796,7 @@ impl SP1OperationBuilder<BitwiseOperation<F>> for ConstraintCompiler {
                         Ty::Expr(input_is_real),
                     ],
                     vec![],
+                    BitwiseOperationInput::<Self>::PARAMETER_NAMES,
                 ),
                 |body| {
                     BitwiseOperation::<F>::lower(body, func_input);
@@ -797,8 +812,8 @@ impl SP1OperationBuilder<BitwiseU16Operation<F>> for ConstraintCompiler {
         input: <BitwiseU16Operation<F> as SP1Operation<Self>>::Input,
     ) -> <BitwiseU16Operation<F> as SP1Operation<Self>>::Output {
         let mut ast = GLOBAL_AST.lock().unwrap();
-        let (b, c, cols, opcode, is_real) = input;
-        let output = ast.bitwise_u16_operation(b, c, cols, opcode, is_real);
+        let output =
+            ast.bitwise_u16_operation(input.b, input.c, input.cols, input.opcode, input.is_real);
         drop(ast);
 
         if !self.modules.contains_key("BitwiseU16Operation") {
@@ -809,11 +824,17 @@ impl SP1OperationBuilder<BitwiseU16Operation<F>> for ConstraintCompiler {
             let input_opcode = Expr::input_arg(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
 
-            let func_input = (input_b, input_c, input_cols, input_opcode, input_is_real);
+            let func_input = BitwiseU16OperationInput::<Self>::new(
+                input_b,
+                input_c,
+                input_cols,
+                input_opcode,
+                input_is_real,
+            );
             let output = Expr::output_from_struct::<Word<Expr>>(&mut ctx);
 
             self.register_module(
-                FuncDecl::new(
+                FuncDecl::with_parameter_names(
                     "BitwiseU16Operation",
                     vec![
                         Ty::Word(input_b),
@@ -823,6 +844,7 @@ impl SP1OperationBuilder<BitwiseU16Operation<F>> for ConstraintCompiler {
                         Ty::Expr(input_is_real),
                     ],
                     vec![Ty::Word(output)],
+                    BitwiseU16OperationInput::<Self>::PARAMETER_NAMES,
                 ),
                 |body| {
                     let body_output = BitwiseU16Operation::<F>::lower(body, func_input);
@@ -840,8 +862,8 @@ impl SP1OperationBuilder<BitwiseU16Operation<F>> for ConstraintCompiler {
 impl SP1OperationBuilder<RTypeReader<F>> for ConstraintCompiler {
     fn eval_operation(&mut self, input: RTypeReaderInput<Self, Expr>) {
         GLOBAL_AST.lock().unwrap().r_type_reader(
-            input.shard,
-            input.clk,
+            input.clk_high,
+            input.clk_low,
             input.pc,
             input.opcode,
             input.op_a_write_value,
@@ -871,7 +893,7 @@ impl SP1OperationBuilder<RTypeReader<F>> for ConstraintCompiler {
             );
 
             self.register_module(
-                FuncDecl::new(
+                FuncDecl::with_parameter_names(
                     "RTypeReader",
                     vec![
                         Ty::Expr(input_shard),
@@ -883,6 +905,7 @@ impl SP1OperationBuilder<RTypeReader<F>> for ConstraintCompiler {
                         Ty::Expr(input_is_real),
                     ],
                     vec![],
+                    RTypeReaderInput::<Self, Expr>::PARAMETER_NAMES,
                 ),
                 |body| {
                     RTypeReader::<F>::lower(body, func_input);
@@ -893,17 +916,17 @@ impl SP1OperationBuilder<RTypeReader<F>> for ConstraintCompiler {
 }
 
 impl SP1OperationBuilder<RTypeReaderImmutable> for ConstraintCompiler {
-    fn eval_operation(&mut self, input: RTypeReaderImmutableInput<Self>) {
+    fn eval_operation(&mut self, input: <RTypeReaderImmutable as SP1Operation<Self>>::Input) {
         GLOBAL_AST.lock().unwrap().r_type_reader_immutable(
-            input.shard,
-            input.clk,
+            input.clk_high,
+            input.clk_low,
             input.pc,
             input.opcode,
             input.cols,
             input.is_real,
         );
 
-        if !self.modules.contains_key("RTypeReaderImmutable") {
+        if !self.modules.contains_key("RTypeReader") {
             let mut ctx = FuncCtx::new();
 
             let input_shard = Expr::input_arg(&mut ctx);
@@ -913,7 +936,7 @@ impl SP1OperationBuilder<RTypeReaderImmutable> for ConstraintCompiler {
             let input_cols = Expr::input_from_struct::<RTypeReader<Expr>>(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
 
-            let func_input = RTypeReaderImmutableInput::new(
+            let func_input = RTypeReaderImmutableInput::<Self>::new(
                 input_shard,
                 input_clk,
                 input_pc,
@@ -923,8 +946,8 @@ impl SP1OperationBuilder<RTypeReaderImmutable> for ConstraintCompiler {
             );
 
             self.register_module(
-                FuncDecl::new(
-                    "RTypeReaderImmutable",
+                FuncDecl::with_parameter_names(
+                    "RTypeReader",
                     vec![
                         Ty::Expr(input_shard),
                         Ty::Expr(input_clk),
@@ -934,6 +957,7 @@ impl SP1OperationBuilder<RTypeReaderImmutable> for ConstraintCompiler {
                         Ty::Expr(input_is_real),
                     ],
                     vec![],
+                    RTypeReaderImmutableInput::<Self>::PARAMETER_NAMES,
                 ),
                 |body| {
                     RTypeReaderImmutable::lower(body, func_input);
@@ -968,7 +992,7 @@ impl SP1OperationBuilder<CPUState<F>> for ConstraintCompiler {
             );
 
             self.register_module(
-                FuncDecl::new(
+                FuncDecl::with_parameter_names(
                     "CPUState",
                     vec![
                         Ty::CPUState(input_cols),
@@ -977,6 +1001,7 @@ impl SP1OperationBuilder<CPUState<F>> for ConstraintCompiler {
                         Ty::Expr(input_is_real),
                     ],
                     vec![],
+                    CPUStateInput::<Self>::PARAMETER_NAMES,
                 ),
                 |body| {
                     CPUState::<F>::lower(body, func_input);
@@ -1020,7 +1045,7 @@ impl SP1OperationBuilder<ALUTypeReader<F>> for ConstraintCompiler {
             );
 
             self.register_module(
-                FuncDecl::new(
+                FuncDecl::with_parameter_names(
                     "ALUTypeReader",
                     vec![
                         Ty::Expr(input_clk_high),
@@ -1032,6 +1057,7 @@ impl SP1OperationBuilder<ALUTypeReader<F>> for ConstraintCompiler {
                         Ty::Expr(input_is_real),
                     ],
                     vec![],
+                    ALUTypeReaderInput::<Self, Expr>::PARAMETER_NAMES,
                 ),
                 |body| {
                     ALUTypeReader::<F>::lower(body, func_input);

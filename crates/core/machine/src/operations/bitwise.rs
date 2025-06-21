@@ -7,7 +7,7 @@ use sp1_primitives::consts::WORD_BYTE_SIZE;
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::Field;
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 
 use crate::air::SP1Operation;
 
@@ -68,18 +68,39 @@ impl<F: Field> BitwiseOperation<F> {
     }
 }
 
+#[derive(SP1OperationInput)]
+pub struct BitwiseOperationInput<AB: SP1AirBuilder> {
+    pub a: [AB::Expr; WORD_BYTE_SIZE],
+    pub b: [AB::Expr; WORD_BYTE_SIZE],
+    pub cols: BitwiseOperation<AB::Var>,
+    pub opcode: AB::Expr,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> BitwiseOperationInput<AB> {
+    pub fn new(
+        a: [AB::Expr; WORD_BYTE_SIZE],
+        b: [AB::Expr; WORD_BYTE_SIZE],
+        cols: BitwiseOperation<AB::Var>,
+        opcode: AB::Expr,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { a, b, cols, opcode, is_real }
+    }
+}
+
 impl<AB: SP1AirBuilder> SP1Operation<AB> for BitwiseOperation<AB::F> {
-    type Input = (
-        [AB::Expr; WORD_BYTE_SIZE],
-        [AB::Expr; WORD_BYTE_SIZE],
-        BitwiseOperation<AB::Var>,
-        AB::Expr,
-        AB::Expr,
-    );
+    type Input = BitwiseOperationInput<AB>;
     type Output = ();
 
     fn lower(builder: &mut AB, input: Self::Input) {
-        let (a, b, cols, opcode, is_real) = input;
-        BitwiseOperation::<AB::F>::eval_bitwise(builder, a, b, cols, opcode, is_real);
+        BitwiseOperation::<AB::F>::eval_bitwise(
+            builder,
+            input.a,
+            input.b,
+            input.cols,
+            input.opcode,
+            input.is_real,
+        );
     }
 }
