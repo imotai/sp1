@@ -39,6 +39,15 @@ impl ProverSemaphore {
         let time = tokio::time::Instant::now();
         Ok(ProverPermit { permit, span, time })
     }
+
+    /// Acquire multiple permits.
+    #[inline]
+    pub async fn acquire_many(self, n: u32) -> Result<ProverPermit, ProverAcquireError> {
+        let span = tracing::Span::current();
+        let permit = self.sem.acquire_many_owned(n).await?;
+        let time = tokio::time::Instant::now();
+        Ok(ProverPermit { permit, span, time })
+    }
 }
 
 /// An error that occurs when acquiring a permit.
