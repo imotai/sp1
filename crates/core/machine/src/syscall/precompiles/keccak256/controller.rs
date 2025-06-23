@@ -34,11 +34,11 @@ pub struct KeccakPermuteControlCols<T> {
     pub clk_high: T,
     pub clk_low: T,
     pub state_addr: SyscallAddrOperation<T>,
-    pub addrs: [[T; 3]; 50],
+    pub addrs: [[T; 3]; 25],
     pub is_real: T,
-    pub initial_memory_access: [MemoryAccessCols<T>; 50],
-    pub final_memory_access: [MemoryAccessCols<T>; 50],
-    pub final_value: [Word<T>; 50],
+    pub initial_memory_access: [MemoryAccessCols<T>; 25],
+    pub final_memory_access: [MemoryAccessCols<T>; 25],
+    pub final_value: [Word<T>; 25],
 }
 
 impl<F> BaseAir<F> for KeccakPermuteControlChip {
@@ -178,7 +178,7 @@ where
             local.clk_high,
             local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::KECCAK_PERMUTE.syscall_id()),
-            state_addr.clone(),
+            state_addr.map(Into::into),
             [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
             local.is_real,
             InteractionScope::Local,
@@ -186,7 +186,7 @@ where
 
         let send_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
-            .chain(state_addr.clone())
+            .chain(state_addr.map(Into::into))
             .chain(once(AB::Expr::zero()))
             .chain(
                 local
@@ -205,7 +205,7 @@ where
 
         let receive_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
-            .chain(state_addr.clone())
+            .chain(state_addr.map(Into::into))
             .chain(once(AB::Expr::from_canonical_u32(24)))
             .chain(local.final_value.into_iter().flat_map(|word| word.into_iter()).map(Into::into))
             .collect::<Vec<_>>();

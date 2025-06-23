@@ -1,9 +1,3 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-use std::fmt::Debug;
-
 use crate::{
     air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
@@ -17,6 +11,10 @@ use crate::{
     utils::{
         bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
     },
+};
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -39,10 +37,9 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir},
-    Word,
-};
+use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir};
+use sp1_stark::Word;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use typenum::Unsigned;
 
@@ -527,8 +524,8 @@ where
         let num_limbs_as_f = AB::F::from_canonical_u32(num_limbs as u32);
         AddrAddOperation::<AB::F>::eval(
             builder,
-            ptr.clone(),
-            [num_limbs_as_f.into(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([num_limbs_as_f.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             local.x_addrs[0],
             local.is_real.into(),
         );
@@ -538,8 +535,13 @@ where
         for i in 1..local.x_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                local.x_addrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 local.x_addrs[i],
                 local.is_real.into(),
             );
@@ -547,8 +549,8 @@ where
 
         AddrAddOperation::<AB::F>::eval(
             builder,
-            ptr.clone(),
-            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             local.y_addrs[0],
             local.is_real.into(),
         );
@@ -557,8 +559,13 @@ where
         for i in 1..local.y_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                local.y_addrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    local.y_addrs[i - 1].value[0].into(),
+                    local.y_addrs[i - 1].value[1].into(),
+                    local.y_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 local.y_addrs[i],
                 local.is_real.into(),
             );
@@ -601,8 +608,8 @@ where
             local.clk_high,
             local.clk_low,
             syscall_id,
-            ptr,
-            [local.sign_bit.into(), AB::Expr::zero(), AB::Expr::zero()],
+            ptr.map(Into::into),
+            [local.sign_bit.into(), AB::Expr::zero(), AB::Expr::zero()].map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

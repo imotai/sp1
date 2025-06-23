@@ -2,8 +2,8 @@ use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_SIZE};
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_stark::air::SP1AirBuilder;
 /// A set of columns needed to compute `rotateright` of a word with a fixed offset R.
 ///
 /// Note that we decompose shifts into a limb shift and a bit shift.

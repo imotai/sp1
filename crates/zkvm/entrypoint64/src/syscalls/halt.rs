@@ -32,7 +32,8 @@ pub extern "C" fn syscall_halt(exit_code: u8) -> ! {
         // will be used to verify that the provided public values digest matches the one
         // computed by the program.
         for i in 0..PV_DIGEST_NUM_WORDS {
-            let word = u32::from_le_bytes(pv_digest_bytes[i * 4..(i + 1) * 4].try_into().unwrap());
+            let word =
+                u32::from_le_bytes(pv_digest_bytes[i * 4..(i + 1) * 4].try_into().unwrap()) as u64;
             asm!("ecall", in("t0") crate::syscalls::COMMIT, in("a0") i, in("a1") word);
         }
 

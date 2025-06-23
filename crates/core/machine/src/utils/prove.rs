@@ -14,7 +14,7 @@ use p3_field::PrimeField32;
 use sp1_stark::{
     air::PublicValues,
     prover::{MachineProverBuilder, MachineProverComponents, MachineProvingKey, ProverSemaphore},
-    Machine, MachineProof, MachineRecord, ShardProof, ShardVerifier, Word,
+    Machine, MachineProof, MachineRecord, ShardProof, ShardVerifier,
 };
 
 use crate::{io::SP1Stdin, utils::concurrency::TurnBasedSync};
@@ -191,7 +191,7 @@ where
 
     let mut shard_proofs = BTreeMap::new();
     while let Some(proof) = proof_rx.recv().await {
-        let public_values: &PublicValues<[F; 4], Word<F>, [F; 4], F> =
+        let public_values: &PublicValues<[F; 4], [F; 3], [F; 4], F> =
             proof.public_values.as_slice().borrow();
         shard_proofs.insert(public_values.shard, proof);
     }

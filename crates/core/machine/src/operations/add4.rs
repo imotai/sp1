@@ -2,8 +2,8 @@ use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_SIZE};
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_stark::air::SP1AirBuilder;
 
 use crate::{air::WordAirBuilder, utils::u32_to_half_word};
 

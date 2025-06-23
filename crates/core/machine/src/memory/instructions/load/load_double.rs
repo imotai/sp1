@@ -40,9 +40,6 @@ pub struct LoadDoubleColumns<T> {
     /// The adapter to read program and register information.
     pub adapter: ITypeReader<T>,
 
-    /// The address of the memory access. //TODO: u64 (need to modify the address operation)
-    pub aligned_address: [T; 3],
-
     /// Instance of `AddressOperation` to constrain the memory address.
     pub address_operation: AddressOperation<T>,
 
@@ -135,16 +132,7 @@ impl LoadDoubleChip {
     ) {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
-
-        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        let memory_addr = event.b.wrapping_add(event.c);
-        debug_assert!(memory_addr % 8 == 0);
-
-        cols.aligned_address = [
-            F::from_canonical_u16(memory_addr as u16),
-            F::from_canonical_u16((memory_addr >> 16) as u16),
-            F::from_canonical_u16((memory_addr >> 32) as u16),
-        ];
+        cols.address_operation.populate(blu, event.b, event.c);
         cols.is_real = F::one();
     }
 }
@@ -165,30 +153,31 @@ where
 
         let opcode = AB::Expr::from_canonical_u32(Opcode::LD as u32);
 
-        // builder.assert_bool(local.is_real);
+        builder.assert_bool(local.is_real);
 
         // Step 1. Compute the address, and check offsets and address bounds.
-        // let aligned_addr = AddressOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(Into::into),
-        //     local.adapter.c().map(Into::into),
-        //     AB::Expr::zero(),
-        //     AB::Expr::zero(),
-        //     local.is_real.into(),
-        //     local.address_operation,
-        // );
+        let aligned_addr = AddressOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(Into::into),
+            local.adapter.c().map(Into::into),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_real.into(),
+            local.address_operation,
+        );
 
         // Step 2. Read the memory address.
         builder.eval_memory_access_read(
             clk_high.clone(),
             clk_low.clone(),
-            &local.aligned_address.map(Into::into),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             local.is_real,
         );
 
-        // // This chip requires `op_a != x0`.
-        // builder.assert_zero(local.adapter.op_a_0);
+        // This chip requires `op_a != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(

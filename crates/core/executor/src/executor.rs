@@ -2336,11 +2336,11 @@ impl<'a> Executor<'a> {
             record.public_values = public_values;
             record.public_values.committed_value_digest = public_values.committed_value_digest;
             record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
-            record.public_values.execution_shard = start_shard.get() as u32 + i as u32;
+            record.public_values.execution_shard = start_shard.get() + i as u32;
             if record.contains_cpu() {
                 record.public_values.pc_start_rel = record.pc_start_rel.unwrap();
                 record.public_values.next_pc_rel = record.next_pc_rel;
-                record.public_values.exit_code = record.exit_code as u32;
+                record.public_values.exit_code = record.exit_code;
                 record.public_values.last_timestamp = record.last_timestamp;
                 record.public_values.initial_timestamp = record.initial_timestamp;
                 last_next_pc = record.public_values.next_pc_rel;
@@ -2499,7 +2499,11 @@ impl<'a> Executor<'a> {
         event_counts[RiscvAirId::DivRem] = opcode_counts[Opcode::DIV]
             + opcode_counts[Opcode::DIVU]
             + opcode_counts[Opcode::REM]
-            + opcode_counts[Opcode::REMU];
+            + opcode_counts[Opcode::REMU]
+            + opcode_counts[Opcode::DIVW]
+            + opcode_counts[Opcode::DIVUW]
+            + opcode_counts[Opcode::REMW]
+            + opcode_counts[Opcode::REMUW];
 
         // Compute the number of events in the lt chip.
         event_counts[RiscvAirId::Lt] = opcode_counts[Opcode::SLT] + opcode_counts[Opcode::SLTU];
@@ -2508,27 +2512,20 @@ impl<'a> Executor<'a> {
         event_counts[RiscvAirId::Mul] = opcode_counts[Opcode::MUL]
             + opcode_counts[Opcode::MULH]
             + opcode_counts[Opcode::MULHU]
-            + opcode_counts[Opcode::MULHSU];
+            + opcode_counts[Opcode::MULHSU]
+            + opcode_counts[Opcode::MULW];
 
         // Compute the number of events in the shift left chip.
-        event_counts[RiscvAirId::ShiftLeft] = opcode_counts[Opcode::SLL];
+        event_counts[RiscvAirId::ShiftLeft] =
+            opcode_counts[Opcode::SLL] + opcode_counts[Opcode::SLLW] + opcode_counts[Opcode::SLLIW];
 
         // Compute the number of events in the shift right chip.
-        event_counts[RiscvAirId::ShiftRight] =
-            opcode_counts[Opcode::SRL] + opcode_counts[Opcode::SRA];
-
-        // Compute the number of events in the mul chip.
-        event_counts[RiscvAirId::Mul] = opcode_counts[Opcode::MUL]
-            + opcode_counts[Opcode::MULH]
-            + opcode_counts[Opcode::MULHU]
-            + opcode_counts[Opcode::MULHSU];
-
-        // Compute the number of events in the shift left chip.
-        event_counts[RiscvAirId::ShiftLeft] = opcode_counts[Opcode::SLL];
-
-        // Compute the number of events in the shift right chip.
-        event_counts[RiscvAirId::ShiftRight] =
-            opcode_counts[Opcode::SRL] + opcode_counts[Opcode::SRA];
+        event_counts[RiscvAirId::ShiftRight] = opcode_counts[Opcode::SRL]
+            + opcode_counts[Opcode::SRA]
+            + opcode_counts[Opcode::SRLW]
+            + opcode_counts[Opcode::SRLIW]
+            + opcode_counts[Opcode::SRAW]
+            + opcode_counts[Opcode::SRAIW];
 
         // Compute the number of events in the memory local chip.
         event_counts[RiscvAirId::MemoryLocal] =
@@ -2554,11 +2551,14 @@ impl<'a> Executor<'a> {
         // Compute the number of events in the memory instruction chip.
         event_counts[RiscvAirId::LoadByte] = opcode_counts[Opcode::LB] + opcode_counts[Opcode::LBU];
         event_counts[RiscvAirId::LoadHalf] = opcode_counts[Opcode::LH] + opcode_counts[Opcode::LHU];
-        event_counts[RiscvAirId::LoadWord] = opcode_counts[Opcode::LW];
+        event_counts[RiscvAirId::LoadWord] = opcode_counts[Opcode::LW] + opcode_counts[Opcode::LWU];
+        event_counts[RiscvAirId::LoadDouble] = opcode_counts[Opcode::LD];
         event_counts[RiscvAirId::LoadX0] = load_x0_counts;
+
         event_counts[RiscvAirId::StoreByte] = opcode_counts[Opcode::SB];
         event_counts[RiscvAirId::StoreHalf] = opcode_counts[Opcode::SH];
         event_counts[RiscvAirId::StoreWord] = opcode_counts[Opcode::SW];
+        event_counts[RiscvAirId::StoreDouble] = opcode_counts[Opcode::SD];
 
         // Compute the number of events in the syscall instruction chip.
         event_counts[RiscvAirId::SyscallInstrs] = opcode_counts[Opcode::ECALL];

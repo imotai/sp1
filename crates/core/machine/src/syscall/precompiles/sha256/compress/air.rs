@@ -218,12 +218,18 @@ impl ShaCompressChip {
         }
         AddrAddOperation::<AB::F>::eval(
             builder,
-            local.h_ptr.map(|x| x.into()),
-            [
+            Word([
+                local.h_ptr[0].into(),
+                local.h_ptr[1].into(),
+                local.h_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
                 cycle_step.clone() * AB::Expr::from_canonical_u32(8),
                 AB::Expr::zero(),
                 AB::Expr::zero(),
-            ],
+                AB::Expr::zero(),
+            ]),
             local.mem_addr_init,
             local.is_initialize.into(),
         );
@@ -236,14 +242,20 @@ impl ShaCompressChip {
         }
         AddrAddOperation::<AB::F>::eval(
             builder,
-            local.w_ptr.map(|x| x.into()),
-            [
+            Word([
+                local.w_ptr[0].into(),
+                local.w_ptr[1].into(),
+                local.w_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
                 ((cycle_num - AB::Expr::one()) * AB::Expr::from_canonical_u32(8)
                     + cycle_step.clone())
                     * AB::Expr::from_canonical_u32(8),
                 AB::Expr::zero(),
                 AB::Expr::zero(),
-            ],
+                AB::Expr::zero(),
+            ]),
             local.mem_addr_compress,
             local.is_compression.into(),
         );
@@ -256,12 +268,18 @@ impl ShaCompressChip {
         }
         AddrAddOperation::<AB::F>::eval(
             builder,
-            local.h_ptr.map(|x| x.into()),
-            [
+            Word([
+                local.h_ptr[0].into(),
+                local.h_ptr[1].into(),
+                local.h_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
                 cycle_step.clone() * AB::Expr::from_canonical_u32(8),
                 AB::Expr::zero(),
                 AB::Expr::zero(),
-            ],
+                AB::Expr::zero(),
+            ]),
             local.mem_addr_finalize,
             local.is_finalize.into(),
         );

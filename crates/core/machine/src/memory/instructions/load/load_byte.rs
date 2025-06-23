@@ -1,6 +1,7 @@
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
+use sp1_stark::air::BaseAirBuilder;
 use sp1_stark::Word;
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -48,7 +49,7 @@ pub struct LoadByteColumns<T> {
     pub memory_access: MemoryAccessCols<T>,
 
     /// The bit decomposition of the offset.
-    pub offset_bit: [T; 2],
+    pub offset_bit: [T; 3],
 
     /// The selected limb value.
     pub selected_limb: T,
@@ -58,9 +59,6 @@ pub struct LoadByteColumns<T> {
 
     /// The selected byte value.
     pub selected_byte: T,
-
-    /// aligned memory address (TODO: u64 will not need later)
-    pub aligned_addr: [T; 3],
 
     /// The `MSB` of the byte, if the opcode is `LB`.
     pub msb: T,
@@ -155,20 +153,13 @@ impl LoadByteChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        let memory_addr = event.b.wrapping_add(event.c);
+        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
         let bit0 = (memory_addr & 1) as u16;
         let bit1 = ((memory_addr >> 1) & 1) as u16;
         let bit2 = ((memory_addr >> 2) & 1) as u16;
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
-
-        let aligned_addr = memory_addr - 4 * bit2 as u64 - 2 * bit1 as u64 - bit0 as u64;
-        cols.aligned_addr = [
-            F::from_canonical_u64(aligned_addr & 0xFFFF),
-            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
-            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
-        ];
+        cols.offset_bit[2] = F::from_canonical_u16(bit2);
 
         let limb_number = 2 * bit2 + bit1;
 
@@ -177,17 +168,17 @@ impl LoadByteChip {
         cols.selected_limb_low_byte = F::from_canonical_u16(limb & 0xFF);
         let byte = limb.to_le_bytes()[bit0 as usize];
         cols.selected_byte = F::from_canonical_u8(byte);
-        // blu.add_u8_range_checks(&limb.to_le_bytes());
+        blu.add_u8_range_checks(&limb.to_le_bytes());
 
         if event.opcode == Opcode::LB {
             cols.is_lb = F::one();
             cols.msb = F::from_canonical_u8(byte >> 7);
-            // blu.add_byte_lookup_event(ByteLookupEvent {
-            //     opcode: ByteOpcode::MSB,
-            //     a: (byte >> 7) as u16,
-            //     b: byte,
-            //     c: 0,
-            // });
+            blu.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::MSB,
+                a: (byte >> 7) as u16,
+                b: byte,
+                c: 0,
+            });
         } else {
             cols.is_lbu = F::one();
         }
@@ -214,59 +205,72 @@ where
         let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
             + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu;
         let is_real = local.is_lb + local.is_lbu;
-        // builder.assert_bool(local.is_lb);
-        // builder.assert_bool(local.is_lbu);
-        // builder.assert_bool(is_real.clone());
+        builder.assert_bool(local.is_lb);
+        builder.assert_bool(local.is_lbu);
+        builder.assert_bool(is_real.clone());
 
         // Step 1. Compute the address, and check offsets and address bounds.
-        // let aligned_addr = AddressOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(Into::into),
-        //     local.adapter.c().map(Into::into),
-        //     local.offset_bit[0].into(),
-        //     local.offset_bit[1].into(),
-        //     is_real.clone(),
-        //     local.address_operation,
-        // );
+        let aligned_addr = AddressOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(Into::into),
+            local.adapter.c().map(Into::into),
+            local.offset_bit[0].into(),
+            local.offset_bit[1].into(),
+            local.offset_bit[2].into(),
+            is_real.clone(),
+            local.address_operation,
+        );
 
         // Step 2. Read the memory address.
         builder.eval_memory_access_read(
             clk_high.clone(),
             clk_low.clone(),
-            &local.aligned_addr.map(Into::into),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             is_real.clone(),
         );
 
-        // // This chip requires `op_a != x0`.
-        // builder.assert_zero(local.adapter.op_a_0);
+        // This chip requires `op_a != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
 
-        // // Step 3. Use the memory value to compute the write value for `op_a`.
-        // // Select the u16 limb corresponding to the offset.
-        // builder.assert_eq(
-        //     local.selected_limb,
-        //     local.offset_bit[1] * local.memory_access.prev_value[1]
-        //         + (AB::Expr::one() - local.offset_bit[1]) * local.memory_access.prev_value[0],
-        // );
-        // // Split the u16 limb into two bytes.
-        // let byte0 = local.selected_limb_low_byte;
-        // let byte1 = (local.selected_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
-        // builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], is_real.clone());
-        // // Select the u8 byte corresponding to the offset.
-        // builder.assert_eq(
-        //     local.selected_byte,
-        //     local.offset_bit[0] * byte1 + (AB::Expr::one() - local.offset_bit[0]) * byte0,
-        // );
-        // // Get the MSB of the selected byte if the opcode is `LB`.
-        // // If the opcode is `LBU`, the MSB is constrained to be zero.
-        // builder.when(local.is_lbu).assert_zero(local.msb);
-        // builder.send_byte(
-        //     AB::Expr::from_canonical_u32(ByteOpcode::MSB as u32),
-        //     local.msb,
-        //     local.selected_byte,
-        //     AB::Expr::zero(),
-        //     local.is_lb,
-        // );
+        // Step 3. Use the memory value to compute the write value for `op_a`.
+        // Select the u16 limb corresponding to the offset.
+        builder
+            .when_not(local.offset_bit[1])
+            .when_not(local.offset_bit[2])
+            .assert_eq(local.selected_limb, local.memory_access.prev_value[0]);
+        builder
+            .when(local.offset_bit[1])
+            .when_not(local.offset_bit[2])
+            .assert_eq(local.selected_limb, local.memory_access.prev_value[1]);
+        builder
+            .when_not(local.offset_bit[1])
+            .when(local.offset_bit[2])
+            .assert_eq(local.selected_limb, local.memory_access.prev_value[2]);
+        builder
+            .when(local.offset_bit[1])
+            .when(local.offset_bit[2])
+            .assert_eq(local.selected_limb, local.memory_access.prev_value[3]);
+
+        // Split the u16 limb into two bytes.
+        let byte0 = local.selected_limb_low_byte;
+        let byte1 = (local.selected_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
+        builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], is_real.clone());
+        // Select the u8 byte corresponding to the offset.
+        builder.assert_eq(
+            local.selected_byte,
+            local.offset_bit[0] * byte1 + (AB::Expr::one() - local.offset_bit[0]) * byte0,
+        );
+        // Get the MSB of the selected byte if the opcode is `LB`.
+        // If the opcode is `LBU`, the MSB is constrained to be zero.
+        builder.when(local.is_lbu).assert_zero(local.msb);
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::MSB as u32),
+            local.msb,
+            local.selected_byte,
+            AB::Expr::zero(),
+            local.is_lb,
+        );
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(

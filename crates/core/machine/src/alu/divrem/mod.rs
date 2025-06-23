@@ -75,7 +75,7 @@ use sp1_core_executor::{
     Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{

@@ -131,8 +131,8 @@ impl SP1ReduceShape {
         let shape = match arity {
             1 | 2 => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 200640),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254080),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243008),
+                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254112),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243040),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 348544),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 58816),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
@@ -156,7 +156,7 @@ impl SP1ReduceShape {
             4 => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485856),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485888),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 751232),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
@@ -794,8 +794,8 @@ mod tests {
 
         let shape = [
             (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 200640),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254080),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243008),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254112),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243040),
             (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 348544),
             (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 58816),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),

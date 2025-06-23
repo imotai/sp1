@@ -10,7 +10,7 @@ use sp1_stark::{
     },
     septic_digest::SepticDigest,
     shape::Shape,
-    InteractionKind, MachineRecord, Word,
+    InteractionKind, MachineRecord,
 };
 use std::{
     borrow::Borrow,
@@ -530,7 +530,7 @@ impl MachineRecord for ExecutionRecord {
             core::array::from_fn(|i| builder.public_values()[i]);
         let public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         > = public_values_slice.as_slice().borrow();
@@ -565,7 +565,7 @@ impl ExecutionRecord {
     fn eval_state<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -687,7 +687,7 @@ impl ExecutionRecord {
     fn eval_global_sum<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -722,7 +722,7 @@ impl ExecutionRecord {
     fn eval_global_memory_init<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -756,7 +756,7 @@ impl ExecutionRecord {
     fn eval_global_memory_finalize<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,

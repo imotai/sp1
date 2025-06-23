@@ -10,8 +10,7 @@ use sp1_core_executor::{
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
-use sp1_stark::{air::MachineAir, Word};
+use sp1_stark::air::MachineAir;
 
 use super::{
     columns::{ShaCompressCols, NUM_SHA_COMPRESS_COLS},

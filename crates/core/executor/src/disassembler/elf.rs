@@ -142,7 +142,7 @@ impl Elf {
 
             // Make sure the virtual address is aligned.
             if vaddr % (step_size as u64) != 0 {
-                assert!(false, "segment vaddr is not aligned");
+                eyre::bail!("segment vaddr is not aligned");
             }
 
             prev_segment_end_addr =

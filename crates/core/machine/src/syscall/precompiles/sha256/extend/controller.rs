@@ -1,7 +1,11 @@
 use super::ShaExtendControlChip;
-use crate::{operations::SyscallAddrOperation, utils::next_multiple_of_32};
+use crate::{
+    air::SP1OperationBuilder,
+    operations::{IsZeroOperation, SyscallAddrOperation},
+    utils::next_multiple_of_32,
+};
 use core::borrow::Borrow;
-use p3_air::{Air, BaseAir};
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
@@ -68,7 +72,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             let cols: &mut ShaExtendControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.w_ptr.populate(&mut blu_events, event.w_ptr, 256);
+            cols.w_ptr.populate(&mut blu_events, event.w_ptr, 512);
             cols.is_real = F::one();
             rows.push(row);
         }
@@ -107,7 +111,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
 
 impl<AB> Air<AB> for ShaExtendControlChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1AirBuilder + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>,
 {
     fn eval(&self, builder: &mut AB) {
         // Initialize columns.
@@ -118,14 +122,14 @@ where
         builder.assert_bool(local.is_real);
 
         let w_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.w_ptr, local.is_real.into());
+            SyscallAddrOperation::<AB::F>::eval(builder, 512, local.w_ptr, local.is_real.into());
 
         // Receive the syscall.
         builder.receive_syscall(
             local.clk_high,
             local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::SHA_EXTEND.syscall_id()),
-            w_ptr.clone(),
+            w_ptr.map(Into::into),
             [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
             local.is_real,
             InteractionScope::Local,
@@ -134,7 +138,7 @@ where
         // Send the initial state.
         let send_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
-            .chain(w_ptr.clone())
+            .chain(w_ptr.map(Into::into))
             .chain(once(AB::Expr::from_canonical_u32(16)))
             .collect::<Vec<_>>();
         builder.send(
@@ -145,7 +149,7 @@ where
         // Receive the final state.
         let receive_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
-            .chain(w_ptr.clone())
+            .chain(w_ptr.map(Into::into))
             .chain(once(AB::Expr::from_canonical_u32(64)))
             .collect::<Vec<_>>();
         builder.receive(

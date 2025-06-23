@@ -16,7 +16,7 @@ use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
     septic_curve::{SepticCurve, SepticCurveComplete},
     septic_digest::SepticDigest,
-    septic_extension::{SepticBlock, SepticExtension},
+    septic_extension::SepticExtension,
     InteractionKind,
 };
 use std::borrow::BorrowMut;

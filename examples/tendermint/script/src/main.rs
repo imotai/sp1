@@ -47,7 +47,7 @@ async fn main() {
 
     client.execute(TENDERMINT_ELF, stdin.clone()).await.expect("proving failed");
 
-    let proof = client.prove(&pk, stdin).core().await.expect("proving failed");
+    let proof = client.prove(&pk, stdin).compressed().await.expect("proving failed");
 
     // Verify proof.
     client.verify(&proof, pk.verifying_key()).expect("verification failed");

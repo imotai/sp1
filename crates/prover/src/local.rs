@@ -28,7 +28,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
+    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof,
 };
 use std::{
     borrow::Borrow,
@@ -646,8 +646,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     BabyBear::zero(),
                     BabyBear::one(),
                 ],
-                init_addr_word: Word([BabyBear::zero(); 4]),
-                finalize_addr_word: Word([BabyBear::zero(); 4]),
+                init_addr_word: [BabyBear::zero(); 3],
+                finalize_addr_word: [BabyBear::zero(); 3],
                 committed_value_digest: [[BabyBear::zero(); 4]; 8],
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });

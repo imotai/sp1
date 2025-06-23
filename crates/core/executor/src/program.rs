@@ -8,14 +8,13 @@ use crate::{
     RiscvAirId,
 };
 use hashbrown::HashMap;
-use p3_field::{AbstractExtensionField, Field, PrimeField32};
+use p3_field::{Field, PrimeField32};
 use p3_maybe_rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use sp1_stark::{
     air::{MachineAir, MachineProgram},
     septic_curve::{SepticCurve, SepticCurveComplete},
     septic_digest::SepticDigest,
-    septic_extension::SepticExtension,
     shape::Shape,
     InteractionKind,
 };
@@ -118,8 +117,7 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
     fn pc_start_rel(&self) -> F {
         let pc_start_rel = self.pc_start_rel_u32();
         assert!(pc_start_rel < F::ORDER_U32);
-        // Casting to u32 and truncating is okay, since F: PrimeField32 means it fits.
-        F::from_wrapped_u32(pc_start_rel as u32)
+        F::from_canonical_u32(pc_start_rel)
     }
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
@@ -141,8 +139,6 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
                     limb_2,
                     ((word >> 48) & 0xFFFF) as u32,
                 ];
-                // let x_start =
-                //     SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values[i]));
                 let (point, _, _, _) =
                     SepticCurve::<F>::lift_x(values.map(|x| F::from_canonical_u32(x)));
                 SepticCurveComplete::Affine(point.neg())

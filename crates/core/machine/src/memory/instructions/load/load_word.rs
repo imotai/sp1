@@ -1,3 +1,4 @@
+use p3_air::AirBuilder;
 use p3_air::{Air, BaseAir};
 use p3_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
@@ -41,22 +42,19 @@ pub struct LoadWordColumns<T> {
     /// The adapter to read program and register information.
     pub adapter: ITypeReader<T>,
 
-    /// The address of the memory access. //TODO: u64 (need to modify the address operation)
-    pub aligned_address: [T; 3],
-
     /// Instance of `AddressOperation` to constrain the memory address.
     pub address_operation: AddressOperation<T>,
 
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
+    /// Whether the offset is `0` or `4`.
+    pub offset_bit: T,
+
     /// The selected word of the memory access.
     pub selected_word: [T; 2],
 
-    /// Whether this is a real load word instruction.
-    pub is_real: T,
-
-    /// The `MSB` of the half, if the opcode is `LH`.
+    /// The `MSB` of the word, if the opcode is `LW`.
     pub msb: U16MSBOperation<T>,
 
     /// Whether this is a load half instruction.
@@ -149,30 +147,18 @@ impl LoadWordChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        let memory_addr = event.b.wrapping_add(event.c);
-        debug_assert!(memory_addr % 4 == 0);
-        let bit_2 = (memory_addr >> 2) & 1;
-        let bit_1 = (memory_addr >> 1) & 1;
-        let aligned_addrs = memory_addr - 4 * bit_2 as u64;
+        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
+        let bit_2 = ((memory_addr >> 2) & 1) as u16;
+        cols.offset_bit = F::from_canonical_u16(bit_2);
+        let limb_number = 2 * bit_2;
+        let limb_0 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize];
+        let limb_1 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize + 1];
 
-        let limb_number = 2 * bit_2 + bit_1;
-
-        let limb_1 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize];
-        let limb_2 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize + 1];
-
-        cols.selected_word = [F::from_canonical_u16(limb_1), F::from_canonical_u16(limb_2)];
-
-        cols.aligned_address = [
-            F::from_canonical_u16(aligned_addrs as u16),
-            F::from_canonical_u16((aligned_addrs >> 16) as u16),
-            F::from_canonical_u16((aligned_addrs >> 32) as u16),
-        ];
-        cols.is_real = F::one();
+        cols.selected_word = [F::from_canonical_u16(limb_0), F::from_canonical_u16(limb_1)];
 
         if event.opcode == Opcode::LW {
             cols.is_lw = F::one();
-            cols.msb.populate_msb(blu, limb_2);
+            cols.msb.populate_msb(blu, limb_1);
         } else {
             cols.is_lwu = F::one();
         }
@@ -196,30 +182,47 @@ where
         let opcode = local.is_lw.into() * AB::Expr::from_canonical_u32(Opcode::LW as u32)
             + local.is_lwu.into() * AB::Expr::from_canonical_u32(Opcode::LWU as u32);
 
-        // builder.assert_bool(local.is_real);
+        let is_real = local.is_lw + local.is_lwu;
+        builder.assert_bool(local.is_lw);
+        builder.assert_bool(local.is_lwu);
+        builder.assert_bool(is_real.clone());
 
         // Step 1. Compute the address, and check offsets and address bounds.
-        // let aligned_addr = AddressOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(Into::into),
-        //     local.adapter.c().map(Into::into),
-        //     AB::Expr::zero(),
-        //     AB::Expr::zero(),
-        //     local.is_real.into(),
-        //     local.address_operation,
-        // );
+        let aligned_addr = AddressOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(Into::into),
+            local.adapter.c().map(Into::into),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.offset_bit.into(),
+            is_real.clone(),
+            local.address_operation,
+        );
 
         // Step 2. Read the memory address.
         builder.eval_memory_access_read(
             clk_high.clone(),
             clk_low.clone(),
-            &local.aligned_address.map(Into::into),
+            &aligned_addr.map(Into::into),
             local.memory_access,
-            local.is_real,
+            is_real.clone(),
         );
 
-        // // This chip requires `op_a != x0`.
-        // builder.assert_zero(local.adapter.op_a_0);
+        // This chip requires `op_a != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
+
+        builder
+            .when_not(local.offset_bit)
+            .assert_eq(local.selected_word[0], local.memory_access.prev_value[0]);
+        builder
+            .when_not(local.offset_bit)
+            .assert_eq(local.selected_word[1], local.memory_access.prev_value[1]);
+        builder
+            .when(local.offset_bit)
+            .assert_eq(local.selected_word[0], local.memory_access.prev_value[2]);
+        builder
+            .when(local.offset_bit)
+            .assert_eq(local.selected_word[1], local.memory_access.prev_value[3]);
 
         U16MSBOperation::<AB::F>::eval_msb(
             builder,
@@ -234,7 +237,7 @@ where
             local.state,
             local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
             AB::Expr::from_canonical_u32(CLK_INC),
-            local.is_real.into(),
+            is_real.clone(),
         );
 
         // Constrain the program and register reads.
@@ -251,7 +254,7 @@ where
                 AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
             ]),
             local.adapter,
-            local.is_real.into(),
+            is_real.clone(),
         );
     }
 }

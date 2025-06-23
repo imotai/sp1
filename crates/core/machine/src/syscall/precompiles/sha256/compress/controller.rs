@@ -1,11 +1,12 @@
 use crate::{
-    operations::SyscallAddrOperation,
+    air::SP1OperationBuilder,
+    operations::{IsZeroOperation, SyscallAddrOperation},
     utils::{next_multiple_of_32, u32_to_half_word},
 };
 
 use super::ShaCompressControlChip;
 use core::borrow::Borrow;
-use p3_air::{Air, BaseAir};
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
@@ -17,7 +18,7 @@ use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
-    InteractionKind, Word,
+    InteractionKind,
 };
 use std::{borrow::BorrowMut, iter::once};
 
@@ -79,8 +80,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
             let cols: &mut ShaCompressControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.w_ptr.populate(&mut blu_events, event.w_ptr, 256);
-            cols.h_ptr.populate(&mut blu_events, event.h_ptr, 32);
+            cols.w_ptr.populate(&mut blu_events, event.w_ptr, 512);
+            cols.h_ptr.populate(&mut blu_events, event.h_ptr, 64);
             cols.is_real = F::one();
             for i in 0..8 {
                 let prev_value = event.h[i];
@@ -124,7 +125,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
 
 impl<AB> Air<AB> for ShaCompressControlChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1AirBuilder + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>,
 {
     fn eval(&self, builder: &mut AB) {
         // Initialize columns.
@@ -135,17 +136,17 @@ where
         builder.assert_bool(local.is_real);
 
         let w_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.w_ptr, local.is_real.into());
+            SyscallAddrOperation::<AB::F>::eval(builder, 512, local.w_ptr, local.is_real.into());
         let h_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.h_ptr, local.is_real.into());
+            SyscallAddrOperation::<AB::F>::eval(builder, 64, local.h_ptr, local.is_real.into());
 
         // Receive the syscall.
         builder.receive_syscall(
             local.clk_high,
             local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::SHA_COMPRESS.syscall_id()),
-            w_ptr.clone(),
-            h_ptr.clone(),
+            w_ptr.map(Into::into),
+            h_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );
@@ -153,8 +154,8 @@ where
         // Send the initial state.
         let send_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
-            .chain(w_ptr.clone().map(Into::into))
-            .chain(h_ptr.clone().map(Into::into))
+            .chain(w_ptr.map(Into::into))
+            .chain(h_ptr.map(Into::into))
             .chain(once(AB::Expr::from_canonical_u32(0)))
             .chain(
                 local.initial_state.into_iter().flat_map(|word| word.into_iter()).map(Into::into),

@@ -1,7 +1,7 @@
 use p3_field::AbstractField;
 use sp1_core_executor::events::ByteRecord;
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::Field;
 use sp1_derive::AlignedBorrow;

@@ -21,7 +21,7 @@ use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS}
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     shape::OrderedShape,
-    MachineConfig, MachineVerifyingKey, ShardProof, Word, DIGEST_SIZE,
+    MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE,
 };
 
 use crate::{
@@ -144,8 +144,10 @@ where
         let mut reconstruct_deferred_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut global_cumulative_sums = Vec::new();
-        let mut init_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut finalize_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut init_addr_word: [Felt<_>; 3] =
+            array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
+        let mut finalize_addr_word: [Felt<_>; 3] =
+            array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
 
         // Verify the shard proofs.
         // Verification of proofs can be done in parallel but the aggregation/consistency checks
@@ -232,24 +234,22 @@ where
                 current_exit_code = current_public_values.prev_exit_code;
 
                 // Initialize the MemoryInitialize address word.
-                for (limb, (first_limb, current_limb)) in init_addr_word.0.iter_mut().zip(
+                for (limb, (first_limb, current_limb)) in init_addr_word.iter_mut().zip(
                     compress_public_values
                         .previous_init_addr_word
-                        .0
                         .iter_mut()
-                        .zip(current_public_values.previous_init_addr_word.0.iter()),
+                        .zip(current_public_values.previous_init_addr_word.iter()),
                 ) {
                     *limb = *current_limb;
                     *first_limb = *current_limb;
                 }
 
                 // Initialize the MemoryFinalize address word.
-                for (limb, (first_limb, current_limb)) in finalize_addr_word.0.iter_mut().zip(
+                for (limb, (first_limb, current_limb)) in finalize_addr_word.iter_mut().zip(
                     compress_public_values
                         .previous_finalize_addr_word
-                        .0
                         .iter_mut()
-                        .zip(current_public_values.previous_finalize_addr_word.0.iter()),
+                        .zip(current_public_values.previous_finalize_addr_word.iter()),
                 ) {
                     *limb = *current_limb;
                     *first_limb = *current_limb;
@@ -316,16 +316,15 @@ where
 
             // Assert that the MemoryInitialize address limbs are the same.
             for (limb, current_limb) in
-                init_addr_word.0.iter().zip(current_public_values.previous_init_addr_word.0.iter())
+                init_addr_word.iter().zip(current_public_values.previous_init_addr_word.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
 
             // Assert that the MemoryFinalize address limbs are the same.
             for (limb, current_limb) in finalize_addr_word
-                .0
                 .iter()
-                .zip(current_public_values.previous_finalize_addr_word.0.iter())
+                .zip(current_public_values.previous_finalize_addr_word.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
@@ -429,16 +428,15 @@ where
 
             // Update the MemoryInitialize address limbs.
             for (limb, next_limb) in
-                init_addr_word.0.iter_mut().zip(current_public_values.last_init_addr_word.0.iter())
+                init_addr_word.iter_mut().zip(current_public_values.last_init_addr_word.iter())
             {
                 *limb = *next_limb;
             }
 
             // Update the MemoryFinalize address limbs.
             for (limb, next_limb) in finalize_addr_word
-                .0
                 .iter_mut()
-                .zip(current_public_values.last_finalize_addr_word.0.iter())
+                .zip(current_public_values.last_finalize_addr_word.iter())
             {
                 *limb = *next_limb;
             }

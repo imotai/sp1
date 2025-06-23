@@ -12,7 +12,7 @@ use slop_jagged::JaggedConfig;
 use slop_merkle_tree::my_bb_16_perm;
 use sp1_core_executor::SP1ReduceProof;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_primitives::{consts::WORD_SIZE, hash_deferred_proof};
+use sp1_primitives::hash_deferred_proof;
 use sp1_recursion_circuit::{
     basefold::{
         merkle_tree::MerkleTree, stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
@@ -43,7 +43,7 @@ use sp1_recursion_executor::{
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     prover::{MachineProver, MachineProverComponents, MachineProverError, MachineProvingKey},
-    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier, Word,
+    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
 use crate::{
@@ -541,7 +541,7 @@ fn recursion_program_from_input(
     let builder_span = tracing::debug_span!("build recursion program").entered();
     let mut builder = Builder::<InnerConfig>::default();
     let input_variable = input.read(&mut builder);
-    // SP1RecursiveVerifier::verify(&mut builder, recursion_verifier, input_variable);
+    SP1RecursiveVerifier::verify(&mut builder, recursion_verifier, input_variable);
     let block = builder.into_root_block();
     // SAFETY: The circuit is well-formed. It does not use synchronization primitives
     // (or possibly other means) to violate the invariants.
@@ -576,7 +576,7 @@ fn deferred_program_from_input(
     let verify_span = tracing::debug_span!("Verify deferred program").entered();
 
     // Verify the proof.
-    // SP1DeferredVerifier::verify(&mut builder, recursion_verifier, input, vk_verification);
+    SP1DeferredVerifier::verify(&mut builder, recursion_verifier, input, vk_verification);
     verify_span.exit();
     let block = builder.into_root_block();
     operations_span.exit();
@@ -608,13 +608,13 @@ fn compress_program_from_input(
     let input = input.read(&mut builder);
 
     // Verify the proof.
-    // SP1CompressWithVKeyVerifier::verify(
-    //     &mut builder,
-    //     recursion_verifier,
-    //     input,
-    //     vk_verification,
-    //     PublicValuesOutputDigest::Reduce,
-    // );
+    SP1CompressWithVKeyVerifier::verify(
+        &mut builder,
+        recursion_verifier,
+        input,
+        vk_verification,
+        PublicValuesOutputDigest::Reduce,
+    );
     let block = builder.into_root_block();
     builder_span.exit();
     // SAFETY: The circuit is well-formed. It does not use synchronization primitives
@@ -646,13 +646,13 @@ fn shrink_program_from_input(
     let input = input.read(&mut builder);
 
     // Verify the root proof.
-    // SP1CompressRootVerifierWithVKey::verify(
-    //     &mut builder,
-    //     recursion_verifier,
-    //     input,
-    //     vk_verification,
-    //     PublicValuesOutputDigest::Reduce,
-    // );
+    SP1CompressRootVerifierWithVKey::verify(
+        &mut builder,
+        recursion_verifier,
+        input,
+        vk_verification,
+        PublicValuesOutputDigest::Reduce,
+    );
 
     let block = builder.into_root_block();
     builder_span.exit();
@@ -686,13 +686,13 @@ fn wrap_program_from_input(
     let input = input.read(&mut builder);
 
     // Verify the root proof.
-    // SP1CompressRootVerifierWithVKey::verify(
-    //     &mut builder,
-    //     recursion_verifier,
-    //     input,
-    //     vk_verification,
-    //     PublicValuesOutputDigest::Root,
-    // );
+    SP1CompressRootVerifierWithVKey::verify(
+        &mut builder,
+        recursion_verifier,
+        input,
+        vk_verification,
+        PublicValuesOutputDigest::Root,
+    );
 
     let block = builder.into_root_block();
     builder_span.exit();
@@ -763,8 +763,8 @@ fn dummy_deferred_input<C: RecursionProverComponents>(
         end_shard: BabyBear::zero(),
         end_execution_shard: BabyBear::zero(),
         end_timestamp: [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()],
-        init_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
-        finalize_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
+        init_addr_word: [BabyBear::zero(); 3],
+        finalize_addr_word: [BabyBear::zero(); 3],
         is_complete: false,
     }
 }

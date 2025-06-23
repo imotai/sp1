@@ -1,17 +1,8 @@
+use slop_algebra::Field;
+use slop_alloc::CpuBackend;
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
-use slop_algebra::{AbstractField, Field, PackedValue, PrimeField32, PrimeField64};
-use slop_alloc::CpuBackend;
-use slop_baby_bear::BabyBear;
-use slop_matrix::Matrix;
-use slop_multilinear::Mle;
-
-use crate::{
-    air::InteractionScope,
-    prover::{MachineProverComponents, MachineProvingKey, Traces},
-    Chip, Machine, MachineConfig,
-};
+use crate::{air::InteractionScope, prover::Traces, Chip};
 
 use super::InteractionKind;
 
@@ -49,19 +40,19 @@ pub fn vec_to_string<F: Field>(vec: Vec<F>) -> String {
     result
 }
 
-/// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
-///
-/// This presentation is useful when debugging interactions as it makes it clear which
-// interactions /// are `send` and which are `receive`.
-fn field_to_int<F: PrimeField32>(x: F) -> i32 {
-    let modulus = BabyBear::ORDER_U64;
-    let val = x.as_canonical_u64();
-    if val > modulus / 2 {
-        val as i32 - modulus as i32
-    } else {
-        val as i32
-    }
-}
+// /// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
+// ///
+// /// This presentation is useful when debugging interactions as it makes it clear which
+// // interactions /// are `send` and which are `receive`.
+// fn field_to_int<F: PrimeField32>(x: F) -> i32 {
+//     let modulus = BabyBear::ORDER_U64;
+//     let val = x.as_canonical_u64();
+//     if val > modulus / 2 {
+//         val as i32 - modulus as i32
+//     } else {
+//         val as i32
+//     }
+// }
 
 /// Debugs the interactions of a chip.
 #[allow(clippy::type_complexity)]

@@ -3,7 +3,7 @@ use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::ByteOpcode;
 use sp1_stark::{
-    air::{AirInteraction, InteractionScope, SP1AirBuilder},
+    air::{AirInteraction, InteractionScope},
     InteractionKind, Word,
 };
 
@@ -85,6 +85,9 @@ where
         // w[i-15] rightrotate 7.
         let w_i_minus_15_prev_value_half_word =
             [local.w_i_minus_15.prev_value[0], local.w_i_minus_15.prev_value[1]];
+        builder.assert_zero(local.w_i_minus_15.prev_value[2]);
+        builder.assert_zero(local.w_i_minus_15.prev_value[3]);
+
         FixedRotateRightOperation::<AB::F>::eval(
             builder,
             w_i_minus_15_prev_value_half_word,
@@ -133,6 +136,9 @@ where
         // w[i-2] rightrotate 17.
         let w_i_minus_2_prev_value_half_word =
             [local.w_i_minus_2.prev_value[0], local.w_i_minus_2.prev_value[1]];
+        builder.assert_zero(local.w_i_minus_2.prev_value[2]);
+        builder.assert_zero(local.w_i_minus_2.prev_value[3]);
+
         FixedRotateRightOperation::<AB::F>::eval(
             builder,
             w_i_minus_2_prev_value_half_word,
@@ -180,8 +186,14 @@ where
         // s2 := w[i-16] + s0 + w[i-7] + s1.
         let w_i_minus_16_prev_value_half_word =
             [local.w_i_minus_16.prev_value[0], local.w_i_minus_16.prev_value[1]];
+        builder.assert_zero(local.w_i_minus_16.prev_value[2]);
+        builder.assert_zero(local.w_i_minus_16.prev_value[3]);
+
         let w_i_minus_7_prev_value_half_word =
             [local.w_i_minus_7.prev_value[0], local.w_i_minus_7.prev_value[1]];
+        builder.assert_zero(local.w_i_minus_7.prev_value[2]);
+        builder.assert_zero(local.w_i_minus_7.prev_value[3]);
+
         Add4Operation::<AB::F>::eval(
             builder,
             w_i_minus_16_prev_value_half_word.map(|x| x.into()),

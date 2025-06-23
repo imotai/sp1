@@ -54,7 +54,7 @@ pub struct SyscallInstrColumns<T> {
     pub index_bitmap: [T; PV_DIGEST_NUM_WORDS],
 
     /// The expected public values digest.
-    pub expected_public_values_digest: [T; 8],
+    pub expected_public_values_digest: [T; 4],
 
     /// The check if `op_b` is a valid BabyBear.
     pub op_b_range_check: BabyBearWordRangeChecker<T>,

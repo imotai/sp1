@@ -37,6 +37,8 @@ impl<F: Field> BabyBearWordRangeChecker<F> {
         is_real: AB::Expr,
     ) {
         builder.assert_bool(is_real.clone());
+        builder.when(is_real.clone()).assert_zero(value[2]);
+        builder.when(is_real.clone()).assert_zero(value[3]);
 
         // Note that BabyBear modulus is 2^31 - 2^27 + 1 = 15 * 2^27 + 1.
         // First, check if the most significant limb is less than 15 * 2^11 = 30720.

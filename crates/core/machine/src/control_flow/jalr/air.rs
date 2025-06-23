@@ -5,7 +5,7 @@ use crate::{
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
+use sp1_core_executor::{Opcode, CLK_INC};
 use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::air::BaseAirBuilder;
 use std::borrow::Borrow;

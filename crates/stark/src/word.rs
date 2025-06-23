@@ -72,8 +72,8 @@ impl<F: Field> Word<F> {
 impl<V: Copy> Word<V> {
     /// Reduces a word to a single variable.
     pub fn reduce<AB: AirBuilder<Var = V>>(&self) -> AB::Expr {
-        let base = [1, 1 << 16].map(AB::Expr::from_canonical_u32);
-        self.0.iter().take(2).enumerate().map(|(i, x)| base[i].clone() * *x).sum()
+        let base = [1, 1 << 16, 1 << 32, 1 << 48].map(AB::Expr::from_wrapped_u64);
+        self.0.iter().enumerate().map(|(i, x)| base[i].clone() * *x).sum()
     }
 }
 

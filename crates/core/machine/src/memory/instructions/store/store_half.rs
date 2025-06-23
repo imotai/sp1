@@ -43,14 +43,11 @@ pub struct StoreHalfColumns<T> {
     /// Instance of `AddressOperation` to constrain the memory address.
     pub address_operation: AddressOperation<T>,
 
-    /// Aligned address. (TODO: u64 will not need later)
-    pub aligned_addr: [T; 3],
-
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
-    /// Whether or not the offset is `0` or `2`.
-    pub offset_bit: T,
+    /// Whether or not the offset is `0` or `2` or `4` or `6`.
+    pub offset_bit: [T; 2],
 
     /// The store value.
     pub store_value: Word<T>,
@@ -142,19 +139,12 @@ impl StoreHalfChip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        let memory_addr = event.b.wrapping_add(event.c);
-        debug_assert!(memory_addr % 2 == 0);
-
+        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
         let bit1 = ((memory_addr >> 1) & 1) as u16;
         let bit2 = ((memory_addr >> 2) & 1) as u16;
-        let aligned_addr = memory_addr - 4 * bit2 as u64 - 2 * bit1 as u64;
-        cols.aligned_addr = [
-            F::from_canonical_u64(aligned_addr & 0xFFFF),
-            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
-            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
-        ];
-        cols.offset_bit = F::from_canonical_u16(bit1);
+
+        cols.offset_bit[0] = F::from_canonical_u16(bit1);
+        cols.offset_bit[1] = F::from_canonical_u16(bit2);
         cols.store_value = Word::from(event.mem_access.value());
         cols.is_real = F::one();
     }
@@ -175,42 +165,61 @@ where
         let clk_low = local.state.clk_low::<AB>();
 
         let opcode = AB::Expr::from_canonical_u32(Opcode::SH as u32);
-        // builder.assert_bool(local.is_real);
+        builder.assert_bool(local.is_real);
 
-        // // Step 1. Compute the address, and check offsets and address bounds.
-        // let aligned_addr = AddressOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(Into::into),
-        //     local.adapter.c().map(Into::into),
-        //     AB::Expr::zero(),
-        //     local.offset_bit.into(),
-        //     local.is_real.into(),
-        //     local.address_operation,
-        // );
+        // Step 1. Compute the address, and check offsets and address bounds.
+        let aligned_addr = AddressOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(Into::into),
+            local.adapter.c().map(Into::into),
+            AB::Expr::zero(),
+            local.offset_bit[0].into(),
+            local.offset_bit[1].into(),
+            local.is_real.into(),
+            local.address_operation,
+        );
 
         // Step 2. Write the memory address.
         // The `store_value` will be constrained in Step 3.
         builder.eval_memory_access_write(
             clk_high.clone(),
             clk_low.clone(),
-            &local.aligned_addr.map(Into::into),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             local.store_value,
             local.is_real.into(),
         );
 
-        // // Step 3. Use the memory value to compute the write value.
-        // let store_limb = local.adapter.prev_a().0[0];
-        // builder.assert_eq(
-        //     local.store_value.0[0],
-        //     local.memory_access.prev_value.0[0] * local.offset_bit
-        //         + store_limb * (AB::Expr::one() - local.offset_bit),
-        // );
-        // builder.assert_eq(
-        //     local.store_value.0[1],
-        //     local.memory_access.prev_value.0[1] * (AB::Expr::one() - local.offset_bit)
-        //         + store_limb * local.offset_bit,
-        // );
+        // Step 3. Use the memory value to compute the write value.
+        let store_limb = local.adapter.prev_a().0[0];
+        builder.assert_eq(
+            local.store_value.0[0],
+            local.memory_access.prev_value.0[0]
+                + (store_limb - local.memory_access.prev_value.0[0])
+                    * (AB::Expr::one() - local.offset_bit[0])
+                    * (AB::Expr::one() - local.offset_bit[1]),
+        );
+        builder.assert_eq(
+            local.store_value.0[1],
+            local.memory_access.prev_value.0[1]
+                + (store_limb - local.memory_access.prev_value.0[1])
+                    * local.offset_bit[0]
+                    * (AB::Expr::one() - local.offset_bit[1]),
+        );
+        builder.assert_eq(
+            local.store_value.0[2],
+            local.memory_access.prev_value.0[2]
+                + (store_limb - local.memory_access.prev_value.0[2])
+                    * (AB::Expr::one() - local.offset_bit[0])
+                    * local.offset_bit[1],
+        );
+        builder.assert_eq(
+            local.store_value.0[3],
+            local.memory_access.prev_value.0[3]
+                + (store_limb - local.memory_access.prev_value.0[3])
+                    * local.offset_bit[0]
+                    * local.offset_bit[1],
+        );
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(

@@ -185,8 +185,8 @@ impl<V: Copy> EdDecompressCols<V> {
         // addrs[0] = ptr.
         AddrAddOperation::<AB::F>::eval(
             builder,
-            ptr.clone(),
-            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             self.addrs[0],
             self.is_real.into(),
         );
@@ -195,8 +195,13 @@ impl<V: Copy> EdDecompressCols<V> {
         for i in 1..WORDS_FIELD_ELEMENT {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                self.addrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    self.addrs[i - 1].value[0].into(),
+                    self.addrs[i - 1].value[1].into(),
+                    self.addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 self.addrs[i],
                 self.is_real.into(),
             );
@@ -206,8 +211,8 @@ impl<V: Copy> EdDecompressCols<V> {
         let thirty_two = AB::F::from_canonical_u32(32u32);
         AddrAddOperation::<AB::F>::eval(
             builder,
-            ptr.clone(),
-            [thirty_two.into(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([thirty_two.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             self.read_ptrs[0],
             self.is_real.into(),
         );
@@ -216,8 +221,13 @@ impl<V: Copy> EdDecompressCols<V> {
         for i in 1..WORDS_FIELD_ELEMENT {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                self.read_ptrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    self.read_ptrs[i - 1].value[0].into(),
+                    self.read_ptrs[i - 1].value[1].into(),
+                    self.read_ptrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 self.read_ptrs[i],
                 self.is_real.into(),
             );
@@ -263,7 +273,7 @@ impl<V: Copy> EdDecompressCols<V> {
             self.clk_high,
             self.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
-            ptr,
+            ptr.map(Into::into),
             [self.sign.into(), AB::Expr::zero(), AB::Expr::zero()],
             self.is_real,
             InteractionScope::Local,

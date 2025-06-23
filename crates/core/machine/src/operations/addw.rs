@@ -1,10 +1,5 @@
-use std::num::Wrapping;
-
-use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord},
-    ByteOpcode,
-};
-use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
+use sp1_core_executor::events::ByteRecord;
+use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
@@ -12,8 +7,6 @@ use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 use crate::{air::WordAirBuilder, operations::U16MSBOperation};
-
-use super::{get_msb, U16toU8Operation};
 
 /// A set of columns needed to compute the add of two words.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
@@ -31,14 +24,13 @@ impl<F: Field> AddwOperation<F> {
         record: &mut impl ByteRecord,
         a_u64: u64,
         b_u64: u64,
-        is_real: bool,
+        _is_real: bool,
     ) {
         let value = (a_u64 as u32).wrapping_add(b_u64 as u32);
         let limbs = u32_to_u16_limbs(value);
         self.value = [F::from_canonical_u16(limbs[0]), F::from_canonical_u16(limbs[1])];
         // Range check
         record.add_u16_range_checks(&limbs);
-
         self.msb.populate_msb(record, limbs[1]);
     }
 

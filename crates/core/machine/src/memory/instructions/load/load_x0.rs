@@ -44,10 +44,7 @@ pub struct LoadX0Columns<T> {
     pub memory_access: MemoryAccessCols<T>,
 
     /// The bit decomposition of the offset.
-    pub offset_bit: [T; 2],
-
-    /// Aligned address. (TODO: u64 will not need later)
-    pub aligned_addr: [T; 3],
+    pub offset_bit: [T; 3],
 
     /// Whether this is a load byte instruction.
     pub is_lb: T,
@@ -154,20 +151,13 @@ impl LoadX0Chip {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
-        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        let memory_addr = event.b.wrapping_add(event.c);
+        let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
         let bit0 = (memory_addr & 1) as u16;
         let bit1 = ((memory_addr >> 1) & 1) as u16;
         let bit2 = ((memory_addr >> 2) & 1) as u16;
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
-
-        let aligned_addr = memory_addr - 4 * bit2 as u64 - 2 * bit1 as u64 - bit0 as u64;
-        cols.aligned_addr = [
-            F::from_canonical_u64(aligned_addr & 0xFFFF),
-            F::from_canonical_u64((aligned_addr >> 16) & 0xFFFF),
-            F::from_canonical_u64((aligned_addr >> 32) & 0xFFFF),
-        ];
+        cols.offset_bit[2] = F::from_canonical_u16(bit2);
 
         cols.is_lb = F::from_bool(event.opcode == Opcode::LB);
         cols.is_lbu = F::from_bool(event.opcode == Opcode::LBU);
@@ -211,40 +201,43 @@ where
             + local.is_lw
             + local.is_lwu
             + local.is_ld;
-        // builder.assert_bool(local.is_lb);
-        // builder.assert_bool(local.is_lbu);
-        // builder.assert_bool(local.is_lh);
-        // builder.assert_bool(local.is_lhu);
-        // builder.assert_bool(local.is_lw);
-        // builder.assert_bool(is_real.clone());
+        builder.assert_bool(local.is_lb);
+        builder.assert_bool(local.is_lbu);
+        builder.assert_bool(local.is_lh);
+        builder.assert_bool(local.is_lhu);
+        builder.assert_bool(local.is_lw);
+        builder.assert_bool(is_real.clone());
 
-        // // Step 1. Compute the address, and check offsets and address bounds.
-        // let aligned_addr = AddressOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(Into::into),
-        //     local.adapter.c().map(Into::into),
-        //     local.offset_bit[0].into(),
-        //     local.offset_bit[1].into(),
-        //     is_real.clone(),
-        //     local.address_operation,
-        // );
+        // Step 1. Compute the address, and check offsets and address bounds.
+        let aligned_addr = AddressOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(Into::into),
+            local.adapter.c().map(Into::into),
+            local.offset_bit[0].into(),
+            local.offset_bit[1].into(),
+            local.offset_bit[2].into(),
+            is_real.clone(),
+            local.address_operation,
+        );
 
-        // // Check the alignment of the address.
-        // builder.when(local.is_lw).assert_zero(local.offset_bit[0]);
-        // builder.when(local.is_lw).assert_zero(local.offset_bit[1]);
-        // builder.when(local.is_lh + local.is_lhu).assert_zero(local.offset_bit[0]);
+        // Check the alignment of the address.
+        builder.when(local.is_ld).assert_zero(local.offset_bit[0]);
+        builder.when(local.is_lw + local.is_lwu + local.is_ld).assert_zero(local.offset_bit[1]);
+        builder
+            .when(local.is_lh + local.is_lhu + local.is_lw + local.is_lwu + local.is_ld)
+            .assert_zero(local.offset_bit[0]);
 
         // Step 2. Read the memory address.
         builder.eval_memory_access_read(
             clk_high.clone(),
             clk_low.clone(),
-            &local.aligned_addr.map(Into::into),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             is_real.clone(),
         );
 
-        // // This chip is specifically for load operations with `op_a = x0`.
-        // builder.when(is_real.clone()).assert_one(local.adapter.op_a_0);
+        // This chip is specifically for load operations with `op_a = x0`.
+        builder.when(is_real.clone()).assert_one(local.adapter.op_a_0);
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(

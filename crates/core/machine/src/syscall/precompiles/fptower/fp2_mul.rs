@@ -400,8 +400,8 @@ where
             local.clk_high,
             local.clk_low,
             syscall_id_felt,
-            x_ptr,
-            y_ptr,
+            x_ptr.map(Into::into),
+            y_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

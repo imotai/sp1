@@ -1,9 +1,3 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-use std::{fmt::Debug, marker::PhantomData};
-
 use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
@@ -12,6 +6,10 @@ use crate::{
         AddrAddOperation, SyscallAddrOperation,
     },
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
+};
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -36,6 +34,8 @@ use sp1_curves::{
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::{InteractionScope, MachineAir};
+use sp1_stark::Word;
+use std::{fmt::Debug, marker::PhantomData};
 use typenum::Unsigned;
 
 pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize {
@@ -433,8 +433,8 @@ where
         // x_addrs[0] = x_ptr.
         AddrAddOperation::<AB::F>::eval(
             builder,
-            p_ptr.clone(),
-            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             local.p_addrs[0],
             local.is_real.into(),
         );
@@ -444,8 +444,13 @@ where
         for i in 1..local.p_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                local.p_addrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    local.p_addrs[i - 1].value[0].into(),
+                    local.p_addrs[i - 1].value[1].into(),
+                    local.p_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 local.p_addrs[i],
                 local.is_real.into(),
             );
@@ -453,8 +458,8 @@ where
 
         AddrAddOperation::<AB::F>::eval(
             builder,
-            q_ptr.clone(),
-            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             local.q_addrs[0],
             local.is_real.into(),
         );
@@ -463,8 +468,13 @@ where
         for i in 1..local.q_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                local.q_addrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    local.q_addrs[i - 1].value[0].into(),
+                    local.q_addrs[i - 1].value[1].into(),
+                    local.q_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 local.q_addrs[i],
                 local.is_real.into(),
             );
@@ -506,8 +516,8 @@ where
             local.clk_high,
             local.clk_low.into(),
             syscall_id_felt,
-            p_ptr,
-            q_ptr,
+            p_ptr.map(Into::into),
+            q_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

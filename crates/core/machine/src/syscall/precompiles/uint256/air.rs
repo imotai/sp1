@@ -1,7 +1,5 @@
 use crate::operations::AddrAddOperation;
-use crate::{
-    air::SP1Operation, memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols,
-};
+use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols};
 
 use crate::{
     air::SP1CoreAirBuilder,
@@ -28,6 +26,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::Word;
 use sp1_stark::{
     air::{InteractionScope, MachineAir},
     MachineRecord,
@@ -334,8 +333,8 @@ where
         // x_addrs[0] = x_ptr.
         AddrAddOperation::<AB::F>::eval(
             builder,
-            x_ptr.clone(),
-            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             local.x_addrs[0],
             local.is_real.into(),
         );
@@ -345,8 +344,13 @@ where
         for i in 1..local.x_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                local.x_addrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 local.x_addrs[i],
                 local.is_real.into(),
             );
@@ -355,8 +359,8 @@ where
         // y_addrs[0] = y_ptr.
         AddrAddOperation::<AB::F>::eval(
             builder,
-            y_ptr.clone(),
-            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
+            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
             local.y_and_modulus_addrs[0],
             local.is_real.into(),
         );
@@ -365,8 +369,13 @@ where
         for i in 1..local.y_and_modulus_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                local.y_and_modulus_addrs[i - 1].value.map(Into::into),
-                [eight.into(), AB::Expr::zero(), AB::Expr::zero()],
+                Word([
+                    local.y_and_modulus_addrs[i - 1].value[0].into(),
+                    local.y_and_modulus_addrs[i - 1].value[1].into(),
+                    local.y_and_modulus_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
                 local.y_and_modulus_addrs[i],
                 local.is_real.into(),
             );
@@ -401,8 +410,8 @@ where
             local.clk_high,
             local.clk_low.into(),
             AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
-            x_ptr,
-            y_ptr,
+            x_ptr.map(Into::into),
+            y_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

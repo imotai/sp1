@@ -42,9 +42,6 @@ pub struct StoreDoubleColumns<T> {
     /// Instance of `AddressOperation` to constrain the memory address.
     pub address_operation: AddressOperation<T>,
 
-    /// Aligned address. (TODO: u64 will not need later)
-    pub aligned_addr: [T; 3],
-
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
@@ -135,16 +132,7 @@ impl StoreDoubleChip {
     ) {
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
-
-        // let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        let memory_addr = event.b.wrapping_add(event.c);
-        cols.aligned_addr = [
-            F::from_canonical_u64(memory_addr & 0xFFFF),
-            F::from_canonical_u64((memory_addr >> 16) & 0xFFFF),
-            F::from_canonical_u64((memory_addr >> 32) & 0xFFFF),
-        ];
-        debug_assert!(memory_addr % 4 == 0);
-
+        cols.address_operation.populate(blu, event.b, event.c);
         cols.is_real = F::one();
     }
 }
@@ -165,24 +153,25 @@ where
 
         let opcode = AB::Expr::from_canonical_u32(Opcode::SD as u32);
 
-        // builder.assert_bool(local.is_real);
+        builder.assert_bool(local.is_real);
 
-        // // Step 1. Compute the address, and check offsets and address bounds.
-        // let aligned_addr = AddressOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(Into::into),
-        //     local.adapter.c().map(Into::into),
-        //     AB::Expr::zero(),
-        //     AB::Expr::zero(),
-        //     local.is_real.into(),
-        //     local.address_operation,
-        // );
+        // Step 1. Compute the address, and check offsets and address bounds.
+        let aligned_addr = AddressOperation::<AB::F>::eval(
+            builder,
+            local.adapter.b().map(Into::into),
+            local.adapter.c().map(Into::into),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_real.into(),
+            local.address_operation,
+        );
 
         // Step 2. Write at the memory address.
         builder.eval_memory_access_write(
             clk_high.clone(),
             clk_low.clone(),
-            &local.aligned_addr.map(Into::into),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             *local.adapter.prev_a(),
             local.is_real,
