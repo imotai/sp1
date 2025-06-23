@@ -37,10 +37,11 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir};
-use sp1_stark::Word;
-use std::fmt::Debug;
-use std::marker::PhantomData;
+use sp1_stark::{
+    air::{BaseAirBuilder, InteractionScope, MachineAir},
+    Word,
+};
+use std::{fmt::Debug, marker::PhantomData};
 use typenum::Unsigned;
 
 pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() -> usize {

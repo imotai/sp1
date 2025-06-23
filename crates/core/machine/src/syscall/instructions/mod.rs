@@ -79,8 +79,8 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //                     // There can be multiple shards for programs with syscalls, so need to figure
 // out which                     // record is for a CPU shard.
 //                     if !malicious_record.cpu_events.is_empty() {
-//                         malicious_record.syscall_events[0].next_pc_rel = test_case.incorrect_next_pc;
-//                     }
+//                         malicious_record.syscall_events[0].next_pc_rel =
+// test_case.incorrect_next_pc;                     }
 
 //                     prover.generate_traces(&malicious_record)
 //                 };

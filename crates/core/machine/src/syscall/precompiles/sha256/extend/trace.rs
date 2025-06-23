@@ -118,36 +118,11 @@ impl ShaExtendChip {
                 F::from_canonical_u64(((event.w_ptr >> 16) & 0xFFFF) as u64),
                 F::from_canonical_u64(((event.w_ptr >> 32) & 0xFFFF) as u64),
             ];
-            let w_i_minus_15_ptr = event.w_ptr + (i - 15) * 8;
-            let w_i_minus_2_ptr = event.w_ptr + (i - 2) * 8;
-            let w_i_minus_16_ptr = event.w_ptr + (i - 16) * 8;
-            let w_i_minus_7_ptr = event.w_ptr + (i - 7) * 8;
-            let w_i_ptr = event.w_ptr + i * 8;
-            cols.w_i_minus_15_ptr = [
-                F::from_canonical_u64((w_i_minus_15_ptr & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_15_ptr >> 16) & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_15_ptr >> 32) & 0xFFFF) as u64),
-            ];
-            cols.w_i_minus_2_ptr = [
-                F::from_canonical_u64((w_i_minus_2_ptr & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_2_ptr >> 16) & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_2_ptr >> 32) & 0xFFFF) as u64),
-            ];
-            cols.w_i_minus_16_ptr = [
-                F::from_canonical_u64((w_i_minus_16_ptr & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_16_ptr >> 16) & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_16_ptr >> 32) & 0xFFFF) as u64),
-            ];
-            cols.w_i_minus_7_ptr = [
-                F::from_canonical_u64((w_i_minus_7_ptr & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_7_ptr >> 16) & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_minus_7_ptr >> 32) & 0xFFFF) as u64),
-            ];
-            cols.w_i_ptr = [
-                F::from_canonical_u64((w_i_ptr & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_ptr >> 16) & 0xFFFF) as u64),
-                F::from_canonical_u64(((w_i_ptr >> 32) & 0xFFFF) as u64),
-            ];
+            cols.w_i_minus_15_ptr.populate(blu, event.w_ptr, (i - 15) * 8);
+            cols.w_i_minus_2_ptr.populate(blu, event.w_ptr, (i - 2) * 8);
+            cols.w_i_minus_16_ptr.populate(blu, event.w_ptr, (i - 16) * 8);
+            cols.w_i_minus_7_ptr.populate(blu, event.w_ptr, (i - 7) * 8);
+            cols.w_i_ptr.populate(blu, event.w_ptr, i * 8);
 
             let w_i_minus_15_read = MemoryRecordEnum::Read(event.w_i_minus_15_reads[j]);
             let w_i_minus_2_read = MemoryRecordEnum::Read(event.w_i_minus_2_reads[j]);

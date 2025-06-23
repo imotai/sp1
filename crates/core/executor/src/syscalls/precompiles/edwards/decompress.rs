@@ -63,8 +63,15 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
         y_memory_records,
         local_mem_access: rt.postprocess(),
     };
-    let syscall_event =
-        rt.rt.syscall_event(start_clk, syscall_code, arg1, sign, false, rt.next_pc_rel, rt.exit_code);
+    let syscall_event = rt.rt.syscall_event(
+        start_clk,
+        syscall_code,
+        arg1,
+        sign,
+        false,
+        rt.next_pc_rel,
+        rt.exit_code,
+    );
     rt.add_precompile_event(syscall_code, syscall_event, PrecompileEvent::EdDecompress(event));
     None
 }

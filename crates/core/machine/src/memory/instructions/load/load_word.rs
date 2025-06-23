@@ -1,5 +1,4 @@
-use p3_air::AirBuilder;
-use p3_air::{Air, BaseAir};
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::u64_to_u16_limbs;

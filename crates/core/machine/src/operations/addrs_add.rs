@@ -34,7 +34,8 @@ impl<F: Field> AddrAddOperation<F> {
     /// Evaluate the add operation.
     /// Assumes that `a`, `b` are valid u64 addresses.
     /// Constrains that `is_real` is boolean.
-    /// If `is_real` is true, the `value` is constrained to a valid u48 address representing `a + b`.
+    /// If `is_real` is true, the `value` is constrained to a valid u48 address representing `a +
+    /// b`.
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
         a: Word<AB::Expr>,

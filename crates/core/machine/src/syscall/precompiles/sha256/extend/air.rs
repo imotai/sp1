@@ -11,8 +11,8 @@ use super::{ShaExtendChip, ShaExtendCols, NUM_SHA_EXTEND_COLS};
 use crate::{
     air::SP1CoreAirBuilder,
     operations::{
-        Add4Operation, ClkOperation, FixedRotateRightOperation, FixedShiftRightOperation,
-        XorU32Operation,
+        Add4Operation, AddrAddOperation, ClkOperation, FixedRotateRightOperation,
+        FixedShiftRightOperation, XorU32Operation,
     },
 };
 
@@ -45,38 +45,94 @@ where
             local.is_real.into(),
         );
 
+        let i_minus_15 = (local.i - AB::F::from_canonical_u32(15)) * AB::F::from_canonical_u32(8);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.w_ptr[0].into(),
+                local.w_ptr[1].into(),
+                local.w_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([i_minus_15, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.w_i_minus_15_ptr,
+            local.is_real.into(),
+        );
+
         // Read w[i-15].
         builder.eval_memory_access_read(
             local.clk_high + local.next_clk.is_overflow,
             local.next_clk.next_clk_low::<AB>(),
-            &local.w_i_minus_15_ptr.map(Into::into),
+            &local.w_i_minus_15_ptr.value.map(Into::into),
             local.w_i_minus_15,
             local.is_real,
+        );
+
+        let i_minus_2 = (local.i - AB::F::from_canonical_u32(2)) * AB::F::from_canonical_u32(8);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.w_ptr[0].into(),
+                local.w_ptr[1].into(),
+                local.w_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([i_minus_2, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.w_i_minus_2_ptr,
+            local.is_real.into(),
         );
 
         // Read w[i-2].
         builder.eval_memory_access_read(
             local.clk_high + local.next_clk.is_overflow,
             local.next_clk.next_clk_low::<AB>(),
-            &local.w_i_minus_2_ptr.map(Into::into),
+            &local.w_i_minus_2_ptr.value.map(Into::into),
             local.w_i_minus_2,
             local.is_real,
+        );
+
+        let i_minus_16 = (local.i - AB::F::from_canonical_u32(16)) * AB::F::from_canonical_u32(8);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.w_ptr[0].into(),
+                local.w_ptr[1].into(),
+                local.w_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([i_minus_16, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.w_i_minus_16_ptr,
+            local.is_real.into(),
         );
 
         // Read w[i-16].
         builder.eval_memory_access_read(
             local.clk_high + local.next_clk.is_overflow,
             local.next_clk.next_clk_low::<AB>(),
-            &local.w_i_minus_16_ptr.map(Into::into),
+            &local.w_i_minus_16_ptr.value.map(Into::into),
             local.w_i_minus_16,
             local.is_real,
+        );
+
+        let i_minus_7 = (local.i - AB::F::from_canonical_u32(7)) * AB::F::from_canonical_u32(8);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.w_ptr[0].into(),
+                local.w_ptr[1].into(),
+                local.w_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([i_minus_7, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.w_i_minus_7_ptr,
+            local.is_real.into(),
         );
 
         // Read w[i-7].
         builder.eval_memory_access_read(
             local.clk_high + local.next_clk.is_overflow,
             local.next_clk.next_clk_low::<AB>(),
-            &local.w_i_minus_7_ptr.map(Into::into),
+            &local.w_i_minus_7_ptr.value.map(Into::into),
             local.w_i_minus_7,
             local.is_real,
         );
@@ -214,10 +270,24 @@ where
         builder.eval_memory_access_write(
             local.clk_high + local.next_clk.is_overflow,
             local.next_clk.next_clk_low::<AB>(),
-            &local.w_i_ptr.map(Into::into),
+            &local.w_i_ptr.value.map(Into::into),
             local.w_i,
             s2_value_word,
             local.is_real,
+        );
+
+        let i_addr = local.i * AB::F::from_canonical_u32(8);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.w_ptr[0].into(),
+                local.w_ptr[1].into(),
+                local.w_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([i_addr, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.w_i_ptr,
+            local.is_real.into(),
         );
 
         // Receive the state.

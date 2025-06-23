@@ -33,8 +33,10 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir};
-use sp1_stark::Word;
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
 use std::{fmt::Debug, marker::PhantomData};
 use typenum::Unsigned;
 

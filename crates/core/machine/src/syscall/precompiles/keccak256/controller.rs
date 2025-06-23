@@ -1,5 +1,7 @@
 use crate::{
-    air::SP1CoreAirBuilder, memory::MemoryAccessCols, operations::SyscallAddrOperation,
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessCols,
+    operations::{AddrAddOperation, SyscallAddrOperation},
     utils::next_multiple_of_32,
 };
 
@@ -34,7 +36,7 @@ pub struct KeccakPermuteControlCols<T> {
     pub clk_high: T,
     pub clk_low: T,
     pub state_addr: SyscallAddrOperation<T>,
-    pub addrs: [[T; 3]; 25],
+    pub addrs: [AddrAddOperation<T>; 25],
     pub is_real: T,
     pub initial_memory_access: [MemoryAccessCols<T>; 25],
     pub final_memory_access: [MemoryAccessCols<T>; 25],
@@ -108,12 +110,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             for (j, read_record) in event.state_read_records.iter().enumerate() {
                 cols.initial_memory_access[j]
                     .populate(MemoryRecordEnum::Read(*read_record), &mut blu_events);
-                let new_state_addr = event.state_addr.wrapping_add(8 * j as u64);
-                cols.addrs[j] = [
-                    F::from_canonical_u64(new_state_addr & 0xFFFF),
-                    F::from_canonical_u64((new_state_addr >> 16) & 0xFFFF),
-                    F::from_canonical_u64((new_state_addr >> 32) & 0xFFFF),
-                ];
+                cols.addrs[j].populate(&mut blu_events, event.state_addr, 8 * j as u64);
             }
             for (j, write_record) in event.state_write_records.iter().enumerate() {
                 cols.final_memory_access[j]
@@ -216,19 +213,50 @@ where
             InteractionScope::Local,
         );
 
+        // addrs[0] = state_addr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                state_addr[0].into(),
+                state_addr[1].into(),
+                state_addr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // addrs[i] = addrs[i - 1] + 8.
+        for i in 1..local.addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.addrs[i - 1].value[0].into(),
+                    local.addrs[i - 1].value[1].into(),
+                    local.addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         // Evaluate the memory accesses.
         for i in 0..STATE_NUM_WORDS {
             builder.eval_memory_access_read(
                 local.clk_high,
                 local.clk_low,
-                &local.addrs[i].map(Into::into),
+                &local.addrs[i].value.map(Into::into),
                 local.initial_memory_access[i],
                 local.is_real,
             );
             builder.eval_memory_access_write(
                 local.clk_high,
                 local.clk_low + AB::Expr::one(),
-                &local.addrs[i].map(Into::into),
+                &local.addrs[i].value.map(Into::into),
                 local.final_memory_access[i],
                 local.final_value[i],
                 local.is_real,

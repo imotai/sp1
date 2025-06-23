@@ -1,5 +1,7 @@
-use crate::operations::AddrAddOperation;
-use crate::{memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols};
+use crate::{
+    memory::MemoryAccessColsU8,
+    operations::{field::field_op::FieldOpCols, AddrAddOperation},
+};
 
 use crate::{
     air::SP1CoreAirBuilder,
@@ -26,10 +28,9 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::Word;
 use sp1_stark::{
     air::{InteractionScope, MachineAir},
-    MachineRecord,
+    MachineRecord, Word,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -280,11 +281,11 @@ where
             Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
 
         // // If the modulus is zero, then we don't perform the modulus operation.
-        // // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
-        // // not overflow because we are summing 32 bytes.
+        // // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum
+        // will // not overflow because we are summing 32 bytes.
         // let modulus_byte_sum =
-        //     modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
-        // IsZeroOperation::<AB::F>::eval(
+        //     modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc +
+        // limb.clone()); IsZeroOperation::<AB::F>::eval(
         //     builder,
         //     (modulus_byte_sum, local.modulus_is_zero, local.is_real.into()),
         // );

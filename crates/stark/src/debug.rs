@@ -124,8 +124,8 @@
 // ///
 // /// Note that this does not actually verify the proof.
 // pub fn debug_cumulative_sums<F: Field, EF: ExtensionField<F>>(perms: &[RowMajorMatrix<EF>]) {
-//     let sum: EF = perms.iter().map(|perm| *perm.row_slice(perm.height() - 1).last().unwrap()).sum();
-//     assert_eq!(sum, EF::zero());
+//     let sum: EF = perms.iter().map(|perm| *perm.row_slice(perm.height() -
+// 1).last().unwrap()).sum();     assert_eq!(sum, EF::zero());
 // }
 
 // /// A builder for debugging constraints.
@@ -266,7 +266,8 @@
 //     }
 // }
 
-// impl<F: Field, EF: ExtensionField<F>> EmptyMessageBuilder for DebugConstraintBuilder<'_, F, EF> {}
+// impl<F: Field, EF: ExtensionField<F>> EmptyMessageBuilder for DebugConstraintBuilder<'_, F, EF>
+// {}
 
 // impl<F: Field, EF: ExtensionField<F>> AirBuilderWithPublicValues
 //     for DebugConstraintBuilder<'_, F, EF>

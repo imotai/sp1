@@ -4,7 +4,9 @@ use std::{
 };
 
 use crate::{
-    air::SP1CoreAirBuilder, memory::MemoryAccessColsU8, operations::SyscallAddrOperation,
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessColsU8,
+    operations::{AddrAddOperation, SyscallAddrOperation},
     utils::zeroed_f_vec,
 };
 use generic_array::GenericArray;
@@ -24,7 +26,10 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir};
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
 use std::mem::size_of;
 use typenum::Unsigned;
 
@@ -47,8 +52,8 @@ pub struct Fp2MulAssignCols<T, P: FieldParameters + NumWords> {
 
     pub x_ptr: SyscallAddrOperation<T>,
     pub y_ptr: SyscallAddrOperation<T>,
-    pub x_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
-    pub y_addrs: GenericArray<[T; 3], P::WordsCurvePoint>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub(crate) a0_mul_b0: FieldOpCols<T, P>,
@@ -189,22 +194,12 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
-                let new_addr = event.y_ptr.wrapping_add(8 * i as u64);
-                cols.y_addrs[i] = [
-                    F::from_canonical_u16((new_addr & 0xFFFF) as u16),
-                    F::from_canonical_u16((new_addr >> 16) as u16),
-                    F::from_canonical_u16((new_addr >> 32) as u16),
-                ];
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.y_ptr, i as u64 * 8);
             }
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
-                let new_addr = event.x_ptr.wrapping_add(8 * i as u64);
-                cols.x_addrs[i] = [
-                    F::from_canonical_u16((new_addr & 0xFFFF) as u16),
-                    F::from_canonical_u16((new_addr >> 16) as u16),
-                    F::from_canonical_u16((new_addr >> 32) as u16),
-                ];
+                cols.x_addrs[i].populate(&mut new_byte_lookup_events, event.x_ptr, i as u64 * 8);
             }
             rows.push(row);
         }
@@ -372,10 +367,61 @@ where
             local.is_real.into(),
         );
 
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // x_addrs[i] = x_addrs[i - 1] + 8.
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // y_addrs[0] = y_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.y_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.y_addrs[i - 1].value[0].into(),
+                    local.y_addrs[i - 1].value[1].into(),
+                    local.y_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low,
-            &local.y_addrs.iter().map(|addr| addr.map(Into::into)).collect_vec(),
+            &local.y_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
             &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -383,7 +429,7 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),
-            &local.x_addrs.iter().map(|addr| addr.map(Into::into)).collect_vec(),
+            &local.x_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
             &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,

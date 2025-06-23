@@ -25,8 +25,7 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_primitives::consts::u64_to_u16_limbs;
-use sp1_stark::air::BaseAirBuilder;
-use sp1_stark::air::MachineAir;
+use sp1_stark::air::{BaseAirBuilder, MachineAir};
 
 #[derive(Default)]
 pub struct StoreByteChip;

@@ -536,7 +536,8 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                     u16::from_le_bytes([remainder_bytes[2 * i], remainder_bytes[2 * i + 1]])
                 });
 
-                // Remainder needs to be truncated/sign extended for c * quotient + remainder computation.
+                // Remainder needs to be truncated/sign extended for c * quotient + remainder
+                // computation.
                 if is_word_operation(event.opcode) {
                     cols.remainder_comp = Word([
                         F::from_canonical_u16(remainder_u16[0]),
@@ -744,7 +745,8 @@ where
                 local.c_times_quotient[7].into(),
             ];
 
-            // The upper 8 bytes of c_times_quotient must match the upper 8 bytes of (c * quotient). Only required for non-word operations.
+            // The upper 8 bytes of c_times_quotient must match the upper 8 bytes of (c * quotient).
+            // Only required for non-word operations.
             MulOperation::<AB::F>::eval(
                 builder,
                 Word(upper_half),
@@ -760,8 +762,9 @@ where
             );
         }
 
-        // Calculate is_overflow. is_overflow_word = is_equal(b as u32, -2^{31}) * is_equal(c as u32, -1i32 as u32) * is_signed
-        // is_overflow_not_word = is_equal(b, -2^{63}) * is_equal(c, -1i64 as u64) * is_signed
+        // Calculate is_overflow. is_overflow_word = is_equal(b as u32, -2^{31}) * is_equal(c as
+        // u32, -1i32 as u32) * is_signed is_overflow_not_word = is_equal(b, -2^{63}) *
+        // is_equal(c, -1i64 as u64) * is_signed
         {
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
@@ -879,8 +882,8 @@ where
                         .when(local.b_not_neg_not_overflow)
                         .assert_eq(c_times_quotient_plus_remainder[i].clone(), AB::F::zero());
 
-                    // Since c * quotient is calculated using MULW, the result is sign extended up to WORD_SIZE
-                    // in the overflow case.
+                    // Since c * quotient is calculated using MULW, the result is sign extended up
+                    // to WORD_SIZE in the overflow case.
                     builder.when(is_word_operation.clone()).when(local.is_overflow).assert_eq(
                         c_times_quotient_plus_remainder[i].clone(),
                         AB::F::from_canonical_u16(u16::MAX),
@@ -905,7 +908,8 @@ where
                 }
             }
 
-            // Constrain that the remainder used for the calculation is sign-extended/truncated correctly (in case of word operation).
+            // Constrain that the remainder used for the calculation is sign-extended/truncated
+            // correctly (in case of word operation).
             for i in 0..WORD_SIZE {
                 if i < WORD_SIZE / 2 {
                     builder

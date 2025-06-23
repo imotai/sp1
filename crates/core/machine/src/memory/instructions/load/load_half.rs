@@ -1,8 +1,7 @@
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::BaseAirBuilder;
-use sp1_stark::Word;
+use sp1_stark::{air::BaseAirBuilder, Word};
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,

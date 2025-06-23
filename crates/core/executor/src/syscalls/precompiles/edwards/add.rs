@@ -16,8 +16,15 @@ pub(crate) fn edwards_add_assign_syscall<
     arg2: u64,
 ) -> Option<u64> {
     let event = create_ec_add_event::<E, Ex>(rt, arg1, arg2);
-    let syscall_event =
-        rt.rt.syscall_event(event.clk, syscall_code, arg1, arg2, false, rt.next_pc_rel, rt.exit_code);
+    let syscall_event = rt.rt.syscall_event(
+        event.clk,
+        syscall_code,
+        arg1,
+        arg2,
+        false,
+        rt.next_pc_rel,
+        rt.exit_code,
+    );
     rt.add_precompile_event(syscall_code, syscall_event, PrecompileEvent::EdAdd(event));
     None
 }
