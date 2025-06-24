@@ -5,13 +5,17 @@ use std::{
 
 use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
+use crate::air::WordAirBuilder;
 use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
-use sp1_core_executor::{events::GlobalInteractionEvent, ExecutionRecord, Program};
+use sp1_core_executor::{
+    events::{ByteRecord, GlobalInteractionEvent},
+    ExecutionRecord, Program,
+};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
@@ -26,12 +30,6 @@ pub(crate) const NUM_MEMORY_LOCAL_INIT_COLS: usize = size_of::<MemoryLocalCols<u
 pub struct SingleMemoryLocal<T: Copy> {
     /// The address of the memory access.
     pub addr: [T; 3],
-
-    /// The message of the initial global interaction.
-    pub initial_message: [T; 8],
-
-    /// The message of the final global interaction.
-    pub final_message: [T; 8],
 
     /// The high bits of initial clk of the memory access.
     pub initial_clk_high: T,
@@ -50,6 +48,18 @@ pub struct SingleMemoryLocal<T: Copy> {
 
     /// The final value of the memory access.
     pub final_value: Word<T>,
+
+    /// Lower half of third limb of the initial value
+    pub initial_value_lower: T,
+
+    /// Upper half of third limb of the initial value
+    pub initial_value_upper: T,
+
+    /// Lower half of third limb of the final value
+    pub final_value_lower: T,
+
+    /// Upper half of third limb of the final value
+    pub final_value_upper: T,
 
     /// Whether the memory access is a real access.
     pub is_real: T,
@@ -97,8 +107,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
         let mut events = Vec::new();
 
         input.get_local_mem_events().for_each(|mem_event| {
+            let mut blu = Vec::new();
             let initial_value_byte0 = ((mem_event.initial_mem_access.value >> 32) & 0xFF) as u32;
             let initial_value_byte1 = ((mem_event.initial_mem_access.value >> 40) & 0xFF) as u32;
+            blu.add_u8_range_check(initial_value_byte0 as u8, initial_value_byte1 as u8);
+
             events.push(GlobalInteractionEvent {
                 message: [
                     (mem_event.initial_mem_access.timestamp >> 24) as u32,
@@ -117,6 +130,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
             });
             let final_value_byte0 = ((mem_event.final_mem_access.value >> 32) & 0xFF) as u32;
             let final_value_byte1 = ((mem_event.final_mem_access.value >> 40) & 0xFF) as u32;
+            blu.add_u8_range_check(final_value_byte0 as u8, final_value_byte1 as u8);
             events.push(GlobalInteractionEvent {
                 message: [
                     (mem_event.final_mem_access.timestamp >> 24) as u32,
@@ -133,6 +147,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 is_receive: false,
                 kind: InteractionKind::Memory as u8,
             });
+
+            output.add_byte_lookup_events(blu);
         });
 
         output.global_interaction_events.extend(events);
@@ -192,40 +208,14 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                         // split the third limb of initial value into 2 limbs of 8 bits
                         let initial_value_byte0 = (event.initial_mem_access.value >> 32) & 0xFF;
                         let initial_value_byte1 = (event.initial_mem_access.value >> 40) & 0xFF;
-                        cols.initial_message = [
-                            F::from_canonical_u64(event.initial_mem_access.timestamp >> 24),
-                            F::from_canonical_u64(event.initial_mem_access.timestamp & 0xFFFFFF),
-                            F::from_canonical_u64(event.addr & 0xFFFF),
-                            F::from_canonical_u64((event.addr >> 16) & 0xFFFF),
-                            F::from_canonical_u64((event.addr >> 32) & 0xFFFF),
-                            F::from_canonical_u64(
-                                (event.initial_mem_access.value & 0xFFFF) as u64
-                                    + (1 << 16) * initial_value_byte0,
-                            ),
-                            F::from_canonical_u64(
-                                ((event.initial_mem_access.value >> 16) & 0xFFFF) as u64
-                                    + (1 << 16) * initial_value_byte1,
-                            ),
-                            F::from_canonical_u64((event.initial_mem_access.value >> 48) & 0xFFFF),
-                        ];
+                        cols.initial_value_lower =
+                            F::from_canonical_u32(initial_value_byte0 as u32);
+                        cols.initial_value_upper =
+                            F::from_canonical_u32(initial_value_byte1 as u32);
                         let final_value_byte0 = (event.final_mem_access.value >> 32) & 0xFF;
                         let final_value_byte1 = (event.final_mem_access.value >> 40) & 0xFF;
-                        cols.final_message = [
-                            F::from_canonical_u64(event.final_mem_access.timestamp >> 24),
-                            F::from_canonical_u64(event.final_mem_access.timestamp & 0xFFFFFF),
-                            F::from_canonical_u64(event.addr & 0xFFFF),
-                            F::from_canonical_u64((event.addr >> 16) & 0xFFFF),
-                            F::from_canonical_u64((event.addr >> 32) & 0xFFFF),
-                            F::from_canonical_u64(
-                                (event.final_mem_access.value & 0xFFFF) as u64
-                                    + (1 << 16) * final_value_byte0,
-                            ),
-                            F::from_canonical_u64(
-                                ((event.final_mem_access.value >> 16) & 0xFFFF) as u64
-                                    + (1 << 16) * final_value_byte1,
-                            ),
-                            F::from_canonical_u64((event.final_mem_access.value >> 48) & 0xFFFF),
-                        ];
+                        cols.final_value_lower = F::from_canonical_u32(final_value_byte0 as u32);
+                        cols.final_value_upper = F::from_canonical_u32(final_value_byte1 as u32);
                     }
                 }
             });
@@ -266,6 +256,26 @@ where
                 local.is_real * local.is_real * local.is_real,
             );
 
+            // Constrain that value_lower and value_upper are the lower and upper halves of the third limb of the values.
+            builder.assert_eq(
+                local.initial_value.0[2],
+                local.initial_value_lower
+                    + local.initial_value_upper * AB::F::from_canonical_u32(1 << 8),
+            );
+            builder.assert_eq(
+                local.final_value.0[2],
+                local.final_value_lower
+                    + local.final_value_upper * AB::F::from_canonical_u32(1 << 8),
+            );
+            builder.slice_range_check_u8(
+                &[local.initial_value_lower, local.initial_value_upper],
+                local.is_real,
+            );
+            builder.slice_range_check_u8(
+                &[local.final_value_lower, local.final_value_upper],
+                local.is_real,
+            );
+
             let mut values = vec![local.initial_clk_high.into(), local.initial_clk_low.into()];
             values.extend(local.addr.map(Into::into));
             values.extend(local.initial_value.map(Into::into));
@@ -278,14 +288,16 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.initial_message[0].into(),
-                        local.initial_message[1].into(),
-                        local.initial_message[2].into(),
-                        local.initial_message[3].into(),
-                        local.initial_message[4].into(),
-                        local.initial_message[5].into(),
-                        local.initial_message[6].into(),
-                        local.initial_message[7].into(),
+                        local.initial_clk_high.into(),
+                        local.initial_clk_low.into(),
+                        local.addr[0].into(),
+                        local.addr[1].into(),
+                        local.addr[2].into(),
+                        local.initial_value.0[0]
+                            + local.initial_value_lower * AB::F::from_canonical_u32(1 << 16),
+                        local.initial_value.0[1]
+                            + local.initial_value_upper * AB::F::from_canonical_u32(1 << 16),
+                        local.initial_value.0[3].into(),
                         AB::Expr::zero(),
                         AB::Expr::one(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
@@ -300,14 +312,16 @@ where
             builder.send(
                 AirInteraction::new(
                     vec![
-                        local.final_message[0].into(),
-                        local.final_message[1].into(),
-                        local.final_message[2].into(),
-                        local.final_message[3].into(),
-                        local.final_message[4].into(),
-                        local.final_message[5].into(),
-                        local.final_message[6].into(),
-                        local.final_message[7].into(),
+                        local.final_clk_high.into(),
+                        local.final_clk_low.into(),
+                        local.addr[0].into(),
+                        local.addr[1].into(),
+                        local.addr[2].into(),
+                        local.final_value.0[0]
+                            + local.final_value_lower * AB::F::from_canonical_u32(1 << 16),
+                        local.final_value.0[1]
+                            + local.final_value_upper * AB::F::from_canonical_u32(1 << 16),
+                        local.final_value.0[3].into(),
                         AB::Expr::one(),
                         AB::Expr::zero(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),

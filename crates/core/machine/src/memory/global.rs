@@ -96,6 +96,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                     blu.add_u16_range_checks(&u64_to_u16_limbs(value));
                     blu.add_u16_range_checks(&u64_to_u16_limbs(prev_addr)[0..3]);
                     blu.add_u16_range_checks(&u64_to_u16_limbs(addr)[0..3]);
+                    let value_lower = (value >> 32 & 0xFF) as u8;
+                    let value_upper = (value >> 40 & 0xFF) as u8;
+                    blu.add_u8_range_check(value_lower, value_upper);
                     if i != 0 || prev_addr != 0 {
                         cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
                     }
@@ -175,11 +178,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 cols.clk_low = F::from_canonical_u32((timestamp & 0xFFFFFF) as u32);
                 cols.value = Word::from(value);
                 cols.is_real = F::one();
-                let limb_1 = (value & 0xFFFF) as u32 + (1 << 16) * (value >> 32 & 0xFF) as u32;
-                let limb_2 =
-                    (value >> 16 & 0xFFFF) as u32 + (1 << 16) * (value >> 40 & 0xFF) as u32;
-                cols.limb_1 = F::from_canonical_u32(limb_1);
-                cols.limb_2 = F::from_canonical_u32(limb_2);
+                cols.value_lower = F::from_canonical_u32((value >> 32 & 0xFF) as u32);
+                cols.value_upper = F::from_canonical_u32((value >> 40 & 0xFF) as u32);
                 row
             })
             .collect::<Vec<_>>();
@@ -267,6 +267,12 @@ pub struct MemoryInitCols<T: Copy> {
     /// Packed limb 2 for global message
     pub limb_2: T,
 
+    /// Lower half of third limb of the value
+    pub value_lower: T,
+
+    /// Upper half of third limb of the value
+    pub value_upper: T,
+
     /// Whether the memory access is a real access.
     pub is_real: T,
 
@@ -303,6 +309,13 @@ where
         builder.slice_range_check_u16(&local.prev_addr, local.is_real);
         // Constrain that the address is a valid `Word`.
         builder.slice_range_check_u16(&local.addr, local.is_real);
+
+        // Assert that value_lower and value_upper are the lower and upper halves of the third limb of the value.
+        builder.assert_eq(
+            local.value.0[2],
+            local.value_lower + local.value_upper * AB::F::from_canonical_u32(1 << 8),
+        );
+        builder.slice_range_check_u8(&[local.value_lower, local.value_upper], local.is_real);
 
         let interaction_kind = match self.kind {
             MemoryChipType::Initialize => InteractionKind::MemoryGlobalInitControl,
@@ -348,8 +361,8 @@ where
                         local.addr[0].into(),
                         local.addr[1].into(),
                         local.addr[2].into(),
-                        local.limb_1.into(),
-                        local.limb_2.into(),
+                        local.value.0[0] + local.value_lower * AB::F::from_canonical_u32(1 << 16),
+                        local.value.0[1] + local.value_upper * AB::F::from_canonical_u32(1 << 16),
                         local.value.0[3].into(),
                         AB::Expr::one(),
                         AB::Expr::zero(),
@@ -370,8 +383,8 @@ where
                         local.addr[0].into(),
                         local.addr[1].into(),
                         local.addr[2].into(),
-                        local.limb_1.into(),
-                        local.limb_2.into(),
+                        local.value.0[0] + local.value_lower * AB::F::from_canonical_u32(1 << 16),
+                        local.value.0[1] + local.value_upper * AB::F::from_canonical_u32(1 << 16),
                         local.value.0[3].into(),
                         AB::Expr::zero(),
                         AB::Expr::one(),
