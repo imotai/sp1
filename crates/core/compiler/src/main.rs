@@ -97,7 +97,7 @@ fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
             println!("namespace {chip_name}");
             println!();
             println!(
-                "def constraints (Main : Vector BabyBear {}) : List SP1Constraint :=",
+                "def constraints (Main : Vector BabyBear {}) : SP1ConstraintList :=",
                 builder.num_cols()
             );
             println!("{}", lean_constraints);

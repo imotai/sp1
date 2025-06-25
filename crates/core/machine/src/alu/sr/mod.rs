@@ -22,7 +22,7 @@ use crate::{
         state::CPUState,
     },
     air::{SP1CoreAirBuilder, SP1Operation},
-    operations::U16MSBOperation,
+    operations::{U16MSBOperation, U16MSBOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -295,11 +295,13 @@ where
         }
 
         // Step 4. Compute the MSB of `b`.
-        U16MSBOperation::<AB::F>::eval_msb(
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.adapter.b().0[1].into(),
-            local.b_msb,
-            local.is_sra.into(),
+            U16MSBOperationInput::<AB>::new(
+                local.adapter.b().0[1].into(),
+                local.b_msb,
+                local.is_sra.into(),
+            ),
         );
         // The sign of `b` should be considered positive if the opcode is SRL.
         builder.when_not(local.is_sra).assert_zero(local.b_msb.msb);

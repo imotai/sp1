@@ -8,7 +8,9 @@ use sp1_stark::{
     Word,
 };
 
-use super::U16CompareOperation;
+use crate::air::{SP1Operation, SP1OperationBuilder};
+
+use super::{U16CompareOperation, U16CompareOperationInput};
 
 /// A set of columns needed to range check a BabyBear word.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -30,22 +32,26 @@ impl<F: Field> BabyBearWordRangeChecker<F> {
     /// Assumes that `value` is a valid `Word` of two u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, constrains that `value` is a valid BabyBear word.
-    pub fn range_check<AB: SP1AirBuilder>(
+    pub fn range_check<AB>(
         builder: &mut AB,
         value: Word<AB::Var>,
         cols: BabyBearWordRangeChecker<AB::Var>,
         is_real: AB::Expr,
-    ) {
+    ) where
+        AB: SP1AirBuilder + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>,
+    {
         builder.assert_bool(is_real.clone());
 
         // Note that BabyBear modulus is 2^31 - 2^27 + 1 = 15 * 2^27 + 1.
         // First, check if the most significant limb is less than 15 * 2^11 = 30720.
-        U16CompareOperation::<AB::F>::eval_compare_u16(
+        <U16CompareOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            value[1].into(),
-            AB::Expr::from_canonical_u16(30720),
-            cols.most_sig_limb_lt_30720,
-            is_real.clone(),
+            U16CompareOperationInput::<AB>::new(
+                value[1].into(),
+                AB::Expr::from_canonical_u16(30720),
+                cols.most_sig_limb_lt_30720,
+                is_real.clone(),
+            ),
         );
 
         // If the range check bit is off, the most significant limb is >= 15 * 2^11 = 30720.

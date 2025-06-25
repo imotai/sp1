@@ -7,8 +7,8 @@ use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
-    operations::LtOperationSigned,
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::{LtOperationSigned, LtOperationSignedInput},
 };
 
 use super::{BranchChip, BranchColumns};
@@ -79,13 +79,15 @@ where
 
         // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
         let use_signed_comparison = local.is_blt + local.is_bge;
-        LtOperationSigned::<AB::F>::eval_lt_signed(
+        <LtOperationSigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.adapter.prev_a().map(Into::into),
-            local.adapter.b().map(Into::into),
-            local.compare_operation,
-            use_signed_comparison.clone(),
-            is_real.clone(),
+            LtOperationSignedInput::<AB>::new(
+                local.adapter.prev_a().map(Into::into),
+                local.adapter.b().map(Into::into),
+                local.compare_operation,
+                use_signed_comparison.clone(),
+                is_real.clone(),
+            ),
         );
 
         // From the `LtOperationSigned`, derive whether `a == b`, `a < b`, or `a > b`.

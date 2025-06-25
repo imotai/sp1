@@ -1,3 +1,4 @@
+use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
 
@@ -5,8 +6,8 @@ use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_primitives::consts::{u32_to_u16_limbs, BABYBEAR_PRIME};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
-use super::LtOperationUnsigned;
-use crate::air::WordAirBuilder;
+use super::{LtOperationUnsigned, LtOperationUnsignedInput, U16CompareOperation};
+use crate::air::{SP1Operation, SP1OperationBuilder, WordAirBuilder};
 
 /// A set of columns needed to validate the address and return the aligned address.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
@@ -36,12 +37,17 @@ impl<F: PrimeField32> SyscallAddrOperation<F> {
 impl<F: Field> SyscallAddrOperation<F> {
     /// The memory address is constrained to be aligned, `>= 2^16` and less than `BabyBear - len`.
     #[allow(clippy::too_many_arguments)]
-    pub fn eval<AB: SP1AirBuilder>(
+    pub fn eval<AB>(
         builder: &mut AB,
         len: u32,
         cols: SyscallAddrOperation<AB::Var>,
         is_real: AB::Expr,
-    ) -> AB::Expr {
+    ) -> AB::Expr
+    where
+        AB: SP1AirBuilder
+            + SP1OperationBuilder<LtOperationUnsigned<<AB as AirBuilder>::F>>
+            + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>,
+    {
         // Check that `is_real` and offset bits are boolean.
         builder.assert_bool(is_real.clone());
 
@@ -62,15 +68,17 @@ impl<F: Field> SyscallAddrOperation<F> {
         builder.slice_range_check_u16(&cols.addr_word.0, is_real.clone());
 
         // Check that `addr < upper_bound`.
-        LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+        <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            cols.addr_word.map(Into::into),
-            Word([
-                AB::Expr::from_canonical_u32((BABYBEAR_PRIME - len) & 0xFFFF),
-                AB::Expr::from_canonical_u32((BABYBEAR_PRIME - len) >> 16),
-            ]),
-            cols.range_check,
-            is_real.clone(),
+            LtOperationUnsignedInput::<AB>::new(
+                cols.addr_word.map(Into::into),
+                Word([
+                    AB::Expr::from_canonical_u32((BABYBEAR_PRIME - len) & 0xFFFF),
+                    AB::Expr::from_canonical_u32((BABYBEAR_PRIME - len) >> 16),
+                ]),
+                cols.range_check,
+                is_real.clone(),
+            ),
         );
         builder.assert_eq(cols.range_check.u16_compare_operation.bit, is_real.clone());
 

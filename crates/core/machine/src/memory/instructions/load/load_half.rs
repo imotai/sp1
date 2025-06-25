@@ -9,9 +9,9 @@ use std::{
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
-    operations::{AddressOperation, U16MSBOperation},
+    operations::{AddressOperation, U16MSBOperation, U16MSBOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 use hashbrown::HashMap;
@@ -220,11 +220,13 @@ where
         // Get the MSB of the selected limb if the opcode is `LH`.
         // If the opcode is `LHU`, the MSB is constrained to be zero.
         builder.when(local.is_lhu).assert_zero(local.msb.msb);
-        U16MSBOperation::<AB::F>::eval_msb(
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.selected_limb.into(),
-            local.msb,
-            local.is_lh.into(),
+            U16MSBOperationInput::<AB>::new(
+                local.selected_limb.into(),
+                local.msb,
+                local.is_lh.into(),
+            ),
         );
 
         // Constrain the state of the CPU.

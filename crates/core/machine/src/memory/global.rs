@@ -1,7 +1,9 @@
 use super::MemoryChipType;
 use crate::{
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
-    operations::{BabyBearWordRangeChecker, IsZeroOperation, LtOperationUnsigned},
+    operations::{
+        BabyBearWordRangeChecker, IsZeroOperation, LtOperationUnsigned, LtOperationUnsignedInput,
+    },
     utils::next_multiple_of_32,
 };
 use core::{
@@ -406,12 +408,14 @@ where
         );
         builder.assert_bool(local.is_comp);
         // If `is_comp = 1`, then `prev_addr < addr` should hold.
-        LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+        <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.prev_addr.map(Into::into),
-            local.addr.map(Into::into),
-            local.lt_cols,
-            local.is_comp.into(),
+            LtOperationUnsignedInput::<AB>::new(
+                local.prev_addr.map(Into::into),
+                local.addr.map(Into::into),
+                local.lt_cols,
+                local.is_comp.into(),
+            ),
         );
         builder.when(local.is_comp).assert_one(local.lt_cols.u16_compare_operation.bit);
 

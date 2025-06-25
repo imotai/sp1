@@ -1,15 +1,18 @@
 use itertools::izip;
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::events::ByteRecord;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
 
-use super::{U16CompareOperation, U16MSBOperation};
+use crate::air::{SP1Operation, SP1OperationBuilder};
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+use super::{U16CompareOperation, U16CompareOperationInput, U16MSBOperation, U16MSBOperationInput};
+
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct LtOperationUnsigned<T> {
     /// Instance of the U16CompareOperation.
@@ -22,7 +25,7 @@ pub struct LtOperationUnsigned<T> {
     pub comparison_limbs: [T; 2],
 }
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct LtOperationSigned<T> {
     /// The result of the SLTU operation.
@@ -59,14 +62,19 @@ impl<F: Field> LtOperationSigned<F> {
     /// Constrains that `is_signed` is boolean.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, constrains that the result is the signed LT of `b` and `c`.
-    pub fn eval_lt_signed<AB: SP1AirBuilder>(
+    pub fn eval_lt_signed<AB>(
         builder: &mut AB,
         b: Word<AB::Expr>,
         c: Word<AB::Expr>,
         cols: LtOperationSigned<AB::Var>,
         is_signed: AB::Expr,
         is_real: AB::Expr,
-    ) {
+    ) where
+        AB: SP1AirBuilder
+            + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>
+            + SP1OperationBuilder<U16MSBOperation<<AB as AirBuilder>::F>>
+            + SP1OperationBuilder<LtOperationUnsigned<<AB as AirBuilder>::F>>,
+    {
         builder.assert_bool(is_signed.clone());
         builder.assert_bool(is_real.clone());
         // If `is_real` is false, assert that `is_signed` is zero.
@@ -74,17 +82,21 @@ impl<F: Field> LtOperationSigned<F> {
 
         // Constrain the MSB of `b` and `c` if `is_signed` is true.
         // This will be used to determine the sign of `b` and `c`.
-        U16MSBOperation::<AB::F>::eval_msb(
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            b.0[WORD_SIZE - 1].clone(),
-            cols.b_msb,
-            is_signed.clone(),
+            U16MSBOperationInput::<AB>::new(
+                b.0[WORD_SIZE - 1].clone(),
+                cols.b_msb,
+                is_signed.clone(),
+            ),
         );
-        U16MSBOperation::<AB::F>::eval_msb(
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            c.0[WORD_SIZE - 1].clone(),
-            cols.c_msb,
-            is_signed.clone(),
+            U16MSBOperationInput::<AB>::new(
+                c.0[WORD_SIZE - 1].clone(),
+                cols.c_msb,
+                is_signed.clone(),
+            ),
         );
 
         // Constrain `b` and `c` to be considered positive if `is_signed` is false.
@@ -108,12 +120,9 @@ impl<F: Field> LtOperationSigned<F> {
             - base.clone() * cols.c_msb.msb;
 
         // Now apply the unsigned LT operation.
-        LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+        <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            b_compare,
-            c_compare,
-            cols.result,
-            is_real.clone(),
+            LtOperationUnsignedInput::<AB>::new(b_compare, c_compare, cols.result, is_real.clone()),
         );
     }
 }
@@ -159,13 +168,15 @@ impl<F: Field> LtOperationUnsigned<F> {
     /// Assumes that `b`, `c` are either valid `Word`s of two u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, constrains that the result is the LT of `b` and `c`.
-    pub fn eval_lt_unsigned<AB: SP1AirBuilder>(
+    pub fn eval_lt_unsigned<AB>(
         builder: &mut AB,
         b: Word<AB::Expr>,
         c: Word<AB::Expr>,
         cols: LtOperationUnsigned<AB::Var>,
         is_real: AB::Expr,
-    ) {
+    ) where
+        AB: SP1AirBuilder + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>,
+    {
         builder.assert_bool(is_real.clone());
 
         // Verify that the limb equality flags are set correctly, i.e. all are boolean and only
@@ -214,12 +225,81 @@ impl<F: Field> LtOperationUnsigned<F> {
             .assert_eq(cols.not_eq_inv * (b_comp_limb - c_comp_limb), is_real.clone());
 
         // Compare the two comparison limbs.
-        U16CompareOperation::<AB::F>::eval_compare_u16(
+        <U16CompareOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            b_comp_limb.into(),
-            c_comp_limb.into(),
-            cols.u16_compare_operation,
-            is_real.clone(),
+            U16CompareOperationInput::<AB>::new(
+                b_comp_limb.into(),
+                c_comp_limb.into(),
+                cols.u16_compare_operation,
+                is_real.clone(),
+            ),
         );
+    }
+}
+
+#[derive(SP1OperationInput)]
+pub struct LtOperationUnsignedInput<AB: SP1AirBuilder> {
+    pub b: Word<AB::Expr>,
+    pub c: Word<AB::Expr>,
+    pub cols: LtOperationUnsigned<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> LtOperationUnsignedInput<AB> {
+    pub fn new(
+        b: Word<AB::Expr>,
+        c: Word<AB::Expr>,
+        cols: LtOperationUnsigned<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { b, c, cols, is_real }
+    }
+}
+
+impl<AB> SP1Operation<AB> for LtOperationUnsigned<AB::F>
+where
+    AB: SP1AirBuilder + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>,
+{
+    type Input = LtOperationUnsignedInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval_lt_unsigned(builder, input.b, input.c, input.cols, input.is_real);
+    }
+}
+
+#[derive(SP1OperationInput)]
+pub struct LtOperationSignedInput<AB: SP1AirBuilder> {
+    pub b: Word<AB::Expr>,
+    pub c: Word<AB::Expr>,
+    pub cols: LtOperationSigned<AB::Var>,
+    pub is_signed: AB::Expr,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> LtOperationSignedInput<AB> {
+    pub fn new(
+        b: Word<AB::Expr>,
+        c: Word<AB::Expr>,
+        cols: LtOperationSigned<AB::Var>,
+        is_signed: AB::Expr,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { b, c, cols, is_signed, is_real }
+    }
+}
+
+impl<AB> SP1Operation<AB> for LtOperationSigned<AB::F>
+where
+    AB: SP1AirBuilder
+        + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>
+        + SP1OperationBuilder<U16MSBOperation<<AB as AirBuilder>::F>>
+        + SP1OperationBuilder<LtOperationUnsigned<<AB as AirBuilder>::F>>,
+{
+    type Input = LtOperationSignedInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval_lt_signed(builder, input.b, input.c, input.cols, input.is_signed, input.is_real);
     }
 }

@@ -17,9 +17,12 @@ use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
 
 use crate::{
-    adapter::{register::r_type::RTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
-    operations::SubOperation,
+    adapter::{
+        register::r_type::{RTypeReader, RTypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::{SubOperation, SubOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -165,34 +168,38 @@ where
         let opcode = AB::Expr::from_f(Opcode::SUB.as_field());
 
         // Constrain the sub operation over `op_b` and `op_c`.
-        SubOperation::<AB::F>::eval(
-            builder,
+        let op_input = SubOperationInput::<AB>::new(
             *local.adapter.b(),
             *local.adapter.c(),
             local.sub_operation,
             local.is_real.into(),
         );
+        <SubOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-            local.is_real.into(),
+            CPUStateInput {
+                cols: local.state,
+                next_pc: local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
+                clk_increment: AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+                is_real: local.is_real.into(),
+            },
         );
 
         // Constrain the program and register reads.
-        RTypeReader::<AB::F>::eval(
+        <RTypeReader<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state.clk_high::<AB>(),
-            local.state.clk_low::<AB>(),
-            local.state.pc,
-            opcode,
-            local.sub_operation.value,
-            local.adapter,
-            local.is_real.into(),
+            RTypeReaderInput {
+                clk_high: local.state.clk_high::<AB>(),
+                clk_low: local.state.clk_low::<AB>(),
+                pc: local.state.pc,
+                opcode,
+                op_a_write_value: local.sub_operation.value,
+                cols: local.adapter,
+                is_real: local.is_real.into(),
+            },
         );
     }
 }

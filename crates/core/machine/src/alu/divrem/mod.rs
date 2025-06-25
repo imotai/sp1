@@ -84,8 +84,8 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned, MulOperation,
-        U16MSBOperation,
+        AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned,
+        LtOperationUnsignedInput, MulOperation, U16MSBOperation, U16MSBOperationInput,
     },
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
@@ -757,12 +757,14 @@ where
 
             // Dispatch abs(remainder) < max(abs(c), 1), this is equivalent to abs(remainder) <
             // abs(c) if not division by 0.
-            LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+            <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.abs_remainder.map(Into::into),
-                local.max_abs_c_or_1.map(Into::into),
-                local.remainder_lt_operation,
-                local.remainder_check_multiplicity.into(),
+                LtOperationUnsignedInput::<AB>::new(
+                    local.abs_remainder.map(Into::into),
+                    local.max_abs_c_or_1.map(Into::into),
+                    local.remainder_lt_operation,
+                    local.remainder_check_multiplicity.into(),
+                ),
             );
             builder
                 .when(local.remainder_check_multiplicity)
@@ -771,23 +773,29 @@ where
 
         // Check that the MSBs are correct.
         {
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.adapter.b()[WORD_SIZE - 1].into(),
-                local.b_msb,
-                local.is_real.into(),
+                U16MSBOperationInput::<AB>::new(
+                    local.adapter.b()[WORD_SIZE - 1].into(),
+                    local.b_msb,
+                    local.is_real.into(),
+                ),
             );
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.adapter.c()[WORD_SIZE - 1].into(),
-                local.c_msb,
-                local.is_real.into(),
+                U16MSBOperationInput::<AB>::new(
+                    local.adapter.c()[WORD_SIZE - 1].into(),
+                    local.c_msb,
+                    local.is_real.into(),
+                ),
             );
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.remainder[WORD_SIZE - 1].into(),
-                local.rem_msb,
-                local.is_real.into(),
+                U16MSBOperationInput::<AB>::new(
+                    local.remainder[WORD_SIZE - 1].into(),
+                    local.rem_msb,
+                    local.is_real.into(),
+                ),
             );
         }
 

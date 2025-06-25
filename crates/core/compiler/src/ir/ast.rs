@@ -21,7 +21,8 @@ use sp1_core_machine::{
     memory::{MemoryAccessInShardCols, MemoryAccessInShardTimestamp},
     operations::{
         AddOperation, AddressOperation, BitwiseOperation, BitwiseU16Operation,
-        IsEqualWordOperation, IsZeroOperation, IsZeroWordOperation, U16toU8Operation,
+        IsEqualWordOperation, IsZeroOperation, IsZeroWordOperation, LtOperationSigned,
+        LtOperationUnsigned, SubOperation, U16CompareOperation, U16MSBOperation, U16toU8Operation,
     },
 };
 
@@ -449,15 +450,15 @@ where
 
     pub fn to_output_lean_type(&self) -> String {
         if self.output.is_empty() {
-            "List SP1Constraint".to_string()
+            "SP1ConstraintList".to_string()
         } else {
             assert_eq!(self.output.len(), 1);
             match self.output.first().unwrap() {
-                Ty::Word(_) => "Word Babybear × List SP1Constraint".to_string(),
-                Ty::Expr(_) => "BabyBear × List SP1Constraint".to_string(),
-                Ty::ArrWordSize(_) => "Vector BabyBear WORD_SIZE × List SP1Constraint".to_string(),
+                Ty::Word(_) => "Word Babybear × SP1ConstraintList".to_string(),
+                Ty::Expr(_) => "BabyBear × SP1ConstraintList".to_string(),
+                Ty::ArrWordSize(_) => "Vector BabyBear WORD_SIZE × SP1ConstraintList".to_string(),
                 Ty::ArrWordByteSize(_) => {
-                    "Vector BabyBear WORD_BYTE_SIZE × List SP1Constraint".to_string()
+                    "Vector BabyBear WORD_BYTE_SIZE × SP1ConstraintList".to_string()
                 }
                 _ => unimplemented!(),
             }
@@ -560,6 +561,8 @@ pub enum Ty<Expr, ExprExt> {
     Word(Word<Expr>),
     /// An addition operation.
     AddOperation(AddOperation<Expr>),
+    /// A subtraction operation.
+    SubOperation(SubOperation<Expr>),
     /// An address operation.
     AddressOperation(AddressOperation<Expr>),
     /// A conversion from a word to an array of words of size `WORD_SIZE`.
@@ -578,6 +581,14 @@ pub enum Ty<Expr, ExprExt> {
     BitwiseOperation(BitwiseOperation<Expr>),
     /// A bitwise u16 operation.
     BitwiseU16Operation(BitwiseU16Operation<Expr>),
+    /// A u16 compare operation.
+    U16CompareOperation(U16CompareOperation<Expr>),
+    /// A u16 MSB operation.
+    U16MSBOperation(U16MSBOperation<Expr>),
+    /// An LT unsigned operation.
+    LtOperationUnsigned(LtOperationUnsigned<Expr>),
+    /// An LT signed operation.
+    LtOperationSigned(LtOperationSigned<Expr>),
     /// An R-type reader operation.
     RTypeReader(RTypeReader<Expr>),
     /// An ALU-type reader operation.
@@ -599,6 +610,7 @@ where
             Ty::ExprExt(expr_ext) => write!(f, "{expr_ext}"),
             Ty::Word(word) => write!(f, "{word}"),
             Ty::AddOperation(add_operation) => write!(f, "{add_operation:?}"),
+            Ty::SubOperation(sub_operation) => write!(f, "{sub_operation:?}"),
             Ty::AddressOperation(address_operation) => write!(f, "{address_operation:?}"),
             Ty::U16toU8Operation(u16to_u8_operation) => write!(f, "{u16to_u8_operation:?}"),
             Ty::ArrWordSize(arr) => write!(f, "{arr:?}"),
@@ -613,6 +625,18 @@ where
             Ty::BitwiseOperation(bitwise_operation) => write!(f, "{bitwise_operation:?}"),
             Ty::BitwiseU16Operation(bitwise_u16_operation) => {
                 write!(f, "{bitwise_u16_operation:?}")
+            }
+            Ty::U16CompareOperation(u16_compare_operation) => {
+                write!(f, "{u16_compare_operation:?}")
+            }
+            Ty::U16MSBOperation(u16_msb_operation) => {
+                write!(f, "{u16_msb_operation:?}")
+            }
+            Ty::LtOperationUnsigned(lt_operation_unsigned) => {
+                write!(f, "{lt_operation_unsigned:?}")
+            }
+            Ty::LtOperationSigned(lt_operation_signed) => {
+                write!(f, "{lt_operation_signed:?}")
             }
             Ty::RTypeReader(r_type_reader) => write!(f, "{r_type_reader:?}"),
             Ty::ALUTypeReader(alu_type_reader) => write!(f, "{alu_type_reader:?}"),
@@ -629,9 +653,14 @@ impl<Expr, ExprExt> Ty<Expr, ExprExt> {
             Ty::Expr(_) => "BabyBear".to_string(),
             Ty::Word(_) => "Word BabyBear".to_string(),
             Ty::AddOperation(_) => "AddOperation".to_string(),
+            Ty::SubOperation(_) => "SubOperation".to_string(),
             Ty::BitwiseU16Operation(_) => "BitwiseU16Operation".to_string(),
             Ty::BitwiseOperation(_) => "BitwiseOperation".to_string(),
             Ty::U16toU8Operation(_) => "U16toU8Operation".to_string(),
+            Ty::U16CompareOperation(_) => "U16CompareOperation".to_string(),
+            Ty::U16MSBOperation(_) => "U16MSBOperation".to_string(),
+            Ty::LtOperationUnsigned(_) => "LtOperationUnsigned".to_string(),
+            Ty::LtOperationSigned(_) => "LtOperationSigned".to_string(),
             Ty::ArrWordSize(_) => "Vector BabyBear 4".to_string(),
             Ty::ArrWordByteSize(_) => "Vector BabyBear 2".to_string(),
             Ty::RTypeReader(_) => "RTypeReader".to_string(),
@@ -1087,7 +1116,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                     let cs: String = format!("CS{}", extra_constraints.len());
 
                     if func.output.is_empty() {
-                        result.push_str(&format!("let {cs} : List SP1Constraint := "));
+                        result.push_str(&format!("let {cs} : SP1ConstraintList := "));
                     } else {
                         result.push_str("let ⟨");
                         result.push_str(&func.to_lean_output(false));
@@ -1139,6 +1168,22 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         let func = FuncDecl::new(
             "AddOperation",
             vec![Ty::Word(a), Ty::Word(b), Ty::AddOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn sub_operation(
+        &mut self,
+        a: Word<ExprRef<F>>,
+        b: Word<ExprRef<F>>,
+        cols: SubOperation<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "SubOperation",
+            vec![Ty::Word(a), Ty::Word(b), Ty::SubOperation(cols), Ty::Expr(is_real)],
             vec![],
         );
         let op = OpExpr::Call(func);
@@ -1297,6 +1342,76 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         let op = OpExpr::Call(func);
         self.operations.push(op);
         output
+    }
+
+    pub fn u16_compare_operation(
+        &mut self,
+        a: ExprRef<F>,
+        b: ExprRef<F>,
+        cols: U16CompareOperation<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "U16CompareOperation",
+            vec![Ty::Expr(a), Ty::Expr(b), Ty::U16CompareOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn u16_msb_operation(
+        &mut self,
+        a: ExprRef<F>,
+        cols: U16MSBOperation<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "U16MSBOperation",
+            vec![Ty::Expr(a), Ty::U16MSBOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn lt_operation_unsigned(
+        &mut self,
+        b: Word<ExprRef<F>>,
+        c: Word<ExprRef<F>>,
+        cols: LtOperationUnsigned<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "LtOperationUnsigned",
+            vec![Ty::Word(b), Ty::Word(c), Ty::LtOperationUnsigned(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn lt_operation_signed(
+        &mut self,
+        b: Word<ExprRef<F>>,
+        c: Word<ExprRef<F>>,
+        cols: LtOperationSigned<ExprRef<F>>,
+        is_signed: ExprRef<F>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "LtOperationSigned",
+            vec![
+                Ty::Word(b),
+                Ty::Word(c),
+                Ty::LtOperationSigned(cols),
+                Ty::Expr(is_signed),
+                Ty::Expr(is_real),
+            ],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
     }
 
     #[allow(clippy::too_many_arguments)]
