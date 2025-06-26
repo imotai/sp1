@@ -1,4 +1,4 @@
-use crate::{memory::Memory, state::ForkState, ExecutorConfig, Unconstrained};
+use crate::{memory::Memory, state::ForkState, ExecutorConfig, Unconstrained, HALT_PC_REL};
 
 use super::{SyscallCode, SyscallContext};
 
@@ -66,7 +66,7 @@ pub fn exit_unconstrained_syscall<E: ExecutorConfig>(
     _: u64,
 ) -> Option<u64> {
     assert!(E::UNCONSTRAINED, "Unconstrained block is not active.");
-    ctx.set_next_pc(0);
+    ctx.set_next_pc(HALT_PC_REL);
     ctx.set_exit_code(0);
     Some(0)
 }
