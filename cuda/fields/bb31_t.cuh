@@ -22,6 +22,54 @@
 class bb31_t
 {
 public:
+    // Nested helper class for avoiding unnecessary modular reductions
+
+    class accel_t {
+        public:
+
+        accel_t() = default;
+        accel_t(const accel_t &) = default;
+        __host__ __device__ accel_t(const uint64_t &x): val(x) {}
+
+        __device__ accel_t & operator+=(const bb31_t &);
+        __device__ accel_t & operator-=(const bb31_t &);
+        __device__ accel_t & operator*=(const bb31_t &);
+
+        __device__ accel_t operator+(const bb31_t &) const;
+        __device__ accel_t operator-(const bb31_t &) const;
+        __device__ accel_t operator*(const bb31_t &) const;
+
+        __device__ accel_t & operator+=(const accel_t &);
+        __device__ accel_t & operator-=(const accel_t &);
+
+        __device__ accel_t operator+(const accel_t &) const;
+        __device__ accel_t operator-(const accel_t &) const;
+
+        __device__ accel_t & add(const bb31_t *, uint32_t count, uint32_t stride);
+
+        __device__ operator bb31_t() const {
+            uint32_t tl, th, red;
+
+            unpack(tl, th, val);
+
+            mul_lo      (red,  tl, M);
+            mad_lo_cc   ( tl, red, MOD, tl);
+            madc_hi     ( th, red, MOD, th);
+
+            final_sub(th);
+
+            return bb31_t(th);
+        }
+
+        private:
+        uint64_t val;
+    };
+
+    __device__ bb31_t & operator=(const accel_t &x) {   // Reduce and assign
+        bb31_t t(x);
+        *this = t;
+    }
+
     using mem_t = bb31_t;
     uint32_t val;
     static const uint32_t DEGREE = 1;
@@ -45,12 +93,7 @@ public:
     inline uint32_t operator*() const { return val; }
 
     __host__ __device__
-    bool operator!=(const bb31_t &x) const {
-        if (val != x.val)
-            return true;
-        else
-            return false;
-    }
+    bool operator!=(const bb31_t &x) const { return val != x.val; }
 
     inline size_t len() const { return 1; }
 
@@ -273,7 +316,11 @@ private:
     }
 
 public:
-    friend inline bb31_t operator*(bb31_t a, const bb31_t b) { return a.mul(b); }
+    inline accel_t operator*(const bb31_t b) const {
+        uint64_t t;
+        mul_wide(t, val, b.val);
+        return accel_t(t);
+    }
 
     inline bb31_t &operator*=(const bb31_t a) { return mul(a); }
 
@@ -526,6 +573,70 @@ public:
         return retval;
     }
 };
+
+__device__ __forceinline__
+bb31_t::accel_t & bb31_t::accel_t::operator+=(const bb31_t &b) {
+    val = val>=MOD ? val+b.val-MOD : val+b.val;
+    return *this;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t & bb31_t::accel_t::operator-=(const bb31_t &b) {
+    val = val<MOD ? val-b.val+MOD : val-b.val;
+    return *this;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t bb31_t::accel_t::operator*(const bb31_t &b) const {
+    bb31_t t(*this);
+    return t*b;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t & bb31_t::accel_t::operator*=(const bb31_t &b) {
+    bb31_t t(*this);
+    return *this = t * b;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t bb31_t::accel_t::operator+(const bb31_t &b) const {
+    accel_t t(*this);
+    t += b;
+    return t;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t bb31_t::accel_t::operator-(const bb31_t &b) const {
+    accel_t t(*this);
+    t -= b;
+    return t;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t & bb31_t::accel_t::operator+=(const accel_t &b) {
+    val = val>=((uint64_t)MOD << 32) ? val+b.val-((uint64_t)MOD << 32) : val+b.val;
+    return *this;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t & bb31_t::accel_t::operator-=(const accel_t &b) {
+    val = val<((uint64_t)MOD << 32) ? val-b.val+((uint64_t)MOD << 32) : val-b.val;
+    return *this;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t bb31_t::accel_t::operator+(const accel_t &b) const {
+    accel_t t(*this);
+    t += b;
+    return t;
+}
+
+__device__ __forceinline__
+bb31_t::accel_t bb31_t::accel_t::operator-(const accel_t &b) const {
+    accel_t t(*this);
+    t -= b;
+    return t;
+}
 
 #undef inline
 #undef asm
