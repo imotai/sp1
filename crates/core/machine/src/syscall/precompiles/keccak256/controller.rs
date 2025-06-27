@@ -71,6 +71,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             for (j, read_record) in event.state_read_records.iter().enumerate() {
                 cols.initial_memory_access[j]
                     .populate(MemoryRecordEnum::Read(*read_record), &mut blu_events);
+                cols.addrs[j].populate(&mut blu_events, event.state_addr, 8 * j as u64);
             }
             for (j, write_record) in event.state_write_records.iter().enumerate() {
                 cols.final_memory_access[j]
@@ -105,7 +106,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             let cols: &mut KeccakPermuteControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.state_addr.populate(&mut blu_events, event.state_addr, 400);
+            cols.state_addr.populate(&mut blu_events, event.state_addr, 200);
             cols.is_real = F::one();
             for (j, read_record) in event.state_read_records.iter().enumerate() {
                 cols.initial_memory_access[j]

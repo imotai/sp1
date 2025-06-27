@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::air::PublicValues;
 use derive_where::derive_where;
 use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -21,6 +22,7 @@ use slop_multilinear::{
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
+use std::borrow::Borrow;
 use tracing::Instrument;
 
 use crate::{
@@ -665,10 +667,14 @@ impl<C: ShardProverComponents> ShardProver<C> {
             tracing::info!("{}", stats);
             total_number_of_cells += stats.total_number_of_cells();
         }
+        let public_values_struct: &PublicValues<[C::F; 4], [C::F; 3], [C::F; 4], C::F> =
+            public_values.as_slice().borrow();
+        let shard = public_values_struct.shard;
         tracing::info!(
-            "Total number of cells: {}, number of variables: {}",
+            "Total number of cells: {}, number of variables: {}, shard: {}",
             total_number_of_cells,
-            total_number_of_cells.next_power_of_two().ilog2()
+            total_number_of_cells.next_power_of_two().ilog2(),
+            shard,
         );
 
         // Observe the public values.

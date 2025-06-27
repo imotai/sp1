@@ -437,30 +437,35 @@ where
         for i in 0..WORD_BYTE_SIZE {
             remaining_deg2[i] = local.top_bits[i].into();
             if i + 1 < WORD_BYTE_SIZE {
-                remaining_deg2[i] -= local.top_bits[i + 1] * two_fifty_six;
+                remaining_deg2[i] =
+                    remaining_deg2[i].clone() - local.top_bits[i + 1] * two_fifty_six;
             }
         }
         for i in 0..WORD_SIZE {
             if i < WORD_SIZE - 1 {
-                v0123_coef[i] += b_bytes[2 * i + 2].clone();
-                v0123_coef[i] += b_bytes[2 * i + 3].clone() * two_fifty_six;
-                v012_1_3_coef[i] += b_bytes[2 * i + 2].clone() * two_fifty_six;
+                v0123_coef[i] = v0123_coef[i].clone() + b_bytes[2 * i + 2].clone();
+                v0123_coef[i] = v0123_coef[i].clone() + b_bytes[2 * i + 3].clone() * two_fifty_six;
+                v012_1_3_coef[i] =
+                    v012_1_3_coef[i].clone() + b_bytes[2 * i + 2].clone() * two_fifty_six;
             }
             if i < WORD_SIZE {
-                v012_1_3_coef[i] += b_bytes[2 * i + 1].clone();
+                v012_1_3_coef[i] = v012_1_3_coef[i].clone() + b_bytes[2 * i + 1].clone();
             }
         }
 
         for i in 0..WORD_SIZE {
             let mut result = v0123_coef[i].clone() * v012b_3.clone();
-            result += v012_1_3_coef[i].clone() * (local.v_012 - v012b_3.clone());
-            result += remaining_deg2[2 * i + 1].clone() * local.c_bits[3];
+            result = result + v012_1_3_coef[i].clone() * (local.v_012 - v012b_3.clone());
+            result = result + remaining_deg2[2 * i + 1].clone() * local.c_bits[3];
             if i < WORD_SIZE - 1 {
-                result += remaining_deg2[2 * i + 2].clone() * local.c_bits[3] * two_fifty_six;
+                result =
+                    result + remaining_deg2[2 * i + 2].clone() * local.c_bits[3] * two_fifty_six;
             }
-            result += remaining_deg2[2 * i].clone() * (one.clone() - local.c_bits[3]);
-            result +=
-                remaining_deg2[2 * i + 1].clone() * (one.clone() - local.c_bits[3]) * two_fifty_six;
+            result = result + remaining_deg2[2 * i].clone() * (one.clone() - local.c_bits[3]);
+            result = result
+                + remaining_deg2[2 * i + 1].clone()
+                    * (one.clone() - local.c_bits[3])
+                    * two_fifty_six;
             builder.assert_eq(local.byte_result[i], result);
         }
 

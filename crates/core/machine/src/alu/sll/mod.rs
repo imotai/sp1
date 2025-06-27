@@ -382,31 +382,32 @@ where
         let mut v012_1_3_coef = std::array::from_fn::<AB::Expr, 4, _>(|_| AB::Expr::zero());
         let mut remaining_deg2 = std::array::from_fn::<AB::Expr, 8, _>(|_| AB::Expr::zero());
         for i in 0..8 {
-            remaining_deg2[i] -= base.clone() * local.top_bits[i];
+            remaining_deg2[i] = remaining_deg2[i].clone() - base.clone() * local.top_bits[i];
             if i >= 1 {
-                remaining_deg2[i] += local.top_bits[i - 1].into();
+                remaining_deg2[i] = remaining_deg2[i].clone() + local.top_bits[i - 1].into();
             }
         }
         for i in 0..4 {
             if i >= 1 {
-                v0123_coef[i] += b_bytes[2 * i - 1].clone();
+                v0123_coef[i] = v0123_coef[i].clone() + b_bytes[2 * i - 1].clone();
             }
-            v0123_coef[i] += base.clone() * b_bytes[2 * i].clone();
+            v0123_coef[i] = v0123_coef[i].clone() + base.clone() * b_bytes[2 * i].clone();
             v012_1_3_coef[i] = b_bytes[2 * i].clone() + base.clone() * b_bytes[2 * i + 1].clone();
         }
 
         let one_expr = AB::Expr::from_canonical_u32(1);
         for i in 0..4 {
             let mut result = v0123_coef[i].clone() * local.v_0123;
-            result += v012_1_3_coef[i].clone() * v012_1_3.clone();
+            result = result + v012_1_3_coef[i].clone() * v012_1_3.clone();
             if i >= 1 {
-                result += remaining_deg2[2 * i - 1].clone() * local.c_bits[3];
+                result = result + remaining_deg2[2 * i - 1].clone() * local.c_bits[3];
             }
-            result += base.clone() * remaining_deg2[2 * i].clone() * local.c_bits[3];
-            result += remaining_deg2[2 * i].clone() * (one_expr.clone() - local.c_bits[3]);
-            result += base.clone()
-                * remaining_deg2[2 * i + 1].clone()
-                * (one_expr.clone() - local.c_bits[3]);
+            result = result + base.clone() * remaining_deg2[2 * i].clone() * local.c_bits[3];
+            result = result + remaining_deg2[2 * i].clone() * (one_expr.clone() - local.c_bits[3]);
+            result = result
+                + base.clone()
+                    * remaining_deg2[2 * i + 1].clone()
+                    * (one_expr.clone() - local.c_bits[3]);
             builder.assert_eq(local.byte_result[i], result);
         }
 
