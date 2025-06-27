@@ -4,7 +4,7 @@ use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     Instruction, RTypeRecord,
 };
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 
 use sp1_stark::{air::SP1AirBuilder, Word};
 
@@ -129,9 +129,10 @@ impl<F: Field> RTypeReader<F> {
     }
 }
 
+#[derive(SP1OperationInput)]
 pub struct RTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
-    pub shard: AB::Expr,
-    pub clk: AB::Expr,
+    pub clk_high: AB::Expr,
+    pub clk_low: AB::Expr,
     pub pc: AB::Var,
     pub opcode: AB::Expr,
     pub op_a_write_value: Word<T>,
@@ -141,15 +142,15 @@ pub struct RTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
 
 impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> RTypeReaderInput<AB, T> {
     pub fn new(
-        shard: AB::Expr,
-        clk: AB::Expr,
+        clk_high: AB::Expr,
+        clk_low: AB::Expr,
         pc: AB::Var,
         opcode: AB::Expr,
         op_a_write_value: Word<T>,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) -> Self {
-        Self { shard, clk, pc, opcode, op_a_write_value, cols, is_real }
+        Self { clk_high, clk_low, pc, opcode, op_a_write_value, cols, is_real }
     }
 }
 
@@ -160,8 +161,8 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
     fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
         Self::eval(
             builder,
-            input.shard,
-            input.clk,
+            input.clk_high,
+            input.clk_low,
             input.pc,
             input.opcode,
             input.op_a_write_value,
@@ -174,10 +175,10 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
 #[derive(Debug, Clone)]
 pub struct RTypeReaderImmutable;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, SP1OperationInput)]
 pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
-    pub shard: AB::Expr,
-    pub clk: AB::Expr,
+    pub clk_high: AB::Expr,
+    pub clk_low: AB::Expr,
     pub pc: AB::Var,
     pub opcode: AB::Expr,
     pub cols: RTypeReader<AB::Var>,
@@ -186,14 +187,14 @@ pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
 
 impl<AB: SP1AirBuilder> RTypeReaderImmutableInput<AB> {
     pub fn new(
-        shard: AB::Expr,
-        clk: AB::Expr,
+        clk_high: AB::Expr,
+        clk_low: AB::Expr,
         pc: AB::Var,
         opcode: AB::Expr,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) -> Self {
-        Self { shard, clk, pc, opcode, cols, is_real }
+        Self { clk_high, clk_low, pc, opcode, cols, is_real }
     }
 }
 
@@ -204,8 +205,8 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
     fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
         RTypeReader::<AB::F>::eval_op_a_immutable(
             builder,
-            input.shard,
-            input.clk,
+            input.clk_high,
+            input.clk_low,
             input.pc,
             input.opcode,
             input.cols,

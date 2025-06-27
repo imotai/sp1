@@ -216,7 +216,7 @@ impl<F: Field> ExecutionRecord<F> {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RecursionAirEventCount {
     pub mem_const_events: usize,
     pub mem_var_events: usize,

@@ -19,9 +19,9 @@ pub struct SP1CoreProver<C: CoreProverComponents> {
     prover: MachineProver<C>,
 }
 
-const CORE_LOG_BLOWUP: usize = 1;
-const CORE_LOG_STACKING_HEIGHT: u32 = 21;
-const CORE_MAX_LOG_ROW_COUNT: usize = 22;
+pub const CORE_LOG_BLOWUP: usize = 1;
+pub const CORE_LOG_STACKING_HEIGHT: u32 = 21;
+pub const CORE_MAX_LOG_ROW_COUNT: usize = 22;
 
 pub trait CoreProverComponents:
     MachineProverComponents<

@@ -84,6 +84,25 @@ extern "C" {
         lo: *mut [u64; 32],
         hi: *mut [u64; 4],
     );
+
+    /// Executes Uint256 addition operation with carry.
+    pub fn syscall_uint256_add_with_carry(
+        a: *const [u64; 4],
+        b: *const [u64; 4],
+        c: *const [u64; 4],
+        d: *mut [u64; 4],
+        e: *mut [u64; 4],
+    );
+
+    /// Executes Uint256 multiplication operation with carry.
+    pub fn syscall_uint256_mul_with_carry(
+        a: *const [u64; 4],
+        b: *const [u64; 4],
+        c: *const [u64; 4],
+        d: *mut [u64; 4],
+        e: *mut [u64; 4],
+    );
+
     /// Enters unconstrained mode.
     pub fn syscall_enter_unconstrained() -> bool;
 

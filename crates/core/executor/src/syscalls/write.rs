@@ -25,6 +25,7 @@ use super::{SyscallCode, SyscallContext};
 ///
 /// Else, log a warning.
 #[allow(clippy::pedantic)]
+#[allow(clippy::uninlined_format_args)]
 pub fn write_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,
     _: SyscallCode,

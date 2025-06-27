@@ -5,7 +5,7 @@ use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     ALUTypeRecord, Instruction,
 };
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 
 use sp1_stark::{air::SP1AirBuilder, Word};
 
@@ -145,6 +145,7 @@ impl<F: Field> ALUTypeReader<F> {
     }
 }
 
+#[derive(SP1OperationInput)]
 pub struct ALUTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,

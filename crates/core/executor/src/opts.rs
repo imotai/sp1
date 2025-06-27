@@ -8,8 +8,10 @@ const MAX_SHARD_SIZE: usize = 1 << 24;
 const MAX_SHARD_BATCH_SIZE: usize = 8;
 const MAX_DEFERRED_SPLIT_THRESHOLD: usize = 1 << 15;
 
-const ELEMENT_THRESHOLD: u64 = (1 << 29) - (1 << 27);
-const HEIGHT_THRESHOLD: u64 = 1 << 22;
+/// The trace area threshold for a shard.
+pub const ELEMENT_THRESHOLD: u64 = (1 << 29) - (1 << 27);
+/// The height threshold for a shard.
+pub const HEIGHT_THRESHOLD: u64 = 1 << 22;
 
 /// The threshold that determines when to split the shard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +55,10 @@ impl Default for SP1CoreOpts {
 
         let sharding_threshold = ShardingThreshold { element_threshold, height_threshold };
 
+        let mut retained_events_presets = HashSet::new();
+        retained_events_presets.insert(RetainedEventsPreset::Sha256);
+        retained_events_presets.insert(RetainedEventsPreset::U256Ops);
+
         Self {
             shard_size,
             shard_batch_size: env::var("SHARD_BATCH_SIZE").map_or_else(
@@ -61,7 +67,7 @@ impl Default for SP1CoreOpts {
             ),
             split_opts: SplitOpts::new(split_threshold),
             sharding_threshold,
-            retained_events_presets: HashSet::new(),
+            retained_events_presets,
         }
     }
 }
@@ -86,6 +92,10 @@ pub struct SplitOpts {
     pub ec_add_256bit: usize,
     /// The threshold for ec double 256bit events.
     pub ec_double_256bit: usize,
+    /// The threshold for ec add 384bit events.
+    pub ec_add_384bit: usize,
+    /// The threshold for ec double 384bit events.
+    pub ec_double_384bit: usize,
     /// The threshold for fp operation events.
     pub fp_operation_256bit: usize,
     /// The threshold for fp2 operation events.
@@ -107,15 +117,17 @@ impl SplitOpts {
             combine_memory_threshold: (1 << 28, 1 << 17),
             deferred: deferred_split_threshold,
             fp_operation_256bit: deferred_split_threshold * 9 / 5,
-            ec_add_256bit: deferred_split_threshold * 4 / 5,
-            ec_double_256bit: deferred_split_threshold * 3 / 2,
-            keccak: 32 * deferred_split_threshold / 150,
+            ec_add_256bit: deferred_split_threshold * 37 / 25,
+            ec_double_256bit: deferred_split_threshold * 21 / 8,
+            ec_add_384bit: deferred_split_threshold * 8 / 15,
+            ec_double_384bit: deferred_split_threshold,
+            keccak: 7 * deferred_split_threshold / 25,
             sha_extend: 64 * deferred_split_threshold / 129,
             sha_compress: 32 * deferred_split_threshold / 80,
-            memory: 27 * deferred_split_threshold,
+            memory: 26 * deferred_split_threshold,
             fp2_operation_256bit: deferred_split_threshold * 8 / 9,
             fp_operation_384bit: deferred_split_threshold * 11 / 10,
-            fp2_operation_384bit: deferred_split_threshold * 7 / 12,
+            fp2_operation_384bit: deferred_split_threshold * 14 / 25,
         }
     }
 }

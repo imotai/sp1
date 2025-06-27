@@ -64,6 +64,7 @@ where
         self.read_vaddr_internal(vaddr, true)
     }
 
+    #[allow(clippy::uninlined_format_args)]
     pub fn read_vaddr_internal(&mut self, vaddr: usize, increment_mult: bool) -> Address<C::F> {
         use vec_map::Entry;
         match self.virtual_to_physical.entry(vaddr) {
@@ -1089,6 +1090,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::uninlined_format_args)]
     fn test_poseidon2_hash() {
         let hasher = Poseidon2BabyBearConfig::default_hasher_and_compressor().0;
 
@@ -1246,6 +1248,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::uninlined_format_args)]
     fn test_print_and_cycle_tracker() {
         const ITERS: usize = 5;
 

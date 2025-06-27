@@ -5,7 +5,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 
 use crate::air::{SP1Operation, WordAirBuilder};
 
@@ -58,6 +58,7 @@ impl<F: Field> AddOperation<F> {
     }
 }
 
+#[derive(SP1OperationInput)]
 pub struct AddOperationInput<AB: SP1AirBuilder> {
     pub a: Word<AB::Expr>,
     pub b: Word<AB::Expr>,

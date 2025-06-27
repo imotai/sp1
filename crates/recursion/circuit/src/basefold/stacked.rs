@@ -227,6 +227,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    #[allow(clippy::ignore_without_reason)]
     async fn test_stacked_pcs_proof_core_shard() {
         setup_logger();
         let round_widths_and_log_heights = [vec![
@@ -246,6 +247,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    #[allow(clippy::ignore_without_reason)]
     async fn test_stacked_pcs_proof_precompile_shard() {
         setup_logger();
         let round_widths_and_log_heights = [vec![(4000, 16), (400, 19), (20, 20), (21, 21)]];

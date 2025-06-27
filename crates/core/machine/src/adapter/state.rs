@@ -2,7 +2,7 @@ use crate::air::WordAirBuilder;
 use p3_field::{AbstractField, Field};
 use serde::{Deserialize, Serialize};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 use sp1_stark::air::SP1AirBuilder;
 
 use crate::air::SP1Operation;
@@ -88,6 +88,7 @@ impl<F: Field> CPUState<F> {
     }
 }
 
+#[derive(SP1OperationInput)]
 pub struct CPUStateInput<AB: SP1AirBuilder> {
     pub cols: CPUState<AB::Var>,
     pub next_pc: AB::Expr,

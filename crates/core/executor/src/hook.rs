@@ -603,25 +603,22 @@ mod bls {
 /// These values must be constrained by the zkVM for correctness.
 #[must_use]
 pub fn hook_rsa_mul_mod(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
-    assert_eq!(
-        buf.len(),
-        256 + 256 + 256,
-        "rsa_mul_mod input should have length 256 + 256 + 256, this is a bug."
+    assert!(
+        buf.len() == 256 * 3 || buf.len() == 384 * 3 || buf.len() == 512 * 3,
+        "rsa_mul_mod input should have length key_size * 3, this is a bug."
     );
 
-    let prod: &[u8; 512] = buf[..512].try_into().unwrap();
-    let m: &[u8; 256] = buf[512..].try_into().unwrap();
-
-    let prod = BigUint::from_bytes_le(prod);
-    let m = BigUint::from_bytes_le(m);
+    let len = buf.len() / 3;
+    let prod = BigUint::from_bytes_le(&buf[..2 * len]);
+    let m = BigUint::from_bytes_le(&buf[2 * len..]);
 
     let (q, rem) = prod.div_rem(&m);
 
     let mut rem = rem.to_bytes_le();
-    rem.resize(256, 0);
+    rem.resize(len, 0);
 
     let mut q = q.to_bytes_le();
-    q.resize(256, 0);
+    q.resize(len, 0);
 
     vec![rem, q]
 }

@@ -6,7 +6,9 @@ use sp1_core_executor::{
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
+
+use crate::air::SP1Operation;
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
@@ -53,5 +55,33 @@ impl<F: Field> U16CompareOperation<F> {
             AB::Expr::zero(),
             is_real.clone(),
         );
+    }
+}
+
+#[derive(SP1OperationInput)]
+pub struct U16CompareOperationInput<AB: SP1AirBuilder> {
+    pub a: AB::Expr,
+    pub b: AB::Expr,
+    pub cols: U16CompareOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> U16CompareOperationInput<AB> {
+    pub fn new(
+        a: AB::Expr,
+        b: AB::Expr,
+        cols: U16CompareOperation<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { a, b, cols, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for U16CompareOperation<AB::F> {
+    type Input = U16CompareOperationInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval_compare_u16(builder, input.a, input.b, input.cols, input.is_real);
     }
 }

@@ -76,125 +76,127 @@ pub enum RiscvAirId {
     Bls12381DoubleAssign = 19,
     /// The uint256 mul mod chip.
     Uint256MulMod = 20,
+    /// The uint256 ops chip.
+    Uint256Ops = 21,
     /// The u256 xu2048 mul chip.
-    U256XU2048Mul = 21,
+    U256XU2048Mul = 22,
     /// The bls12-381 fp op assign chip.
-    Bls12381FpOpAssign = 22,
+    Bls12381FpOpAssign = 23,
     /// The bls12-831 fp2 add sub assign chip.
-    Bls12381Fp2AddSubAssign = 23,
+    Bls12381Fp2AddSubAssign = 24,
     /// The bls12-831 fp2 mul assign chip.
-    Bls12381Fp2MulAssign = 24,
+    Bls12381Fp2MulAssign = 25,
     /// The bn254 fp2 add sub assign chip.
-    Bn254FpOpAssign = 25,
+    Bn254FpOpAssign = 26,
     /// The bn254 fp op assign chip.
-    Bn254Fp2AddSubAssign = 26,
+    Bn254Fp2AddSubAssign = 27,
     /// The bn254 fp2 mul assign chip.
-    Bn254Fp2MulAssign = 27,
+    Bn254Fp2MulAssign = 28,
     /// The bls12-381 decompress chip.
-    Bls12381Decompress = 28,
+    Bls12381Decompress = 29,
     /// The syscall core chip.
     #[subenum(CoreAirId)]
-    SyscallCore = 29,
+    SyscallCore = 30,
     /// The syscall precompile chip.
-    SyscallPrecompile = 30,
+    SyscallPrecompile = 31,
     /// The div rem chip.
     #[subenum(CoreAirId)]
-    DivRem = 31,
+    DivRem = 32,
     /// The add chip.
     #[subenum(CoreAirId)]
-    Add = 32,
+    Add = 33,
     /// The addi chip.
     #[subenum(CoreAirId)]
-    Addi = 33,
+    Addi = 34,
     /// The addw chip.
     #[subenum(CoreAirId)]
-    Addw = 34,
+    Addw = 35,
     /// The addiw chip.
     #[subenum(CoreAirId)]
-    Addiw = 35,
+    Addiw = 36,
     /// The sub chip.
     #[subenum(CoreAirId)]
-    Sub = 36,
+    Sub = 37,
     /// The subw chip.
     #[subenum(CoreAirId)]
-    Subw = 37,
+    Subw = 38,
     /// The bitwise chip.
     #[subenum(CoreAirId)]
-    Bitwise = 38,
+    Bitwise = 39,
     /// The mul chip.
     #[subenum(CoreAirId)]
-    Mul = 39,
+    Mul = 40,
     /// The shift right chip.
     #[subenum(CoreAirId)]
-    ShiftRight = 40,
+    ShiftRight = 41,
     /// The shift left chip.
     #[subenum(CoreAirId)]
-    ShiftLeft = 41,
+    ShiftLeft = 42,
     /// The lt chip.
     #[subenum(CoreAirId)]
-    Lt = 42,
+    Lt = 43,
     /// The load byte chip.
     #[subenum(CoreAirId)]
-    LoadByte = 43,
+    LoadByte = 44,
     /// The load half chip.
     #[subenum(CoreAirId)]
-    LoadHalf = 44,
+    LoadHalf = 45,
     /// The load word chip.
     #[subenum(CoreAirId)]
-    LoadWord = 45,
+    LoadWord = 46,
     /// The load x0 chip.
     #[subenum(CoreAirId)]
-    LoadX0 = 46,
+    LoadX0 = 47,
     /// The load double chip.
     #[subenum(CoreAirId)]
-    LoadDouble = 47,
+    LoadDouble = 48,
     /// The store byte chip.
     #[subenum(CoreAirId)]
-    StoreByte = 48,
+    StoreByte = 49,
     /// The store half chip.
     #[subenum(CoreAirId)]
-    StoreHalf = 49,
+    StoreHalf = 50,
     /// The store word chip.
     #[subenum(CoreAirId)]
-    StoreWord = 50,
+    StoreWord = 51,
     /// The store double chip.
     #[subenum(CoreAirId)]
-    StoreDouble = 51,
+    StoreDouble = 52,
     /// The auipc chip.
     #[subenum(CoreAirId)]
-    Auipc = 52,
+    Auipc = 53,
     /// The branch chip.
     #[subenum(CoreAirId)]
-    Branch = 53,
+    Branch = 54,
     /// The jal chip.
     #[subenum(CoreAirId)]
-    Jal = 54,
+    Jal = 55,
     /// The jalr chip.
     #[subenum(CoreAirId)]
-    Jalr = 55,
+    Jalr = 56,
     /// The syscall instructions chip.
     #[subenum(CoreAirId)]
-    SyscallInstrs = 56,
+    SyscallInstrs = 57,
     /// The memory bump chip.
     #[subenum(CoreAirId)]
-    MemoryBump = 57,
+    MemoryBump = 58,
     /// The state bump chip.
     #[subenum(CoreAirId)]
-    StateBump = 58,
+    StateBump = 59,
     /// The memory global init chip.
-    MemoryGlobalInit = 59,
+    MemoryGlobalInit = 60,
     /// The memory global finalize chip.
-    MemoryGlobalFinalize = 60,
+    MemoryGlobalFinalize = 61,
     /// The memory local chip.
     #[subenum(CoreAirId)]
-    MemoryLocal = 61,
+    MemoryLocal = 62,
     /// The global chip.
     #[subenum(CoreAirId)]
-    Global = 62,
+    Global = 63,
     /// The byte chip.
-    Byte = 63,
+    Byte = 64,
     /// The range chip.
-    Range = 64,
+    Range = 65,
 }
 
 impl RiscvAirId {
@@ -273,6 +275,7 @@ impl RiscvAirId {
                 | RiscvAirId::Bls12381AddAssign
                 | RiscvAirId::Bls12381DoubleAssign
                 | RiscvAirId::Uint256MulMod
+                | RiscvAirId::Uint256Ops
                 | RiscvAirId::U256XU2048Mul
                 | RiscvAirId::Bls12381FpOpAssign
                 | RiscvAirId::Bls12381Fp2AddSubAssign
@@ -292,6 +295,17 @@ impl RiscvAirId {
             Self::ShaExtend => 48,
             Self::KeccakPermute => 24,
             _ => 1,
+        }
+    }
+
+    /// Get the ID of the AIR used in the syscall control implementation.
+    #[must_use]
+    pub fn control_air_id(self) -> Option<RiscvAirId> {
+        match self {
+            RiscvAirId::ShaCompress => Some(RiscvAirId::ShaCompressControl),
+            RiscvAirId::ShaExtend => Some(RiscvAirId::ShaExtendControl),
+            RiscvAirId::KeccakPermute => Some(RiscvAirId::KeccakPermuteControl),
+            _ => None,
         }
     }
 

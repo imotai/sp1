@@ -1,48 +1,204 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use slop_air::Air;
 use slop_baby_bear::BabyBear;
 use sp1_constraint_compiler::ir::ConstraintCompiler;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_stark::air::MachineAir;
 
+type F = BabyBear;
+
+#[derive(ValueEnum, Clone, Debug)]
+enum OutputFormat {
+    Text,
+    Json,
+    Lean,
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value = "Add")]
-    pub chip: String,
+    #[arg(long, help = "Chip name to compile")]
+    pub chip: Option<String>,
+
+    #[arg(long, help = "Operation name to compile")]
+    pub operation: Option<String>,
+
     #[arg(long, default_value = "target/constraints/")]
     pub out_dir: String,
-}
 
-type F = BabyBear;
+    #[arg(long, value_enum, default_value = "text", help = "Output format")]
+    pub format: OutputFormat,
+}
 
 #[allow(clippy::print_stdout)]
 fn main() {
     let args = Args::parse();
-    let chip = args.chip;
     let _out_dir = args.out_dir;
 
+    // Validate arguments and dispatch
+    match (&args.chip, &args.operation) {
+        (Some(chip_name), Some(operation_name)) => {
+            // Both specified: compile specific operation from chip
+            compile_operation(chip_name, operation_name, &args.format);
+        }
+        (Some(chip_name), None) => {
+            // Only chip specified: compile entire chip
+            compile_chip(chip_name, &args.format);
+        }
+        (None, Some(_)) => {
+            eprintln!("Error: When using --operation, you must also specify --chip");
+            eprintln!("Example: --chip Add --operation AddOperation");
+            std::process::exit(1);
+        }
+        (None, None) => {
+            eprintln!("Error: Must specify --chip (and optionally --operation)");
+            std::process::exit(1);
+        }
+    }
+}
+
+#[allow(clippy::print_stdout)]
+#[allow(clippy::uninlined_format_args)]
+fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
     let machine = RiscvAir::<F>::machine();
-    let air = machine
-        .chips()
-        .iter()
-        .find(|c| c.name() == chip)
-        .cloned()
-        .expect("Chip not found")
-        .air
-        .clone();
+    let chip =
+        machine.chips().iter().find(|c| c.name() == chip_name).cloned().unwrap_or_else(|| {
+            eprintln!("Error: Chip '{}' not found", chip_name);
+            eprintln!("Available chips:");
+            for chip in machine.chips() {
+                eprintln!("  {}", chip.name());
+            }
+            std::process::exit(1);
+        });
+    let air = chip.air.clone();
 
     let num_public_values = machine.num_pv_elts();
     let mut builder = ConstraintCompiler::new(air.as_ref(), num_public_values);
 
     air.eval(&mut builder);
 
-    let ast = builder.ast();
-    let ast_str = ast.to_string_pretty("   ");
-    println!("Constraints for chip {chip} (main):");
-    println!("{ast_str}");
+    match output_format {
+        OutputFormat::Text => {
+            let ast = builder.ast();
+            let ast_str = ast.to_string_pretty("   ");
+            println!("Constraints for chip {chip_name} (main):");
+            println!("{ast_str}");
 
-    for func in builder.modules().values() {
-        println!("{func}");
+            for func in builder.modules().values() {
+                println!("{func}");
+            }
+        }
+        OutputFormat::Lean => {
+            let ast = builder.ast();
+            let lean_constraints = ast.to_lean(false, &None, &Default::default());
+
+            println!("-- Generated Lean code for chip {}", chip_name);
+            println!("import SP1Foundations");
+            println!();
+            println!("namespace {chip_name}");
+            println!();
+            println!(
+                "def constraints (Main : Vector BabyBear {}) : SP1ConstraintList :=",
+                builder.num_cols()
+            );
+            println!("{}", lean_constraints);
+            println!();
+            println!("end {chip_name}");
+            // TODO: Generate Lean code for chip and RISC-V in SailM monad
+        }
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&builder.ast()).unwrap());
+        }
+    }
+}
+
+#[allow(clippy::print_stdout)]
+#[allow(clippy::uninlined_format_args)]
+fn compile_operation(chip_name: &str, operation_name: &str, output_format: &OutputFormat) {
+    // Step 1: Compile the chip normally to register all operations
+    let machine = RiscvAir::<F>::machine();
+    let air = machine
+        .chips()
+        .iter()
+        .find(|c| c.name() == chip_name)
+        .cloned()
+        .unwrap_or_else(|| {
+            eprintln!("Error: Chip '{}' not found", chip_name);
+            eprintln!("Available chips:");
+            for chip in machine.chips() {
+                eprintln!("  {}", chip.name());
+            }
+            std::process::exit(1);
+        })
+        .air
+        .clone();
+
+    let num_public_values = machine.num_pv_elts();
+    let mut builder = ConstraintCompiler::new(air.as_ref(), num_public_values);
+
+    // Step 2: Evaluate the chip (this registers all operations in modules)
+    air.eval(&mut builder);
+
+    // Step 3: Extract only the requested operation
+    let operation = builder.modules().get(operation_name).unwrap_or_else(|| {
+        eprintln!("Error: Operation '{}' not found in chip '{}'", operation_name, chip_name);
+        eprintln!("Available operations in this chip:");
+        for name in builder.modules().keys() {
+            eprintln!("  {}", name);
+        }
+        std::process::exit(1);
+    });
+
+    // Step 4: Generate output for just this operation
+    match output_format {
+        OutputFormat::Text => {
+            println!("{}", operation);
+        }
+        OutputFormat::Lean => {
+            println!(
+                "-- Generated Lean code for operation {} (from chip {})",
+                operation_name, chip_name
+            );
+            println!("import SP1Foundations");
+            println!();
+
+            println!("namespace {}", operation_name);
+            println!();
+
+            let input_mapping = operation.calc_input_mapping();
+            // println!("{:#?}", input_mapping);
+
+            println!("def constraints");
+            // Make sure we have parameter names!
+            assert_eq!(
+                operation.decl.input.len(),
+                operation.decl.parameter_names.as_ref().unwrap().len()
+            );
+            for (param, param_name) in operation
+                .decl
+                .input
+                .iter()
+                .zip(operation.decl.parameter_names.clone().unwrap().iter())
+            {
+                println!("  ({param_name} : {})", param.to_lean_type());
+            }
+
+            println!("  : {} :=", operation.decl.to_output_lean_type());
+            // Generate the constraint body from the AST
+            let ast = &operation.body;
+            let lean_output = if operation.decl.output.is_empty() {
+                None
+            } else {
+                Some(operation.decl.to_lean_output(true))
+            };
+            let lean_constraints = ast.to_lean(true, &lean_output, &input_mapping);
+            println!("{}", lean_constraints);
+
+            println!();
+            println!("end {}", operation_name);
+        }
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(operation).unwrap());
+        }
     }
 }

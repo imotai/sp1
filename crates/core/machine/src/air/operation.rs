@@ -18,7 +18,8 @@ use crate::{
     },
     operations::{
         AddOperation, BitwiseOperation, BitwiseU16Operation, IsEqualWordOperation, IsZeroOperation,
-        IsZeroWordOperation, U16toU8OperationSafe, U16toU8OperationUnsafe,
+        IsZeroWordOperation, LtOperationSigned, LtOperationUnsigned, SubOperation,
+        U16CompareOperation, U16MSBOperation, U16toU8OperationSafe, U16toU8OperationUnsafe,
     },
 };
 
@@ -38,6 +39,11 @@ pub trait SP1CoreOperationBuilder:
     + SP1OperationBuilder<RTypeReaderImmutable>
     + SP1OperationBuilder<ALUTypeReader<F<Self>>>
     + SP1OperationBuilder<CPUState<F<Self>>>
+    + SP1OperationBuilder<SubOperation<F<Self>>>
+    + SP1OperationBuilder<U16CompareOperation<F<Self>>>
+    + SP1OperationBuilder<U16MSBOperation<F<Self>>>
+    + SP1OperationBuilder<LtOperationUnsigned<F<Self>>>
+    + SP1OperationBuilder<LtOperationSigned<F<Self>>>
 {
 }
 
@@ -55,6 +61,11 @@ impl<AB> SP1CoreOperationBuilder for AB where
         + SP1OperationBuilder<RTypeReaderImmutable>
         + SP1OperationBuilder<ALUTypeReader<F<Self>>>
         + SP1OperationBuilder<CPUState<F<Self>>>
+        + SP1OperationBuilder<SubOperation<F<Self>>>
+        + SP1OperationBuilder<U16CompareOperation<F<Self>>>
+        + SP1OperationBuilder<U16MSBOperation<F<Self>>>
+        + SP1OperationBuilder<LtOperationUnsigned<F<Self>>>
+        + SP1OperationBuilder<LtOperationSigned<F<Self>>>
 {
 }
 
