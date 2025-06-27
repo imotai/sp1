@@ -2909,6 +2909,7 @@ dependencies = [
 [[package]]
 name = "rrs-lib"
 version = "0.1.0"
+source = "git+https://github.com/succinctlabs/rrs-succinct.git?branch=gautham%2Frv64executor-2#eaca3e8e1785f5b4cf55edfe670c1bf2f52eca77"
 dependencies = [
  "downcast-rs",
  "num_enum",
