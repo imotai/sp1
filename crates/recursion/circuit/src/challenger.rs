@@ -539,6 +539,7 @@ pub(crate) mod tests {
     type EF = <SC as JaggedConfig>::EF;
 
     #[tokio::test]
+    #[allow(clippy::uninlined_format_args)]
     async fn test_compiler_challenger() {
         let default_perm = my_bb_16_perm();
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
@@ -584,6 +585,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::uninlined_format_args)]
     async fn test_challenger_outer() {
         type SC = Bn254JaggedConfig;
         type F = <SC as JaggedConfig>::F;

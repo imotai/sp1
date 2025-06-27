@@ -58,6 +58,7 @@ fn main() {
 }
 
 #[allow(clippy::print_stdout)]
+#[allow(clippy::uninlined_format_args)]
 fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
     let machine = RiscvAir::<F>::machine();
     let chip =
@@ -112,6 +113,7 @@ fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
 }
 
 #[allow(clippy::print_stdout)]
+#[allow(clippy::uninlined_format_args)]
 fn compile_operation(chip_name: &str, operation_name: &str, output_format: &OutputFormat) {
     // Step 1: Compile the chip normally to register all operations
     let machine = RiscvAir::<F>::machine();

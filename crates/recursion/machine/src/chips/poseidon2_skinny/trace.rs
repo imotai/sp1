@@ -27,6 +27,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2SkinnyChip
 
     type Program = RecursionProgram<F>;
 
+    #[allow(clippy::uninlined_format_args)]
     fn name(&self) -> String {
         format!("Poseidon2SkinnyDeg{}", DEGREE)
     }

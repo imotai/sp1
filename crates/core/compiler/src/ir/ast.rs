@@ -160,6 +160,7 @@ impl<F: Field> ExprRef<F> {
 }
 
 impl<F: Field> Display for ExprRef<F> {
+    #[allow(clippy::uninlined_format_args)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExprRef::IrVar(ir_var) => write!(f, "{}", ir_var),
@@ -200,6 +201,7 @@ impl<EF: Field> ExprExtRef<EF> {
 }
 
 impl<EF: Field> Display for ExprExtRef<EF> {
+    #[allow(clippy::uninlined_format_args)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExprExtRef::ExtConstant(ext_constant) => write!(f, "{ext_constant}"),
@@ -308,6 +310,7 @@ where
     Expr: Debug + Serialize,
     ExprExt: Debug + Serialize,
 {
+    #[allow(clippy::uninlined_format_args)]
     fn traverse(val: &serde_json::Value, m: &HashMap<usize, String>) -> String {
         match val {
             serde_json::Value::Object(map) => {
@@ -498,6 +501,7 @@ impl<F: Field, EF: ExtensionField<F>> Display for Func<ExprRef<F>, ExprExtRef<EF
 }
 
 impl<F: Field, EF: ExtensionField<F>> Func<ExprRef<F>, ExprExtRef<EF>> {
+    #[allow(clippy::uninlined_format_args)]
     fn traverse(val: &serde_json::Value, name: String, m: &mut HashMap<usize, String>) {
         match val {
             serde_json::Value::Object(map) => {
@@ -793,6 +797,7 @@ where
 }
 
 impl<F: Field, EF: ExtensionField<F>> OpExpr<ExprRef<F>, ExprExtRef<EF>> {
+    #[allow(clippy::uninlined_format_args)]
     /// Convert operation to Lean syntax
     pub fn to_lean(
         &self,
@@ -1064,6 +1069,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         self.operations.push(op);
     }
 
+    #[allow(clippy::uninlined_format_args)]
     pub fn to_string_pretty(&self, prefix: &str) -> String {
         let mut s = String::new();
         for op in &self.operations {
@@ -1072,6 +1078,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         s
     }
 
+    #[allow(clippy::uninlined_format_args)]
     /// Convert AST to Lean constraint list
     pub fn to_lean(
         &self,

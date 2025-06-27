@@ -6,6 +6,7 @@ use dirs::home_dir;
 
 use super::utils::{get_program_build_args, get_rust_compiler_flags};
 
+#[allow(clippy::uninlined_format_args)]
 /// Get the command to build the program locally.
 pub(crate) fn create_local_command(
     args: &BuildArgs,

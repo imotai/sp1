@@ -188,6 +188,8 @@ impl ExecutionRecord {
                 SyscallCode::SECP256K1_DOUBLE
                 | SyscallCode::SECP256R1_DOUBLE
                 | SyscallCode::BN254_DOUBLE => opts.ec_double_256bit,
+                SyscallCode::BLS12381_ADD | SyscallCode::BLS12381_DECOMPRESS => opts.ec_add_384bit,
+                SyscallCode::BLS12381_DOUBLE => opts.ec_double_384bit,
                 SyscallCode::BN254_FP_ADD
                 | SyscallCode::BN254_FP_SUB
                 | SyscallCode::BN254_FP_MUL => opts.fp_operation_256bit,

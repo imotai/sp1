@@ -1,6 +1,6 @@
 use enum_map::EnumMap;
 
-use crate::{syscalls::SyscallCode, RiscvAirId};
+use crate::RiscvAirId;
 
 const BYTE_NUM_ROWS: u64 = 1 << 16;
 const RANGE_NUM_ROWS: u64 = 1 << 17;
@@ -12,7 +12,7 @@ pub fn estimate_trace_elements(
     bump_clk_high: u64,
     costs_per_air: &EnumMap<RiscvAirId, u64>,
     program_size: u64,
-    internal_syscalls_override: &[SyscallCode],
+    internal_syscalls_air_id: &[RiscvAirId],
 ) -> (u64, u64) {
     let mut max_height = 0;
 
@@ -125,8 +125,7 @@ pub fn estimate_trace_elements(
         * costs_per_air[RiscvAirId::Global];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Global]);
 
-    for syscall in internal_syscalls_override {
-        let syscall_air_id = syscall.as_air_id().unwrap();
+    for &syscall_air_id in internal_syscalls_air_id {
         let rows_per_event = syscall_air_id.rows_per_event() as u64;
         let num_rows = (num_events_per_air[syscall_air_id] * rows_per_event).next_multiple_of(32);
         cells += num_rows * costs_per_air[syscall_air_id];
@@ -134,7 +133,7 @@ pub fn estimate_trace_elements(
         // Currently, all precompiles with `rows_per_event > 1` have the respective control chip.
         if rows_per_event > 1 {
             cells += num_events_per_air[syscall_air_id].next_multiple_of(32)
-                * costs_per_air[syscall.control_air_id().unwrap()];
+                * costs_per_air[syscall_air_id.control_air_id().unwrap()];
         }
     }
 

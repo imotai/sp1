@@ -81,6 +81,7 @@ pub fn execute_build_program(
     Ok(target_elf_paths)
 }
 
+#[allow(clippy::uninlined_format_args)]
 /// Internal helper function to build the program with or without arguments.
 pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     // Get the root package name and metadata.
@@ -204,6 +205,7 @@ pub fn generate_elf_paths(
     Ok(target_elf_paths)
 }
 
+#[allow(clippy::uninlined_format_args)]
 /// Prints cargo directives setting relevant `SP1_ELF_` environment variables.
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) {
     for (target_name, elf_path) in target_elf_paths.iter() {

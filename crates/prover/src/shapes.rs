@@ -41,6 +41,8 @@ use crate::{
     InnerSC, SP1RecursionProver, SP1VerifyingKey, ShrinkAir,
 };
 
+pub const DEFAULT_ARITY: usize = 4;
+
 /// The shape of the recursion proof.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SP1RecursionShape {
@@ -122,42 +124,18 @@ pub struct SP1ReduceShape {
 
 impl Default for SP1ReduceShape {
     fn default() -> Self {
-        Self::reduce_shape_from_arity(2).unwrap()
+        Self::reduce_shape_from_arity(4).unwrap()
     }
 }
 
 impl SP1ReduceShape {
     pub fn reduce_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
-            1 | 2 => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 200640),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254080),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243008),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 348544),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 58816),
-                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-                (CompressAir::<BabyBear>::Select(SelectChip), 403488),
-                (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
-            ]
-            .into_iter()
-            .collect(),
-            3 => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 301280),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 385216),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 364448),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 544224),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 89152),
-                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-                (CompressAir::<BabyBear>::Select(SelectChip), 605248),
-                (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
-            ]
-            .into_iter()
-            .collect(),
-            4 => [
+            DEFAULT_ARITY => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485856),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 751232),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 806976),
@@ -172,7 +150,7 @@ impl SP1ReduceShape {
 
     pub fn shrink_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
-            4 => [
+            DEFAULT_ARITY => [
                 (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 121600),
                 (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 187808),
                 (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 100736),
@@ -767,7 +745,18 @@ impl SP1ReduceShape {
 
 #[cfg(test)]
 mod tests {
-    use sp1_core_machine::utils::setup_logger;
+    use crate::{
+        core::{CORE_LOG_STACKING_HEIGHT, CORE_MAX_LOG_ROW_COUNT},
+        recursion::recursion_program_from_input,
+        CORE_LOG_BLOWUP,
+    };
+    use sp1_core_executor::{ELEMENT_THRESHOLD, MAX_PROGRAM_SIZE};
+    use sp1_core_machine::{
+        bytes::columns::NUM_BYTE_PREPROCESSED_COLS, program::NUM_PROGRAM_PREPROCESSED_COLS,
+        range::columns::NUM_RANGE_PREPROCESSED_COLS, utils::setup_logger,
+    };
+
+    use sp1_recursion_executor::RecursionAirEventCount;
 
     use crate::SP1ProverBuilder;
 
@@ -775,6 +764,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    #[allow(clippy::ignore_without_reason)]
     async fn test_max_arity() {
         setup_logger();
         let prover = SP1ProverBuilder::cpu().build().await;
@@ -793,13 +783,13 @@ mod tests {
         // .collect();
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 200640),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 254080),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 243008),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 348544),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 58816),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485856),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-            (CompressAir::<BabyBear>::Select(SelectChip), 403488),
+            (CompressAir::<BabyBear>::Select(SelectChip), 806976),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()
@@ -809,5 +799,102 @@ mod tests {
 
         let arity = reduce_shape.max_arity(prover.recursion()).await;
         tracing::info!("arity: {}", arity);
+    }
+
+    fn max_count(a: RecursionAirEventCount, b: RecursionAirEventCount) -> RecursionAirEventCount {
+        use std::cmp::max;
+        RecursionAirEventCount {
+            mem_const_events: max(a.mem_const_events, b.mem_const_events),
+            mem_var_events: max(a.mem_var_events, b.mem_var_events),
+            base_alu_events: max(a.base_alu_events, b.base_alu_events),
+            ext_alu_events: max(a.ext_alu_events, b.ext_alu_events),
+            poseidon2_wide_events: max(a.poseidon2_wide_events, b.poseidon2_wide_events),
+            fri_fold_events: max(a.fri_fold_events, b.fri_fold_events),
+            batch_fri_events: max(a.batch_fri_events, b.batch_fri_events),
+            select_events: max(a.select_events, b.select_events),
+            exp_reverse_bits_len_events: max(
+                a.exp_reverse_bits_len_events,
+                b.exp_reverse_bits_len_events,
+            ),
+            prefix_sum_checks_events: max(a.prefix_sum_checks_events, b.prefix_sum_checks_events),
+            commit_pv_hash_events: max(a.commit_pv_hash_events, b.commit_pv_hash_events),
+        }
+    }
+
+    fn create_test_shape(
+        cluster: &BTreeSet<Chip<BabyBear, RiscvAir<BabyBear>>>,
+    ) -> SP1RecursionShape {
+        let preprocessed_multiple = (MAX_PROGRAM_SIZE * NUM_PROGRAM_PREPROCESSED_COLS
+            + (1 << 17) * NUM_RANGE_PREPROCESSED_COLS
+            + (1 << 16) * NUM_BYTE_PREPROCESSED_COLS)
+            .div_ceil(1 << CORE_LOG_STACKING_HEIGHT);
+        let main_multiple = (ELEMENT_THRESHOLD).div_ceil(1 << CORE_LOG_STACKING_HEIGHT) as usize;
+        SP1RecursionShape {
+            proof_shapes: vec![CoreProofShape {
+                shard_chips: cluster.clone(),
+                preprocessed_multiple,
+                main_multiple,
+            }],
+            max_log_row_count: CORE_MAX_LOG_ROW_COUNT,
+            log_stacking_height: CORE_LOG_STACKING_HEIGHT as usize,
+            log_blowup: CORE_LOG_BLOWUP,
+        }
+    }
+
+    fn build_recursion_count_from_shape(
+        shape: &RecursionShape<BabyBear>,
+    ) -> RecursionAirEventCount {
+        RecursionAirEventCount {
+            mem_const_events: shape
+                .height(&CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()))
+                .unwrap(),
+            mem_var_events: shape
+                .height(&CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()))
+                .unwrap(),
+            base_alu_events: shape.height(&CompressAir::<BabyBear>::BaseAlu(BaseAluChip)).unwrap(),
+            ext_alu_events: shape.height(&CompressAir::<BabyBear>::ExtAlu(ExtAluChip)).unwrap(),
+            poseidon2_wide_events: shape
+                .height(&CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip))
+                .unwrap(),
+            fri_fold_events: 0,
+            batch_fri_events: 0,
+            select_events: shape.height(&CompressAir::<BabyBear>::Select(SelectChip)).unwrap(),
+            exp_reverse_bits_len_events: 0,
+            prefix_sum_checks_events: shape
+                .height(&CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip))
+                .unwrap(),
+            commit_pv_hash_events: shape
+                .height(&CompressAir::<BabyBear>::PublicValues(PublicValuesChip))
+                .unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_core_shape_fit() {
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let prover = SP1ProverBuilder::cpu().build().await;
+        let (_, _, vk) = prover.core().setup(&elf).await;
+
+        let machine = RiscvAir::<BabyBear>::machine();
+        let chip_clusters = &machine.shape().chip_clusters;
+        let mut max_cluster_count = RecursionAirEventCount::default();
+
+        for cluster in chip_clusters {
+            let shape = create_test_shape(cluster);
+            let program = recursion_program_from_input(
+                &prover.recursion().recursive_core_verifier,
+                &shape.dummy_input(vk.clone()),
+            );
+            max_cluster_count = max_count(max_cluster_count, program.event_counts);
+        }
+
+        let reduce_shape = SP1ReduceShape::reduce_shape_from_arity(DEFAULT_ARITY).unwrap();
+        let arity = reduce_shape.max_arity(prover.recursion()).await;
+        assert!(arity >= DEFAULT_ARITY);
+
+        let arity_4_count = build_recursion_count_from_shape(&reduce_shape.shape);
+        let combined_count = max_count(max_cluster_count, arity_4_count);
+
+        assert_eq!(combined_count, arity_4_count);
     }
 }

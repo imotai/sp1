@@ -70,6 +70,7 @@ pub fn pad_rows_fixed<R: Clone>(
 /// 32.
 #[track_caller]
 #[inline]
+#[allow(clippy::uninlined_format_args)]
 pub fn next_multiple_of_32(n: usize, fixed_height: Option<usize>) -> usize {
     match fixed_height {
         Some(height) => {

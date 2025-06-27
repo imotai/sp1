@@ -275,6 +275,17 @@ impl RiscvAirId {
         }
     }
 
+    /// Get the ID of the AIR used in the syscall control implementation.
+    #[must_use]
+    pub fn control_air_id(self) -> Option<RiscvAirId> {
+        match self {
+            RiscvAirId::ShaCompress => Some(RiscvAirId::ShaCompressControl),
+            RiscvAirId::ShaExtend => Some(RiscvAirId::ShaExtendControl),
+            RiscvAirId::KeccakPermute => Some(RiscvAirId::KeccakPermuteControl),
+            _ => None,
+        }
+    }
+
     /// Returns the string representation of the AIR.
     #[must_use]
     pub fn as_str(&self) -> &'static str {

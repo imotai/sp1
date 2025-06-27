@@ -306,17 +306,6 @@ impl SyscallCode {
             | SyscallCode::HINT_READ => return None,
         })
     }
-
-    /// Get the ID of the AIR used in the syscall control implementation.
-    #[must_use]
-    pub fn control_air_id(self) -> Option<RiscvAirId> {
-        match self {
-            SyscallCode::SHA_COMPRESS => Some(RiscvAirId::ShaCompressControl),
-            SyscallCode::SHA_EXTEND => Some(RiscvAirId::ShaExtendControl),
-            SyscallCode::KECCAK_PERMUTE => Some(RiscvAirId::KeccakPermuteControl),
-            _ => None,
-        }
-    }
 }
 
 impl std::fmt::Display for SyscallCode {

@@ -63,6 +63,7 @@ pub fn get_target() -> String {
     target.to_string()
 }
 
+#[allow(clippy::uninlined_format_args)]
 pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {
     let all_releases = client
         .get("https://api.github.com/repos/succinctlabs/rust/releases")

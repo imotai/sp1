@@ -297,6 +297,7 @@ mod tests {
     use sp1_stark::inner_perm;
 
     #[test]
+    #[allow(clippy::uninlined_format_args)]
     pub fn test_babybear_poseidon2() {
         let perm = inner_perm();
         let zeros = [BabyBear::zero(); 16];

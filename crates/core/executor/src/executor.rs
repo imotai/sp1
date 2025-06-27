@@ -171,6 +171,9 @@ pub struct Executor<'a> {
     /// Syscalls that have been overridden to be internal instead of external.
     pub internal_syscalls_override: Vec<SyscallCode>,
 
+    /// ``RiscvAirId`` that corresponds to syscalls that have been overridden.
+    pub internal_syscalls_air_id: Vec<RiscvAirId>,
+
     /// The options for the IO.
     pub io_options: IoOptions<'a>,
 
@@ -392,6 +395,15 @@ impl<'a> Executor<'a> {
             .sorted()
             .collect();
 
+        let internal_syscalls_air_id = opts
+            .retained_events_presets
+            .iter()
+            .flat_map(RetainedEventsPreset::syscall_codes)
+            .map(|x| x.as_air_id().unwrap())
+            .unique()
+            .sorted()
+            .collect();
+
         Self {
             record: Box::new(record),
             records: vec![],
@@ -424,6 +436,7 @@ impl<'a> Executor<'a> {
             sharding_threshold: Some(opts.sharding_threshold),
             event_counts: EnumMap::default(),
             internal_syscalls_override,
+            internal_syscalls_air_id,
             io_options: context.io_options,
             total_unconstrained_cycles: 0,
             opts,
@@ -1857,7 +1870,7 @@ impl<'a> Executor<'a> {
                     &mut self.event_counts,
                     &self.local_counts,
                     self.local_counts.load_x0_counts,
-                    &self.internal_syscalls_override,
+                    &self.internal_syscalls_air_id,
                 );
 
                 // Check if the main trace area or table height is too large.
@@ -1873,7 +1886,7 @@ impl<'a> Executor<'a> {
                         bump_clk_high,
                         &self.costs,
                         self.program_len,
-                        &self.internal_syscalls_override,
+                        &self.internal_syscalls_air_id,
                     );
 
                     if padded_element_count > element_threshold || max_height > height_threshold {
@@ -1919,7 +1932,7 @@ impl<'a> Executor<'a> {
                 &mut self.event_counts,
                 &self.local_counts,
                 self.local_counts.load_x0_counts,
-                &self.internal_syscalls_override,
+                &self.internal_syscalls_air_id,
             );
             // The above method estimates event counts only for core shards.
             estimator.core_records.push(self.event_counts);
@@ -1930,7 +1943,7 @@ impl<'a> Executor<'a> {
             bump_clk_high,
             &self.costs,
             self.program_len,
-            &self.internal_syscalls_override,
+            &self.internal_syscalls_air_id,
         )
         .0;
         self.local_counts = LocalCounts::default();
@@ -2346,7 +2359,7 @@ impl<'a> Executor<'a> {
         event_counts: &mut EnumMap<RiscvAirId, u64>,
         local_counts: &LocalCounts,
         load_x0_counts: u64,
-        internal_syscalls_override: &[SyscallCode],
+        internal_syscalls_air_id: &[RiscvAirId],
     ) {
         let touched_addresses: u64 = local_counts.local_mem as u64;
         let syscalls_sent: u64 = local_counts.syscalls_sent as u64;
@@ -2440,8 +2453,7 @@ impl<'a> Executor<'a> {
         event_counts[RiscvAirId::Global] = 2 * touched_addresses + syscalls_sent;
 
         // Compute the number of events in the retained precompiles.
-        for syscall in internal_syscalls_override {
-            let air_id = SyscallCode::as_air_id(*syscall).unwrap();
+        for &air_id in internal_syscalls_air_id {
             event_counts[air_id] = local_counts.retained_precompile_counts[air_id];
         }
     }

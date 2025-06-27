@@ -11,6 +11,7 @@ use crate::{
 pub struct BuildToolchainCmd {}
 
 impl BuildToolchainCmd {
+    #[allow(clippy::uninlined_format_args)]
     pub fn run(&self) -> Result<()> {
         // Get environment variables.
         let github_access_token = std::env::var("GITHUB_ACCESS_TOKEN");

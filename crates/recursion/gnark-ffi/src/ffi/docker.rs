@@ -30,11 +30,13 @@ fn assert_docker() {
     }
 }
 
+#[allow(clippy::uninlined_format_args)]
 fn get_docker_image() -> String {
     std::env::var("SP1_GNARK_IMAGE")
         .unwrap_or_else(|_| format!("ghcr.io/succinctlabs/sp1-gnark:{}", SP1_CIRCUIT_VERSION))
 }
 
+#[allow(clippy::uninlined_format_args)]
 /// Calls `docker run` with the given arguments and bind mounts.
 ///
 /// Note: files created here by `call_docker` are read-only for after the process exits.

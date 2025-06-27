@@ -885,6 +885,7 @@ pub mod tests {
     }
     #[test]
     #[ignore]
+    #[allow(clippy::ignore_without_reason)]
     fn write_core_air_costs() {
         let costs = RiscvAir::<BabyBear>::costs();
         // write to file
