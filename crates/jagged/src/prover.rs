@@ -133,6 +133,8 @@ pub struct JaggedProverData<C: JaggedProverComponents> {
     pub stacked_pcs_prover_data: StackedPcsProverData<C::BatchPcsProver>,
     pub row_counts: Arc<Vec<usize>>,
     pub column_counts: Arc<Vec<usize>>,
+    /// The number of columns added as a result of padding in the undedrlying stacked PCS.
+    pub padding_column_count: usize,
 }
 
 #[derive(Debug, Error)]
@@ -202,16 +204,23 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             // Need to pad to at least one column.
             .max(1 << self.log_stacking_height());
 
-        // Because of the padding in the stacked PCS, it's necessary to add a "dummy column" in the
+        let num_added_vals = next_multiple
+            - multilinears
+                .iter()
+                .map(|mle| mle.num_real_entries() * mle.num_polynomials())
+                .sum::<usize>();
+
+        let num_added_cols = num_added_vals.div_ceil(1 << self.max_log_row_count).max(1);
+
+        // Because of the padding in the stacked PCS, it's necessary to add a "dummy columns" in the
         // jagged commitment scheme to pad the area to the next multiple of the stacking height.
-        row_counts.push(
-            next_multiple
-                - multilinears
-                    .iter()
-                    .map(|mle| mle.num_real_entries() * mle.num_polynomials())
-                    .sum::<usize>(),
-        );
-        // Add a "dummy table" with one column to represent this padding.
+        // We do this in the form of two dummy tables, one with the maximum number of rows and possibly
+        // multiple columns, and one with a single column and the remaining number of "leftover"
+        // values.
+        row_counts.push(1 << self.max_log_row_count);
+        row_counts.push(num_added_vals - (num_added_cols - 1) * (1 << self.max_log_row_count));
+
+        column_counts.push(num_added_cols - 1);
         column_counts.push(1);
 
         // Collect all the multilinears that have at least one non-zero entry into a commit message
@@ -226,6 +235,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             stacked_pcs_prover_data: data,
             row_counts: Arc::new(row_counts),
             column_counts: Arc::new(column_counts),
+            padding_column_count: num_added_cols,
         };
 
         Ok((commitment, jagged_prover_data))
@@ -261,19 +271,23 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             .map(|evals| evals.iter().map(|evals| evals.num_polynomials()).sum::<usize>())
             .sum::<usize>();
 
-        let total_len = total_column_claims + evaluation_claims.len();
+        let total_len = total_column_claims
+        // Add in the dummy padding columns added during the stacked PCS commitment.
+            + prover_data.iter().map(|data| data.padding_column_count).sum::<usize>();
 
         let mut column_claims: Buffer<C::EF, C::A> =
             Buffer::with_capacity_in(total_len, backend.clone());
 
         // Then, copy the column claims from the evaluation claims into the buffer, inserting extra
         // zeros for the dummy columns.
-        for column_claim_round in evaluation_claims.into_iter() {
+        for (column_claim_round, data) in evaluation_claims.into_iter().zip(prover_data.iter()) {
             for column_claim in column_claim_round.into_iter() {
                 column_claims
                     .extend_from_device_slice(column_claim.into_evaluations().as_buffer())?;
             }
-            column_claims.extend_from_host_slice(&[C::EF::zero()])?;
+            column_claims.extend_from_host_slice(
+                vec![C::EF::zero(); data.padding_column_count].as_slice(),
+            )?;
         }
 
         assert!(prover_data
@@ -369,7 +383,8 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             })
             .collect::<Rounds<_>>()
             .await;
-
+        let added_columns =
+            prover_data.iter().map(|data| data.padding_column_count).collect::<Vec<_>>();
         let stacked_prover_data =
             prover_data.into_iter().map(|data| data.stacked_pcs_prover_data).collect::<Rounds<_>>();
 
@@ -391,6 +406,7 @@ impl<C: JaggedProverComponents> JaggedProver<C> {
             sumcheck_proof,
             jagged_eval_proof,
             params: params.into_verifier_params(),
+            added_columns,
         })
     }
 }

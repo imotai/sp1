@@ -16,6 +16,7 @@ pub struct JaggedPcsProof<C: JaggedConfig> {
     pub jagged_eval_proof:
         <C::JaggedEvaluator as JaggedEvalConfig<C::F, C::EF, C::Challenger>>::JaggedEvalProof,
     pub params: JaggedLittlePolynomialVerifierParams<C::F>,
+    pub added_columns: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -55,7 +56,13 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         insertion_points: &[usize],
         challenger: &mut C::Challenger,
     ) -> Result<(), JaggedPcsVerifierError<C::EF>> {
-        let JaggedPcsProof { stacked_pcs_proof, sumcheck_proof, jagged_eval_proof, params } = proof;
+        let JaggedPcsProof {
+            stacked_pcs_proof,
+            sumcheck_proof,
+            jagged_eval_proof,
+            params,
+            added_columns,
+        } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
             .map(|_| challenger.sample_ext_element::<C::EF>())
@@ -67,12 +74,16 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         let mut column_claims =
             evaluation_claims.iter().flatten().flatten().copied().collect::<Vec<_>>();
 
-        // For each commit, Rizz needed a commitment to a vector of length a multiple of
-        // 1 << self.pcs.log_stacking_height, and this is achieved by adding a single column of zeroes
-        // as the last matrix of the commitment. We insert these "artificial" zeroes into the evaluation
-        // claims.
-        for insertion_point in insertion_points.iter().rev() {
-            column_claims.insert(*insertion_point, C::EF::zero());
+        // For each commit, the stacked PCS needed a commitment to a vector of length a multiple of
+        // 1 << self.pcs.log_stacking_height, and this is achieved by adding columns of zeroes after
+        // the "real" columns. We insert these "artificial" zeroes into the evaluation claims on the
+        // verifier side.
+        for (insertion_point, num_added_columns) in
+            insertion_points.iter().rev().zip(added_columns.iter().rev())
+        {
+            for _ in 0..*num_added_columns {
+                column_claims.insert(*insertion_point, C::EF::zero());
+            }
         }
 
         // Pad the column claims to the next power of two.
@@ -91,6 +102,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         partially_verify_sumcheck_proof(sumcheck_proof, challenger)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
+        // Check the booleanity of the column prefix sums.
         for t_col in params.col_prefix_sums.iter() {
             for &elem in t_col.iter() {
                 if elem * (C::F::one() - elem) != C::F::zero() {
@@ -102,6 +114,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         for (t_col, next_t_col) in
             params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))
         {
+            // Check monotonicity of the column prefix sums.
             if full_geq(t_col, next_t_col) != C::F::one() {
                 return Err(JaggedPcsVerifierError::MonotonicityCheckFailed);
             }
@@ -122,7 +135,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;
 
-        // Verify the evaluation proof.
+        // Verify the evaluation proof using the (dense) stacked PCS verifier.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
         self.stacked_pcs_verifier
             .verify_trusted_evaluation(

@@ -190,7 +190,7 @@ mod tests {
         let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
 
         let log_blowup = 1;
-        let log_stacking_height = 10;
+        let log_stacking_height = 11;
         let max_log_row_count = 10;
 
         type JC = BabyBearPoseidon2;
