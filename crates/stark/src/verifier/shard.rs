@@ -130,7 +130,16 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             .round_evaluations[0]
             .num_polynomials();
 
-        CoreProofShape { shard_chips, preprocessed_multiple, main_multiple }
+        let main_padding_cols = proof.evaluation_proof.added_columns[1];
+        let preprocessed_padding_cols = proof.evaluation_proof.added_columns[0];
+
+        CoreProofShape {
+            shard_chips,
+            preprocessed_multiple,
+            main_multiple,
+            preprocessed_padding_cols,
+            main_padding_cols,
+        }
     }
 
     /// Compute the padded row adjustment for a chip.
@@ -521,17 +530,28 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
 
         let only_has_main_commitment = vk.preprocessed_commit.is_none();
+        let added_columns = &evaluation_proof.added_columns;
 
         let column_counts = heights
             .iter()
             .zip_eq(&unfiltered_preprocessed_column_count)
             .flat_map(|(&h, &c)| std::iter::repeat_n(h, c))
+            // Add the preprocessed padding columns (except the last one)
+            .chain(std::iter::repeat_n(
+                C::F::from_canonical_u32(1 << max_log_row_count),
+                added_columns[0] - 1,
+            ))
             .chain(
                 heights
                     .iter()
                     .zip_eq(&main_column_count)
                     .flat_map(|(&h, &c)| std::iter::repeat_n(h, c)),
             )
+            // Add the main padding columns (except the last one)
+            .chain(std::iter::repeat_n(
+                C::F::from_canonical_u32(1 << max_log_row_count),
+                added_columns[1] - 1,
+            ))
             .collect::<Vec<C::F>>();
         let preprocessed_column_count_total =
             unfiltered_preprocessed_column_count.iter().sum::<usize>();
@@ -543,7 +563,11 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             .map(|x| x.iter().fold(C::F::zero(), |acc, &y| y + C::F::two() * acc))
             .collect::<Vec<_>>();
 
-        let skip_indices = [preprocessed_column_count_total, col_prefix_sum.len() - 2];
+        // Need to do special checks for the final columns of each commit, which are padding
+        // columns of unknown height.
+        let skip_indices =
+            [preprocessed_column_count_total + added_columns[0] - 1, col_prefix_sum.len() - 2];
+
         let mut param_index = 0;
         col_prefix_sum
             .iter()
@@ -554,7 +578,40 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
                 assert_eq!(*y, *x + column_counts[param_index]);
                 param_index += 1;
             });
+
         assert_eq!(col_prefix_sum[0], C::F::zero());
+
+        // Check that the prefix sum value at the first skip index is the correct multiple of the
+        // stacking height.
+        assert_eq!(
+            col_prefix_sum[skip_indices[0] + 1],
+            C::F::from_canonical_u32(
+                (1 << self.log_stacking_height())
+                    * (proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0]
+                        .iter()
+                        .map(slop_multilinear::MleEval::num_polynomials)
+                        .sum::<usize>() as u32)
+            )
+        );
+
+        // Check that the prefix sum value at the second skip index is the correct multiple of the
+        // stacking height (total padded trace area committed to).
+        assert_eq!(
+            col_prefix_sum[skip_indices[1] + 1],
+            C::F::from_canonical_u32(
+                (1 << self.log_stacking_height())
+                    * (proof
+                        .evaluation_proof
+                        .stacked_pcs_proof
+                        .batch_evaluations
+                        .rounds
+                        .iter()
+                        .flat_map(|evaluations| evaluations
+                            .iter()
+                            .map(slop_multilinear::MleEval::num_polynomials))
+                        .sum::<usize>() as u32)
+            )
+        );
 
         let (commitments, column_counts, openings) = if only_has_main_commitment {
             (

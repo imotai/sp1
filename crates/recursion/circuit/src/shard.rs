@@ -307,10 +307,14 @@ where
         let unfiltered_preprocessed_column_count = preprocessed_openings
             .iter()
             .map(|table_openings| table_openings.len())
+            .chain(std::iter::once(proof.evaluation_proof.added_columns[0] - 1))
             .collect::<Vec<_>>();
 
-        let main_column_count =
-            main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
+        let main_column_count = main_openings
+            .iter()
+            .map(|table_openings| table_openings.len())
+            .chain(std::iter::once(proof.evaluation_proof.added_columns[1] - 1))
+            .collect::<Vec<_>>();
 
         let only_has_main_commitment = vk.preprocessed_commit.is_none();
 
@@ -345,13 +349,16 @@ where
         );
         builder.cycle_tracker_v2_exit();
 
+        let row_count_felt: Felt<_> =
+            builder.constant(C::F::from_canonical_u32(1 << self.pcs_verifier.max_log_row_count));
+
         let params: Vec<Vec<Felt<C::F>>> = unfiltered_column_counts
             .iter()
             .map(|round| {
                 round
                     .iter()
                     .copied()
-                    .zip(height_felts.iter().copied())
+                    .zip(height_felts.iter().copied().chain(std::iter::once(row_count_felt)))
                     .flat_map(|(column_count, height)| {
                         std::iter::repeat_n(height, column_count).collect::<Vec<_>>()
                     })
@@ -362,10 +369,14 @@ where
         let preprocessed_count = params[0].len();
         let params = params.into_iter().flatten().collect::<Vec<_>>();
 
-        // Verify the prefix sums (TODO: skips the padding indices for now).
         builder.cycle_tracker_v2_enter("jagged - prefix-sum-checks");
         let mut param_index = 0;
-        let skip_indices = [preprocessed_count, prefix_sum_felts.len() - 1];
+        // The prefix_sum_felts coming from the C::prefix_sum_checks call excludes what is the last
+        // element, namely the total area, in the Rust verifier. We add that check in manually
+        // below. That is why the Rust verifier `skip_indices` has two elements, while this
+        // one has one.
+        let skip_indices = [preprocessed_count];
+
         prefix_sum_felts
             .iter()
             .zip(prefix_sum_felts.iter().skip(1))
@@ -376,7 +387,43 @@ where
                 builder.assert_felt_eq(sum, *y);
                 param_index += 1;
             });
+
         builder.assert_felt_eq(prefix_sum_felts[0], C::F::zero());
+
+        // Check that the preprocessed prefix sum is the correct multiple of `stacking_height`.
+        builder.assert_felt_eq(
+            prefix_sum_felts[skip_indices[0] + 1],
+            C::F::from_canonical_u32(
+                (1 << self.pcs_verifier.stacked_pcs_verifier.log_stacking_height)
+                    * evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0]
+                        .iter()
+                        .map(|x| x.num_polynomials() as u32)
+                        .sum::<u32>(),
+            ),
+        );
+
+        // Compute the total area from the shape of the stacked PCS proof.
+        let total_area_felt: Felt<_> = builder.constant(C::F::from_canonical_usize(
+            (1 << self.pcs_verifier.stacked_pcs_verifier.log_stacking_height)
+                * proof
+                    .evaluation_proof
+                    .stacked_pcs_proof
+                    .batch_evaluations
+                    .iter()
+                    .flat_map(|evaluations| evaluations.iter().map(|eval| eval.num_polynomials()))
+                    .sum::<usize>(),
+        ));
+
+        // Convert the final prefix sum to a symbolic felt.
+        let mut acc = SymbolicFelt::zero();
+        // Assert max height to avoid overflow during prefix-sum-checks.
+        proof.evaluation_proof.params.col_prefix_sums.iter().last().unwrap().iter().for_each(|x| {
+            acc = *x + two * acc;
+        });
+
+        // Check equality between the two above-computed values.
+        builder.assert_felt_eq(acc, total_area_felt);
+
         builder.cycle_tracker_v2_exit();
     }
 }
@@ -439,8 +486,8 @@ mod tests {
     async fn test_verify_shard() {
         setup_logger();
         let log_blowup = 1;
-        let log_stacking_height = 21;
-        let max_log_row_count = 22;
+        let log_stacking_height = 22;
+        let max_log_row_count = 21;
         let machine = RiscvAir::machine();
         let verifier = ShardVerifier::from_basefold_parameters(
             log_blowup,
@@ -493,6 +540,7 @@ mod tests {
             log_blowup,
             log_stacking_height as usize,
             &[shape.preprocessed_multiple, shape.main_multiple],
+            &[shape.preprocessed_padding_cols, shape.main_padding_cols],
         );
 
         let vk_variable = vk.read(&mut builder);

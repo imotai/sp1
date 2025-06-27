@@ -51,7 +51,7 @@ pub async fn run_test_recursion<const DEGREE: usize>(
     program: RecursionProgram<BabyBear>,
 ) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierError<BabyBearPoseidon2>> {
     let log_blowup = 1;
-    let log_stacking_height = 21;
+    let log_stacking_height = 22;
     let max_log_row_count = 21;
     let verifier = ShardVerifier::from_basefold_parameters(
         log_blowup,

@@ -69,6 +69,7 @@ pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
     pub sumcheck_proof: PartialSumcheckProof<Ext<JC::F, JC::EF>>,
     pub jagged_eval_proof: JC::JaggedEvalProof,
     pub stacked_pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
+    pub added_columns: Vec<usize>,
 }
 
 impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>, BC, E> AsRecursive<C>
@@ -123,8 +124,13 @@ impl<
         insertion_points: &[usize],
         challenger: &mut JC::Challenger,
     ) -> Vec<Felt<JC::F>> {
-        let JaggedPcsProofVariable { stacked_pcs_proof, sumcheck_proof, jagged_eval_proof, params } =
-            proof;
+        let JaggedPcsProofVariable {
+            stacked_pcs_proof,
+            sumcheck_proof,
+            jagged_eval_proof,
+            params,
+            added_columns,
+        } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col =
             (0..num_col_variables).map(|_| challenger.sample_ext(builder)).collect::<Point<_>>();
@@ -140,8 +146,12 @@ impl<
         // zeroes as the last matrix of the commitment. We insert these "artificial" zeroes
         // into the evaluation claims.
         let zero_ext: Ext<JC::F, JC::EF> = builder.constant(JC::EF::zero());
-        for insertion_point in insertion_points.iter().rev() {
-            column_claims.insert(*insertion_point, zero_ext);
+        for (insertion_point, num_added_columns) in
+            insertion_points.iter().rev().zip(added_columns.iter().rev())
+        {
+            for _ in 0..*num_added_columns {
+                column_claims.insert(*insertion_point, zero_ext);
+            }
         }
 
         // Pad the column claims to the next power of two.
@@ -266,7 +276,7 @@ mod tests {
     use slop_commit::Rounds;
     use slop_jagged::{
         JaggedConfig, JaggedPcsProof, JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
-        Poseidon2BabyBearJaggedCpuProverComponents,
+        MachineJaggedPcsVerifier, Poseidon2BabyBearJaggedCpuProverComponents,
     };
     use slop_merkle_tree::my_bb_16_perm;
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
@@ -378,7 +388,7 @@ mod tests {
 
         let log_blowup = 1;
         let log_stacking_height = 21;
-        let max_log_row_count = 21;
+        let max_log_row_count = 20;
 
         let row_counts = row_counts_rounds.into_iter().collect::<Rounds<Vec<usize>>>();
         let column_counts = column_counts_rounds.into_iter().collect::<Rounds<Vec<usize>>>();
@@ -417,6 +427,27 @@ mod tests {
         // Generate the jagged proof.
         let (proof, mut commitments, evaluation_claims) =
             generate_jagged_proof(&jagged_verifier, round_mles, eval_point.clone()).await;
+
+        let mut challenger = jagged_verifier.challenger();
+        let machine_verifier = MachineJaggedPcsVerifier::new(
+            &jagged_verifier,
+            vec![column_counts[0].clone(), column_counts[1].clone()],
+        );
+
+        for commitment in commitments.iter() {
+            // Ensure that the commitments are in the correct field.
+            challenger.observe(*commitment);
+        }
+
+        machine_verifier
+            .verify_trusted_evaluations(
+                &commitments,
+                eval_point.clone(),
+                &evaluation_claims,
+                &proof,
+                &mut challenger,
+            )
+            .unwrap();
 
         // Define the verification circuit.
         let mut builder = AsmBuilder::<F, EF>::default();

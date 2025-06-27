@@ -64,6 +64,7 @@ impl SP1RecursionShape {
                     self.log_blowup,
                     self.log_stacking_height,
                     &[core_shape.preprocessed_multiple, core_shape.main_multiple],
+                    &[core_shape.preprocessed_padding_cols, core_shape.main_padding_cols],
                 )
             })
             .collect::<Vec<_>>();
@@ -134,7 +135,7 @@ impl SP1ReduceShape {
             DEFAULT_ARITY => [
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485856),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486112),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
@@ -151,7 +152,7 @@ impl SP1ReduceShape {
     pub fn shrink_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 121600),
+                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 121664),
                 (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 187808),
                 (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 100736),
                 (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 129472),
@@ -190,12 +191,27 @@ impl SP1ReduceShape {
             .sum::<usize>()
             .div_ceil(1 << log_stacking_height);
 
+        let preprocessed_padding_cols = ((preprocessed_multiple * (1 << log_stacking_height))
+            - chips
+                .iter()
+                .map(|chip| self.shape.height(chip).unwrap() * chip.preprocessed_width())
+                .sum::<usize>())
+        .div_ceil(1 << max_log_row_count);
+
+        let main_padding_cols = ((main_multiple * (1 << log_stacking_height))
+            - chips
+                .iter()
+                .map(|chip| self.shape.height(chip).unwrap() * chip.width())
+                .sum::<usize>())
+        .div_ceil(1 << max_log_row_count);
+
         let dummy_proof = dummy_shard_proof(
             chips,
             max_log_row_count,
             log_blowup,
             log_stacking_height,
             &[preprocessed_multiple, main_multiple],
+            &[preprocessed_padding_cols, main_padding_cols],
         );
 
         let vks_and_proofs =
@@ -780,7 +796,7 @@ mod tests {
         //     (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         // ]
         // .into_iter()
-        // .collect();
+        // .collect()
 
         let shape = [
             (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
@@ -829,11 +845,15 @@ mod tests {
             + (1 << 16) * NUM_BYTE_PREPROCESSED_COLS)
             .div_ceil(1 << CORE_LOG_STACKING_HEIGHT);
         let main_multiple = (ELEMENT_THRESHOLD).div_ceil(1 << CORE_LOG_STACKING_HEIGHT) as usize;
+        let num_padding_cols =
+            ((1 << CORE_LOG_STACKING_HEIGHT) as usize).div_ceil(1 << CORE_MAX_LOG_ROW_COUNT);
         SP1RecursionShape {
             proof_shapes: vec![CoreProofShape {
                 shard_chips: cluster.clone(),
                 preprocessed_multiple,
                 main_multiple,
+                preprocessed_padding_cols: num_padding_cols,
+                main_padding_cols: num_padding_cols,
             }],
             max_log_row_count: CORE_MAX_LOG_ROW_COUNT,
             log_stacking_height: CORE_LOG_STACKING_HEIGHT as usize,
@@ -871,6 +891,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_core_shape_fit() {
+        setup_logger();
         let elf = test_artifacts::FIBONACCI_ELF;
         let prover = SP1ProverBuilder::cpu().build().await;
         let (_, _, vk) = prover.core().setup(&elf).await;

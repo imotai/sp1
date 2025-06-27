@@ -60,6 +60,7 @@ pub fn dummy_pcs_proof(
     log_blowup: usize,
     total_machine_cols: usize,
     max_log_row_count: usize,
+    added_cols: &[usize],
 ) -> JaggedPcsProof<BabyBearPoseidon2> {
     let max_pcs_height = log_stacking_height;
     let dummy_component_polys = log_stacking_height_multiples.iter().map(|&x| {
@@ -99,7 +100,7 @@ pub fn dummy_pcs_proof(
     // Add 2 because of the dummy columns after the preprocessed and main rounds, and then one more
     // because the prefix sums start at 0 and end at total trace area (so there is one more prefix
     // sum than the number of columns).
-    let col_prefix_sums = (0..total_machine_cols + 3)
+    let col_prefix_sums = (0..total_machine_cols + 1 + added_cols.iter().sum::<usize>())
         .map(|_| Point::<InnerVal>::from_usize(0, total_num_variables + 1))
         .collect::<Vec<_>>();
 
@@ -109,7 +110,8 @@ pub fn dummy_pcs_proof(
 
     // Add 2 because the there is a dummy column after the preprocessed and main rounds to round
     // area to a multiple of `1<<log_stacking_height`.
-    let branching_program_evals = vec![InnerChallenge::zero(); total_machine_cols + 2];
+    let branching_program_evals =
+        vec![InnerChallenge::zero(); total_machine_cols + added_cols.iter().sum::<usize>()];
 
     let eval_sumcheck_proof = dummy_sumcheck_proof(2 * (total_num_variables + 1), 2);
 
@@ -123,6 +125,7 @@ pub fn dummy_pcs_proof(
         params: jagged_params,
         jagged_eval_proof,
         sumcheck_proof: partial_sumcheck_proof,
+        added_columns: added_cols.to_vec(),
     }
 }
 // For each query, create a dummy batch opening for each matrix in the batch. `batch_shapes`
@@ -169,12 +172,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_dummy_jagged_proof() {
-        let row_counts_rounds = vec![vec![1 << 10, 0, 1 << 10], vec![1 << 8]];
+        let row_counts_rounds = vec![vec![1 << 9, 0, 1 << 9], vec![1 << 8]];
         let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
 
         let log_blowup = 1;
         let log_stacking_height = 10;
-        let max_log_row_count = 11;
+        let max_log_row_count = 9;
 
         type JC = BabyBearPoseidon2;
         type Prover = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
@@ -259,14 +262,34 @@ mod tests {
             .zip(column_counts_rounds[0].iter())
             .map(|(row_count, col_count)| row_count * col_count)
             .sum::<usize>()
-            .div_ceil(1 << log_stacking_height);
+            .div_ceil(1 << log_stacking_height)
+            .max(1);
 
         let main_multiple = row_counts_rounds[1]
             .iter()
             .zip(column_counts_rounds[1].iter())
             .map(|(row_count, col_count)| row_count * col_count)
             .sum::<usize>()
-            .div_ceil(1 << log_stacking_height);
+            .div_ceil(1 << log_stacking_height)
+            .max(1);
+
+        let preprocessed_padding_cols = (prep_multiple * (1 << log_stacking_height)
+            - row_counts_rounds[0]
+                .iter()
+                .zip(column_counts_rounds[0].iter())
+                .map(|(row_count, col_count)| row_count * col_count)
+                .sum::<usize>())
+        .div_ceil(1 << max_log_row_count)
+        .max(1);
+
+        let main_padding_cols = (main_multiple * (1 << log_stacking_height)
+            - row_counts_rounds[1]
+                .iter()
+                .zip(column_counts_rounds[1].iter())
+                .map(|(row_count, col_count)| row_count * col_count)
+                .sum::<usize>())
+        .div_ceil(1 << max_log_row_count)
+        .max(1);
 
         let dummy_proof = dummy_pcs_proof(
             100,
@@ -275,6 +298,7 @@ mod tests {
             log_blowup,
             column_counts.iter().flat_map(|x| x.iter()).sum(),
             max_log_row_count as usize,
+            &[preprocessed_padding_cols, main_padding_cols],
         );
 
         // Check the jagged sumcheck proof is the right shape.

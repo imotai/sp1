@@ -1032,7 +1032,7 @@ pub mod tests {
     #[tokio::test]
     #[serial]
     async fn test_e2e() -> Result<()> {
-        let elf = test_artifacts::SSZ_WITHDRAWALS_ELF;
+        let elf = test_artifacts::FIBONACCI_ELF;
         setup_logger();
 
         let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;

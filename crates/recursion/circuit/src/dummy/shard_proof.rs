@@ -34,6 +34,7 @@ pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
     log_blowup: usize,
     log_stacking_height: usize,
     log_stacking_height_multiples: &[usize],
+    added_cols: &[usize],
 ) -> ShardProof<BabyBearPoseidon2> {
     let default_verifier = Poseidon2BabyBear16BasefoldConfig::default_verifier(log_blowup);
     let fri_queries = default_verifier.fri_config.num_queries;
@@ -48,6 +49,7 @@ pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
         log_blowup,
         total_machine_cols,
         max_log_row_count,
+        added_cols,
     );
 
     let logup_gkr_proof = dummy_gkr_proof::<_, <BabyBearPoseidon2 as JaggedConfig>::EF, _>(
