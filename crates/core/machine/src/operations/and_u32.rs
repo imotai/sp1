@@ -1,6 +1,9 @@
 use p3_field::AbstractField;
-use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::WORD_SIZE;
+use sp1_core_executor::{
+    events::{ByteLookupEvent, ByteRecord},
+    ByteOpcode,
+};
+use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::Field;
@@ -20,8 +23,8 @@ pub struct AndU32Operation<T> {
     /// Lower byte of two limbs of `c`.
     pub c_low_bytes: U32toU8Operation<T>,
 
-    /// The bitwise operation over bytes.
-    pub and_operation: AndOperation<T>,
+    /// The result of the and operation.
+    pub value: [T; WORD_BYTE_SIZE / 2],
 }
 
 impl<F: Field> AndU32Operation<F> {
@@ -31,9 +34,25 @@ impl<F: Field> AndU32Operation<F> {
         b_u32: u32,
         c_u32: u32,
     ) -> u32 {
+        let expected = b_u32 & c_u32;
         self.b_low_bytes.populate_u32_to_u8_unsafe(record, b_u32);
         self.c_low_bytes.populate_u32_to_u8_unsafe(record, c_u32);
-        self.and_operation.populate(record, b_u32 as u64, c_u32 as u64) as u32
+
+        let b_bytes = b_u32.to_le_bytes();
+        let c_bytes = c_u32.to_le_bytes();
+        for i in 0..WORD_BYTE_SIZE / 2 {
+            let and = b_bytes[i] & c_bytes[i];
+            self.value[i] = F::from_canonical_u8(and);
+
+            let byte_event = ByteLookupEvent {
+                opcode: ByteOpcode::AND,
+                a: and as u16,
+                b: b_bytes[i],
+                c: c_bytes[i],
+            };
+            record.add_byte_lookup_event(byte_event);
+        }
+        expected
     }
 
     /// Evaluate the and operation over two `Word`s of two u16 limbs.
@@ -55,40 +74,20 @@ impl<F: Field> AndU32Operation<F> {
             U32toU8Operation::<AB::F>::eval_u32_to_u8_unsafe(builder, b, cols.b_low_bytes);
         let c_bytes =
             U32toU8Operation::<AB::F>::eval_u32_to_u8_unsafe(builder, c, cols.c_low_bytes);
-        let b_bytes_extended = [
-            b_bytes[0].clone(),
-            b_bytes[1].clone(),
-            b_bytes[2].clone(),
-            b_bytes[3].clone(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-        ];
-        let c_bytes_extended = [
-            c_bytes[0].clone(),
-            c_bytes[1].clone(),
-            c_bytes[2].clone(),
-            c_bytes[3].clone(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-        ];
-        // SAFETY: This is safe because `is_real` is constrained to be boolean.
-        AndOperation::<AB::F>::eval(
-            builder,
-            b_bytes_extended,
-            c_bytes_extended,
-            cols.and_operation,
-            is_real,
-        );
+
+        for i in 0..WORD_BYTE_SIZE / 2 {
+            builder.send_byte(
+                AB::F::from_canonical_u32(ByteOpcode::AND as u32),
+                cols.value[i],
+                b_bytes[i].clone(),
+                c_bytes[i].clone(),
+                is_real,
+            );
+        }
 
         // Combine the byte results into two u16 limbs.
-        let result_limb0 = cols.and_operation.value[0]
-            + cols.and_operation.value[1] * AB::F::from_canonical_u32(1 << 8);
-        let result_limb1 = cols.and_operation.value[2]
-            + cols.and_operation.value[3] * AB::F::from_canonical_u32(1 << 8);
+        let result_limb0 = cols.value[0] + cols.value[1] * AB::F::from_canonical_u32(1 << 8);
+        let result_limb1 = cols.value[2] + cols.value[3] * AB::F::from_canonical_u32(1 << 8);
 
         [result_limb0, result_limb1]
     }

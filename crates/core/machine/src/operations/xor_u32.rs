@@ -1,6 +1,9 @@
 use p3_field::AbstractField;
-use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::WORD_SIZE;
+use sp1_core_executor::{
+    events::{ByteLookupEvent, ByteRecord},
+    ByteOpcode,
+};
+use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::Field;
@@ -18,8 +21,8 @@ pub struct XorU32Operation<T> {
     /// Lower byte of two limbs of `c`.
     pub c_low_bytes: U32toU8Operation<T>,
 
-    /// The bitwise operation over bytes.
-    pub xor_operation: XorOperation<T>,
+    /// The result of the xor operation.
+    pub value: [T; WORD_BYTE_SIZE / 2],
 }
 
 impl<F: Field> XorU32Operation<F> {
@@ -32,7 +35,21 @@ impl<F: Field> XorU32Operation<F> {
         let expected = b_u32 ^ c_u32;
         self.b_low_bytes.populate_u32_to_u8_unsafe(record, b_u32);
         self.c_low_bytes.populate_u32_to_u8_unsafe(record, c_u32);
-        self.xor_operation.populate(record, b_u32 as u64, c_u32 as u64);
+
+        let b_bytes = b_u32.to_le_bytes();
+        let c_bytes = c_u32.to_le_bytes();
+        for i in 0..WORD_BYTE_SIZE / 2 {
+            let xor = b_bytes[i] ^ c_bytes[i];
+            self.value[i] = F::from_canonical_u8(xor);
+
+            let byte_event = ByteLookupEvent {
+                opcode: ByteOpcode::XOR,
+                a: xor as u16,
+                b: b_bytes[i],
+                c: c_bytes[i],
+            };
+            record.add_byte_lookup_event(byte_event);
+        }
         expected
     }
 
@@ -55,40 +72,20 @@ impl<F: Field> XorU32Operation<F> {
             U32toU8Operation::<AB::F>::eval_u32_to_u8_unsafe(builder, b, cols.b_low_bytes);
         let c_bytes =
             U32toU8Operation::<AB::F>::eval_u32_to_u8_unsafe(builder, c, cols.c_low_bytes);
-        let b_bytes_extended = [
-            b_bytes[0].clone(),
-            b_bytes[1].clone(),
-            b_bytes[2].clone(),
-            b_bytes[3].clone(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-        ];
-        let c_bytes_extended = [
-            c_bytes[0].clone(),
-            c_bytes[1].clone(),
-            c_bytes[2].clone(),
-            c_bytes[3].clone(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-        ];
-        // SAFETY: This is safe because `is_real` is constrained to be boolean.
-        XorOperation::<AB::F>::eval(
-            builder,
-            b_bytes_extended,
-            c_bytes_extended,
-            cols.xor_operation,
-            is_real,
-        );
+
+        for i in 0..WORD_BYTE_SIZE / 2 {
+            builder.send_byte(
+                AB::F::from_canonical_u32(ByteOpcode::XOR as u32),
+                cols.value[i],
+                b_bytes[i].clone(),
+                c_bytes[i].clone(),
+                is_real,
+            );
+        }
 
         // Combine the byte results into two u16 limbs.
-        let result_limb0 = cols.xor_operation.value[0]
-            + cols.xor_operation.value[1] * AB::F::from_canonical_u32(1 << 8);
-        let result_limb1 = cols.xor_operation.value[2]
-            + cols.xor_operation.value[3] * AB::F::from_canonical_u32(1 << 8);
+        let result_limb0 = cols.value[0] + cols.value[1] * AB::F::from_canonical_u32(1 << 8);
+        let result_limb1 = cols.value[2] + cols.value[3] * AB::F::from_canonical_u32(1 << 8);
 
         [result_limb0, result_limb1]
     }

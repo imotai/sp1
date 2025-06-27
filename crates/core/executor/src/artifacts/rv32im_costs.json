@@ -45,7 +45,7 @@
   "StoreDouble": 37,
   "KeccakPermuteControl": 634,
   "Mul": 86,
-  "ShaExtend": 144,
+  "ShaExtend": 128,
   "Bls12381AddAssign": 2399,
   "Uint256Ops": 477,
   "Jal": 21,
@@ -62,6 +62,6 @@
   "SyscallCore": 10,
   "Lt": 42,
   "Bls12381FpOpAssign": 450,
-  "ShaCompress": 255,
+  "ShaCompress": 207,
   "LoadDouble": 37
 }
