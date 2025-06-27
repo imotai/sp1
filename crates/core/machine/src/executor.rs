@@ -275,21 +275,11 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
             });
         }
 
-        // Get a synchronous version of getting a worker channel.
-        let (request_tx, mut request_rx) = mpsc::unbounded_channel::<oneshot::Sender<_>>();
-        tokio::task::spawn(async move {
-            let record_worker_channels = Arc::new(WorkerQueue::new(record_worker_channels));
-            while let Some(out_tx) = request_rx.recv().await {
-                // Get a worker from the queue.
-                let worker = record_worker_channels.clone().pop().await.unwrap();
-                out_tx.send(worker).ok();
-            }
-        });
-
         // Spawn the checkpoint generation task.
         let opts = self.opts.clone();
-        tokio::task::spawn_blocking(move || {
-            'task_loop: while let Some(task) = task_rx.blocking_recv() {
+        tokio::task::spawn(async move {
+            let record_worker_channels = Arc::new(WorkerQueue::new(record_worker_channels));
+            'task_loop: while let Some(task) = task_rx.recv().await {
                 let ExecuteTask {
                     program,
                     stdin,
@@ -321,7 +311,8 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                 }
 
                 // Setup the runtime.
-                let mut runtime = Executor::with_context(program.clone(), opts.clone(), context);
+                let mut runtime =
+                    Box::new(Executor::with_context(program.clone(), opts.clone(), context));
                 runtime.write_vecs(&stdin.buffer);
                 for proof in stdin.proofs.iter() {
                     let (proof, vk) = proof.clone();
@@ -333,7 +324,15 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                 let abort_handle = abort_registration.handle();
                 let mut done = false;
                 while !done && !abort_handle.is_aborted() {
-                    let checkpoint_result = generate_checkpoint(&mut runtime);
+                    // Send and receive ownership of `runtime: Box<Executor<'_>>`.
+                    // The `.unwrap()` propagates panics from `generate_checkpoint`.
+                    let checkpoint_result;
+                    (runtime, checkpoint_result) = tokio::task::spawn_blocking(move || {
+                        let res = generate_checkpoint(&mut runtime);
+                        (runtime, res)
+                    })
+                    .await
+                    .unwrap();
                     match checkpoint_result {
                         Ok((checkpoint_file, is_done)) => {
                             // Update the finished flag.
@@ -352,9 +351,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                                 span: tracing::debug_span!("execute record"),
                             };
                             // Send the checkpoint to the record generation worker.
-                            let (out_tx, out_rx) = oneshot::channel();
-                            request_tx.send(out_tx).unwrap();
-                            let record_worker = out_rx.blocking_recv().unwrap();
+                            let record_worker = record_worker_channels.clone().pop().await.unwrap();
                             // Send the task to the worker.
                             record_worker.send(record_task).unwrap();
                             // Increment the index.
