@@ -7,7 +7,7 @@ use crate::{
     Register::{X12, X13, X14},
 };
 
-const U256_NUM_WORDS: usize = 8;
+const U256_NUM_WORDS: usize = 4;
 
 /// Executes uint256 operations: d, e <- ((a op b) + c) % (2^256), ((a op b) + c) // (2^256)
 /// where op is either ADD or MUL.
@@ -81,9 +81,9 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
         c_ptr,
         c: c.try_into().unwrap(),
         d_ptr,
-        d: u64_result[0..8].try_into().unwrap(),
+        d: u64_result[0..4].try_into().unwrap(),
         e_ptr,
-        e: u64_result[8..16].try_into().unwrap(),
+        e: u64_result[4..8].try_into().unwrap(),
         c_ptr_memory,
         d_ptr_memory,
         e_ptr_memory,

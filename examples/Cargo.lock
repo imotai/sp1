@@ -5257,11 +5257,12 @@ dependencies = [
 
 [[package]]
 name = "rsa"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78928ac1ed176a5ca1d17e578a1825f3d81ca54cf41053a592584b020cfd691b"
+version = "0.9.6"
 dependencies = [
+ "bytemuck",
+ "cfg-if",
  "const-oid 0.9.6",
+ "crypto-bigint 0.5.5",
  "digest 0.10.7",
  "num-bigint-dig",
  "num-integer",
@@ -5270,6 +5271,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "signature",
+ "sp1-lib",
  "spki 0.7.3",
  "subtle",
  "zeroize",
@@ -5279,9 +5281,9 @@ dependencies = [
 name = "rsa-program"
 version = "1.1.0"
 dependencies = [
- "rsa 0.9.8",
+ "rsa 0.9.6",
  "sha2 0.10.9",
- "sp1-zkvm",
+ "sp1-zkvm-64",
 ]
 
 [[package]]
