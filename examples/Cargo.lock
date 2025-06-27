@@ -669,7 +669,7 @@ dependencies = [
  "group 0.13.0",
  "pairing 0.23.0",
  "rand_core 0.6.4",
- "sp1-lib",
+ "sp1-lib 5.0.0",
  "subtle",
 ]
 
@@ -1128,7 +1128,7 @@ dependencies = [
  "cfg-if",
  "digest 0.9.0",
  "rand_core 0.6.4",
- "sp1-lib",
+ "sp1-lib 5.0.0",
  "subtle-ng",
  "zeroize",
 ]
@@ -4095,11 +4095,13 @@ dependencies = [
 
 [[package]]
 name = "rsa"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78928ac1ed176a5ca1d17e578a1825f3d81ca54cf41053a592584b020cfd691b"
+version = "0.9.6"
+source = "git+https://github.com/succinctlabs/RustCrypto-RSA-WIP.git?branch=main#81a177883d52a387aa793acb286f3d6e20913863"
 dependencies = [
+ "bytemuck",
+ "cfg-if",
  "const-oid 0.9.6",
+ "crypto-bigint 0.5.5",
  "digest 0.10.7",
  "num-bigint-dig",
  "num-integer",
@@ -4108,6 +4110,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "signature",
+ "sp1-lib 5.0.0 (git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fbetter-rsa)",
  "spki 0.7.3",
  "subtle",
  "zeroize",
@@ -4117,7 +4120,7 @@ dependencies = [
 name = "rsa-program"
 version = "1.1.0"
 dependencies = [
- "rsa 0.9.8",
+ "rsa 0.9.6",
  "sha2 0.10.8",
  "sp1-zkvm",
 ]
@@ -5067,7 +5070,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
 ]
 
@@ -5086,6 +5089,7 @@ dependencies = [
  "itertools 0.13.0",
  "nohash-hasher",
  "num",
+ "p3-air",
  "p3-baby-bear",
  "p3-field",
  "p3-maybe-rayon",
@@ -5096,7 +5100,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp1-curves",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-stark",
  "strum",
  "strum_macros",
@@ -5145,13 +5149,14 @@ dependencies = [
  "serde",
  "serde_json",
  "size",
+ "slop-algebra",
  "slop-futures",
  "slop-multilinear",
  "snowbridge-amcl",
  "sp1-core-executor",
  "sp1-curves",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-stark",
  "static_assertions",
  "strum",
@@ -5176,7 +5181,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "thiserror 1.0.69",
  "tokio",
@@ -5198,7 +5203,7 @@ dependencies = [
  "p3-field",
  "serde",
  "snowbridge-amcl",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "typenum",
 ]
 
@@ -5217,12 +5222,43 @@ dependencies = [
  "bincode",
  "elliptic-curve",
  "serde",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
+]
+
+[[package]]
+name = "sp1-lib"
+version = "5.0.0"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fbetter-rsa#b113d2ed2823d20d236e1bd13dfc0614ffe43f98"
+dependencies = [
+ "bincode",
+ "elliptic-curve",
+ "serde",
+ "sp1-primitives 5.0.0 (git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fbetter-rsa)",
 ]
 
 [[package]]
 name = "sp1-primitives"
 version = "5.0.0"
+dependencies = [
+ "bincode",
+ "blake3",
+ "cfg-if",
+ "hex",
+ "itertools 0.13.0",
+ "lazy_static",
+ "num-bigint 0.4.6",
+ "p3-baby-bear",
+ "p3-field",
+ "p3-poseidon2",
+ "p3-symmetric",
+ "serde",
+ "sha2 0.10.8",
+]
+
+[[package]]
+name = "sp1-primitives"
+version = "5.0.0"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fbetter-rsa#b113d2ed2823d20d236e1bd13dfc0614ffe43f98"
 dependencies = [
  "bincode",
  "blake3",
@@ -5277,7 +5313,7 @@ dependencies = [
  "slop-symmetric",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-circuit",
  "sp1-recursion-compiler",
  "sp1-recursion-executor",
@@ -5333,7 +5369,7 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-compiler",
  "sp1-recursion-executor",
  "sp1-recursion-machine",
@@ -5356,7 +5392,7 @@ dependencies = [
  "serde",
  "slop-merkle-tree",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-derive",
  "sp1-recursion-executor",
  "sp1-recursion-machine",
@@ -5407,7 +5443,7 @@ dependencies = [
  "smallvec",
  "sp1-core-machine",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-stark",
  "static_assertions",
  "thiserror 1.0.69",
@@ -5467,7 +5503,7 @@ dependencies = [
  "slop-symmetric",
  "sp1-core-machine",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-executor",
  "sp1-stark",
  "strum",
@@ -5507,7 +5543,7 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-cuda",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-stark",
  "strum",
@@ -5554,7 +5590,7 @@ dependencies = [
  "slop-symmetric",
  "slop-tensor",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "strum",
  "strum_macros",
  "thiserror 1.0.69",
@@ -5590,8 +5626,8 @@ dependencies = [
  "p3-field",
  "rand 0.8.5",
  "sha2 0.10.8",
- "sp1-lib",
- "sp1-primitives",
+ "sp1-lib 5.0.0",
+ "sp1-primitives 5.0.0",
 ]
 
 [[package]]
@@ -5753,7 +5789,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "rand 0.8.5",
  "rustc-hex",
- "sp1-lib",
+ "sp1-lib 5.0.0",
 ]
 
 [[package]]

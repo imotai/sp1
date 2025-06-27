@@ -55,6 +55,7 @@ pub(crate) mod riscv_chips {
                 },
                 u256x2048_mul::U256x2048MulChip,
                 uint256::Uint256MulChip,
+                uint256_ops::Uint256OpsChip,
                 weierstrass::{
                     WeierstrassAddAssignChip, WeierstrassDecompressChip,
                     WeierstrassDoubleAssignChip,
@@ -189,6 +190,8 @@ pub enum RiscvAir<F: PrimeField32> {
     Bls12381Double(WeierstrassDoubleAssignChip<SwCurve<Bls12381Parameters>>),
     /// A precompile for uint256 mul.
     Uint256Mul(Uint256MulChip),
+    /// A precompile for uint256 operations (add/mul with carry).
+    Uint256Ops(Uint256OpsChip),
     /// A precompile for u256x2048 mul.
     U256x2048Mul(U256x2048MulChip),
     /// A precompile for decompressing a point on the BLS12-381 curve.
@@ -247,6 +250,7 @@ impl<F: PrimeField32> RiscvAir<F> {
                 WeierstrassDoubleAssignChip::<SwCurve<Bls12381Parameters>>::new(),
             ),
             RiscvAir::Uint256Mul(Uint256MulChip::default()),
+            RiscvAir::Uint256Ops(Uint256OpsChip::default()),
             RiscvAir::U256x2048Mul(U256x2048MulChip::default()),
             RiscvAir::Bls12381Fp(FpOpChip::<Bls12381BaseField>::new()),
             RiscvAir::Bls12381Fp2AddSub(Fp2AddSubAssignChip::<Bls12381BaseField>::new()),
@@ -334,6 +338,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             [Bls12381Add].as_slice(),
             [Bls12381Double].as_slice(),
             [Uint256Mul].as_slice(),
+            [Uint256Ops].as_slice(),
             [U256x2048Mul].as_slice(),
             [Bls12381Fp].as_slice(),
             [Bls12381Fp2AddSub].as_slice(),
@@ -388,6 +393,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             [Bn254Fp].as_slice(),
             [Sha256Extend, Sha256ExtendControl, Sha256Compress, Sha256CompressControl].as_slice(),
             [Uint256Mul].as_slice(),
+            [Uint256Ops].as_slice(),
         ];
 
         // These extended clusters support the AIR retainment setting in SP1Context.
@@ -402,6 +408,18 @@ impl<F: PrimeField32> RiscvAir<F> {
 
         // Collect all clusters and replace the IDs by chips.
         let chip_clusters = core_clusters
+            .chain(core::iter::once(extend_base(
+                &core_cluster,
+                [
+                    MemoryGlobalInit,
+                    MemoryGlobalFinal,
+                    Sha256Extend,
+                    Sha256ExtendControl,
+                    Sha256Compress,
+                    Sha256CompressControl,
+                    Uint256Ops,
+                ],
+            )))
             .chain(core::iter::once(memory_boundary_cluster))
             .chain(precompile_clusters)
             .map(|ids| ids.into_iter().map(|id| chips_map[&id].clone()).collect())
@@ -551,6 +569,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         let u256x2048_mul = Chip::new(RiscvAir::U256x2048Mul(U256x2048MulChip::default()));
         costs.insert(u256x2048_mul.name(), u256x2048_mul.cost());
         chips.push(u256x2048_mul);
+
+        let uint256_ops = Chip::new(RiscvAir::Uint256Ops(Uint256OpsChip::default()));
+        costs.insert(uint256_ops.name(), uint256_ops.cost());
+        chips.push(uint256_ops);
 
         let bls12381_fp = Chip::new(RiscvAir::Bls12381Fp(FpOpChip::<Bls12381BaseField>::new()));
         costs.insert(bls12381_fp.name(), bls12381_fp.cost());
@@ -830,6 +852,7 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::Bls12381Add => RiscvAirId::Bls12381AddAssign,
             RiscvAirDiscriminants::Bls12381Double => RiscvAirId::Bls12381DoubleAssign,
             RiscvAirDiscriminants::Uint256Mul => RiscvAirId::Uint256MulMod,
+            RiscvAirDiscriminants::Uint256Ops => RiscvAirId::Uint256Ops,
             RiscvAirDiscriminants::U256x2048Mul => RiscvAirId::U256XU2048Mul,
             RiscvAirDiscriminants::Bls12381Decompress => RiscvAirId::Bls12381Decompress,
             RiscvAirDiscriminants::Bls12381Fp => RiscvAirId::Bls12381FpOpAssign,

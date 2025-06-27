@@ -76,110 +76,112 @@ pub enum RiscvAirId {
     Bls12381DoubleAssign = 19,
     /// The uint256 mul mod chip.
     Uint256MulMod = 20,
+    /// The uint256 ops chip.
+    Uint256Ops = 21,
     /// The u256 xu2048 mul chip.
-    U256XU2048Mul = 21,
+    U256XU2048Mul = 22,
     /// The bls12-381 fp op assign chip.
-    Bls12381FpOpAssign = 22,
+    Bls12381FpOpAssign = 23,
     /// The bls12-831 fp2 add sub assign chip.
-    Bls12381Fp2AddSubAssign = 23,
+    Bls12381Fp2AddSubAssign = 24,
     /// The bls12-831 fp2 mul assign chip.
-    Bls12381Fp2MulAssign = 24,
+    Bls12381Fp2MulAssign = 25,
     /// The bn254 fp2 add sub assign chip.
-    Bn254FpOpAssign = 25,
+    Bn254FpOpAssign = 26,
     /// The bn254 fp op assign chip.
-    Bn254Fp2AddSubAssign = 26,
+    Bn254Fp2AddSubAssign = 27,
     /// The bn254 fp2 mul assign chip.
-    Bn254Fp2MulAssign = 27,
+    Bn254Fp2MulAssign = 28,
     /// The bls12-381 decompress chip.
-    Bls12381Decompress = 28,
+    Bls12381Decompress = 29,
     /// The syscall core chip.
     #[subenum(CoreAirId)]
-    SyscallCore = 29,
+    SyscallCore = 30,
     /// The syscall precompile chip.
-    SyscallPrecompile = 30,
+    SyscallPrecompile = 31,
     /// The div rem chip.
     #[subenum(CoreAirId)]
-    DivRem = 31,
+    DivRem = 32,
     /// The add chip.
     #[subenum(CoreAirId)]
-    Add = 32,
+    Add = 33,
     /// The addi chip.
     #[subenum(CoreAirId)]
-    Addi = 33,
+    Addi = 34,
     /// The sub chip.
     #[subenum(CoreAirId)]
-    Sub = 34,
+    Sub = 35,
     /// The bitwise chip.
     #[subenum(CoreAirId)]
-    Bitwise = 35,
+    Bitwise = 36,
     /// The mul chip.
     #[subenum(CoreAirId)]
-    Mul = 36,
+    Mul = 37,
     /// The shift right chip.
     #[subenum(CoreAirId)]
-    ShiftRight = 37,
+    ShiftRight = 38,
     /// The shift left chip.
     #[subenum(CoreAirId)]
-    ShiftLeft = 38,
+    ShiftLeft = 39,
     /// The lt chip.
     #[subenum(CoreAirId)]
-    Lt = 39,
+    Lt = 40,
     /// The load byte chip.
     #[subenum(CoreAirId)]
-    LoadByte = 40,
+    LoadByte = 41,
     /// The load half chip.
     #[subenum(CoreAirId)]
-    LoadHalf = 41,
+    LoadHalf = 42,
     /// The load word chip.
     #[subenum(CoreAirId)]
-    LoadWord = 42,
+    LoadWord = 43,
     /// The load x0 chip.
     #[subenum(CoreAirId)]
-    LoadX0 = 43,
+    LoadX0 = 44,
     /// The store byte chip.
     #[subenum(CoreAirId)]
-    StoreByte = 44,
+    StoreByte = 45,
     /// The store half chip.
     #[subenum(CoreAirId)]
-    StoreHalf = 45,
+    StoreHalf = 46,
     /// The store word chip.
     #[subenum(CoreAirId)]
-    StoreWord = 46,
+    StoreWord = 47,
     /// The auipc chip.
     #[subenum(CoreAirId)]
-    Auipc = 47,
+    Auipc = 48,
     /// The branch chip.
     #[subenum(CoreAirId)]
-    Branch = 48,
+    Branch = 49,
     /// The jal chip.
     #[subenum(CoreAirId)]
-    Jal = 49,
+    Jal = 50,
     /// The jalr chip.
     #[subenum(CoreAirId)]
-    Jalr = 50,
+    Jalr = 51,
     /// The syscall instructions chip.
     #[subenum(CoreAirId)]
-    SyscallInstrs = 51,
+    SyscallInstrs = 52,
     /// The memory bump chip.
     #[subenum(CoreAirId)]
-    MemoryBump = 52,
+    MemoryBump = 53,
     /// The state bump chip.
     #[subenum(CoreAirId)]
-    StateBump = 53,
+    StateBump = 54,
     /// The memory global init chip.
-    MemoryGlobalInit = 54,
+    MemoryGlobalInit = 55,
     /// The memory global finalize chip.
-    MemoryGlobalFinalize = 55,
+    MemoryGlobalFinalize = 56,
     /// The memory local chip.
     #[subenum(CoreAirId)]
-    MemoryLocal = 56,
+    MemoryLocal = 57,
     /// The global chip.
     #[subenum(CoreAirId)]
-    Global = 57,
+    Global = 58,
     /// The byte chip.
-    Byte = 58,
+    Byte = 59,
     /// The range chip.
-    Range = 59,
+    Range = 60,
 }
 
 impl RiscvAirId {
@@ -253,6 +255,7 @@ impl RiscvAirId {
                 | RiscvAirId::Bls12381AddAssign
                 | RiscvAirId::Bls12381DoubleAssign
                 | RiscvAirId::Uint256MulMod
+                | RiscvAirId::Uint256Ops
                 | RiscvAirId::U256XU2048Mul
                 | RiscvAirId::Bls12381FpOpAssign
                 | RiscvAirId::Bls12381Fp2AddSubAssign

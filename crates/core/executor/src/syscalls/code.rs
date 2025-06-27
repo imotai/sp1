@@ -156,6 +156,12 @@ pub enum SyscallCode {
 
     /// Executes the `SECP256R1_DECOMPRESS` precompile.
     SECP256R1_DECOMPRESS = 0x00_00_01_2E,
+
+    /// Executes the `UINT256_ADD_CARRY` precompile.
+    UINT256_ADD_CARRY = 0x00_01_01_30,
+
+    /// Executes the `UINT256_MUL_CARRY` precompile.
+    UINT256_MUL_CARRY = 0x00_01_01_31,
 }
 
 impl SyscallCode {
@@ -202,6 +208,8 @@ impl SyscallCode {
             0x00_01_01_2C => SyscallCode::SECP256R1_ADD,
             0x00_00_01_2D => SyscallCode::SECP256R1_DOUBLE,
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
+            0x00_01_01_30 => SyscallCode::UINT256_ADD_CARRY,
+            0x00_01_01_31 => SyscallCode::UINT256_MUL_CARRY,
             _ => panic!("invalid syscall number: {value}"),
         }
     }
@@ -259,6 +267,16 @@ impl SyscallCode {
         }
     }
 
+    /// Map a syscall to a uint256 operation.
+    #[must_use]
+    pub fn uint256_op_map(&self) -> crate::events::Uint256Operation {
+        match self {
+            SyscallCode::UINT256_ADD_CARRY => crate::events::Uint256Operation::Add,
+            SyscallCode::UINT256_MUL_CARRY => crate::events::Uint256Operation::Mul,
+            _ => unreachable!(),
+        }
+    }
+
     /// Get the ID of the AIR used in the syscall implementation.
     #[must_use]
     pub fn as_air_id(self) -> Option<RiscvAirId> {
@@ -295,6 +313,9 @@ impl SyscallCode {
             SyscallCode::SECP256R1_ADD => RiscvAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RiscvAirId::Secp256r1DoubleAssign,
             SyscallCode::SECP256R1_DECOMPRESS => RiscvAirId::Secp256r1Decompress,
+            SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => {
+                RiscvAirId::Uint256Ops
+            }
             SyscallCode::HALT
             | SyscallCode::WRITE
             | SyscallCode::ENTER_UNCONSTRAINED

@@ -55,6 +55,10 @@ impl Default for SP1CoreOpts {
 
         let sharding_threshold = ShardingThreshold { element_threshold, height_threshold };
 
+        let mut retained_events_presets = HashSet::new();
+        retained_events_presets.insert(RetainedEventsPreset::Sha256);
+        retained_events_presets.insert(RetainedEventsPreset::U256Ops);
+
         Self {
             shard_size,
             shard_batch_size: env::var("SHARD_BATCH_SIZE").map_or_else(
@@ -63,7 +67,7 @@ impl Default for SP1CoreOpts {
             ),
             split_opts: SplitOpts::new(split_threshold),
             sharding_threshold,
-            retained_events_presets: HashSet::new(),
+            retained_events_presets,
         }
     }
 }

@@ -14,6 +14,7 @@ mod sha_extend;
 mod sys;
 mod u256x2048_mul;
 mod uint256_mul;
+mod uint256_ops;
 mod unconstrained;
 #[cfg(feature = "verify")]
 mod verify;
@@ -34,6 +35,7 @@ pub use sha_extend::*;
 pub use sys::*;
 pub use u256x2048_mul::*;
 pub use uint256_mul::*;
+pub use uint256_ops::*;
 pub use unconstrained::*;
 #[cfg(feature = "verify")]
 pub use verify::*;
@@ -157,3 +159,9 @@ pub const BN254_FP2_SUB: u32 = 0x00_01_01_2A;
 
 /// Executes the `BN254_FP2_MUL` precompile.
 pub const BN254_FP2_MUL: u32 = 0x00_01_01_2B;
+
+/// Executes the `UINT256_ADD_CARRY` precompile.
+pub const UINT256_ADD_CARRY: u32 = 0x00_01_01_30;
+
+/// Executes the `UINT256_MUL_CARRY` precompile.
+pub const UINT256_MUL_CARRY: u32 = 0x00_01_01_31;
