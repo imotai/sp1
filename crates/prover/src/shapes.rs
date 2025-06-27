@@ -135,7 +135,7 @@ impl SP1ReduceShape {
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485888),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 783104),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 806976),

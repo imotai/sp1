@@ -1241,7 +1241,7 @@ name = "common-test-utils"
 version = "1.1.0"
 dependencies = [
  "num-bigint 0.4.6",
- "sp1-lib",
+ "sp1-lib 5.0.0",
 ]
 
 [[package]]
@@ -1838,7 +1838,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -2127,7 +2127,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -2193,7 +2193,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -2217,7 +2217,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -3085,7 +3085,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -5258,6 +5258,7 @@ dependencies = [
 [[package]]
 name = "rsa"
 version = "0.9.6"
+source = "git+https://github.com/succinctlabs/RustCrypto-RSA-WIP.git?branch=min%2Frv64#36fd5d57ccf1627ba01705c26859e61ee20dc8bf"
 dependencies = [
  "bytemuck",
  "cfg-if",
@@ -5271,7 +5272,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "signature",
- "sp1-lib",
+ "sp1-lib 5.0.0 (git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fmerge-v6-to-rv64)",
  "spki 0.7.3",
  "subtle",
  "zeroize",
@@ -5391,7 +5392,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "tokio",
  "tracing",
@@ -5679,7 +5680,7 @@ dependencies = [
  "common-test-utils",
  "num-bigint 0.4.6",
  "sp1-curves",
- "sp1-lib",
+ "sp1-lib 5.0.0",
  "sp1-zkvm-64",
 ]
 
@@ -5694,7 +5695,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -5946,7 +5947,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -6429,7 +6430,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
 ]
 
@@ -6460,7 +6461,7 @@ dependencies = [
  "serde_arrays",
  "serde_json",
  "sp1-curves",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-stark",
  "strum 0.27.1",
  "strum_macros 0.27.1",
@@ -6516,7 +6517,7 @@ dependencies = [
  "sp1-core-executor",
  "sp1-curves",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-stark",
  "static_assertions",
  "strum 0.27.1",
@@ -6541,7 +6542,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "thiserror 1.0.69",
  "tokio",
@@ -6563,7 +6564,7 @@ dependencies = [
  "p3-field",
  "serde",
  "snowbridge-amcl",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "typenum",
 ]
 
@@ -6582,12 +6583,43 @@ dependencies = [
  "bincode",
  "elliptic-curve",
  "serde",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
+]
+
+[[package]]
+name = "sp1-lib"
+version = "5.0.0"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fmerge-v6-to-rv64#bc8885e8f093abed188d82be53a3f4b027ef4dbf"
+dependencies = [
+ "bincode",
+ "elliptic-curve",
+ "serde",
+ "sp1-primitives 5.0.0 (git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fmerge-v6-to-rv64)",
 ]
 
 [[package]]
 name = "sp1-primitives"
 version = "5.0.0"
+dependencies = [
+ "bincode",
+ "blake3",
+ "cfg-if",
+ "hex",
+ "itertools 0.13.0",
+ "lazy_static",
+ "num-bigint 0.4.6",
+ "p3-baby-bear",
+ "p3-field",
+ "p3-poseidon2",
+ "p3-symmetric",
+ "serde",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "sp1-primitives"
+version = "5.0.0"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=min%2Fmerge-v6-to-rv64#bc8885e8f093abed188d82be53a3f4b027ef4dbf"
 dependencies = [
  "bincode",
  "blake3",
@@ -6642,7 +6674,7 @@ dependencies = [
  "slop-symmetric",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-circuit",
  "sp1-recursion-compiler",
  "sp1-recursion-executor",
@@ -6698,7 +6730,7 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-compiler",
  "sp1-recursion-executor",
  "sp1-recursion-machine",
@@ -6721,7 +6753,7 @@ dependencies = [
  "serde",
  "slop-merkle-tree",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-derive",
  "sp1-recursion-executor",
  "sp1-recursion-machine",
@@ -6772,7 +6804,7 @@ dependencies = [
  "smallvec",
  "sp1-core-machine",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-stark",
  "static_assertions",
  "thiserror 1.0.69",
@@ -6832,7 +6864,7 @@ dependencies = [
  "slop-symmetric",
  "sp1-core-machine",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-recursion-executor",
  "sp1-stark",
  "strum 0.27.1",
@@ -6872,7 +6904,7 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-cuda",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-stark",
  "strum 0.27.1",
@@ -6919,7 +6951,7 @@ dependencies = [
  "slop-symmetric",
  "slop-tensor",
  "sp1-derive",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "strum 0.27.1",
  "strum_macros 0.27.1",
  "thiserror 1.0.69",
@@ -6955,8 +6987,8 @@ dependencies = [
  "p3-field",
  "rand 0.8.5",
  "sha2 0.10.9",
- "sp1-lib",
- "sp1-primitives",
+ "sp1-lib 5.0.0",
+ "sp1-primitives 5.0.0",
 ]
 
 [[package]]
@@ -6969,8 +7001,8 @@ dependencies = [
  "libm",
  "rand 0.8.5",
  "sha2 0.10.9",
- "sp1-lib",
- "sp1-primitives",
+ "sp1-lib 5.0.0",
+ "sp1-primitives 5.0.0",
 ]
 
 [[package]]
@@ -6984,7 +7016,7 @@ dependencies = [
  "group 0.13.0",
  "pairing 0.23.0",
  "rand_core 0.6.4",
- "sp1-lib",
+ "sp1-lib 5.0.0",
  "subtle",
 ]
 
@@ -7038,7 +7070,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -7177,7 +7209,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "rand 0.8.5",
  "rustc-hex",
- "sp1-lib",
+ "sp1-lib 5.0.0",
 ]
 
 [[package]]
@@ -7392,7 +7424,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tendermint-light-client-verifier",
@@ -7907,7 +7939,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
@@ -7951,7 +7983,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
- "sp1-primitives",
+ "sp1-primitives 5.0.0",
  "sp1-prover",
  "sp1-sdk",
  "tokio",
