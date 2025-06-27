@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
@@ -5,10 +6,12 @@ use sp1_core_executor::{
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
+
+use crate::air::SP1Operation;
 
 /// Operation columns for computing the most significant bit of a u16.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct U16MSBOperation<T> {
     /// The result of the msb operation.
@@ -54,5 +57,27 @@ impl<F: Field> U16MSBOperation<F> {
             AB::Expr::zero(),
             is_real,
         );
+    }
+}
+
+#[derive(SP1OperationInput)]
+pub struct U16MSBOperationInput<AB: SP1AirBuilder> {
+    pub a: AB::Expr,
+    pub cols: U16MSBOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> U16MSBOperationInput<AB> {
+    pub fn new(a: AB::Expr, cols: U16MSBOperation<AB::Var>, is_real: AB::Expr) -> Self {
+        Self { a, cols, is_real }
+    }
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for U16MSBOperation<AB::F> {
+    type Input = U16MSBOperationInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval_msb(builder, input.a, input.cols, input.is_real);
     }
 }

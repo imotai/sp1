@@ -1,11 +1,7 @@
 use super::ShaExtendControlChip;
-use crate::{
-    air::SP1OperationBuilder,
-    operations::{IsZeroOperation, SyscallAddrOperation},
-    utils::next_multiple_of_32,
-};
+use crate::{air::SP1CoreAirBuilder, operations::SyscallAddrOperation, utils::next_multiple_of_32};
 use core::borrow::Borrow;
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
@@ -15,7 +11,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
-    air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
+    air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind,
 };
 use std::{borrow::BorrowMut, iter::once};
@@ -111,7 +107,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
 
 impl<AB> Air<AB> for ShaExtendControlChip
 where
-    AB: SP1AirBuilder + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         // Initialize columns.

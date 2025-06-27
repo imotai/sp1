@@ -1146,10 +1146,7 @@ where
                     }
                 }
                 SeqBlock::Parallel(vec) => {
-                    let span = debug_span!("parallel");
-                    let _guard = span.enter();
                     vec.par_iter().try_for_each(|subprogram| {
-                        let _guard = debug_span!(parent: &span, "subprogram").entered();
                         Self::execute_raw_inner(env, subprogram, None, record)
                     })?;
                 }

@@ -14,6 +14,8 @@ pub enum RetainedEventsPreset {
     Sha256,
     /// Retain events for U256 operations.
     U256,
+    /// Retain events for ``U256Ops`` operations.
+    U256Ops,
 }
 
 impl RetainedEventsPreset {
@@ -29,6 +31,7 @@ impl RetainedEventsPreset {
             RetainedEventsPreset::Bn254Field => &[BN254_FP_ADD, BN254_FP_MUL, BN254_FP_SUB],
             RetainedEventsPreset::Sha256 => &[SHA_COMPRESS, SHA_EXTEND],
             RetainedEventsPreset::U256 => &[UINT256_MUL],
+            RetainedEventsPreset::U256Ops => &[UINT256_ADD_CARRY, UINT256_MUL_CARRY],
         }
     }
 }

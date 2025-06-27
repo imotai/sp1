@@ -22,6 +22,7 @@ use precompiles::{
     sha256::{compress::sha256_compress_syscall, extend::sha256_extend_syscall},
     u256x2048_mul::u256x2048_mul,
     uint256::uint256_mul,
+    uint256_ops::uint256_ops,
     weierstrass::{
         add::weierstrass_add_assign_syscall, decompress::weierstrass_decompress_syscall,
         double::weierstrass_double_assign_syscall,
@@ -144,6 +145,9 @@ pub fn get_syscall<'a, 'b, E: ExecutorConfig>(
         SyscallCode::SHA_EXTEND => Ok(Syscall::new(sha256_extend_syscall, 48)),
         // Misc
         SyscallCode::UINT256_MUL => Ok(Syscall::new(uint256_mul, 1)),
+        SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => {
+            Ok(Syscall::new(uint256_ops, 1))
+        }
         SyscallCode::U256XU2048_MUL => Ok(Syscall::new(u256x2048_mul, 1)),
     }
 }

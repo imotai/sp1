@@ -168,6 +168,7 @@ mod native {
         Ok(())
     }
 
+    #[allow(clippy::uninlined_format_args)]
     /// The name of the systemd unit for the given CUDA device id.
     fn unit_name(cuda_id: u32) -> String {
         format!("cuslop-server-{}", cuda_id)

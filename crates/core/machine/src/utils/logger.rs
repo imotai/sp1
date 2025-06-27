@@ -7,6 +7,7 @@ use tracing_subscriber::{
 
 static INIT: Once = Once::new();
 
+#[allow(clippy::uninlined_format_args)]
 /// A simple logger.
 ///
 /// Set the `RUST_LOG` environment variable to be set to `info` or `debug`.

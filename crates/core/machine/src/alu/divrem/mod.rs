@@ -81,12 +81,12 @@ use sp1_stark::{air::MachineAir, Word};
 use crate::{
     adapter::{
         register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
-        state::CPUState,
+        state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned, MulOperation,
-        U16MSBOperation,
+        AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned,
+        LtOperationUnsignedInput, MulOperation, U16MSBOperation, U16MSBOperationInput,
     },
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
@@ -1060,12 +1060,14 @@ where
 
             // Dispatch abs(remainder) < max(abs(c), 1), this is equivalent to abs(remainder) <
             // abs(c) if not division by 0.
-            LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+            <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.abs_remainder.map(Into::into),
-                local.max_abs_c_or_1.map(Into::into),
-                local.remainder_lt_operation,
-                local.remainder_check_multiplicity.into(),
+                LtOperationUnsignedInput::<AB>::new(
+                    local.abs_remainder.map(Into::into),
+                    local.max_abs_c_or_1.map(Into::into),
+                    local.remainder_lt_operation,
+                    local.remainder_check_multiplicity.into(),
+                ),
             );
             builder
                 .when(local.remainder_check_multiplicity)
@@ -1075,51 +1077,65 @@ where
         // Check that the MSBs are correct.
         {
             //If not word operation, we check the last limb.
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.adapter.b()[WORD_SIZE - 1].into(),
-                local.b_msb,
-                local.is_real_not_word.into(),
+                U16MSBOperationInput::<AB>::new(
+                    local.adapter.b()[WORD_SIZE - 1].into(),
+                    local.b_msb,
+                    local.is_real_not_word.into(),
+                ),
             );
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.adapter.c()[WORD_SIZE - 1].into(),
-                local.c_msb,
-                local.is_real_not_word.into(),
+                U16MSBOperationInput::<AB>::new(
+                    local.adapter.c()[WORD_SIZE - 1].into(),
+                    local.c_msb,
+                    local.is_real_not_word.into(),
+                ),
             );
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.remainder[WORD_SIZE - 1].into(),
-                local.rem_msb,
-                local.is_real_not_word.into(),
+                U16MSBOperationInput::<AB>::new(
+                    local.remainder[WORD_SIZE - 1].into(),
+                    local.rem_msb,
+                    local.is_real_not_word.into(),
+                ),
             );
 
             //If word operation, we check the second limb.
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.adapter.b()[WORD_SIZE / 2 - 1].into(),
-                local.b_msb,
-                is_word_operation.clone(),
+                U16MSBOperationInput::<AB>::new(
+                    local.adapter.b()[WORD_SIZE / 2 - 1].into(),
+                    local.b_msb,
+                    is_word_operation.clone(),
+                ),
             );
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.adapter.c()[WORD_SIZE / 2 - 1].into(),
-                local.c_msb,
-                is_word_operation.clone(),
+                U16MSBOperationInput::<AB>::new(
+                    local.adapter.c()[WORD_SIZE / 2 - 1].into(),
+                    local.c_msb,
+                    is_word_operation.clone(),
+                ),
             );
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.remainder[WORD_SIZE / 2 - 1].into(),
-                local.rem_msb,
-                is_word_operation.clone(),
+                U16MSBOperationInput::<AB>::new(
+                    local.remainder[WORD_SIZE / 2 - 1].into(),
+                    local.rem_msb,
+                    is_word_operation.clone(),
+                ),
             );
 
             // If word operation, we check the second limb of quotient.
-            U16MSBOperation::<AB::F>::eval_msb(
+            <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.quotient[WORD_SIZE / 2 - 1].into(),
-                local.quot_msb,
-                is_word_operation.clone(),
+                U16MSBOperationInput::<AB>::new(
+                    local.quotient[WORD_SIZE / 2 - 1].into(),
+                    local.quot_msb,
+                    is_word_operation.clone(),
+                ),
             );
         }
 
@@ -1205,12 +1221,14 @@ where
 
             // Constrain the state of the CPU.
             // The program counter and timestamp increment by `4` and `8`.
-            CPUState::<AB::F>::eval(
+            <CPUState<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.state,
-                local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-                AB::Expr::from_canonical_u32(CLK_INC),
-                local.is_real.into(),
+                CPUStateInput {
+                    cols: local.state,
+                    next_pc: local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+                    clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
+                    is_real: local.is_real.into(),
+                },
             );
 
             // Constrain the program and register reads.

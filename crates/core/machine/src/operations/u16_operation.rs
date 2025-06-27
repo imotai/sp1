@@ -5,7 +5,7 @@ use sp1_stark::air::SP1AirBuilder;
 
 use crate::air::{SP1Operation, WordAirBuilder};
 use p3_field::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 
 /// A set of columns for a u16 to u8 adapter.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -114,7 +114,7 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationSafe {
 #[derive(Debug, Clone)]
 pub struct U16toU8OperationUnsafe;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, SP1OperationInput)]
 pub struct U16toU8OperationUnsafeInput<AB: SP1AirBuilder> {
     pub u16_values: [AB::Expr; WORD_SIZE],
     pub cols: U16toU8Operation<AB::Var>,

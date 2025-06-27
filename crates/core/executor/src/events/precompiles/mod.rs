@@ -6,6 +6,7 @@ mod sha256_compress;
 mod sha256_extend;
 mod u256x2048_mul;
 mod uint256;
+mod uint256_ops;
 
 use super::{MemoryLocalEvent, SyscallEvent};
 use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, syscalls::SyscallCode};
@@ -20,6 +21,7 @@ pub use sha256_extend::*;
 use strum::{EnumIter, IntoEnumIterator};
 pub use u256x2048_mul::*;
 pub use uint256::*;
+pub use uint256_ops::*;
 
 // TODO: maybe Box one of the events?
 #[allow(clippy::large_enum_variant)]
@@ -74,6 +76,8 @@ pub enum PrecompileEvent {
     Bls12381Fp2Mul(Fp2MulEvent),
     /// Uint256 mul precompile event.
     Uint256Mul(Uint256MulEvent),
+    /// Uint256 ops precompile event.
+    Uint256Ops(Uint256OpsEvent),
     /// U256XU2048 mul precompile event.
     U256xU2048Mul(U256xU2048MulEvent),
 }
@@ -122,6 +126,9 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Uint256Mul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::Uint256Ops(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::U256xU2048Mul(e) => {

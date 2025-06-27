@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    collections::HashMap,
     fmt::{Debug, Display},
 };
 
@@ -7,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::{
     air::{AirInteraction, InteractionScope},
-    Word,
+    InteractionKind, Word,
 };
 
 use slop_algebra::{ExtensionField, Field};
@@ -20,7 +21,8 @@ use sp1_core_machine::{
     memory::{MemoryAccessInShardCols, MemoryAccessInShardTimestamp},
     operations::{
         AddOperation, AddressOperation, BitwiseOperation, BitwiseU16Operation,
-        IsEqualWordOperation, IsZeroOperation, IsZeroWordOperation, U16toU8Operation,
+        IsEqualWordOperation, IsZeroOperation, IsZeroWordOperation, LtOperationSigned,
+        LtOperationUnsigned, SubOperation, U16CompareOperation, U16MSBOperation, U16toU8Operation,
     },
 };
 
@@ -43,6 +45,27 @@ impl<F: Field> Display for IrVar<F> {
             IrVar::Constant(c) => write!(f, "{c}"),
             IrVar::InputArg(i) => write!(f, "Input({i})"),
             IrVar::OutputArg(i) => write!(f, "Output({i})"),
+        }
+    }
+}
+
+impl<F: Field> IrVar<F> {
+    /// Convert to Lean syntax based on context (chip vs operation)
+    pub fn to_lean(&self, is_operation: bool, input_mapping: &HashMap<usize, String>) -> String {
+        match self {
+            IrVar::Main(i) => format!("Main[{i}]"),
+            IrVar::InputArg(i) => {
+                if is_operation {
+                    input_mapping.get(i).map_or(format!("I[{i}]"), |s| s.clone())
+                } else {
+                    // In chip context, InputArg shouldn't appear
+                    format!("InputArg({i})")
+                }
+            }
+            IrVar::Constant(c) => format!("{c}"),
+            IrVar::Public(i) => format!("Public[{i}]"),
+            IrVar::Preprocessed(i) => format!("Preprocessed[{i}]"),
+            IrVar::OutputArg(i) => format!("Output[{i}]"),
         }
     }
 }
@@ -137,10 +160,21 @@ impl<F: Field> ExprRef<F> {
 }
 
 impl<F: Field> Display for ExprRef<F> {
+    #[allow(clippy::uninlined_format_args)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExprRef::IrVar(ir_var) => write!(f, "{}", ir_var),
             ExprRef::Expr(expr) => write!(f, "Expr({})", expr),
+        }
+    }
+}
+
+impl<F: Field> ExprRef<F> {
+    /// Convert to Lean syntax
+    pub fn to_lean(&self, is_operation: bool, input_mapping: &HashMap<usize, String>) -> String {
+        match self {
+            ExprRef::IrVar(var) => var.to_lean(is_operation, input_mapping),
+            ExprRef::Expr(i) => format!("E{i}"),
         }
     }
 }
@@ -167,10 +201,21 @@ impl<EF: Field> ExprExtRef<EF> {
 }
 
 impl<EF: Field> Display for ExprExtRef<EF> {
+    #[allow(clippy::uninlined_format_args)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExprExtRef::ExtConstant(ext_constant) => write!(f, "{ext_constant}"),
             ExprExtRef::Expr(expr) => write!(f, "ExprExt({})", expr),
+        }
+    }
+}
+
+impl<EF: Field> ExprExtRef<EF> {
+    /// Convert to Lean syntax
+    pub fn to_lean(&self, _is_operation: bool, _input_mapping: &HashMap<usize, String>) -> String {
+        match self {
+            ExprExtRef::ExtConstant(c) => format!("{c}"),
+            ExprExtRef::Expr(i) => format!("EExt{i}"),
         }
     }
 }
@@ -187,11 +232,240 @@ pub struct FuncDecl<Expr, ExprExt> {
     pub name: String,
     pub input: Vec<Ty<Expr, ExprExt>>,
     pub output: Vec<Ty<Expr, ExprExt>>,
+    // This is an `Option` because I don't want to spend time fixing the
+    // remaining 15 operations. Once we macro-generate this, this should be
+    // required.
+    pub parameter_names: Option<Vec<String>>,
 }
 
 impl<Expr, ExprExt> FuncDecl<Expr, ExprExt> {
     pub fn new(name: &str, input: Vec<Ty<Expr, ExprExt>>, output: Vec<Ty<Expr, ExprExt>>) -> Self {
-        Self { name: name.to_string(), input, output }
+        Self { name: name.to_string(), input, output, parameter_names: None }
+    }
+
+    pub fn with_parameter_names(
+        name: &str,
+        input: Vec<Ty<Expr, ExprExt>>,
+        output: Vec<Ty<Expr, ExprExt>>,
+        parameter_names: &[&str],
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            input,
+            output,
+            parameter_names: Some(parameter_names.iter().map(|s| s.to_string()).collect()),
+        }
+    }
+}
+
+fn extract_expr(val: &serde_json::Value) -> Option<String> {
+    match val {
+        serde_json::Value::Object(obj) if obj.len() == 1 => {
+            if let Some(val) = obj.get("Expr") {
+                match val {
+                    serde_json::Value::Number(idx) => {
+                        let i: usize = idx.as_u64().unwrap() as usize;
+                        Some(format!("E{i}"))
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn extract_output(val: &serde_json::Value) -> Option<String> {
+    match val {
+        serde_json::Value::Object(obj) if obj.len() == 1 => {
+            if let Some(var) = obj.get("IrVar") {
+                match var {
+                    serde_json::Value::Object(obj) if obj.len() == 1 => {
+                        if let Some(val) = obj.get("OutputArg") {
+                            match val {
+                                serde_json::Value::Number(idx) => {
+                                    let i: usize = idx.as_u64().unwrap() as usize;
+                                    Some(format!("E{i}"))
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+impl<Expr, ExprExt> FuncDecl<Expr, ExprExt>
+where
+    Expr: Debug + Serialize,
+    ExprExt: Debug + Serialize,
+{
+    #[allow(clippy::uninlined_format_args)]
+    fn traverse(val: &serde_json::Value, m: &HashMap<usize, String>) -> String {
+        match val {
+            serde_json::Value::Object(map) => {
+                if let Some(irval) = map.get("IrVar") {
+                    assert_eq!(map.len(), 1);
+                    if let Some(serde_json::Value::Number(idx)) = irval.get("InputArg") {
+                        let i: usize = idx.as_u64().unwrap() as usize;
+                        m.get(&i).map_or(format!("I[{i}]"), |s| s.clone())
+                    } else if let Some(serde_json::Value::Number(idx)) = irval.get("Main") {
+                        let i: usize = idx.as_u64().unwrap() as usize;
+                        format!("Main[{i}]")
+                    } else if let Some(serde_json::Value::Number(idx)) = irval.get("Constant") {
+                        let i: usize = idx.as_u64().unwrap() as usize;
+                        format!("{i}")
+                    } else {
+                        eprintln!("{:?}", val);
+                        unimplemented!()
+                    }
+                } else if let Some(expr) = map.get("Expr") {
+                    match expr {
+                        serde_json::Value::Number(idx) => {
+                            let i: usize = idx.as_u64().unwrap() as usize;
+                            format!("E{i}")
+                        }
+                        _ => unimplemented!(),
+                    }
+                } else {
+                    let mut res = "{ ".to_string();
+
+                    for (i, (field_name, field_val)) in map.iter().enumerate() {
+                        res.push_str(&format!(
+                            "{} := {}",
+                            field_name,
+                            &Self::traverse(field_val, m)
+                        ));
+                        if i + 1 < map.len() {
+                            res.push_str(", ");
+                        }
+                    }
+
+                    res.push_str(" }");
+                    res
+                }
+            }
+            serde_json::Value::Array(lst) => {
+                let mut res = "#v[".to_string();
+
+                for (i, val) in lst.iter().enumerate() {
+                    res.push_str(&Self::traverse(val, m));
+                    if i + 1 < lst.len() {
+                        res.push_str(", ");
+                    }
+                }
+
+                res.push(']');
+                res
+            }
+            _ => {
+                eprintln!("Unhandled value: {}", val);
+                unimplemented!()
+            }
+        }
+    }
+
+    // this is more like fun calls
+    pub fn to_lean_call(&self, m: &HashMap<usize, String>) -> String {
+        let mut res = format!("{}.constraints", self.name);
+
+        match serde_json::to_value(&self.input).unwrap() {
+            serde_json::Value::Array(args) => {
+                for arg in args {
+                    match arg {
+                        serde_json::Value::Object(obj) if obj.len() == 1 => {
+                            let obj_val = obj.into_values().next().unwrap();
+                            res.push_str(&format!(" {}", Self::traverse(&obj_val, m)));
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
+            }
+            _ => unimplemented!(),
+        }
+
+        res
+    }
+
+    pub fn to_lean_output(&self, is_construct: bool) -> String {
+        let mut res = String::new();
+
+        assert_eq!(self.output.len(), 1);
+
+        let out = self.output.first().unwrap();
+        match serde_json::to_value(out).unwrap() {
+            serde_json::Value::Object(obj) if obj.len() == 1 => {
+                if let Some(expr) = obj.get("Expr") {
+                    match expr {
+                        serde_json::Value::Number(idx) => {
+                            let i: usize = idx.as_u64().unwrap() as usize;
+                            res.push_str(&format!("E{i}"));
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
+                if let Some(lst) =
+                    obj.get("Word").or(obj.get("ArrWordByteSize")).or(obj.get("ArrWordSize"))
+                {
+                    match lst {
+                        serde_json::Value::Array(elems) => {
+                            if is_construct {
+                                res.push_str("#v[");
+                                for (i, expr) in elems.iter().enumerate() {
+                                    res.push_str(&extract_output(expr).unwrap());
+                                    if i + 1 < elems.len() {
+                                        res.push_str(", ");
+                                    }
+                                }
+                                res.push(']');
+                            } else {
+                                res.push_str("⟨⟨[");
+                                for (i, expr) in elems.iter().enumerate() {
+                                    res.push_str(&extract_expr(expr).unwrap());
+                                    if i + 1 < elems.len() {
+                                        res.push_str(", ");
+                                    }
+                                }
+                                res.push_str("]⟩, _⟩");
+                            }
+                        }
+                        _ => unimplemented!(),
+                    }
+                } else {
+                    unimplemented!()
+                }
+            }
+            _ => unimplemented!(),
+        }
+
+        res
+    }
+
+    pub fn to_output_lean_type(&self) -> String {
+        if self.output.is_empty() {
+            "SP1ConstraintList".to_string()
+        } else {
+            assert_eq!(self.output.len(), 1);
+            match self.output.first().unwrap() {
+                Ty::Word(_) => "Word Babybear × SP1ConstraintList".to_string(),
+                Ty::Expr(_) => "BabyBear × SP1ConstraintList".to_string(),
+                Ty::ArrWordSize(_) => "Vector BabyBear WORD_SIZE × SP1ConstraintList".to_string(),
+                Ty::ArrWordByteSize(_) => {
+                    "Vector BabyBear WORD_BYTE_SIZE × SP1ConstraintList".to_string()
+                }
+                _ => unimplemented!(),
+            }
+        }
     }
 }
 
@@ -226,6 +500,58 @@ impl<F: Field, EF: ExtensionField<F>> Display for Func<ExprRef<F>, ExprExtRef<EF
     }
 }
 
+impl<F: Field, EF: ExtensionField<F>> Func<ExprRef<F>, ExprExtRef<EF>> {
+    #[allow(clippy::uninlined_format_args)]
+    fn traverse(val: &serde_json::Value, name: String, m: &mut HashMap<usize, String>) {
+        match val {
+            serde_json::Value::Object(map) => {
+                if let Some(irval) = map.get("IrVar") {
+                    assert_eq!(map.len(), 1);
+                    if let serde_json::Value::Number(idx) = irval.get("InputArg").unwrap() {
+                        m.insert(idx.as_i64().unwrap() as usize, name);
+                    } else {
+                        unimplemented!()
+                    }
+                } else {
+                    for (field_name, field_val) in map {
+                        Self::traverse(field_val, format!("{}.{}", name, field_name), m);
+                    }
+                }
+            }
+            serde_json::Value::Array(lst) => {
+                for (i, elem) in lst.iter().enumerate() {
+                    Self::traverse(elem, format!("{}[{}]", name, i), m);
+                }
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn calc_input_mapping(&self) -> HashMap<usize, String> {
+        let mut mapping: HashMap<usize, String> = HashMap::default();
+
+        for (field_val, field_name) in self.decl.input.iter().zip(
+            self.decl
+                .parameter_names
+                .clone()
+                .expect("must provide field_names to calculate input mapping")
+                .iter(),
+        ) {
+            let json_val = serde_json::to_value(field_val).unwrap();
+            match json_val {
+                serde_json::Value::Object(obj) => {
+                    assert_eq!(obj.len(), 1);
+                    let obj_val = obj.into_values().next().unwrap();
+                    Self::traverse(&obj_val, field_name.clone(), &mut mapping);
+                }
+                _ => unimplemented!(),
+            }
+        }
+
+        mapping
+    }
+}
+
 /// A type in the IR.
 ///
 /// Types can appear in function arguments as inputs and outputs, and in function declarations.
@@ -239,6 +565,8 @@ pub enum Ty<Expr, ExprExt> {
     Word(Word<Expr>),
     /// An addition operation.
     AddOperation(AddOperation<Expr>),
+    /// A subtraction operation.
+    SubOperation(SubOperation<Expr>),
     /// An address operation.
     AddressOperation(AddressOperation<Expr>),
     /// A conversion from a word to an array of words of size `WORD_SIZE`.
@@ -257,6 +585,14 @@ pub enum Ty<Expr, ExprExt> {
     BitwiseOperation(BitwiseOperation<Expr>),
     /// A bitwise u16 operation.
     BitwiseU16Operation(BitwiseU16Operation<Expr>),
+    /// A u16 compare operation.
+    U16CompareOperation(U16CompareOperation<Expr>),
+    /// A u16 MSB operation.
+    U16MSBOperation(U16MSBOperation<Expr>),
+    /// An LT unsigned operation.
+    LtOperationUnsigned(LtOperationUnsigned<Expr>),
+    /// An LT signed operation.
+    LtOperationSigned(LtOperationSigned<Expr>),
     /// An R-type reader operation.
     RTypeReader(RTypeReader<Expr>),
     /// An ALU-type reader operation.
@@ -278,6 +614,7 @@ where
             Ty::ExprExt(expr_ext) => write!(f, "{expr_ext}"),
             Ty::Word(word) => write!(f, "{word}"),
             Ty::AddOperation(add_operation) => write!(f, "{add_operation:?}"),
+            Ty::SubOperation(sub_operation) => write!(f, "{sub_operation:?}"),
             Ty::AddressOperation(address_operation) => write!(f, "{address_operation:?}"),
             Ty::U16toU8Operation(u16to_u8_operation) => write!(f, "{u16to_u8_operation:?}"),
             Ty::ArrWordSize(arr) => write!(f, "{arr:?}"),
@@ -293,11 +630,47 @@ where
             Ty::BitwiseU16Operation(bitwise_u16_operation) => {
                 write!(f, "{bitwise_u16_operation:?}")
             }
+            Ty::U16CompareOperation(u16_compare_operation) => {
+                write!(f, "{u16_compare_operation:?}")
+            }
+            Ty::U16MSBOperation(u16_msb_operation) => {
+                write!(f, "{u16_msb_operation:?}")
+            }
+            Ty::LtOperationUnsigned(lt_operation_unsigned) => {
+                write!(f, "{lt_operation_unsigned:?}")
+            }
+            Ty::LtOperationSigned(lt_operation_signed) => {
+                write!(f, "{lt_operation_signed:?}")
+            }
             Ty::RTypeReader(r_type_reader) => write!(f, "{r_type_reader:?}"),
             Ty::ALUTypeReader(alu_type_reader) => write!(f, "{alu_type_reader:?}"),
             Ty::CPUState(cpu_state) => write!(f, "{cpu_state:?}"),
             Ty::MemoryAccessInShardTimestamp(timestamp) => write!(f, "{timestamp:?}"),
             Ty::MemoryAccessInShardCols(cols) => write!(f, "{cols:?}"),
+        }
+    }
+}
+
+impl<Expr, ExprExt> Ty<Expr, ExprExt> {
+    pub fn to_lean_type(&self) -> String {
+        match self {
+            Ty::Expr(_) => "BabyBear".to_string(),
+            Ty::Word(_) => "Word BabyBear".to_string(),
+            Ty::AddOperation(_) => "AddOperation".to_string(),
+            Ty::SubOperation(_) => "SubOperation".to_string(),
+            Ty::BitwiseU16Operation(_) => "BitwiseU16Operation".to_string(),
+            Ty::BitwiseOperation(_) => "BitwiseOperation".to_string(),
+            Ty::U16toU8Operation(_) => "U16toU8Operation".to_string(),
+            Ty::U16CompareOperation(_) => "U16CompareOperation".to_string(),
+            Ty::U16MSBOperation(_) => "U16MSBOperation".to_string(),
+            Ty::LtOperationUnsigned(_) => "LtOperationUnsigned".to_string(),
+            Ty::LtOperationSigned(_) => "LtOperationSigned".to_string(),
+            Ty::ArrWordSize(_) => "Vector BabyBear 4".to_string(),
+            Ty::ArrWordByteSize(_) => "Vector BabyBear 2".to_string(),
+            Ty::RTypeReader(_) => "RTypeReader".to_string(),
+            Ty::ALUTypeReader(_) => "ALUTypeReader".to_string(),
+            Ty::CPUState(_) => "CPUState".to_string(),
+            _ => unimplemented!(),
         }
     }
 }
@@ -423,6 +796,171 @@ where
     }
 }
 
+impl<F: Field, EF: ExtensionField<F>> OpExpr<ExprRef<F>, ExprExtRef<EF>> {
+    #[allow(clippy::uninlined_format_args)]
+    /// Convert operation to Lean syntax
+    pub fn to_lean(
+        &self,
+        is_operation: bool,
+        input_mapping: &HashMap<usize, String>,
+    ) -> Option<String> {
+        match self {
+            OpExpr::AssertZero(expr) => {
+                Some(format!(".assertZero {}", expr.to_lean(is_operation, input_mapping)))
+            }
+            OpExpr::Send(interaction, _scope) => {
+                let mult = interaction.multiplicity.to_lean(is_operation, input_mapping);
+                match interaction.kind {
+                    InteractionKind::Byte => {
+                        // Values: [opcode, a, b, c]
+                        if interaction.values.len() == 4 {
+                            let opcode = match &interaction.values[0] {
+                                ExprRef::IrVar(IrVar::Constant(c)) => {
+                                    format!("ByteOpcode.ofNat {c}")
+                                }
+                                _ => format!(
+                                    "ByteOpcode.ofNat {}",
+                                    interaction.values[0].to_lean(is_operation, input_mapping)
+                                ),
+                            };
+                            let a = interaction.values[1].to_lean(is_operation, input_mapping);
+                            let b = interaction.values[2].to_lean(is_operation, input_mapping);
+                            let c = interaction.values[3].to_lean(is_operation, input_mapping);
+                            Some(format!(".send (.byte ({}) {} {} {}) {}", opcode, a, b, c, mult))
+                        } else {
+                            unimplemented!()
+                        }
+                    }
+                    InteractionKind::Memory => {
+                        // Values: [shard, clk, addr, low, high]
+                        if interaction.values.len() == 5 {
+                            let shard = interaction.values[0].to_lean(is_operation, input_mapping);
+                            let clk = interaction.values[1].to_lean(is_operation, input_mapping);
+                            let addr = interaction.values[2].to_lean(is_operation, input_mapping);
+                            let low = interaction.values[3].to_lean(is_operation, input_mapping);
+                            let high = interaction.values[4].to_lean(is_operation, input_mapping);
+                            Some(format!(
+                                ".send (.memory {} {} {} {} {}) {}",
+                                shard, clk, addr, low, high, mult
+                            ))
+                        } else {
+                            unimplemented!()
+                        }
+                    }
+                    InteractionKind::State => {
+                        // Values: [shard, clk, pc]
+                        if interaction.values.len() == 3 {
+                            let shard = interaction.values[0].to_lean(is_operation, input_mapping);
+                            let clk = interaction.values[1].to_lean(is_operation, input_mapping);
+                            let pc = interaction.values[2].to_lean(is_operation, input_mapping);
+                            Some(format!(".send (.state {} {} {}) {}", shard, clk, pc, mult))
+                        } else {
+                            unimplemented!()
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            OpExpr::Receive(interaction, _scope) => {
+                let mult = interaction.multiplicity.to_lean(is_operation, input_mapping);
+                match interaction.kind {
+                    InteractionKind::Memory => {
+                        if interaction.values.len() == 5 {
+                            let shard = interaction.values[0].to_lean(is_operation, input_mapping);
+                            let clk = interaction.values[1].to_lean(is_operation, input_mapping);
+                            let addr = interaction.values[2].to_lean(is_operation, input_mapping);
+                            let low = interaction.values[3].to_lean(is_operation, input_mapping);
+                            let high = interaction.values[4].to_lean(is_operation, input_mapping);
+                            Some(format!(
+                                ".receive (.memory {} {} {} {} {}) {}",
+                                shard, clk, addr, low, high, mult
+                            ))
+                        } else {
+                            unimplemented!()
+                        }
+                    }
+                    InteractionKind::State => {
+                        // Values: [shard, clk, pc]
+                        if interaction.values.len() == 3 {
+                            let shard = interaction.values[0].to_lean(is_operation, input_mapping);
+                            let clk = interaction.values[1].to_lean(is_operation, input_mapping);
+                            let pc = interaction.values[2].to_lean(is_operation, input_mapping);
+                            Some(format!(".receive (.state {} {} {}) {}", shard, clk, pc, mult))
+                        } else {
+                            unimplemented!()
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            OpExpr::BinOp(op, result, a, b) => {
+                let result_str = result.to_lean(is_operation, input_mapping);
+                let a_str = a.to_lean(is_operation, input_mapping);
+                let b_str = b.to_lean(is_operation, input_mapping);
+                let op_str = match op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                };
+                Some(format!("let {} : BabyBear := {} {} {}", result_str, a_str, op_str, b_str))
+            }
+            OpExpr::BinOpExt(op, result, a, b) => {
+                // Extension field operations - similar to BinOp
+                let result_str = result.to_lean(is_operation, input_mapping);
+                let a_str = a.to_lean(is_operation, input_mapping);
+                let b_str = b.to_lean(is_operation, input_mapping);
+                let op_str = match op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                };
+                Some(format!("let {} := {} {} {}", result_str, a_str, op_str, b_str))
+            }
+            OpExpr::BinOpBaseExt(op, result, a, b) => {
+                // Mixed base/extension field operations
+                let result_str = result.to_lean(is_operation, input_mapping);
+                let a_str = a.to_lean(is_operation, input_mapping);
+                let b_str = b.to_lean(is_operation, input_mapping);
+                let op_str = match op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                };
+                Some(format!("let {} := {} {} {}", result_str, a_str, op_str, b_str))
+            }
+            OpExpr::Neg(result, a) => {
+                let result_str = result.to_lean(is_operation, input_mapping);
+                let a_str = a.to_lean(is_operation, input_mapping);
+                Some(format!("let {} : BabyBear := -{}", result_str, a_str))
+            }
+            OpExpr::NegExt(result, a) => {
+                let result_str = result.to_lean(is_operation, input_mapping);
+                let a_str = a.to_lean(is_operation, input_mapping);
+                Some(format!("let {} := -{}", result_str, a_str))
+            }
+            OpExpr::ExtFromBase(result, a) => {
+                let result_str = result.to_lean(is_operation, input_mapping);
+                let a_str = a.to_lean(is_operation, input_mapping);
+                Some(format!("let {} := {}", result_str, a_str))
+            }
+            OpExpr::AssertExtZero(a) => {
+                Some(format!(".assertZero {}", a.to_lean(is_operation, input_mapping)))
+            }
+            OpExpr::Assign(a, b) => {
+                let a_str = a.to_lean(is_operation, input_mapping);
+                let b_str = b.to_lean(is_operation, input_mapping);
+                Some(format!("let {} : BabyBear := {}", a_str, b_str))
+            }
+            OpExpr::Call(_func) => {
+                // Function calls will be handled separately in the AST level
+                // as they need special treatment for operation composition
+                // String::new()
+                unimplemented!()
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ast<Expr, ExprExt> {
     assignments: Vec<usize>,
@@ -468,7 +1006,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
 
     pub fn bin_op(&mut self, op: BinOp, a: ExprRef<F>, b: ExprRef<F>) -> ExprRef<F> {
         let result = self.alloc();
-        self.assignments.push(self.operations.len());
+        // self.assignments.push(self.operations.len());
         let op = OpExpr::BinOp(op, result, a, b);
         self.operations.push(op);
         result
@@ -488,7 +1026,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         b: ExprExtRef<EF>,
     ) -> ExprExtRef<EF> {
         let result = self.alloc_ext();
-        self.ext_assignments.push(self.operations.len());
+        // self.ext_assignments.push(self.operations.len());
         let op = OpExpr::BinOpExt(op, result, a, b);
         self.operations.push(op);
         result
@@ -501,7 +1039,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         b: ExprRef<F>,
     ) -> ExprExtRef<EF> {
         let result = self.alloc_ext();
-        self.ext_assignments.push(self.operations.len());
+        // self.ext_assignments.push(self.operations.len());
         let op = OpExpr::BinOpBaseExt(op, result, a, b);
         self.operations.push(op);
         result
@@ -531,12 +1069,100 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         self.operations.push(op);
     }
 
+    #[allow(clippy::uninlined_format_args)]
     pub fn to_string_pretty(&self, prefix: &str) -> String {
         let mut s = String::new();
         for op in &self.operations {
             s.push_str(&format!("{prefix}{}\n", op));
         }
         s
+    }
+
+    #[allow(clippy::uninlined_format_args)]
+    /// Convert AST to Lean constraint list
+    pub fn to_lean(
+        &self,
+        is_operation: bool,
+        output: &Option<String>,
+        input_mapping: &HashMap<usize, String>,
+    ) -> String {
+        let mut result = String::new();
+        let mut constraint_list: Vec<String> = Vec::new();
+        let mut extra_constraints: Vec<String> = Vec::new();
+
+        // Generate let bindings and collect constraints
+        for op in &self.operations {
+            match op {
+                OpExpr::BinOp(_, _, _, _)
+                | OpExpr::BinOpExt(_, _, _, _)
+                | OpExpr::BinOpBaseExt(_, _, _, _)
+                | OpExpr::Neg(_, _)
+                | OpExpr::NegExt(_, _)
+                | OpExpr::ExtFromBase(_, _)
+                | OpExpr::Assign(ExprRef::Expr(_), _) => {
+                    // These generate let bindings
+                    result.push_str("  ");
+                    result.push_str(&op.to_lean(is_operation, input_mapping).unwrap());
+                    result.push('\n');
+                }
+                OpExpr::AssertZero(_) | OpExpr::AssertExtZero(_) => {
+                    // These go into the constraint list
+                    constraint_list.push(op.to_lean(is_operation, input_mapping).unwrap());
+                }
+                OpExpr::Send(_, _) | OpExpr::Receive(_, _) => {
+                    // These also go into the constraint list
+                    if let Some(cstr) = op.to_lean(is_operation, input_mapping) {
+                        constraint_list.push(cstr);
+                    }
+                }
+                OpExpr::Call(func) => {
+                    // Function calls need special handling
+                    // We'll handle this in the next step
+
+                    result.push_str("  ");
+                    let cs: String = format!("CS{}", extra_constraints.len());
+
+                    if func.output.is_empty() {
+                        result.push_str(&format!("let {cs} : SP1ConstraintList := "));
+                    } else {
+                        result.push_str("let ⟨");
+                        result.push_str(&func.to_lean_output(false));
+                        result.push_str(&format!(", {cs}⟩ := "));
+                    }
+
+                    result.push_str(&func.to_lean_call(input_mapping));
+                    result.push('\n');
+
+                    extra_constraints.push(cs);
+                }
+                OpExpr::Assign(ExprRef::IrVar(IrVar::OutputArg(_)), _) => {}
+                _ => unimplemented!(),
+            }
+        }
+
+        // Generate the constraint list
+        if let Some(out) = output {
+            result.push_str(&format!("  ⟨{},", out));
+        }
+        result.push_str("  [\n");
+        for (i, constraint) in constraint_list.iter().enumerate() {
+            result.push_str("    ");
+            result.push_str(constraint);
+            if i < constraint_list.len() - 1 {
+                result.push(',');
+            }
+            result.push('\n');
+        }
+        result.push_str("  ]");
+
+        for extra_cstr in extra_constraints {
+            result.push_str(&format!(" ++ {extra_cstr}"));
+        }
+        if output.is_some() {
+            result.push('⟩')
+        }
+
+        result
     }
 
     pub fn add_operation(
@@ -546,11 +1172,27 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: AddOperation<ExprRef<F>>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "AddOperation".to_string(),
-            input: vec![Ty::Word(a), Ty::Word(b), Ty::AddOperation(cols), Ty::Expr(is_real)],
-            output: vec![],
-        };
+        let func = FuncDecl::new(
+            "AddOperation",
+            vec![Ty::Word(a), Ty::Word(b), Ty::AddOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn sub_operation(
+        &mut self,
+        a: Word<ExprRef<F>>,
+        b: Word<ExprRef<F>>,
+        cols: SubOperation<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "SubOperation",
+            vec![Ty::Word(a), Ty::Word(b), Ty::SubOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
@@ -565,9 +1207,9 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: AddressOperation<ExprRef<F>>,
     ) -> ExprRef<F> {
         let output = self.alloc();
-        let func = FuncDecl {
-            name: "AddressOperation".to_string(),
-            input: vec![
+        let func = FuncDecl::new(
+            "AddressOperation",
+            vec![
                 Ty::Word(b),
                 Ty::Word(c),
                 Ty::Expr(offset_bit0),
@@ -575,8 +1217,8 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                 Ty::Expr(is_real),
                 Ty::AddressOperation(cols),
             ],
-            output: vec![Ty::Expr(output)],
-        };
+            vec![Ty::Expr(output)],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
         output
@@ -589,11 +1231,11 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         is_real: ExprRef<F>,
     ) -> [ExprRef<F>; WORD_BYTE_SIZE] {
         let result = self.alloc_array();
-        let func = FuncDecl {
-            name: "U16toU8OperationSafe".to_string(),
-            input: vec![Ty::ArrWordSize(u16_values), Ty::Expr(is_real), Ty::U16toU8Operation(cols)],
-            output: vec![Ty::ArrWordByteSize(result)],
-        };
+        let func = FuncDecl::new(
+            "U16toU8OperationSafe",
+            vec![Ty::ArrWordSize(u16_values), Ty::Expr(is_real), Ty::U16toU8Operation(cols)],
+            vec![Ty::ArrWordByteSize(result)],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
         result
@@ -605,11 +1247,11 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: U16toU8Operation<ExprRef<F>>,
     ) -> [ExprRef<F>; WORD_BYTE_SIZE] {
         let result = self.alloc_array();
-        let func = FuncDecl {
-            name: "U16toU8OperationUnsafe".to_string(),
-            input: vec![Ty::ArrWordSize(u16_values), Ty::U16toU8Operation(cols)],
-            output: vec![Ty::ArrWordByteSize(result)],
-        };
+        let func = FuncDecl::new(
+            "U16toU8OperationUnsafe",
+            vec![Ty::ArrWordSize(u16_values), Ty::U16toU8Operation(cols)],
+            vec![Ty::ArrWordByteSize(result)],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
         result
@@ -621,11 +1263,11 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: IsZeroOperation<ExprRef<F>>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "IsZeroOperation".to_string(),
-            input: vec![Ty::Expr(a), Ty::Expr(is_real), Ty::IsZeroOperation(cols)],
-            output: vec![],
-        };
+        let func = FuncDecl::new(
+            "IsZeroOperation",
+            vec![Ty::Expr(a), Ty::Expr(is_real), Ty::IsZeroOperation(cols)],
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
@@ -636,11 +1278,11 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: IsZeroWordOperation<ExprRef<F>>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "IsZeroWordOperation".to_string(),
-            input: vec![Ty::Word(a), Ty::IsZeroWordOperation(cols), Ty::Expr(is_real)],
-            output: vec![],
-        };
+        let func = FuncDecl::new(
+            "IsZeroWordOperation",
+            vec![Ty::Word(a), Ty::IsZeroWordOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
@@ -652,16 +1294,11 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: IsEqualWordOperation<ExprRef<F>>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "IsEqualWordOperation".to_string(),
-            input: vec![
-                Ty::Word(a),
-                Ty::Word(b),
-                Ty::IsEqualWordOperation(cols),
-                Ty::Expr(is_real),
-            ],
-            output: vec![],
-        };
+        let func = FuncDecl::new(
+            "IsEqualWordOperation",
+            vec![Ty::Word(a), Ty::Word(b), Ty::IsEqualWordOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
@@ -674,17 +1311,17 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         opcode: ExprRef<F>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "BitwiseOperation".to_string(),
-            input: vec![
+        let func = FuncDecl::new(
+            "BitwiseOperation",
+            vec![
                 Ty::ArrWordByteSize(a),
                 Ty::ArrWordByteSize(b),
                 Ty::BitwiseOperation(cols),
                 Ty::Expr(opcode),
                 Ty::Expr(is_real),
             ],
-            output: vec![],
-        };
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
@@ -698,20 +1335,90 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         is_real: ExprRef<F>,
     ) -> Word<ExprRef<F>> {
         let output = Word(core::array::from_fn(|_| self.alloc()));
-        let func = FuncDecl {
-            name: "BitwiseU16Operation".to_string(),
-            input: vec![
+        let func = FuncDecl::new(
+            "BitwiseU16Operation",
+            vec![
                 Ty::Word(b),
                 Ty::Word(c),
                 Ty::BitwiseU16Operation(cols),
                 Ty::Expr(opcode),
                 Ty::Expr(is_real),
             ],
-            output: vec![Ty::Word(output)],
-        };
+            vec![Ty::Word(output)],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
         output
+    }
+
+    pub fn u16_compare_operation(
+        &mut self,
+        a: ExprRef<F>,
+        b: ExprRef<F>,
+        cols: U16CompareOperation<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "U16CompareOperation",
+            vec![Ty::Expr(a), Ty::Expr(b), Ty::U16CompareOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn u16_msb_operation(
+        &mut self,
+        a: ExprRef<F>,
+        cols: U16MSBOperation<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "U16MSBOperation",
+            vec![Ty::Expr(a), Ty::U16MSBOperation(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn lt_operation_unsigned(
+        &mut self,
+        b: Word<ExprRef<F>>,
+        c: Word<ExprRef<F>>,
+        cols: LtOperationUnsigned<ExprRef<F>>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "LtOperationUnsigned",
+            vec![Ty::Word(b), Ty::Word(c), Ty::LtOperationUnsigned(cols), Ty::Expr(is_real)],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
+    }
+
+    pub fn lt_operation_signed(
+        &mut self,
+        b: Word<ExprRef<F>>,
+        c: Word<ExprRef<F>>,
+        cols: LtOperationSigned<ExprRef<F>>,
+        is_signed: ExprRef<F>,
+        is_real: ExprRef<F>,
+    ) {
+        let func = FuncDecl::new(
+            "LtOperationSigned",
+            vec![
+                Ty::Word(b),
+                Ty::Word(c),
+                Ty::LtOperationSigned(cols),
+                Ty::Expr(is_signed),
+                Ty::Expr(is_real),
+            ],
+            vec![],
+        );
+        let op = OpExpr::Call(func);
+        self.operations.push(op);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -725,9 +1432,9 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: RTypeReader<ExprRef<F>>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "RTypeReader".to_string(),
-            input: vec![
+        let func = FuncDecl::new(
+            "RTypeReader",
+            vec![
                 Ty::Expr(clk_high),
                 Ty::Expr(clk_low),
                 Ty::Expr(pc),
@@ -736,12 +1443,13 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                 Ty::RTypeReader(cols),
                 Ty::Expr(is_real),
             ],
-            output: vec![],
-        };
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn r_type_reader_immutable(
         &mut self,
         clk_high: ExprRef<F>,
@@ -751,9 +1459,9 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: RTypeReader<ExprRef<F>>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "RTypeReaderImmutable".to_string(),
-            input: vec![
+        let func = FuncDecl::new(
+            "RTypeReaderImmutable",
+            vec![
                 Ty::Expr(clk_high),
                 Ty::Expr(clk_low),
                 Ty::Expr(pc),
@@ -761,8 +1469,8 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                 Ty::RTypeReader(cols),
                 Ty::Expr(is_real),
             ],
-            output: vec![],
-        };
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
@@ -774,16 +1482,11 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         clk_increment: ExprRef<F>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "CPUState".to_string(),
-            input: vec![
-                Ty::CPUState(cols),
-                Ty::Expr(next_pc),
-                Ty::Expr(clk_increment),
-                Ty::Expr(is_real),
-            ],
-            output: vec![],
-        };
+        let func = FuncDecl::new(
+            "CPUState",
+            vec![Ty::CPUState(cols), Ty::Expr(next_pc), Ty::Expr(clk_increment), Ty::Expr(is_real)],
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
@@ -799,9 +1502,9 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         cols: ALUTypeReader<ExprRef<F>>,
         is_real: ExprRef<F>,
     ) {
-        let func = FuncDecl {
-            name: "ALUTypeReader".to_string(),
-            input: vec![
+        let func = FuncDecl::new(
+            "ALUTypeReader",
+            vec![
                 Ty::Expr(clk_high),
                 Ty::Expr(clk_low),
                 Ty::Expr(pc),
@@ -810,8 +1513,8 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                 Ty::ALUTypeReader(cols),
                 Ty::Expr(is_real),
             ],
-            output: vec![],
-        };
+            vec![],
+        );
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }

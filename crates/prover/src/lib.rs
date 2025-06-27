@@ -25,7 +25,7 @@ pub mod verify;
 
 use core::SP1CoreProver;
 pub use recursion::SP1RecursionProver;
-use shapes::SP1RecursionShape;
+use shapes::{SP1RecursionShape, DEFAULT_ARITY};
 use sp1_core_executor::Program;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -891,7 +891,7 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
         let num_shrink_workers = num_workers;
         let num_wrap_workers = num_workers;
         let recursion_programs_cache_size = 5;
-        let max_reduce_arity = 4;
+        let max_reduce_arity = DEFAULT_ARITY;
 
         SP1ProverBuilder::new_single_permit(
             cpu_shard_prover,

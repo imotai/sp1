@@ -1,7 +1,7 @@
 use super::MemoryChipType;
 use crate::{
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
-    operations::{IsZeroOperation, LtOperationUnsigned},
+    operations::{IsZeroOperation, LtOperationUnsigned, LtOperationUnsignedInput},
     utils::next_multiple_of_32,
 };
 use core::{
@@ -422,22 +422,24 @@ where
         );
         // builder.assert_bool(local.is_comp);
         // If `is_comp = 1`, then `prev_addr < addr` should hold.
-        LtOperationUnsigned::<AB::F>::eval_lt_unsigned(
+        <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            Word([
-                local.prev_addr[0].into(),
-                local.prev_addr[1].into(),
-                local.prev_addr[2].into(),
-                AB::Expr::zero(),
-            ]),
-            Word([
-                local.addr[0].into(),
-                local.addr[1].into(),
-                local.addr[2].into(),
-                AB::Expr::zero(),
-            ]),
-            local.lt_cols,
-            local.is_comp.into(),
+            LtOperationUnsignedInput::<AB>::new(
+                Word([
+                    local.prev_addr[0].into(),
+                    local.prev_addr[1].into(),
+                    local.prev_addr[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([
+                    local.addr[0].into(),
+                    local.addr[1].into(),
+                    local.addr[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                local.lt_cols,
+                local.is_comp.into(),
+            ),
         );
         builder.when(local.is_comp).assert_one(local.lt_cols.u16_compare_operation.bit);
 

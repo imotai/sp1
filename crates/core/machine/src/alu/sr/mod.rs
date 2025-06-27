@@ -19,10 +19,10 @@ use sp1_stark::{air::MachineAir, Word};
 use crate::{
     adapter::{
         register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
-        state::CPUState,
+        state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation},
-    operations::{U16MSBOperation, U16toU8Operation},
+    operations::{U16MSBOperation, U16MSBOperationInput, U16toU8Operation},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -469,25 +469,23 @@ where
             builder.assert_eq(local.byte_result[i], result);
         }
 
-        U16MSBOperation::<AB::F>::eval_msb(
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.b.0[3].into(),
-            local.b_msb,
-            local.is_sra.into(),
+            U16MSBOperationInput::<AB>::new(local.b.0[3].into(), local.b_msb, local.is_sra.into()),
         );
-        U16MSBOperation::<AB::F>::eval_msb(
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.b.0[1].into(),
-            local.b_msb,
-            local.is_sraw.into() + local.is_sraiw.into(),
+            U16MSBOperationInput::<AB>::new(
+                local.b.0[1].into(),
+                local.b_msb,
+                local.is_sraw.into() + local.is_sraiw.into(),
+            ),
         );
         builder.assert_eq(local.sra_msb_v0123, local.b_msb.msb * local.v_0123);
 
-        U16MSBOperation::<AB::F>::eval_msb(
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.a.0[1].into(),
-            local.srw_msb,
-            is_word.clone(),
+            U16MSBOperationInput::<AB>::new(local.a.0[1].into(), local.srw_msb, is_word.clone()),
         );
         builder
             .when(local.is_srlw + local.is_srl + local.is_srliw)
@@ -553,12 +551,14 @@ where
 
         // Constrain the CPU state.
         // The program counter and timestamp increment by `4`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
-            AB::Expr::from_canonical_u32(CLK_INC),
-            is_real.clone(),
+            CPUStateInput {
+                cols: local.state,
+                next_pc: local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
+                is_real: is_real.clone(),
+            },
         );
 
         // Constrain the program and register reads.

@@ -23,6 +23,7 @@ pub struct ConstraintCompiler<C: Config> {
 }
 
 impl<C: Config + Debug> ConstraintCompiler<C> {
+    #[allow(clippy::uninlined_format_args)]
     /// Allocate a new variable name in the constraint system.
     pub fn alloc_id(&mut self) -> String {
         let id = self.allocator;
@@ -67,6 +68,7 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
         tmp_id
     }
 
+    #[allow(clippy::uninlined_format_args)]
     fn emit_inner(&mut self, constraints: &mut Vec<Constraint>, operations: Vec<DslIr<C>>) {
         for instruction in operations {
             match instruction {

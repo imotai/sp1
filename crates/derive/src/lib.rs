@@ -426,3 +426,31 @@ fn find_eval_trait_bound(attrs: &[syn::Attribute]) -> Option<String> {
 
     None
 }
+
+#[proc_macro_derive(SP1OperationInput)]
+pub fn sp1_operation_input_derive(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+
+    // Extract field names from the struct
+    let field_names = match &ast.data {
+        Data::Struct(data_struct) => data_struct
+            .fields
+            .iter()
+            .filter_map(|field| field.ident.as_ref())
+            .map(|ident| ident.to_string())
+            .collect::<Vec<_>>(),
+        _ => panic!("SP1OperationInput can only be derived for structs"),
+    };
+
+    let field_names_str = field_names.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+
+    let expanded = quote! {
+        impl #impl_generics #name #ty_generics #where_clause {
+            pub const PARAMETER_NAMES: &'static [&'static str] = &[#(#field_names_str),*];
+        }
+    };
+
+    TokenStream::from(expanded)
+}

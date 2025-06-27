@@ -22,7 +22,7 @@ use crate::{
         state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation},
-    operations::BitwiseU16Operation,
+    operations::{BitwiseU16Operation, BitwiseU16OperationInput},
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
 
@@ -193,16 +193,15 @@ where
             + local.is_and * Opcode::AND.as_field::<AB::F>();
 
         // Constrain the bitwise operation over `op_b` and `op_c`.
-        let result = BitwiseU16Operation::<AB::F>::eval(
-            builder,
-            (
-                local.adapter.b().map(Into::into),
-                local.adapter.c().map(Into::into),
-                local.bitwise_operation,
-                byte_opcode,
-                is_real.clone(),
-            ),
+        let bitwise_u16_input = BitwiseU16OperationInput::<AB>::new(
+            local.adapter.b().map(Into::into),
+            local.adapter.c().map(Into::into),
+            local.bitwise_operation,
+            byte_opcode,
+            is_real.clone(),
         );
+        let result =
+            <BitwiseU16Operation<AB::F> as SP1Operation<AB>>::eval(builder, bitwise_u16_input);
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.

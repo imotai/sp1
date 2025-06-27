@@ -16,6 +16,7 @@ use crate::{
 };
 
 impl<F, const DEGREE: usize> BaseAir<F> for Poseidon2WideChip<DEGREE> {
+    #[allow(clippy::uninlined_format_args)]
     fn width(&self) -> usize {
         if DEGREE == 3 {
             NUM_POSEIDON2_DEGREE3_COLS

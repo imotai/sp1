@@ -4,18 +4,16 @@ use std::{
     sync::Arc,
 };
 
+use crate::air::InteractionScope;
+use crate::debug_interactions_with_all_chips;
+use crate::InteractionKind;
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::CpuBackend;
 use slop_challenger::FieldChallenger;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
 
-use crate::{
-    air::{InteractionScope, MachineAir},
-    debug_interactions_with_all_chips,
-    prover::Traces,
-    Chip, InteractionKind, LogupRoundPolynomial, PolynomialLayer,
-};
+use crate::{air::MachineAir, prover::Traces, Chip, LogupRoundPolynomial, PolynomialLayer};
 
 use super::{
     LogUpGkrCircuit, LogUpGkrOutput, LogUpGkrProverComponents, LogUpGkrRoundProver,

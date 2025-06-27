@@ -5,14 +5,14 @@ use sp1_core_executor::{events::ByteRecord, Opcode};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_field::Field;
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, SP1OperationInput};
 
 use crate::{
     air::{SP1Operation, SP1OperationBuilder},
     operations::{U16toU8OperationUnsafe, U16toU8OperationUnsafeInput},
 };
 
-use super::{BitwiseOperation, U16toU8Operation};
+use super::{BitwiseOperation, BitwiseOperationInput, U16toU8Operation};
 
 /// A set of columns needed to compute the bitwise operation over two u16 limbs.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -71,7 +71,13 @@ impl<F: Field> BitwiseU16Operation<F> {
         // SAFETY: This is safe because `is_real` is constrained to be boolean.
         BitwiseOperation::<AB::F>::eval(
             builder,
-            (b_bytes, c_bytes, cols.bitwise_operation, opcode, is_real),
+            BitwiseOperationInput::<AB>::new(
+                b_bytes,
+                c_bytes,
+                cols.bitwise_operation,
+                opcode,
+                is_real,
+            ),
         );
 
         // Combine the byte results into two u16 limbs.
@@ -87,17 +93,37 @@ impl<F: Field> BitwiseU16Operation<F> {
     }
 }
 
+#[derive(SP1OperationInput)]
+pub struct BitwiseU16OperationInput<AB: SP1AirBuilder> {
+    pub b: Word<AB::Expr>,
+    pub c: Word<AB::Expr>,
+    pub cols: BitwiseU16Operation<AB::Var>,
+    pub opcode: AB::Expr,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> BitwiseU16OperationInput<AB> {
+    pub fn new(
+        b: Word<AB::Expr>,
+        c: Word<AB::Expr>,
+        cols: BitwiseU16Operation<AB::Var>,
+        opcode: AB::Expr,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { b, c, cols, opcode, is_real }
+    }
+}
+
 impl<AB> SP1Operation<AB> for BitwiseU16Operation<AB::F>
 where
     AB: SP1AirBuilder
         + SP1OperationBuilder<U16toU8OperationUnsafe>
         + SP1OperationBuilder<BitwiseOperation<<AB as AirBuilder>::F>>,
 {
-    type Input = (Word<AB::Expr>, Word<AB::Expr>, BitwiseU16Operation<AB::Var>, AB::Expr, AB::Expr);
+    type Input = BitwiseU16OperationInput<AB>;
     type Output = Word<AB::Expr>;
 
     fn lower(builder: &mut AB, input: Self::Input) -> Word<AB::Expr> {
-        let (b, c, cols, opcode, is_real) = input;
-        Self::eval_bitwise_u16(builder, b, c, cols, opcode, is_real)
+        Self::eval_bitwise_u16(builder, input.b, input.c, input.cols, input.opcode, input.is_real)
     }
 }

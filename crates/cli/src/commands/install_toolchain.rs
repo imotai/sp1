@@ -26,6 +26,7 @@ pub struct InstallToolchainCmd {
 }
 
 impl InstallToolchainCmd {
+    #[allow(clippy::uninlined_format_args)]
     pub async fn run(&self) -> Result<()> {
         // Check if rust is installed.
         if Command::new("rustup")

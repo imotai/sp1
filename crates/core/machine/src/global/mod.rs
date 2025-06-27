@@ -287,6 +287,7 @@ mod tests {
     use sp1_stark::air::MachineAir;
 
     #[test]
+    #[allow(clippy::uninlined_format_args)]
     fn test_global_generate_trace() {
         let program = simple_program();
         let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());

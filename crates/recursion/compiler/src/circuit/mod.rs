@@ -77,6 +77,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::uninlined_format_args)]
     fn test_empty_witness_stream() {
         let mut builder = AsmBuilder::<F, EF>::default();
 

@@ -4,7 +4,9 @@ use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_primitives::consts::u64_to_u16_limbs;
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_stark::Word;
+
+use crate::air::SP1CoreAirBuilder;
 
 use super::AddrAddOperation;
 
@@ -38,7 +40,7 @@ impl<F: Field> AddressOperation<F> {
     /// Both `is_real` and offset bits are constrained to be boolean and correct.
     /// The returned value is the aligned memory address used for memory access.
     #[allow(clippy::too_many_arguments)]
-    pub fn eval<AB: SP1AirBuilder>(
+    pub fn eval<AB: SP1CoreAirBuilder>(
         builder: &mut AB,
         b: Word<AB::Expr>,
         c: Word<AB::Expr>,

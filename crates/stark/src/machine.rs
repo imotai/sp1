@@ -8,7 +8,8 @@ use crate::{air::MachineAir, Chip, MachineRecord};
 #[derive(Debug)]
 #[derive_where(Clone)]
 pub struct MachineShape<F: Field, A> {
-    chip_clusters: Vec<BTreeSet<Chip<F, A>>>,
+    /// The chip clusters.
+    pub chip_clusters: Vec<BTreeSet<Chip<F, A>>>,
 }
 
 impl<F: Field, A: MachineAir<F>> MachineShape<F, A> {
@@ -72,6 +73,12 @@ where
     #[must_use]
     pub const fn num_pv_elts(&self) -> usize {
         self.num_pv_elts
+    }
+
+    /// Returns the shape of the machine.
+    #[must_use]
+    pub const fn shape(&self) -> &MachineShape<F, A> {
+        &self.shape
     }
 
     /// Returns the smallest shape cluster that contains all the chips with given names.

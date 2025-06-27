@@ -109,6 +109,98 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
         (result, carry)
     }
 
+    /// Populate result and carry columns from the equation (is_add * (a + b) + is_mul * (a * b) +
+    /// c) % modulus This function handles conditional operations based on is_add and is_mul
+    /// flags.
+    #[allow(clippy::too_many_arguments)]
+    pub fn populate_conditional_op_and_carry(
+        &mut self,
+        record: &mut impl ByteRecord,
+        a: &BigUint,
+        b: &BigUint,
+        c: &BigUint,
+        modulus: &BigUint,
+        is_add: bool,
+        _is_mul: bool,
+    ) -> (BigUint, BigUint) {
+        let mut p_a: Vec<u8> = a.to_bytes_le();
+        p_a.resize(P::NB_LIMBS, 0);
+        let mut p_b: Vec<u8> = b.to_bytes_le();
+        p_b.resize(P::NB_LIMBS, 0);
+        let mut p_c: Vec<u8> = c.to_bytes_le();
+        p_c.resize(P::NB_LIMBS, 0);
+
+        // Compute (is_add * (a + b) + is_mul * (a * b) + c)
+        let intermediate = if is_add { a + b + c } else { a * b + c };
+
+        let result = &intermediate % modulus;
+        let carry = (&intermediate - &result) / modulus;
+        debug_assert!(&result < modulus);
+        debug_assert!(&carry < modulus);
+        debug_assert_eq!(&carry * modulus, &intermediate - &result);
+
+        let mut p_modulus: Vec<u8> = modulus.to_bytes_le();
+        p_modulus.resize(P::MODULUS_LIMBS, 0);
+        let mut p_result: Vec<u8> = result.to_bytes_le();
+        p_result.resize(P::NB_LIMBS, 0);
+        let mut p_carry: Vec<u8> = carry.to_bytes_le();
+        p_carry.resize(P::NB_LIMBS, 0);
+
+        let mut p_vanishing_limbs = vec![0i32; P::NB_WITNESS_LIMBS + 1];
+
+        // Compute the vanishing polynomial based on the operation
+        if is_add {
+            // For ADD: (a + b + c) - result - carry * modulus = 0
+            for i in 0..P::NB_LIMBS {
+                p_vanishing_limbs[i] += (p_a[i] as u16 + p_b[i] as u16 + p_c[i] as u16) as i32;
+            }
+        } else {
+            // For MUL: (a * b + c) - result - carry * modulus = 0
+            for i in 0..P::NB_LIMBS {
+                for j in 0..P::NB_LIMBS {
+                    p_vanishing_limbs[i + j] += (p_a[i] as u16 * p_b[j] as u16) as i32;
+                }
+            }
+            for i in 0..P::NB_LIMBS {
+                p_vanishing_limbs[i] += (p_c[i] as u16) as i32;
+            }
+        }
+
+        // Subtract result and carry * modulus
+        for i in 0..P::NB_LIMBS {
+            p_vanishing_limbs[i] -= (p_result[i] as u16) as i32;
+        }
+        for i in 0..P::NB_LIMBS {
+            for j in 0..P::MODULUS_LIMBS {
+                p_vanishing_limbs[i + j] -= (p_carry[i] as u16 * p_modulus[j] as u16) as i32;
+            }
+        }
+
+        let len = P::NB_WITNESS_LIMBS + 1;
+        let mut pol_carry = p_vanishing_limbs[len - 1];
+        for i in (0..len - 1).rev() {
+            let ai = p_vanishing_limbs[i];
+            p_vanishing_limbs[i] = pol_carry;
+            pol_carry = ai + pol_carry * 256;
+        }
+        debug_assert_eq!(pol_carry, 0);
+
+        for i in 0..P::NB_LIMBS {
+            self.result[i] = F::from_canonical_u8(p_result[i]);
+            self.carry[i] = F::from_canonical_u8(p_carry[i]);
+        }
+        for i in 0..P::NB_WITNESS_LIMBS {
+            self.witness[i] =
+                F::from_canonical_u16((p_vanishing_limbs[i] + P::WITNESS_OFFSET as i32) as u16);
+        }
+
+        record.add_u8_range_checks_field(&self.result.0);
+        record.add_u8_range_checks_field(&self.carry.0);
+        record.add_u16_range_checks_field(&self.witness.0);
+
+        (result, carry)
+    }
+
     pub fn populate_carry_and_witness(
         &mut self,
         a: &BigUint,
@@ -304,6 +396,34 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
         let p_mul = p_a_param.clone() * p_b.clone();
         let p_div = p_res_param * p_b.clone();
         let p_op = p_add * is_add + p_sub * is_sub + p_mul * is_mul + p_div * is_div;
+
+        self.eval_with_polynomials(builder, p_op, modulus.clone(), p_result, is_real);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_add_mul_and_carry<AB: SP1AirBuilder<Var = V>>(
+        &self,
+        builder: &mut AB,
+        is_add: impl Into<AB::Expr> + Clone,
+        is_mul: impl Into<AB::Expr> + Clone,
+        a: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        b: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        c: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        modulus: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        is_real: impl Into<AB::Expr> + Clone,
+    ) where
+        V: Into<AB::Expr>,
+        Limbs<V, P::Limbs>: Copy,
+    {
+        let p_a: Polynomial<AB::Expr> = (a).clone().into();
+        let p_b: Polynomial<AB::Expr> = (b).clone().into();
+        let p_c: Polynomial<AB::Expr> = (c).clone().into();
+
+        let is_add: AB::Expr = is_add.into();
+        let is_mul: AB::Expr = is_mul.into();
+
+        let p_result: Polynomial<_> = self.result.into();
+        let p_op = (p_a.clone() + p_b.clone()) * is_add + (p_a * p_b) * is_mul + p_c;
 
         self.eval_with_polynomials(builder, p_op, modulus.clone(), p_result, is_real);
     }

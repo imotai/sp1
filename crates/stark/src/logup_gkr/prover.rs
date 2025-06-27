@@ -14,6 +14,7 @@ use slop_multilinear::{
     Point, PointBackend,
 };
 use slop_tensor::AddAssignBackend;
+use tracing::Instrument;
 
 use crate::{air::MachineAir, prover::Traces, Chip, ChipEvaluation};
 
@@ -194,6 +195,7 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         let (output, circuit) = self
             .trace_generator
             .generate_gkr_circuit(chips, preprocessed_traces.clone(), traces.clone(), alpha, beta)
+            .instrument(tracing::info_span!("generate GKR circuit"))
             .await;
 
         let LogUpGkrOutput { numerator, denominator } = &output;
@@ -234,6 +236,7 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
                 circuit,
                 challenger,
             )
+            .instrument(tracing::info_span!("prove GKR circuit"))
             .await;
 
         // Get the evaluations for each chip at the evaluation point of the last round.

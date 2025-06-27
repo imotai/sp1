@@ -303,7 +303,9 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 while let Some(task) = executor_rx.blocking_recv() {
                     let ExecuteTask { input, range } = task;
                     let keys = prover.prover().recursion().keys(&input);
+                    let span = tracing::debug_span!("execute recursion program").entered();
                     let record = prover.prover().recursion().execute(input).unwrap();
+                    span.exit();
                     let prove_task = ProveTask { keys, range, record };
                     prove_task_tx.send(prove_task).unwrap();
                 }
@@ -431,17 +433,20 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let input = self.prover.recursion().make_merkle_proofs(input);
         let witness = SP1CircuitWitness::Shrink(input);
 
-        let (_, vk) = self
-            .prover
-            .recursion()
-            .keys(&witness)
-            .expect("Failed to find key for shrink program (arity 1");
+        // Run key initialization and witness execution in parallel
+        let key_task = async {
+            let (_, vk) = self.prover.recursion().get_shrink_keys_async().await;
+            Ok::<_, SP1ProverError>(vk)
+        };
 
-        let record = self
-            .prover
-            .recursion()
-            .execute(witness)
-            .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {:?}", e)))?;
+        let execute_task = async {
+            self.prover
+                .recursion()
+                .execute(witness)
+                .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {e}")))
+        };
+
+        let (vk, record) = tokio::try_join!(key_task, execute_task)?;
 
         let proof = self
             .prover
@@ -465,13 +470,20 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         };
         let input = self.prover.recursion().make_merkle_proofs(input);
         let witness = SP1CircuitWitness::Wrap(input);
-        let record = self
-            .prover
-            .recursion()
-            .execute(witness)
-            .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {:?}", e)))?;
+        // Run key initialization and witness execution in parallel
+        let key_task = async {
+            let (_, vk) = self.prover.recursion().get_wrap_keys_async().await;
+            Ok::<_, SP1ProverError>(vk)
+        };
 
-        let (_, vk) = self.prover.recursion().wrap_keys();
+        let execute_task = async {
+            self.prover
+                .recursion()
+                .execute(witness)
+                .map_err(|e| SP1ProverError::Other(format!("Runtime panicked: {e}")))
+        };
+
+        let (vk, record) = tokio::try_join!(key_task, execute_task)?;
 
         let proof = self
             .prover

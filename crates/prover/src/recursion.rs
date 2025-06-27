@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     collections::{BTreeMap, BTreeSet},
     marker::PhantomData,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, PrimeField32};
@@ -85,11 +85,17 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
         MachineVerifyingKey<RecursionConfig<C>>,
     )>,
     shrink_program: Arc<RecursionProgram<BabyBear>>,
-    shrink_keys:
-        (Arc<MachineProvingKey<C::RecursionComponents>>, MachineVerifyingKey<RecursionConfig<C>>),
+    shrink_keys: Mutex<
+        Option<(
+            Arc<MachineProvingKey<C::RecursionComponents>>,
+            MachineVerifyingKey<RecursionConfig<C>>,
+        )>,
+    >,
     wrap_program: Arc<RecursionProgram<BabyBear>>,
-    wrap_keys: (Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>),
-    recursive_core_verifier:
+    wrap_keys: Mutex<
+        Option<(Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>)>,
+    >,
+    pub recursive_core_verifier:
         RecursiveShardVerifier<RiscvAir<BabyBear>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
     recursive_compress_verifier: RecursiveShardVerifier<
         CompressAir<InnerVal>,
@@ -190,12 +196,8 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         program.shape = Some(reduce_shape.shape.clone());
         let program = Arc::new(program);
 
-        let (shrink_pk, shrink_vk) =
-            shrink_prover.setup(shrink_program.clone(), None).await.unwrap();
-        let shrink_keys = (unsafe { shrink_pk.into_inner() }, shrink_vk);
-
-        let (wrap_pk, wrap_vk) = wrap_prover.setup(wrap_program.clone(), None).await.unwrap();
-        let wrap_keys = (unsafe { wrap_pk.into_inner() }, wrap_vk);
+        let shrink_keys = Mutex::new(None);
+        let wrap_keys = Mutex::new(None);
 
         // Make the deferred keys.
         let (pk, vk) = prover.setup(program.clone(), None).await.unwrap();
@@ -314,7 +316,8 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         &self,
         record: ExecutionRecord<BabyBear>,
     ) -> TaskHandle<ShardProof<InnerSC>, MachineProverError> {
-        self.shrink_prover.prove_shard(self.shrink_keys.0.clone(), record)
+        let shrink_keys = self.get_shrink_keys();
+        self.shrink_prover.prove_shard(shrink_keys.0, record)
     }
 
     #[inline]
@@ -323,7 +326,8 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         &self,
         record: ExecutionRecord<BabyBear>,
     ) -> TaskHandle<ShardProof<OuterSC>, MachineProverError> {
-        self.wrap_prover.prove_shard(self.wrap_keys.0.clone(), record)
+        let wrap_keys = self.get_wrap_keys();
+        self.wrap_prover.prove_shard(wrap_keys.0, record)
     }
 
     #[inline]
@@ -413,7 +417,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             SP1CircuitWitness::Core(_) => None,
             SP1CircuitWitness::Deferred(_) => self.deferred_keys(),
             SP1CircuitWitness::Compress(input) => self.reduce_keys(input.vks_and_proofs.len()),
-            SP1CircuitWitness::Shrink(_) => Some(self.shrink_keys.clone()),
+            SP1CircuitWitness::Shrink(_) => Some(self.get_shrink_keys()),
             SP1CircuitWitness::Wrap(_) => None,
         }
     }
@@ -423,7 +427,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub fn wrap_keys(
         &self,
     ) -> (Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>) {
-        self.wrap_keys.clone()
+        self.get_wrap_keys()
     }
 
     pub fn execute(
@@ -481,6 +485,78 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         Ok(record)
     }
 
+    pub async fn get_shrink_keys_async(
+        &self,
+    ) -> (Arc<MachineProvingKey<C::RecursionComponents>>, MachineVerifyingKey<RecursionConfig<C>>)
+    {
+        {
+            let guard = self.shrink_keys.lock().unwrap();
+            if let Some(ref keys) = *guard {
+                return keys.clone();
+            }
+        }
+
+        // Initialize keys asynchronously
+        let (shrink_pk, shrink_vk) =
+            self.shrink_prover.setup(self.shrink_program.clone(), None).await.unwrap();
+        let keys = (unsafe { shrink_pk.into_inner() }, shrink_vk);
+
+        {
+            let mut guard = self.shrink_keys.lock().unwrap();
+            *guard = Some(keys.clone());
+        }
+        keys
+    }
+
+    pub fn get_shrink_keys(
+        &self,
+    ) -> (Arc<MachineProvingKey<C::RecursionComponents>>, MachineVerifyingKey<RecursionConfig<C>>)
+    {
+        let guard = self.shrink_keys.lock().unwrap();
+        if let Some(ref keys) = *guard {
+            return keys.clone();
+        }
+
+        // If keys aren't initialized yet, we need to be in an async context
+        // This should only be called after async initialization
+        panic!("Shrink keys not initialized - call get_shrink_keys_async first")
+    }
+
+    pub async fn get_wrap_keys_async(
+        &self,
+    ) -> (Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>) {
+        {
+            let guard = self.wrap_keys.lock().unwrap();
+            if let Some(ref keys) = *guard {
+                return keys.clone();
+            }
+        }
+
+        // Initialize keys asynchronously
+        let (wrap_pk, wrap_vk) =
+            self.wrap_prover.setup(self.wrap_program.clone(), None).await.unwrap();
+        let keys = (unsafe { wrap_pk.into_inner() }, wrap_vk);
+
+        {
+            let mut guard = self.wrap_keys.lock().unwrap();
+            *guard = Some(keys.clone());
+        }
+        keys
+    }
+
+    pub fn get_wrap_keys(
+        &self,
+    ) -> (Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>) {
+        let guard = self.wrap_keys.lock().unwrap();
+        if let Some(ref keys) = *guard {
+            return keys.clone();
+        }
+
+        // If keys aren't initialized yet, we need to be in an async context
+        // This should only be called after async initialization
+        panic!("Wrap keys not initialized - call get_wrap_keys_async first")
+    }
+
     #[inline]
     #[allow(clippy::type_complexity)]
     pub fn deferred_keys(
@@ -528,7 +604,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
 }
 
 /// The "core" or "lift" program.
-fn recursion_program_from_input(
+pub fn recursion_program_from_input(
     recursion_verifier: &RecursiveShardVerifier<
         RiscvAir<BabyBear>,
         CoreSC,

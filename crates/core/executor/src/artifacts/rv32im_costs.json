@@ -62,5 +62,6 @@
   "Lt": 42,
   "Bls12381FpOpAssign": 450,
   "ShaCompress": 255,
-  "LoadDouble": 37
+  "LoadDouble": 37,
+  "Uint256Ops": 526
 }
