@@ -60,7 +60,7 @@ impl<F: Field> JTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc_rel: AB::Var,
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: JTypeReader<AB::Var>,
@@ -76,13 +76,13 @@ impl<F: Field> JTypeReader<F> {
             imm_b: AB::Expr::one(),
             imm_c: AB::Expr::one(),
         };
-        builder.send_program(pc, instruction, is_real.clone());
+        builder.send_program(pc_rel, instruction, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real,
@@ -93,7 +93,7 @@ impl<F: Field> JTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc_rel: AB::Var,
         opcode: impl Into<AB::Expr>,
         cols: JTypeReader<AB::Var>,
         is_real: AB::Expr,
@@ -102,7 +102,7 @@ impl<F: Field> JTypeReader<F> {
             builder,
             clk_high,
             clk_low,
-            pc,
+            pc_rel,
             opcode,
             cols.op_a_memory.prev_value,
             cols,

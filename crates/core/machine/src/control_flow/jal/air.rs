@@ -7,7 +7,7 @@ use crate::{
 use p3_air::Air;
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
+use sp1_core_executor::{Opcode, CLK_INC};
 
 use super::{JalChip, JalColumns};
 
@@ -27,14 +27,14 @@ where
         let opcode = Opcode::JAL.as_field::<AB::F>();
 
         // Constrain the state of the CPU.
-        // The `next_pc` is constrained by the AIR.
+        // The `next_pc_rel` is constrained by the AIR.
         // The clock is incremented by `4`.
         // Set `op_b` immediate as `pc + op_b` value in the instruction encoding.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
             local.adapter.b().reduce::<AB>(),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -48,7 +48,7 @@ where
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             *local.adapter.c(),
             local.adapter,

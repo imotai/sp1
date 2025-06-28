@@ -17,7 +17,7 @@ pub struct AndOperation<T> {
 }
 
 impl<F: Field> AndOperation<F> {
-    pub fn populate(&mut self, record: &mut impl ByteRecord, x: u32, y: u32) -> u32 {
+    pub fn populate(&mut self, record: &mut impl ByteRecord, x: u64, y: u64) -> u64 {
         let expected = x & y;
         let x_bytes = x.to_le_bytes();
         let y_bytes = y.to_le_bytes();

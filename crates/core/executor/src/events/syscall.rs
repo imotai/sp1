@@ -10,9 +10,9 @@ use crate::syscalls::SyscallCode;
 #[repr(C)]
 pub struct SyscallEvent {
     /// The program counter.
-    pub pc: u32,
+    pub pc_rel: u32,
     /// The next program counter.
-    pub next_pc: u32,
+    pub next_pc_rel: u32,
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
@@ -26,9 +26,9 @@ pub struct SyscallEvent {
     /// The syscall id.
     pub syscall_id: u32,
     /// The first operand value (`op_b`).
-    pub arg1: u32,
+    pub arg1: u64,
     /// The second operand value (`op_c`).
-    pub arg2: u32,
+    pub arg2: u64,
     /// The exit code.
     pub exit_code: u32,
 }

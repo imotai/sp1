@@ -25,11 +25,12 @@ pub struct IsZeroOperation<T> {
 }
 
 impl<F: Field> IsZeroOperation<F> {
-    pub fn populate(&mut self, a: u32) -> u32 {
-        self.populate_from_field_element(F::from_canonical_u32(a))
+    pub fn populate(&mut self, a: u64) -> u64 {
+        // TODO UNSOUND due to wrapping.
+        self.populate_from_field_element(F::from_wrapped_u64(a))
     }
 
-    pub fn populate_from_field_element(&mut self, a: F) -> u32 {
+    pub fn populate_from_field_element(&mut self, a: F) -> u64 {
         if a == F::zero() {
             self.inverse = F::zero();
             self.result = F::one();
@@ -39,7 +40,7 @@ impl<F: Field> IsZeroOperation<F> {
         }
         let prod = self.inverse * a;
         debug_assert!(prod == F::one() || prod == F::zero());
-        (a == F::zero()) as u32
+        (a == F::zero()) as u64
     }
 
     /// Evaluate the `IsZeroOperation` on the given inputs.

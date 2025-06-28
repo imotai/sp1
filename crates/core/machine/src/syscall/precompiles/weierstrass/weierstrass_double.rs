@@ -1,17 +1,15 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-use std::{fmt::Debug, marker::PhantomData};
-
 use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::{
         field::{field_op::FieldOpCols, range::FieldLtCols},
-        SyscallAddrOperation,
+        AddrAddOperation, SyscallAddrOperation,
     },
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
+};
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -34,7 +32,11 @@ use sp1_curves::{
     AffinePoint, CurveType, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir};
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
+use std::{fmt::Debug, marker::PhantomData};
 
 pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDoubleAssignCols<u8, P>>()
@@ -51,6 +53,7 @@ pub struct WeierstrassDoubleAssignCols<T, P: FieldParameters + NumWords> {
     pub clk_high: T,
     pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
+    pub p_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub slope_denominator: FieldOpCols<T, P>,
     pub slope_numerator: FieldOpCols<T, P>,
@@ -250,7 +253,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut values = zeroed_f_vec(num_rows * num_cols);
         let chunk_size = 64;
 
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         let mut dummy_row = zeroed_f_vec(num_cols);
         let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> =
             dummy_row.as_mut_slice().borrow_mut();
@@ -335,7 +338,7 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
         cols.is_real = F::one();
         cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
         cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u32 * 2);
+        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u64 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y);
 
@@ -343,6 +346,7 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
         for i in 0..cols.p_access.len() {
             let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
             cols.p_access[i].populate(record, new_byte_lookup_events);
+            cols.p_addrs[i].populate(new_byte_lookup_events, event.p_ptr, 8 * i as u64);
         }
     }
 }
@@ -363,7 +367,7 @@ where
         let local = main.row_slice(0);
         let local: &WeierstrassDoubleAssignCols<AB::Var, E::BaseField> = (*local).borrow();
 
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         let p_x_limbs = builder
             .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
         let p_y_limbs = builder
@@ -467,10 +471,35 @@ where
             local.is_real.into(),
         );
 
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.p_addrs[0],
+            local.is_real.into(),
+        );
+
+        // p_addrs[i] = p_addrs[i - 1] + 8.
+        let eight = AB::F::from_canonical_u32(8u32);
+        for i in 1..local.p_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.p_addrs[i - 1].value[0].into(),
+                    local.p_addrs[i - 1].value[1].into(),
+                    local.p_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.p_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low.into(),
-            p_ptr.clone(),
+            &local.p_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -495,8 +524,8 @@ where
             local.clk_high,
             local.clk_low,
             syscall_id_felt,
-            p_ptr,
-            AB::Expr::zero(),
+            p_ptr.map(Into::into),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()].map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

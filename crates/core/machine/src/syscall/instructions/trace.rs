@@ -10,7 +10,7 @@ use sp1_core_executor::{
     syscalls::SyscallCode,
     ExecutionRecord, Program, RTypeRecord,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::utils::{next_multiple_of_32, zeroed_f_vec};
@@ -57,9 +57,9 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
 
                     if idx < input.syscall_events.len() {
                         let event = &input.syscall_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, &event.1, cols, &mut blu);
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
@@ -91,15 +91,14 @@ impl SyscallInstrsChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.next_pc = F::from_canonical_u32(event.next_pc);
+        cols.next_pc_rel = F::from_canonical_u32(event.next_pc_rel);
 
         cols.op_a_value = Word::from(record.a.value());
         cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
-        blu.add_u16_range_checks(&u32_to_u16_limbs(record.a.value()));
+        blu.add_u16_range_checks(&u64_to_u16_limbs(record.a.value()));
         let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
 
         let syscall_id = a_prev_value[0];
-        let send_to_table = a_prev_value[1];
         let num_cycles = a_prev_value[2];
 
         cols.num_extra_cycles = num_cycles;
@@ -131,8 +130,7 @@ impl SyscallInstrsChip {
             syscall_id - F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()),
         );
 
-        // If the syscall is `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and
-        // digest word.
+        // For `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and digest word.
         if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
             || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
         {
@@ -142,19 +140,17 @@ impl SyscallInstrsChip {
 
         // If the syscall is `COMMIT`, set the expected public values digest and range check.
         if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) {
-            let digest_bytes = record.c.value().to_le_bytes();
+            let digest_bytes = (record.c.value() as u32).to_le_bytes();
             cols.expected_public_values_digest = digest_bytes.map(F::from_canonical_u8);
             blu.add_u8_range_checks(&digest_bytes);
         }
 
         // Add the BabyBear range check of the operands.
-        if send_to_table == F::one() || cols.is_halt == F::one() {
+        if cols.is_halt == F::one() {
             cols.op_b_range_check.populate(Word::from(event.arg1), blu);
         }
 
-        if send_to_table == F::one()
-            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
-        {
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()) {
             cols.op_c_range_check.populate(Word::from(event.arg2), blu);
         }
     }

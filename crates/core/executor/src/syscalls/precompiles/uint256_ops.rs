@@ -7,7 +7,7 @@ use crate::{
     Register::{X12, X13, X14},
 };
 
-const U256_NUM_WORDS: usize = 8;
+const U256_NUM_WORDS: usize = 4;
 
 /// Executes uint256 operations: d, e <- ((a op b) + c) % (2^256), ((a op b) + c) // (2^256)
 /// where op is either ADD or MUL.
@@ -21,9 +21,9 @@ const U256_NUM_WORDS: usize = 8;
 pub(crate) fn uint256_ops<E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let clk = rt.clk;
 
     // Get the operation from the syscall code
@@ -44,9 +44,15 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
     let (c_memory_records, c) = rt.mr_slice(c_ptr, U256_NUM_WORDS);
 
     // Convert to BigUint
-    let uint256_a = BigUint::from_slice(&a);
-    let uint256_b = BigUint::from_slice(&b);
-    let uint256_c = BigUint::from_slice(&c);
+    let uint256_a = BigUint::from_slice(
+        &a.iter().flat_map(|&x| [x as u32, (x >> 32) as u32]).collect::<Vec<_>>(),
+    );
+    let uint256_b = BigUint::from_slice(
+        &b.iter().flat_map(|&x| [x as u32, (x >> 32) as u32]).collect::<Vec<_>>(),
+    );
+    let uint256_c = BigUint::from_slice(
+        &c.iter().flat_map(|&x| [x as u32, (x >> 32) as u32]).collect::<Vec<_>>(),
+    );
 
     // Perform the operation: (a op b) + c
     let intermediate_result = match op {
@@ -54,14 +60,14 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
         Uint256Operation::Mul => uint256_a * uint256_b + uint256_c,
     };
 
-    let mut u32_result = intermediate_result.to_u32_digits();
-    u32_result.resize(16, 0);
+    let mut u64_result = intermediate_result.to_u64_digits();
+    u64_result.resize(8, 0);
 
     // Write results
     rt.clk += 1;
-    let d_memory_records = rt.mw_slice(d_ptr, &u32_result[0..8]);
+    let d_memory_records = rt.mw_slice(d_ptr, &u64_result[0..4]);
     rt.clk += 1;
-    let e_memory_records = rt.mw_slice(e_ptr, &u32_result[8..16]);
+    let e_memory_records = rt.mw_slice(e_ptr, &u64_result[4..8]);
 
     let shard = rt.shard().get();
     let event = PrecompileEvent::Uint256Ops(Uint256OpsEvent {
@@ -75,9 +81,9 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
         c_ptr,
         c: c.try_into().unwrap(),
         d_ptr,
-        d: u32_result[0..8].try_into().unwrap(),
+        d: u64_result[0..4].try_into().unwrap(),
         e_ptr,
-        e: u32_result[8..16].try_into().unwrap(),
+        e: u64_result[4..8].try_into().unwrap(),
         c_ptr_memory,
         d_ptr_memory,
         e_ptr_memory,
@@ -90,7 +96,7 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
     });
 
     let syscall_event =
-        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
+        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc_rel, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, event);
 
     None

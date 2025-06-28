@@ -74,11 +74,13 @@ impl BuildToolchainCmd {
             std::fs::create_dir_all(&temp_dir)?;
         }
         std::fs::File::create(temp_dir.join("riscv32im-succinct-zkvm-elf.json"))?;
+        std::fs::File::create(temp_dir.join("riscv64im-succinct-zkvm-elf.json"))?;
 
         // Build the toolchain.
         Command::new("python3")
             .env("RUST_TARGET_PATH", &temp_dir)
             .env("CARGO_TARGET_RISCV32IM_SUCCINCT_ZKVM_ELF_RUSTFLAGS", "-Cpasses=lower-atomic")
+            .env("CARGO_TARGET_RISCV64IM_SUCCINCT_ZKVM_ELF_RUSTFLAGS", "-Cpasses=lower-atomic")
             .args(["x.py", "build", "--stage", "2", "compiler/rustc", "library"])
             .current_dir(&rust_dir)
             .run()?;

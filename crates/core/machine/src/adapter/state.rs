@@ -16,7 +16,7 @@ pub struct CPUState<T> {
     pub clk_high: T,
     pub clk_16_24: T,
     pub clk_0_16: T,
-    pub pc: T,
+    pub pc_rel: T,
 }
 
 impl<T: Copy> CPUState<T> {
@@ -38,14 +38,14 @@ impl<T: Copy> CPUState<T> {
 
 impl<F: Field> CPUState<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, clk: u64, pc: u32) {
+    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, clk: u64, pc_rel: u32) {
         let clk_high = (clk >> 24) as u32;
         let clk_16_24 = ((clk >> 16) & 0xFF) as u8;
         let clk_0_16 = (clk & 0xFFFF) as u16;
         self.clk_high = F::from_canonical_u32(clk_high);
         self.clk_16_24 = F::from_canonical_u8(clk_16_24);
         self.clk_0_16 = F::from_canonical_u16(clk_0_16);
-        self.pc = F::from_canonical_u32(pc);
+        self.pc_rel = F::from_canonical_u32(pc_rel);
 
         // 0 <= (clk_0_16 - 1) / 8 < 2^13 shows clk == 1 (mod 8) and clk_0_16 is 16 bits.
         blu_events.add_bit_range_check((clk_0_16 - 1) / 8, 13);
@@ -56,18 +56,23 @@ impl<F: Field> CPUState<F> {
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
         cols: CPUState<AB::Var>,
-        next_pc: AB::Expr,
+        next_pc_rel: AB::Expr,
         clk_increment: AB::Expr,
         is_real: AB::Expr,
     ) {
         let clk_high = cols.clk_high::<AB>();
         let clk_low = cols.clk_low::<AB>();
         builder.assert_bool(is_real.clone());
-        builder.receive_state(clk_high.clone(), clk_low.clone(), cols.pc.into(), is_real.clone());
+        builder.receive_state(
+            clk_high.clone(),
+            clk_low.clone(),
+            cols.pc_rel.into(),
+            is_real.clone(),
+        );
         builder.send_state(
             clk_high.clone(),
             clk_low.clone() + clk_increment,
-            next_pc,
+            next_pc_rel,
             is_real.clone(),
         );
 

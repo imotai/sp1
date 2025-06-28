@@ -361,12 +361,12 @@ where
     type WitnessVariable = MachineVerifyingKeyVariable<C, MC>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let pc_start = self.pc_start.read(builder);
+        let pc_start_rel = self.pc_start_rel.read(builder);
         let initial_global_cumulative_sum = self.initial_global_cumulative_sum.read(builder);
         let preprocessed_commit = self.preprocessed_commit.as_ref().map(|x| x.read(builder));
         let preprocessed_chip_information = self.preprocessed_chip_information.clone();
         Self::WitnessVariable {
-            pc_start,
+            pc_start_rel,
             initial_global_cumulative_sum,
             preprocessed_commit,
             preprocessed_chip_information,
@@ -374,7 +374,7 @@ where
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        self.pc_start.write(witness);
+        self.pc_start_rel.write(witness);
         self.initial_global_cumulative_sum.write(witness);
         if let Some(x) = self.preprocessed_commit.as_ref() {
             x.write(witness);

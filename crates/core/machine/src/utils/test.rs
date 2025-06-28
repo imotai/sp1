@@ -76,6 +76,9 @@ pub async fn run_test_core(
     let log_stacking_height = 21;
     let max_log_row_count = 21;
     let machine = RiscvAir::machine();
+    slop_futures::rayon::spawn(move || {
+        let x = 1;
+    });
     let verifier = ShardVerifier::from_basefold_parameters(
         log_blowup,
         log_stacking_height,

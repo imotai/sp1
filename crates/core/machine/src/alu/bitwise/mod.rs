@@ -11,7 +11,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
@@ -84,8 +84,8 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                 let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
                 let mut blu = Vec::new();
                 self.event_to_row(&event.0, cols, &mut blu);
-                let instruction = input.program.fetch(event.0.pc);
-                cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                let instruction = input.program.fetch(event.0.pc_rel);
+                cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                 cols.adapter.populate(&mut blu, instruction, event.1);
 
                 row
@@ -117,8 +117,8 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                     let mut row = [F::zero(); NUM_BITWISE_COLS];
                     let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
                     self.event_to_row(&event.0, cols, &mut blu);
-                    let instruction = input.program.fetch(event.0.pc);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                    let instruction = input.program.fetch(event.0.pc_rel);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -207,8 +207,8 @@ where
         // The program counter and timestamp increment by `4` and `8`.
         let cpu_state_input = CPUStateInput::<AB>::new(
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
         <CPUState<AB::F> as SP1Operation<AB>>::eval(builder, cpu_state_input);
@@ -217,7 +217,7 @@ where
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc,
+            local.state.pc_rel,
             cpu_opcode,
             result,
             local.adapter,

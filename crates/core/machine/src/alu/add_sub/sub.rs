@@ -11,7 +11,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
@@ -85,9 +85,9 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
                     if idx < merged_events.len() {
                         let mut byte_lookup_events = Vec::new();
                         let event = merged_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -110,9 +110,9 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SUB_COLS];
                     let cols: &mut SubCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
+                    let instruction = input.program.fetch(event.0.pc_rel);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -182,8 +182,8 @@ where
             builder,
             CPUStateInput {
                 cols: local.state,
-                next_pc: local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-                clk_increment: AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+                next_pc: local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
                 is_real: local.is_real.into(),
             },
         );
@@ -194,7 +194,7 @@ where
             RTypeReaderInput {
                 clk_high: local.state.clk_high::<AB>(),
                 clk_low: local.state.clk_low::<AB>(),
-                pc: local.state.pc,
+                pc: local.state.pc_rel,
                 opcode,
                 op_a_write_value: local.sub_operation.value,
                 cols: local.adapter,

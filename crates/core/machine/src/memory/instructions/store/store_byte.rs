@@ -16,15 +16,16 @@ use crate::{
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
+use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field, PrimeField32};
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
-use sp1_stark::air::MachineAir;
+use sp1_primitives::consts::u64_to_u16_limbs;
+use sp1_stark::air::{BaseAirBuilder, MachineAir};
 
 #[derive(Default)]
 pub struct StoreByteChip;
@@ -48,7 +49,7 @@ pub struct StoreByteColumns<T> {
     pub memory_access: MemoryAccessCols<T>,
 
     /// The bit decomposition of the offset.
-    pub offset_bit: [T; 2],
+    pub offset_bit: [T; 3],
 
     /// The selected memory limb value.
     pub mem_limb: T,
@@ -113,9 +114,9 @@ impl<F: PrimeField32> MachineAir<F> for StoreByteChip {
 
                     if idx < input.memory_store_byte_events.len() {
                         let event = &input.memory_store_byte_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut blu);
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
@@ -156,16 +157,20 @@ impl StoreByteChip {
 
         let bit0 = (memory_addr & 1) as u16;
         let bit1 = ((memory_addr >> 1) & 1) as u16;
+        let bit2 = ((memory_addr >> 2) & 1) as u16;
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
+        cols.offset_bit[2] = F::from_canonical_u16(bit2);
 
-        let limb = u32_to_u16_limbs(event.mem_access.prev_value())[bit1 as usize];
+        let limb_number = 2 * bit2 + bit1;
+        let limb = u64_to_u16_limbs(event.mem_access.prev_value())[limb_number as usize];
         let limb_a = (event.a & ((1 << 16) - 1)) as u16;
         blu.add_u8_range_checks(&limb.to_le_bytes());
         blu.add_u8_range_checks(&limb_a.to_le_bytes());
+
         cols.mem_limb = F::from_canonical_u16(limb);
         cols.mem_limb_low_byte = F::from_canonical_u16(limb & 0xFF);
-        cols.register_low_byte = F::from_canonical_u32(event.a & 0xFF);
+        cols.register_low_byte = F::from_canonical_u64(event.a & 0xFF);
         cols.store_value = Word::from(event.mem_access.value());
         cols.increment =
             (cols.register_low_byte - cols.mem_limb_low_byte) * (F::one() - cols.offset_bit[0]);
@@ -201,6 +206,7 @@ where
             local.adapter.c().map(Into::into),
             local.offset_bit[0].into(),
             local.offset_bit[1].into(),
+            local.offset_bit[2].into(),
             local.is_real.into(),
             local.address_operation,
         );
@@ -210,7 +216,7 @@ where
         builder.eval_memory_access_write(
             clk_high.clone(),
             clk_low.clone(),
-            aligned_addr.clone(),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             local.store_value,
             local.is_real.into(),
@@ -218,15 +224,28 @@ where
 
         // Step 3. Use the memory value to compute the write value for `op_a`.
         // Select the u16 limb corresponding to the offset.
-        builder.assert_eq(
-            local.mem_limb,
-            local.offset_bit[1] * local.memory_access.prev_value[1]
-                + (AB::Expr::one() - local.offset_bit[1]) * local.memory_access.prev_value[0],
-        );
+        builder
+            .when_not(local.offset_bit[1])
+            .when_not(local.offset_bit[2])
+            .assert_eq(local.mem_limb, local.memory_access.prev_value[0]);
+        builder
+            .when(local.offset_bit[1])
+            .when_not(local.offset_bit[2])
+            .assert_eq(local.mem_limb, local.memory_access.prev_value[1]);
+        builder
+            .when_not(local.offset_bit[1])
+            .when(local.offset_bit[2])
+            .assert_eq(local.mem_limb, local.memory_access.prev_value[2]);
+        builder
+            .when(local.offset_bit[1])
+            .when(local.offset_bit[2])
+            .assert_eq(local.mem_limb, local.memory_access.prev_value[3]);
+
         // Split the u16 memory limb into two bytes.
         let byte0 = local.mem_limb_low_byte;
         let byte1 = (local.mem_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
         builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
+
         // Split the u16 register limb into two bytes.
         let byte0 = local.register_low_byte;
         let byte1 =
@@ -244,20 +263,33 @@ where
 
         builder.assert_eq(
             local.store_value.0[0],
-            local.increment * (AB::Expr::one() - local.offset_bit[1])
+            local.increment
+                * (AB::Expr::one() - local.offset_bit[1])
+                * (AB::Expr::one() - local.offset_bit[2])
                 + local.memory_access.prev_value.0[0],
         );
         builder.assert_eq(
             local.store_value.0[1],
-            local.increment * local.offset_bit[1] + local.memory_access.prev_value.0[1],
+            local.increment * local.offset_bit[1] * (AB::Expr::one() - local.offset_bit[2])
+                + local.memory_access.prev_value.0[1],
+        );
+        builder.assert_eq(
+            local.store_value.0[2],
+            local.increment * (AB::Expr::one() - local.offset_bit[1]) * local.offset_bit[2]
+                + local.memory_access.prev_value.0[2],
+        );
+        builder.assert_eq(
+            local.store_value.0[3],
+            local.increment * local.offset_bit[1] * local.offset_bit[2]
+                + local.memory_access.prev_value.0[3],
         );
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -266,7 +298,7 @@ where
             builder,
             clk_high.clone(),
             clk_low.clone(),
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             local.adapter,
             local.is_real.into(),

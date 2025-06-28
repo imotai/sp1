@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
@@ -18,11 +18,11 @@ pub struct AddOperation<T> {
 }
 
 impl<F: Field> AddOperation<F> {
-    pub fn populate(&mut self, record: &mut impl ByteRecord, a_u32: u32, b_u32: u32) -> u32 {
-        let expected = a_u32.wrapping_add(b_u32);
+    pub fn populate(&mut self, record: &mut impl ByteRecord, a_u64: u64, b_u64: u64) -> u64 {
+        let expected = a_u64.wrapping_add(b_u64);
         self.value = Word::from(expected);
         // Range check
-        record.add_u16_range_checks(&u32_to_u16_limbs(expected));
+        record.add_u16_range_checks(&u64_to_u16_limbs(expected));
         expected
     }
 

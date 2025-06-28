@@ -9,10 +9,9 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, JumpEvent},
     ExecutionRecord, Program,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::{air::MachineAir, Word};
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::utils::{next_multiple_of_32, zeroed_f_vec, InstructionExt as _};
 
 use super::{JalrChip, JalrColumns, NUM_JALR_COLS};
 
@@ -52,10 +51,13 @@ impl<F: PrimeField32> MachineAir<F> for JalrChip {
 
                     if idx < input.jalr_events.len() {
                         let event = &input.jalr_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
-                        self.event_to_row(&event.0, cols, &mut blu);
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, instruction, event.1);
+                        let instruction = input
+                            .program
+                            .fetch(event.0.pc_rel)
+                            .preprocess_jalr(input.program.pc_base, event.0.pc_rel);
+                        self.event_to_row(&event.0, instruction.op_c, cols, &mut blu);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                        cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });
                 blu
@@ -86,15 +88,15 @@ impl JalrChip {
     fn event_to_row<F: PrimeField32>(
         &self,
         event: &JumpEvent,
+        imm: u64,
         cols: &mut JalrColumns<F>,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
+        // `event.c` is unused, since we ought to use a `JalrEvent` rather than a `JumpEvent`.
         cols.is_real = F::one();
         cols.op_a_value = event.a.into();
-        blu.add_u16_range_checks(&u32_to_u16_limbs(event.a));
-        cols.op_a_range_checker.populate(cols.op_a_value, blu);
-        let next_pc = event.b.wrapping_add(event.c);
-        cols.next_pc_range_checker.populate(Word::from(next_pc), blu);
-        cols.add_operation.populate(blu, event.b, event.c);
+        let next_pc_rel = event.b.wrapping_add(imm);
+        cols.next_pc_range_checker.populate(Word::from(next_pc_rel), blu);
+        cols.add_operation.populate(blu, event.b, imm);
     }
 }

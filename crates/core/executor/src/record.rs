@@ -10,7 +10,7 @@ use sp1_stark::{
     },
     septic_digest::SepticDigest,
     shape::Shape,
-    InteractionKind, MachineRecord, Word,
+    InteractionKind, MachineRecord,
 };
 use std::{
     borrow::Borrow,
@@ -43,12 +43,18 @@ pub struct ExecutionRecord {
     pub cpu_event_count: u32,
     /// A trace of the ADD, and ADDI events.
     pub add_events: Vec<(AluEvent, RTypeRecord)>,
+    /// A trace of the ADDW events.
+    pub addw_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the ADDI events.
     pub addi_events: Vec<(AluEvent, ITypeRecord)>,
+    /// A trace of the ADDIW events.
+    pub addiw_events: Vec<(AluEvent, ITypeRecord)>,
     /// A trace of the MUL events.
     pub mul_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SUB events.
     pub sub_events: Vec<(AluEvent, RTypeRecord)>,
+    /// A trace of the SUBW events.
+    pub subw_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the XOR, XORI, OR, ORI, AND, and ANDI events.
     pub bitwise_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SLL and SLLI events.
@@ -67,12 +73,16 @@ pub struct ExecutionRecord {
     pub memory_load_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of load instructions with `op_a = x0`.
     pub memory_load_x0_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of load double instructions.
+    pub memory_load_double_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store byte instructions.
     pub memory_store_byte_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store half instructions.
     pub memory_store_half_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store word instructions.
     pub memory_store_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of store double instructions.
+    pub memory_store_double_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of the AUIPC events.
     pub auipc_events: Vec<(AUIPCEvent, JTypeRecord)>,
     /// A trace of the branch events.
@@ -100,11 +110,11 @@ pub struct ExecutionRecord {
     /// The global interaction event count.
     pub global_interaction_event_count: u32,
     /// Memory records with `prev_clk >> 24` different from `clk >> 24`.
-    pub bump_memory_events: Vec<(MemoryRecordEnum, u32)>,
+    pub bump_memory_events: Vec<(MemoryRecordEnum, u64)>,
     /// Record where the `clk >> 24` has incremented.
     pub bump_clk_high_events: Vec<(u64, u64, u32)>,
     /// The public values.
-    pub public_values: PublicValues<u32, u32, u64, u32>,
+    pub public_values: PublicValues<u64, u64, u64, u32>,
     /// The next nonce to use for a new lookup.
     pub next_nonce: u64,
     /// The shape of the proof.
@@ -118,9 +128,9 @@ pub struct ExecutionRecord {
     /// The final timestamp of the shard.
     pub last_timestamp: u64,
     /// The start program counter.
-    pub start_pc: Option<u32>,
+    pub pc_start_rel: Option<u32>,
     /// The final program counter.
-    pub next_pc: u32,
+    pub next_pc_rel: u32,
     /// The exit code.
     pub exit_code: u32,
 }
@@ -522,7 +532,7 @@ impl MachineRecord for ExecutionRecord {
             core::array::from_fn(|i| builder.public_values()[i]);
         let public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         > = public_values_slice.as_slice().borrow();
@@ -557,7 +567,7 @@ impl ExecutionRecord {
     fn eval_state<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -620,13 +630,13 @@ impl ExecutionRecord {
         builder.send_state(
             initial_timestamp_high.clone(),
             initial_timestamp_low.clone(),
-            public_values.start_pc,
+            public_values.pc_start_rel,
             AB::Expr::one(),
         );
         builder.receive_state(
             last_timestamp_high.clone(),
             last_timestamp_low.clone(),
-            public_values.next_pc,
+            public_values.next_pc_rel,
             AB::Expr::one(),
         );
 
@@ -642,7 +652,7 @@ impl ExecutionRecord {
             .assert_eq(initial_timestamp_high.clone(), last_timestamp_high.clone());
         builder
             .when_not(increment_execution_shard.clone())
-            .assert_eq(public_values.start_pc, public_values.next_pc);
+            .assert_eq(public_values.pc_start_rel, public_values.next_pc_rel);
 
         // IsZeroOperation on the high bits of the timestamp.
         builder.assert_bool(public_values.is_timestamp_high_eq);
@@ -679,7 +689,7 @@ impl ExecutionRecord {
     fn eval_global_sum<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -714,7 +724,7 @@ impl ExecutionRecord {
     fn eval_global_memory_init<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -748,7 +758,7 @@ impl ExecutionRecord {
     fn eval_global_memory_finalize<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,

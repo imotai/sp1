@@ -19,8 +19,8 @@ use crate::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ExecutionState {
-    /// The program counter.
-    pub pc: u32,
+    /// The program counter minus the program's `pc_base`.
+    pub pc_rel: u32,
 
     /// The shard clock keeps track of how many shards have been executed.
     pub current_shard: Shard,
@@ -39,7 +39,7 @@ pub struct ExecutionState {
 
     /// Uninitialized memory addresses that have a specific value they should be initialized with.
     /// `SyscallHintRead` uses this to write hint data into uninitialized memory.
-    pub uninitialized_memory: Memory<u32>,
+    pub uninitialized_memory: Memory<u64>,
 
     /// A stream of input values (global to the entire program).
     pub input_stream: VecDeque<Vec<u8>>,
@@ -65,13 +65,13 @@ pub struct ExecutionState {
 impl ExecutionState {
     #[must_use]
     /// Create a new [`ExecutionState`].
-    pub fn new(pc_start: u32) -> Self {
+    pub fn new(pc_start_rel: u32) -> Self {
         Self {
             global_clk: 0,
             // Start at shard 1 since shard 0 is reserved for memory initialization.
             current_shard: Shard::new(1).unwrap(),
             clk: 0,
-            pc: pc_start,
+            pc_rel: pc_start_rel,
             memory: Memory::new_preallocated(),
             uninitialized_memory: Memory::new_preallocated(),
             input_stream: VecDeque::new(),
@@ -93,7 +93,7 @@ pub struct ForkState {
     /// The original `clk` value at the fork point.
     pub clk: u64,
     /// The original `pc` value at the fork point.
-    pub pc: u32,
+    pub pc_rel: u32,
     /// All memory changes since the fork point.
     pub memory_diff: Memory<Option<MemoryEntry>>,
 }

@@ -15,7 +15,7 @@ pub struct MemoryRecord {
     /// The timestamp.
     pub timestamp: u64,
     /// The value.
-    pub value: u32,
+    pub value: u64,
 }
 
 /// A shard number. Used to identify shards in the SP1 proving architecture.
@@ -84,13 +84,13 @@ pub struct MemoryEntry {
     /// The timestamp.
     pub timestamp: u64,
     /// The value.
-    pub value: u32,
+    pub value: u64,
 }
 
 impl MemoryEntry {
     /// Create a memory entry that represents the program-wide initialization of a value.
     #[must_use]
-    pub fn init(value: u32) -> Self {
+    pub fn init(value: u64) -> Self {
         Self { lshard: LogicalShard::default(), timestamp: 0, value }
     }
 }
@@ -187,7 +187,7 @@ pub enum MemoryAccessPosition {
 #[repr(C)]
 pub struct MemoryReadRecord {
     /// The value.
-    pub value: u32,
+    pub value: u64,
     /// The shard number.
     pub shard: u32,
     /// The timestamp.
@@ -207,13 +207,13 @@ pub struct MemoryReadRecord {
 #[repr(C)]
 pub struct MemoryWriteRecord {
     /// The value.
-    pub value: u32,
+    pub value: u64,
     /// The shard number.
     pub shard: u32,
     /// The timestamp.
     pub timestamp: u64,
     /// The previous value.
-    pub prev_value: u32,
+    pub prev_value: u64,
     /// The previous shard number.
     pub prev_shard: u32,
     /// The previous timestamp.
@@ -277,9 +277,9 @@ impl MemoryRecordEnum {
 #[repr(C)]
 pub struct MemoryInitializeFinalizeEvent {
     /// The address.
-    pub addr: u32,
+    pub addr: u64,
     /// The value.
-    pub value: u32,
+    pub value: u64,
     /// The shard number.
     pub shard: u32,
     /// The timestamp.
@@ -322,7 +322,7 @@ impl MemoryWriteRecord {
 impl MemoryRecordEnum {
     /// Returns the value of the memory record.
     #[must_use]
-    pub const fn value(&self) -> u32 {
+    pub const fn value(&self) -> u64 {
         match self {
             MemoryRecordEnum::Read(record) => record.value,
             MemoryRecordEnum::Write(record) => record.value,
@@ -331,7 +331,7 @@ impl MemoryRecordEnum {
 
     /// Returns the previous value of the memory record.
     #[must_use]
-    pub const fn prev_value(&self) -> u32 {
+    pub const fn prev_value(&self) -> u64 {
         match self {
             MemoryRecordEnum::Read(record) => record.value,
             MemoryRecordEnum::Write(record) => record.prev_value,
@@ -342,13 +342,13 @@ impl MemoryRecordEnum {
 impl MemoryInitializeFinalizeEvent {
     /// Creates a new [``MemoryInitializeFinalizeEvent``] for an initialization.
     #[must_use]
-    pub const fn initialize(addr: u32, value: u32) -> Self {
+    pub const fn initialize(addr: u64, value: u64) -> Self {
         Self { addr, value, shard: 0, timestamp: 0 }
     }
 
     /// Creates a new [``MemoryInitializeFinalizeEvent``] for a finalization.
     #[must_use]
-    pub const fn finalize_from_record(addr: u32, record: &MemoryEntry) -> Self {
+    pub const fn finalize_from_record(addr: u64, record: &MemoryEntry) -> Self {
         Self {
             addr,
             value: record.value,
@@ -379,7 +379,7 @@ impl From<MemoryWriteRecord> for MemoryRecordEnum {
 #[repr(C)]
 pub struct MemoryLocalEvent {
     /// The address.
-    pub addr: u32,
+    pub addr: u64,
     /// The initial memory access.
     pub initial_mem_access: MemoryRecord,
     /// The final memory access.

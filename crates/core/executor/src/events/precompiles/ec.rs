@@ -30,13 +30,13 @@ pub struct EllipticCurveAddEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the first point.
-    pub p_ptr: u32,
+    pub p_ptr: u64,
     /// The first point as a list of words.
-    pub p: Vec<u32>,
+    pub p: Vec<u64>,
     /// The pointer to the second point.
-    pub q_ptr: u32,
+    pub q_ptr: u64,
     /// The second point as a list of words.
-    pub q: Vec<u32>,
+    pub q: Vec<u64>,
     /// The memory records for the first point.
     pub p_memory_records: Vec<MemoryWriteRecord>,
     /// The memory records for the second point.
@@ -55,9 +55,9 @@ pub struct EllipticCurveDoubleEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the point.
-    pub p_ptr: u32,
+    pub p_ptr: u64,
     /// The point as a list of words.
-    pub p: Vec<u32>,
+    pub p: Vec<u64>,
     /// The memory records for the point.
     pub p_memory_records: Vec<MemoryWriteRecord>,
     /// The local memory access records.
@@ -74,7 +74,7 @@ pub struct EllipticCurveDecompressEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the point.
-    pub ptr: u32,
+    pub ptr: u64,
     /// The sign bit of the point.
     pub sign_bit: bool,
     /// The x coordinate as a list of bytes.
@@ -96,16 +96,16 @@ pub struct EllipticCurveDecompressEvent {
 /// each.
 pub fn create_ec_add_event<E: EllipticCurve, Ex: ExecutorConfig>(
     rt: &mut SyscallContext<'_, '_, Ex>,
-    arg1: u32,
-    arg2: u32,
+    arg1: u64,
+    arg2: u64,
 ) -> EllipticCurveAddEvent {
     let start_clk = rt.clk;
     let p_ptr = arg1;
-    if p_ptr % 4 != 0 {
+    if p_ptr % 8 != 0 {
         panic!();
     }
     let q_ptr = arg2;
-    if q_ptr % 4 != 0 {
+    if q_ptr % 8 != 0 {
         panic!();
     }
 
@@ -145,12 +145,12 @@ pub fn create_ec_add_event<E: EllipticCurve, Ex: ExecutorConfig>(
 /// result back to the memory location.
 pub fn create_ec_double_event<E: EllipticCurve, Ex: ExecutorConfig>(
     rt: &mut SyscallContext<'_, '_, Ex>,
-    arg1: u32,
-    _: u32,
+    arg1: u64,
+    _: u64,
 ) -> EllipticCurveDoubleEvent {
     let start_clk = rt.clk;
     let p_ptr = arg1;
-    if p_ptr % 4 != 0 {
+    if p_ptr % 8 != 0 {
         panic!();
     }
 
@@ -182,18 +182,18 @@ pub fn create_ec_double_event<E: EllipticCurve, Ex: ExecutorConfig>(
 /// writes the result back to the memory location.
 pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
     rt: &mut SyscallContext<'_, '_, Ex>,
-    slice_ptr: u32,
-    sign_bit: u32,
+    slice_ptr: u64,
+    sign_bit: u64,
 ) -> EllipticCurveDecompressEvent {
     let start_clk = rt.clk;
-    assert!(slice_ptr % 4 == 0, "slice_ptr must be 4-byte aligned");
+    assert!(slice_ptr % 8 == 0, "slice_ptr must be 8-byte aligned");
     assert!(sign_bit <= 1, "is_odd must be 0 or 1");
 
     let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
-    let num_words_field_element = num_limbs / 4;
+    let num_words_field_element = num_limbs / 8;
 
     let (x_memory_records, x_vec) =
-        rt.mr_slice(slice_ptr + (num_limbs as u32), num_words_field_element);
+        rt.mr_slice(slice_ptr + (num_limbs as u64), num_words_field_element);
 
     let x_bytes = words_to_bytes_le_vec(&x_vec);
     let mut x_bytes_be = x_bytes.clone();
@@ -206,7 +206,7 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
         _ => panic!("Unsupported curve"),
     };
 
-    let computed_point: AffinePoint<E> = decompress_fn(&x_bytes_be, sign_bit);
+    let computed_point: AffinePoint<E> = decompress_fn(&x_bytes_be, sign_bit as u32);
 
     let mut decompressed_y_bytes = computed_point.y.to_bytes_le();
     decompressed_y_bytes.resize(num_limbs, 0u8);

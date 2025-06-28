@@ -7,14 +7,15 @@ mod test;
 mod zerocheck_unit_test;
 
 pub use logger::*;
-use p3_field::{AbstractField, Field};
 pub use prove::*;
 pub use span::*;
 #[cfg(test)]
 pub use test::*;
 pub use zerocheck_unit_test::*;
 
+use p3_field::{AbstractField, Field, PrimeField64};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use sp1_core_executor::Instruction;
 use sp1_primitives::consts::WORD_BYTE_SIZE;
 pub use sp1_primitives::consts::{
     bytes_to_words_le, bytes_to_words_le_vec, num_to_comma_separated, words_to_bytes_le,
@@ -45,9 +46,20 @@ pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Ex
     let base = AB::Expr::from_canonical_u32(1 << 8);
     let result_words: Vec<Word<AB::Expr>> = limbs
         .chunks(WORD_BYTE_SIZE)
-        .map(|l| Word([l[0] + l[1] * base.clone(), l[2] + l[3] * base.clone()]))
+        .map(|l| {
+            Word([
+                l[0] + l[1] * base.clone(),
+                l[2] + l[3] * base.clone(),
+                l[4] + l[5] * base.clone(),
+                l[6] + l[7] * base.clone(),
+            ])
+        })
         .collect();
     result_words
+}
+
+pub fn u32_to_half_word<F: Field>(value: u32) -> [F; 2] {
+    [F::from_canonical_u16((value & 0xFFFF) as u16), F::from_canonical_u16((value >> 16) as u16)]
 }
 
 /// Pad to a power of two, with an option to specify the power.
@@ -148,4 +160,81 @@ pub fn zeroed_f_vec<F: Field>(len: usize) -> Vec<F> {
 
     let vec = vec![0u32; len];
     unsafe { std::mem::transmute::<Vec<u32>, Vec<F>>(vec) }
+}
+
+/// Extension methods for `Instruction` that are relevant only for this crate.
+pub(crate) trait InstructionExt {
+    /// Preprocess an instruction for use in arithmetization.
+    fn preprocess<F: PrimeField64>(self, pc_base: u64, pc_rel: u32) -> Self;
+    /// Preprocess a branch (conditional jump) instruction for use in arithmetization.
+    fn preprocess_branch<F: PrimeField64>(self, pc_rel: u32) -> Self;
+    /// Preprocess a `JAL` instruction for use in arithmetization.
+    fn preprocess_jal<F: PrimeField64>(self, pc_base: u64, pc_rel: u32) -> Self;
+    /// Preprocess a `JALR` instruction for use in arithmetization.
+    fn preprocess_jalr(self, pc_base: u64, pc_rel: u32) -> Self;
+    /// Preprocess an `AUIPC` instruction for use in arithmetization.
+    fn preprocess_auipc(self, pc_base: u64, pc_rel: u32) -> Self;
+}
+
+impl InstructionExt for Instruction {
+    fn preprocess<F: PrimeField64>(self, pc_base: u64, pc_rel: u32) -> Self {
+        if self.is_branch_instruction() {
+            self.preprocess_branch::<F>(pc_rel)
+        } else if self.is_jal_instruction() {
+            self.preprocess_jal::<F>(pc_base, pc_rel)
+        } else if self.is_jalr_instruction() {
+            self.preprocess_jalr(pc_base, pc_rel)
+        } else if self.is_auipc_instruction() {
+            self.preprocess_auipc(pc_base, pc_rel)
+        } else {
+            self
+        }
+    }
+
+    fn preprocess_branch<F: PrimeField64>(mut self, pc_rel: u32) -> Self {
+        // c is first imm, then pc_rel + imm.
+        self.op_c = (pc_rel as u64).wrapping_add(self.op_c);
+        // Check that the resulting term of "type PC" fits.
+        debug_assert!(self.op_c < F::ORDER_U64);
+        self
+    }
+
+    fn preprocess_jal<F: PrimeField64>(mut self, pc_base: u64, pc_rel: u32) -> Instruction {
+        // rd <- pc + 4; pc <- pc + imm
+        // (a, b, c) is first (rd, imm, _) and then (rd, pc_rel + imm, pc + 4).
+        // We have to translate the relative pc to an absolute pc before storing it
+        // in the destination register.
+        self.op_b = (pc_rel as u64).wrapping_add(self.op_b);
+        self.op_c = (pc_rel as u64).wrapping_add(pc_base).wrapping_add(4);
+        // Check that the resulting term of "type PC" fits.
+        debug_assert!(self.op_b < F::ORDER_U64);
+        if self.op_a == 0 {
+            self.op_c = 0;
+        }
+        self
+    }
+
+    fn preprocess_jalr(mut self, pc_base: u64, pc_rel: u32) -> Instruction {
+        // rd <- pc + 4; pc <- rs1 + imm
+        // (a, b, c) is
+        // - first (rd, rs1, imm)
+        // - then (rd, [TODO] (pc + 4) * (1 << 8) + rs1, imm - pc_base).
+        // We assume that absolute PCs must always fit within 6 bytes (< 2^48).
+        self.op_c = self.op_c.wrapping_sub(pc_base);
+        let pc_abs_p4 = (pc_rel as u64).wrapping_add(pc_base).wrapping_add(4);
+        debug_assert!(self.op_b < (1 << 16));
+        debug_assert!(pc_abs_p4 < (1 << 48));
+        self.op_b += pc_abs_p4 << 16;
+        self
+    }
+
+    fn preprocess_auipc(mut self, pc_base: u64, pc_rel: u32) -> Instruction {
+        // rd <- pc + imm
+        let pc_abs = (pc_rel as u64).wrapping_add(pc_base);
+        self.op_b = pc_abs.wrapping_add(self.op_b);
+        if self.op_a == 0 {
+            self.op_b = 0;
+        }
+        self
+    }
 }

@@ -102,8 +102,43 @@ pub enum Opcode {
     ECALL = 36,
     /// Transfer control to the debugger.
     EBREAK = 37,
+    // RISCV-64
+    /// rd ← rs1 + rs2, pc ← pc + 4
+    ADDW = 38,
+    /// rd ← rs1 - rs2, pc ← pc + 4
+    SUBW = 39,
+    /// rd ← rs1 << rs2, pc ← pc + 4
+    SLLW = 40,
+    /// rd ← rs1 >> rs2 (logical), pc ← pc + 4
+    SRLW = 41,
+    /// rd ← rs1 >> rs2 (arithmetic), pc ← pc + 4
+    SRAW = 42,
+    /// rd ← rs1 + imm, pc ← pc + 4
+    ADDIW = 43,
+    /// rd ← rs1 << imm, pc ← pc + 4
+    SLLIW = 44,
+    /// rd ← rs1 >> imm (logical), pc ← pc + 4
+    SRLIW = 45,
+    /// rd ← rs1 >> imm (arithmetic), pc ← pc + 4
+    SRAIW = 46,
+    /// rd ← sx(m32(rs1 + imm)), pc ← pc + 4
+    LWU = 47,
+    /// rd ← sx(m8(rs1 + imm)), pc ← pc + 4
+    LD = 48,
+    /// m8(rs1 + imm) ← rs2[7:0], pc ← pc + 4
+    SD = 49,
+    /// rd ← rs1 + imm, pc ← pc + 4
+    MULW = 50,
+    /// rd ← rs1 / rs2 (signed), pc ← pc + 4
+    DIVW = 51,
+    /// rd ← rs1 / rs2 (unsigned), pc ← pc + 4
+    DIVUW = 52,
+    /// rd ← rs1 % rs2 (signed), pc ← pc + 4
+    REMW = 53,
+    /// rd ← rs1 % rs2 (unsigned), pc ← pc + 4
+    REMUW = 54,
     /// Unimplemented instruction.
-    UNIMP = 38,
+    UNIMP = 55,
 }
 /// Byte Opcode.
 ///
@@ -125,8 +160,10 @@ pub enum ByteOpcode {
     LTU = 4,
     /// Most Significant Bit.
     MSB = 5,
+    /// Shift Right.
+    SR = 6,
     /// Range Check.
-    Range = 6,
+    Range = 7,
 }
 
 impl Opcode {
@@ -172,6 +209,23 @@ impl Opcode {
             Opcode::DIVU => "divu",
             Opcode::REM => "rem",
             Opcode::REMU => "remu",
+            Opcode::ADDW => "addw",
+            Opcode::SUBW => "subw",
+            Opcode::SLLW => "sllw",
+            Opcode::SRLW => "srlw",
+            Opcode::SRAW => "sraw",
+            Opcode::ADDIW => "addiw",
+            Opcode::SLLIW => "slliw",
+            Opcode::SRLIW => "srliw",
+            Opcode::SRAIW => "sraiw",
+            Opcode::LWU => "lwu",
+            Opcode::LD => "ld",
+            Opcode::SD => "sd",
+            Opcode::MULW => "mulw",
+            Opcode::DIVW => "divw",
+            Opcode::DIVUW => "divuw",
+            Opcode::REMW => "remw",
+            Opcode::REMUW => "remuw",
             Opcode::UNIMP => "unimp",
         }
     }

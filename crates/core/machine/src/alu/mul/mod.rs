@@ -40,7 +40,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -92,6 +92,9 @@ pub struct MulCols<T> {
 
     /// Whether the operation is MULHSU.
     pub is_mulhsu: T,
+
+    /// Whether the operation is MULW.
+    pub is_mulw: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for MulChip {
@@ -129,9 +132,9 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.mul_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -153,9 +156,9 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_MUL_COLS];
                     let cols: &mut MulCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
+                    let instruction = input.program.fetch(event.0.pc_rel);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -192,12 +195,14 @@ impl MulChip {
             event.c,
             event.opcode == Opcode::MULH,
             event.opcode == Opcode::MULHSU,
+            event.opcode == Opcode::MULW,
         );
 
         cols.is_mul = F::from_bool(event.opcode == Opcode::MUL);
         cols.is_mulh = F::from_bool(event.opcode == Opcode::MULH);
         cols.is_mulhu = F::from_bool(event.opcode == Opcode::MULHU);
         cols.is_mulhsu = F::from_bool(event.opcode == Opcode::MULHSU);
+        cols.is_mulw = F::from_bool(event.opcode == Opcode::MULW);
 
         cols.a = Word::from(event.a);
         cols.is_real = F::one();
@@ -229,6 +234,7 @@ where
             local.is_real.into(),
             local.is_mul.into(),
             local.is_mulh.into(),
+            local.is_mulw.into(),
             local.is_mulhu.into(),
             local.is_mulhsu.into(),
         );
@@ -238,11 +244,12 @@ where
             // Exactly one of the opcodes must be on in a "real" row.
             builder.assert_eq(
                 local.is_real,
-                local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu,
+                local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu + local.is_mulw,
             );
             builder.assert_bool(local.is_mul);
             builder.assert_bool(local.is_mulh);
             builder.assert_bool(local.is_mulhu);
+            builder.assert_bool(local.is_mulw);
             builder.assert_bool(local.is_mulhsu);
             builder.assert_bool(local.is_real);
 
@@ -250,10 +257,12 @@ where
             let mulh: AB::Expr = AB::F::from_canonical_u32(Opcode::MULH as u32).into();
             let mulhu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHU as u32).into();
             let mulhsu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHSU as u32).into();
+            let mulw: AB::Expr = AB::F::from_canonical_u32(Opcode::MULW as u32).into();
             local.is_mul * mul
                 + local.is_mulh * mulh
                 + local.is_mulhu * mulhu
                 + local.is_mulhsu * mulhsu
+                + local.is_mulw * mulw
         };
 
         // Constrain the state of the CPU.
@@ -261,8 +270,8 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -271,7 +280,7 @@ where
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             a_expr,
             local.adapter,

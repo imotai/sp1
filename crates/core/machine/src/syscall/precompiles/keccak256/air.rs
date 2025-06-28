@@ -1,4 +1,5 @@
 use core::borrow::Borrow;
+use std::iter::once;
 
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
@@ -158,43 +159,40 @@ where
             builder.assert_eq(computed_a_prime_prime_prime_0_0_limb, a_prime_prime_prime_0_0_limb);
         }
 
+        let receive_values = once(local.clk_high)
+            .chain(once(local.clk_low))
+            .chain(local.state_addr)
+            .chain(once(local.index))
+            .chain(
+                local
+                    .keccak
+                    .a
+                    .into_iter()
+                    .flat_map(|two_d| two_d.into_iter().flat_map(|one_d| one_d.into_iter())),
+            )
+            .map(Into::into)
+            .collect::<Vec<_>>();
+
         // Receive state.
         builder.receive(
-            AirInteraction::new(
-                vec![local.clk_high, local.clk_low, local.state_addr, local.index]
-                    .into_iter()
-                    .chain(
-                        local.keccak.a.into_iter().flat_map(|two_d| {
-                            two_d.into_iter().flat_map(|one_d| one_d.into_iter())
-                        }),
-                    )
-                    .map(Into::into)
-                    .collect(),
-                local.is_real.into(),
-                InteractionKind::Keccak,
-            ),
+            AirInteraction::new(receive_values, local.is_real.into(), InteractionKind::Keccak),
             InteractionScope::Local,
         );
 
+        let send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(local.state_addr.map(Into::into))
+            .chain(once(local.index + AB::Expr::one()))
+            .chain((0..5).flat_map(|y| {
+                (0..5).flat_map(move |x| {
+                    (0..4).map(move |limb| local.keccak.a_prime_prime_prime(y, x, limb).into())
+                })
+            }))
+            .collect::<Vec<_>>();
+
         // Send state.
         builder.send(
-            AirInteraction::new(
-                vec![
-                    local.clk_high.into(),
-                    local.clk_low.into(),
-                    local.state_addr.into(),
-                    local.index + AB::Expr::one(),
-                ]
-                .into_iter()
-                .chain((0..5).flat_map(|y| {
-                    (0..5).flat_map(move |x| {
-                        (0..4).map(move |limb| local.keccak.a_prime_prime_prime(y, x, limb).into())
-                    })
-                }))
-                .collect(),
-                local.is_real.into(),
-                InteractionKind::Keccak,
-            ),
+            AirInteraction::new(send_values, local.is_real.into(), InteractionKind::Keccak),
             InteractionScope::Local,
         );
     }

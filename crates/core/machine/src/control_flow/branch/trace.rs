@@ -11,7 +11,7 @@ use sp1_core_executor::{
 };
 use sp1_stark::air::MachineAir;
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::utils::{next_multiple_of_32, zeroed_f_vec, InstructionExt as _};
 
 use super::{BranchChip, BranchColumns, NUM_BRANCH_COLS};
 
@@ -52,9 +52,11 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
                     if idx < input.branch_events.len() {
                         let event = &input.branch_events[idx];
                         self.event_to_row(&event.0, cols, &mut blu);
-                        let mut instruction = *input.program.fetch(event.0.pc);
-                        instruction.op_c = event.0.pc.wrapping_add(instruction.op_c);
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        let instruction = input
+                            .program
+                            .fetch(event.0.pc_rel)
+                            .preprocess_branch::<F>(event.0.pc_rel);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });
@@ -101,7 +103,7 @@ impl BranchChip {
         let use_signed_comparison = matches!(event.opcode, Opcode::BLT | Opcode::BGE);
 
         let a_lt_b = if use_signed_comparison {
-            (event.a as i32) < (event.b as i32)
+            (event.a as i64) < (event.b as i64)
         } else {
             event.a < event.b
         };
@@ -116,13 +118,13 @@ impl BranchChip {
 
         cols.compare_operation.populate_signed(
             blu,
-            a_lt_b as u32,
+            a_lt_b as u64,
             event.a,
             event.b,
             use_signed_comparison,
         );
 
-        cols.next_pc = F::from_canonical_u32(event.next_pc);
+        cols.next_pc_rel = F::from_canonical_u32(event.next_pc_rel);
 
         if branching {
             cols.is_branching = F::one();

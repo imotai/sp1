@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::opcode::Opcode;
 
-/// RISC-V 32IM Instruction.
+/// RISC-V 64IM Instruction.
 ///
 /// The structure of the instruction differs from the RISC-V ISA. We do not encode the instructions
 /// as 32-bit words, but instead use a custom encoding that is more friendly to decode in the
@@ -18,9 +18,9 @@ pub struct Instruction {
     /// The first operand.
     pub op_a: u8,
     /// The second operand.
-    pub op_b: u32,
+    pub op_b: u64,
     /// The third operand.
-    pub op_c: u32,
+    pub op_c: u64,
     /// Whether the second operand is an immediate value.
     pub imm_b: bool,
     /// Whether the third operand is an immediate value.
@@ -33,8 +33,8 @@ impl Instruction {
     pub const fn new(
         opcode: Opcode,
         op_a: u8,
-        op_b: u32,
-        op_c: u32,
+        op_b: u64,
+        op_c: u64,
         imm_b: bool,
         imm_c: bool,
     ) -> Self {
@@ -66,6 +66,21 @@ impl Instruction {
                 | Opcode::DIVU
                 | Opcode::REM
                 | Opcode::REMU
+                // RISCV-64
+                | Opcode::ADDW
+                | Opcode::SUBW
+                | Opcode::MULW
+                | Opcode::DIVW
+                | Opcode::DIVUW
+                | Opcode::REMW
+                | Opcode::REMUW
+                | Opcode::ADDIW
+                | Opcode::SLLW
+                | Opcode::SRLW
+                | Opcode::SRAW
+                | Opcode::SLLIW
+                | Opcode::SRLIW
+                | Opcode::SRAIW
         )
     }
 
@@ -80,14 +95,24 @@ impl Instruction {
     #[must_use]
     #[inline]
     pub const fn is_memory_load_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::LB | Opcode::LH | Opcode::LW | Opcode::LBU | Opcode::LHU)
+        matches!(
+            self.opcode,
+            Opcode::LB
+                | Opcode::LH
+                | Opcode::LW
+                | Opcode::LBU
+                | Opcode::LHU
+                // RISCV-64
+                | Opcode::LWU
+                | Opcode::LD
+        )
     }
 
     /// Returns if the instruction is a memory store instruction.
     #[must_use]
     #[inline]
     pub const fn is_memory_store_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::SB | Opcode::SH | Opcode::SW)
+        matches!(self.opcode, Opcode::SB | Opcode::SH | Opcode::SW | /* RISCV-64 */ Opcode::SD)
     }
 
     /// Returns if the instruction is a branch instruction.

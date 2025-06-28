@@ -20,9 +20,9 @@ use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_stark::air::MachineAir;
+use sp1_stark::{air::MachineAir, Word};
 
 #[derive(Default)]
 pub struct StoreWordChip;
@@ -44,6 +44,12 @@ pub struct StoreWordColumns<T> {
 
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
+
+    /// Whether the offset is `0` or `4`.
+    pub offset_bit: T,
+
+    /// The value to store.
+    pub store_value: Word<T>,
 
     /// Whether this is a real store word instruction.
     pub is_real: T,
@@ -93,9 +99,9 @@ impl<F: PrimeField32> MachineAir<F> for StoreWordChip {
 
                     if idx < input.memory_store_word_events.len() {
                         let event = &input.memory_store_word_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc_rel);
                         self.event_to_row(&event.0, cols, &mut blu);
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
@@ -133,7 +139,9 @@ impl StoreWordChip {
         cols.memory_access.populate(event.mem_access, blu);
 
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        debug_assert!(memory_addr % 4 == 0);
+        let bit = ((memory_addr >> 2) & 1) as u16;
+        cols.offset_bit = F::from_canonical_u16(bit);
+        cols.store_value = Word::from(event.mem_access.value());
 
         cols.is_real = F::one();
     }
@@ -164,6 +172,7 @@ where
             local.adapter.c().map(Into::into),
             AB::Expr::zero(),
             AB::Expr::zero(),
+            local.offset_bit.into(),
             local.is_real.into(),
             local.address_operation,
         );
@@ -172,18 +181,43 @@ where
         builder.eval_memory_access_write(
             clk_high.clone(),
             clk_low.clone(),
-            aligned_addr.clone(),
+            &aligned_addr.map(Into::into),
             local.memory_access,
-            *local.adapter.prev_a(),
+            local.store_value,
             local.is_real,
+        );
+
+        // Step 3. Constrain the write value.
+        let store_limb = local.adapter.prev_a().0;
+        builder.assert_eq(
+            local.store_value.0[0],
+            local.memory_access.prev_value.0[0]
+                + (store_limb[0] - local.memory_access.prev_value.0[0])
+                    * (AB::Expr::one() - local.offset_bit),
+        );
+        builder.assert_eq(
+            local.store_value.0[1],
+            local.memory_access.prev_value.0[1]
+                + (store_limb[1] - local.memory_access.prev_value.0[1])
+                    * (AB::Expr::one() - local.offset_bit),
+        );
+        builder.assert_eq(
+            local.store_value.0[2],
+            local.memory_access.prev_value.0[2]
+                + (store_limb[0] - local.memory_access.prev_value.0[2]) * local.offset_bit,
+        );
+        builder.assert_eq(
+            local.store_value.0[3],
+            local.memory_access.prev_value.0[3]
+                + (store_limb[1] - local.memory_access.prev_value.0[3]) * local.offset_bit,
         );
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -192,7 +226,7 @@ where
             builder,
             clk_high,
             clk_low,
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             local.adapter,
             local.is_real.into(),

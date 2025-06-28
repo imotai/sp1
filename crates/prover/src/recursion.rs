@@ -12,7 +12,7 @@ use slop_jagged::JaggedConfig;
 use slop_merkle_tree::my_bb_16_perm;
 use sp1_core_executor::SP1ReduceProof;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_primitives::{consts::WORD_SIZE, hash_deferred_proof};
+use sp1_primitives::hash_deferred_proof;
 use sp1_recursion_circuit::{
     basefold::{
         merkle_tree::MerkleTree, stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
@@ -43,7 +43,7 @@ use sp1_recursion_executor::{
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     prover::{MachineProver, MachineProverComponents, MachineProverError, MachineProvingKey},
-    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier, Word,
+    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
 use crate::{
@@ -839,8 +839,8 @@ fn dummy_deferred_input<C: RecursionProverComponents>(
         end_shard: BabyBear::zero(),
         end_execution_shard: BabyBear::zero(),
         end_timestamp: [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()],
-        init_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
-        finalize_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
+        init_addr_word: [BabyBear::zero(); 3],
+        finalize_addr_word: [BabyBear::zero(); 3],
         is_complete: false,
     }
 }

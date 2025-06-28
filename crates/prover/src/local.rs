@@ -28,7 +28,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
+    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof,
 };
 use std::{
     borrow::Borrow,
@@ -151,7 +151,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         runtime.record.public_values.committed_value_digest.iter().enumerate().for_each(
             |(i, word)| {
                 let bytes = word.to_le_bytes();
-                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes);
+                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes[0..4]);
             },
         );
 
@@ -649,7 +649,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 start_reconstruct_deferred_digest: deferred_digest,
                 is_complete: false,
                 sp1_vk_digest: vk.hash_babybear(),
-                end_pc: vk.pc_start,
+                end_pc: vk.pc_start_rel,
                 end_shard: BabyBear::one(),
                 end_execution_shard: BabyBear::one(),
                 end_timestamp: [
@@ -658,8 +658,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     BabyBear::zero(),
                     BabyBear::one(),
                 ],
-                init_addr_word: Word([BabyBear::zero(); 2]),
-                finalize_addr_word: Word([BabyBear::zero(); 2]),
+                init_addr_word: [BabyBear::zero(); 3],
+                finalize_addr_word: [BabyBear::zero(); 3],
                 committed_value_digest: [[BabyBear::zero(); 4]; 8],
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });

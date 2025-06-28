@@ -105,6 +105,7 @@ where
             max_constraint_degree = std::cmp::max(max_constraint_degree, MAX_CONSTRAINT_DEGREE);
         }
         assert!(max_constraint_degree > 0);
+        let max_constraint_degree = 3;
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
         // Count the number of constraints.

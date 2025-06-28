@@ -1,3 +1,4 @@
+use crate::air::WordAirBuilder;
 use crate::utils::next_multiple_of_32;
 use core::fmt;
 use itertools::Itertools;
@@ -6,7 +7,7 @@ use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
-    events::{GlobalInteractionEvent, SyscallEvent},
+    events::{ByteRecord, GlobalInteractionEvent, SyscallEvent},
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
@@ -64,10 +65,10 @@ pub struct SyscallCols<T: Copy> {
     pub syscall_id: T,
 
     /// The arg1.
-    pub arg1: T,
+    pub arg1: [T; 3],
 
     /// The arg2.
-    pub arg2: T,
+    pub arg2: [T; 3],
 
     pub is_real: T,
 }
@@ -100,18 +101,26 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
         let events = events
             .iter()
             .filter(|e| e.should_send)
-            .map(|event| GlobalInteractionEvent {
-                message: [
-                    (event.clk >> 24) as u32,
-                    (event.clk & 0xFFFFFF) as u32,
-                    event.syscall_id,
-                    event.arg1,
-                    event.arg2,
-                    0,
-                    0,
-                ],
-                is_receive: self.shard_kind == SyscallShardKind::Precompile,
-                kind: InteractionKind::Syscall as u8,
+            .map(|event| {
+                let mut blu = Vec::new();
+                blu.add_u8_range_checks(&[event.syscall_id as u8]);
+                blu.add_u16_range_checks(&[(event.arg1 & 0xFFFF) as u16]);
+                let global_event = GlobalInteractionEvent {
+                    message: [
+                        (event.clk >> 24) as u32,
+                        (event.clk & 0xFFFFFF) as u32,
+                        event.syscall_id + (1 << 8) * (event.arg1 & 0xFFFF) as u32,
+                        ((event.arg1 >> 16) & 0xFFFF) as u32,
+                        ((event.arg1 >> 32) & 0xFFFF) as u32,
+                        (event.arg2 & 0xFFFF) as u32,
+                        ((event.arg2 >> 16) & 0xFFFF) as u32,
+                        ((event.arg2 >> 32) & 0xFFFF) as u32,
+                    ],
+                    is_receive: self.shard_kind == SyscallShardKind::Precompile,
+                    kind: InteractionKind::Syscall as u8,
+                };
+                output.add_byte_lookup_events(blu);
+                global_event
             })
             .collect_vec();
         output.global_interaction_events.extend(events);
@@ -150,8 +159,18 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             cols.clk_high = F::from_canonical_u32((syscall_event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((syscall_event.clk & 0xFFFFFF) as u32);
             cols.syscall_id = F::from_canonical_u32(syscall_event.syscall_code.syscall_id());
-            cols.arg1 = F::from_canonical_u32(syscall_event.arg1);
-            cols.arg2 = F::from_canonical_u32(syscall_event.arg2);
+
+            cols.arg1 = [
+                F::from_canonical_u64((syscall_event.arg1 & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg1 >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg1 >> 32) & 0xFFFF) as u64),
+            ];
+            cols.arg2 = [
+                F::from_canonical_u64((syscall_event.arg2 & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg2 >> 16) & 0xFFFF) as u64),
+                F::from_canonical_u64(((syscall_event.arg2 >> 32) & 0xFFFF) as u64),
+            ];
+
             cols.is_real = F::one();
             row
         };
@@ -229,14 +248,19 @@ where
             local.is_real * local.is_real * local.is_real,
         );
 
+        // Constrain that the syscall id is 8 bits.
+        builder.slice_range_check_u8(&[local.syscall_id], local.is_real);
+        // Constrain that the arg1 is 16 bits.
+        builder.slice_range_check_u16(&[local.arg1[0]], local.is_real);
+
         match self.shard_kind {
             SyscallShardKind::Core => {
                 builder.receive_syscall(
                     local.clk_high,
                     local.clk_low,
                     local.syscall_id,
-                    local.arg1,
-                    local.arg2,
+                    local.arg1.map(Into::into),
+                    local.arg2.map(Into::into),
                     local.is_real,
                     InteractionScope::Local,
                 );
@@ -247,11 +271,12 @@ where
                         vec![
                             local.clk_high.into(),
                             local.clk_low.into(),
-                            local.syscall_id.into(),
-                            local.arg1.into(),
-                            local.arg2.into(),
-                            AB::Expr::zero(),
-                            AB::Expr::zero(),
+                            local.syscall_id + local.arg1[0] * AB::F::from_canonical_u32(1 << 8),
+                            local.arg1[1].into(),
+                            local.arg1[2].into(),
+                            local.arg2[0].into(),
+                            local.arg2[1].into(),
+                            local.arg2[2].into(),
                             AB::Expr::one(),
                             AB::Expr::zero(),
                             AB::Expr::from_canonical_u8(InteractionKind::Syscall as u8),
@@ -267,8 +292,8 @@ where
                     local.clk_high,
                     local.clk_low,
                     local.syscall_id,
-                    local.arg1,
-                    local.arg2,
+                    local.arg1.map(Into::into),
+                    local.arg2.map(Into::into),
                     local.is_real,
                     InteractionScope::Local,
                 );
@@ -279,11 +304,12 @@ where
                         vec![
                             local.clk_high.into(),
                             local.clk_low.into(),
-                            local.syscall_id.into(),
-                            local.arg1.into(),
-                            local.arg2.into(),
-                            AB::Expr::zero(),
-                            AB::Expr::zero(),
+                            local.syscall_id + local.arg1[0] * AB::F::from_canonical_u32(1 << 8),
+                            local.arg1[1].into(),
+                            local.arg1[2].into(),
+                            local.arg2[0].into(),
+                            local.arg2[1].into(),
+                            local.arg2[2].into(),
                             AB::Expr::zero(),
                             AB::Expr::one(),
                             AB::Expr::from_canonical_u8(InteractionKind::Syscall as u8),

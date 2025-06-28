@@ -19,7 +19,7 @@ use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS},
     septic_curve::SepticCurve,
     septic_digest::SepticDigest,
-    MachineVerifyingKey, ShardProof, Word,
+    MachineVerifyingKey, ShardProof,
 };
 
 use sp1_recursion_executor::{
@@ -68,8 +68,8 @@ pub struct SP1DeferredWitnessValues<SC: BabyBearFriConfig + FieldHasher<BabyBear
     pub end_shard: SC::F,
     pub end_execution_shard: SC::F,
     pub end_timestamp: [SC::F; 4],
-    pub init_addr_word: Word<SC::F>,
-    pub finalize_addr_word: Word<SC::F>,
+    pub init_addr_word: [SC::F; 3],
+    pub finalize_addr_word: [SC::F; 3],
     pub is_complete: bool,
 }
 
@@ -91,8 +91,8 @@ pub struct SP1DeferredWitnessVariable<
     pub end_shard: Felt<C::F>,
     pub end_execution_shard: Felt<C::F>,
     pub end_timestamp: [Felt<C::F>; 4],
-    pub init_addr_word: Word<Felt<C::F>>,
-    pub finalize_addr_word: Word<Felt<C::F>>,
+    pub init_addr_word: [Felt<C::F>; 3],
+    pub finalize_addr_word: [Felt<C::F>; 3],
     pub is_complete: Felt<C::F>,
 }
 
@@ -173,7 +173,7 @@ where
             if let Some(commit) = vk.preprocessed_commit {
                 challenger.observe(builder, commit);
             }
-            challenger.observe(builder, vk.pc_start);
+            challenger.observe(builder, vk.pc_start_rel);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
             // Observe the padding.
@@ -216,8 +216,8 @@ where
         // Set the public values.
 
         // Set initial_pc, end_pc, initial_shard, and end_shard to be the hitned values.
-        deferred_public_values.start_pc = end_pc;
-        deferred_public_values.next_pc = end_pc;
+        deferred_public_values.pc_start_rel = end_pc;
+        deferred_public_values.next_pc_rel = end_pc;
         deferred_public_values.start_shard = end_shard;
         deferred_public_values.next_shard = end_shard;
         deferred_public_values.start_execution_shard = end_execution_shard;

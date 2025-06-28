@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_CLK_INC};
+use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
 
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
@@ -56,13 +56,13 @@ where
             + local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
 
         // Constrain the state of the CPU.
-        // The `next_pc` is constrained by the AIR.
+        // The `next_pc_rel` is constrained by the AIR.
         // The clock is incremented by `4`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.next_pc.into(),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.next_pc_rel.into(),
+            AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
 
@@ -71,13 +71,13 @@ where
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             local.adapter,
             is_real.clone(),
         );
 
-        // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
+        // // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
         let use_signed_comparison = local.is_blt + local.is_bge;
         <LtOperationSigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
@@ -93,7 +93,9 @@ where
         // From the `LtOperationSigned`, derive whether `a == b`, `a < b`, or `a > b`.
         let is_eq = AB::Expr::one()
             - (local.compare_operation.result.u16_flags[0]
-                + local.compare_operation.result.u16_flags[1]);
+                + local.compare_operation.result.u16_flags[1]
+                + local.compare_operation.result.u16_flags[2]
+                + local.compare_operation.result.u16_flags[3]);
         let is_less_than = local.compare_operation.result.u16_compare_operation.bit;
 
         // Constrain the branching column with the comparison results and opcode flags.
@@ -106,14 +108,12 @@ where
 
         builder.when(is_real.clone()).assert_eq(local.is_branching, branching.clone());
 
-        // Constrain the next_pc using the branching column.
+        // Constrain the next_pc_rel using the branching column.
         // Set `op_c` immediate as `pc + op_c` value in the instruction encoding.
-        let mut next_pc: AB::Expr = AB::Expr::zero();
-        next_pc = next_pc.clone() + local.is_branching * local.adapter.c().reduce::<AB>();
-        next_pc = next_pc.clone()
+        let next_pc_rel: AB::Expr = local.is_branching * local.adapter.c().reduce::<AB>()
             + (AB::Expr::one() - local.is_branching)
-                * (local.state.pc + AB::Expr::from_canonical_u16(4));
+                * (local.state.pc_rel + AB::Expr::from_canonical_u32(PC_INC));
 
-        builder.when(is_real.clone()).assert_eq(local.next_pc, next_pc);
+        builder.when(is_real.clone()).assert_eq(local.next_pc_rel, next_pc_rel);
     }
 }

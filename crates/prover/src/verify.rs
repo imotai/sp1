@@ -9,10 +9,7 @@ use num_bigint::BigUint;
 use slop_algebra::{AbstractField, PrimeField};
 use slop_baby_bear::BabyBear;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
-use sp1_primitives::{
-    consts::WORD_SIZE,
-    io::{blake3_hash, SP1PublicValues},
-};
+use sp1_primitives::io::{blake3_hash, SP1PublicValues};
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
@@ -20,7 +17,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierError, Word,
+    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierError,
 };
 // // use sp1_recursion_circuit::machine::RootPublicValues;
 // // use sp1_recursion_core::{air::RecursionPublicValues, stark::BabyBearPoseidon2Outer};
@@ -82,7 +79,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //
         // Assert that the first shard has a "CPU".
         let first_shard = proof.0.first().unwrap();
-        let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+        let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
             first_shard.public_values.as_slice().borrow();
         if public_values.execution_shard != BabyBear::one()
             || public_values.next_execution_shard != BabyBear::two()
@@ -101,7 +98,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - Shard should increment by one for each shard.
         let mut current_shard = BabyBear::zero();
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             current_shard += BabyBear::one();
             if public_values.shard != current_shard {
@@ -116,7 +113,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let mut prev_timestamp =
             [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()];
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if public_values.execution_shard != prev_next_execution_shard {
                 return Err(MachineVerifierError::InvalidPublicValues("invalid execution shard"));
@@ -145,46 +142,49 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Program counter constraints.
         //
         // Initialization:
-        // - `start_pc` should start as `vk.start_pc`.
+        // - `pc_start_rel` should start as `vk.pc_start_rel`.
         //
         // Transition:
-        // - `next_pc` of the previous shard should equal `start_pc`.
-        // - If it's not a shard with "CPU", then `start_pc` equals `next_pc`.
-        // - If it's a shard with "CPU", then `start_pc` should never equal zero.
+        // - `next_pc_rel` of the previous shard should equal `pc_start`.
+        // - If it's not a shard with "CPU", then `pc_start` equals `next_pc_rel`.
+        // - If it's a shard with "CPU", then `pc_start` should never equal zero.
         //
         // Finalization:
-        // - `next_pc` should equal zero.
-        let mut prev_next_pc = BabyBear::zero();
+        // - `next_pc_rel` should equal zero.
+        let mut prev_next_pc_rel = BabyBear::zero();
         for (i, shard_proof) in proof.0.iter().enumerate() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if i == 0 && public_values.start_pc != vk.pc_start {
+            if i == 0 && public_values.pc_start_rel != vk.pc_start_rel {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != vk.start_pc: program counter should start at vk.start_pc",
+                    "pc_start != vk.pc_start_rel: program counter should start at vk.pc_start_rel",
                 ));
-            } else if i != 0 && public_values.start_pc != prev_next_pc {
+            } else if i != 0 && public_values.pc_start_rel != prev_next_pc_rel {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all shards",
+                    "pc_start != next_pc_prev: pc_start should equal next_pc_prev for all shards",
                 ));
-            } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "next_pc != 0: execution should have halted",
-                ));
-            } else if public_values.execution_shard == public_values.next_execution_shard
-                && public_values.start_pc != public_values.next_pc
+            } else if i == proof.0.len() - 1
+                && public_values.next_pc_rel
+                    != BabyBear::from_canonical_u32(sp1_core_executor::HALT_PC_REL)
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
+                    "next_pc_rel != HALT_PC: execution should have halted",
+                ));
+            } else if public_values.execution_shard == public_values.next_execution_shard
+                && public_values.pc_start_rel != public_values.next_pc_rel
+            {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "pc_start != next_pc_rel: pc_start should equal next_pc_rel for non-cpu shards",
                 ));
             }
-            prev_next_pc = public_values.next_pc;
+            prev_next_pc_rel = public_values.next_pc_rel;
         }
 
         // Exit code constraints.
         //
         // - In every shard, the exit code should be zero.
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if public_values.shard == BabyBear::one()
                 && public_values.prev_exit_code != BabyBear::zero()
@@ -224,10 +224,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //   `last_init_addr_bits`.
         // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
         //   `last_finalize_addr_bits`.
-        let mut last_init_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
-        let mut last_finalize_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
+        let mut last_init_addr_word_prev = [BabyBear::zero(); 3];
+        let mut last_finalize_addr_word_prev = [BabyBear::zero(); 3];
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if public_values.previous_init_addr_word != last_init_addr_word_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -260,7 +260,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let mut committed_value_digest_prev = zero_committed_value_digest;
         let mut deferred_proofs_digest_prev = zero_deferred_proofs_digest;
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if committed_value_digest_prev != zero_committed_value_digest
                 && public_values.committed_value_digest != committed_value_digest_prev
@@ -300,7 +300,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
         let mut cumulative_sum = initial_global_cumulative_sum;
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             cumulative_sum = cumulative_sum + public_values.global_cumulative_sum;
         }

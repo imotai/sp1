@@ -67,7 +67,7 @@ where
         // to the following.
         // - For an instruction with a valid opcode, exactly one opcode specific chip can receive
         //   the instruction.
-        // - The `next_pc`, `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`,
+        // - The `next_pc_rel`, `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`,
         //   `is_syscall`, `is_halt` are constrained correctly.
         // Note that in this case, `shard_to_send` and `clk_to_send` will be correctly constrained
         // as well. If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val()
@@ -77,7 +77,7 @@ where
         //     local.shard_to_send,
         //     local.clk_to_send,
         //     local.pc,
-        //     local.next_pc,
+        //     local.next_pc_rel,
         //     local.num_extra_cycles,
         //     local.instruction.opcode,
         //     local.op_a_val(),
@@ -178,10 +178,10 @@ impl CpuChip {
     //     public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar>,
     // ) {
     //     // Verify the public value's start pc.
-    //     builder.when_first_row().assert_eq(public_values.start_pc, local.pc);
+    //     builder.when_first_row().assert_eq(public_values.pc_start, local.pc);
 
-    //     // Verify that the next row's `pc` is the current row's `next_pc`.
-    //     builder.when_transition().when(next.is_real).assert_eq(local.next_pc, next.pc);
+    //     // Verify that the next row's `pc` is the current row's `next_pc_rel`.
+    //     builder.when_transition().when(next.is_real).assert_eq(local.next_pc_rel, next.pc);
 
     //     // Verify the public value's next pc.  We need to handle two cases:
     //     // 1. The last real row is a transition row.
@@ -191,11 +191,11 @@ impl CpuChip {
     //     builder
     //         .when_transition()
     //         .when(local.is_real - next.is_real)
-    //         .assert_eq(public_values.next_pc, local.next_pc);
+    //         .assert_eq(public_values.next_pc_rel, local.next_pc_rel);
 
     //     // If the last real row is the last row, verify the public value's next pc.
-    //     builder.when_last_row().when(local.is_real).assert_eq(public_values.next_pc,
-    // local.next_pc); }
+    //     builder.when_last_row().when(local.is_real).assert_eq(public_values.next_pc_rel,
+    // local.next_pc_rel); }
 
     // Constraints related to the is_real column.
     //

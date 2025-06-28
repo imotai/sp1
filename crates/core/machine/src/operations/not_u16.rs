@@ -1,7 +1,7 @@
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 /// A set of columns needed to compute the not of a word.
@@ -13,9 +13,9 @@ pub struct NotU16Operation<T> {
 }
 
 impl<F: Field> NotU16Operation<F> {
-    pub fn populate(&mut self, x: u32) -> u32 {
+    pub fn populate(&mut self, x: u64) -> u64 {
         let expected = !x;
-        let x_limbs = u32_to_u16_limbs(x);
+        let x_limbs = u64_to_u16_limbs(x);
         for i in 0..WORD_SIZE {
             self.value[i] = F::from_canonical_u16(!x_limbs[i]);
         }

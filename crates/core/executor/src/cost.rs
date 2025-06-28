@@ -29,6 +29,7 @@ pub fn estimate_trace_elements(
     cells += 32 * (bump_clk_high + 1) * costs_per_air[RiscvAirId::MemoryBump];
     cells += (32 + bump_clk_high) * costs_per_air[RiscvAirId::StateBump];
 
+    // TODO(rkm0959): figure out exact split of tables for ALU, then incorporate it here.
     // Compute the add chip contribution.
     cells +=
         (num_events_per_air[RiscvAirId::Add]).next_multiple_of(32) * costs_per_air[RiscvAirId::Add];
@@ -97,6 +98,9 @@ pub fn estimate_trace_elements(
     cells += (num_events_per_air[RiscvAirId::LoadWord]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::LoadWord];
     max_height = max_height.max(num_events_per_air[RiscvAirId::LoadWord]);
+    cells += (num_events_per_air[RiscvAirId::LoadDouble]).next_multiple_of(32)
+        * costs_per_air[RiscvAirId::LoadDouble];
+    max_height = max_height.max(num_events_per_air[RiscvAirId::LoadDouble]);
     cells += (num_events_per_air[RiscvAirId::LoadX0]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::LoadX0];
     max_height = max_height.max(num_events_per_air[RiscvAirId::LoadX0]);
@@ -109,6 +113,9 @@ pub fn estimate_trace_elements(
     cells += (num_events_per_air[RiscvAirId::StoreWord]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::StoreWord];
     max_height = max_height.max(num_events_per_air[RiscvAirId::StoreWord]);
+    cells += (num_events_per_air[RiscvAirId::StoreDouble]).next_multiple_of(32)
+        * costs_per_air[RiscvAirId::StoreWord];
+    max_height = max_height.max(num_events_per_air[RiscvAirId::StoreDouble]);
 
     // Compute the syscall instruction chip contribution.
     cells += (num_events_per_air[RiscvAirId::SyscallInstrs]).next_multiple_of(32)

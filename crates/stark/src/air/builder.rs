@@ -198,7 +198,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
-        next_pc: impl Into<Self::Expr>,
+        next_pc_rel: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
         opcode: impl Into<Self::Expr>,
         a: Word<impl Into<Self::Expr>>,
@@ -214,7 +214,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         let values = once(clk_high.into())
             .chain(once(clk_low.into()))
             .chain(once(pc.into()))
-            .chain(once(next_pc.into()))
+            .chain(once(next_pc_rel.into()))
             .chain(once(num_extra_cycles.into()))
             .chain(once(opcode.into()))
             .chain(a.0.into_iter().map(Into::into))
@@ -240,7 +240,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
-        next_pc: impl Into<Self::Expr>,
+        next_pc_rel: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
         opcode: impl Into<Self::Expr>,
         a: Word<impl Into<Self::Expr>>,
@@ -256,7 +256,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         let values = once(clk_high.into())
             .chain(once(clk_low.into()))
             .chain(once(pc.into()))
-            .chain(once(next_pc.into()))
+            .chain(once(next_pc_rel.into()))
             .chain(once(num_extra_cycles.into()))
             .chain(once(opcode.into()))
             .chain(a.0.into_iter().map(Into::into))
@@ -282,23 +282,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [impl Into<Self::Expr>; 3],
+        arg2: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1.map(Into::into))
+            .chain(arg2.map(Into::into))
+            .collect::<Vec<_>>();
+
         self.send(
-            AirInteraction::new(
-                vec![
-                    clk_high.clone().into(),
-                    clk_low.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }
@@ -310,23 +307,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [Self::Expr; 3],
+        arg2: [Self::Expr; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1)
+            .chain(arg2)
+            .collect::<Vec<_>>();
+
         self.receive(
-            AirInteraction::new(
-                vec![
-                    clk_high.clone().into(),
-                    clk_low.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }

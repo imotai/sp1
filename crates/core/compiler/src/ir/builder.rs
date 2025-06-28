@@ -803,18 +803,8 @@ impl SP1OperationBuilder<BitwiseOperation<F>> for ConstraintCompiler {
 
         if !self.modules.contains_key("BitwiseOperation") {
             let mut ctx = FuncCtx::new();
-            let input_a = [
-                Expr::input_arg(&mut ctx),
-                Expr::input_arg(&mut ctx),
-                Expr::input_arg(&mut ctx),
-                Expr::input_arg(&mut ctx),
-            ];
-            let input_b = [
-                Expr::input_arg(&mut ctx),
-                Expr::input_arg(&mut ctx),
-                Expr::input_arg(&mut ctx),
-                Expr::input_arg(&mut ctx),
-            ];
+            let input_a = core::array::from_fn(|_| Expr::input_arg(&mut ctx));
+            let input_b = core::array::from_fn(|_| Expr::input_arg(&mut ctx));
             let input_cols = Expr::input_from_struct::<BitwiseOperation<Expr>>(&mut ctx);
             let input_opcode = Expr::input_arg(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
@@ -859,8 +849,8 @@ impl SP1OperationBuilder<BitwiseU16Operation<F>> for ConstraintCompiler {
 
         if !self.modules.contains_key("BitwiseU16Operation") {
             let mut ctx = FuncCtx::new();
-            let input_b = Word([Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)]);
-            let input_c = Word([Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)]);
+            let input_b = Word(core::array::from_fn(|_| Expr::input_arg(&mut ctx)));
+            let input_c = Word(core::array::from_fn(|_| Expr::input_arg(&mut ctx)));
             let input_cols = Expr::input_from_struct::<BitwiseU16Operation<Expr>>(&mut ctx);
             let input_opcode = Expr::input_arg(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
@@ -990,8 +980,18 @@ impl SP1OperationBuilder<LtOperationUnsigned<F>> for ConstraintCompiler {
 
         if !self.modules.contains_key("LtOperationUnsigned") {
             let mut ctx = FuncCtx::new();
-            let input_b = Word([Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)]);
-            let input_c = Word([Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)]);
+            let input_b = Word([
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+            ]);
+            let input_c = Word([
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+            ]);
             let input_cols = Expr::input_from_struct::<LtOperationUnsigned<Expr>>(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
 
@@ -1033,8 +1033,18 @@ impl SP1OperationBuilder<LtOperationSigned<F>> for ConstraintCompiler {
 
         if !self.modules.contains_key("LtOperationSigned") {
             let mut ctx = FuncCtx::new();
-            let input_b = Word([Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)]);
-            let input_c = Word([Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)]);
+            let input_b = Word([
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+            ]);
+            let input_c = Word([
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+                Expr::input_arg(&mut ctx),
+            ]);
             let input_cols = Expr::input_from_struct::<LtOperationSigned<Expr>>(&mut ctx);
             let input_is_signed = Expr::input_arg(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);

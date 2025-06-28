@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::{
     air::ProgramAirBuilder,
-    utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
+    utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec, InstructionExt as _},
 };
 use p3_air::{Air, BaseAir, PairBuilder};
 use p3_field::PrimeField32;
@@ -28,7 +28,7 @@ pub const NUM_PROGRAM_MULT_COLS: usize = size_of::<ProgramMultiplicityCols<u8>>(
 #[derive(AlignedBorrow, Clone, Copy, Default)]
 #[repr(C)]
 pub struct ProgramPreprocessedCols<T> {
-    pub pc: T,
+    pub pc_rel: T,
     pub instruction: InstructionCols<T>,
 }
 
@@ -78,6 +78,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         let nb_rows = program.instructions.len();
         let size_log2 = program.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        assert!(matches!(
+            padded_nb_rows.checked_mul(4),
+            Some(last_idx) if last_idx < F::ORDER_U64 as usize,
+        ));
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_PROGRAM_PREPROCESSED_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
@@ -92,27 +96,12 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                         idx = 0;
                     }
                     let cols: &mut ProgramPreprocessedCols<F> = row.borrow_mut();
-                    let mut instruction = program.instructions[idx];
-                    let pc = program.pc_base + (idx as u32 * 4);
-                    cols.pc = F::from_canonical_u32(pc);
-                    if instruction.is_branch_instruction() {
-                        instruction.op_c = pc.wrapping_add(instruction.op_c);
-                        debug_assert!(instruction.op_c < (1 << 31) - (1 << 27) + 1);
-                    }
-                    if instruction.is_jal_instruction() {
-                        instruction.op_b = pc.wrapping_add(instruction.op_b);
-                        instruction.op_c = pc.wrapping_add(4);
-                        debug_assert!(instruction.op_b < (1 << 31) - (1 << 27) + 1);
-                        if instruction.op_a == 0 {
-                            instruction.op_c = 0;
-                        }
-                    }
-                    if instruction.is_auipc_instruction() {
-                        instruction.op_b = pc.wrapping_add(instruction.op_b);
-                        if instruction.op_a == 0 {
-                            instruction.op_b = 0;
-                        }
-                    }
+                    // TODO add assertions to ensure the conversions to the field are accurate.
+                    let pc_rel = idx as u32 * 4;
+                    // Casting to u32 and truncating is okay, since F: PrimeField32 means it fits.
+                    cols.pc_rel = F::from_wrapped_u32(pc_rel as u32);
+                    let instruction =
+                        program.instructions[idx].preprocess::<F>(program.pc_base, pc_rel);
                     cols.instruction.populate(&instruction);
                 });
             });
@@ -136,88 +125,108 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // Store it as a map of PC -> count.
         let mut instruction_counts = HashMap::new();
         input.add_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.addw_events.iter().for_each(|event| {
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.addi_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.addiw_events.iter().for_each(|event| {
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.sub_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.subw_events.iter().for_each(|event| {
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.bitwise_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.mul_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.divrem_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.lt_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.shift_left_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.shift_right_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.branch_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_load_byte_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_load_half_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_load_word_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_load_x0_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_load_double_events.iter().for_each(|event| {
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_store_byte_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_store_half_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.memory_store_word_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.memory_store_double_events.iter().for_each(|event| {
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.jal_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.jalr_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.auipc_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
         input.syscall_events.iter().for_each(|event| {
-            let pc = event.0.pc;
-            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+            let pc_rel = event.0.pc_rel;
+            instruction_counts.entry(pc_rel).and_modify(|count| *count += 1).or_insert(1);
         });
 
         let mut rows = input
@@ -227,11 +236,11 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             .into_iter()
             .enumerate()
             .map(|(i, _)| {
-                let pc = input.program.pc_base + (i as u32 * 4);
+                let pc_rel = i as u32 * 4;
                 let mut row = [F::zero(); NUM_PROGRAM_MULT_COLS];
                 let cols: &mut ProgramMultiplicityCols<F> = row.as_mut_slice().borrow_mut();
                 cols.multiplicity =
-                    F::from_canonical_usize(*instruction_counts.get(&pc).unwrap_or(&0));
+                    F::from_canonical_usize(*instruction_counts.get(&pc_rel).unwrap_or(&0));
                 row
             })
             .collect::<Vec<_>>();
@@ -271,7 +280,7 @@ where
         let mult_local: &ProgramMultiplicityCols<AB::Var> = (*mult_local).borrow();
 
         // Constrain the interaction with CPU table
-        builder.receive_program(prep_local.pc, prep_local.instruction, mult_local.multiplicity);
+        builder.receive_program(prep_local.pc_rel, prep_local.instruction, mult_local.multiplicity);
     }
 }
 
@@ -304,7 +313,7 @@ mod tests {
         let shard = ExecutionRecord {
             program: Arc::new(Program {
                 instructions,
-                pc_start: 0,
+                pc_start_abs: 0,
                 pc_base: 0,
                 memory_image: HashMap::new(),
                 preprocessed_shape: None,

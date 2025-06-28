@@ -6,7 +6,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 
@@ -19,7 +19,7 @@ use std::{
 use crate::{
     adapter::{register::j_type::JTypeReader, state::CPUState},
     air::SP1CoreAirBuilder,
-    utils::{next_multiple_of_32, zeroed_f_vec},
+    utils::{next_multiple_of_32, zeroed_f_vec, InstructionExt as _},
 };
 
 #[derive(Default)]
@@ -66,8 +66,8 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -77,7 +77,7 @@ where
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc,
+            local.state.pc_rel,
             opcode,
             *local.adapter.b(),
             local.adapter,
@@ -122,14 +122,13 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
 
                     if idx < input.auipc_events.len() {
                         let event = &input.auipc_events[idx];
-                        let mut instruction = *input.program.fetch(event.0.pc);
-                        instruction.op_b = event.0.pc.wrapping_add(instruction.op_b);
-                        if instruction.op_a == 0 {
-                            instruction.op_b = 0;
-                        }
+                        let instruction = input
+                            .program
+                            .fetch(event.0.pc_rel)
+                            .preprocess_auipc(input.program.pc_base, event.0.pc_rel);
                         cols.is_real = F::one();
 
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
                         cols.adapter.populate(&mut blu, &instruction, event.1);
                     }
                 });

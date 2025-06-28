@@ -1,7 +1,6 @@
-use std::collections::BTreeMap;
-
 use slop_algebra::Field;
 use slop_alloc::CpuBackend;
+use std::collections::BTreeMap;
 
 use crate::{air::InteractionScope, prover::Traces, Chip};
 
@@ -41,9 +40,10 @@ pub fn vec_to_string<F: Field>(vec: Vec<F>) -> String {
     result
 }
 
-// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
-// This presentation is useful when debugging interactions as it makes it clear which
-// interactions are `send` and which are `receive`.
+// /// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
+// ///
+// /// This presentation is useful when debugging interactions as it makes it clear which
+// // interactions /// are `send` and which are `receive`.
 // fn field_to_int<F: PrimeField32>(x: F) -> i32 {
 //     let modulus = BabyBear::ORDER_U64;
 //     let val = x.as_canonical_u64();
@@ -163,7 +163,7 @@ where
         //     if !chip.included(shard) {
         //         continue;
         //     }
-        eprintln!("{}", chip.name());
+        // eprintln!("{}", chip.name());
         let (_, count) = debug_interactions::<F, A>(
             chip,
             preprocessed_traces,

@@ -21,7 +21,7 @@ use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS}
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     shape::OrderedShape,
-    MachineConfig, MachineVerifyingKey, ShardProof, Word, DIGEST_SIZE,
+    MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE,
 };
 
 use crate::{
@@ -131,7 +131,7 @@ where
         // Initialize the consistency check variables.
         let mut sp1_vk_digest: [Felt<_>; DIGEST_SIZE] =
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
-        let mut pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut pc_rel: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
@@ -144,8 +144,10 @@ where
         let mut reconstruct_deferred_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut global_cumulative_sums = Vec::new();
-        let mut init_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut finalize_addr_word: Word<Felt<_>> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut init_addr_word: [Felt<_>; 3] =
+            array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
+        let mut finalize_addr_word: [Felt<_>; 3] =
+            array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
 
         // Verify the shard proofs.
         // Verification of proofs can be done in parallel but the aggregation/consistency checks
@@ -160,7 +162,7 @@ where
                 if let Some(vk) = vk.preprocessed_commit.as_ref() {
                     challenger.observe(builder, *vk)
                 }
-                challenger.observe(builder, vk.pc_start);
+                challenger.observe(builder, vk.pc_start_rel);
                 challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
                 challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
                 // Observe the padding.
@@ -205,8 +207,8 @@ where
                 }
 
                 // Initiallize start pc.
-                compress_public_values.start_pc = current_public_values.start_pc;
-                pc = current_public_values.start_pc;
+                compress_public_values.pc_start_rel = current_public_values.pc_start_rel;
+                pc_rel = current_public_values.pc_start_rel;
 
                 // Initialize start shard.
                 compress_public_values.start_shard = current_public_values.start_shard;
@@ -232,24 +234,22 @@ where
                 current_exit_code = current_public_values.prev_exit_code;
 
                 // Initialize the MemoryInitialize address word.
-                for (limb, (first_limb, current_limb)) in init_addr_word.0.iter_mut().zip(
+                for (limb, (first_limb, current_limb)) in init_addr_word.iter_mut().zip(
                     compress_public_values
                         .previous_init_addr_word
-                        .0
                         .iter_mut()
-                        .zip(current_public_values.previous_init_addr_word.0.iter()),
+                        .zip(current_public_values.previous_init_addr_word.iter()),
                 ) {
                     *limb = *current_limb;
                     *first_limb = *current_limb;
                 }
 
                 // Initialize the MemoryFinalize address word.
-                for (limb, (first_limb, current_limb)) in finalize_addr_word.0.iter_mut().zip(
+                for (limb, (first_limb, current_limb)) in finalize_addr_word.iter_mut().zip(
                     compress_public_values
                         .previous_finalize_addr_word
-                        .0
                         .iter_mut()
-                        .zip(current_public_values.previous_finalize_addr_word.0.iter()),
+                        .zip(current_public_values.previous_finalize_addr_word.iter()),
                 ) {
                     *limb = *current_limb;
                     *first_limb = *current_limb;
@@ -291,7 +291,7 @@ where
             }
 
             // Assert that the start pc is equal to the current pc.
-            builder.assert_felt_eq(pc, current_public_values.start_pc);
+            builder.assert_felt_eq(pc_rel, current_public_values.pc_start_rel);
 
             // Verify that the shard is equal to the current shard.
             builder.assert_felt_eq(shard, current_public_values.start_shard);
@@ -316,16 +316,15 @@ where
 
             // Assert that the MemoryInitialize address limbs are the same.
             for (limb, current_limb) in
-                init_addr_word.0.iter().zip(current_public_values.previous_init_addr_word.0.iter())
+                init_addr_word.iter().zip(current_public_values.previous_init_addr_word.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
 
             // Assert that the MemoryFinalize address limbs are the same.
             for (limb, current_limb) in finalize_addr_word
-                .0
                 .iter()
-                .zip(current_public_values.previous_finalize_addr_word.0.iter())
+                .zip(current_public_values.previous_finalize_addr_word.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
@@ -412,7 +411,7 @@ where
             }
 
             // Update pc to be the next pc.
-            pc = current_public_values.next_pc;
+            pc_rel = current_public_values.next_pc_rel;
 
             // Update the shard to be the next shard.
             shard = current_public_values.next_shard;
@@ -429,16 +428,15 @@ where
 
             // Update the MemoryInitialize address limbs.
             for (limb, next_limb) in
-                init_addr_word.0.iter_mut().zip(current_public_values.last_init_addr_word.0.iter())
+                init_addr_word.iter_mut().zip(current_public_values.last_init_addr_word.iter())
             {
                 *limb = *next_limb;
             }
 
             // Update the MemoryFinalize address limbs.
             for (limb, next_limb) in finalize_addr_word
-                .0
                 .iter_mut()
-                .zip(current_public_values.last_finalize_addr_word.0.iter())
+                .zip(current_public_values.last_finalize_addr_word.iter())
             {
                 *limb = *next_limb;
             }
@@ -453,8 +451,8 @@ where
         // Update the global values from the last accumulated values.
         // Set sp1_vk digest to the one from the proof values.
         compress_public_values.sp1_vk_digest = sp1_vk_digest;
-        // Set next_pc to be the last pc (which is the same as accumulated pc)
-        compress_public_values.next_pc = pc;
+        // Set next_pc_rel to be the last pc (which is the same as accumulated pc)
+        compress_public_values.next_pc_rel = pc_rel;
         // Set next shard to be the last shard
         compress_public_values.next_shard = shard;
         // Set next execution shard to be the last execution shard

@@ -5,7 +5,7 @@ use p3_symmetric::CryptographicPermutation;
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, Word, PROOF_MAX_NUM_PVS};
+use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
 use static_assertions::const_assert_eq;
 use std::{
     borrow::BorrowMut,
@@ -34,7 +34,7 @@ pub const NUM_PV_ELMS_TO_HASH: usize = RECURSION_PUBLIC_VALUES_COL_MAP.digest[0]
 
 // Recursive proof has more public values than core proof, so the max number constant defined in
 // sp1_core should be set to `RECURSIVE_PROOF_NUM_PV_ELTS`.
-const_assert_eq!(RECURSIVE_PROOF_NUM_PV_ELTS, PROOF_MAX_NUM_PVS);
+const_assert_eq!(RECURSIVE_PROOF_NUM_PV_ELTS, PROOF_MAX_NUM_PVS); // TODO: u64
 
 #[derive(AlignedBorrow, Serialize, Deserialize, Clone, Copy, Default, Debug)]
 #[repr(C)]
@@ -84,10 +84,10 @@ pub struct RecursionPublicValues<T> {
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The start pc of shards being proven.
-    pub start_pc: T,
+    pub pc_start_rel: T,
 
     /// The expected start pc for the next shard.
-    pub next_pc: T,
+    pub next_pc_rel: T,
 
     /// First shard being proven.
     pub start_shard: T,
@@ -108,16 +108,16 @@ pub struct RecursionPublicValues<T> {
     pub last_timestamp: [T; 4],
 
     /// Previous MemoryInit address word.
-    pub previous_init_addr_word: Word<T>,
+    pub previous_init_addr_word: [T; 3],
 
     /// Last MemoryInit address word.
-    pub last_init_addr_word: Word<T>,
+    pub last_init_addr_word: [T; 3],
 
     /// Previous MemoryFinalize address word.
-    pub previous_finalize_addr_word: Word<T>,
+    pub previous_finalize_addr_word: [T; 3],
 
     /// Last MemoryFinalize address word.
-    pub last_finalize_addr_word: Word<T>,
+    pub last_finalize_addr_word: [T; 3],
 
     /// Start state of reconstruct_deferred_digest.
     pub start_reconstruct_deferred_digest: [T; POSEIDON_NUM_WORDS],

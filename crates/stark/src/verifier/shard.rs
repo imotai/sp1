@@ -469,6 +469,8 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
 
         let degrees = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
 
+        // println!("shard_chips: {:?}", shard_chips.iter().map(|x| x.name()).collect::<Vec<_>>());
+
         // Verify the logup GKR proof.
         LogUpGkrVerifier::<_, _, A>::verify_logup_gkr(
             &shard_chips,

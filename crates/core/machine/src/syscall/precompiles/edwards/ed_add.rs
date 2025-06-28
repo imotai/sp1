@@ -7,7 +7,7 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
-    operations::SyscallAddrOperation,
+    operations::{AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32},
 };
 use hashbrown::HashMap;
@@ -31,7 +31,10 @@ use sp1_curves::{
     AffinePoint, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir};
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
 
 use crate::{
     operations::field::{
@@ -54,6 +57,8 @@ pub struct EdAddAssignCols<T> {
     pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub q_ptr: SyscallAddrOperation<T>,
+    pub p_addrs_add: [AddrAddOperation<T>; WORDS_CURVE_POINT],
+    pub q_addrs_add: [AddrAddOperation<T>; WORDS_CURVE_POINT],
     pub p_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
     pub q_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
     pub(crate) x3_numerator: FieldInnerProductCols<T, Ed25519BaseField>,
@@ -235,18 +240,20 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
         cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
         cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
 
-        cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u32 * 4);
-        cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u32 * 4);
+        cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u64 * 8);
+        cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u64 * 8);
 
         Self::populate_field_ops(blu, cols, p_x, p_y, q_x, q_y);
 
         // Populate the memory access columns.
         for i in 0..WORDS_CURVE_POINT {
             let record = MemoryRecordEnum::Read(event.q_memory_records[i]);
+            cols.q_addrs_add[i].populate(blu, event.q_ptr, i as u64 * 8);
             cols.q_access[i].populate(record, blu);
         }
         for i in 0..WORDS_CURVE_POINT {
             let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
+            cols.p_addrs_add[i].populate(blu, event.p_ptr, i as u64 * 8);
             cols.p_access[i].populate(record, blu);
         }
     }
@@ -267,16 +274,16 @@ where
         let local = main.row_slice(0);
         let local: &EdAddAssignCols<AB::Var> = (*local).borrow();
 
-        let x1_limbs = builder.generate_limbs(&local.p_access[0..8], local.is_real.into());
+        let x1_limbs = builder.generate_limbs(&local.p_access[0..4], local.is_real.into());
         let x1: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
             Limbs(x1_limbs.try_into().expect("failed to convert limbs"));
-        let x2_limbs = builder.generate_limbs(&local.q_access[0..8], local.is_real.into());
+        let x2_limbs = builder.generate_limbs(&local.q_access[0..4], local.is_real.into());
         let x2: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
             Limbs(x2_limbs.try_into().expect("failed to convert limbs"));
-        let y1_limbs = builder.generate_limbs(&local.p_access[8..16], local.is_real.into());
+        let y1_limbs = builder.generate_limbs(&local.p_access[4..8], local.is_real.into());
         let y1: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
             Limbs(y1_limbs.try_into().expect("failed to convert limbs"));
-        let y2_limbs = builder.generate_limbs(&local.q_access[8..16], local.is_real.into());
+        let y2_limbs = builder.generate_limbs(&local.q_access[4..8], local.is_real.into());
         let y2: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
             Limbs(y2_limbs.try_into().expect("failed to convert limbs"));
 
@@ -330,22 +337,73 @@ where
 
         let p_ptr = SyscallAddrOperation::<AB::F>::eval(
             builder,
-            WORDS_CURVE_POINT as u32 * 4,
+            WORDS_CURVE_POINT as u32 * 8,
             local.p_ptr,
             local.is_real.into(),
         );
 
         let q_ptr = SyscallAddrOperation::<AB::F>::eval(
             builder,
-            WORDS_CURVE_POINT as u32 * 4,
+            WORDS_CURVE_POINT as u32 * 8,
             local.q_ptr,
             local.is_real.into(),
         );
 
+        // q_addrs_add[0] = q_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.q_addrs_add[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // q_addrs_add[i] = q_addrs[i - 1] + 8.
+        for i in 1..WORDS_CURVE_POINT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.q_addrs_add[i - 1].value[0].into(),
+                    local.q_addrs_add[i - 1].value[1].into(),
+                    local.q_addrs_add[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.q_addrs_add[i],
+                local.is_real.into(),
+            );
+        }
+
+        // p_addrs_add[0] = p_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.p_addrs_add[0],
+            local.is_real.into(),
+        );
+
+        // p_addrs_add[i] = p_addrs[i - 1] + 8.
+        for i in 1..WORDS_CURVE_POINT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.p_addrs_add[i - 1].value[0].into(),
+                    local.p_addrs_add[i - 1].value[1].into(),
+                    local.p_addrs_add[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.p_addrs_add[i],
+                local.is_real.into(),
+            );
+        }
+
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low,
-            q_ptr.clone(),
+            &local.q_addrs_add.map(|addr| addr.value.map(Into::into)),
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -353,7 +411,7 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),
-            p_ptr.clone(),
+            &local.p_addrs_add.map(|addr| addr.value.map(Into::into)),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -363,8 +421,8 @@ where
             local.clk_high,
             local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_ADD.syscall_id()),
-            p_ptr,
-            q_ptr,
+            p_ptr.map(Into::into),
+            q_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

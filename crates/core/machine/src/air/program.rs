@@ -13,11 +13,11 @@ pub trait ProgramAirBuilder: BaseAirBuilder {
     /// Sends an instruction.
     fn send_program(
         &mut self,
-        pc: impl Into<Self::Expr>,
+        pc_rel: impl Into<Self::Expr>,
         instruction: InstructionCols<impl Into<Self::Expr>>,
         multiplicity: impl Into<Self::Expr>,
     ) {
-        let values = once(pc.into()).chain(instruction.into_iter().map(|x| x.into())).collect();
+        let values = once(pc_rel.into()).chain(instruction.into_iter().map(|x| x.into())).collect();
         self.send(
             AirInteraction::new(values, multiplicity.into(), InteractionKind::Program),
             InteractionScope::Local,
@@ -27,12 +27,12 @@ pub trait ProgramAirBuilder: BaseAirBuilder {
     /// Receives an instruction.
     fn receive_program(
         &mut self,
-        pc: impl Into<Self::Expr>,
+        pc_rel: impl Into<Self::Expr>,
         instruction: InstructionCols<impl Into<Self::Expr>>,
         multiplicity: impl Into<Self::Expr>,
     ) {
         let values: Vec<<Self as AirBuilder>::Expr> =
-            once(pc.into()).chain(instruction.into_iter().map(|x| x.into())).collect();
+            once(pc_rel.into()).chain(instruction.into_iter().map(|x| x.into())).collect();
         self.receive(
             AirInteraction::new(values, multiplicity.into(), InteractionKind::Program),
             InteractionScope::Local,

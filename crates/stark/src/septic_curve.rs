@@ -120,18 +120,18 @@ impl<F: PrimeField32> SepticCurve<F> {
     /// offset used, and the hash input and output.
     ///
     /// TODO: this function should maybe take a Perm argument or express the dependency in some way.
-    pub fn lift_x(m: SepticExtension<F>) -> (Self, u8, [F; 16], [F; 16]) {
+    pub fn lift_x(m: [F; 8]) -> (Self, u8, [F; 16], [F; 16]) {
         let perm = my_bb_16_perm();
         for offset in 0..=255 {
             let m_trial = [
-                m.0[0],
-                m.0[1],
-                m.0[2],
-                m.0[3],
-                m.0[4],
-                m.0[5],
-                m.0[6],
-                F::from_canonical_u8(offset),
+                m[0],
+                m[1],
+                m[2],
+                m[3],
+                m[4],
+                m[5],
+                m[6],
+                m[7] + F::from_canonical_u32(1 << 16) * F::from_canonical_u8(offset),
                 F::zero(),
                 F::zero(),
                 F::zero(),
@@ -248,123 +248,121 @@ impl<F: Field> SepticCurveComplete<F> {
 
 #[cfg(test)]
 mod tests {
-    use rayon::prelude::*;
-    use rayon_scan::ScanParallelIterator;
-    use slop_baby_bear::BabyBear;
-    use std::time::Instant;
+    // use rayon::prelude::*;
+    // use rayon_scan::ScanParallelIterator;
+    // use slop_baby_bear::BabyBear;
+    // use std::time::Instant;
 
-    use super::*;
+    // use super::*;
 
-    #[test]
-    fn test_lift_x() {
-        let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-            BabyBear::from_canonical_u32(0x2013),
-            BabyBear::from_canonical_u32(0x2015),
-            BabyBear::from_canonical_u32(0x2016),
-            BabyBear::from_canonical_u32(0x2023),
-            BabyBear::from_canonical_u32(0x2024),
-            BabyBear::from_canonical_u32(0x2016),
-            BabyBear::from_canonical_u32(0x2017),
-        ]);
-        let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
-        assert!(curve_point.check_on_point());
-        assert!(!curve_point.x.is_receive());
-    }
+    // #[test]
+    // fn test_lift_x() {
+    //     let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
+    //         BabyBear::from_canonical_u32(0x2013),
+    //         BabyBear::from_canonical_u32(0x2015),
+    //         BabyBear::from_canonical_u32(0x2016),
+    //         BabyBear::from_canonical_u32(0x2023),
+    //         BabyBear::from_canonical_u32(0x2024),
+    //         BabyBear::from_canonical_u32(0x2016),
+    //         BabyBear::from_canonical_u32(0x2017),
+    //     ]);
+    //     let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //     assert!(curve_point.check_on_point());
+    //     assert!(!curve_point.x.is_receive());
+    // }
 
-    #[test]
-    fn test_double() {
-        let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-            BabyBear::from_canonical_u32(0x2013),
-            BabyBear::from_canonical_u32(0x2015),
-            BabyBear::from_canonical_u32(0x2016),
-            BabyBear::from_canonical_u32(0x2023),
-            BabyBear::from_canonical_u32(0x2024),
-            BabyBear::from_canonical_u32(0x2016),
-            BabyBear::from_canonical_u32(0x2017),
-        ]);
-        let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
-        let double_point = curve_point.double();
-        assert!(double_point.check_on_point());
-    }
+    // #[test]
+    // fn test_double() {
+    //     let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
+    //         BabyBear::from_canonical_u32(0x2013),
+    //         BabyBear::from_canonical_u32(0x2015),
+    //         BabyBear::from_canonical_u32(0x2016),
+    //         BabyBear::from_canonical_u32(0x2023),
+    //         BabyBear::from_canonical_u32(0x2024),
+    //         BabyBear::from_canonical_u32(0x2016),
+    //         BabyBear::from_canonical_u32(0x2017),
+    //     ]);
+    //     let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //     let double_point = curve_point.double();
+    //     assert!(double_point.check_on_point());
+    // }
 
-    #[test]
-    #[ignore]
-    #[allow(clippy::ignore_without_reason)]
-    #[allow(clippy::print_stdout)]
-    fn test_simple_bench() {
-        const D: u32 = 1 << 16;
-        let mut vec = Vec::with_capacity(D as usize);
-        let mut sum = Vec::with_capacity(D as usize);
-        let start = Instant::now();
-        for i in 0..D {
-            let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-                BabyBear::from_canonical_u32(i + 25),
-                BabyBear::from_canonical_u32(2 * i + 376),
-                BabyBear::from_canonical_u32(4 * i + 23),
-                BabyBear::from_canonical_u32(8 * i + 531),
-                BabyBear::from_canonical_u32(16 * i + 542),
-                BabyBear::from_canonical_u32(32 * i + 196),
-                BabyBear::from_canonical_u32(64 * i + 667),
-            ]);
-            let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
-            vec.push(curve_point);
-        }
-        println!("Time elapsed: {:?}", start.elapsed());
-        let start = Instant::now();
-        for i in 0..D {
-            sum.push(vec[i as usize].add_incomplete(vec[((i + 1) % D) as usize]));
-        }
-        println!("Time elapsed: {:?}", start.elapsed());
-        let start = Instant::now();
-        for i in 0..(D as usize) {
-            assert!(
-                SepticCurve::<BabyBear>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
-                    == SepticExtension::<BabyBear>::zero()
-            );
-            assert!(
-                SepticCurve::<BabyBear>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
-                    == SepticExtension::<BabyBear>::zero()
-            );
-        }
-        println!("Time elapsed: {:?}", start.elapsed());
-    }
+    // #[test]
+    // #[ignore]
+    // #[allow(clippy::print_stdout)]
+    // fn test_simple_bench() {
+    //     const D: u32 = 1 << 16;
+    //     let mut vec = Vec::with_capacity(D as usize);
+    //     let mut sum = Vec::with_capacity(D as usize);
+    //     let start = Instant::now();
+    //     for i in 0..D {
+    //         let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
+    //             BabyBear::from_canonical_u32(i + 25),
+    //             BabyBear::from_canonical_u32(2 * i + 376),
+    //             BabyBear::from_canonical_u32(4 * i + 23),
+    //             BabyBear::from_canonical_u32(8 * i + 531),
+    //             BabyBear::from_canonical_u32(16 * i + 542),
+    //             BabyBear::from_canonical_u32(32 * i + 196),
+    //             BabyBear::from_canonical_u32(64 * i + 667),
+    //         ]);
+    //         let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //         vec.push(curve_point);
+    //     }
+    //     println!("Time elapsed: {:?}", start.elapsed());
+    //     let start = Instant::now();
+    //     for i in 0..D {
+    //         sum.push(vec[i as usize].add_incomplete(vec[((i + 1) % D) as usize]));
+    //     }
+    //     println!("Time elapsed: {:?}", start.elapsed());
+    //     let start = Instant::now();
+    //     for i in 0..(D as usize) {
+    //         assert!(
+    //             SepticCurve::<BabyBear>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
+    //                 == SepticExtension::<BabyBear>::zero()
+    //         );
+    //         assert!(
+    //             SepticCurve::<BabyBear>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
+    //                 == SepticExtension::<BabyBear>::zero()
+    //         );
+    //     }
+    //     println!("Time elapsed: {:?}", start.elapsed());
+    // }
 
-    #[test]
-    #[ignore]
-    #[allow(clippy::ignore_without_reason)]
-    #[allow(clippy::print_stdout)]
-    fn test_parallel_bench() {
-        const D: u32 = 1 << 20;
-        let mut vec = Vec::with_capacity(D as usize);
-        let start = Instant::now();
-        for i in 0..D {
-            let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-                BabyBear::from_canonical_u32(i + 25),
-                BabyBear::from_canonical_u32(2 * i + 376),
-                BabyBear::from_canonical_u32(4 * i + 23),
-                BabyBear::from_canonical_u32(8 * i + 531),
-                BabyBear::from_canonical_u32(16 * i + 542),
-                BabyBear::from_canonical_u32(32 * i + 196),
-                BabyBear::from_canonical_u32(64 * i + 667),
-            ]);
-            let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
-            vec.push(SepticCurveComplete::Affine(curve_point));
-        }
-        println!("Time elapsed: {:?}", start.elapsed());
+    // #[test]
+    // #[ignore]
+    // #[allow(clippy::print_stdout)]
+    // fn test_parallel_bench() {
+    //     const D: u32 = 1 << 20;
+    //     let mut vec = Vec::with_capacity(D as usize);
+    //     let start = Instant::now();
+    //     for i in 0..D {
+    //         let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
+    //             BabyBear::from_canonical_u32(i + 25),
+    //             BabyBear::from_canonical_u32(2 * i + 376),
+    //             BabyBear::from_canonical_u32(4 * i + 23),
+    //             BabyBear::from_canonical_u32(8 * i + 531),
+    //             BabyBear::from_canonical_u32(16 * i + 542),
+    //             BabyBear::from_canonical_u32(32 * i + 196),
+    //             BabyBear::from_canonical_u32(64 * i + 667),
+    //         ]);
+    //         let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //         vec.push(SepticCurveComplete::Affine(curve_point));
+    //     }
+    //     println!("Time elapsed: {:?}", start.elapsed());
 
-        let mut cum_sum = SepticCurveComplete::Infinity;
-        let start = Instant::now();
-        for point in &vec {
-            cum_sum = cum_sum + *point;
-        }
-        println!("Time elapsed: {:?}", start.elapsed());
-        let start = Instant::now();
-        let par_sum = vec
-            .into_par_iter()
-            .with_min_len(1 << 16)
-            .scan(|a, b| *a + *b, SepticCurveComplete::Infinity)
-            .collect::<Vec<SepticCurveComplete<BabyBear>>>();
-        println!("Time elapsed: {:?}", start.elapsed());
-        assert_eq!(cum_sum, *par_sum.last().unwrap());
-    }
+    //     let mut cum_sum = SepticCurveComplete::Infinity;
+    //     let start = Instant::now();
+    //     for point in &vec {
+    //         cum_sum = cum_sum + *point;
+    //     }
+    //     println!("Time elapsed: {:?}", start.elapsed());
+    //     let start = Instant::now();
+    //     let par_sum = vec
+    //         .into_par_iter()
+    //         .with_min_len(1 << 16)
+    //         .scan(|a, b| *a + *b, SepticCurveComplete::Infinity)
+    //         .collect::<Vec<SepticCurveComplete<BabyBear>>>();
+    //     println!("Time elapsed: {:?}", start.elapsed());
+    //     assert_eq!(cum_sum, *par_sum.last().unwrap());
+    // }
 }

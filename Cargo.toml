@@ -10,6 +10,7 @@ include = ["SP1_VERSION"]
 [workspace]
 members = [
   "crates/build",
+  "crates/cli",
   "crates/core/executor",
   "crates/core/machine",
   "crates/recursion/circuit",
@@ -97,6 +98,7 @@ sp1-cuda = { path = "crates/cuda", version = "5.0.0" }
 sp1-stark = { path = "crates/stark", version = "5.0.0" }
 sp1-lib = { path = "crates/zkvm/lib", version = "5.0.0", default-features = false }
 sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "5.0.0", default-features = false }
+sp1-zkvm-64 = { path = "crates/zkvm/entrypoint64", version = "5.0.0", default-features = false }
 
 # slop
 slop-algebra = { git = "https://github.com/succinctlabs/slop"  }

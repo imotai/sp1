@@ -19,7 +19,7 @@ pub struct BranchColumns<T> {
     pub adapter: ITypeReader<T>,
 
     /// The next program counter.
-    pub next_pc: T,
+    pub next_pc_rel: T,
 
     /// Branch Instructions.
     pub is_beq: T,

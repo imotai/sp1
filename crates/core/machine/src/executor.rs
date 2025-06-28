@@ -92,7 +92,7 @@ struct RecordTask {
     done: bool,
     program: Arc<Program>,
     record_gen_sync: Arc<TurnBasedSync>,
-    state: Arc<Mutex<PublicValues<u32, u32, u64, u32>>>,
+    state: Arc<Mutex<PublicValues<u64, u64, u64, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     record_tx: mpsc::Sender<ExecutionRecord>,
     abort_handle: AbortHandle,
@@ -181,9 +181,8 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         state.shard += 1;
                         state.execution_shard = record.public_values.execution_shard;
                         state.next_execution_shard = record.public_values.execution_shard + 1;
-                        state.exit_code = record.public_values.exit_code;
-                        state.start_pc = record.public_values.start_pc;
-                        state.next_pc = record.public_values.next_pc;
+                        state.pc_start_rel = record.public_values.pc_start_rel;
+                        state.next_pc_rel = record.public_values.next_pc_rel;
                         state.initial_timestamp = record.public_values.initial_timestamp;
                         state.last_timestamp = record.public_values.last_timestamp;
 
@@ -252,7 +251,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                             record.public_values.previous_finalize_addr_word;
                         state.last_finalize_addr_word =
                             record.public_values.last_finalize_addr_word;
-                        state.start_pc = state.next_pc;
+                        state.pc_start_rel = state.next_pc_rel;
                         state.last_timestamp = state.initial_timestamp;
                         state.is_timestamp_high_eq = 1;
                         state.is_timestamp_low_eq = 1;
@@ -301,7 +300,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                 // Initialize the record generation state.
                 let record_gen_sync = Arc::new(TurnBasedSync::new());
                 let state =
-                    Arc::new(Mutex::new(PublicValues::<u32, u32, u64, u32>::default().reset()));
+                    Arc::new(Mutex::new(PublicValues::<u64, u64, u64, u32>::default().reset()));
                 let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
 
                 // Check if the task was aborted again.

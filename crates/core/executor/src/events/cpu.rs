@@ -13,7 +13,7 @@ pub struct CpuEvent {
     /// The program counter.
     pub pc: u32,
     /// The next program counter.
-    pub next_pc: u32,
+    pub next_pc_rel: u32,
     /// The first operand.
     pub a: u32,
     /// The first operand memory record.

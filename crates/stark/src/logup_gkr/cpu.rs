@@ -4,6 +4,9 @@ use std::{
     sync::Arc,
 };
 
+use crate::air::InteractionScope;
+use crate::debug_interactions_with_all_chips;
+use crate::InteractionKind;
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::CpuBackend;
 use slop_challenger::FieldChallenger;
@@ -102,15 +105,17 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F
             })
             .collect::<BTreeMap<_, _>>();
 
-        // tracing::debug_span!("debug local interactions").in_scope(|| {
-        //     debug_interactions_with_all_chips::<F, A>(
-        //         &chips.iter().cloned().collect::<Vec<_>>(),
-        //         &preprocessed_traces,
-        //         &traces,
-        //         InteractionKind::all_kinds(),
-        //         InteractionScope::Local,
-        //     )
-        // });
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            tracing::debug_span!("debug local interactions").in_scope(|| {
+                debug_interactions_with_all_chips::<F, A>(
+                    &chips.iter().cloned().collect::<Vec<_>>(),
+                    &preprocessed_traces,
+                    &traces,
+                    InteractionKind::all_kinds(),
+                    InteractionScope::Local,
+                )
+            });
+        }
 
         let first_layer = self
             .generate_first_layer(&interactions, &traces, &preprocessed_traces, alpha, beta)

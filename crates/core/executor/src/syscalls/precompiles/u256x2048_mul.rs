@@ -9,17 +9,17 @@ use crate::{
     Register::{X12, X13},
 };
 
-const U256_NUM_WORDS: usize = 8;
-const U2048_NUM_WORDS: usize = 64;
-const U256_NUM_BYTES: usize = U256_NUM_WORDS * 4;
-const U2048_NUM_BYTES: usize = U2048_NUM_WORDS * 4;
+const U256_NUM_WORDS: usize = 4;
+const U2048_NUM_WORDS: usize = 32;
+const U256_NUM_BYTES: usize = U256_NUM_WORDS * 8;
+const U2048_NUM_BYTES: usize = U2048_NUM_WORDS * 8;
 
 pub(crate) fn u256x2048_mul<E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let clk = rt.clk;
 
     let a_ptr = arg1;
@@ -74,7 +74,7 @@ pub(crate) fn u256x2048_mul<E: ExecutorConfig>(
     });
 
     let sycall_event =
-        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
+        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc_rel, rt.exit_code);
     rt.add_precompile_event(syscall_code, sycall_event, event);
 
     None

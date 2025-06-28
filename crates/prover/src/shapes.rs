@@ -801,7 +801,7 @@ mod tests {
         let shape = [
             (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
             (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485856),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486112),
             (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
             (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
