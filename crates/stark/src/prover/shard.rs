@@ -807,6 +807,14 @@ pub struct CoreProofShape<F: Field, A: MachineAir<F>> {
 
     /// The multiple of `log_stacking_height` that the main area adds up to.
     pub main_multiple: usize,
+
+    /// The number of columns added to the preprocessed commit to round to the nearest multiple of
+    /// `stacking_height`.
+    pub preprocessed_padding_cols: usize,
+
+    /// The number of columns added to the main commit to round to the nearest multiple of
+    /// `stacking_height`.
+    pub main_padding_cols: usize,
 }
 
 /// A proving key for a STARK.

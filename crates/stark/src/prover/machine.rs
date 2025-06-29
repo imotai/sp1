@@ -371,6 +371,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
     /// Given a record, compute the shape of the resulting shard proof.
     pub fn shape_from_record(&self, record: &Record<C>) -> Option<CoreProofShape<C::F, C::Air>> {
         let log_stacking_height = self.inner.verifier.log_stacking_height() as usize;
+        let max_log_row_count = self.inner.verifier.max_log_row_count();
         let airs = self.machine().chips();
         let shard_chips: BTreeSet<_> =
             airs.iter().filter(|air| air.included(record)).cloned().collect();
@@ -384,8 +385,28 @@ impl<C: MachineProverComponents> MachineProver<C> {
             .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
             .sum::<usize>()
             .div_ceil(1 << log_stacking_height);
+
+        let main_padding_cols = (main_multiple * (1 << log_stacking_height)
+            - shard_chips
+                .iter()
+                .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
+                .sum::<usize>())
+        .div_ceil(1 << max_log_row_count);
+
+        let preprocessed_padding_cols = (preprocessed_multiple * (1 << log_stacking_height)
+            - shard_chips
+                .iter()
+                .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
+                .sum::<usize>())
+        .div_ceil(1 << max_log_row_count);
         let shard_chips = self.machine().smallest_cluster(&shard_chips).cloned()?;
-        Some(CoreProofShape { shard_chips, preprocessed_multiple, main_multiple })
+        Some(CoreProofShape {
+            shard_chips,
+            preprocessed_multiple,
+            main_multiple,
+            preprocessed_padding_cols,
+            main_padding_cols,
+        })
     }
 
     // / Given a proof, compute its shape.

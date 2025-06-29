@@ -88,8 +88,15 @@ where
         let sumcheck_proof = self.sumcheck_proof.read(builder);
         let jagged_eval_proof = self.jagged_eval_proof.read(builder);
         let stacked_pcs_proof = self.stacked_pcs_proof.read(builder);
+        let added_columns = self.added_columns.clone();
 
-        JaggedPcsProofVariable { stacked_pcs_proof, sumcheck_proof, jagged_eval_proof, params }
+        JaggedPcsProofVariable {
+            stacked_pcs_proof,
+            sumcheck_proof,
+            jagged_eval_proof,
+            params,
+            added_columns,
+        }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
