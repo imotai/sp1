@@ -26,11 +26,11 @@ impl<B: DefaultBasefoldConfig> BasefoldVerifier<B> {
 }
 
 #[derive(Error)]
-pub enum BaseFoldVerifierError<B: BasefoldConfig> {
+pub enum BaseFoldVerifierError<TcsError> {
     #[error("Sumcheck and FRI commitments length mismatch")]
     SumcheckFriLengthMismatch,
     #[error("Query failed to verify: {0}")]
-    TcsError(<B::Tcs as TensorCs>::VerifierError),
+    TcsError(#[from] TcsError),
     #[error("Sumcheck error")]
     Sumcheck,
     #[error("Invalid proof of work witness")]
@@ -43,7 +43,7 @@ pub enum BaseFoldVerifierError<B: BasefoldConfig> {
     SumcheckFinalPolyMismatch,
 }
 
-impl<B: BasefoldConfig> std::fmt::Debug for BaseFoldVerifierError<B> {
+impl<TcsError: std::fmt::Display> std::fmt::Debug for BaseFoldVerifierError<TcsError> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BaseFoldVerifierError::SumcheckFriLengthMismatch => {
@@ -90,7 +90,7 @@ impl<B: BasefoldConfig> MultilinearPcsVerifier for BasefoldVerifier<B> {
     type Commitment = B::Commitment;
     type Proof = BasefoldProof<B>;
     type Challenger = B::Challenger;
-    type VerifierError = BaseFoldVerifierError<B>;
+    type VerifierError = BaseFoldVerifierError<<B::Tcs as TensorCs>::VerifierError>;
 
     fn default_challenger(&self) -> Self::Challenger {
         B::default_challenger(self)
@@ -116,7 +116,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         evaluation_claims: &[Evaluations<B::EF>],
         proof: &BasefoldProof<B>,
         challenger: &mut B::Challenger,
-    ) -> Result<(), BaseFoldVerifierError<B>> {
+    ) -> Result<(), BaseFoldVerifierError<<B::Tcs as TensorCs>::VerifierError>> {
         // Sample the challenge used to batch all the different polynomials.
         let batching_challenge = challenger.sample_ext_element::<B::EF>();
         // Compute the batched evaluation claim.
@@ -248,7 +248,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         reduced_openings: Vec<B::EF>,
         query_openings: &[TensorCsOpening<B::Tcs>],
         betas: &[B::EF],
-    ) -> Result<(), BaseFoldVerifierError<B>> {
+    ) -> Result<(), BaseFoldVerifierError<<B::Tcs as TensorCs>::VerifierError>> {
         let log_max_height = commitments.len() + self.fri_config.log_blowup();
 
         let mut folded_evals = reduced_openings;

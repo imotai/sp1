@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::FieldChallenger;
-use slop_multilinear::{full_geq, Evaluations, Mle, Point};
-use slop_stacked::{StackedPcsProof, StackedPcsVerifier};
+use slop_multilinear::{full_geq, Evaluations, Mle, MultilinearPcsVerifier, Point};
+use slop_stacked::{StackedPcsProof, StackedPcsVerifier, StackedVerifierError};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use std::fmt::Debug;
 use thiserror::Error;
@@ -27,7 +27,7 @@ pub struct JaggedPcsVerifier<C: JaggedConfig> {
 }
 
 #[derive(Debug, Error)]
-pub enum JaggedPcsVerifierError<EF> {
+pub enum JaggedPcsVerifierError<EF, PcsError> {
     #[error("sumcheck claim mismatch: {0} != {1}")]
     SumcheckClaimMismatch(EF, EF),
     #[error("sumcheck proof verification failed: {0}")]
@@ -35,7 +35,7 @@ pub enum JaggedPcsVerifierError<EF> {
     #[error("jagged evaluation proof verification failed")]
     JaggedEvalProofVerificationFailed,
     #[error("dense pcs verification failed")]
-    DensePcsVerificationFailed,
+    DensePcsVerificationFailed(#[from] StackedVerifierError<PcsError>),
     #[error("booleanity check failed")]
     BooleanityCheckFailed,
     #[error("montonicity check failed")]
@@ -55,7 +55,13 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         proof: &JaggedPcsProof<C>,
         insertion_points: &[usize],
         challenger: &mut C::Challenger,
-    ) -> Result<(), JaggedPcsVerifierError<C::EF>> {
+    ) -> Result<
+        (),
+        JaggedPcsVerifierError<
+            C::EF,
+            <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+        >,
+    > {
         let JaggedPcsProof {
             stacked_pcs_proof,
             sumcheck_proof,
@@ -137,15 +143,13 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         // Verify the evaluation proof using the (dense) stacked PCS verifier.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
-        self.stacked_pcs_verifier
-            .verify_trusted_evaluation(
-                commitments,
-                &evaluation_point,
-                stacked_pcs_proof,
-                expected_eval,
-                challenger,
-            )
-            .map_err(|_| JaggedPcsVerifierError::DensePcsVerificationFailed)?;
+        self.stacked_pcs_verifier.verify_trusted_evaluation(
+            commitments,
+            &evaluation_point,
+            stacked_pcs_proof,
+            expected_eval,
+            challenger,
+        )?;
 
         Ok(())
     }
@@ -171,7 +175,13 @@ impl<'a, C: JaggedConfig> MachineJaggedPcsVerifier<'a, C> {
         evaluation_claims: &[Evaluations<C::EF>],
         proof: &JaggedPcsProof<C>,
         challenger: &mut C::Challenger,
-    ) -> Result<(), JaggedPcsVerifierError<C::EF>> {
+    ) -> Result<
+        (),
+        JaggedPcsVerifierError<
+            C::EF,
+            <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+        >,
+    > {
         let insertion_points = self
             .column_counts_by_round
             .iter()
