@@ -18,7 +18,7 @@ use sp1_prover::{
     local::LocalProver,
     CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
-use sp1_stark::{air::PublicValues, MachineVerifierError, Word};
+use sp1_stark::{air::PublicValues, MachineVerifierConfigError, Word};
 use thiserror::Error;
 
 /// The module that exposes the [`ExecuteRequest`] type.
@@ -109,10 +109,10 @@ pub enum SP1VerificationError {
     VersionMismatch(String),
     /// An error that occurs when the core machine verification fails.
     #[error("Core machine verification error: {0}")]
-    Core(MachineVerifierError<CoreSC>),
+    Core(MachineVerifierConfigError<CoreSC>),
     /// An error that occurs when the recursion verification fails.
     #[error("Recursion verification error: {0}")]
-    Recursion(MachineVerifierError<InnerSC>),
+    Recursion(MachineVerifierConfigError<InnerSC>),
     /// An error that occurs when the Plonk verification fails.
     #[error("Plonk verification error: {0}")]
     Plonk(anyhow::Error),

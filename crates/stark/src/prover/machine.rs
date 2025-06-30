@@ -18,7 +18,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::{
     air::MachineAir,
     prover::{shard::AirProver, CoreProofShape, ProvingKey},
-    Machine, MachineConfig, MachineProof, MachineVerifier, MachineVerifierError,
+    Machine, MachineConfig, MachineProof, MachineVerifier, MachineVerifierConfigError,
     MachineVerifyingKey, ShardProof, ShardVerifier, VerifierConstraintFolder,
 };
 
@@ -321,7 +321,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
         &self,
         vk: &MachineVerifyingKey<C::Config>,
         proof: &MachineProof<C::Config>,
-    ) -> Result<(), MachineVerifierError<C::Config>>
+    ) -> Result<(), MachineVerifierConfigError<C::Config>>
     where
         C::Air: for<'a> Air<VerifierConstraintFolder<'a, C::Config>>,
     {

@@ -28,7 +28,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof, Word,
+    BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey, ShardProof, Word,
 };
 use std::{
     borrow::Borrow,
@@ -703,7 +703,7 @@ impl<C: SP1ProverComponents> SubproofVerifier for LocalProver<C> {
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         self.prover.verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }

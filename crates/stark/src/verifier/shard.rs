@@ -8,11 +8,11 @@ use slop_basefold::DefaultBasefoldConfig;
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{
-    JaggedBasefoldConfig, JaggedEvalConfig, JaggedPcsVerifier, JaggedPcsVerifierError,
-    MachineJaggedPcsVerifier,
+    JaggedBasefoldConfig, JaggedConfig, JaggedEvalConfig, JaggedPcsVerifier,
+    JaggedPcsVerifierError, MachineJaggedPcsVerifier,
 };
 use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
-use slop_multilinear::{full_geq, Evaluations, Mle, MleEval};
+use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsVerifier};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
@@ -36,10 +36,10 @@ pub struct ShardVerifier<C: MachineConfig, A: MachineAir<C::F>> {
 
 /// An error that occurs during the verification of a shard proof.
 #[derive(Debug, Error)]
-pub enum ShardVerifierError<C: MachineConfig> {
+pub enum ShardVerifierError<EF, PcsError> {
     /// The pcs opening proof is invalid.
     #[error("invalid pcs opening proof: {0}")]
-    InvalidopeningArgument(JaggedPcsVerifierError<C::EF>),
+    InvalidopeningArgument(#[from] JaggedPcsVerifierError<EF, PcsError>),
     /// The constraints check failed.
     #[error("constraints check failed: {0}")]
     ConstraintsCheckFailed(SumcheckError),
@@ -60,11 +60,17 @@ pub enum ShardVerifierError<C: MachineConfig> {
     OpeningShapeMismatch(#[from] OpeningShapeError),
     /// The GKR verification failed.
     #[error("GKR verification failed: {0}")]
-    GkrVerificationFailed(LogupGkrVerificationError<C::EF>),
+    GkrVerificationFailed(LogupGkrVerificationError<EF>),
     /// The public values verification failed.
     #[error("public values verification failed")]
     InvalidPublicValues,
 }
+
+/// Derive the error type from the jagged config.
+pub type ShardVerifierConfigError<C> = ShardVerifierError<
+    <C as JaggedConfig>::EF,
+    <<C as JaggedConfig>::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+>;
 
 /// An error that occurs when the shape of the openings does not match the expected shape.
 #[derive(Debug, Error)]
@@ -260,7 +266,10 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         proof: &ShardProof<C>,
         public_values: &[C::F],
         challenger: &mut C::Challenger,
-    ) -> Result<(), ShardVerifierError<C>>
+    ) -> Result<
+        (),
+        ShardVerifierError<C::EF, <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError>,
+    >
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {
@@ -322,9 +331,10 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         }
 
         if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
-            return Err(ShardVerifierError::ConstraintsCheckFailed(
-                SumcheckError::InconsistencyWithEval,
-            ));
+            return Err(ShardVerifierError::<
+                _,
+                <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+            >::ConstraintsCheckFailed(SumcheckError::InconsistencyWithEval));
         }
 
         let zerocheck_sum_modifications_from_gkr = gkr_evaluations
@@ -356,14 +366,21 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         // Verify that the rlc claim matches the random linear combination of evaluation claims from
         // gkr.
         if proof.zerocheck_proof.claimed_sum != zerocheck_sum_modification {
-            return Err(ShardVerifierError::ConstraintsCheckFailed(
-                SumcheckError::InconsistencyWithClaimedSum,
+            return Err(ShardVerifierError::<
+                _,
+                <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+            >::ConstraintsCheckFailed(
+                SumcheckError::InconsistencyWithClaimedSum
             ));
         }
 
         // Verify the zerocheck proof.
-        partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger)
-            .map_err(|e| ShardVerifierError::ConstraintsCheckFailed(e))?;
+        partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger).map_err(|e| {
+            ShardVerifierError::<
+                _,
+                <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+            >::ConstraintsCheckFailed(e)
+        })?;
 
         // Observe the openings
         for opening in opened_values.chips.iter() {
@@ -385,7 +402,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         alpha: C::EF,
         beta: C::EF,
         public_values: &[C::F],
-    ) -> Result<C::EF, ShardVerifierError<C>> {
+    ) -> Result<C::EF, ShardVerifierConfigError<C>> {
         let mut folder = VerifierPublicValuesConstraintFolder::<C> {
             preprocessed: VerticalPair::new(
                 RowMajorMatrixView::new_row(&[]),
@@ -414,7 +431,10 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         if folder.accumulator == C::EF::zero() {
             Ok(folder.local_interaction_digest)
         } else {
-            Err(ShardVerifierError::InvalidPublicValues)
+            Err(ShardVerifierError::<
+                _,
+                <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+            >::InvalidPublicValues)
         }
     }
 
@@ -425,7 +445,10 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         vk: &MachineVerifyingKey<C>,
         proof: &ShardProof<C>,
         challenger: &mut C::Challenger,
-    ) -> Result<(), ShardVerifierError<C>>
+    ) -> Result<
+        (),
+        ShardVerifierError<C::EF, <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError>,
+    >
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {
