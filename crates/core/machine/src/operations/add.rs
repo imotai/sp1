@@ -1,16 +1,26 @@
 use serde::{Deserialize, Serialize};
 use sp1_core_executor::events::ByteRecord;
 use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_stark::{self, air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::air::{SP1Operation, WordAirBuilder};
 
 /// A set of columns needed to compute the add of two words.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct AddOperation<T> {
     /// The result of `a + b`.
@@ -58,7 +68,7 @@ impl<F: Field> AddOperation<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputParams, InputExpr)]
 pub struct AddOperationInput<AB: SP1AirBuilder> {
     pub a: Word<AB::Expr>,
     pub b: Word<AB::Expr>,

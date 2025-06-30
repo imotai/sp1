@@ -84,8 +84,9 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned,
-        LtOperationUnsignedInput, MulOperation, U16MSBOperation, U16MSBOperationInput,
+        AddOperation, IsEqualWordOperation, IsEqualWordOperationInput, IsZeroWordOperation,
+        IsZeroWordOperationInput, LtOperationUnsigned, LtOperationUnsignedInput, MulOperation,
+        U16MSBOperation, U16MSBOperationInput,
     },
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
@@ -552,9 +553,9 @@ where
 
         // Calculate is_overflow. is_overflow = is_equal(b, -2^{31}) * is_equal(c, -1) * is_signed
         {
-            IsEqualWordOperation::<AB::F>::eval(
+            <IsEqualWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     local.adapter.b().map(|x| x.into()),
                     Word::from(i32::MIN as u32).map(|x: AB::F| x.into()),
                     local.is_overflow_b,
@@ -562,9 +563,9 @@ where
                 ),
             );
 
-            IsEqualWordOperation::<AB::F>::eval(
+            <IsEqualWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     local.adapter.c().map(|x| x.into()),
                     Word::from(-1i32 as u32).map(|x: AB::F| x.into()),
                     local.is_overflow_c,
@@ -676,9 +677,13 @@ where
         // When division by 0, quotient must be 0xffffffff per RISC-V spec.
         {
             // Calculate whether c is 0.
-            IsZeroWordOperation::<AB::F>::eval(
+            <IsZeroWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                (local.adapter.c().map(|x| x.into()), local.is_c_0, local.is_real.into()),
+                IsZeroWordOperationInput::new(
+                    local.adapter.c().map(|x| x.into()),
+                    local.is_c_0,
+                    local.is_real.into(),
+                ),
             );
 
             // If is_c_0 is true, then quotient must be 0xffffffff = u32::MAX.

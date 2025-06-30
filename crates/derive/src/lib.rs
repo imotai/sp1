@@ -30,6 +30,11 @@ use syn::{
     parse_macro_input, parse_quote, Data, DeriveInput, GenericParam, ItemFn, WherePredicate,
 };
 
+mod input_expr;
+mod input_params;
+mod into_shape;
+mod sp1_operation_builder;
+
 #[proc_macro_derive(AlignedBorrow)]
 pub fn aligned_borrow_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -427,30 +432,22 @@ fn find_eval_trait_bound(attrs: &[syn::Attribute]) -> Option<String> {
     None
 }
 
-#[proc_macro_derive(SP1OperationInput)]
-pub fn sp1_operation_input_derive(input: TokenStream) -> TokenStream {
-    let ast = parse_macro_input!(input as DeriveInput);
-    let name = &ast.ident;
-    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+#[proc_macro_derive(IntoShape)]
+pub fn into_shape_derive(input: TokenStream) -> TokenStream {
+    into_shape::into_shape_derive(input)
+}
 
-    // Extract field names from the struct
-    let field_names = match &ast.data {
-        Data::Struct(data_struct) => data_struct
-            .fields
-            .iter()
-            .filter_map(|field| field.ident.as_ref())
-            .map(|ident| ident.to_string())
-            .collect::<Vec<_>>(),
-        _ => panic!("SP1OperationInput can only be derived for structs"),
-    };
+#[proc_macro_derive(InputExpr)]
+pub fn input_expr_derive(input: TokenStream) -> TokenStream {
+    input_expr::input_expr_derive(input)
+}
 
-    let field_names_str = field_names.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+#[proc_macro_derive(InputParams)]
+pub fn input_params_derive(input: TokenStream) -> TokenStream {
+    input_params::input_params_derive(input)
+}
 
-    let expanded = quote! {
-        impl #impl_generics #name #ty_generics #where_clause {
-            pub const PARAMETER_NAMES: &'static [&'static str] = &[#(#field_names_str),*];
-        }
-    };
-
-    TokenStream::from(expanded)
+#[proc_macro_derive(SP1OperationBuilder)]
+pub fn sp1_operation_builder_derive(input: TokenStream) -> TokenStream {
+    sp1_operation_builder::sp1_operation_builder_derive(input)
 }

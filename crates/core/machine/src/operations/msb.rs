@@ -6,12 +6,22 @@ use sp1_core_executor::{
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::air::SP1Operation;
 
 /// Operation columns for computing the most significant bit of a u16.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct U16MSBOperation<T> {
     /// The result of the msb operation.
@@ -60,7 +70,7 @@ impl<F: Field> U16MSBOperation<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, Debug, InputExpr, InputParams)]
 pub struct U16MSBOperationInput<AB: SP1AirBuilder> {
     pub a: AB::Expr,
     pub cols: U16MSBOperation<AB::Var>,

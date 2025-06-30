@@ -2,7 +2,8 @@ use super::MemoryChipType;
 use crate::{
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        BabyBearWordRangeChecker, IsZeroOperation, LtOperationUnsigned, LtOperationUnsignedInput,
+        BabyBearWordRangeChecker, IsZeroOperation, IsZeroOperationInput, LtOperationUnsigned,
+        LtOperationUnsignedInput,
     },
     utils::next_multiple_of_32,
 };
@@ -390,11 +391,19 @@ where
         // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
         IsZeroOperation::<AB::F>::eval(
             builder,
-            (local.prev_addr.reduce::<AB>(), local.is_prev_addr_zero, local.is_real.into()),
+            IsZeroOperationInput::new(
+                local.prev_addr.reduce::<AB>(),
+                local.is_prev_addr_zero,
+                local.is_real.into(),
+            ),
         );
         IsZeroOperation::<AB::F>::eval(
             builder,
-            (local.index.into(), local.is_index_zero, local.is_real.into()),
+            IsZeroOperationInput::new(
+                local.index.into(),
+                local.is_index_zero,
+                local.is_real.into(),
+            ),
         );
 
         // Comparison will be done unless `prev_addr == 0` and `index == 0`.

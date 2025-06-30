@@ -36,6 +36,7 @@ pub trait SP1CoreOperationBuilder:
     + SP1OperationBuilder<BitwiseOperation<F<Self>>>
     + SP1OperationBuilder<BitwiseU16Operation<F<Self>>>
     + SP1OperationBuilder<RTypeReader<F<Self>>>
+    + SP1OperationBuilder<CPUState<F<Self>>>
     + SP1OperationBuilder<RTypeReaderImmutable>
     + SP1OperationBuilder<ALUTypeReader<F<Self>>>
     + SP1OperationBuilder<CPUState<F<Self>>>
@@ -44,6 +45,7 @@ pub trait SP1CoreOperationBuilder:
     + SP1OperationBuilder<U16MSBOperation<F<Self>>>
     + SP1OperationBuilder<LtOperationUnsigned<F<Self>>>
     + SP1OperationBuilder<LtOperationSigned<F<Self>>>
+    + SP1OperationBuilder<CPUState<F<Self>>>
 {
 }
 
@@ -57,9 +59,9 @@ impl<AB> SP1CoreOperationBuilder for AB where
         + SP1OperationBuilder<IsEqualWordOperation<F<Self>>>
         + SP1OperationBuilder<BitwiseOperation<F<Self>>>
         + SP1OperationBuilder<BitwiseU16Operation<F<Self>>>
-        + SP1OperationBuilder<RTypeReader<F<Self>>>
         + SP1OperationBuilder<RTypeReaderImmutable>
         + SP1OperationBuilder<ALUTypeReader<F<Self>>>
+        + SP1OperationBuilder<RTypeReader<F<Self>>>
         + SP1OperationBuilder<CPUState<F<Self>>>
         + SP1OperationBuilder<SubOperation<F<Self>>>
         + SP1OperationBuilder<U16CompareOperation<F<Self>>>

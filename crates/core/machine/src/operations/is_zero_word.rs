@@ -5,16 +5,26 @@
 use p3_air::AirBuilder;
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::air::{SP1Operation, SP1OperationBuilder};
 
-use super::IsZeroOperation;
+use super::{IsZeroOperation, IsZeroOperationInput};
 
 /// A set of columns needed to compute whether the given word is 0.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct IsZeroWordOperation<T> {
     /// `IsZeroOperation` to check if each limb in the input word is zero.
@@ -54,7 +64,7 @@ impl<F: Field> IsZeroWordOperation<F> {
         for i in 0..WORD_SIZE {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                (a[i].clone(), cols.is_zero_limb[i], is_real.clone()),
+                IsZeroOperationInput::new(a[i].clone(), cols.is_zero_limb[i], is_real.clone()),
             )
         }
 
@@ -66,14 +76,30 @@ impl<F: Field> IsZeroWordOperation<F> {
     }
 }
 
+#[derive(Clone, InputParams, InputExpr)]
+pub struct IsZeroWordOperationInput<AB: SP1AirBuilder> {
+    pub a: Word<AB::Expr>,
+    pub cols: IsZeroWordOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> IsZeroWordOperationInput<AB> {
+    pub fn new(
+        a: Word<AB::Expr>,
+        cols: IsZeroWordOperation<AB::Var>,
+        is_real: AB::Expr,
+    ) -> IsZeroWordOperationInput<AB> {
+        Self { a, cols, is_real }
+    }
+}
+
 impl<AB: SP1AirBuilder + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>>
     SP1Operation<AB> for IsZeroWordOperation<AB::F>
 {
-    type Input = (Word<AB::Expr>, IsZeroWordOperation<AB::Var>, AB::Expr);
+    type Input = IsZeroWordOperationInput<AB>;
     type Output = ();
 
     fn lower(builder: &mut AB, input: Self::Input) {
-        let (a, cols, is_real) = input;
-        Self::eval_zero_word(builder, a, cols, is_real);
+        Self::eval_zero_word(builder, input.a, input.cols, input.is_real);
     }
 }

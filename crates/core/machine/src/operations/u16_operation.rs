@@ -5,10 +5,10 @@ use sp1_stark::air::SP1AirBuilder;
 
 use crate::air::{SP1Operation, WordAirBuilder};
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 /// A set of columns for a u16 to u8 adapter.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize, IntoShape)]
 #[repr(C)]
 pub struct U16toU8Operation<T> {
     low_bytes: [T; WORD_SIZE], // least significant byte of each u16 limb
@@ -67,10 +67,10 @@ impl<F: Field> U16toU8Operation<F> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, SP1OperationBuilder)]
 pub struct U16toU8OperationSafe;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, InputParams, InputExpr)]
 pub struct U16toU8OperationSafeInput<AB: SP1AirBuilder> {
     pub u16_values: [AB::Expr; WORD_SIZE],
     pub cols: U16toU8Operation<AB::Var>,
@@ -101,10 +101,10 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationSafe {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, SP1OperationBuilder)]
 pub struct U16toU8OperationUnsafe;
 
-#[derive(Debug, Clone, SP1OperationInput)]
+#[derive(Debug, Clone, InputParams, InputExpr)]
 pub struct U16toU8OperationUnsafeInput<AB: SP1AirBuilder> {
     pub u16_values: [AB::Expr; WORD_SIZE],
     pub cols: U16toU8Operation<AB::Var>,

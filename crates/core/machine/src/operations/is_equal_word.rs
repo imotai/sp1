@@ -1,7 +1,7 @@
 use p3_air::AirBuilder;
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
@@ -10,10 +10,20 @@ use crate::{
     operations::IsZeroOperation,
 };
 
-use super::IsZeroWordOperation;
+use super::{IsZeroWordOperation, IsZeroWordOperationInput};
 
 /// A set of columns needed to compute the equality of two words.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct IsEqualWordOperation<T> {
     /// An operation to check whether the differences in limbs are all 0 (i.e., `a[0] - b[0]`,
@@ -54,7 +64,29 @@ impl<F: Field> IsEqualWordOperation<F> {
         let diff = Word([a[0].clone() - b[0].clone(), a[1].clone() - b[1].clone()]);
 
         // Check if the difference is 0.
-        IsZeroWordOperation::<AB::F>::eval(builder, (diff, cols.is_diff_zero, is_real.clone()));
+        <IsZeroWordOperation<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            IsZeroWordOperationInput::new(diff, cols.is_diff_zero, is_real.clone()),
+        );
+    }
+}
+
+#[derive(Clone, InputExpr, InputParams)]
+pub struct IsEqualWordOperationInput<AB: SP1AirBuilder> {
+    pub a: Word<AB::Expr>,
+    pub b: Word<AB::Expr>,
+    pub cols: IsEqualWordOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> IsEqualWordOperationInput<AB> {
+    pub fn new(
+        a: Word<AB::Expr>,
+        b: Word<AB::Expr>,
+        cols: IsEqualWordOperation<AB::Var>,
+        is_real: AB::Expr,
+    ) -> Self {
+        Self { a, b, cols, is_real }
     }
 }
 
@@ -64,11 +96,10 @@ impl<
             + SP1OperationBuilder<IsZeroWordOperation<<AB as AirBuilder>::F>>,
     > SP1Operation<AB> for IsEqualWordOperation<AB::F>
 {
-    type Input = (Word<AB::Expr>, Word<AB::Expr>, IsEqualWordOperation<AB::Var>, AB::Expr);
+    type Input = IsEqualWordOperationInput<AB>;
     type Output = ();
 
     fn lower(builder: &mut AB, input: Self::Input) {
-        let (a, b, cols, is_real) = input;
-        Self::eval_is_equal_word(builder, a, b, cols, is_real);
+        Self::eval_is_equal_word(builder, input.a, input.b, input.cols, input.is_real);
     }
 }

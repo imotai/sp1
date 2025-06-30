@@ -4438,6 +4438,7 @@ name = "sp1-constraint-compiler"
 version = "5.0.0"
 dependencies = [
  "clap",
+ "itertools 0.13.0",
  "serde",
  "serde_json",
  "slop-air",

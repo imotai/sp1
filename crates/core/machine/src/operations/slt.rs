@@ -5,14 +5,24 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
 
 use crate::air::{SP1Operation, SP1OperationBuilder};
 
 use super::{U16CompareOperation, U16CompareOperationInput, U16MSBOperation, U16MSBOperationInput};
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct LtOperationUnsigned<T> {
     /// Instance of the U16CompareOperation.
@@ -25,7 +35,17 @@ pub struct LtOperationUnsigned<T> {
     pub comparison_limbs: [T; 2],
 }
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct LtOperationSigned<T> {
     /// The result of the SLTU operation.
@@ -237,7 +257,7 @@ impl<F: Field> LtOperationUnsigned<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputExpr, InputParams)]
 pub struct LtOperationUnsignedInput<AB: SP1AirBuilder> {
     pub b: Word<AB::Expr>,
     pub c: Word<AB::Expr>,
@@ -268,7 +288,7 @@ where
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputExpr, InputParams)]
 pub struct LtOperationSignedInput<AB: SP1AirBuilder> {
     pub b: Word<AB::Expr>,
     pub c: Word<AB::Expr>,

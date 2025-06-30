@@ -6,11 +6,21 @@ use sp1_core_executor::{
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::air::SP1Operation;
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct U16CompareOperation<T> {
     /// The result of the compare operation (1 if a < b, 0 if a >= b)
@@ -58,7 +68,7 @@ impl<F: Field> U16CompareOperation<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputParams, InputExpr)]
 pub struct U16CompareOperationInput<AB: SP1AirBuilder> {
     pub a: AB::Expr,
     pub b: AB::Expr,

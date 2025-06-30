@@ -24,6 +24,7 @@ pub mod air;
 mod chip;
 mod debug;
 mod folder;
+pub mod ir;
 mod logup_gkr;
 mod lookup;
 mod machine;

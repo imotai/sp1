@@ -4,7 +4,9 @@ use crate::{
 
 use crate::{
     air::SP1CoreAirBuilder,
-    operations::{field::range::FieldLtCols, IsZeroOperation, SyscallAddrOperation},
+    operations::{
+        field::range::FieldLtCols, IsZeroOperation, IsZeroOperationInput, SyscallAddrOperation,
+    },
     utils::{
         limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
         words_to_bytes_le_vec,
@@ -263,7 +265,11 @@ where
             modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
         IsZeroOperation::<AB::F>::eval(
             builder,
-            (modulus_byte_sum, local.modulus_is_zero, local.is_real.into()),
+            IsZeroOperationInput::new(
+                modulus_byte_sum,
+                local.modulus_is_zero,
+                local.is_real.into(),
+            ),
         );
 
         // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.

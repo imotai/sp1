@@ -1,9 +1,11 @@
 use clap::{Parser, ValueEnum};
 use slop_air::Air;
 use slop_baby_bear::BabyBear;
-use sp1_constraint_compiler::ir::ConstraintCompiler;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_stark::air::MachineAir;
+use sp1_stark::{
+    air::MachineAir,
+    ir::{ConstraintCompiler, Shape},
+};
 
 type F = BabyBear;
 
@@ -89,22 +91,32 @@ fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
             }
         }
         OutputFormat::Lean => {
-            let ast = builder.ast();
-            let lean_constraints = ast.to_lean(false, &None, &Default::default());
+            let input_mapping = Default::default();
+            let (steps, constraints, num_calls) = builder.ast().to_lean_components(&input_mapping);
+            // println!("{:#?}", lean_components);
 
-            println!("-- Generated Lean code for chip {}", chip_name);
+            println!("-- Generated Lean code for chip {}Chip", chip_name);
             println!("import SP1Foundations");
             println!();
-            println!("namespace {chip_name}");
+
+            println!("namespace {}Chip", chip_name);
             println!();
-            println!(
-                "def constraints (Main : Vector BabyBear {}) : SP1ConstraintList :=",
-                builder.num_cols()
-            );
-            println!("{}", lean_constraints);
+
+            println!("def constraints (Main : {})", builder.num_cols());
+
+            for step in steps {
+                println!("  {}", step)
+            }
+
+            let calls_constraints: String = (0..num_calls).map(|i| format!(" ++ CS{i}")).collect();
+            println!("  [");
+            for constraint in constraints {
+                println!("    {},", constraint);
+            }
+            println!("  ]{calls_constraints}");
+
             println!();
-            println!("end {chip_name}");
-            // TODO: Generate Lean code for chip and RISC-V in SailM monad
+            println!("end {}Chip", chip_name);
         }
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&builder.ast()).unwrap());
@@ -155,6 +167,10 @@ fn compile_operation(chip_name: &str, operation_name: &str, output_format: &Outp
             println!("{}", operation);
         }
         OutputFormat::Lean => {
+            let input_mapping = operation.decl.input_mapping();
+            let (steps, constraints, num_calls) = operation.body.to_lean_components(&input_mapping);
+            // println!("{:#?}", lean_components);
+
             println!(
                 "-- Generated Lean code for operation {} (from chip {})",
                 operation_name, chip_name
@@ -165,34 +181,34 @@ fn compile_operation(chip_name: &str, operation_name: &str, output_format: &Outp
             println!("namespace {}", operation_name);
             println!();
 
-            let input_mapping = operation.calc_input_mapping();
-            // println!("{:#?}", input_mapping);
-
             println!("def constraints");
-            // Make sure we have parameter names!
-            assert_eq!(
-                operation.decl.input.len(),
-                operation.decl.parameter_names.as_ref().unwrap().len()
-            );
-            for (param, param_name) in operation
-                .decl
-                .input
-                .iter()
-                .zip(operation.decl.parameter_names.clone().unwrap().iter())
-            {
+            for (param_name, param) in &operation.decl.input {
                 println!("  ({param_name} : {})", param.to_lean_type());
             }
 
             println!("  : {} :=", operation.decl.to_output_lean_type());
-            // Generate the constraint body from the AST
-            let ast = &operation.body;
-            let lean_output = if operation.decl.output.is_empty() {
-                None
-            } else {
-                Some(operation.decl.to_lean_output(true))
-            };
-            let lean_constraints = ast.to_lean(true, &lean_output, &input_mapping);
-            println!("{}", lean_constraints);
+
+            for step in steps {
+                println!("  {}", step)
+            }
+
+            let calls_constraints: String = (0..num_calls).map(|i| format!(" ++ CS{i}")).collect();
+            match operation.decl.output {
+                Shape::Unit => {
+                    println!("  [");
+                    for constraint in constraints {
+                        println!("    {},", constraint);
+                    }
+                    println!("  ]{calls_constraints}");
+                }
+                _ => {
+                    println!("  ⟨{}, [", operation.decl.output.to_lean_constructor(&input_mapping));
+                    for constraint in constraints {
+                        println!("    {},", constraint);
+                    }
+                    println!("  ]{calls_constraints}⟩");
+                }
+            }
 
             println!();
             println!("end {}", operation_name);
