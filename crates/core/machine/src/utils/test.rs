@@ -74,7 +74,7 @@ pub async fn run_test_core(
 ) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierError<BabyBearPoseidon2>> {
     let log_blowup = 1;
     let log_stacking_height = 21;
-    let max_log_row_count = 21;
+    let max_log_row_count = 22;
     let machine = RiscvAir::machine();
     slop_futures::rayon::spawn(move || {
         let x = 1;

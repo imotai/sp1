@@ -11,8 +11,6 @@ use sp1_derive::AlignedBorrow;
 
 use crate::operations::U32toU8Operation;
 
-use super::AndOperation;
-
 /// A set of columns needed to compute the and operation over two u16 limbs.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]

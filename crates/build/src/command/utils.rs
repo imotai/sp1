@@ -50,6 +50,7 @@ pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
 }
 
 /// Rust flags for compilation of C libraries.
+#[allow(clippy::uninlined_format_args)]
 pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Version) -> String {
     // Note: as of 1.81.0, the `-C passes=loweratomic` flag is deprecated, because of a change to
     // llvm.

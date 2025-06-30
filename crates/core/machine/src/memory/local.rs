@@ -256,7 +256,8 @@ where
                 local.is_real * local.is_real * local.is_real,
             );
 
-            // Constrain that value_lower and value_upper are the lower and upper halves of the third limb of the values.
+            // Constrain that value_lower and value_upper are the lower and upper halves of the
+            // third limb of the values.
             builder.assert_eq(
                 local.initial_value.0[2],
                 local.initial_value_lower

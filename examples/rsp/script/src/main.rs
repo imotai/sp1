@@ -5,6 +5,7 @@ use sp1_prover::{
     components::CpuSP1ProverComponents,
     SP1ProverBuilder,
 };
+use sp1_build::Elf;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_build::include_elf;
 use std::sync::Arc;
@@ -17,7 +18,7 @@ use rsp_client_executor::{io::ClientExecutorInput, CHAIN_ID_ETH_MAINNET};
 use std::path::PathBuf;
 
 /// The ELF we want to execute inside the zkVM.
-const ELF: &[u8] = include_elf!("rsp-program");
+const ELF: Elf = include_elf!("rsp-program");
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -44,9 +45,9 @@ async fn main() {
     stdin.write_vec(buffer);
 
     let opts = SP1CoreOpts::default();
-    let program = Arc::new(Program::from(ELF).unwrap());
+    let program = Arc::new(Program::from(&ELF).unwrap());
     let mut runtime = Executor::with_context(program, opts, SP1Context::default());
-    runtime.maybe_setup_profiler(ELF);
+    runtime.maybe_setup_profiler(&ELF);
 
     runtime.write_vecs(&stdin.buffer);
     let now = std::time::Instant::now();

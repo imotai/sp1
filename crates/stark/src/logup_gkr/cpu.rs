@@ -4,9 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::air::InteractionScope;
-use crate::debug_interactions_with_all_chips;
-use crate::InteractionKind;
+use crate::{air::InteractionScope, debug_interactions_with_all_chips, InteractionKind};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::CpuBackend;
 use slop_challenger::FieldChallenger;

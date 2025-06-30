@@ -8,7 +8,10 @@ use std::{
 };
 
 use crate::{
-    adapter::{register::i_type::ITypeReader, state::{CPUState, CPUStateInput}},
+    adapter::{
+        register::i_type::ITypeReader,
+        state::{CPUState, CPUStateInput},
+    },
     air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
     operations::{AddressOperation, U16MSBOperation, U16MSBOperationInput},

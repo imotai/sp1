@@ -5022,6 +5022,7 @@ dependencies = [
 name = "sp1-zkvm-64"
 version = "5.0.0"
 dependencies = [
+ "blake3",
  "cfg-if",
  "critical-section",
  "embedded-alloc",

@@ -1,5 +1,4 @@
-use crate::air::WordAirBuilder;
-use crate::utils::next_multiple_of_32;
+use crate::{air::WordAirBuilder, utils::next_multiple_of_32};
 use core::fmt;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};

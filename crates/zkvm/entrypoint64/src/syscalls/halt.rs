@@ -9,7 +9,7 @@ cfg_if::cfg_if! {
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "zkvm", feature = "verify"))] {
-        use p3_field::PrimeField32;
+        use p3_field::PrimeField64;
     }
 }
 
@@ -26,6 +26,9 @@ pub extern "C" fn syscall_halt(exit_code: u8) -> ! {
             core::mem::take(&mut *core::ptr::addr_of_mut!(zkvm::PUBLIC_VALUES_HASHER))
                 .unwrap()
                 .finalize();
+
+        #[cfg(feature = "blake3")]
+        let pv_digest_bytes = pv_digest_bytes.as_bytes();
 
         // For each digest word, call COMMIT ecall.  In the runtime, this will store the digest
         // words into the runtime's execution record's public values digest.  In the AIR, it

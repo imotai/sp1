@@ -68,17 +68,17 @@ pub const VERIFY_PROOF_ELF: Elf = include_elf!("verify-proof");
 
 pub const PANIC_ELF: Elf = include_elf!("panic-test");
 
-// pub const BLS12381_FP_ELF: Elf = include_elf!("bls12381-fp-test");
+pub const BLS12381_FP_ELF: Elf = include_elf!("bls12381-fp-test");
 
-// pub const BLS12381_FP2_MUL_ELF: Elf = include_elf!("bls12381-fp2-mul-test");
+pub const BLS12381_FP2_MUL_ELF: Elf = include_elf!("bls12381-fp2-mul-test");
 
-// pub const BLS12381_FP2_ADDSUB_ELF: Elf = include_elf!("bls12381-fp2-addsub-test");
+pub const BLS12381_FP2_ADDSUB_ELF: Elf = include_elf!("bls12381-fp2-addsub-test");
 
-// pub const BN254_FP_ELF: Elf = include_elf!("bn254-fp-test");
+pub const BN254_FP_ELF: Elf = include_elf!("bn254-fp-test");
 
-// pub const BN254_FP2_ADDSUB_ELF: Elf = include_elf!("bn254-fp2-addsub-test");
+pub const BN254_FP2_ADDSUB_ELF: Elf = include_elf!("bn254-fp2-addsub-test");
 
-// pub const BN254_FP2_MUL_ELF: Elf = include_elf!("bn254-fp2-mul-test");
+pub const BN254_FP2_MUL_ELF: Elf = include_elf!("bn254-fp2-mul-test");
 
 pub const TENDERMINT_BENCHMARK_ELF: Elf = include_elf!("tendermint-benchmark-program");
 

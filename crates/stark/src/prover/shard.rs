@@ -649,6 +649,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
     }
 
     /// Generate a proof for a given execution record.
+    #[allow(clippy::type_complexity)]
     async fn prove_shard_with_data(
         &self,
         data: ShardData<C>,
@@ -658,7 +659,6 @@ impl<C: ShardProverComponents> ShardProver<C> {
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
 
         // Log the shard data.
-
         let mut total_number_of_cells = 0;
         tracing::info!("Proving shard");
         for (chip, trace) in shard_chips.iter().zip_eq(traces.values()) {

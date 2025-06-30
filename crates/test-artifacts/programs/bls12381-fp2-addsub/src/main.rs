@@ -44,17 +44,13 @@ fn fp2_add(
     let lhs = [*lhs_c0, *lhs_c1].concat();
     let rhs = [*rhs_c0, *rhs_c1].concat();
 
-    let mut lhs_transmuted: [u32; 24] =
-        unsafe { transmute::<[u64; 12], [u32; 24]>(lhs.try_into().unwrap()) };
-    let rhs_transmuted: [u32; 24] =
-        unsafe { transmute::<[u64; 12], [u32; 24]>(rhs.try_into().unwrap()) };
+    let mut lhs_transmuted: [u64; 12] = lhs.try_into().unwrap();
+    let rhs_transmuted: [u64; 12] = rhs.try_into().unwrap();
 
     syscall_bls12381_fp2_addmod(lhs_transmuted.as_mut_ptr(), rhs_transmuted.as_ptr());
 
-    let result_c0: [u64; 6] =
-        unsafe { transmute::<[u32; 12], [u64; 6]>(lhs_transmuted[0..12].try_into().unwrap()) };
-    let result_c1: [u64; 6] =
-        unsafe { transmute::<[u32; 12], [u64; 6]>(lhs_transmuted[12..24].try_into().unwrap()) };
+    let result_c0: [u64; 6] = lhs_transmuted[0..6].try_into().unwrap();
+    let result_c1: [u64; 6] = lhs_transmuted[6..12].try_into().unwrap();
 
     (result_c0, result_c1)
 }
@@ -68,17 +64,13 @@ fn fp2_sub(
     let lhs = [*lhs_c0, *lhs_c1].concat();
     let rhs = [*rhs_c0, *rhs_c1].concat();
 
-    let mut lhs_transmuted: [u32; 24] =
-        unsafe { transmute::<[u64; 12], [u32; 24]>(lhs.try_into().unwrap()) };
-    let rhs_transmuted: [u32; 24] =
-        unsafe { transmute::<[u64; 12], [u32; 24]>(rhs.try_into().unwrap()) };
+    let mut lhs_transmuted: [u64; 12] = lhs.try_into().unwrap();
+    let rhs_transmuted: [u64; 12] = rhs.try_into().unwrap();
 
     syscall_bls12381_fp2_submod(lhs_transmuted.as_mut_ptr(), rhs_transmuted.as_ptr());
 
-    let result_c0: [u64; 6] =
-        unsafe { transmute::<[u32; 12], [u64; 6]>(lhs_transmuted[0..12].try_into().unwrap()) };
-    let result_c1: [u64; 6] =
-        unsafe { transmute::<[u32; 12], [u64; 6]>(lhs_transmuted[12..24].try_into().unwrap()) };
+    let result_c0: [u64; 6] = lhs_transmuted[0..6].try_into().unwrap();
+    let result_c1: [u64; 6] = lhs_transmuted[6..12].try_into().unwrap();
 
     (result_c0, result_c1)
 }

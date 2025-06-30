@@ -310,7 +310,8 @@ where
         // Constrain that the address is a valid `Word`.
         builder.slice_range_check_u16(&local.addr, local.is_real);
 
-        // Assert that value_lower and value_upper are the lower and upper halves of the third limb of the value.
+        // Assert that value_lower and value_upper are the lower and upper halves of the third limb
+        // of the value.
         builder.assert_eq(
             local.value.0[2],
             local.value_lower + local.value_upper * AB::F::from_canonical_u32(1 << 8),

@@ -9,7 +9,7 @@ use sp1_stark::air::SP1AirBuilder;
 use p3_field::Field;
 use sp1_derive::AlignedBorrow;
 
-use super::{U32toU8Operation, XorOperation};
+use super::U32toU8Operation;
 
 /// A set of columns needed to compute the xor operation over two u16 limbs.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]

@@ -13,8 +13,8 @@ pub use sp1_primitives::types::Elf;
 use clap::{Parser, ValueEnum};
 
 const DEFAULT_DOCKER_TAG: &str = concat!("v", env!("CARGO_PKG_VERSION"));
-const DEFAULT_TARGET: &str = "riscv32im-succinct-zkvm-elf";
-const DEFAULT_TARGET_64: &str = "riscv64im-succinct-zkvm-elf";
+pub const DEFAULT_TARGET: &str = "riscv32im-succinct-zkvm-elf";
+pub const DEFAULT_TARGET_64: &str = "riscv64im-succinct-zkvm-elf";
 const HELPER_TARGET_SUBDIR: &str = "elf-compilation";
 
 /// Controls the warning message verbosity in the build process.
@@ -103,6 +103,7 @@ pub struct BuildArgs {
 
 // Implement default args to match clap defaults.
 impl Default for BuildArgs {
+    #[allow(clippy::uninlined_format_args)]
     fn default() -> Self {
         let build_target = match env::var("SP1_BUILD_TARGET") {
             Ok(target) if target == DEFAULT_TARGET || target == DEFAULT_TARGET_64 => target,

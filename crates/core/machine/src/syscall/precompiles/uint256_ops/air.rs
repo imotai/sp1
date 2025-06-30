@@ -1,10 +1,9 @@
 use std::borrow::Borrow;
 
-use crate::operations::AddrAddOperation;
 use crate::{
     air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::field::field_op::FieldOpCols,
+    operations::{field::field_op::FieldOpCols, AddrAddOperation},
     utils::limbs_to_words,
 };
 use itertools::Itertools;
@@ -18,8 +17,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::InteractionScope;
-use sp1_stark::Word;
+use sp1_stark::{air::InteractionScope, Word};
 use typenum::Unsigned;
 
 use crate::operations::SyscallAddrOperation;

@@ -486,8 +486,8 @@ mod tests {
     async fn test_verify_shard() {
         setup_logger();
         let log_blowup = 1;
-        let log_stacking_height = 22;
-        let max_log_row_count = 21;
+        let log_stacking_height = 21;
+        let max_log_row_count = 22;
         let machine = RiscvAir::machine();
         let verifier = ShardVerifier::from_basefold_parameters(
             log_blowup,

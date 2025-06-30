@@ -189,6 +189,7 @@ mod docker {
     /// Note this method *will fail* if ran twice with the same `cuda_id`.
     ///
     /// This method should only be called in a critical section
+    #[allow(clippy::uninlined_format_args)]
     pub(crate) async fn start_server(cuda_id: u32) -> Result<(), CudaClientError> {
         let image =
             format!("public.ecr.aws/succinct-labs/cuslop-server:v{}", sp1_primitives::SP1_VERSION);
