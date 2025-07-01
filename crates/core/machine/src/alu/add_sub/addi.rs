@@ -82,9 +82,9 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
                     if idx < merged_events.len() {
                         let mut byte_lookup_events = Vec::new();
                         let event = merged_events[idx];
-                        let instruction = input.program.fetch(event.0.pc_rel);
+                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -107,9 +107,9 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_ADDI_COLS];
                     let cols: &mut AddiCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc_rel);
+                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -178,7 +178,11 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
             AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
@@ -188,7 +192,7 @@ where
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
             local.add_operation.value,
             local.adapter,

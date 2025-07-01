@@ -10,9 +10,9 @@ use crate::syscalls::SyscallCode;
 #[repr(C)]
 pub struct SyscallEvent {
     /// The program counter.
-    pub pc_rel: u32,
+    pub pc: u64,
     /// The next program counter.
-    pub next_pc_rel: u32,
+    pub next_pc: u64,
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.

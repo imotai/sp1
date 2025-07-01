@@ -100,15 +100,8 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
         h_write_records: h_write_records.try_into().unwrap(),
         local_mem_access: rt.postprocess(),
     });
-    let syscall_event = rt.rt.syscall_event(
-        start_clk,
-        syscall_code,
-        arg1,
-        arg2,
-        false,
-        rt.next_pc_rel,
-        rt.exit_code,
-    );
+    let syscall_event =
+        rt.rt.syscall_event(start_clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, event);
 
     None

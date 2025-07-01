@@ -293,8 +293,8 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
             {
                 let mut blu = vec![];
-                let instruction = input.program.fetch(event.pc_rel);
-                cols.state.populate(&mut blu, event.clk, event.pc_rel);
+                let instruction = input.program.fetch(event.pc);
+                cols.state.populate(&mut blu, event.clk, event.pc);
                 cols.adapter.populate(&mut blu, instruction, alu_record);
                 output.add_byte_lookup_events(blu);
             }
@@ -1225,7 +1225,11 @@ where
                 builder,
                 CPUStateInput {
                     cols: local.state,
-                    next_pc: local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+                    next_pc: [
+                        local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                        local.state.pc[1].into(),
+                        local.state.pc[2].into(),
+                    ],
                     clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
                     is_real: local.is_real.into(),
                 },
@@ -1235,7 +1239,7 @@ where
             let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
                 local.state.clk_high::<AB>(),
                 local.state.clk_low::<AB>(),
-                local.state.pc_rel,
+                local.state.pc,
                 opcode,
                 local.a.map(|x| x.into()),
                 local.adapter,

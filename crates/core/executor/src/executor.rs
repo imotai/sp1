@@ -47,7 +47,7 @@ pub const PC_INC: u32 = 4;
 pub const CLK_INC: u32 = 8;
 /// The executor uses this PC to determine if the program has halted.
 /// As a PC, it is invalid since it is not a multiple of [`PC_INC`].
-pub const HALT_PC_REL: u32 = 1;
+pub const HALT_PC: u64 = 1;
 
 /// The maximum number of instructions in a program.
 pub const MAX_PROGRAM_SIZE: usize = 1 << 22;
@@ -410,7 +410,7 @@ impl<'a> Executor<'a> {
         Self {
             record: Box::new(record),
             records: vec![],
-            state: ExecutionState::new(program.pc_start_rel_u32()),
+            state: ExecutionState::new(program.pc_start_abs),
             program,
             program_len,
             memory_accesses: MemoryAccessRecord::default(),
@@ -1125,7 +1125,7 @@ impl<'a> Executor<'a> {
     fn emit_events(
         &mut self,
         clk: u64,
-        next_pc_rel: u32,
+        next_pc: u64,
         instruction: &Instruction,
         syscall_code: SyscallCode,
         a: u64,
@@ -1135,15 +1135,19 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
         exit_code: u32,
     ) {
-        self.record.pc_start_rel.get_or_insert(self.state.pc_rel);
-        self.record.next_pc_rel = next_pc_rel;
+        self.record.pc_start.get_or_insert(self.state.pc);
+        self.record.next_pc = next_pc;
         self.record.exit_code = exit_code;
         self.record.cpu_event_count += 1;
 
         let increment = self.state.clk + 8 - clk;
 
-        if clk % (1 << 24) + increment >= (1 << 24) {
-            self.record.bump_clk_high_events.push((clk, increment, next_pc_rel));
+        let bump1 = clk % (1 << 24) + increment >= (1 << 24);
+        let bump2 = !instruction.is_with_correct_next_pc()
+            && next_pc == self.state.pc.wrapping_add(4)
+            && (next_pc >> 16) != (self.state.pc >> 16);
+        if bump1 || bump2 {
+            self.record.bump_state_events.push((clk, increment, bump2, next_pc));
         }
 
         if let Some(x) = self.memory_accesses.a {
@@ -1169,24 +1173,15 @@ impl<'a> Executor<'a> {
         {
             self.emit_mem_instr_event(instruction.opcode, a, b, c, record, op_a_0);
         } else if instruction.is_branch_instruction() {
-            self.emit_branch_event(instruction.opcode, a, b, c, record, op_a_0, next_pc_rel);
+            self.emit_branch_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_jal_instruction() {
-            self.emit_jal_event(instruction.opcode, a, b, c, record, op_a_0, next_pc_rel);
+            self.emit_jal_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_jalr_instruction() {
-            self.emit_jalr_event(instruction.opcode, a, b, c, record, op_a_0, next_pc_rel);
+            self.emit_jalr_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_auipc_instruction() {
             self.emit_auipc_event(instruction.opcode, a, b, c, record, op_a_0);
         } else if instruction.is_ecall_instruction() {
-            self.emit_syscall_event(
-                clk,
-                syscall_code,
-                b,
-                c,
-                record,
-                op_a_0,
-                next_pc_rel,
-                exit_code,
-            );
+            self.emit_syscall_event(clk, syscall_code, b, c, record, op_a_0, next_pc, exit_code);
         } else {
             unreachable!()
         }
@@ -1202,24 +1197,19 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
-        let event =
-            AluEvent { clk: self.state.clk, pc_rel: self.state.pc_rel, opcode, a, b, c, op_a_0 };
+        let event = AluEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
         match opcode {
             Opcode::ADD => {
                 let record = RTypeRecord::from(record);
                 self.record.add_events.push((event, record));
             }
             Opcode::ADDW => {
-                let record = RTypeRecord::from(record);
+                let record = ALUTypeRecord::from(record);
                 self.record.addw_events.push((event, record));
             }
             Opcode::ADDI => {
                 let record = ITypeRecord::from(record);
                 self.record.addi_events.push((event, record));
-            }
-            Opcode::ADDIW => {
-                let record = ITypeRecord::from(record);
-                self.record.addiw_events.push((event, record));
             }
             Opcode::SUB => {
                 let record = RTypeRecord::from(record);
@@ -1233,16 +1223,11 @@ impl<'a> Executor<'a> {
                 let record = ALUTypeRecord::from(record);
                 self.record.bitwise_events.push((event, record));
             }
-            Opcode::SLL | Opcode::SLLW | Opcode::SLLIW => {
+            Opcode::SLL | Opcode::SLLW => {
                 let record = ALUTypeRecord::from(record);
                 self.record.shift_left_events.push((event, record));
             }
-            Opcode::SRL
-            | Opcode::SRA
-            | Opcode::SRLW
-            | Opcode::SRAW
-            | Opcode::SRLIW
-            | Opcode::SRAIW => {
+            Opcode::SRL | Opcode::SRA | Opcode::SRLW | Opcode::SRAW => {
                 let record = ALUTypeRecord::from(record);
                 self.record.shift_right_events.push((event, record));
             }
@@ -1283,7 +1268,7 @@ impl<'a> Executor<'a> {
         let event = MemInstrEvent {
             shard: self.shard().get(),
             clk: self.state.clk,
-            pc_rel: self.state.pc_rel,
+            pc: self.state.pc,
             opcode,
             a,
             b,
@@ -1292,8 +1277,16 @@ impl<'a> Executor<'a> {
             mem_access: self.memory_accesses.memory.expect("Must have memory access"),
         };
         let record = ITypeRecord::from(record);
-        if matches!(opcode, Opcode::LB | Opcode::LBU | Opcode::LH | Opcode::LHU | Opcode::LW)
-            && op_a_0
+        if matches!(
+            opcode,
+            Opcode::LB
+                | Opcode::LBU
+                | Opcode::LH
+                | Opcode::LHU
+                | Opcode::LW
+                | Opcode::LWU
+                | Opcode::LD
+        ) && op_a_0
         {
             self.record.memory_load_x0_events.push((event, record));
         } else if matches!(opcode, Opcode::LB | Opcode::LBU) {
@@ -1326,12 +1319,12 @@ impl<'a> Executor<'a> {
         c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc_rel: u32,
+        next_pc: u64,
     ) {
         let event = BranchEvent {
             clk: self.state.clk,
-            pc_rel: self.state.pc_rel,
-            next_pc_rel,
+            pc: self.state.pc,
+            next_pc,
             opcode,
             a,
             b,
@@ -1353,18 +1346,10 @@ impl<'a> Executor<'a> {
         c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc_rel: u32,
+        next_pc: u64,
     ) {
-        let event = JumpEvent {
-            clk: self.state.clk,
-            pc_rel: self.state.pc_rel,
-            next_pc_rel,
-            opcode,
-            a,
-            b,
-            c,
-            op_a_0,
-        };
+        let event =
+            JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
         let record = JTypeRecord::from(record);
         self.record.jal_events.push((event, record));
     }
@@ -1380,18 +1365,10 @@ impl<'a> Executor<'a> {
         c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc_rel: u32,
+        next_pc: u64,
     ) {
-        let event = JumpEvent {
-            clk: self.state.clk,
-            pc_rel: self.state.pc_rel,
-            next_pc_rel,
-            opcode,
-            a,
-            b,
-            c,
-            op_a_0,
-        };
+        let event =
+            JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
         let record = ITypeRecord::from(record);
         self.record.jalr_events.push((event, record));
     }
@@ -1407,8 +1384,7 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
-        let event =
-            AUIPCEvent { clk: self.state.clk, pc_rel: self.state.pc_rel, opcode, a, b, c, op_a_0 };
+        let event = AUIPCEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
         let record = JTypeRecord::from(record);
         self.record.auipc_events.push((event, record));
     }
@@ -1423,15 +1399,15 @@ impl<'a> Executor<'a> {
         arg1: u64,
         arg2: u64,
         op_a_0: bool,
-        next_pc_rel: u32,
+        next_pc: u64,
         exit_code: u32,
     ) -> SyscallEvent {
         // should_send: if the syscall is usually sent and it is not manually set as internal.
         let should_send = (syscall_code.should_send() != 0)
             && !self.internal_syscalls_override.contains(&syscall_code);
         SyscallEvent {
-            pc_rel: self.state.pc_rel,
-            next_pc_rel,
+            pc: self.state.pc,
+            next_pc,
             shard: self.shard().get(),
             clk,
             op_a_0,
@@ -1454,11 +1430,11 @@ impl<'a> Executor<'a> {
         arg2: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
-        next_pc_rel: u32,
+        next_pc: u64,
         exit_code: u32,
     ) {
         let syscall_event =
-            self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc_rel, exit_code);
+            self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc, exit_code);
         let record = RTypeRecord::from(record);
         self.record.syscall_events.push((syscall_event, record));
     }
@@ -1534,7 +1510,7 @@ impl<'a> Executor<'a> {
         //         self.program.fetch(self.state.pc)
         //     );
         // }
-        *self.program.fetch(self.state.pc_rel)
+        *self.program.fetch(self.state.pc)
     }
 
     /// Execute the given instruction over the current state of the runtime.
@@ -1547,7 +1523,7 @@ impl<'a> Executor<'a> {
         // `state.clk` can be updated before the end of this function by precompiles' execution.
         let mut clk = self.state.clk;
         let mut exit_code = 0u32;
-        let mut next_pc_rel = self.state.pc_rel.wrapping_add(4);
+        let mut next_pc = self.state.pc.wrapping_add(4);
         // Will be set to a non-default value if the instruction is a syscall.
 
         let (mut a, b, c): (u64, u64, u64);
@@ -1577,16 +1553,16 @@ impl<'a> Executor<'a> {
         } else if instruction.is_memory_store_instruction() {
             (a, b, c) = self.execute_store::<E>(instruction)?;
         } else if instruction.is_branch_instruction() {
-            (a, b, c, next_pc_rel) = self.execute_branch::<E>(instruction, next_pc_rel);
+            (a, b, c, next_pc) = self.execute_branch::<E>(instruction, next_pc);
         } else if instruction.is_jump_instruction() {
-            (a, b, c, next_pc_rel) = self.execute_jump::<E>(instruction);
+            (a, b, c, next_pc) = self.execute_jump::<E>(instruction);
         } else if instruction.is_auipc_instruction() {
             let (rd, imm) = instruction.u_type();
             (b, c) = (imm, imm);
-            a = (self.state.pc_rel as u64).wrapping_add(self.program.pc_base).wrapping_add(b);
+            a = self.state.pc.wrapping_add(b);
             self.rw_cpu::<E>(rd, a);
         } else if instruction.is_ecall_instruction() {
-            (a, b, c, clk, next_pc_rel, syscall, exit_code) = self.execute_ecall::<E>()?;
+            (a, b, c, clk, next_pc, syscall, exit_code) = self.execute_ecall::<E>()?;
         } else if instruction.is_ebreak_instruction() {
             return Err(ExecutionError::Breakpoint());
         } else if instruction.is_unimp_instruction() {
@@ -1607,7 +1583,7 @@ impl<'a> Executor<'a> {
         if E::MODE == ExecutorMode::Trace {
             self.emit_events(
                 clk,
-                next_pc_rel,
+                next_pc,
                 instruction,
                 syscall,
                 a,
@@ -1620,7 +1596,7 @@ impl<'a> Executor<'a> {
         }
 
         // Update the program counter.
-        self.state.pc_rel = next_pc_rel;
+        self.state.pc = next_pc;
 
         // Update the clk to the next cycle.
         self.state.clk += 8;
@@ -1719,12 +1695,11 @@ impl<'a> Executor<'a> {
                 }
             }
             // RISC-V 64-bit operations
-            Opcode::SLLW | Opcode::SLLIW => (((b as i64) << (c & 0x1f)) as i32) as i64 as u64,
-            Opcode::SRLW | Opcode::SRLIW => (((b as u32) >> ((c & 0x1f) as u32)) as i32) as u64,
-            Opcode::SRAW | Opcode::SRAIW => {
+            Opcode::SLLW => (((b as i64) << (c & 0x1f)) as i32) as i64 as u64,
+            Opcode::SRLW => (((b as u32) >> ((c & 0x1f) as u32)) as i32) as u64,
+            Opcode::SRAW => {
                 (b as i32).wrapping_shr(((c as i64 & 0x1f) as i32) as u32) as i64 as u64
             }
-            Opcode::ADDIW => (Wrapping(b as i32) + Wrapping(c as i32)).0 as u64,
             _ => unreachable!(),
         };
         self.alu_rw::<E>(rd, a);
@@ -1821,8 +1796,8 @@ impl<'a> Executor<'a> {
     fn execute_branch<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-        mut next_pc_rel: u32,
-    ) -> (u64, u64, u64, u32) {
+        mut next_pc: u64,
+    ) -> (u64, u64, u64, u64) {
         let (a, b, c) = self.branch_rr::<E>(instruction);
         let branch = match instruction.opcode {
             Opcode::BEQ => a == b,
@@ -1836,16 +1811,16 @@ impl<'a> Executor<'a> {
             }
         };
         if branch {
-            next_pc_rel = self.state.pc_rel.wrapping_add(c as u32);
+            next_pc = self.state.pc.wrapping_add(c);
         }
-        (a, b, c, next_pc_rel)
+        (a, b, c, next_pc)
     }
 
     /// Execute an ecall instruction.
     #[allow(clippy::type_complexity)]
     fn execute_ecall<E: ExecutorConfig>(
         &mut self,
-    ) -> Result<(u64, u64, u64, u64, u32, SyscallCode, u32), ExecutionError> {
+    ) -> Result<(u64, u64, u64, u64, u64, SyscallCode, u32), ExecutionError> {
         // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
         // register is that we write to it later.
         let t0 = Register::X5;
@@ -1894,7 +1869,7 @@ impl<'a> Executor<'a> {
             let res = (syscall_impl.handler)(&mut precompile_rt, syscall, b, c);
             let a = if let Some(val) = res { val } else { syscall_id };
 
-            (a, precompile_rt.next_pc_rel, syscall_impl.num_extra_cycles, precompile_rt.exit_code)
+            (a, precompile_rt.next_pc, syscall_impl.num_extra_cycles, precompile_rt.exit_code)
         };
 
         // TODO(tqn) measure local memory events for the precompiles,
@@ -1942,33 +1917,32 @@ impl<'a> Executor<'a> {
     fn execute_jump<E: ExecutorConfig>(
         &mut self,
         instruction: &Instruction,
-    ) -> (u64, u64, u64, u32) {
-        let (a, b, c, next_pc_rel) = match instruction.opcode {
+    ) -> (u64, u64, u64, u64) {
+        let (a, b, c, next_pc) = match instruction.opcode {
             Opcode::JAL => {
                 let (rd, imm) = instruction.j_type();
                 let imm_se = sign_extend_imm(imm, 21);
-                let a = self.program.pc_base.wrapping_add(self.state.pc_rel as u64).wrapping_add(4);
+                let a = self.state.pc.wrapping_add(4);
                 self.rw_cpu::<E>(rd, a);
-                let next_pc_rel = ((self.state.pc_rel as i64).wrapping_add(imm_se)) as u32;
+                let next_pc = ((self.state.pc as i64).wrapping_add(imm_se)) as u64;
                 let b = imm_se as u64;
                 let c = 0;
-                (a, b, c, next_pc_rel)
+                (a, b, c, next_pc)
             }
             Opcode::JALR => {
                 let (rd, rs1, c) = instruction.i_type();
                 let imm_se = sign_extend_imm(c, 12);
                 let b = self.rr_cpu::<E>(rs1, MemoryAccessPosition::B);
-                let a = self.program.pc_base.wrapping_add(self.state.pc_rel as u64).wrapping_add(4);
+                let a = self.state.pc.wrapping_add(4);
                 // Calculate next PC: (rs1 + imm) & ~1
-                let next_pc_rel = (((b as i64).wrapping_add(imm_se) as u64) & !1_u64)
-                    .wrapping_sub(self.program.pc_base) as u32;
+                let next_pc = ((b as i64).wrapping_add(imm_se) as u64) & !1_u64;
                 self.rw_cpu::<E>(rd, a);
 
-                (a, b, c, next_pc_rel)
+                (a, b, c, next_pc)
             }
             _ => unreachable!(),
         };
-        (a, b, c, next_pc_rel)
+        (a, b, c, next_pc)
     }
 
     /// Executes one cycle of the program, returning whether the program has finished.
@@ -2011,6 +1985,7 @@ impl<'a> Executor<'a> {
                 {
                     let padded_event_counts =
                         pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
+                    // TODO(rkm0959): estimate this correctly.
                     let bump_clk_high =
                         (self.state.clk >> 24) + 1 - (self.record.initial_timestamp >> 24);
                     let (padded_element_count, max_height) = estimate_trace_elements(
@@ -2047,8 +2022,9 @@ impl<'a> Executor<'a> {
             }
         }
 
-        let done = self.state.pc_rel == HALT_PC_REL
-            || self.state.pc_rel as usize >= self.program.instructions.len() * 4;
+        let done = self.state.pc == HALT_PC
+            || self.state.pc.wrapping_sub(self.program.pc_base)
+                >= (self.program.instructions.len() * 4) as u64;
         if done && E::UNCONSTRAINED {
             tracing::error!("program ended in unconstrained mode at clk {}", self.state.global_clk);
             return Err(ExecutionError::EndInUnconstrained());
@@ -2140,7 +2116,7 @@ impl<'a> Executor<'a> {
         let done = tracing::debug_span!("execute").in_scope(|| self.execute::<Checkpoint>())?;
         // Create a checkpoint using `memory_checkpoint`. Just include all memory if `done` since we
         // need it all for MemoryFinalize.
-        let next_pc_rel = self.state.pc_rel;
+        let next_pc = self.state.pc;
         tracing::debug_span!("create memory checkpoint").in_scope(|| {
             let replacement_memory_checkpoint = Memory::<_>::new_preallocated();
             let replacement_uninitialized_memory_checkpoint = Memory::<_>::new_preallocated();
@@ -2182,8 +2158,8 @@ impl<'a> Executor<'a> {
             }
         });
         let mut public_values = self.records.last().as_ref().unwrap().public_values;
-        public_values.pc_start_rel = next_pc_rel;
-        public_values.next_pc_rel = next_pc_rel;
+        public_values.pc_start = next_pc;
+        public_values.next_pc = next_pc;
         if !done {
             self.records.clear();
         }
@@ -2241,8 +2217,9 @@ impl<'a> Executor<'a> {
             // Execute the instruction.
             self.execute_instruction::<Unconstrained>(&instruction)?;
 
-            done = self.state.pc_rel == HALT_PC_REL
-                || self.state.pc_rel as usize >= self.program.instructions.len() * 4;
+            done = self.state.pc == HALT_PC
+                || self.state.pc.wrapping_sub(self.program.pc_base)
+                    >= (self.program.instructions.len() * 4) as u64;
         }
 
         Ok(())
@@ -2351,16 +2328,16 @@ impl<'a> Executor<'a> {
             record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
             record.public_values.execution_shard = start_shard.get() + i as u32;
             if record.contains_cpu() {
-                record.public_values.pc_start_rel = record.pc_start_rel.unwrap();
-                record.public_values.next_pc_rel = record.next_pc_rel;
+                record.public_values.pc_start = record.pc_start.unwrap();
+                record.public_values.next_pc = record.next_pc;
                 record.public_values.exit_code = record.exit_code;
                 record.public_values.last_timestamp = record.last_timestamp;
                 record.public_values.initial_timestamp = record.initial_timestamp;
-                last_next_pc = record.public_values.next_pc_rel;
+                last_next_pc = record.public_values.next_pc;
                 last_exit_code = record.public_values.exit_code;
             } else {
-                record.public_values.pc_start_rel = last_next_pc;
-                record.public_values.next_pc_rel = last_next_pc;
+                record.public_values.pc_start = last_next_pc;
+                record.public_values.next_pc = last_next_pc;
                 record.public_values.prev_exit_code = last_exit_code;
                 record.public_values.exit_code = last_exit_code;
             }
@@ -2530,15 +2507,13 @@ impl<'a> Executor<'a> {
 
         // Compute the number of events in the shift left chip.
         event_counts[RiscvAirId::ShiftLeft] =
-            opcode_counts[Opcode::SLL] + opcode_counts[Opcode::SLLW] + opcode_counts[Opcode::SLLIW];
+            opcode_counts[Opcode::SLL] + opcode_counts[Opcode::SLLW];
 
         // Compute the number of events in the shift right chip.
         event_counts[RiscvAirId::ShiftRight] = opcode_counts[Opcode::SRL]
             + opcode_counts[Opcode::SRA]
             + opcode_counts[Opcode::SRLW]
-            + opcode_counts[Opcode::SRLIW]
-            + opcode_counts[Opcode::SRAW]
-            + opcode_counts[Opcode::SRAIW];
+            + opcode_counts[Opcode::SRAW];
 
         // Compute the number of events in the memory local chip.
         event_counts[RiscvAirId::MemoryLocal] =
@@ -2593,15 +2568,12 @@ impl<'a> Executor<'a> {
         #[cfg(feature = "profiling")]
         if let Some((ref mut profiler, _)) = self.profiler {
             if !E::UNCONSTRAINED {
-                profiler.record(
-                    self.state.global_clk,
-                    (self.state.pc_rel as u64).wrapping_add(self.program.pc_base),
-                );
+                profiler.record(self.state.global_clk, self.state.pc);
             }
         }
 
         if !E::UNCONSTRAINED && self.state.global_clk % 10_000_000 == 0 {
-            tracing::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc_rel);
+            tracing::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
         }
     }
 }
@@ -3074,7 +3046,7 @@ mod tests {
         runtime.run_fast().unwrap();
         assert_eq!(runtime.registers::<Simple>()[Register::X5 as usize], 8);
         assert_eq!(runtime.registers::<Simple>()[Register::X11 as usize], 100);
-        assert_eq!(runtime.state.pc_rel, 108);
+        assert_eq!(runtime.state.pc, 108);
     }
 
     fn simple_op_code_test(opcode: Opcode, expected: u64, a: u64, b: u64) {

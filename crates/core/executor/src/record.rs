@@ -44,11 +44,9 @@ pub struct ExecutionRecord {
     /// A trace of the ADD, and ADDI events.
     pub add_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the ADDW events.
-    pub addw_events: Vec<(AluEvent, RTypeRecord)>,
+    pub addw_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the ADDI events.
     pub addi_events: Vec<(AluEvent, ITypeRecord)>,
-    /// A trace of the ADDIW events.
-    pub addiw_events: Vec<(AluEvent, ITypeRecord)>,
     /// A trace of the MUL events.
     pub mul_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SUB events.
@@ -111,8 +109,8 @@ pub struct ExecutionRecord {
     pub global_interaction_event_count: u32,
     /// Memory records with `prev_clk >> 24` different from `clk >> 24`.
     pub bump_memory_events: Vec<(MemoryRecordEnum, u64)>,
-    /// Record where the `clk >> 24` has incremented.
-    pub bump_clk_high_events: Vec<(u64, u64, u32)>,
+    /// Record where the `clk >> 24` or `pc >> 16` has incremented.
+    pub bump_state_events: Vec<(u64, u64, bool, u64)>,
     /// The public values.
     pub public_values: PublicValues<u64, u64, u64, u32>,
     /// The next nonce to use for a new lookup.
@@ -128,9 +126,9 @@ pub struct ExecutionRecord {
     /// The final timestamp of the shard.
     pub last_timestamp: u64,
     /// The start program counter.
-    pub pc_start_rel: Option<u32>,
+    pub pc_start: Option<u64>,
     /// The final program counter.
-    pub next_pc_rel: u32,
+    pub next_pc: u64,
     /// The exit code.
     pub exit_code: u32,
 }
@@ -503,7 +501,7 @@ impl MachineRecord for ExecutionRecord {
         self.auipc_events.append(&mut other.auipc_events);
         self.syscall_events.append(&mut other.syscall_events);
         self.bump_memory_events.append(&mut other.bump_memory_events);
-        self.bump_clk_high_events.append(&mut other.bump_clk_high_events);
+        self.bump_state_events.append(&mut other.bump_state_events);
         self.precompile_events.append(&mut other.precompile_events);
 
         if self.byte_lookups.is_empty() {
@@ -626,17 +624,34 @@ impl ExecutionRecord {
             AB::Expr::one(),
         );
 
+        for i in 0..3 {
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.pc_start[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.next_pc[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+        }
+
         // Send and receive the initial and last state.
         builder.send_state(
             initial_timestamp_high.clone(),
             initial_timestamp_low.clone(),
-            public_values.pc_start_rel,
+            public_values.pc_start,
             AB::Expr::one(),
         );
         builder.receive_state(
             last_timestamp_high.clone(),
             last_timestamp_low.clone(),
-            public_values.next_pc_rel,
+            public_values.next_pc,
             AB::Expr::one(),
         );
 
@@ -650,9 +665,11 @@ impl ExecutionRecord {
         builder
             .when_not(increment_execution_shard.clone())
             .assert_eq(initial_timestamp_high.clone(), last_timestamp_high.clone());
-        builder
-            .when_not(increment_execution_shard.clone())
-            .assert_eq(public_values.pc_start_rel, public_values.next_pc_rel);
+        for i in 0..3 {
+            builder
+                .when_not(increment_execution_shard.clone())
+                .assert_eq(public_values.pc_start[i], public_values.next_pc[i]);
+        }
 
         // IsZeroOperation on the high bits of the timestamp.
         builder.assert_bool(public_values.is_timestamp_high_eq);

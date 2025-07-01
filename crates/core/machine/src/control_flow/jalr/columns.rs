@@ -1,9 +1,9 @@
-use crate::adapter::{register::jalr_type::JalrTypeReader, state::CPUState};
+use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 use std::mem::size_of;
 
-use crate::operations::{AddOperation, BabyBearWordRangeChecker};
+use crate::operations::AddOperation;
 
 pub const NUM_JALR_COLS: usize = size_of::<JalrColumns<u8>>();
 
@@ -14,10 +14,7 @@ pub struct JalrColumns<T> {
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
-    pub adapter: JalrTypeReader<T>,
-
-    /// The range checker for the next program counter.
-    pub next_pc_range_checker: BabyBearWordRangeChecker<T>,
+    pub adapter: ITypeReader<T>,
 
     /// The value of the first operand.
     pub op_a_value: Word<T>,
@@ -27,4 +24,7 @@ pub struct JalrColumns<T> {
 
     /// Instance of `AddOperation` to handle addition logic in `JumpChip`.
     pub add_operation: AddOperation<T>,
+
+    /// Computation of `pc + 4` if `op_a != X0`.
+    pub op_a_operation: AddOperation<T>,
 }

@@ -1,8 +1,8 @@
+use crate::air::{SP1CoreAirBuilder, SP1Operation};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -14,13 +14,13 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
-    air::{MachineAir, SP1AirBuilder},
-    Word,
-};
+use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
-    adapter::{register::r_type::RTypeReader, state::CPUState},
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::CPUState,
+    },
     operations::AddwOperation,
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
@@ -40,7 +40,7 @@ pub struct AddwCols<T> {
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
-    pub adapter: RTypeReader<T>,
+    pub adapter: ALUTypeReader<T>,
 
     /// Instance of `AddwOperation` to handle addition logic in `AddChip`'s ALU operations.
     pub addw_operation: AddwOperation<T>,
@@ -84,10 +84,10 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
                     if idx < merged_events.len() {
                         let mut byte_lookup_events = Vec::new();
                         let event = merged_events[idx];
-                        let instruction = input.program.fetch(event.0.pc_rel);
+                        let instruction = input.program.fetch(event.0.pc);
                         // tracing::info!("instruction: {:?}", instruction.opcode);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -110,9 +110,9 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_ADDW_COLS];
                     let cols: &mut AddwCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc_rel);
+                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -156,7 +156,7 @@ impl<F> BaseAir<F> for AddwChip {
 
 impl<AB> Air<AB> for AddwChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -181,7 +181,11 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
             AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
@@ -196,15 +200,15 @@ where
         ]);
 
         // Constrain the program and register reads.
-        RTypeReader::<AB::F>::eval(
-            builder,
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
             word,
             local.adapter,
             local.is_real.into(),
         );
+        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }
 }

@@ -145,39 +145,41 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - `pc_start_rel` should start as `vk.pc_start_rel`.
         //
         // Transition:
-        // - `next_pc_rel` of the previous shard should equal `pc_start`.
-        // - If it's not a shard with "CPU", then `pc_start` equals `next_pc_rel`.
+        // - `next_pc` of the previous shard should equal `pc_start`.
+        // - If it's not a shard with "CPU", then `pc_start` equals `next_pc`.
         // - If it's a shard with "CPU", then `pc_start` should never equal zero.
         //
         // Finalization:
-        // - `next_pc_rel` should equal zero.
-        let mut prev_next_pc_rel = BabyBear::zero();
+        // - `next_pc` should equal HALT_PC.
+        let mut prev_next_pc = [BabyBear::zero(); 3];
+        let halt_pc = [
+            BabyBear::from_canonical_u64(sp1_core_executor::HALT_PC),
+            BabyBear::zero(),
+            BabyBear::zero(),
+        ];
         for (i, shard_proof) in proof.0.iter().enumerate() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if i == 0 && public_values.pc_start_rel != vk.pc_start_rel {
+            if i == 0 && public_values.pc_start != vk.pc_start {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "pc_start != vk.pc_start_rel: program counter should start at vk.pc_start_rel",
                 ));
-            } else if i != 0 && public_values.pc_start_rel != prev_next_pc_rel {
+            } else if i != 0 && public_values.pc_start != prev_next_pc {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "pc_start != next_pc_prev: pc_start should equal next_pc_prev for all shards",
                 ));
-            } else if i == proof.0.len() - 1
-                && public_values.next_pc_rel
-                    != BabyBear::from_canonical_u32(sp1_core_executor::HALT_PC_REL)
-            {
+            } else if i == proof.0.len() - 1 && public_values.next_pc != halt_pc {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "next_pc_rel != HALT_PC: execution should have halted",
+                    "next_pc != HALT_PC: execution should have halted",
                 ));
             } else if public_values.execution_shard == public_values.next_execution_shard
-                && public_values.pc_start_rel != public_values.next_pc_rel
+                && public_values.pc_start != public_values.next_pc
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "pc_start != next_pc_rel: pc_start should equal next_pc_rel for non-cpu shards",
+                    "pc_start != next_pc: pc_start should equal next_pc for non-cpu shards",
                 ));
             }
-            prev_next_pc_rel = public_values.next_pc_rel;
+            prev_next_pc = public_values.next_pc;
         }
 
         // Exit code constraints.

@@ -84,8 +84,8 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                 let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
                 let mut blu = Vec::new();
                 self.event_to_row(&event.0, cols, &mut blu);
-                let instruction = input.program.fetch(event.0.pc_rel);
-                cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                let instruction = input.program.fetch(event.0.pc);
+                cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                 cols.adapter.populate(&mut blu, instruction, event.1);
 
                 row
@@ -117,8 +117,8 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                     let mut row = [F::zero(); NUM_BITWISE_COLS];
                     let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
                     self.event_to_row(&event.0, cols, &mut blu);
-                    let instruction = input.program.fetch(event.0.pc_rel);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                    let instruction = input.program.fetch(event.0.pc);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -207,7 +207,11 @@ where
         // The program counter and timestamp increment by `4` and `8`.
         let cpu_state_input = CPUStateInput::<AB>::new(
             local.state,
-            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
             AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
@@ -217,7 +221,7 @@ where
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             cpu_opcode,
             result,
             local.adapter,

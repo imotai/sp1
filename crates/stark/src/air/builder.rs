@@ -160,12 +160,15 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.send(
             AirInteraction::new(
-                vec![clk_high.into(), clk_low.into(), pc.into()],
+                once(clk_high.into())
+                    .chain(once(clk_low.into()))
+                    .chain(pc.map(Into::into))
+                    .collect::<Vec<_>>(),
                 multiplicity.into(),
                 InteractionKind::State,
             ),
@@ -178,12 +181,15 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.receive(
             AirInteraction::new(
-                vec![clk_high.into(), clk_low.into(), pc.into()],
+                once(clk_high.into())
+                    .chain(once(clk_low.into()))
+                    .chain(pc.map(Into::into))
+                    .collect::<Vec<_>>(),
                 multiplicity.into(),
                 InteractionKind::State,
             ),
@@ -198,7 +204,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
-        next_pc_rel: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
         opcode: impl Into<Self::Expr>,
         a: Word<impl Into<Self::Expr>>,
@@ -214,7 +220,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         let values = once(clk_high.into())
             .chain(once(clk_low.into()))
             .chain(once(pc.into()))
-            .chain(once(next_pc_rel.into()))
+            .chain(once(next_pc.into()))
             .chain(once(num_extra_cycles.into()))
             .chain(once(opcode.into()))
             .chain(a.0.into_iter().map(Into::into))
@@ -240,7 +246,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         pc: impl Into<Self::Expr>,
-        next_pc_rel: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
         num_extra_cycles: impl Into<Self::Expr>,
         opcode: impl Into<Self::Expr>,
         a: Word<impl Into<Self::Expr>>,
@@ -256,7 +262,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         let values = once(clk_high.into())
             .chain(once(clk_low.into()))
             .chain(once(pc.into()))
-            .chain(once(next_pc_rel.into()))
+            .chain(once(next_pc.into()))
             .chain(once(num_extra_cycles.into()))
             .chain(once(opcode.into()))
             .chain(a.0.into_iter().map(Into::into))

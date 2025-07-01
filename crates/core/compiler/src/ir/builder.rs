@@ -1095,7 +1095,8 @@ impl SP1OperationBuilder<RTypeReader<F>> for ConstraintCompiler {
 
             let input_shard = Expr::input_arg(&mut ctx);
             let input_clk = Expr::input_arg(&mut ctx);
-            let input_pc = Expr::input_arg(&mut ctx);
+            let input_pc =
+                [Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)];
             let input_opcode = Expr::input_arg(&mut ctx);
             let input_op_a_write_value = Expr::input_from_struct::<Word<Expr>>(&mut ctx);
             let input_cols = Expr::input_from_struct::<RTypeReader<Expr>>(&mut ctx);
@@ -1117,7 +1118,7 @@ impl SP1OperationBuilder<RTypeReader<F>> for ConstraintCompiler {
                     vec![
                         Ty::Expr(input_shard),
                         Ty::Expr(input_clk),
-                        Ty::Expr(input_pc),
+                        Ty::ArrAddressSize(input_pc),
                         Ty::Expr(input_opcode),
                         Ty::Word(input_op_a_write_value),
                         Ty::RTypeReader(input_cols),
@@ -1150,7 +1151,8 @@ impl SP1OperationBuilder<RTypeReaderImmutable> for ConstraintCompiler {
 
             let input_shard = Expr::input_arg(&mut ctx);
             let input_clk = Expr::input_arg(&mut ctx);
-            let input_pc = Expr::input_arg(&mut ctx);
+            let input_pc =
+                [Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)];
             let input_opcode = Expr::input_arg(&mut ctx);
             let input_cols = Expr::input_from_struct::<RTypeReader<Expr>>(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
@@ -1170,7 +1172,7 @@ impl SP1OperationBuilder<RTypeReaderImmutable> for ConstraintCompiler {
                     vec![
                         Ty::Expr(input_shard),
                         Ty::Expr(input_clk),
-                        Ty::Expr(input_pc),
+                        Ty::ArrAddressSize(input_pc),
                         Ty::Expr(input_opcode),
                         Ty::RTypeReader(input_cols),
                         Ty::Expr(input_is_real),
@@ -1199,7 +1201,8 @@ impl SP1OperationBuilder<CPUState<F>> for ConstraintCompiler {
             let mut ctx = FuncCtx::new();
 
             let input_cols = Expr::input_from_struct::<CPUState<Expr>>(&mut ctx);
-            let input_next_pc = Expr::input_arg(&mut ctx);
+            let input_next_pc =
+                [Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)];
             let input_clk_increment = Expr::input_arg(&mut ctx);
             let input_is_real = Expr::input_arg(&mut ctx);
 
@@ -1215,7 +1218,7 @@ impl SP1OperationBuilder<CPUState<F>> for ConstraintCompiler {
                     "CPUState",
                     vec![
                         Ty::CPUState(input_cols),
-                        Ty::Expr(input_next_pc),
+                        Ty::ArrAddressSize(input_next_pc),
                         Ty::Expr(input_clk_increment),
                         Ty::Expr(input_is_real),
                     ],
@@ -1247,7 +1250,8 @@ impl SP1OperationBuilder<ALUTypeReader<F>> for ConstraintCompiler {
 
             let input_clk_high = Expr::input_arg(&mut ctx);
             let input_clk_low = Expr::input_arg(&mut ctx);
-            let input_pc = Expr::input_arg(&mut ctx);
+            let input_pc =
+                [Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx), Expr::input_arg(&mut ctx)];
             let input_opcode = Expr::input_arg(&mut ctx);
             let input_op_a_write_value = Expr::input_from_struct::<Word<Expr>>(&mut ctx);
             let input_cols = Expr::input_from_struct::<ALUTypeReader<Expr>>(&mut ctx);
@@ -1269,7 +1273,7 @@ impl SP1OperationBuilder<ALUTypeReader<F>> for ConstraintCompiler {
                     vec![
                         Ty::Expr(input_clk_high),
                         Ty::Expr(input_clk_low),
-                        Ty::Expr(input_pc),
+                        Ty::ArrAddressSize(input_pc),
                         Ty::Expr(input_opcode),
                         Ty::Word(input_op_a_write_value),
                         Ty::ALUTypeReader(input_cols),

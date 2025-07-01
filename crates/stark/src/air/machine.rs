@@ -80,7 +80,7 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
 /// A program that defines the control flow of a machine through a program counter.
 pub trait MachineProgram<F>: Send + Sync {
     /// Gets the starting program counter.
-    fn pc_start_rel(&self) -> F;
+    fn pc_start(&self) -> [F; 3];
     /// Gets the initial global cumulative sum.
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F>;
 }

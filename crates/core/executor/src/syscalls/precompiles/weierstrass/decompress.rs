@@ -20,7 +20,7 @@ pub(crate) fn weierstrass_decompress_syscall<E: EllipticCurve, Ex: ExecutorConfi
         slice_ptr,
         sign_bit,
         false,
-        ctx.next_pc_rel,
+        ctx.next_pc,
         ctx.exit_code,
     );
     match E::CURVE_TYPE {

@@ -1,16 +1,16 @@
 use crate::{
-    adapter::{register::jalr_type::JalrTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::AddOperationInput,
 };
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::{Opcode, CLK_INC};
-use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::air::BaseAirBuilder;
+use sp1_stark::Word;
 use std::borrow::Borrow;
 
-use crate::operations::{AddOperation, BabyBearWordRangeChecker};
+use crate::operations::AddOperation;
 
 use super::{JalrChip, JalrColumns};
 
@@ -29,63 +29,66 @@ where
 
         let opcode = Opcode::JALR.as_field::<AB::F>();
 
-        // We constrain `next_pc_rel` to be the sum of `op_b` and `op_c`.
-        AddOperation::<AB::F>::eval(
-            builder,
+        // We constrain `next_pc` to be the sum of `op_b` and `op_c`.
+        let op_input = AddOperationInput::<AB>::new(
             local.adapter.b().map(|x| x.into()),
             local.adapter.c().map(|x| x.into()),
             local.add_operation,
             local.is_real.into(),
         );
+        <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
 
-        let next_pc_rel = local.add_operation.value;
+        let next_pc = local.add_operation.value;
+        builder.assert_zero(next_pc[3]);
 
         // Constrain the state of the CPU.
-        // The `next_pc_rel` is constrained by the AIR.
+        // The `next_pc` is constrained by the AIR.
         // The clock is incremented by `4`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            next_pc_rel.reduce::<AB>(),
+            [next_pc[0].into(), next_pc[1].into(), next_pc[2].into()],
             AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
         // Constrain the program and register reads.
-        JalrTypeReader::<AB::F>::eval(
+        ITypeReader::<AB::F>::eval(
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
-            local.op_a_value,
+            local.op_a_operation.value,
             local.adapter,
             local.is_real.into(),
         );
 
-        // Verify that pc_abs + 4 is saved in op_a. We retrieve the value from the upper 3 limbs of
-        // op_b, where it has been preprocessed. The following assertions also verify that
-        // `local.op_a_value` is a well-formed word, since `local.adapter.op_b[1..=3]` and `0`
-        // represent u16s.
+        // Verify that pc_abs + 4 is saved in op_a.
         // When op_a is set to register X0, the RISC-V spec states that the jump instruction will
         // not have a return destination address (it is effectively a GOTO command).  In this case,
         // we shouldn't verify the return address.
         // If `op_a_0` is set, the `op_a_value` will be constrained to be zero.
-        let mut builder_cond = builder.when(local.is_real);
-        let mut builder_cond = builder_cond.when_not(local.adapter.op_a_0);
-        for i in 0..(WORD_SIZE - 1) {
-            builder_cond.assert_eq(local.op_a_value[i], local.adapter.op_b[i + 1]);
-        }
-        builder_cond.assert_zero(local.op_a_value[WORD_SIZE - 1]);
-
-        // SAFETY: `is_real` is already checked to be boolean.
-        // `next_pc_rel` is checked to a valid word.
-        // This is due to the ADDOperation checking outputs are valid words.
-        BabyBearWordRangeChecker::<AB::F>::range_check(
-            builder,
-            next_pc_rel,
-            local.next_pc_range_checker,
-            local.is_real.into(),
+        let op_input = AddOperationInput::<AB>::new(
+            Word([
+                local.state.pc[0].into(),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
+                AB::Expr::from_canonical_u16(4),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.op_a_operation,
+            local.is_real.into() - local.adapter.op_a_0,
         );
+        <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
+        builder.assert_zero(local.op_a_operation.value[3]);
+        for i in 0..3 {
+            builder.when(local.adapter.op_a_0).assert_zero(local.op_a_operation.value[i]);
+        }
     }
 }

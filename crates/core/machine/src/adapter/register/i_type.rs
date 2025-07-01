@@ -62,7 +62,7 @@ impl<F: Field> ITypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc_rel: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: ITypeReader<AB::Var>,
@@ -78,7 +78,7 @@ impl<F: Field> ITypeReader<F> {
             imm_b: AB::Expr::zero(),
             imm_c: AB::Expr::one(),
         };
-        builder.send_program(pc_rel, instruction, is_real.clone());
+        builder.send_program(pc, instruction, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
@@ -102,7 +102,7 @@ impl<F: Field> ITypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc_rel: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         cols: ITypeReader<AB::Var>,
         is_real: AB::Expr,
@@ -111,7 +111,7 @@ impl<F: Field> ITypeReader<F> {
             builder,
             clk_high,
             clk_low,
-            pc_rel,
+            pc,
             opcode,
             cols.op_a_memory.prev_value,
             cols,

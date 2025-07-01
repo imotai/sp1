@@ -13,7 +13,7 @@ pub struct AluEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The program counter.
-    pub pc_rel: u32,
+    pub pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -30,16 +30,8 @@ impl AluEvent {
     /// Create a new [`AluEvent`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        clk: u64,
-        pc_rel: u32,
-        opcode: Opcode,
-        a: u64,
-        b: u64,
-        c: u64,
-        op_a_0: bool,
-    ) -> Self {
-        Self { clk, pc_rel, opcode, a, b, c, op_a_0 }
+    pub fn new(clk: u64, pc: u64, opcode: Opcode, a: u64, b: u64, c: u64, op_a_0: bool) -> Self {
+        Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }
 
@@ -54,7 +46,7 @@ pub struct MemInstrEvent {
     /// The clk.
     pub clk: u64,
     /// The program counter.
-    pub pc_rel: u32,
+    pub pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -76,7 +68,7 @@ impl MemInstrEvent {
     pub fn new(
         shard: u32,
         clk: u64,
-        pc_rel: u32,
+        pc: u64,
         opcode: Opcode,
         a: u64,
         b: u64,
@@ -84,7 +76,7 @@ impl MemInstrEvent {
         op_a_0: bool,
         mem_access: MemoryRecordEnum,
     ) -> Self {
-        Self { shard, clk, pc_rel, opcode, a, b, c, op_a_0, mem_access }
+        Self { shard, clk, pc, opcode, a, b, c, op_a_0, mem_access }
     }
 }
 
@@ -97,9 +89,9 @@ pub struct BranchEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The program counter.
-    pub pc_rel: u32,
+    pub pc: u64,
     /// The next program counter.
-    pub next_pc_rel: u32,
+    pub next_pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -118,15 +110,15 @@ impl BranchEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         clk: u64,
-        pc_rel: u32,
-        next_pc_rel: u32,
+        pc: u64,
+        next_pc: u64,
         opcode: Opcode,
         a: u64,
         b: u64,
         c: u64,
         op_a_0: bool,
     ) -> Self {
-        Self { clk, pc_rel, next_pc_rel, opcode, a, b, c, op_a_0 }
+        Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
 
@@ -139,9 +131,9 @@ pub struct JumpEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The program counter.
-    pub pc_rel: u32,
+    pub pc: u64,
     /// The next program counter.
-    pub next_pc_rel: u32,
+    pub next_pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -160,15 +152,15 @@ impl JumpEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         clk: u64,
-        pc_rel: u32,
-        next_pc_rel: u32,
+        pc: u64,
+        next_pc: u64,
         opcode: Opcode,
         a: u64,
         b: u64,
         c: u64,
         op_a_0: bool,
     ) -> Self {
-        Self { clk, pc_rel, next_pc_rel, opcode, a, b, c, op_a_0 }
+        Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
 /// AUIPC Instruction Event.
@@ -180,7 +172,7 @@ pub struct AUIPCEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The program counter.
-    pub pc_rel: u32,
+    pub pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
@@ -197,15 +189,7 @@ impl AUIPCEvent {
     /// Create a new [`AUIPCEvent`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        clk: u64,
-        pc_rel: u32,
-        opcode: Opcode,
-        a: u64,
-        b: u64,
-        c: u64,
-        op_a_0: bool,
-    ) -> Self {
-        Self { clk, pc_rel, opcode, a, b, c, op_a_0 }
+    pub fn new(clk: u64, pc: u64, opcode: Opcode, a: u64, b: u64, c: u64, op_a_0: bool) -> Self {
+        Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }

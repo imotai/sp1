@@ -177,8 +177,8 @@ where
         let mut current_execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize program counter variables.
-        let mut pc_start_rel: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_pc_rel: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut pc_start: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
+        let mut current_pc: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
 
         // Initialize memory initialization and finalization variables.
         let mut initial_previous_init_addr_word: [Felt<_>; 3] =
@@ -233,8 +233,8 @@ where
                 current_timestamp = public_values.initial_timestamp;
 
                 // Program counter.
-                pc_start_rel = public_values.pc_start_rel;
-                current_pc_rel = public_values.pc_start_rel;
+                pc_start = public_values.pc_start;
+                current_pc = public_values.pc_start;
 
                 // Memory initialization & finalization.
                 for ((limb, pub_limb), first_limb) in current_init_addr_word
@@ -297,10 +297,10 @@ where
 
                 // If it's the first shard (which is the first execution shard), then the `pc_start`
                 // should be vk.pc_start_rel.
-                builder.assert_felt_eq(
-                    is_first_shard * (pc_start_rel - vk.pc_start_rel),
-                    C::F::zero(),
-                );
+                for (pc, vk_pc) in pc_start.iter().zip_eq(vk.pc_start.iter()) {
+                    builder.assert_felt_eq(is_first_shard * (*pc - *vk_pc), C::F::zero());
+                }
+
                 // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the
                 // digest. If it's not the first shard, we add the zero digest to
                 // the digest.
@@ -355,7 +355,7 @@ where
             if let Some(commit) = vk.preprocessed_commit {
                 challenger.observe(builder, commit);
             }
-            challenger.observe(builder, vk.pc_start_rel);
+            challenger.observe_slice(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
             // Observe the padding.
@@ -402,16 +402,16 @@ where
             // Program counter constraints.
             {
                 // Assert that the pc_start of the proof is equal to the current pc.
-                builder.assert_felt_eq(current_pc_rel, public_values.pc_start_rel);
+                for (limb, pub_limb) in current_pc.iter().zip_eq(public_values.pc_start.iter()) {
+                    builder.assert_felt_eq(*limb, *pub_limb);
+                }
 
-                // If it's not a CPU shard, then assert that the pc_start equals the next_pc_rel.
-                builder.assert_felt_eq(
-                    not_cpu_shard * (public_values.pc_start_rel - public_values.next_pc_rel),
-                    C::F::zero(),
-                );
-
+                // If it's not a CPU shard, then assert that the pc_start equals the next_pc.
                 // Update current_pc to be the end_pc of the current proof.
-                current_pc_rel = public_values.next_pc_rel;
+                for (limb, pub_limb) in current_pc.iter_mut().zip_eq(public_values.next_pc.iter()) {
+                    builder.assert_felt_eq(not_cpu_shard * (*limb - *pub_limb), C::F::zero());
+                    *limb = *pub_limb;
+                }
             }
 
             // Exit code constraints.
@@ -579,8 +579,8 @@ where
                 recursion_public_values_stream.as_mut_slice().borrow_mut();
             recursion_public_values.committed_value_digest = committed_value_digest;
             recursion_public_values.deferred_proofs_digest = deferred_proofs_digest;
-            recursion_public_values.pc_start_rel = pc_start_rel;
-            recursion_public_values.next_pc_rel = current_pc_rel;
+            recursion_public_values.pc_start = pc_start;
+            recursion_public_values.next_pc = current_pc;
             recursion_public_values.start_shard = initial_shard;
             recursion_public_values.next_shard = current_shard;
             recursion_public_values.start_execution_shard = initial_execution_shard;

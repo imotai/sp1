@@ -1,3 +1,4 @@
+use crate::air::WordAirBuilder;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -10,7 +11,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 
-use sp1_stark::air::MachineAir;
+use sp1_stark::{air::MachineAir, Word};
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -18,8 +19,9 @@ use std::{
 
 use crate::{
     adapter::{register::j_type::JTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
-    utils::{next_multiple_of_32, zeroed_f_vec, InstructionExt as _},
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::{AddOperation, AddOperationInput},
+    utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
 #[derive(Default)]
@@ -42,6 +44,9 @@ pub struct AuipcColumns<T> {
 
     /// The adapter to read program and register information.
     pub adapter: JTypeReader<T>,
+
+    /// Computation of `pc + op_b`.
+    pub add_operation: AddOperation<T>,
 
     /// Whether the instruction is an AUIPC instruction.
     pub is_real: T,
@@ -66,20 +71,37 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
             AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
+        let op_input = AddOperationInput::<AB>::new(
+            Word([
+                local.state.pc[0].into(),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+                AB::Expr::zero(),
+            ]),
+            local.adapter.b().map(|x| x.into()),
+            local.add_operation,
+            local.is_real.into() - local.adapter.op_a_0.into(),
+        );
+        <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
+        builder.when(local.adapter.op_a_0).assert_word_zero(local.add_operation.value);
+
         // Constrain the program and register reads.
-        // Set `op_b` immediate as `op_a_not_0 * (pc + op_b)` value in the instruction encoding.
         JTypeReader::<AB::F>::eval(
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
-            *local.adapter.b(),
+            local.add_operation.value,
             local.adapter,
             local.is_real.into(),
         );
@@ -122,14 +144,13 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
 
                     if idx < input.auipc_events.len() {
                         let event = &input.auipc_events[idx];
-                        let instruction = input
-                            .program
-                            .fetch(event.0.pc_rel)
-                            .preprocess_auipc(input.program.pc_base, event.0.pc_rel);
+                        let instruction = input.program.fetch(event.0.pc);
                         cols.is_real = F::one();
-
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
-                        cols.adapter.populate(&mut blu, &instruction, event.1);
+                        if instruction.op_a != 0 {
+                            cols.add_operation.populate(&mut blu, event.0.pc, event.0.b);
+                        }
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
                 blu

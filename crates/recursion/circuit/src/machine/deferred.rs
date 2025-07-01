@@ -64,7 +64,7 @@ pub struct SP1DeferredWitnessValues<SC: BabyBearFriConfig + FieldHasher<BabyBear
     pub sp1_vk_digest: [SC::F; DIGEST_SIZE],
     pub committed_value_digest: [[SC::F; 4]; PV_DIGEST_NUM_WORDS],
     pub deferred_proofs_digest: [SC::F; POSEIDON_NUM_WORDS],
-    pub end_pc: SC::F,
+    pub end_pc: [SC::F; 3],
     pub end_shard: SC::F,
     pub end_execution_shard: SC::F,
     pub end_timestamp: [SC::F; 4],
@@ -87,7 +87,7 @@ pub struct SP1DeferredWitnessVariable<
     pub sp1_vk_digest: [Felt<C::F>; DIGEST_SIZE],
     pub committed_value_digest: [[Felt<C::F>; 4]; PV_DIGEST_NUM_WORDS],
     pub deferred_proofs_digest: [Felt<C::F>; POSEIDON_NUM_WORDS],
-    pub end_pc: Felt<C::F>,
+    pub end_pc: [Felt<C::F>; 3],
     pub end_shard: Felt<C::F>,
     pub end_execution_shard: Felt<C::F>,
     pub end_timestamp: [Felt<C::F>; 4],
@@ -173,7 +173,7 @@ where
             if let Some(commit) = vk.preprocessed_commit {
                 challenger.observe(builder, commit);
             }
-            challenger.observe(builder, vk.pc_start_rel);
+            challenger.observe_slice(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
             // Observe the padding.
@@ -216,8 +216,8 @@ where
         // Set the public values.
 
         // Set initial_pc, end_pc, initial_shard, and end_shard to be the hitned values.
-        deferred_public_values.pc_start_rel = end_pc;
-        deferred_public_values.next_pc_rel = end_pc;
+        deferred_public_values.pc_start = end_pc;
+        deferred_public_values.next_pc = end_pc;
         deferred_public_values.start_shard = end_shard;
         deferred_public_values.next_shard = end_shard;
         deferred_public_values.start_execution_shard = end_execution_shard;

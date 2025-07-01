@@ -1,6 +1,5 @@
 pub mod add;
 pub mod addi;
-pub mod addiw;
 pub mod addw;
 pub mod sub;
 pub mod subw;

@@ -95,7 +95,7 @@ where
                 .unwrap_or_default()
                 .copied(),
         );
-        inputs.push(self.pc_start_rel);
+        inputs.extend(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
         for ChipDimensions { height, num_polynomials: _ } in

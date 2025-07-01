@@ -74,13 +74,9 @@ impl Instruction {
                 | Opcode::DIVUW
                 | Opcode::REMW
                 | Opcode::REMUW
-                | Opcode::ADDIW
                 | Opcode::SLLW
                 | Opcode::SRLW
                 | Opcode::SRAW
-                | Opcode::SLLIW
-                | Opcode::SRLIW
-                | Opcode::SRAIW
         )
     }
 
@@ -151,6 +147,24 @@ impl Instruction {
     #[inline]
     pub const fn is_auipc_instruction(&self) -> bool {
         matches!(self.opcode, Opcode::AUIPC)
+    }
+
+    /// Returns if the instruction guarantees that the `next_pc` are with correct limbs.
+    #[must_use]
+    #[inline]
+    pub const fn is_with_correct_next_pc(&self) -> bool {
+        matches!(
+            self.opcode,
+            Opcode::BEQ
+                | Opcode::BNE
+                | Opcode::BLT
+                | Opcode::BGE
+                | Opcode::BLTU
+                | Opcode::BGEU
+                | Opcode::JAL
+                | Opcode::JALR
+                | Opcode::AUIPC
+        )
     }
 
     /// Returns if the instruction is a divrem instruction.

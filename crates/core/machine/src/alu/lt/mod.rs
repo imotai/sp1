@@ -96,9 +96,9 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.lt_events[idx];
-                        let instruction = input.program.fetch(event.0.pc_rel);
+                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -121,9 +121,9 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_LT_COLS];
                     let cols: &mut LtCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc_rel);
+                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -208,7 +208,11 @@ where
             builder,
             CPUStateInput {
                 cols: local.state,
-                next_pc: local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
                 clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
                 is_real: is_real.clone(),
             },
@@ -222,7 +226,7 @@ where
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
             Word::extend_var::<AB>(local.lt_operation.result.u16_compare_operation.bit),
             local.adapter,

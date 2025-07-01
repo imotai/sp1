@@ -66,7 +66,7 @@ impl<F> BaseAir<F> for JalChip {
 //     //                     if *chip_name == jump_chip_name {
 //     //                         let first_row = trace.row_mut(0);
 //     //                         let first_row: &mut JumpColumns<BabyBear> =
-// first_row.borrow_mut();     //                         first_row.next_pc_rel = 4.into();
+// first_row.borrow_mut();     //                         first_row.next_pc = 4.into();
 //     //                     }
 //     //                 }
 

@@ -76,7 +76,7 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
         local_mem_access: rt.postprocess(),
     });
     let syscall_event =
-        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc_rel, rt.exit_code);
+        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, event);
 
     None

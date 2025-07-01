@@ -60,7 +60,7 @@ where
         if let Some(vk) = vk.preprocessed_commit.as_ref() {
             challenger.observe(builder, *vk)
         }
-        challenger.observe(builder, vk.pc_start_rel);
+        challenger.observe_slice(builder, vk.pc_start);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
 

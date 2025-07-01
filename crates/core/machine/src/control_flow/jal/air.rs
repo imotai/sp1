@@ -2,12 +2,14 @@ use std::borrow::Borrow;
 
 use crate::{
     adapter::{register::j_type::JTypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::{AddOperation, AddOperationInput},
 };
-use p3_air::Air;
+use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use sp1_core_executor::{Opcode, CLK_INC};
+use sp1_stark::Word;
 
 use super::{JalChip, JalColumns};
 
@@ -26,31 +28,69 @@ where
 
         let opcode = Opcode::JAL.as_field::<AB::F>();
 
+        // We constrain `next_pc` to be the sum of `pc` and `op_b`.
+        let op_input = AddOperationInput::<AB>::new(
+            Word([
+                local.state.pc[0].into(),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+                AB::Expr::zero(),
+            ]),
+            local.adapter.b().map(|x| x.into()),
+            local.add_operation,
+            local.is_real.into(),
+        );
+        <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
+
+        let next_pc = local.add_operation.value;
+        builder.assert_zero(next_pc[3]);
+
         // Constrain the state of the CPU.
-        // The `next_pc_rel` is constrained by the AIR.
+        // The `next_pc` is constrained by the AIR.
         // The clock is incremented by `4`.
         // Set `op_b` immediate as `pc + op_b` value in the instruction encoding.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.adapter.b().reduce::<AB>(),
+            [next_pc[0].into(), next_pc[1].into(), next_pc[2].into()],
             AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
+
+        let op_input = AddOperationInput::<AB>::new(
+            Word([
+                local.state.pc[0].into(),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
+                AB::Expr::from_canonical_u16(4),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.op_a_operation,
+            local.is_real.into() - local.adapter.op_a_0,
+        );
+        <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
+        builder.assert_zero(local.op_a_operation.value[3]);
+        for i in 0..3 {
+            builder.when(local.adapter.op_a_0).assert_zero(local.op_a_operation.value[i]);
+        }
 
         // Constrain the program and register reads.
         // Verify that the local.pc + 4 is saved in op_a for both jump instructions.
         // When op_a is set to register X0, the RISC-V spec states that the jump instruction will
         // not have a return destination address (it is effectively a GOTO command).  In this case,
         // we shouldn't verify the return address.
-        // Set `op_c` immediate as `op_a_not_0 * (pc + 4)` in the instruction encoding.
         JTypeReader::<AB::F>::eval(
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
-            *local.adapter.c(),
+            local.op_a_operation.value,
             local.adapter,
             local.is_real.into(),
         );

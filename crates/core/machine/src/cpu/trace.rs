@@ -46,7 +46,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         //             } else {
         //                 let mut byte_lookup_events = Vec::new();
         //                 let event = &input.cpu_events[idx];
-        //                 let instruction = &input.program.fetch(event.pc_rel);
+        //                 let instruction = &input.program.fetch(event.pc);
         //                 self.event_to_row(
         //                     event,
         //                     cols,
@@ -117,8 +117,8 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
 //         self.populate_shard_clk(cols, event, blu_events, shard);
 
 //         // Populate basic fields.
-//         cols.pc = F::from_canonical_u32(event.pc_rel);
-//         cols.next_pc_rel = F::from_canonical_u32(event.next_pc_rel);
+//         cols.pc = F::from_canonical_u32(event.pc);
+//         cols.next_pc = F::from_canonical_u32(event.next_pc);
 //         cols.instruction.populate(instruction);
 //         cols.op_a_immutable = F::from_bool(
 //             instruction.is_memory_store_instruction() || instruction.is_branch_instruction(),

@@ -149,7 +149,7 @@ pub use air::*;
 //         let syscall_code = SyscallCode::U256XU2048_MUL;
 //         let syscall_event = SyscallEvent {
 //             pc: 32,
-//             next_pc_rel: 36,
+//             next_pc: 36,
 //             shard: 0u32,
 //             clk: hi_ts,
 //             a_record: MemoryWriteRecord::default(),

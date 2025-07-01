@@ -9,9 +9,9 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, JumpEvent},
     ExecutionRecord, Program,
 };
-use sp1_stark::{air::MachineAir, Word};
+use sp1_stark::air::MachineAir;
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec, InstructionExt as _};
+use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
 use super::{JalrChip, JalrColumns, NUM_JALR_COLS};
 
@@ -51,13 +51,10 @@ impl<F: PrimeField32> MachineAir<F> for JalrChip {
 
                     if idx < input.jalr_events.len() {
                         let event = &input.jalr_events[idx];
-                        let instruction = input
-                            .program
-                            .fetch(event.0.pc_rel)
-                            .preprocess_jalr(input.program.pc_base, event.0.pc_rel);
+                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, instruction.op_c, cols, &mut blu);
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
-                        cols.adapter.populate(&mut blu, &instruction, event.1);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
                 blu
@@ -95,8 +92,9 @@ impl JalrChip {
         // `event.c` is unused, since we ought to use a `JalrEvent` rather than a `JumpEvent`.
         cols.is_real = F::one();
         cols.op_a_value = event.a.into();
-        let next_pc_rel = event.b.wrapping_add(imm);
-        cols.next_pc_range_checker.populate(Word::from(next_pc_rel), blu);
         cols.add_operation.populate(blu, event.b, imm);
+        if !event.op_a_0 {
+            cols.op_a_operation.populate(blu, event.pc, 4);
+        }
     }
 }

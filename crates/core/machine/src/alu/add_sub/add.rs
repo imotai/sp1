@@ -85,10 +85,10 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                     if idx < merged_events.len() {
                         let mut byte_lookup_events = Vec::new();
                         let event = merged_events[idx];
-                        let instruction = input.program.fetch(event.0.pc_rel);
+                        let instruction = input.program.fetch(event.0.pc);
                         // tracing::info!("instruction: {:?}", instruction.opcode);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
@@ -111,9 +111,9 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_ADD_COLS];
                     let cols: &mut AddCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc_rel);
+                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -169,13 +169,6 @@ where
         let opcode = AB::Expr::from_f(Opcode::ADD.as_field());
 
         // Constrain the add operation over `op_b` and `op_c`.
-        // AddOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(|x| x.into()),
-        //     local.adapter.c().map(|x| x.into()),
-        //     local.add_operation,
-        //     local.is_real.into(),
-        // );
         let op_input = AddOperationInput::<AB>::new(
             local.adapter.b().map(|x| x.into()),
             local.adapter.c().map(|x| x.into()),
@@ -188,7 +181,11 @@ where
         // The program counter and timestamp increment by `4`.
         let cpu_state_input = CPUStateInput::<AB>::new(
             local.state,
-            local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
             AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
@@ -198,7 +195,7 @@ where
         let reader_input = RTypeReaderInput::<AB, AB::Var>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
             local.add_operation.value,
             local.adapter,

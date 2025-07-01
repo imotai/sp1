@@ -113,32 +113,24 @@ pub enum Opcode {
     SRLW = 41,
     /// rd ← rs1 >> rs2 (arithmetic), pc ← pc + 4
     SRAW = 42,
-    /// rd ← rs1 + imm, pc ← pc + 4
-    ADDIW = 43,
-    /// rd ← rs1 << imm, pc ← pc + 4
-    SLLIW = 44,
-    /// rd ← rs1 >> imm (logical), pc ← pc + 4
-    SRLIW = 45,
-    /// rd ← rs1 >> imm (arithmetic), pc ← pc + 4
-    SRAIW = 46,
     /// rd ← sx(m32(rs1 + imm)), pc ← pc + 4
-    LWU = 47,
+    LWU = 43,
     /// rd ← sx(m8(rs1 + imm)), pc ← pc + 4
-    LD = 48,
+    LD = 44,
     /// m8(rs1 + imm) ← rs2[7:0], pc ← pc + 4
-    SD = 49,
+    SD = 45,
     /// rd ← rs1 + imm, pc ← pc + 4
-    MULW = 50,
+    MULW = 46,
     /// rd ← rs1 / rs2 (signed), pc ← pc + 4
-    DIVW = 51,
+    DIVW = 47,
     /// rd ← rs1 / rs2 (unsigned), pc ← pc + 4
-    DIVUW = 52,
+    DIVUW = 48,
     /// rd ← rs1 % rs2 (signed), pc ← pc + 4
-    REMW = 53,
+    REMW = 49,
     /// rd ← rs1 % rs2 (unsigned), pc ← pc + 4
-    REMUW = 54,
+    REMUW = 50,
     /// Unimplemented instruction.
-    UNIMP = 55,
+    UNIMP = 51,
 }
 /// Byte Opcode.
 ///
@@ -214,10 +206,6 @@ impl Opcode {
             Opcode::SLLW => "sllw",
             Opcode::SRLW => "srlw",
             Opcode::SRAW => "sraw",
-            Opcode::ADDIW => "addiw",
-            Opcode::SLLIW => "slliw",
-            Opcode::SRLIW => "srliw",
-            Opcode::SRAIW => "sraiw",
             Opcode::LWU => "lwu",
             Opcode::LD => "ld",
             Opcode::SD => "sd",

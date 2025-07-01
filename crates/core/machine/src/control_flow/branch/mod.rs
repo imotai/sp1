@@ -46,7 +46,7 @@ mod tests {
             branch_opcode: Opcode,
             branch_operand_b_value: u32,
             branch_operand_c_value: u32,
-            incorrect_next_pc: u32,
+            incorrect_next_pc: u64,
             error_type: ErrorType,
         }
 
@@ -179,7 +179,7 @@ mod tests {
                       -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
                     // Create a malicious record where the BEQ instruction branches incorrectly.
                     let mut malicious_record = record.clone();
-                    malicious_record.branch_events[0].next_pc_rel = test_case.incorrect_next_pc;
+                    malicious_record.branch_events[0].next_pc = test_case.incorrect_next_pc;
                     prover.generate_traces(&malicious_record)
                 };
 

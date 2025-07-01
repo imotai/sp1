@@ -41,8 +41,8 @@ use crate::{
 pub(crate) mod riscv_chips {
     pub use crate::{
         alu::{
-            add::AddChip, addi::AddiChip, addiw::AddiwChip, addw::AddwChip, sub::SubChip,
-            subw::SubwChip, BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip,
+            add::AddChip, addi::AddiChip, addw::AddwChip, sub::SubChip, subw::SubwChip,
+            BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip,
         },
         bytes::ByteChip,
         cpu::CpuChip,
@@ -99,8 +99,6 @@ pub enum RiscvAir<F: PrimeField32> {
     Addw(AddwChip),
     /// An AIR for the RISC-V Addi instruction.
     Addi(AddiChip),
-    /// An AIR for the RISC-V Addiw instruction.
-    Addiw(AddiwChip),
     // An AIR for the RISC-V Sub instruction.
     Sub(SubChip),
     /// An AIR for the RISC-V Subw instruction.
@@ -279,7 +277,6 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::DivRem(DivRemChip::default()),
             RiscvAir::Add(AddChip::default()),
             RiscvAir::Addi(AddiChip::default()),
-            RiscvAir::Addiw(AddiwChip::default()),
             RiscvAir::Addw(AddwChip::default()),
             RiscvAir::Sub(SubChip::default()),
             RiscvAir::Subw(SubwChip::default()),
@@ -376,7 +373,6 @@ impl<F: PrimeField32> RiscvAir<F> {
                 DivRem,
                 Add,
                 Addi,
-                Addiw,
                 Addw,
                 Sub,
                 Subw,
@@ -656,10 +652,6 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(addi.name(), addi.cost());
         chips.push(addi);
 
-        let addiw = Chip::new(RiscvAir::Addiw(AddiwChip::default()));
-        costs.insert(addiw.name(), addiw.cost());
-        chips.push(addiw);
-
         let sub = Chip::new(RiscvAir::Sub(SubChip::default()));
         costs.insert(sub.name(), sub.cost());
         chips.push(sub);
@@ -791,7 +783,6 @@ impl<F: PrimeField32> RiscvAir<F> {
             (RiscvAirId::Add, record.add_events.len()),
             (RiscvAirId::Addw, record.addw_events.len()),
             (RiscvAirId::Addi, record.addi_events.len()),
-            (RiscvAirId::Addiw, record.addiw_events.len()),
             (RiscvAirId::Sub, record.sub_events.len()),
             (RiscvAirId::Subw, record.subw_events.len()),
             (RiscvAirId::Bitwise, record.bitwise_events.len()),
@@ -808,7 +799,7 @@ impl<F: PrimeField32> RiscvAir<F> {
                     .count(),
             ),
             (RiscvAirId::MemoryBump, record.bump_memory_events.len()),
-            (RiscvAirId::StateBump, record.bump_clk_high_events.len()),
+            (RiscvAirId::StateBump, record.bump_state_events.len()),
             (RiscvAirId::LoadByte, record.memory_load_byte_events.len()),
             (RiscvAirId::LoadHalf, record.memory_load_half_events.len()),
             (RiscvAirId::LoadWord, record.memory_load_word_events.len()),
@@ -856,7 +847,6 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::Add => RiscvAirId::Add,
             RiscvAirDiscriminants::Addw => RiscvAirId::Addw,
             RiscvAirDiscriminants::Addi => RiscvAirId::Addi,
-            RiscvAirDiscriminants::Addiw => RiscvAirId::Addiw,
             RiscvAirDiscriminants::Sub => RiscvAirId::Sub,
             RiscvAirDiscriminants::Subw => RiscvAirId::Subw,
             RiscvAirDiscriminants::Bitwise => RiscvAirId::Bitwise,

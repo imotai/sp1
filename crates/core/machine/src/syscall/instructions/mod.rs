@@ -40,7 +40,7 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //     fn test_malicious_next_pc() {
 //         struct TestCase {
 //             program: Vec<Instruction>,
-//             incorrect_next_pc: u32,
+//             incorrect_next_pc: u64,
 //         }
 
 //         let test_cases = vec![
@@ -50,7 +50,7 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 // code in register x5.                     Instruction::new(Opcode::ECALL, 5, 10, 11, false,
 // false), // Call the syscall.                     Instruction::new(Opcode::ADD, 30, 0, 100, false,
 // true),                 ],
-//                 incorrect_next_pc: 8, // The correct next_pc_rel is 0.
+//                 incorrect_next_pc: 8, // The correct next_pc is 0.
 //             },
 //             TestCase {
 //                 program: vec![
@@ -59,7 +59,7 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 // true), // Set the syscall arg1 to 40.                     Instruction::new(Opcode::ECALL, 5, 10,
 // 11, false, false), // Call the syscall.                     Instruction::new(Opcode::ADD, 30, 0,
 // 100, false, true),                 ],
-//                 incorrect_next_pc: 0, // The correct next_pc_rel is 12.
+//                 incorrect_next_pc: 0, // The correct next_pc is 12.
 //             },
 //         ];
 
@@ -79,7 +79,7 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //                     // There can be multiple shards for programs with syscalls, so need to figure
 // out which                     // record is for a CPU shard.
 //                     if !malicious_record.cpu_events.is_empty() {
-//                         malicious_record.syscall_events[0].next_pc_rel =
+//                         malicious_record.syscall_events[0].next_pc =
 // test_case.incorrect_next_pc;                     }
 
 //                     prover.generate_traces(&malicious_record)

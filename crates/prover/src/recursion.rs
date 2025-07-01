@@ -835,7 +835,7 @@ fn dummy_deferred_input<C: RecursionProverComponents>(
         sp1_vk_digest: [BabyBear::zero(); DIGEST_SIZE],
         committed_value_digest: [[BabyBear::zero(); 4]; PV_DIGEST_NUM_WORDS],
         deferred_proofs_digest: [BabyBear::zero(); POSEIDON_NUM_WORDS],
-        end_pc: BabyBear::zero(),
+        end_pc: [BabyBear::zero(); 3],
         end_shard: BabyBear::zero(),
         end_execution_shard: BabyBear::zero(),
         end_timestamp: [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()],

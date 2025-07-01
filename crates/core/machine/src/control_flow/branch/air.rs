@@ -1,15 +1,14 @@
 use std::borrow::Borrow;
 
-use p3_air::{Air, AirBuilder};
-use p3_field::AbstractField;
-use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
-
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{LtOperationSigned, LtOperationSignedInput},
 };
+use p3_air::{Air, AirBuilder};
+use p3_field::{AbstractField, Field};
+use p3_matrix::Matrix;
+use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
 
 use super::{BranchChip, BranchColumns};
 
@@ -56,12 +55,12 @@ where
             + local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
 
         // Constrain the state of the CPU.
-        // The `next_pc_rel` is constrained by the AIR.
+        // The `next_pc` is constrained by the AIR.
         // The clock is incremented by `4`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.next_pc_rel.into(),
+            local.next_pc.map(Into::into),
             AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
@@ -71,7 +70,7 @@ where
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
             local.adapter,
             is_real.clone(),
@@ -106,14 +105,29 @@ where
             branching.clone() + (local.is_bge + local.is_bgeu) * (AB::Expr::one() - is_less_than);
         branching = branching.clone() + (local.is_blt + local.is_bltu) * is_less_than;
 
+        builder.assert_bool(local.is_branching);
         builder.when(is_real.clone()).assert_eq(local.is_branching, branching.clone());
 
-        // Constrain the next_pc_rel using the branching column.
-        // Set `op_c` immediate as `pc + op_c` value in the instruction encoding.
-        let next_pc_rel: AB::Expr = local.is_branching * local.adapter.c().reduce::<AB>()
-            + (AB::Expr::one() - local.is_branching)
-                * (local.state.pc_rel + AB::Expr::from_canonical_u32(PC_INC));
+        // Constrain the next_pc using the branching column.
+        // Show that if `is_branching` is true, then next_pc == pc + op_c
+        // Show that if `is_branching` is false, then next_pc == pc + 4
+        let base_inverse = AB::F::from_canonical_u32(1 << 16).inverse();
+        let mut carry = AB::Expr::zero();
+        for i in 0..4 {
+            let pc = if i < 3 { local.state.pc[i].into() } else { AB::Expr::zero() };
+            let next_pc = if i < 3 { local.next_pc[i].into() } else { AB::Expr::zero() };
+            carry = (carry.clone() + pc + local.adapter.c()[i] - next_pc) * base_inverse;
+            builder.when(local.is_branching).assert_bool(carry.clone());
+        }
 
-        builder.when(is_real.clone()).assert_eq(local.next_pc_rel, next_pc_rel);
+        let mut carry = AB::Expr::zero();
+        for i in 0..4 {
+            let pc = if i < 3 { local.state.pc[i].into() } else { AB::Expr::zero() };
+            let next_pc = if i < 3 { local.next_pc[i].into() } else { AB::Expr::zero() };
+            let increment =
+                if i == 0 { AB::Expr::from_canonical_u32(PC_INC) } else { AB::Expr::zero() };
+            carry = (carry.clone() + pc + increment - next_pc) * base_inverse;
+            builder.when(is_real.clone() - local.is_branching).assert_bool(carry.clone());
+        }
     }
 }

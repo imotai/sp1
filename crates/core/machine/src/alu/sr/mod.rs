@@ -93,12 +93,6 @@ pub struct ShiftRightCols<T> {
 
     /// If the opcode is SRAW.
     pub is_sraw: T,
-
-    /// If the opcode is SRLIW.
-    pub is_srliw: T,
-
-    /// If the opcode is SRAIW.
-    pub is_sraiw: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
@@ -138,9 +132,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.shift_right_events[idx];
-                        let instruction = input.program.fetch(event.0.pc_rel);
+                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
-                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc_rel);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     } else {
                         cols.v_01 = F::from_canonical_u32(16);
@@ -166,9 +160,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SHIFT_RIGHT_COLS];
                     let cols: &mut ShiftRightCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc_rel);
+                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
-                    cols.state.populate(&mut blu, event.0.clk, event.0.pc_rel);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                     cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
@@ -206,12 +200,7 @@ impl ShiftRightChip {
         cols.is_sra = F::from_bool(event.opcode == Opcode::SRA);
         cols.is_srlw = F::from_bool(event.opcode == Opcode::SRLW);
         cols.is_sraw = F::from_bool(event.opcode == Opcode::SRAW);
-        cols.is_srliw = F::from_bool(event.opcode == Opcode::SRLIW);
-        cols.is_sraiw = F::from_bool(event.opcode == Opcode::SRAIW);
-        let is_word = event.opcode == Opcode::SRLW
-            || event.opcode == Opcode::SRAW
-            || event.opcode == Opcode::SRLIW
-            || event.opcode == Opcode::SRAIW;
+        let is_word = event.opcode == Opcode::SRLW || event.opcode == Opcode::SRAW;
         if is_word {
             b[2] = 0;
             b[3] = 0;
@@ -241,17 +230,17 @@ impl ShiftRightChip {
         if event.opcode == Opcode::SRA {
             cols.b_msb.populate_msb(blu, b[3]);
         }
-        if event.opcode == Opcode::SRAW || event.opcode == Opcode::SRAIW {
+        if event.opcode == Opcode::SRAW {
             cols.b_msb.populate_msb(blu, b[1]);
         }
         cols.sra_msb_v0123 = cols.b_msb.msb * cols.v_0123; // if not SRA, b_msb.msb == 0
 
-        if event.opcode == Opcode::SRLW || event.opcode == Opcode::SRLIW {
+        if event.opcode == Opcode::SRLW {
             let srlw_val = (event.b as u32) >> ((event.c & 0x1f) as u32);
             let srlw_limbs = u32_to_u16_limbs(srlw_val);
             cols.srw_msb.populate_msb(blu, srlw_limbs[1]);
         }
-        if event.opcode == Opcode::SRAW || event.opcode == Opcode::SRAIW {
+        if event.opcode == Opcode::SRAW {
             let sraw_val = (event.b as i32).wrapping_shr(((event.c as i64 & 0x1f) as i32) as u32);
             let sraw_limbs = u32_to_u16_limbs(sraw_val as u32);
             cols.srw_msb.populate_msb(blu, sraw_limbs[1]);
@@ -332,12 +321,7 @@ where
         let local = main.row_slice(0);
         let local: &ShiftRightCols<AB::Var> = (*local).borrow();
 
-        let is_real = local.is_srl
-            + local.is_sra
-            + local.is_srlw
-            + local.is_sraw
-            + local.is_srliw
-            + local.is_sraiw;
+        let is_real = local.is_srl + local.is_sra + local.is_srlw + local.is_sraw;
 
         // SAFETY: All selectors `is_srl`, `is_sra` are checked to be boolean.
         // Each "real" row has exactly one selector turned on, as `is_real = is_srl + is_sra` is
@@ -349,21 +333,17 @@ where
         builder.assert_bool(local.is_sra);
         builder.assert_bool(local.is_srlw);
         builder.assert_bool(local.is_sraw);
-        builder.assert_bool(local.is_srliw);
-        builder.assert_bool(local.is_sraiw);
         builder.assert_bool(is_real.clone());
 
         let one = AB::Expr::one();
 
-        let is_word = local.is_srlw + local.is_sraw + local.is_srliw + local.is_sraiw;
+        let is_word = local.is_srlw + local.is_sraw;
         let not_word = one.clone() - is_word.clone();
 
         let opcode = local.is_srl * AB::F::from_canonical_u32(Opcode::SRL as u32)
             + local.is_sra * AB::F::from_canonical_u32(Opcode::SRA as u32)
             + local.is_srlw * AB::F::from_canonical_u32(Opcode::SRLW as u32)
-            + local.is_sraw * AB::F::from_canonical_u32(Opcode::SRAW as u32)
-            + local.is_srliw * AB::F::from_canonical_u32(Opcode::SRLIW as u32)
-            + local.is_sraiw * AB::F::from_canonical_u32(Opcode::SRAIW as u32);
+            + local.is_sraw * AB::F::from_canonical_u32(Opcode::SRAW as u32);
 
         // Check that local.c_bits is the bit representation for the low byte of c.
         for i in 0..8 {
@@ -475,11 +455,7 @@ where
         );
         <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            U16MSBOperationInput::<AB>::new(
-                local.b.0[1].into(),
-                local.b_msb,
-                local.is_sraw.into() + local.is_sraiw.into(),
-            ),
+            U16MSBOperationInput::<AB>::new(local.b.0[1].into(), local.b_msb, local.is_sraw.into()),
         );
         builder.assert_eq(local.sra_msb_v0123, local.b_msb.msb * local.v_0123);
 
@@ -487,9 +463,7 @@ where
             builder,
             U16MSBOperationInput::<AB>::new(local.a.0[1].into(), local.srw_msb, is_word.clone()),
         );
-        builder
-            .when(local.is_srlw + local.is_srl + local.is_srliw)
-            .assert_eq(local.b_msb.msb, AB::Expr::zero());
+        builder.when(local.is_srlw + local.is_srl).assert_eq(local.b_msb.msb, AB::Expr::zero());
 
         for i in 0..WORD_SIZE {
             builder.when(local.shift_u16[i]).assert_eq(
@@ -555,7 +529,11 @@ where
             builder,
             CPUStateInput {
                 cols: local.state,
-                next_pc: local.state.pc_rel + AB::F::from_canonical_u32(PC_INC),
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
                 clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
                 is_real: is_real.clone(),
             },
@@ -565,7 +543,7 @@ where
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
-            local.state.pc_rel,
+            local.state.pc,
             opcode,
             local.a.map(|x| x.into()),
             local.adapter,

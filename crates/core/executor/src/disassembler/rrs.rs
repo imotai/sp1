@@ -381,19 +381,19 @@ impl InstructionProcessor for InstructionTranspiler {
     }
 
     fn process_addiw(&mut self, dec_insn: IType) -> Self::InstructionResult {
-        Instruction::from_i_type(Opcode::ADDIW, &dec_insn)
+        Instruction::from_i_type(Opcode::ADDW, &dec_insn)
     }
 
     fn process_slliw(&mut self, dec_insn: ITypeShamtW) -> Self::InstructionResult {
-        Instruction::from_i_type_shamt_w(Opcode::SLLIW, &dec_insn)
+        Instruction::from_i_type_shamt_w(Opcode::SLLW, &dec_insn)
     }
 
     fn process_srliw(&mut self, dec_insn: ITypeShamtW) -> Self::InstructionResult {
-        Instruction::from_i_type_shamt_w(Opcode::SRLIW, &dec_insn)
+        Instruction::from_i_type_shamt_w(Opcode::SRLW, &dec_insn)
     }
 
     fn process_sraiw(&mut self, dec_insn: ITypeShamtW) -> Self::InstructionResult {
-        Instruction::from_i_type_shamt_w(Opcode::SRAIW, &dec_insn)
+        Instruction::from_i_type_shamt_w(Opcode::SRAW, &dec_insn)
     }
 
     fn process_lwu(&mut self, dec_insn: IType) -> Self::InstructionResult {

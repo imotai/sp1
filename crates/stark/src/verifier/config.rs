@@ -33,7 +33,7 @@ pub struct ChipDimensions {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MachineVerifyingKey<C: MachineConfig> {
     /// The start pc of the program.
-    pub pc_start_rel: C::F,
+    pub pc_start: [C::F; 3],
     /// The starting global digest of the program, after incorporating the initial memory.
     pub initial_global_cumulative_sum: SepticDigest<C::F>,
     /// The preprocessed commitments.
@@ -48,7 +48,7 @@ impl<C: MachineConfig> MachineVerifyingKey<C> {
         if let Some(preprocessed_commit) = self.preprocessed_commit.as_ref() {
             challenger.observe(preprocessed_commit.clone());
         }
-        challenger.observe(self.pc_start_rel);
+        challenger.observe_slice(&self.pc_start);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);
         // Observe the padding.

@@ -81,15 +81,8 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
                 _ => unreachable!(),
             };
 
-            let syscall_event = rt.rt.syscall_event(
-                clk,
-                syscall_code,
-                arg1,
-                arg2,
-                false,
-                rt.next_pc_rel,
-                rt.exit_code,
-            );
+            let syscall_event =
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,
@@ -106,15 +99,8 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
                 }
             };
 
-            let syscall_event = rt.rt.syscall_event(
-                clk,
-                syscall_code,
-                arg1,
-                arg2,
-                false,
-                rt.next_pc_rel,
-                rt.exit_code,
-            );
+            let syscall_event =
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,

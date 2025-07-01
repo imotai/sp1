@@ -64,7 +64,7 @@ impl<F: Field> RTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc_rel: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: RTypeReader<AB::Var>,
@@ -80,7 +80,7 @@ impl<F: Field> RTypeReader<F> {
             imm_b: AB::Expr::zero(),
             imm_c: AB::Expr::zero(),
         };
-        builder.send_program(pc_rel, instruction, is_real.clone());
+        builder.send_program(pc, instruction, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
@@ -111,7 +111,7 @@ impl<F: Field> RTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc_rel: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
@@ -120,7 +120,7 @@ impl<F: Field> RTypeReader<F> {
             builder,
             clk_high,
             clk_low,
-            pc_rel,
+            pc,
             opcode,
             cols.op_a_memory.prev_value,
             cols,
@@ -133,7 +133,7 @@ impl<F: Field> RTypeReader<F> {
 pub struct RTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
-    pub pc: AB::Var,
+    pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
     pub op_a_write_value: Word<T>,
     pub cols: RTypeReader<AB::Var>,
@@ -144,7 +144,7 @@ impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> RTypeReaderInput<AB, T> {
     pub fn new(
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: AB::Expr,
         op_a_write_value: Word<T>,
         cols: RTypeReader<AB::Var>,
@@ -179,7 +179,7 @@ pub struct RTypeReaderImmutable;
 pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
-    pub pc: AB::Var,
+    pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
@@ -189,7 +189,7 @@ impl<AB: SP1AirBuilder> RTypeReaderImmutableInput<AB> {
     pub fn new(
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: AB::Expr,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,

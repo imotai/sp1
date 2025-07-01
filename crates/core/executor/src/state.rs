@@ -19,8 +19,8 @@ use crate::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ExecutionState {
-    /// The program counter minus the program's `pc_base`.
-    pub pc_rel: u32,
+    /// The program counter.
+    pub pc: u64,
 
     /// The shard clock keeps track of how many shards have been executed.
     pub current_shard: Shard,
@@ -65,13 +65,13 @@ pub struct ExecutionState {
 impl ExecutionState {
     #[must_use]
     /// Create a new [`ExecutionState`].
-    pub fn new(pc_start_rel: u32) -> Self {
+    pub fn new(pc_start: u64) -> Self {
         Self {
             global_clk: 0,
             // Start at shard 1 since shard 0 is reserved for memory initialization.
             current_shard: Shard::new(1).unwrap(),
             clk: 0,
-            pc_rel: pc_start_rel,
+            pc: pc_start,
             memory: Memory::new_preallocated(),
             uninitialized_memory: Memory::new_preallocated(),
             input_stream: VecDeque::new(),
@@ -93,7 +93,7 @@ pub struct ForkState {
     /// The original `clk` value at the fork point.
     pub clk: u64,
     /// The original `pc` value at the fork point.
-    pub pc_rel: u32,
+    pub pc: u64,
     /// All memory changes since the fork point.
     pub memory_diff: Memory<Option<MemoryEntry>>,
 }

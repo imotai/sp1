@@ -571,6 +571,8 @@ pub enum Ty<Expr, ExprExt> {
     AddressOperation(AddressOperation<Expr>),
     /// A conversion from a word to an array of words of size `WORD_SIZE`.
     U16toU8Operation(U16toU8Operation<Expr>),
+    /// An array of limbs of size `3`.
+    ArrAddressSize([Expr; 3]),
     /// An array of words of size `WORD_SIZE`.
     ArrWordSize([Expr; WORD_SIZE]),
     /// An array of words of size `WORD_BYTE_SIZE`.
@@ -617,6 +619,7 @@ where
             Ty::SubOperation(sub_operation) => write!(f, "{sub_operation:?}"),
             Ty::AddressOperation(address_operation) => write!(f, "{address_operation:?}"),
             Ty::U16toU8Operation(u16to_u8_operation) => write!(f, "{u16to_u8_operation:?}"),
+            Ty::ArrAddressSize(arr) => write!(f, "{arr:?}"),
             Ty::ArrWordSize(arr) => write!(f, "{arr:?}"),
             Ty::ArrWordByteSize(arr) => write!(f, "{arr:?}"),
             Ty::IsZeroOperation(is_zero_operation) => write!(f, "{is_zero_operation:?}"),
@@ -1426,7 +1429,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         &mut self,
         clk_high: ExprRef<F>,
         clk_low: ExprRef<F>,
-        pc: ExprRef<F>,
+        pc: [ExprRef<F>; 3],
         opcode: ExprRef<F>,
         op_a_write_value: Word<ExprRef<F>>,
         cols: RTypeReader<ExprRef<F>>,
@@ -1437,7 +1440,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
             vec![
                 Ty::Expr(clk_high),
                 Ty::Expr(clk_low),
-                Ty::Expr(pc),
+                Ty::ArrAddressSize(pc),
                 Ty::Expr(opcode),
                 Ty::Word(op_a_write_value),
                 Ty::RTypeReader(cols),
@@ -1454,7 +1457,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         &mut self,
         clk_high: ExprRef<F>,
         clk_low: ExprRef<F>,
-        pc: ExprRef<F>,
+        pc: [ExprRef<F>; 3],
         opcode: ExprRef<F>,
         cols: RTypeReader<ExprRef<F>>,
         is_real: ExprRef<F>,
@@ -1464,7 +1467,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
             vec![
                 Ty::Expr(clk_high),
                 Ty::Expr(clk_low),
-                Ty::Expr(pc),
+                Ty::ArrAddressSize(pc),
                 Ty::Expr(opcode),
                 Ty::RTypeReader(cols),
                 Ty::Expr(is_real),
@@ -1478,13 +1481,18 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
     pub fn cpu_state(
         &mut self,
         cols: CPUState<ExprRef<F>>,
-        next_pc: ExprRef<F>,
+        next_pc: [ExprRef<F>; 3],
         clk_increment: ExprRef<F>,
         is_real: ExprRef<F>,
     ) {
         let func = FuncDecl::new(
             "CPUState",
-            vec![Ty::CPUState(cols), Ty::Expr(next_pc), Ty::Expr(clk_increment), Ty::Expr(is_real)],
+            vec![
+                Ty::CPUState(cols),
+                Ty::ArrAddressSize(next_pc),
+                Ty::Expr(clk_increment),
+                Ty::Expr(is_real),
+            ],
             vec![],
         );
         let op = OpExpr::Call(func);
@@ -1496,7 +1504,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         &mut self,
         clk_high: ExprRef<F>,
         clk_low: ExprRef<F>,
-        pc: ExprRef<F>,
+        pc: [ExprRef<F>; 3],
         opcode: ExprRef<F>,
         op_a_write_value: Word<ExprRef<F>>,
         cols: ALUTypeReader<ExprRef<F>>,
@@ -1507,7 +1515,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
             vec![
                 Ty::Expr(clk_high),
                 Ty::Expr(clk_low),
-                Ty::Expr(pc),
+                Ty::ArrAddressSize(pc),
                 Ty::Expr(opcode),
                 Ty::Word(op_a_write_value),
                 Ty::ALUTypeReader(cols),

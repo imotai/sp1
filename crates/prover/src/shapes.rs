@@ -133,10 +133,10 @@ impl SP1ReduceShape {
     pub fn reduce_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402048),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486112),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 781176),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486144),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 784656),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 806976),
@@ -799,10 +799,10 @@ mod tests {
         // .collect()
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402048),
             (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486112),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486144),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 784656),
             (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
             (CompressAir::<BabyBear>::Select(SelectChip), 806976),

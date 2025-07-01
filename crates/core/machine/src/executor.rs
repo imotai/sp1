@@ -181,8 +181,8 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         state.shard += 1;
                         state.execution_shard = record.public_values.execution_shard;
                         state.next_execution_shard = record.public_values.execution_shard + 1;
-                        state.pc_start_rel = record.public_values.pc_start_rel;
-                        state.next_pc_rel = record.public_values.next_pc_rel;
+                        state.pc_start = record.public_values.pc_start;
+                        state.next_pc = record.public_values.next_pc;
                         state.initial_timestamp = record.public_values.initial_timestamp;
                         state.last_timestamp = record.public_values.last_timestamp;
 
@@ -251,7 +251,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                             record.public_values.previous_finalize_addr_word;
                         state.last_finalize_addr_word =
                             record.public_values.last_finalize_addr_word;
-                        state.pc_start_rel = state.next_pc_rel;
+                        state.pc_start = state.next_pc;
                         state.last_timestamp = state.initial_timestamp;
                         state.is_timestamp_high_eq = 1;
                         state.is_timestamp_low_eq = 1;

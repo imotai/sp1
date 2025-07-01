@@ -34,7 +34,7 @@ pub const NUM_PV_ELMS_TO_HASH: usize = RECURSION_PUBLIC_VALUES_COL_MAP.digest[0]
 
 // Recursive proof has more public values than core proof, so the max number constant defined in
 // sp1_core should be set to `RECURSIVE_PROOF_NUM_PV_ELTS`.
-const_assert_eq!(RECURSIVE_PROOF_NUM_PV_ELTS, PROOF_MAX_NUM_PVS); // TODO: u64
+const_assert_eq!(RECURSIVE_PROOF_NUM_PV_ELTS, PROOF_MAX_NUM_PVS);
 
 #[derive(AlignedBorrow, Serialize, Deserialize, Clone, Copy, Default, Debug)]
 #[repr(C)]
@@ -84,10 +84,10 @@ pub struct RecursionPublicValues<T> {
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The start pc of shards being proven.
-    pub pc_start_rel: T,
+    pub pc_start: [T; 3],
 
     /// The expected start pc for the next shard.
-    pub next_pc_rel: T,
+    pub next_pc: [T; 3],
 
     /// First shard being proven.
     pub start_shard: T,
