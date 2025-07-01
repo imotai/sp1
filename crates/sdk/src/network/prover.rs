@@ -30,7 +30,6 @@ use crate::network::proto::types::GetProofRequestParamsResponse;
 
 use alloy_primitives::{Address, B256};
 use anyhow::{Context, Result};
-use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::Elf;
 use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver, SP1_CIRCUIT_VERSION};
