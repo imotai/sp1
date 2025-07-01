@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "bls12_381"
 version = "0.8.0"
-source = "git+https://github.com/sp1-patches/bls12_381?tag=patch-0.8.0-sp1-4.0.0-v2#fa6d6736d1c270d1b3b4adbe5d6d6a7b859431f3"
+source = "git+https://github.com/sp1-patches/bls12_381?tag=patch-0.8.0-sp1-5.0.0#8774878d42311b956022007e9960043baad24a7f"
 dependencies = [
  "cfg-if",
  "ff",
@@ -576,7 +576,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "sp1-lib"
-version = "4.2.1"
+version = "5.0.5"
 dependencies = [
  "bincode",
  "elliptic-curve",
@@ -586,7 +586,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-primitives"
-version = "4.2.1"
+version = "5.0.5"
 dependencies = [
  "bincode",
  "blake3",
@@ -604,7 +604,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-zkvm"
-version = "4.2.1"
+version = "5.0.5"
 dependencies = [
  "cfg-if",
  "getrandom",

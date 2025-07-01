@@ -328,7 +328,7 @@ version = "1.1.0"
 dependencies = [
  "common-test-utils",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm",
 ]
 
@@ -371,7 +371,7 @@ name = "bls12381-mul-test"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm",
 ]
 
@@ -381,7 +381,7 @@ version = "1.1.0"
 dependencies = [
  "common-test-utils",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm",
 ]
 
@@ -424,7 +424,7 @@ name = "bn254-mul-test"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm",
 ]
 
@@ -494,7 +494,7 @@ name = "common-test-utils"
 version = "1.1.0"
 dependencies = [
  "num-bigint",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
 ]
 
 [[package]]
@@ -2133,7 +2133,7 @@ version = "1.1.0"
 dependencies = [
  "common-test-utils",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm",
 ]
 
@@ -2169,7 +2169,7 @@ dependencies = [
  "num",
  "p256",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm",
 ]
 
@@ -2190,7 +2190,7 @@ dependencies = [
  "num",
  "p256",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm",
 ]
 
@@ -2405,7 +2405,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-curves"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -2424,7 +2424,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-derive"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -2442,7 +2442,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-lib"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "bincode",
  "elliptic-curve",
@@ -2452,7 +2452,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-primitives"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "bincode",
  "blake3",
@@ -2466,12 +2466,45 @@ dependencies = [
  "p3-poseidon2",
  "p3-symmetric",
  "serde",
- "sha2 0.10.8",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "sp1-stark"
+version = "5.0.5"
+dependencies = [
+ "arrayref",
+ "hashbrown 0.14.5",
+ "itertools 0.13.0",
+ "num-bigint",
+ "num-traits",
+ "p3-air",
+ "p3-baby-bear",
+ "p3-challenger",
+ "p3-commit",
+ "p3-dft",
+ "p3-field",
+ "p3-fri",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-merkle-tree",
+ "p3-poseidon2",
+ "p3-symmetric",
+ "p3-uni-stark",
+ "p3-util",
+ "rayon-scan",
+ "serde",
+ "sp1-derive",
+ "sp1-primitives",
+ "strum",
+ "strum_macros",
+ "sysinfo",
+ "tracing",
 ]
 
 [[package]]
 name = "sp1-zkvm"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "cfg-if",
  "getrandom 0.2.15",
@@ -2480,8 +2513,8 @@ dependencies = [
  "p3-baby-bear",
  "p3-field",
  "rand 0.8.5",
- "sha2 0.10.8",
- "sp1-lib 5.0.0",
+ "sha2 0.10.9",
+ "sp1-lib 5.0.5",
  "sp1-primitives",
 ]
 

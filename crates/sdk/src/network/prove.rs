@@ -11,7 +11,7 @@ use crate::prover::BaseProveRequest;
 
 use crate::{prover::ProveRequest, utils::sp1_dump, NetworkProver, SP1ProofWithPublicValues};
 
-use super::proto::network::FulfillmentStrategy;
+use super::proto::types::FulfillmentStrategy;
 
 use std::{
     future::{Future, IntoFuture},
@@ -29,6 +29,10 @@ pub struct NetworkProveBuilder<'a> {
     pub(crate) tee_2fa: bool,
     pub(crate) min_auction_period: u64,
     pub(crate) whitelist: Vec<Address>,
+    pub(crate) auctioneer: Option<Address>,
+    pub(crate) executor: Option<Address>,
+    pub(crate) verifier: Option<Address>,
+    pub(crate) max_price_per_pgu: Option<u64>,
 }
 
 impl NetworkProveBuilder<'_> {
@@ -284,17 +288,21 @@ impl NetworkProveBuilder<'_> {
 
         prover
             .prove_impl(
-                pk,
-                stdin,
-                mode,
-                strategy,
-                timeout,
-                skip_simulation,
-                cycle_limit,
-                gas_limit,
-                tee_2fa,
-                min_auction_period,
-                whitelist,
+                self.pk,
+                &self.stdin,
+                self.mode,
+                self.strategy,
+                self.timeout,
+                self.skip_simulation,
+                self.cycle_limit,
+                self.gas_limit,
+                self.tee_2fa,
+                self.min_auction_period,
+                self.whitelist,
+                self.auctioneer,
+                self.executor,
+                self.verifier,
+                self.max_price_per_pgu,
             )
             .await
     }
