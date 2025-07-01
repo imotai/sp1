@@ -28,13 +28,12 @@ use crate::{
 #[cfg(feature = "sepolia")]
 use crate::network::proto::types::GetProofRequestParamsResponse;
 
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256};
 use anyhow::{Context, Result};
+use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::Elf;
 use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver, SP1_CIRCUIT_VERSION};
-
-use crate::network::tee::client::Client as TeeClient;
 
 use tokio::time::sleep;
 
@@ -71,6 +70,10 @@ impl Prover for NetworkProver {
             tee_2fa: false,
             min_auction_period: 0,
             whitelist: vec![],
+            auctioneer: None,
+            executor: None,
+            verifier: None,
+            max_price_per_pgu: None,
         }
     }
 
@@ -453,8 +456,9 @@ impl NetworkProver {
         max_price_per_pgu: Option<u64>,
     ) -> Result<B256> {
         let vk_hash = self.register_program(&pk.vk, &pk.elf).await?;
-        let (cycle_limit, gas_limit, public_values_hash) =
-            self.get_execution_limits(cycle_limit, gas_limit, &pk.elf, stdin, skip_simulation)?;
+        let (cycle_limit, gas_limit, public_values_hash) = self
+            .get_execution_limits(cycle_limit, gas_limit, pk.elf.clone(), stdin, skip_simulation)
+            .await?;
         let (auctioneer, executor, verifier, max_price_per_pgu, base_fee, domain) = self
             .get_auction_request_params(mode, auctioneer, executor, verifier, max_price_per_pgu)
             .await?;
@@ -600,11 +604,11 @@ impl NetworkProver {
         // or both limits
         let execute_result = self
             .prover
-            .inner()
-            .execute(elf, stdin, SP1Context::builder().calculate_gas(true).build())
+            .execute(elf.clone(), stdin.clone())
+            .await
             .map_err(|_| Error::SimulationFailed)?;
 
-        let (_, committed_value_digest, report) = execute_result;
+        let (public_values, report) = execute_result;
 
         // Use simulated values for the ones that are not explicitly provided.
         let final_cycle_limit = if cycle_limit.is_none() {
@@ -618,7 +622,7 @@ impl NetworkProver {
             gas_limit_value
         };
 
-        let public_values_hash = Some(committed_value_digest.to_vec());
+        let public_values_hash = Some(public_values.hash());
 
         Ok((final_cycle_limit, final_gas_limit, public_values_hash))
     }

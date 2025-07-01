@@ -142,7 +142,7 @@ impl NetworkClient {
     /// # Details
     /// The verifying key hash is used to identify a program.
     pub fn get_vk_hash(vk: &SP1VerifyingKey) -> Result<B256> {
-        let vk_hash = vk.hash_bytes();
+        let vk_hash = vk.bytes32_raw();
         Ok(B256::from_slice(&vk_hash))
     }
 
