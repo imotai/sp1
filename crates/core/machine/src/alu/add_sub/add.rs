@@ -11,7 +11,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
@@ -86,6 +86,7 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                         let mut byte_lookup_events = Vec::new();
                         let event = merged_events[idx];
                         let instruction = input.program.fetch(event.0.pc);
+                        // tracing::info!("instruction: {:?}", instruction.opcode);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
@@ -168,13 +169,6 @@ where
         let opcode = AB::Expr::from_f(Opcode::ADD.as_field());
 
         // Constrain the add operation over `op_b` and `op_c`.
-        // AddOperation::<AB::F>::eval(
-        //     builder,
-        //     local.adapter.b().map(|x| x.into()),
-        //     local.adapter.c().map(|x| x.into()),
-        //     local.add_operation,
-        //     local.is_real.into(),
-        // );
         let op_input = AddOperationInput::<AB>::new(
             local.adapter.b().map(|x| x.into()),
             local.adapter.c().map(|x| x.into()),
@@ -187,8 +181,12 @@ where
         // The program counter and timestamp increment by `4`.
         let cpu_state_input = CPUStateInput::<AB>::new(
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
         <CPUState<AB::F> as SP1Operation<AB>>::eval(builder, cpu_state_input);

@@ -21,7 +21,7 @@ pub fn dummy_vk(
     preprocessed_chip_information: BTreeMap<String, ChipDimensions>,
 ) -> MachineVerifyingKey<BabyBearPoseidon2> {
     MachineVerifyingKey {
-        pc_start: BabyBear::zero(),
+        pc_start: [BabyBear::zero(); 3],
         initial_global_cumulative_sum: SepticDigest::zero(),
         preprocessed_commit: Some([BabyBear::zero(); 8]),
         preprocessed_chip_information,

@@ -136,7 +136,11 @@ impl KeccakPermuteChip {
             let cols: &mut KeccakMemCols<F> = row.borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.state_addr = F::from_canonical_u32(event.state_addr);
+            cols.state_addr = [
+                F::from_canonical_u16((event.state_addr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.state_addr >> 16) as u16),
+                F::from_canonical_u16((event.state_addr >> 32) as u16),
+            ];
             cols.index = F::from_canonical_u32(i as u32);
             cols.is_real = F::one();
         }

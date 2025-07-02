@@ -1,5 +1,3 @@
-use std::iter::once;
-
 use p3_air::AirBuilder;
 use sp1_stark::{
     air::{AirInteraction, BaseAirBuilder, InteractionScope},
@@ -13,11 +11,15 @@ pub trait ProgramAirBuilder: BaseAirBuilder {
     /// Sends an instruction.
     fn send_program(
         &mut self,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         instruction: InstructionCols<impl Into<Self::Expr>>,
         multiplicity: impl Into<Self::Expr>,
     ) {
-        let values = once(pc.into()).chain(instruction.into_iter().map(|x| x.into())).collect();
+        let values = pc
+            .map(Into::into)
+            .into_iter()
+            .chain(instruction.into_iter().map(|x| x.into()))
+            .collect();
         self.send(
             AirInteraction::new(values, multiplicity.into(), InteractionKind::Program),
             InteractionScope::Local,
@@ -27,12 +29,15 @@ pub trait ProgramAirBuilder: BaseAirBuilder {
     /// Receives an instruction.
     fn receive_program(
         &mut self,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         instruction: InstructionCols<impl Into<Self::Expr>>,
         multiplicity: impl Into<Self::Expr>,
     ) {
-        let values: Vec<<Self as AirBuilder>::Expr> =
-            once(pc.into()).chain(instruction.into_iter().map(|x| x.into())).collect();
+        let values: Vec<<Self as AirBuilder>::Expr> = pc
+            .map(Into::into)
+            .into_iter()
+            .chain(instruction.into_iter().map(|x| x.into()))
+            .collect();
         self.receive(
             AirInteraction::new(values, multiplicity.into(), InteractionKind::Program),
             InteractionScope::Local,

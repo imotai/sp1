@@ -178,7 +178,7 @@ impl CpuChip {
     //     public_values: &PublicValues<Word<AB::PublicVar>, AB::PublicVar>,
     // ) {
     //     // Verify the public value's start pc.
-    //     builder.when_first_row().assert_eq(public_values.start_pc, local.pc);
+    //     builder.when_first_row().assert_eq(public_values.pc_start, local.pc);
 
     //     // Verify that the next row's `pc` is the current row's `next_pc`.
     //     builder.when_transition().when(next.is_real).assert_eq(local.next_pc, next.pc);

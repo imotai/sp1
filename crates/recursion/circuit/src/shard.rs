@@ -61,7 +61,7 @@ pub struct MachineVerifyingKeyVariable<
     C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
     SC: BabyBearFriConfigVariable<C>,
 > {
-    pub pc_start: Felt<C::F>,
+    pub pc_start: [Felt<C::F>; 3],
     /// The starting global digest of the program, after incorporating the initial memory.
     pub initial_global_cumulative_sum: SepticDigest<Felt<C::F>>,
     /// The preprocessed commitments.
@@ -87,7 +87,7 @@ where
         if let Some(commit) = self.preprocessed_commit {
             inputs.extend(commit)
         }
-        inputs.push(self.pc_start);
+        inputs.extend(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
         for ChipDimensions { height, num_polynomials: _ } in
@@ -486,8 +486,8 @@ mod tests {
     async fn test_verify_shard() {
         setup_logger();
         let log_blowup = 1;
-        let log_stacking_height = 22;
-        let max_log_row_count = 21;
+        let log_stacking_height = 21;
+        let max_log_row_count = 22;
         let machine = RiscvAir::machine();
         let verifier = ShardVerifier::from_basefold_parameters(
             log_blowup,

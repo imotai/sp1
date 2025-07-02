@@ -11,7 +11,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -206,12 +206,16 @@ where
         // The program counter and timestamp increment by `4` and `8`.
         <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            CPUStateInput::<AB>::new(
-                local.state,
-                local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-                AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-                is_real.clone(),
-            ),
+            CPUStateInput {
+                cols: local.state,
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
+                is_real: is_real.clone(),
+            },
         );
 
         // Get the opcode for the operation.

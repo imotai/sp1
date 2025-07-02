@@ -18,10 +18,7 @@ use sp1_core_machine::{
 };
 
 use sp1_recursion_executor::PV_DIGEST_NUM_WORDS;
-use sp1_stark::{
-    air::{PublicValues, POSEIDON_NUM_WORDS},
-    Word,
-};
+use sp1_stark::air::{PublicValues, POSEIDON_NUM_WORDS};
 
 use sp1_stark::{MachineConfig, MachineVerifyingKey, ShardProof};
 
@@ -180,18 +177,16 @@ where
         let mut current_execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         // Initialize program counter variables.
-        let mut start_pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_pc: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut pc_start: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
+        let mut current_pc: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
 
         // Initialize memory initialization and finalization variables.
-        let mut initial_previous_init_addr_word: Word<Felt<_>> =
-            unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut initial_previous_finalize_addr_word: Word<Felt<_>> =
-            unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_init_addr_word: Word<Felt<_>> =
-            unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_finalize_addr_word: Word<Felt<_>> =
-            unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut initial_previous_init_addr_word: [Felt<_>; 3] =
+            array::from_fn(|_| builder.uninit());
+        let mut initial_previous_finalize_addr_word: [Felt<_>; 3] =
+            array::from_fn(|_| builder.uninit());
+        let mut current_init_addr_word: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
+        let mut current_finalize_addr_word: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
         let mut initial_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
         let mut current_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
 
@@ -220,7 +215,7 @@ where
             // let contains_memory_finalize = shard_proof.contains_memory_finalize();
 
             // Get the public values.
-            let public_values: &PublicValues<[Felt<_>; 4], Word<Felt<_>>, [Felt<_>; 4], Felt<_>> =
+            let public_values: &PublicValues<[Felt<_>; 4], [Felt<_>; 3], [Felt<_>; 4], Felt<_>> =
                 shard_proof.public_values.as_slice().borrow();
 
             // If this is the first proof in the batch, initialize the variables.
@@ -238,24 +233,22 @@ where
                 current_timestamp = public_values.initial_timestamp;
 
                 // Program counter.
-                start_pc = public_values.start_pc;
-                current_pc = public_values.start_pc;
+                pc_start = public_values.pc_start;
+                current_pc = public_values.pc_start;
 
                 // Memory initialization & finalization.
                 for ((limb, pub_limb), first_limb) in current_init_addr_word
-                    .0
                     .iter_mut()
-                    .zip(public_values.previous_init_addr_word.0.iter())
-                    .zip(initial_previous_init_addr_word.0.iter_mut())
+                    .zip(public_values.previous_init_addr_word.iter())
+                    .zip(initial_previous_init_addr_word.iter_mut())
                 {
                     *limb = *pub_limb;
                     *first_limb = *pub_limb;
                 }
                 for ((limb, pub_limb), first_limb) in current_finalize_addr_word
-                    .0
                     .iter_mut()
-                    .zip(public_values.previous_finalize_addr_word.0.iter())
-                    .zip(initial_previous_finalize_addr_word.0.iter_mut())
+                    .zip(public_values.previous_finalize_addr_word.iter())
+                    .zip(initial_previous_finalize_addr_word.iter_mut())
                 {
                     *limb = *pub_limb;
                     *first_limb = *pub_limb;
@@ -302,9 +295,12 @@ where
                     C::F::one(),
                 );
 
-                // If it's the first shard (which is the first execution shard), then the `start_pc`
-                // should be vk.pc_start.
-                builder.assert_felt_eq(is_first_shard * (start_pc - vk.pc_start), C::F::zero());
+                // If it's the first shard (which is the first execution shard), then the `pc_start`
+                // should be vk.pc_start_rel.
+                for (pc, vk_pc) in pc_start.iter().zip_eq(vk.pc_start.iter()) {
+                    builder.assert_felt_eq(is_first_shard * (*pc - *vk_pc), C::F::zero());
+                }
+
                 // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the
                 // digest. If it's not the first shard, we add the zero digest to
                 // the digest.
@@ -335,10 +331,10 @@ where
                 );
 
                 // Assert that `init_addr_word` and `finalize_addr_word` are zero for the first
-                for limb in current_init_addr_word.0.iter() {
+                for limb in current_init_addr_word.iter() {
                     builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
                 }
-                for limb in current_finalize_addr_word.0.iter() {
+                for limb in current_finalize_addr_word.iter() {
                     builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
                 }
             }
@@ -359,7 +355,7 @@ where
             if let Some(commit) = vk.preprocessed_commit {
                 challenger.observe(builder, commit);
             }
-            challenger.observe(builder, vk.pc_start);
+            challenger.observe_slice(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
             // Observe the padding.
@@ -405,17 +401,17 @@ where
 
             // Program counter constraints.
             {
-                // Assert that the start_pc of the proof is equal to the current pc.
-                builder.assert_felt_eq(current_pc, public_values.start_pc);
+                // Assert that the pc_start of the proof is equal to the current pc.
+                for (limb, pub_limb) in current_pc.iter().zip_eq(public_values.pc_start.iter()) {
+                    builder.assert_felt_eq(*limb, *pub_limb);
+                }
 
-                // If it's not a CPU shard, then assert that the start_pc equals the next_pc.
-                builder.assert_felt_eq(
-                    not_cpu_shard * (public_values.start_pc - public_values.next_pc),
-                    C::F::zero(),
-                );
-
+                // If it's not a CPU shard, then assert that the pc_start equals the next_pc.
                 // Update current_pc to be the end_pc of the current proof.
-                current_pc = public_values.next_pc;
+                for (limb, pub_limb) in current_pc.iter_mut().zip_eq(public_values.next_pc.iter()) {
+                    builder.assert_felt_eq(not_cpu_shard * (*limb - *pub_limb), C::F::zero());
+                    *limb = *pub_limb;
+                }
             }
 
             // Exit code constraints.
@@ -443,36 +439,31 @@ where
             {
                 // Assert that the MemoryInitialize address limbs match the current loop variable.
                 for (limb, current_limb) in current_init_addr_word
-                    .0
                     .iter()
-                    .zip_eq(public_values.previous_init_addr_word.0.iter())
+                    .zip_eq(public_values.previous_init_addr_word.iter())
                 {
                     builder.assert_felt_eq(*limb, *current_limb);
                 }
 
                 // Assert that the MemoryFinalize address limbs match the current loop variable.
                 for (limb, current_limb) in current_finalize_addr_word
-                    .0
                     .iter()
-                    .zip_eq(public_values.previous_finalize_addr_word.0.iter())
+                    .zip_eq(public_values.previous_finalize_addr_word.iter())
                 {
                     builder.assert_felt_eq(*limb, *current_limb);
                 }
 
                 // Update the MemoryInitialize address limbs.
-                for (limb, pub_limb) in current_init_addr_word
-                    .0
-                    .iter_mut()
-                    .zip(public_values.last_init_addr_word.0.iter())
+                for (limb, pub_limb) in
+                    current_init_addr_word.iter_mut().zip(public_values.last_init_addr_word.iter())
                 {
                     *limb = *pub_limb;
                 }
 
                 // Update the MemoryFinalize address limbs.
                 for (limb, pub_limb) in current_finalize_addr_word
-                    .0
                     .iter_mut()
-                    .zip(public_values.last_finalize_addr_word.0.iter())
+                    .zip(public_values.last_finalize_addr_word.iter())
                 {
                     *limb = *pub_limb;
                 }
@@ -588,7 +579,7 @@ where
                 recursion_public_values_stream.as_mut_slice().borrow_mut();
             recursion_public_values.committed_value_digest = committed_value_digest;
             recursion_public_values.deferred_proofs_digest = deferred_proofs_digest;
-            recursion_public_values.start_pc = start_pc;
+            recursion_public_values.pc_start = pc_start;
             recursion_public_values.next_pc = current_pc;
             recursion_public_values.start_shard = initial_shard;
             recursion_public_values.next_shard = current_shard;

@@ -160,12 +160,15 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.send(
             AirInteraction::new(
-                vec![clk_high.into(), clk_low.into(), pc.into()],
+                once(clk_high.into())
+                    .chain(once(clk_low.into()))
+                    .chain(pc.map(Into::into))
+                    .collect::<Vec<_>>(),
                 multiplicity.into(),
                 InteractionKind::State,
             ),
@@ -178,12 +181,15 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.receive(
             AirInteraction::new(
-                vec![clk_high.into(), clk_low.into(), pc.into()],
+                once(clk_high.into())
+                    .chain(once(clk_low.into()))
+                    .chain(pc.map(Into::into))
+                    .collect::<Vec<_>>(),
                 multiplicity.into(),
                 InteractionKind::State,
             ),
@@ -282,23 +288,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [impl Into<Self::Expr>; 3],
+        arg2: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1.map(Into::into))
+            .chain(arg2.map(Into::into))
+            .collect::<Vec<_>>();
+
         self.send(
-            AirInteraction::new(
-                vec![
-                    clk_high.clone().into(),
-                    clk_low.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }
@@ -310,23 +313,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [Self::Expr; 3],
+        arg2: [Self::Expr; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1)
+            .chain(arg2)
+            .collect::<Vec<_>>();
+
         self.receive(
-            AirInteraction::new(
-                vec![
-                    clk_high.clone().into(),
-                    clk_low.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }

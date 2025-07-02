@@ -1,7 +1,8 @@
 pub mod add;
 pub mod addi;
+pub mod addw;
 pub mod sub;
-
+pub mod subw;
 // #[cfg(test)]
 // mod tests {
 //     #![allow(clippy::print_stdout)]

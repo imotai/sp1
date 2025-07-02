@@ -29,7 +29,9 @@ pub struct StateBumpCols<T: Copy> {
     pub next_clk_0_16: T,
     pub clk_high: T,
     pub clk_low: T,
-    pub pc: T,
+    pub next_pc: [T; 3],
+    pub pc: [T; 3],
+    pub is_clk: T,
     pub is_real: T,
 }
 
@@ -58,12 +60,12 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
         let chunk_size = 1;
-        let event_iter = input.bump_clk_high_events.chunks(chunk_size);
+        let event_iter = input.bump_state_events.chunks(chunk_size);
 
         let blu_batches = event_iter
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|(clk, increment, _)| {
+                events.iter().for_each(|(clk, increment, _, _)| {
                     let next_clk = clk + increment;
                     let next_clk_0_16 = (next_clk & 0xFFFF) as u16;
                     let next_clk_16_24 = ((next_clk >> 16) & 0xFF) as u8;
@@ -82,7 +84,7 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
-        let nb_rows = input.bump_clk_high_events.len();
+        let nb_rows = input.bump_state_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         Some(next_multiple_of_32(nb_rows, size_log2))
     }
@@ -101,8 +103,8 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
                 let idx = i * chunk_size + j;
                 let cols: &mut StateBumpCols<F> = row.borrow_mut();
 
-                if idx < input.bump_clk_high_events.len() {
-                    let (clk, increment, pc) = input.bump_clk_high_events[idx];
+                if idx < input.bump_state_events.len() {
+                    let (clk, increment, bump2, pc) = input.bump_state_events[idx];
 
                     let clk_low = ((clk & 0xFFFFFF) + increment) as u32;
                     let clk_high = (clk >> 24) as u32;
@@ -118,8 +120,27 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
                     cols.next_clk_16_24 = F::from_canonical_u8(next_clk_16_24);
                     cols.next_clk_24_32 = F::from_canonical_u8(next_clk_24_32);
                     cols.next_clk_32_48 = F::from_canonical_u16(next_clk_32_48);
-                    cols.pc = F::from_canonical_u32(pc);
 
+                    cols.next_pc = [
+                        F::from_canonical_u16((pc & 0xFFFF) as u16),
+                        F::from_canonical_u16(((pc >> 16) & 0xFFFF) as u16),
+                        F::from_canonical_u16(((pc >> 32) & 0xFFFF) as u16),
+                    ];
+                    if bump2 {
+                        let prev_pc = pc.wrapping_sub(4);
+                        cols.pc = [
+                            F::from_canonical_u16((prev_pc & 0xFFFF) as u16)
+                                + F::from_canonical_u16(4),
+                            F::from_canonical_u16(((prev_pc >> 16) & 0xFFFF) as u16),
+                            F::from_canonical_u16(((prev_pc >> 32) & 0xFFFF) as u16),
+                        ];
+                    } else {
+                        cols.pc = cols.next_pc;
+                    }
+
+                    if (next_clk >> 24) != (clk >> 24) {
+                        cols.is_clk = F::one();
+                    }
                     cols.is_real = F::one();
                 }
             });
@@ -151,7 +172,7 @@ where
         builder.send_state(
             local.next_clk_24_32 + local.next_clk_32_48 * AB::F::from_canonical_u32(1 << 8),
             local.next_clk_0_16 + local.next_clk_16_24 * AB::F::from_canonical_u32(1 << 16),
-            local.pc,
+            local.next_pc,
             local.is_real,
         );
 
@@ -170,18 +191,26 @@ where
             local.is_real,
         );
 
+        builder.assert_bool(local.is_clk);
         builder.when(local.is_real).assert_eq(
             local.next_clk_24_32 + local.next_clk_32_48 * AB::F::from_canonical_u32(1 << 8),
-            local.clk_high + AB::F::one(),
+            local.clk_high + local.is_clk,
         );
-
         builder.when(local.is_real).assert_eq(
             local.next_clk_0_16
                 + local.next_clk_16_24 * AB::F::from_canonical_u32(1 << 16)
-                + AB::F::from_canonical_u32(1 << 24),
+                + local.is_clk * AB::F::from_canonical_u32(1 << 24),
             local.clk_low,
         );
 
         builder.slice_range_check_u8(&[local.next_clk_16_24, local.next_clk_24_32], local.is_real);
+
+        let mut carry = AB::Expr::zero();
+        for i in 0..3 {
+            carry = (carry.clone() + local.pc[i] - local.next_pc[i])
+                * AB::F::from_canonical_u32(1 << 16).inverse();
+            builder.assert_bool(carry.clone());
+        }
+        builder.assert_zero(carry);
     }
 }

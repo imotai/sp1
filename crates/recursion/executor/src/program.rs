@@ -69,8 +69,8 @@ impl<F> DerefMut for RecursionProgram<F> {
 }
 
 impl<F: Field> MachineProgram<F> for RecursionProgram<F> {
-    fn pc_start(&self) -> F {
-        F::zero()
+    fn pc_start(&self) -> [F; 3] {
+        [F::zero(), F::zero(), F::zero()]
     }
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {

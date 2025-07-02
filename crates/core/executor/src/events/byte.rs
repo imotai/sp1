@@ -168,6 +168,7 @@ impl ByteOpcode {
             ByteOpcode::U8Range,
             ByteOpcode::LTU,
             ByteOpcode::MSB,
+            ByteOpcode::SR,
         ];
         opcodes
     }

@@ -7,12 +7,13 @@ use crate::{
 pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let clk_init = rt.clk;
     let w_ptr = arg1;
     assert!(arg2 == 0, "arg2 must be 0");
+    assert!(arg1 % 8 == 0);
 
     let w_ptr_init = w_ptr;
     let mut w_i_minus_15_reads = Vec::with_capacity(48);
@@ -22,32 +23,37 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
     let mut w_i_writes = Vec::with_capacity(48);
     for i in 16..64 {
         // Read w[i-15].
-        let (record, w_i_minus_15) = rt.mr(w_ptr + (i - 15) * 4);
+        let (record, w_i_minus_15) = rt.mr(w_ptr + (i - 15) * 8);
         w_i_minus_15_reads.push(record);
 
         // Compute `s0`.
-        let s0 = w_i_minus_15.rotate_right(7) ^ w_i_minus_15.rotate_right(18) ^ (w_i_minus_15 >> 3);
+        let s0 = (w_i_minus_15 as u32).rotate_right(7)
+            ^ (w_i_minus_15 as u32).rotate_right(18)
+            ^ ((w_i_minus_15 as u32) >> 3);
 
         // Read w[i-2].
-        let (record, w_i_minus_2) = rt.mr(w_ptr + (i - 2) * 4);
+        let (record, w_i_minus_2) = rt.mr(w_ptr + (i - 2) * 8);
         w_i_minus_2_reads.push(record);
 
         // Compute `s1`.
-        let s1 = w_i_minus_2.rotate_right(17) ^ w_i_minus_2.rotate_right(19) ^ (w_i_minus_2 >> 10);
+        let s1 = (w_i_minus_2 as u32).rotate_right(17)
+            ^ (w_i_minus_2 as u32).rotate_right(19)
+            ^ ((w_i_minus_2 as u32) >> 10);
 
         // Read w[i-16].
-        let (record, w_i_minus_16) = rt.mr(w_ptr + (i - 16) * 4);
+        let (record, w_i_minus_16) = rt.mr(w_ptr + (i - 16) * 8);
         w_i_minus_16_reads.push(record);
 
         // Read w[i-7].
-        let (record, w_i_minus_7) = rt.mr(w_ptr + (i - 7) * 4);
+        let (record, w_i_minus_7) = rt.mr(w_ptr + (i - 7) * 8);
         w_i_minus_7_reads.push(record);
 
         // Compute `w_i`.
-        let w_i = s1.wrapping_add(w_i_minus_16).wrapping_add(s0).wrapping_add(w_i_minus_7);
+        let w_i =
+            s1.wrapping_add(w_i_minus_16 as u32).wrapping_add(s0).wrapping_add(w_i_minus_7 as u32);
 
         // Write w[i].
-        w_i_writes.push(rt.mw(w_ptr + i * 4, w_i));
+        w_i_writes.push(rt.mw(w_ptr + i * 8, w_i as u64));
         rt.clk += 1;
     }
 

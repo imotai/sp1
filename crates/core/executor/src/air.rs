@@ -108,80 +108,92 @@ pub enum RiscvAirId {
     /// The addi chip.
     #[subenum(CoreAirId)]
     Addi = 34,
+    /// The addw chip.
+    #[subenum(CoreAirId)]
+    Addw = 35,
     /// The sub chip.
     #[subenum(CoreAirId)]
-    Sub = 35,
+    Sub = 36,
+    /// The subw chip.
+    #[subenum(CoreAirId)]
+    Subw = 37,
     /// The bitwise chip.
     #[subenum(CoreAirId)]
-    Bitwise = 36,
+    Bitwise = 38,
     /// The mul chip.
     #[subenum(CoreAirId)]
-    Mul = 37,
+    Mul = 39,
     /// The shift right chip.
     #[subenum(CoreAirId)]
-    ShiftRight = 38,
+    ShiftRight = 40,
     /// The shift left chip.
     #[subenum(CoreAirId)]
-    ShiftLeft = 39,
+    ShiftLeft = 41,
     /// The lt chip.
     #[subenum(CoreAirId)]
-    Lt = 40,
+    Lt = 42,
     /// The load byte chip.
     #[subenum(CoreAirId)]
-    LoadByte = 41,
+    LoadByte = 43,
     /// The load half chip.
     #[subenum(CoreAirId)]
-    LoadHalf = 42,
+    LoadHalf = 44,
     /// The load word chip.
     #[subenum(CoreAirId)]
-    LoadWord = 43,
+    LoadWord = 45,
     /// The load x0 chip.
     #[subenum(CoreAirId)]
-    LoadX0 = 44,
+    LoadX0 = 46,
+    /// The load double chip.
+    #[subenum(CoreAirId)]
+    LoadDouble = 47,
     /// The store byte chip.
     #[subenum(CoreAirId)]
-    StoreByte = 45,
+    StoreByte = 48,
     /// The store half chip.
     #[subenum(CoreAirId)]
-    StoreHalf = 46,
+    StoreHalf = 49,
     /// The store word chip.
     #[subenum(CoreAirId)]
-    StoreWord = 47,
+    StoreWord = 50,
+    /// The store double chip.
+    #[subenum(CoreAirId)]
+    StoreDouble = 51,
     /// The auipc chip.
     #[subenum(CoreAirId)]
-    Auipc = 48,
+    Auipc = 52,
     /// The branch chip.
     #[subenum(CoreAirId)]
-    Branch = 49,
+    Branch = 53,
     /// The jal chip.
     #[subenum(CoreAirId)]
-    Jal = 50,
+    Jal = 54,
     /// The jalr chip.
     #[subenum(CoreAirId)]
-    Jalr = 51,
+    Jalr = 55,
     /// The syscall instructions chip.
     #[subenum(CoreAirId)]
-    SyscallInstrs = 52,
+    SyscallInstrs = 56,
     /// The memory bump chip.
     #[subenum(CoreAirId)]
-    MemoryBump = 53,
+    MemoryBump = 57,
     /// The state bump chip.
     #[subenum(CoreAirId)]
-    StateBump = 54,
+    StateBump = 58,
     /// The memory global init chip.
-    MemoryGlobalInit = 55,
+    MemoryGlobalInit = 59,
     /// The memory global finalize chip.
-    MemoryGlobalFinalize = 56,
+    MemoryGlobalFinalize = 60,
     /// The memory local chip.
     #[subenum(CoreAirId)]
-    MemoryLocal = 57,
+    MemoryLocal = 61,
     /// The global chip.
     #[subenum(CoreAirId)]
-    Global = 58,
+    Global = 62,
     /// The byte chip.
-    Byte = 59,
+    Byte = 63,
     /// The range chip.
-    Range = 60,
+    Range = 64,
 }
 
 impl RiscvAirId {
@@ -191,7 +203,9 @@ impl RiscvAirId {
         vec![
             RiscvAirId::Add,
             RiscvAirId::Addi,
+            RiscvAirId::Addw,
             RiscvAirId::Sub,
+            RiscvAirId::Subw,
             RiscvAirId::Mul,
             RiscvAirId::Bitwise,
             RiscvAirId::ShiftLeft,
@@ -205,10 +219,12 @@ impl RiscvAirId {
             RiscvAirId::LoadByte,
             RiscvAirId::LoadHalf,
             RiscvAirId::LoadWord,
+            RiscvAirId::LoadDouble,
             RiscvAirId::LoadX0,
             RiscvAirId::StoreByte,
             RiscvAirId::StoreHalf,
             RiscvAirId::StoreWord,
+            RiscvAirId::StoreDouble,
             RiscvAirId::Branch,
             RiscvAirId::Jal,
             RiscvAirId::Jalr,

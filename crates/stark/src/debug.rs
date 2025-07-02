@@ -4,39 +4,40 @@
 //     process::exit,
 // };
 
+// use rayon::iter::ParallelBridge;
+// use rayon::iter::ParallelIterator;
 // use slop_air::{
 //     Air, AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder,
 //     PermutationAirBuilder,
 // };
-// use slop_algebra::{ExtensionField, Field, PrimeField32};
+// use slop_algebra::{AbstractField, ExtensionField, Field, PrimeField32};
 // use slop_matrix::{
 //     dense::{RowMajorMatrix, RowMajorMatrixView},
 //     stack::VerticalPair,
+//     Matrix,
 // };
 
 // use crate::{
 //     air::{EmptyMessageBuilder, MachineAir, MultiTableAirBuilder},
 //     septic_digest::SepticDigest,
-//     MachineChip, MachineConfig,
+//     Chip, MachineConfig,
 // };
 
 // /// Checks that the constraints of the given AIR are satisfied, including the permutation trace.
 // ///
 // /// Note that this does not actually verify the proof.
 // #[allow(clippy::too_many_arguments)]
-// pub fn debug_constraints<C, A>(
-//     chip: &MachineChip<C, A>,
-//     preprocessed: Option<&RowMajorMatrix<C::F>>,
-//     main: &RowMajorMatrix<C::F>,
-//     perm: &RowMajorMatrix<C::EF>,
-//     perm_challenges: &[C::EF],
-//     public_values: &[C::F],
-//     local_cumulative_sum: &C::EF,
-//     global_cumulative_sum: &SepticDigest<C::F>,
+// pub fn debug_constraints<F: Field, EF: ExtensionField<F>, A>(
+//     chip: &Chip<F, A>,
+//     preprocessed: Option<&RowMajorMatrix<F>>,
+//     main: &RowMajorMatrix<F>,
+//     perm: &RowMajorMatrix<EF>,
+//     perm_challenges: &[EF],
+//     public_values: &[F],
+//     local_cumulative_sum: &EF,
+//     global_cumulative_sum: &SepticDigest<F>,
 // ) where
-//     C: MachineConfig,
-//     C::F: PrimeField32,
-//     A: MachineAir<C::F> + for<'a> Air<DebugConstraintBuilder<'a, C::F, C::EF>>,
+//     A: MachineAir<F> + for<'a> Air<DebugConstraintBuilder<'a, F, EF>>,
 // {
 //     assert_eq!(main.height(), perm.height());
 //     let height = main.height();
@@ -74,7 +75,7 @@
 //         let mut builder = DebugConstraintBuilder {
 //             preprocessed: VerticalPair::new(
 //                 RowMajorMatrixView::new_row(&preprocessed_local),
-//                 RowMajorMatrixView::new_row(&preprocessed_next),
+//                 RowMajorMatrixView::new_row(&preprocessed_local),
 //             ),
 //             main: VerticalPair::new(
 //                 RowMajorMatrixView::new_row(main_local),
@@ -87,17 +88,17 @@
 //             perm_challenges,
 //             local_cumulative_sum,
 //             global_cumulative_sum,
-//             is_first_row: C::F::zero(),
-//             is_last_row: C::F::zero(),
-//             is_transition: C::F::one(),
+//             is_first_row: F::zero(),
+//             is_last_row: F::zero(),
+//             is_transition: F::one(),
 //             public_values,
 //         };
 //         if i == 0 {
-//             builder.is_first_row = C::F::one();
+//             builder.is_first_row = F::one();
 //         }
 //         if i == height - 1 {
-//             builder.is_last_row = C::F::one();
-//             builder.is_transition = C::F::zero();
+//             builder.is_last_row = F::one();
+//             builder.is_transition = F::zero();
 //         }
 //         let result = catch_unwind_silent(AssertUnwindSafe(|| {
 //             chip.eval(&mut builder);
@@ -133,8 +134,6 @@
 //     pub(crate) main: VerticalPair<RowMajorMatrixView<'a, F>, RowMajorMatrixView<'a, F>>,
 //     pub(crate) perm: VerticalPair<RowMajorMatrixView<'a, EF>, RowMajorMatrixView<'a, EF>>,
 //     pub(crate) local_cumulative_sum: &'a EF,
-//     pub(crate) global_cumulative_sum: &'a SepticDigest<F>,
-//     pub(crate) perm_challenges: &'a [EF],
 //     pub(crate) is_first_row: F,
 //     pub(crate) is_last_row: F,
 //     pub(crate) is_transition: F,
@@ -261,14 +260,9 @@
 //     EF: ExtensionField<F>,
 // {
 //     type LocalSum = EF;
-//     type GlobalSum = F;
 
 //     fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
 //         self.local_cumulative_sum
-//     }
-
-//     fn global_cumulative_sum(&self) -> &'a SepticDigest<Self::GlobalSum> {
-//         self.global_cumulative_sum
 //     }
 // }
 

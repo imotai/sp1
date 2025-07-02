@@ -51,15 +51,14 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
 
                     if idx < input.jal_events.len() {
                         let event = &input.jal_events[idx];
-                        let mut instruction = *input.program.fetch(event.0.pc);
+                        let instruction = input.program.fetch(event.0.pc);
                         cols.is_real = F::one();
-                        instruction.op_b = event.0.pc.wrapping_add(instruction.op_b);
-                        instruction.op_c = event.0.pc.wrapping_add(4);
-                        if instruction.op_a == 0 {
-                            instruction.op_c = 0;
+                        cols.add_operation.populate(&mut blu, event.0.pc, event.0.b);
+                        if !event.0.op_a_0 {
+                            cols.op_a_operation.populate(&mut blu, event.0.pc, 4);
                         }
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, &instruction, event.1);
+                        cols.adapter.populate(&mut blu, instruction, event.1);
                     }
                 });
                 blu

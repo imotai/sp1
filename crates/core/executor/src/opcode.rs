@@ -102,8 +102,35 @@ pub enum Opcode {
     ECALL = 36,
     /// Transfer control to the debugger.
     EBREAK = 37,
+    // RISCV-64
+    /// rd ← rs1 + rs2, pc ← pc + 4
+    ADDW = 38,
+    /// rd ← rs1 - rs2, pc ← pc + 4
+    SUBW = 39,
+    /// rd ← rs1 << rs2, pc ← pc + 4
+    SLLW = 40,
+    /// rd ← rs1 >> rs2 (logical), pc ← pc + 4
+    SRLW = 41,
+    /// rd ← rs1 >> rs2 (arithmetic), pc ← pc + 4
+    SRAW = 42,
+    /// rd ← sx(m32(rs1 + imm)), pc ← pc + 4
+    LWU = 43,
+    /// rd ← sx(m8(rs1 + imm)), pc ← pc + 4
+    LD = 44,
+    /// m8(rs1 + imm) ← rs2[7:0], pc ← pc + 4
+    SD = 45,
+    /// rd ← rs1 + imm, pc ← pc + 4
+    MULW = 46,
+    /// rd ← rs1 / rs2 (signed), pc ← pc + 4
+    DIVW = 47,
+    /// rd ← rs1 / rs2 (unsigned), pc ← pc + 4
+    DIVUW = 48,
+    /// rd ← rs1 % rs2 (signed), pc ← pc + 4
+    REMW = 49,
+    /// rd ← rs1 % rs2 (unsigned), pc ← pc + 4
+    REMUW = 50,
     /// Unimplemented instruction.
-    UNIMP = 38,
+    UNIMP = 51,
 }
 /// Byte Opcode.
 ///
@@ -125,8 +152,10 @@ pub enum ByteOpcode {
     LTU = 4,
     /// Most Significant Bit.
     MSB = 5,
+    /// Shift Right.
+    SR = 6,
     /// Range Check.
-    Range = 6,
+    Range = 7,
 }
 
 impl Opcode {
@@ -172,6 +201,19 @@ impl Opcode {
             Opcode::DIVU => "divu",
             Opcode::REM => "rem",
             Opcode::REMU => "remu",
+            Opcode::ADDW => "addw",
+            Opcode::SUBW => "subw",
+            Opcode::SLLW => "sllw",
+            Opcode::SRLW => "srlw",
+            Opcode::SRAW => "sraw",
+            Opcode::LWU => "lwu",
+            Opcode::LD => "ld",
+            Opcode::SD => "sd",
+            Opcode::MULW => "mulw",
+            Opcode::DIVW => "divw",
+            Opcode::DIVUW => "divuw",
+            Opcode::REMW => "remw",
+            Opcode::REMUW => "remuw",
             Opcode::UNIMP => "unimp",
         }
     }

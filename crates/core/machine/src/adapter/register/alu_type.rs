@@ -64,7 +64,7 @@ impl<F: PrimeField32> ALUTypeReader<F> {
         self.op_a = F::from_canonical_u8(instruction.op_a);
         self.op_a_memory.populate(record.a, blu_events);
         self.op_a_0 = F::from_bool(instruction.op_a == 0);
-        self.op_b = F::from_canonical_u32(instruction.op_b);
+        self.op_b = F::from_canonical_u64(instruction.op_b);
         self.op_b_memory.populate(record.b, blu_events);
         self.op_c = Word::from(instruction.op_c);
         let imm_c = record.c.is_none();
@@ -83,7 +83,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: ALUTypeReader<AB::Var>,
@@ -108,7 +108,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder.eval_memory_access_in_shard_write(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real.clone(),
@@ -116,7 +116,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder.eval_memory_access_in_shard_read(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
-            cols.op_b,
+            [cols.op_b.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_b_memory,
             is_real.clone(),
         );
@@ -124,7 +124,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder.eval_memory_access_in_shard_read(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::C as u32),
-            cols.op_c[0],
+            [cols.op_c[0].into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_c_memory,
             is_real - cols.imm_c,
         );
@@ -137,7 +137,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         cols: ALUTypeReader<AB::Var>,
         is_real: AB::Expr,
@@ -159,7 +159,7 @@ impl<F: Field> ALUTypeReader<F> {
 pub struct ALUTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
-    pub pc: AB::Var,
+    pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
     pub op_a_write_value: Word<T>,
     pub cols: ALUTypeReader<AB::Var>,
@@ -170,7 +170,7 @@ impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> ALUTypeReaderInput<AB, T> {
     pub fn new(
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: AB::Expr,
         op_a_write_value: Word<T>,
         cols: ALUTypeReader<AB::Var>,

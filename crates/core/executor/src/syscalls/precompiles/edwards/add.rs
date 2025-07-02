@@ -12,9 +12,9 @@ pub(crate) fn edwards_add_assign_syscall<
 >(
     rt: &mut SyscallContext<Ex>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let event = create_ec_add_event::<E, Ex>(rt, arg1, arg2);
     let syscall_event =
         rt.rt.syscall_event(event.clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);

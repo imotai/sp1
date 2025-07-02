@@ -23,6 +23,8 @@ pub use u256x2048_mul::*;
 pub use uint256::*;
 pub use uint256_ops::*;
 
+// TODO: maybe Box one of the events?
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]
 /// Precompile event.  There should be one variant for every precompile syscall.
 pub enum PrecompileEvent {

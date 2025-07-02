@@ -34,20 +34,20 @@ impl<T> Word<T> {
 
     /// Extends a variable to a word.
     pub fn extend_var<AB: SP1AirBuilder<Var = T>>(var: T) -> Word<AB::Expr> {
-        Word([AB::Expr::zero() + var, AB::Expr::zero()])
+        Word([AB::Expr::zero() + var, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
     }
 }
 
 impl<T: AbstractField> Word<T> {
     /// Extends a variable to a word.
     pub fn extend_expr<AB: SP1AirBuilder<Expr = T>>(expr: T) -> Word<AB::Expr> {
-        Word([AB::Expr::zero() + expr, AB::Expr::zero()])
+        Word([AB::Expr::zero() + expr, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
     }
 
     /// Returns a word with all zero expressions.
     #[must_use]
     pub fn zero<AB: SP1AirBuilder<Expr = T>>() -> Word<T> {
-        Word([AB::Expr::zero(), AB::Expr::zero()])
+        Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
     }
 }
 
@@ -58,12 +58,21 @@ impl<F: Field> Word<F> {
         let high = self.0[1].to_string().parse::<u16>().unwrap();
         ((high as u32) << 16) | (low as u32)
     }
+
+    /// Converts a word to a u64.
+    pub fn to_u64(&self) -> u64 {
+        let low = self.0[0].to_string().parse::<u16>().unwrap();
+        let mid_low = self.0[1].to_string().parse::<u16>().unwrap();
+        let mid_high = self.0[2].to_string().parse::<u16>().unwrap();
+        let high = self.0[3].to_string().parse::<u16>().unwrap();
+        ((high as u64) << 48) | ((mid_high as u64) << 32) | ((mid_low as u64) << 16) | (low as u64)
+    }
 }
 
 impl<V: Copy> Word<V> {
     /// Reduces a word to a single variable.
     pub fn reduce<AB: AirBuilder<Var = V>>(&self) -> AB::Expr {
-        let base = [1, 1 << 16].map(AB::Expr::from_canonical_u32);
+        let base = [1, 1 << 16, 1 << 32, 1 << 48].map(AB::Expr::from_wrapped_u64);
         self.0.iter().enumerate().map(|(i, x)| base[i].clone() * *x).sum()
     }
 }
@@ -87,6 +96,19 @@ impl<F: AbstractField> From<u32> for Word<F> {
         Word([
             F::from_canonical_u16((value & 0xFFFF) as u16),
             F::from_canonical_u16((value >> 16) as u16),
+            F::zero(),
+            F::zero(),
+        ])
+    }
+}
+
+impl<F: AbstractField> From<u64> for Word<F> {
+    fn from(value: u64) -> Self {
+        Word([
+            F::from_canonical_u16((value & 0xFFFF) as u16),
+            F::from_canonical_u16((value >> 16) as u16),
+            F::from_canonical_u16((value >> 32) as u16),
+            F::from_canonical_u16((value >> 48) as u16),
         ])
     }
 }

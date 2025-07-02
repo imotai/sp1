@@ -25,25 +25,25 @@ pub struct Uint256OpsEvent {
     /// The operation performed.
     pub op: Uint256Operation,
     /// The pointer to the a value.
-    pub a_ptr: u32,
+    pub a_ptr: u64,
     /// The a value.
-    pub a: [u32; 8],
+    pub a: [u64; 4],
     /// The pointer to the b value.
-    pub b_ptr: u32,
+    pub b_ptr: u64,
     /// The b value.
-    pub b: [u32; 8],
+    pub b: [u64; 4],
     /// The pointer to the c value.
-    pub c_ptr: u32,
+    pub c_ptr: u64,
     /// The c value.
-    pub c: [u32; 8],
+    pub c: [u64; 4],
     /// The pointer to the d value (result low).
-    pub d_ptr: u32,
+    pub d_ptr: u64,
     /// The d value (result low).
-    pub d: [u32; 8],
+    pub d: [u64; 4],
     /// The pointer to the e value (result high).
-    pub e_ptr: u32,
+    pub e_ptr: u64,
     /// The e value (result high).
-    pub e: [u32; 8],
+    pub e: [u64; 4],
     /// The memory record for reading ``c_ptr`` from register.
     pub c_ptr_memory: MemoryReadRecord,
     /// The memory record for reading ``d_ptr`` from register.

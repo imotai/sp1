@@ -30,12 +30,12 @@ impl<F: Field> AndU16Operation<F> {
     pub fn populate_and_u16(
         &mut self,
         record: &mut impl ByteRecord,
-        b_u32: u32,
-        c_u32: u32,
-    ) -> u32 {
-        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u32);
-        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u32);
-        self.and_operation.populate(record, b_u32, c_u32)
+        b_u64: u64,
+        c_u64: u64,
+    ) -> u64 {
+        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
+        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
+        self.and_operation.populate(record, b_u64, c_u64)
     }
 
     /// Evaluate the and operation over two `Word`s of two u16 limbs.
@@ -65,6 +65,10 @@ impl<F: Field> AndU16Operation<F> {
             + cols.and_operation.value[1] * AB::F::from_canonical_u32(1 << 8);
         let result_limb1 = cols.and_operation.value[2]
             + cols.and_operation.value[3] * AB::F::from_canonical_u32(1 << 8);
-        Word([result_limb0, result_limb1])
+        let result_limb2 = cols.and_operation.value[4]
+            + cols.and_operation.value[5] * AB::F::from_canonical_u32(1 << 8);
+        let result_limb3 = cols.and_operation.value[6]
+            + cols.and_operation.value[7] * AB::F::from_canonical_u32(1 << 8);
+        Word([result_limb0, result_limb1, result_limb2, result_limb3])
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::SyscallAddrOperation,
+    operations::{AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32},
 };
 use core::{
@@ -25,7 +25,7 @@ use sp1_core_executor::{
 use sp1_curves::{
     edwards::{
         ed25519::{ed25519_sqrt, Ed25519BaseField},
-        EdwardsParameters, WordsFieldElement,
+        EdwardsParameters, WordsFieldElement, WORDS_FIELD_ELEMENT,
     },
     params::{FieldParameters, Limbs},
 };
@@ -56,6 +56,8 @@ pub struct EdDecompressCols<T> {
     pub clk_high: T,
     pub clk_low: T,
     pub ptr: SyscallAddrOperation<T>,
+    pub read_ptrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+    pub addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
     pub sign: T,
     pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
     pub x_value: GenericArray<Word<T>, WordsFieldElement>,
@@ -82,14 +84,20 @@ impl<F: PrimeField32> EdDecompressCols<F> {
         self.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
         self.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
         self.ptr.populate(record, event.ptr, 64);
+
+        // WORDS_FIELD_ELEMENT * 8 = 32
+        let read_ptr = event.ptr + 32;
+
         self.sign = F::from_bool(event.sign);
-        for i in 0..8 {
+        for i in 0..WORDS_FIELD_ELEMENT {
             let x_record = MemoryRecordEnum::Write(event.x_memory_records[i]);
             self.x_access[i].populate(x_record, &mut new_byte_lookup_events);
             let current_x_record = x_record.current_record();
             self.x_value[i] = Word::from(current_x_record.value);
             let y_record = MemoryRecordEnum::Read(event.y_memory_records[i]);
             self.y_access[i].populate(y_record, &mut new_byte_lookup_events);
+            self.addrs[i].populate(record, event.ptr, i as u64 * 8);
+            self.read_ptrs[i].populate(record, read_ptr, i as u64 * 8);
         }
 
         let y = &BigUint::from_bytes_le(&event.y_bytes);
@@ -174,10 +182,61 @@ impl<V: Copy> EdDecompressCols<V> {
 
         let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
 
+        // addrs[0] = ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            self.addrs[0],
+            self.is_real.into(),
+        );
+        let eight = AB::F::from_canonical_u32(8u32);
+        // addrs[i] = addrs[i - 1] + 8.
+        for i in 1..WORDS_FIELD_ELEMENT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    self.addrs[i - 1].value[0].into(),
+                    self.addrs[i - 1].value[1].into(),
+                    self.addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                self.addrs[i],
+                self.is_real.into(),
+            );
+        }
+
+        // read_ptrs[0] = ptr + 32.
+        let thirty_two = AB::F::from_canonical_u32(32u32);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([thirty_two.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            self.read_ptrs[0],
+            self.is_real.into(),
+        );
+
+        // read_ptrs[i] = read_ptrs[i - 1] + 8.
+        for i in 1..WORDS_FIELD_ELEMENT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    self.read_ptrs[i - 1].value[0].into(),
+                    self.read_ptrs[i - 1].value[1].into(),
+                    self.read_ptrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                self.read_ptrs[i],
+                self.is_real.into(),
+            );
+        }
+
         builder.eval_memory_access_slice_write(
             self.clk_high,
             self.clk_low,
-            ptr.clone(),
+            &self.addrs.map(|addr| addr.value.map(Into::into)),
             &self.x_access,
             self.x_value.to_vec(),
             self.is_real,
@@ -186,7 +245,7 @@ impl<V: Copy> EdDecompressCols<V> {
         builder.eval_memory_access_slice_read(
             self.clk_high,
             self.clk_low,
-            ptr.clone() + AB::F::from_canonical_u32(32),
+            &self.read_ptrs.map(|ptr| ptr.value.map(Into::into)),
             &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
             self.is_real,
         );
@@ -214,8 +273,8 @@ impl<V: Copy> EdDecompressCols<V> {
             self.clk_high,
             self.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
-            ptr,
-            self.sign,
+            ptr.map(Into::into),
+            [self.sign.into(), AB::Expr::zero(), AB::Expr::zero()],
             self.is_real,
             InteractionScope::Local,
         );

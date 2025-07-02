@@ -1,17 +1,15 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-use std::{fmt::Debug, marker::PhantomData};
-
 use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::{
         field::{field_op::FieldOpCols, range::FieldLtCols},
-        SyscallAddrOperation,
+        AddrAddOperation, SyscallAddrOperation,
     },
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
+};
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -35,7 +33,11 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir};
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
+use std::{fmt::Debug, marker::PhantomData};
 use typenum::Unsigned;
 
 pub const fn num_weierstrass_add_cols<P: FieldParameters + NumWords>() -> usize {
@@ -54,6 +56,8 @@ pub struct WeierstrassAddAssignCols<T, P: FieldParameters + NumWords> {
     pub clk_low: T,
     pub p_ptr: SyscallAddrOperation<T>,
     pub q_ptr: SyscallAddrOperation<T>,
+    pub p_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
+    pub q_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
     pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub q_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub slope_denominator: FieldOpCols<T, P>,
@@ -242,7 +246,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut dummy_row = zeroed_f_vec(num_weierstrass_add_cols::<E::BaseField>());
         let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> =
             dummy_row.as_mut_slice().borrow_mut();
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         let dummy_memory_record =
             MemoryReadRecord { value: 1, shard: 0, timestamp: 1, prev_shard: 0, prev_timestamp: 0 };
         let zero = BigUint::zero();
@@ -318,7 +322,7 @@ where
         let local = main.row_slice(0);
         let local: &WeierstrassAddAssignCols<AB::Var, E::BaseField> = (*local).borrow();
 
-        let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 4;
+        let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 8;
 
         let p_x_limbs = builder
             .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
@@ -428,10 +432,60 @@ where
             local.is_real.into(),
         );
 
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.p_addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // p_addrs[i] = p_addrs[i - 1] + 8.
+        for i in 1..local.p_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.p_addrs[i - 1].value[0].into(),
+                    local.p_addrs[i - 1].value[1].into(),
+                    local.p_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.p_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.q_addrs[0],
+            local.is_real.into(),
+        );
+
+        // q_addrs[i] = q_addrs[i - 1] + 8.
+        for i in 1..local.q_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.q_addrs[i - 1].value[0].into(),
+                    local.q_addrs[i - 1].value[1].into(),
+                    local.q_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.q_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low.into(),
-            q_ptr.clone(),
+            &local.q_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -439,7 +493,7 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),
-            p_ptr.clone(),
+            &local.p_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
             &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -464,8 +518,8 @@ where
             local.clk_high,
             local.clk_low.into(),
             syscall_id_felt,
-            p_ptr,
-            q_ptr,
+            p_ptr.map(Into::into),
+            q_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );
@@ -491,8 +545,8 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
 
         cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
         cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u32 * 2);
-        cols.q_ptr.populate(new_byte_lookup_events, event.q_ptr, E::NB_LIMBS as u32 * 2);
+        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u64 * 2);
+        cols.q_ptr.populate(new_byte_lookup_events, event.q_ptr, E::NB_LIMBS as u64 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y, q_x, q_y);
 
@@ -500,10 +554,12 @@ impl<E: EllipticCurve> WeierstrassAddAssignChip<E> {
         for i in 0..cols.q_access.len() {
             let record = MemoryRecordEnum::Read(event.q_memory_records[i]);
             cols.q_access[i].populate(record, new_byte_lookup_events);
+            cols.q_addrs[i].populate(new_byte_lookup_events, event.q_ptr, 8 * i as u64);
         }
         for i in 0..cols.p_access.len() {
             let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
             cols.p_access[i].populate(record, new_byte_lookup_events);
+            cols.p_addrs[i].populate(new_byte_lookup_events, event.p_ptr, 8 * i as u64);
         }
     }
 }

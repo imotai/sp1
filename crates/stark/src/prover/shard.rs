@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::air::PublicValues;
 use derive_where::derive_where;
 use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -21,6 +22,7 @@ use slop_multilinear::{
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
+use std::borrow::Borrow;
 use tracing::Instrument;
 
 use crate::{
@@ -392,7 +394,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
     /// Setup from preprocessed data and traces.
     pub async fn setup_from_preprocessed_data_and_traces(
         &self,
-        pc_start: C::F,
+        pc_start: [C::F; 3],
         initial_global_cumulative_sum: SepticDigest<C::F>,
         preprocessed_traces: Traces<C::F, C::B>,
     ) -> (ShardProverData<C>, MachineVerifyingKey<C::Config>) {
@@ -498,11 +500,11 @@ impl<C: ShardProverComponents> ShardProver<C> {
         let LogUpEvaluations { point: gkr_point, chip_openings } = logup_evaluations;
 
         let mut chip_heights = BTreeMap::new();
-        for (air, num_constraints) in airs.iter().cloned() {
+        for ((air, num_constraints), chip) in airs.iter().cloned().zip_eq(chips.iter()) {
             let ChipEvaluation {
                 main_trace_evaluations: main_opening,
                 preprocessed_trace_evaluations: prep_opening,
-            } = chip_openings.get(&air.name()).unwrap();
+            } = chip_openings.get(&chip.name()).unwrap();
 
             let main_trace = traces.get(&air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
@@ -647,6 +649,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
     }
 
     /// Generate a proof for a given execution record.
+    #[allow(clippy::type_complexity)]
     async fn prove_shard_with_data(
         &self,
         data: ShardData<C>,
@@ -656,7 +659,6 @@ impl<C: ShardProverComponents> ShardProver<C> {
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
 
         // Log the shard data.
-
         let mut total_number_of_cells = 0;
         tracing::info!("Proving shard");
         for (chip, trace) in shard_chips.iter().zip_eq(traces.values()) {
@@ -665,10 +667,14 @@ impl<C: ShardProverComponents> ShardProver<C> {
             tracing::info!("{}", stats);
             total_number_of_cells += stats.total_number_of_cells();
         }
+        let public_values_struct: &PublicValues<[C::F; 4], [C::F; 3], [C::F; 4], C::F> =
+            public_values.as_slice().borrow();
+        let shard = public_values_struct.shard;
         tracing::info!(
-            "Total number of cells: {}, number of variables: {}",
+            "Total number of cells: {}, number of variables: {}, shard: {}",
             total_number_of_cells,
-            total_number_of_cells.next_power_of_two().ilog2()
+            total_number_of_cells.next_power_of_two().ilog2(),
+            shard,
         );
 
         // Observe the public values.
@@ -702,7 +708,6 @@ impl<C: ShardProverComponents> ShardProver<C> {
             )
             .instrument(tracing::debug_span!("logup gkr proof"))
             .await;
-
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<C::EF>();
         // Get the challenge for batching the evaluations from the GKR proof.

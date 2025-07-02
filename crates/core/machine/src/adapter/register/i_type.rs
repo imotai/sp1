@@ -36,7 +36,7 @@ impl<F: PrimeField32> ITypeReader<F> {
         self.op_a = F::from_canonical_u8(instruction.op_a);
         self.op_a_memory.populate(record.a, blu_events);
         self.op_a_0 = F::from_bool(instruction.op_a == 0);
-        self.op_b = F::from_canonical_u32(instruction.op_b);
+        self.op_b = F::from_canonical_u64(instruction.op_b);
         self.op_b_memory.populate(record.b, blu_events);
         self.op_c_imm = Word::from(instruction.op_c);
     }
@@ -62,7 +62,7 @@ impl<F: Field> ITypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: ITypeReader<AB::Var>,
@@ -84,7 +84,7 @@ impl<F: Field> ITypeReader<F> {
         builder.eval_memory_access_in_shard_write(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real.clone(),
@@ -92,7 +92,7 @@ impl<F: Field> ITypeReader<F> {
         builder.eval_memory_access_in_shard_read(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
-            cols.op_b,
+            [cols.op_b.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_b_memory,
             is_real,
         );
@@ -102,7 +102,7 @@ impl<F: Field> ITypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
         cols: ITypeReader<AB::Var>,
         is_real: AB::Expr,

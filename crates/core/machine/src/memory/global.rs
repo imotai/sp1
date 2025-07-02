@@ -1,10 +1,7 @@
 use super::MemoryChipType;
 use crate::{
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
-    operations::{
-        BabyBearWordRangeChecker, IsZeroOperation, IsZeroOperationInput, LtOperationUnsigned,
-        LtOperationUnsignedInput,
-    },
+    operations::{IsZeroOperation, LtOperationUnsigned, LtOperationUnsignedInput},
     utils::next_multiple_of_32,
 };
 use core::{
@@ -20,7 +17,7 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind, Word,
@@ -96,11 +93,12 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                     let addr = memory_events[i].addr;
                     let value = memory_events[i].value;
                     let prev_addr = if i == 0 { previous_addr } else { memory_events[i - 1].addr };
-                    blu.add_u16_range_checks(&u32_to_u16_limbs(value));
-                    blu.add_u16_range_checks(&u32_to_u16_limbs(prev_addr));
-                    blu.add_u16_range_checks(&u32_to_u16_limbs(addr));
-                    cols.prev_addr_range_checker.populate(Word::from(prev_addr), &mut blu);
-                    cols.addr_range_checker.populate(Word::from(addr), &mut blu);
+                    blu.add_u16_range_checks(&u64_to_u16_limbs(value));
+                    blu.add_u16_range_checks(&u64_to_u16_limbs(prev_addr)[0..3]);
+                    blu.add_u16_range_checks(&u64_to_u16_limbs(addr)[0..3]);
+                    let value_lower = (value >> 32 & 0xFF) as u8;
+                    let value_upper = (value >> 40 & 0xFF) as u8;
+                    blu.add_u8_range_check(value_lower, value_upper);
                     if i != 0 || prev_addr != 0 {
                         cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
                     }
@@ -114,15 +112,21 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
             let interaction_clk_high = if is_receive { (event.timestamp >> 24) as u32 } else { 0 };
             let interaction_clk_low =
                 if is_receive { (event.timestamp & 0xFFFFFF) as u32 } else { 0 };
+            let limb_1 =
+                (event.value & 0xFFFF) as u32 + (1 << 16) * (event.value >> 32 & 0xFF) as u32;
+            let limb_2 =
+                (event.value >> 16 & 0xFFFF) as u32 + (1 << 16) * (event.value >> 40 & 0xFF) as u32;
+
             GlobalInteractionEvent {
                 message: [
                     interaction_clk_high,
                     interaction_clk_low,
-                    event.addr,
-                    (event.value & 0xFFFF) as u32,
-                    (event.value >> 16) as u32,
-                    0,
-                    0,
+                    (event.addr & 0xFFFF) as u32,
+                    ((event.addr >> 16) & 0xFFFF) as u32,
+                    ((event.addr >> 32) & 0xFFFF) as u32,
+                    limb_1,
+                    limb_2,
+                    ((event.value >> 48) & 0xFFFF) as u32,
                 ],
                 is_receive,
                 kind: InteractionKind::Memory as u8,
@@ -164,15 +168,18 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 let MemoryInitializeFinalizeEvent { addr, value, shard: _, timestamp } =
                     event.to_owned();
 
-                let mut blu = vec![];
+                // let mut blu = vec![];
                 let mut row = [F::zero(); NUM_MEMORY_INIT_COLS];
                 let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
-                cols.addr = Word::from(addr);
-                cols.addr_range_checker.populate(cols.addr, &mut blu);
+                cols.addr[0] = F::from_canonical_u16((addr & 0xFFFF) as u16);
+                cols.addr[1] = F::from_canonical_u16(((addr >> 16) & 0xFFFF) as u16);
+                cols.addr[2] = F::from_canonical_u16(((addr >> 32) & 0xFFFF) as u16);
                 cols.clk_high = F::from_canonical_u32((timestamp >> 24) as u32);
                 cols.clk_low = F::from_canonical_u32((timestamp & 0xFFFFFF) as u32);
                 cols.value = Word::from(value);
                 cols.is_real = F::one();
+                cols.value_lower = F::from_canonical_u32((value >> 32 & 0xFF) as u32);
+                cols.value_upper = F::from_canonical_u32((value >> 40 & 0xFF) as u32);
                 row
             })
             .collect::<Vec<_>>();
@@ -188,10 +195,13 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 cols.prev_valid = F::one();
             }
             cols.index = F::from_canonical_u32(i as u32);
-            cols.prev_addr = Word::from(prev_addr);
-            cols.prev_addr_range_checker.populate(cols.prev_addr, &mut blu);
-            cols.is_prev_addr_zero.populate(prev_addr);
-            cols.is_index_zero.populate(i as u32);
+            cols.prev_addr[0] = F::from_canonical_u16((prev_addr & 0xFFFF) as u16);
+            cols.prev_addr[1] = F::from_canonical_u16(((prev_addr >> 16) & 0xFFFF) as u16);
+            cols.prev_addr[2] = F::from_canonical_u16(((prev_addr >> 32) & 0xFFFF) as u16);
+            cols.is_prev_addr_zero.populate_from_field_element(
+                cols.prev_addr[0] + cols.prev_addr[1] + cols.prev_addr[2],
+            );
+            cols.is_index_zero.populate(i as u64);
             if prev_addr != 0 || i != 0 {
                 cols.is_comp = F::one();
                 cols.lt_cols.populate_unsigned(&mut blu, 1, prev_addr, addr);
@@ -240,22 +250,28 @@ pub struct MemoryInitCols<T: Copy> {
     pub index: T,
 
     /// The address of the previous memory access.
-    pub prev_addr: Word<T>,
+    pub prev_addr: [T; 3],
 
     /// The address of the memory access.
-    pub addr: Word<T>,
+    pub addr: [T; 3],
 
     /// Comparison assertions for address to be strictly increasing.
     pub lt_cols: LtOperationUnsigned<T>,
 
-    /// The range checker for `prev_addr`.
-    pub prev_addr_range_checker: BabyBearWordRangeChecker<T>,
-
-    /// The range checker for `addr`.
-    pub addr_range_checker: BabyBearWordRangeChecker<T>,
-
     /// The value of the memory access.
     pub value: Word<T>,
+
+    /// Packed limb 1 for global message
+    pub limb_1: T,
+
+    /// Packed limb 2 for global message
+    pub limb_2: T,
+
+    /// Lower half of third limb of the value
+    pub value_lower: T,
+
+    /// Upper half of third limb of the value
+    pub value_upper: T,
 
     /// Whether the memory access is a real access.
     pub is_real: T,
@@ -290,9 +306,17 @@ where
         // Constrain that the value is a valid `Word`.
         builder.slice_range_check_u16(&local.value.0, local.is_real);
         // Constrain that the previous address is a valid `Word`.
-        builder.slice_range_check_u16(&local.prev_addr.0, local.is_real);
+        builder.slice_range_check_u16(&local.prev_addr, local.is_real);
         // Constrain that the address is a valid `Word`.
-        builder.slice_range_check_u16(&local.addr.0, local.is_real);
+        builder.slice_range_check_u16(&local.addr, local.is_real);
+
+        // Assert that value_lower and value_upper are the lower and upper halves of the third limb
+        // of the value.
+        builder.assert_eq(
+            local.value.0[2],
+            local.value_lower + local.value_upper * AB::F::from_canonical_u32(1 << 8),
+        );
+        builder.slice_range_check_u8(&[local.value_lower, local.value_upper], local.is_real);
 
         let interaction_kind = match self.kind {
             MemoryChipType::Initialize => InteractionKind::MemoryGlobalInitControl,
@@ -304,7 +328,7 @@ where
             AirInteraction::new(
                 vec![local.index]
                     .into_iter()
-                    .chain(local.prev_addr.0)
+                    .chain(local.prev_addr)
                     .chain(once(local.prev_valid))
                     .map(Into::into)
                     .collect(),
@@ -319,7 +343,7 @@ where
             AirInteraction::new(
                 vec![local.index + AB::Expr::one()]
                     .into_iter()
-                    .chain(local.addr.0.map(Into::into))
+                    .chain(local.addr.map(Into::into))
                     .chain(once(local.is_comp.into()))
                     .collect(),
                 local.is_real.into(),
@@ -335,11 +359,12 @@ where
                     vec![
                         AB::Expr::zero(),
                         AB::Expr::zero(),
-                        local.addr.reduce::<AB>(),
-                        local.value.0[0].into(),
-                        local.value.0[1].into(),
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
+                        local.addr[0].into(),
+                        local.addr[1].into(),
+                        local.addr[2].into(),
+                        local.value.0[0] + local.value_lower * AB::F::from_canonical_u32(1 << 16),
+                        local.value.0[1] + local.value_upper * AB::F::from_canonical_u32(1 << 16),
+                        local.value.0[3].into(),
                         AB::Expr::one(),
                         AB::Expr::zero(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
@@ -356,11 +381,12 @@ where
                     vec![
                         local.clk_high.into(),
                         local.clk_low.into(),
-                        local.addr.reduce::<AB>(),
-                        local.value.0[0].into(),
-                        local.value.0[1].into(),
-                        AB::Expr::zero(),
-                        AB::Expr::zero(),
+                        local.addr[0].into(),
+                        local.addr[1].into(),
+                        local.addr[2].into(),
+                        local.value.0[0] + local.value_lower * AB::F::from_canonical_u32(1 << 16),
+                        local.value.0[1] + local.value_upper * AB::F::from_canonical_u32(1 << 16),
+                        local.value.0[3].into(),
                         AB::Expr::zero(),
                         AB::Expr::one(),
                         AB::Expr::from_canonical_u8(InteractionKind::Memory as u8),
@@ -372,27 +398,11 @@ where
             );
         }
 
-        // Check that the previous address is a valid BabyBear word.
-        BabyBearWordRangeChecker::<AB::F>::range_check(
-            builder,
-            local.prev_addr,
-            local.prev_addr_range_checker,
-            local.is_real.into(),
-        );
-
-        // Check that the address is a valid BabyBear word.
-        BabyBearWordRangeChecker::<AB::F>::range_check(
-            builder,
-            local.addr,
-            local.addr_range_checker,
-            local.is_real.into(),
-        );
-
         // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
         IsZeroOperation::<AB::F>::eval(
             builder,
-            IsZeroOperationInput::new(
-                local.prev_addr.reduce::<AB>(),
+            (
+                local.prev_addr[0] + local.prev_addr[1] + local.prev_addr[2],
                 local.is_prev_addr_zero,
                 local.is_real.into(),
             ),
@@ -415,13 +425,23 @@ where
             local.is_real
                 * (AB::Expr::one() - local.is_prev_addr_zero.result * local.is_index_zero.result),
         );
-        builder.assert_bool(local.is_comp);
+        // builder.assert_bool(local.is_comp);
         // If `is_comp = 1`, then `prev_addr < addr` should hold.
         <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
             LtOperationUnsignedInput::<AB>::new(
-                local.prev_addr.map(Into::into),
-                local.addr.map(Into::into),
+                Word([
+                    local.prev_addr[0].into(),
+                    local.prev_addr[1].into(),
+                    local.prev_addr[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([
+                    local.addr[0].into(),
+                    local.addr[1].into(),
+                    local.addr[2].into(),
+                    AB::Expr::zero(),
+                ]),
                 local.lt_cols,
                 local.is_comp.into(),
             ),
@@ -433,7 +453,9 @@ where
         // Constraints related to register %x0: Register %x0 should always be 0.
         // See 2.6 Load and Store Instruction on P.18 of the RISC-V spec.
         let is_not_comp = local.is_real - local.is_comp;
-        builder.when(is_not_comp.clone()).assert_word_zero(local.addr);
+        builder
+            .when(is_not_comp.clone())
+            .assert_zero(local.addr[0] + local.addr[1] + local.addr[2]);
         builder.when(is_not_comp.clone()).assert_word_zero(local.value);
     }
 }

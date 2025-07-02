@@ -13,7 +13,7 @@ pub struct KeccakMemCols<T> {
     pub keccak: KeccakCols<T>,
     pub clk_high: T,
     pub clk_low: T,
-    pub state_addr: T,
+    pub state_addr: [T; 3],
     pub index: T,
     pub is_real: T,
 }

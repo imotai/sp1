@@ -6,9 +6,9 @@ use super::{SyscallCode, SyscallContext};
 pub(crate) fn verify_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,
     _: SyscallCode,
-    vkey_ptr: u32,
-    pv_digest_ptr: u32,
-) -> Option<u32> {
+    vkey_ptr: u64,
+    pv_digest_ptr: u64,
+) -> Option<u64> {
     let rt = &mut ctx.rt;
 
     // Skip deferred proof verification if the corresponding runtime flag is set.
@@ -18,9 +18,10 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
         // pv_digest_ptr is a pointer to [u32; 8] which contains the public values digest.
         assert_eq!(pv_digest_ptr % 4, 0, "pv_digest_ptr must be word-aligned");
 
-        let vkey = (0..8).map(|i| rt.word::<E>(vkey_ptr + i * 4)).collect::<Vec<u32>>();
+        let vkey = (0..8).map(|i| rt.word::<E>(vkey_ptr + i * 4) as u32).collect::<Vec<u32>>();
 
-        let pv_digest = (0..8).map(|i| rt.word::<E>(pv_digest_ptr + i * 4)).collect::<Vec<u32>>();
+        let pv_digest =
+            (0..8).map(|i| rt.word::<E>(pv_digest_ptr + i * 4) as u32).collect::<Vec<u32>>();
 
         let proof_index = rt.state.proof_stream_ptr;
         if proof_index >= rt.state.proof_stream.len() {

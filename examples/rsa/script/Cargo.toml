@@ -10,4 +10,5 @@ sp1-sdk = { workspace = true }
 tokio = { workspace = true }
 
 [build-dependencies]
-sp1-build = { workspace = true }
+sp1-build = { path = "../../../crates/build", features = ["64bit"] }
+

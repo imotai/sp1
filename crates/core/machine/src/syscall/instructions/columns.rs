@@ -19,7 +19,7 @@ pub struct SyscallInstrColumns<T> {
     pub adapter: RTypeReader<T>,
 
     /// The next program counter.
-    pub next_pc: T,
+    pub next_pc: [T; 3],
 
     /// The number of extra cycles to add to the clk for a syscall instruction.
     pub num_extra_cycles: T,

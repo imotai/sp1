@@ -20,7 +20,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        addr: impl Into<Self::Expr>,
+        addr: &[Self::Expr; 3],
         mem_access: MemoryAccessCols<E>,
         do_check: impl Into<Self::Expr>,
     ) {
@@ -38,17 +38,17 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
 
         // Add to the memory argument.
-        let addr = addr.into();
+        // let addr = addr.into();
         let prev_high = mem_access.access_timestamp.prev_high.clone().into();
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(prev_high)
             .chain(once(prev_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(mem_access.prev_value.clone().map(Into::into))
             .collect();
         let current_values = once(clk_high)
             .chain(once(clk_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(mem_access.prev_value.clone().map(Into::into))
             .collect();
 
@@ -72,7 +72,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        addr: impl Into<Self::Expr>,
+        addr: &[Self::Expr; 3],
         mem_access: MemoryAccessCols<E>,
         write_value: Word<impl Into<Self::Expr>>,
         do_check: impl Into<Self::Expr>,
@@ -91,17 +91,16 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
 
         // Add to the memory argument.
-        let addr = addr.into();
         let prev_high = mem_access.access_timestamp.prev_high.clone().into();
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(prev_high)
             .chain(once(prev_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(mem_access.prev_value.clone().map(Into::into))
             .collect();
         let current_values = once(clk_high)
             .chain(once(clk_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(write_value.map(Into::into))
             .collect();
 
@@ -125,7 +124,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        addr: impl Into<Self::Expr>,
+        addr: [Self::Expr; 3],
         mem_access: MemoryAccessInShardCols<E>,
         do_check: impl Into<Self::Expr>,
     ) {
@@ -142,17 +141,17 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
 
         // Add to the memory argument.
-        let addr = addr.into();
+        // let addr = addr.into();
 
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(clk_high.clone())
             .chain(once(prev_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(mem_access.prev_value.clone().map(Into::into))
             .collect();
         let current_values = once(clk_high)
             .chain(once(clk_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(mem_access.prev_value.clone().map(Into::into))
             .collect();
 
@@ -176,7 +175,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        addr: impl Into<Self::Expr>,
+        addr: [Self::Expr; 3],
         mem_access: MemoryAccessInShardCols<E>,
         write_value: Word<impl Into<Self::Expr>>,
         do_check: impl Into<Self::Expr>,
@@ -194,17 +193,17 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
 
         // Add to the memory argument.
-        let addr = addr.into();
+        // let addr = addr.into();
 
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(clk_high.clone())
             .chain(once(prev_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(mem_access.prev_value.clone().map(Into::into))
             .collect();
         let current_values = once(clk_high)
             .chain(once(clk_low))
-            .chain(once(addr.clone()))
+            .chain(addr.clone())
             .chain(write_value.map(Into::into))
             .collect();
 
@@ -226,15 +225,15 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
-        initial_addr: impl Into<Self::Expr> + Clone,
+        addr_slice: &[[Self::Expr; 3]],
         memory_access_slice: &[MemoryAccessCols<E>],
         verify_memory_access: impl Into<Self::Expr> + Copy,
     ) {
-        for (i, access_slice) in memory_access_slice.iter().enumerate() {
+        for (access_slice, addr) in memory_access_slice.iter().zip(addr_slice) {
             self.eval_memory_access_read(
                 clk_high.clone(),
                 clk_low.clone(),
-                initial_addr.clone().into() + Self::Expr::from_canonical_usize(i * 4),
+                addr,
                 *access_slice,
                 verify_memory_access,
             );
@@ -246,18 +245,18 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
-        initial_addr: impl Into<Self::Expr> + Clone,
+        addr_slice: &[[Self::Expr; 3]],
         memory_access_slice: &[MemoryAccessCols<E>],
         write_values: Vec<Word<impl Into<Self::Expr>>>,
         verify_memory_access: impl Into<Self::Expr> + Copy,
     ) {
-        for (i, (access_slice, write_value)) in
-            memory_access_slice.iter().zip_eq(write_values).enumerate()
+        for ((access_slice, addr), write_value) in
+            memory_access_slice.iter().zip_eq(addr_slice).zip_eq(write_values)
         {
             self.eval_memory_access_write(
                 clk_high.clone(),
                 clk_low.clone(),
-                initial_addr.clone().into() + Self::Expr::from_canonical_usize(i * 4),
+                addr,
                 *access_slice,
                 write_value,
                 verify_memory_access,

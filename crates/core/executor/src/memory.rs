@@ -15,7 +15,7 @@ pub struct Memory<T: Copy> {
 }
 
 impl<V: Copy + 'static> IntoIterator for Memory<V> {
-    type Item = (u32, V);
+    type Item = (u64, V);
 
     type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
 
@@ -41,7 +41,7 @@ impl<T: Copy> Memory<T> {
     /// When possible, prefer directly accessing the `page_table` or `registers` fields.
     /// This method often incurs unnecessary branching.
     #[inline]
-    pub fn entry(&mut self, addr: u32) -> Entry<'_, T> {
+    pub fn entry(&mut self, addr: u64) -> Entry<'_, T> {
         if addr < 32 {
             self.registers.entry(addr)
         } else {
@@ -54,7 +54,7 @@ impl<T: Copy> Memory<T> {
     /// When possible, prefer directly accessing the `page_table` or `registers` fields.
     /// This method often incurs unnecessary branching.   
     #[inline]
-    pub fn insert(&mut self, addr: u32, value: T) -> Option<T> {
+    pub fn insert(&mut self, addr: u64, value: T) -> Option<T> {
         if addr < 32 {
             self.registers.insert(addr, value)
         } else {
@@ -67,7 +67,7 @@ impl<T: Copy> Memory<T> {
     /// When possible, prefer directly accessing the `page_table` or `registers` fields.
     /// This method often incurs unnecessary branching.
     #[inline]
-    pub fn get(&self, addr: u32) -> Option<&T> {
+    pub fn get(&self, addr: u64) -> Option<&T> {
         if addr < 32 {
             self.registers.get(addr)
         } else {
@@ -80,7 +80,7 @@ impl<T: Copy> Memory<T> {
     /// When possible, prefer directly accessing the `page_table` or `registers` fields.
     /// This method often incurs unnecessary branching.
     #[inline]
-    pub fn remove(&mut self, addr: u32) -> Option<T> {
+    pub fn remove(&mut self, addr: u64) -> Option<T> {
         if addr < 32 {
             self.registers.remove(addr)
         } else {
@@ -96,8 +96,8 @@ impl<T: Copy> Memory<T> {
     }
 }
 
-impl<V: Copy + Default> FromIterator<(u32, V)> for Memory<V> {
-    fn from_iter<T: IntoIterator<Item = (u32, V)>>(iter: T) -> Self {
+impl<V: Copy + Default> FromIterator<(u64, V)> for Memory<V> {
+    fn from_iter<T: IntoIterator<Item = (u64, V)>>(iter: T) -> Self {
         let mut memory = Self::new_preallocated();
         for (addr, value) in iter {
             memory.insert(addr, value);
@@ -123,7 +123,7 @@ impl<T: Copy> Default for Registers<T> {
 impl<T: Copy> Registers<T> {
     /// Get an entry for the given register.
     #[inline]
-    pub fn entry(&mut self, addr: u32) -> Entry<'_, T> {
+    pub fn entry(&mut self, addr: u64) -> Entry<'_, T> {
         let entry = &mut self.registers[addr as usize];
         match entry {
             Some(v) => Entry::Occupied(OccupiedEntry { entry: v }),
@@ -135,7 +135,7 @@ impl<T: Copy> Registers<T> {
     ///
     /// Assumes addr < 32.
     #[inline]
-    pub fn insert(&mut self, addr: u32, value: T) -> Option<T> {
+    pub fn insert(&mut self, addr: u64, value: T) -> Option<T> {
         self.registers[addr as usize].replace(value)
     }
 
@@ -143,7 +143,7 @@ impl<T: Copy> Registers<T> {
     ///
     /// Assumes addr < 32.
     #[inline]
-    pub fn remove(&mut self, addr: u32) -> Option<T> {
+    pub fn remove(&mut self, addr: u64) -> Option<T> {
         self.registers[addr as usize].take()
     }
 
@@ -151,7 +151,7 @@ impl<T: Copy> Registers<T> {
     ///
     /// Assumes addr < 32.
     #[inline]
-    pub fn get(&self, addr: u32) -> Option<&T> {
+    pub fn get(&self, addr: u64) -> Option<&T> {
         self.registers[addr as usize].as_ref()
     }
 
@@ -162,8 +162,8 @@ impl<T: Copy> Registers<T> {
     }
 }
 
-impl<V: Copy> FromIterator<(u32, V)> for Registers<V> {
-    fn from_iter<T: IntoIterator<Item = (u32, V)>>(iter: T) -> Self {
+impl<V: Copy> FromIterator<(u64, V)> for Registers<V> {
+    fn from_iter<T: IntoIterator<Item = (u64, V)>>(iter: T) -> Self {
         let mut mmu = Self::default();
         for (k, v) in iter {
             mmu.insert(k, v);
@@ -173,7 +173,7 @@ impl<V: Copy> FromIterator<(u32, V)> for Registers<V> {
 }
 
 impl<V: Copy + 'static> IntoIterator for Registers<V> {
-    type Item = (u32, V);
+    type Item = (u64, V);
 
     type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
 
@@ -182,7 +182,7 @@ impl<V: Copy + 'static> IntoIterator for Registers<V> {
             self.registers
                 .into_iter()
                 .enumerate()
-                .filter_map(move |(i, v)| v.map(|v| (i as u32, v))),
+                .filter_map(move |(i, v)| v.map(|v| (i as u64, v))),
         )
     }
 }
@@ -197,10 +197,10 @@ impl<V> Default for Page<V> {
     }
 }
 
-const LOG_PAGE_LEN: usize = 14;
+const LOG_PAGE_LEN: usize = 18;
 const PAGE_LEN: usize = 1 << LOG_PAGE_LEN;
-const MAX_PAGE_COUNT: usize = ((1 << 31) - (1 << 27)) / 4 / PAGE_LEN + 1;
-const NO_PAGE: u16 = u16::MAX;
+const MAX_PAGE_COUNT: usize = (1 << 40) / 8 / PAGE_LEN;
+const NO_PAGE: u32 = u32::MAX;
 const PAGE_MASK: usize = PAGE_LEN - 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,12 +227,12 @@ impl<V: Copy> Default for NewPage<V> {
 pub struct PagedMemory<V: Copy> {
     /// The internal page table.
     pub page_table: Vec<NewPage<V>>,
-    pub index: Vec<u16>,
+    pub index: Vec<u32>,
 }
 
 impl<V: Copy> PagedMemory<V> {
     /// The number of lower bits to ignore, since addresses (except registers) are a multiple of 4.
-    const NUM_IGNORED_LOWER_BITS: usize = 2;
+    const NUM_IGNORED_LOWER_BITS: usize = 3;
 
     /// Create a `PagedMemory` with capacity `MAX_PAGE_COUNT`.
     pub fn new_preallocated() -> Self {
@@ -240,7 +240,7 @@ impl<V: Copy> PagedMemory<V> {
     }
 
     /// Get a reference to the memory value at the given address, if it exists.
-    pub fn get(&self, addr: u32) -> Option<&V> {
+    pub fn get(&self, addr: u64) -> Option<&V> {
         let (upper, lower) = Self::indices(addr);
         let index = self.index[upper];
         if index == NO_PAGE {
@@ -251,7 +251,7 @@ impl<V: Copy> PagedMemory<V> {
     }
 
     /// Get a mutable reference to the memory value at the given address, if it exists.
-    pub fn get_mut(&mut self, addr: u32) -> Option<&mut V> {
+    pub fn get_mut(&mut self, addr: u64) -> Option<&mut V> {
         let (upper, lower) = Self::indices(addr);
         let index = self.index[upper];
         if index == NO_PAGE {
@@ -262,11 +262,11 @@ impl<V: Copy> PagedMemory<V> {
     }
 
     /// Insert a value at the given address. Returns the previous value, if any.
-    pub fn insert(&mut self, addr: u32, value: V) -> Option<V> {
+    pub fn insert(&mut self, addr: u64, value: V) -> Option<V> {
         let (upper, lower) = Self::indices(addr);
         let mut index = self.index[upper];
         if index == NO_PAGE {
-            index = self.page_table.len() as u16;
+            index = self.page_table.len() as u32;
             self.index[upper] = index;
             self.page_table.push(NewPage::new());
         }
@@ -274,7 +274,7 @@ impl<V: Copy> PagedMemory<V> {
     }
 
     /// Remove the value at the given address if it exists, returning it.
-    pub fn remove(&mut self, addr: u32) -> Option<V> {
+    pub fn remove(&mut self, addr: u64) -> Option<V> {
         let (upper, lower) = Self::indices(addr);
         let index = self.index[upper];
         if index == NO_PAGE {
@@ -285,12 +285,12 @@ impl<V: Copy> PagedMemory<V> {
     }
 
     /// Gets the memory entry for the given address.
-    pub fn entry(&mut self, addr: u32) -> Entry<'_, V> {
+    pub fn entry(&mut self, addr: u64) -> Entry<'_, V> {
         let (upper, lower) = Self::indices(addr);
         let index = self.index[upper];
         if index == NO_PAGE {
             let index = self.page_table.len();
-            self.index[upper] = index as u16;
+            self.index[upper] = index as u32;
             self.page_table.push(NewPage::new());
             Entry::Vacant(VacantEntry { entry: &mut self.page_table[index].0[lower] })
         } else {
@@ -303,7 +303,7 @@ impl<V: Copy> PagedMemory<V> {
     }
 
     /// Returns an iterator over the occupied addresses.
-    pub fn keys(&self) -> impl Iterator<Item = u32> + '_ {
+    pub fn keys(&self) -> impl Iterator<Item = u64> + '_ {
         self.index.iter().enumerate().filter(|(_, &i)| i != NO_PAGE).flat_map(|(i, index)| {
             let upper = i << LOG_PAGE_LEN;
             self.page_table[*index as usize]
@@ -337,21 +337,21 @@ impl<V: Copy> PagedMemory<V> {
 
     /// Break apart an address into an upper and lower index.
     #[inline]
-    const fn indices(addr: u32) -> (usize, usize) {
+    const fn indices(addr: u64) -> (usize, usize) {
         let index = Self::compress_addr(addr);
         (index >> LOG_PAGE_LEN, index & PAGE_MASK)
     }
 
     /// Compress an address from the sparse address space to a contiguous space.
     #[inline]
-    const fn compress_addr(addr: u32) -> usize {
+    const fn compress_addr(addr: u64) -> usize {
         addr as usize >> Self::NUM_IGNORED_LOWER_BITS
     }
 
     /// Decompress an address from a contiguous space to the sparse address space.
     #[inline]
-    const fn decompress_addr(addr: usize) -> u32 {
-        (addr << Self::NUM_IGNORED_LOWER_BITS) as u32
+    const fn decompress_addr(addr: usize) -> u64 {
+        (addr << Self::NUM_IGNORED_LOWER_BITS) as u64
     }
 }
 
@@ -443,8 +443,8 @@ impl<'a, V: Copy> OccupiedEntry<'a, V> {
     }
 }
 
-impl<V: Copy> FromIterator<(u32, V)> for PagedMemory<V> {
-    fn from_iter<T: IntoIterator<Item = (u32, V)>>(iter: T) -> Self {
+impl<V: Copy> FromIterator<(u64, V)> for PagedMemory<V> {
+    fn from_iter<T: IntoIterator<Item = (u64, V)>>(iter: T) -> Self {
         let mut mmu = Self::new_preallocated();
         for (k, v) in iter {
             mmu.insert(k, v);
@@ -454,7 +454,7 @@ impl<V: Copy> FromIterator<(u32, V)> for PagedMemory<V> {
 }
 
 impl<V: Copy + 'static> IntoIterator for PagedMemory<V> {
-    type Item = (u32, V);
+    type Item = (u64, V);
 
     type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
 

@@ -40,7 +40,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -92,6 +92,9 @@ pub struct MulCols<T> {
 
     /// Whether the operation is MULHSU.
     pub is_mulhsu: T,
+
+    /// Whether the operation is MULW.
+    pub is_mulw: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for MulChip {
@@ -192,12 +195,14 @@ impl MulChip {
             event.c,
             event.opcode == Opcode::MULH,
             event.opcode == Opcode::MULHSU,
+            event.opcode == Opcode::MULW,
         );
 
         cols.is_mul = F::from_bool(event.opcode == Opcode::MUL);
         cols.is_mulh = F::from_bool(event.opcode == Opcode::MULH);
         cols.is_mulhu = F::from_bool(event.opcode == Opcode::MULHU);
         cols.is_mulhsu = F::from_bool(event.opcode == Opcode::MULHSU);
+        cols.is_mulw = F::from_bool(event.opcode == Opcode::MULW);
 
         cols.a = Word::from(event.a);
         cols.is_real = F::one();
@@ -229,6 +234,7 @@ where
             local.is_real.into(),
             local.is_mul.into(),
             local.is_mulh.into(),
+            local.is_mulw.into(),
             local.is_mulhu.into(),
             local.is_mulhsu.into(),
         );
@@ -238,11 +244,12 @@ where
             // Exactly one of the opcodes must be on in a "real" row.
             builder.assert_eq(
                 local.is_real,
-                local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu,
+                local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu + local.is_mulw,
             );
             builder.assert_bool(local.is_mul);
             builder.assert_bool(local.is_mulh);
             builder.assert_bool(local.is_mulhu);
+            builder.assert_bool(local.is_mulw);
             builder.assert_bool(local.is_mulhsu);
             builder.assert_bool(local.is_real);
 
@@ -250,10 +257,12 @@ where
             let mulh: AB::Expr = AB::F::from_canonical_u32(Opcode::MULH as u32).into();
             let mulhu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHU as u32).into();
             let mulhsu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHSU as u32).into();
+            let mulw: AB::Expr = AB::F::from_canonical_u32(Opcode::MULW as u32).into();
             local.is_mul * mul
                 + local.is_mulh * mulh
                 + local.is_mulhu * mulhu
                 + local.is_mulhsu * mulhsu
+                + local.is_mulw * mulw
         };
 
         // Constrain the state of the CPU.
@@ -261,8 +270,12 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 

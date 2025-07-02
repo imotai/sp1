@@ -69,9 +69,9 @@ impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
 
                     if idx < merged_events.len() {
                         let event = merged_events[idx];
-                        cols.op_a = F::from_canonical_u32(event.0.a);
-                        cols.op_b = F::from_canonical_u32(event.0.b);
-                        cols.op_c = F::from_canonical_u32(event.0.c);
+                        cols.op_a = F::from_canonical_u64(event.0.a);
+                        cols.op_b = F::from_canonical_u64(event.0.b);
+                        cols.op_c = F::from_canonical_u64(event.0.c);
                     }
                 });
             },

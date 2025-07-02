@@ -10,19 +10,19 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
     adapter::{
         register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
-        state::CPUState,
+        state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation},
-    operations::{U16MSBOperation, U16MSBOperationInput},
+    operations::{U16MSBOperation, U16MSBOperationInput, U16toU8Operation},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -46,35 +46,53 @@ pub struct ShiftRightCols<T> {
     /// The output operand.
     pub a: Word<T>,
 
-    /// The lower bits of each limb.
-    pub lower_limb: Word<T>,
+    /// The most significant byte of the result of SRLW/SRAW/SRLIW/SRAIW
+    pub srw_msb: U16MSBOperation<T>,
 
-    /// The higher bits of each limb.
-    pub higher_limb: Word<T>,
+    /// The input operand (truncated when SRAW/SRAIW/SRLIW/SRLW)
+    pub b: Word<T>,
 
-    /// Auxiliary column to help compute `pow_2`, equal to `2^(3 - (c & 3))`.
-    pub pow_2_01: T,
-
-    /// Auxiliary column to help compute `pow_2`, equal to `2^(12 - (c & 12))`.
-    pub pow_2_23: T,
-
-    /// The power of two corresponding to the bit shift, equal to `2^(16 - (c & 15))`.
-    pub pow_2: T,
-
-    /// A column to reduce AIR degree, equal to `pow_2 * c_bit[4]`
-    pub pow_2_bit: T,
-
-    /// The bottom 5 bits of `c`.
-    pub c_bits: [T; 5],
+    /// The bottom 8 bits of `c`.
+    pub c_bits: [T; 8],
 
     /// The most significant bit of `b`.
     pub b_msb: U16MSBOperation<T>,
+
+    /// SRA msb * v0123
+    pub sra_msb_v0123: T,
+
+    /// v0123
+    pub v_0123: T,
+
+    /// v012
+    pub v_012: T,
+
+    /// v01
+    pub v_01: T,
+
+    /// The lower bytes of `b`.
+    pub b_lower_bytes: U16toU8Operation<T>,
+
+    /// The top bits of `b`.
+    pub top_bits: [T; WORD_BYTE_SIZE],
+
+    /// The result of the byte-shift.
+    pub byte_result: [T; WORD_SIZE],
+
+    /// The shift amount.
+    pub shift_u16: [T; 4],
 
     /// If the opcode is SRL.
     pub is_srl: T,
 
     /// If the opcode is SRA.
     pub is_sra: T,
+
+    /// If the opcode is SRLW.
+    pub is_srlw: T,
+
+    /// If the opcode is SRAW.
+    pub is_sraw: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
@@ -119,9 +137,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     } else {
-                        cols.pow_2_01 = F::from_canonical_u32(1 << 3);
-                        cols.pow_2_23 = F::from_canonical_u32(1 << 12);
-                        cols.pow_2 = F::from_canonical_u32(1 << 16);
+                        cols.v_01 = F::from_canonical_u32(16);
+                        cols.v_012 = F::from_canonical_u32(256);
+                        cols.v_0123 = F::from_canonical_u32(65536);
                     }
                 });
             },
@@ -175,34 +193,116 @@ impl ShiftRightChip {
         cols: &mut ShiftRightCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        let b = u32_to_u16_limbs(event.b);
-        let c = u32_to_u16_limbs(event.c)[0];
+        let mut b = u64_to_u16_limbs(event.b);
+        let c = u64_to_u16_limbs(event.c)[0];
         cols.a = Word::from(event.a);
-        for i in 0..5 {
-            cols.c_bits[i] = F::from_canonical_u16((c >> i) & 1);
-        }
         cols.is_srl = F::from_bool(event.opcode == Opcode::SRL);
         cols.is_sra = F::from_bool(event.opcode == Opcode::SRA);
-        cols.pow_2_01 = F::from_canonical_u32(1 << (3 - (c & 3)));
-        cols.pow_2_23 = F::from_canonical_u32(1 << (12 - (c & 12)));
-        cols.pow_2 = F::from_canonical_u32(1 << (16 - (c & 15)));
-        if ((c >> 4) & 1) == 1 {
-            cols.pow_2_bit = cols.pow_2;
+        cols.is_srlw = F::from_bool(event.opcode == Opcode::SRLW);
+        cols.is_sraw = F::from_bool(event.opcode == Opcode::SRAW);
+        let is_word = event.opcode == Opcode::SRLW || event.opcode == Opcode::SRAW;
+        if is_word {
+            b[2] = 0;
+            b[3] = 0;
         }
-        let bit_shift = (c & 0xF) as u8;
-        blu.add_bit_range_check(c >> 5, 11);
-        for i in 0..WORD_SIZE {
-            let limb = b[i] as u32;
-            let lower_limb = (limb & ((1 << bit_shift) - 1)) as u16;
-            let higher_limb = (limb >> bit_shift) as u16;
-            cols.lower_limb.0[i] = F::from_canonical_u16(lower_limb);
-            cols.higher_limb.0[i] = F::from_canonical_u16(higher_limb);
-            blu.add_bit_range_check(lower_limb, bit_shift);
-            blu.add_bit_range_check(higher_limb, 16 - bit_shift);
+        let b_u64 = if is_word { event.b & 0xFFFF_FFFF } else { event.b };
+        cols.b = Word::from(b_u64);
+        let not_word = !is_word;
+        let mut bits = [0u8; 8];
+        for i in 0..8 {
+            bits[i] = ((c >> i) & 1) as u8;
+            cols.c_bits[i] = F::from_canonical_u8(bits[i]);
         }
+        let c_low_byte = c & 0xFF;
+        blu.add_u8_range_checks(&[((c - c_low_byte) / 256) as u8]);
+
+        let v01 = 2 * ((1 - bits[0] as u32) + 1) * (3 * (1 - bits[1] as u32) + 1);
+        cols.v_01 = F::from_canonical_u32(v01);
+        let v012 = v01 * (15 * (1 - bits[2] as u32) + 1);
+        cols.v_012 = F::from_canonical_u32(v012);
+        let v0123 = v012 * (255 * (1 - bits[3] as u32) + 1);
+        cols.v_0123 = F::from_canonical_u32(v0123);
+        let v012b_3 = (256 * v012 - v0123) / 255;
+        assert!((256 * v012 - v0123) % 255 == 0);
+
+        cols.b_lower_bytes.populate_u16_to_u8_unsafe(blu, b_u64);
+
         if event.opcode == Opcode::SRA {
+            cols.b_msb.populate_msb(blu, b[3]);
+        }
+        if event.opcode == Opcode::SRAW {
             cols.b_msb.populate_msb(blu, b[1]);
         }
+        cols.sra_msb_v0123 = cols.b_msb.msb * cols.v_0123; // if not SRA, b_msb.msb == 0
+
+        if event.opcode == Opcode::SRLW {
+            let srlw_val = (event.b as u32) >> ((event.c & 0x1f) as u32);
+            let srlw_limbs = u32_to_u16_limbs(srlw_val);
+            cols.srw_msb.populate_msb(blu, srlw_limbs[1]);
+        }
+        if event.opcode == Opcode::SRAW {
+            let sraw_val = (event.b as i32).wrapping_shr(((event.c as i64 & 0x1f) as i32) as u32);
+            let sraw_limbs = u32_to_u16_limbs(sraw_val as u32);
+            cols.srw_msb.populate_msb(blu, sraw_limbs[1]);
+        }
+
+        let b_bytes = b_u64.to_le_bytes();
+
+        let mut top_bits = [0u8; 8];
+        for i in 0..8 {
+            top_bits[i] = b_bytes[i] >> (bits[0] + 2 * bits[1] + 4 * bits[2]);
+            cols.top_bits[i] = F::from_canonical_u8(top_bits[i]);
+            blu.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::SR,
+                a: top_bits[i] as u16,
+                b: b_bytes[i],
+                c: bits[0] + 2 * bits[1] + 4 * bits[2],
+            });
+        }
+
+        let mut v0123_coef = [0i32; 4];
+        let mut v012_1_3_coef = [0i32; 4];
+        let mut remaining_deg2 = [0i32; 8];
+        for i in 0..8 {
+            remaining_deg2[i] = top_bits[i] as i32;
+            if i + 1 < 8 {
+                remaining_deg2[i] -= 256 * top_bits[i + 1] as i32;
+            }
+        }
+        for i in 0..4 {
+            if i < 3 {
+                v0123_coef[i] += b_bytes[2 * i + 2] as i32;
+                v0123_coef[i] += 256 * b_bytes[2 * i + 3] as i32;
+                v012_1_3_coef[i] += 256 * b_bytes[2 * i + 2] as i32;
+            }
+            if i < 4 {
+                v012_1_3_coef[i] += b_bytes[2 * i + 1] as i32;
+            }
+        }
+
+        let mut u16_result = [0i64; 4];
+        for i in 0..4 {
+            u16_result[i] += v0123_coef[i] as i64 * v012b_3 as i64;
+            u16_result[i] += v012_1_3_coef[i] as i64 * ((v012 as u32) - v012b_3) as i64;
+            u16_result[i] += remaining_deg2[2 * i + 1] as i64 * bits[3] as i64;
+            if i < 3 {
+                u16_result[i] += 256 * remaining_deg2[2 * i + 2] as i64 * bits[3] as i64;
+            }
+            u16_result[i] += remaining_deg2[2 * i] as i64 * (1 - bits[3] as i64);
+            u16_result[i] += 256 * remaining_deg2[2 * i + 1] as i64 * (1 - bits[3] as i64);
+            cols.byte_result[i] = F::from_canonical_u16(u16_result[i] as u16);
+        }
+
+        let shift_amount = bits[4] + 2 * bits[5] * (not_word as u8);
+
+        let mut shift = [0u16; 4];
+        for i in 0..4 {
+            if i == shift_amount as usize {
+                shift[i] = 1;
+            }
+        }
+
+        cols.shift_u16 = shift.map(|x| F::from_canonical_u16(x));
     }
 }
 
@@ -221,106 +321,7 @@ where
         let local = main.row_slice(0);
         let local: &ShiftRightCols<AB::Var> = (*local).borrow();
 
-        let is_real = local.is_srl + local.is_sra;
-
-        // Step 1: Compute the bottom 5 bits of `c`.
-        // `c_lower_bits` is equal to the bit sum of the bottom 5 bits of `c`.
-        // `bit_shift` is equal to the bit sum of the bottom 4 bits of `c`.
-        let mut c_lower_bits = AB::Expr::zero();
-        let mut bit_shift = AB::Expr::zero();
-        for i in 0..5 {
-            builder.assert_bool(local.c_bits[i]);
-            c_lower_bits =
-                c_lower_bits.clone() + local.c_bits[i] * AB::Expr::from_canonical_u32(1 << i);
-            if i == 3 {
-                bit_shift = c_lower_bits.clone();
-            }
-        }
-        let inverse_32 = AB::F::from_canonical_u32(32).inverse();
-        // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and
-        // a multiple of 32.
-        builder.send_byte(
-            AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-            (local.adapter.c()[0] - c_lower_bits) * inverse_32,
-            AB::Expr::from_canonical_u32(11),
-            AB::Expr::zero(),
-            is_real.clone(),
-        );
-
-        // Step 2: Compute `pow(2, 16 - (lower 4 bits of c))`.
-        builder.assert_eq(
-            local.pow_2_01,
-            (AB::Expr::from_canonical_u32(2) - local.c_bits[0])
-                * (AB::Expr::from_canonical_u32(4)
-                    - AB::Expr::from_canonical_u32(3) * local.c_bits[1]),
-        );
-        builder.assert_eq(
-            local.pow_2_23,
-            (AB::Expr::from_canonical_u32(16) - AB::Expr::from_canonical_u32(15) * local.c_bits[2])
-                * (AB::Expr::from_canonical_u32(256)
-                    - AB::Expr::from_canonical_u32(255) * local.c_bits[3]),
-        );
-        builder.assert_eq(
-            local.pow_2,
-            AB::Expr::from_canonical_u32(2) * local.pow_2_01 * local.pow_2_23,
-        );
-
-        // Step 3: Split the `b` word into lower and higher parts.
-        for i in 0..WORD_SIZE {
-            let limb = local.adapter.b()[i];
-            // Check that `lower_limb < 2^(bit_shift)`
-            builder.send_byte(
-                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-                local.lower_limb[i],
-                bit_shift.clone(),
-                AB::Expr::zero(),
-                is_real.clone(),
-            );
-            // Check that `higher_limb < 2^(16 - bit_shift)`
-            builder.send_byte(
-                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-                local.higher_limb[i],
-                AB::Expr::from_canonical_u32(16) - bit_shift.clone(),
-                AB::Expr::zero(),
-                is_real.clone(),
-            );
-            // Check that `limb == higher_limb * 2^(bit_shift) + lower_limb`
-            // Multiply `2^(16 - bit_shift)` to the equation to avoid populating `2^(bit_shift)`.
-            // This is possible, since `2^(16 - bit_shift)` is not zero.
-            builder.assert_eq(
-                limb * local.pow_2,
-                local.higher_limb[i] * AB::Expr::from_canonical_u32(1 << 16)
-                    + local.lower_limb[i] * local.pow_2,
-            );
-        }
-
-        // Step 4. Compute the MSB of `b`.
-        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
-            builder,
-            U16MSBOperationInput::<AB>::new(
-                local.adapter.b().0[1].into(),
-                local.b_msb,
-                local.is_sra.into(),
-            ),
-        );
-        // The sign of `b` should be considered positive if the opcode is SRL.
-        builder.when_not(local.is_sra).assert_zero(local.b_msb.msb);
-
-        // Step 5. Compute the final result `a`.
-        builder.assert_eq(local.pow_2_bit, local.pow_2 * local.c_bits[4]);
-
-        let limb_0 = local.higher_limb[0] * (AB::Expr::one() - local.c_bits[4])
-            + local.lower_limb[1] * (local.pow_2 - local.pow_2_bit)
-            + local.higher_limb[1] * local.c_bits[4]
-            + (AB::Expr::from_canonical_u32(1 << 16) * local.c_bits[4] - local.pow_2_bit)
-                * local.b_msb.msb;
-        let limb_1 = (local.higher_limb[1]
-            + AB::Expr::from_canonical_u32(1 << 16) * local.b_msb.msb)
-            * (AB::Expr::one() - local.c_bits[4])
-            - (local.pow_2 - local.pow_2_bit) * local.b_msb.msb
-            + local.c_bits[4] * local.b_msb.msb * AB::Expr::from_canonical_u16(u16::MAX);
-
-        builder.assert_word_eq(local.a, Word([limb_0, limb_1]));
+        let is_real = local.is_srl + local.is_sra + local.is_srlw + local.is_sraw;
 
         // SAFETY: All selectors `is_srl`, `is_sra` are checked to be boolean.
         // Each "real" row has exactly one selector turned on, as `is_real = is_srl + is_sra` is
@@ -330,19 +331,212 @@ where
         // Check that the operation flags are boolean.
         builder.assert_bool(local.is_srl);
         builder.assert_bool(local.is_sra);
+        builder.assert_bool(local.is_srlw);
+        builder.assert_bool(local.is_sraw);
         builder.assert_bool(is_real.clone());
 
+        let one = AB::Expr::one();
+
+        let is_word = local.is_srlw + local.is_sraw;
+        let not_word = one.clone() - is_word.clone();
+
         let opcode = local.is_srl * AB::F::from_canonical_u32(Opcode::SRL as u32)
-            + local.is_sra * AB::F::from_canonical_u32(Opcode::SRA as u32);
+            + local.is_sra * AB::F::from_canonical_u32(Opcode::SRA as u32)
+            + local.is_srlw * AB::F::from_canonical_u32(Opcode::SRLW as u32)
+            + local.is_sraw * AB::F::from_canonical_u32(Opcode::SRAW as u32);
+
+        // Check that local.c_bits is the bit representation for the low byte of c.
+        for i in 0..8 {
+            builder.assert_bool(local.c_bits[i]);
+        }
+        let base = AB::F::from_canonical_u32(1 << 8);
+        let mut c_low_byte = AB::Expr::zero();
+        for i in 0..8 {
+            c_low_byte = c_low_byte + local.c_bits[i] * AB::F::from_canonical_u32(1 << i);
+        }
+        builder.slice_range_check_u8(
+            &[(local.adapter.c()[0] - c_low_byte) * base.inverse()],
+            is_real.clone(),
+        );
+        let two = AB::F::from_canonical_u32(2);
+        let three = AB::F::from_canonical_u32(3);
+        let fifteen = AB::F::from_canonical_u32(15);
+        let two_fifty_five = AB::F::from_canonical_u32(255);
+        let two_fifty_six = AB::F::from_canonical_u32(256);
+
+        builder.assert_eq(
+            local.v_01,
+            (((one.clone() - local.c_bits[0]) + one.clone()) * two)
+                * ((one.clone() - local.c_bits[1]) * three + one.clone()),
+        );
+        builder.assert_eq(
+            local.v_012,
+            local.v_01 * ((one.clone() - local.c_bits[2]) * fifteen + one.clone()),
+        );
+        builder.assert_eq(
+            local.v_0123,
+            local.v_012 * ((one.clone() - local.c_bits[3]) * two_fifty_five + one.clone()),
+        );
+
+        let v012b_3 = (local.v_012 * two_fifty_six - local.v_0123) * two_fifty_five.inverse();
+
+        let b_bytes = U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(
+            builder,
+            local.b.0.map(|x| x.into()),
+            local.b_lower_bytes,
+        );
+
+        for i in 0..WORD_SIZE / 2 {
+            builder.assert_eq(local.b.0[i], local.adapter.b()[i]);
+        }
+        for i in WORD_SIZE / 2..WORD_SIZE {
+            builder.assert_eq(
+                local.b.0[i],
+                local.adapter.b()[i] * not_word.clone() + is_word.clone() * AB::F::zero(),
+            );
+        }
+
+        let value = local.c_bits[0]
+            + local.c_bits[1] * AB::F::from_canonical_u32(2)
+            + local.c_bits[2] * AB::F::from_canonical_u32(4);
+
+        for i in 0..WORD_BYTE_SIZE {
+            builder.send_byte(
+                AB::F::from_canonical_u32(ByteOpcode::SR as u32),
+                local.top_bits[i],
+                b_bytes[i].clone(),
+                value.clone(),
+                is_real.clone(),
+            );
+        }
+
+        let mut v0123_coef = std::array::from_fn::<AB::Expr, WORD_SIZE, _>(|_| AB::Expr::zero());
+        let mut v012_1_3_coef = std::array::from_fn::<AB::Expr, WORD_SIZE, _>(|_| AB::Expr::zero());
+        let mut remaining_deg2 =
+            std::array::from_fn::<AB::Expr, WORD_BYTE_SIZE, _>(|_| AB::Expr::zero());
+        for i in 0..WORD_BYTE_SIZE {
+            remaining_deg2[i] = local.top_bits[i].into();
+            if i + 1 < WORD_BYTE_SIZE {
+                remaining_deg2[i] =
+                    remaining_deg2[i].clone() - local.top_bits[i + 1] * two_fifty_six;
+            }
+        }
+        for i in 0..WORD_SIZE {
+            if i < WORD_SIZE - 1 {
+                v0123_coef[i] = v0123_coef[i].clone() + b_bytes[2 * i + 2].clone();
+                v0123_coef[i] = v0123_coef[i].clone() + b_bytes[2 * i + 3].clone() * two_fifty_six;
+                v012_1_3_coef[i] =
+                    v012_1_3_coef[i].clone() + b_bytes[2 * i + 2].clone() * two_fifty_six;
+            }
+            if i < WORD_SIZE {
+                v012_1_3_coef[i] = v012_1_3_coef[i].clone() + b_bytes[2 * i + 1].clone();
+            }
+        }
+
+        for i in 0..WORD_SIZE {
+            let mut result = v0123_coef[i].clone() * v012b_3.clone();
+            result = result + v012_1_3_coef[i].clone() * (local.v_012 - v012b_3.clone());
+            result = result + remaining_deg2[2 * i + 1].clone() * local.c_bits[3];
+            if i < WORD_SIZE - 1 {
+                result =
+                    result + remaining_deg2[2 * i + 2].clone() * local.c_bits[3] * two_fifty_six;
+            }
+            result = result + remaining_deg2[2 * i].clone() * (one.clone() - local.c_bits[3]);
+            result = result
+                + remaining_deg2[2 * i + 1].clone()
+                    * (one.clone() - local.c_bits[3])
+                    * two_fifty_six;
+            builder.assert_eq(local.byte_result[i], result);
+        }
+
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            U16MSBOperationInput::<AB>::new(local.b.0[3].into(), local.b_msb, local.is_sra.into()),
+        );
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            U16MSBOperationInput::<AB>::new(local.b.0[1].into(), local.b_msb, local.is_sraw.into()),
+        );
+        builder.assert_eq(local.sra_msb_v0123, local.b_msb.msb * local.v_0123);
+
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            U16MSBOperationInput::<AB>::new(local.a.0[1].into(), local.srw_msb, is_word.clone()),
+        );
+        builder.when(local.is_srlw + local.is_srl).assert_eq(local.b_msb.msb, AB::Expr::zero());
+
+        for i in 0..WORD_SIZE {
+            builder.when(local.shift_u16[i]).assert_eq(
+                local.c_bits[4] + local.c_bits[5] * AB::F::from_canonical_u32(2) * not_word.clone(),
+                AB::Expr::from_canonical_u32(i as u32),
+            );
+            builder.assert_bool(local.shift_u16[i]);
+        }
+
+        builder.when(is_real.clone()).assert_eq(
+            local.shift_u16[0] + local.shift_u16[1] + local.shift_u16[2] + local.shift_u16[3],
+            AB::Expr::from_canonical_u32(1),
+        );
+
+        let base = AB::F::from_canonical_u32(65536);
+        let base_minus_one = AB::F::from_canonical_u32(65535);
+
+        // If the opcode is SRL/SRA:
+        for i in 0..WORD_SIZE {
+            for j in 0..(WORD_SIZE - 1 - i) {
+                builder.when(not_word.clone()).assert_eq(
+                    local.shift_u16[i] * (local.a[j] - local.byte_result[i + j]),
+                    AB::Expr::zero(),
+                );
+            }
+            builder.when(not_word.clone()).assert_eq(
+                local.shift_u16[i]
+                    * (local.a[WORD_SIZE - 1 - i]
+                        - local.byte_result[WORD_SIZE - 1]
+                        - (local.b_msb.msb * base - local.sra_msb_v0123)),
+                AB::Expr::zero(),
+            );
+            for j in (WORD_SIZE - i)..WORD_SIZE {
+                builder.when(not_word.clone()).assert_eq(
+                    local.shift_u16[i] * (local.a[j] - local.b_msb.msb * base_minus_one),
+                    AB::Expr::zero(),
+                );
+            }
+        }
+
+        // If the opcode is SRLW/SRAW/SRLIW/SRAIW:
+        builder
+            .when(is_word.clone())
+            .assert_eq(local.shift_u16[0] * (local.a[0] - local.byte_result[0]), AB::Expr::zero());
+        builder.when(is_word.clone()).assert_eq(
+            local.shift_u16[1]
+                * (local.a[0]
+                    - local.byte_result[1]
+                    - (local.b_msb.msb * base - local.sra_msb_v0123)),
+            AB::Expr::zero(),
+        );
+        builder.when(is_word.clone()).assert_eq(
+            local.shift_u16[1] * (local.a[1] - local.b_msb.msb * base_minus_one),
+            AB::Expr::zero(),
+        );
+        for i in WORD_SIZE / 2..WORD_SIZE {
+            builder.when(is_word.clone()).assert_eq(local.a[i], local.srw_msb.msb * base_minus_one);
+        }
 
         // Constrain the CPU state.
         // The program counter and timestamp increment by `4`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-            is_real.clone(),
+            CPUStateInput {
+                cols: local.state,
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
+                is_real: is_real.clone(),
+            },
         );
 
         // Constrain the program and register reads.

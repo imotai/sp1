@@ -7,14 +7,16 @@ mod test;
 mod zerocheck_unit_test;
 
 pub use logger::*;
-use p3_field::{AbstractField, Field};
 pub use prove::*;
 pub use span::*;
 #[cfg(test)]
 pub use test::*;
 pub use zerocheck_unit_test::*;
 
+use p3_field::{AbstractField, Field};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+// use sp1_core_executor::Instruction;
+// use p3_field::PrimeField64;
 use sp1_primitives::consts::WORD_BYTE_SIZE;
 pub use sp1_primitives::consts::{
     bytes_to_words_le, bytes_to_words_le_vec, num_to_comma_separated, words_to_bytes_le,
@@ -45,9 +47,20 @@ pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Ex
     let base = AB::Expr::from_canonical_u32(1 << 8);
     let result_words: Vec<Word<AB::Expr>> = limbs
         .chunks(WORD_BYTE_SIZE)
-        .map(|l| Word([l[0] + l[1] * base.clone(), l[2] + l[3] * base.clone()]))
+        .map(|l| {
+            Word([
+                l[0] + l[1] * base.clone(),
+                l[2] + l[3] * base.clone(),
+                l[4] + l[5] * base.clone(),
+                l[6] + l[7] * base.clone(),
+            ])
+        })
         .collect();
     result_words
+}
+
+pub fn u32_to_half_word<F: Field>(value: u32) -> [F; 2] {
+    [F::from_canonical_u16((value & 0xFFFF) as u16), F::from_canonical_u16((value >> 16) as u16)]
 }
 
 /// Pad to a power of two, with an option to specify the power.

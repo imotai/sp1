@@ -4,7 +4,7 @@ use itertools::Itertools;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use sp1_core_executor::{syscalls::SyscallCode, Opcode, DEFAULT_CLK_INC};
+use sp1_core_executor::{syscalls::SyscallCode, Opcode, CLK_INC, HALT_PC};
 use sp1_stark::{
     air::{
         BaseAirBuilder, InteractionScope, PublicValues, SP1AirBuilder, POSEIDON_NUM_WORDS,
@@ -39,7 +39,7 @@ where
             core::array::from_fn(|i| builder.public_values()[i]);
         let public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         > = public_values_slice.as_slice().borrow();
@@ -65,8 +65,8 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.next_pc.into(),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC + 256),
+            local.next_pc.map(Into::into),
+            AB::Expr::from_canonical_u32(CLK_INC + 256),
             local.is_real.into(),
         );
 
@@ -88,7 +88,15 @@ where
         builder
             .when(local.is_real)
             .when(AB::Expr::one() - local.is_halt)
-            .assert_eq(local.next_pc, local.state.pc + AB::Expr::from_canonical_u32(4));
+            .assert_eq(local.next_pc[0], local.state.pc[0] + AB::Expr::from_canonical_u32(4));
+        builder
+            .when(local.is_real)
+            .when(AB::Expr::one() - local.is_halt)
+            .assert_eq(local.next_pc[1], local.state.pc[1]);
+        builder
+            .when(local.is_real)
+            .when(AB::Expr::one() - local.is_halt)
+            .assert_eq(local.next_pc[2], local.state.pc[2]);
 
         // `num_extra_cycles` is checked to be equal to the return value of
         // `get_num_extra_ecall_cycles`
@@ -97,7 +105,7 @@ where
             self.get_num_extra_ecall_cycles::<AB>(&a, local),
         );
 
-        // ECALL instruction.
+        //ECALL instruction.
         self.eval_ecall(builder, &a, local);
 
         // COMMIT/COMMIT_DEFERRED_PROOFS ecall instruction.
@@ -123,7 +131,7 @@ impl SyscallInstrsChip {
     pub(crate) fn eval_ecall<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
-        prev_a_byte: &[AB::Expr; 4],
+        prev_a_byte: &[AB::Expr; 8],
         local: &SyscallInstrColumns<AB::Var>,
     ) {
         // We interpret the syscall_code as little-endian bytes and interpret each byte as a u8
@@ -136,26 +144,29 @@ impl SyscallInstrsChip {
         builder.when_not(local.is_real).assert_zero(send_to_table.clone());
         builder.when_not(local.is_real).assert_zero(local.is_halt);
         builder.when_not(local.is_real).assert_zero(local.is_commit_deferred_proofs.result);
+        builder.when(send_to_table.clone()).assert_zero(local.adapter.b()[3]);
+        builder.when(send_to_table.clone()).assert_zero(local.adapter.c()[3]);
+
+        let b_address = [local.adapter.b()[0], local.adapter.b()[1], local.adapter.b()[2]];
+        let c_address = [local.adapter.c()[0], local.adapter.c()[1], local.adapter.c()[2]];
 
         builder.send_syscall(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             syscall_id.clone(),
-            local.adapter.b().reduce::<AB>(),
-            local.adapter.c().reduce::<AB>(),
+            b_address,
+            c_address,
             send_to_table.clone(),
             InteractionScope::Local,
         );
 
         // Check if `op_b` and `op_c` are a valid BabyBear words.
         // SAFETY: The multiplicities are zero when `is_real = 0`.
-        // Note that `send_to_table = 1` implies `is_halt, is_commit_deferred_proofs` are zero,
-        // since the syscall cannot be `HALT` or `COMMIT_DEFERRED_PROOFS`.
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,
             *local.adapter.b(),
             local.op_b_range_check,
-            send_to_table.clone() + local.is_halt,
+            local.is_halt.into(),
         );
 
         // Check if `op_c` is a valid BabyBear word.
@@ -163,7 +174,7 @@ impl SyscallInstrsChip {
             builder,
             *local.adapter.c(),
             local.op_c_range_check,
-            send_to_table.clone() + local.is_commit_deferred_proofs.result,
+            local.is_commit_deferred_proofs.result.into(),
         );
 
         // Compute whether this ecall is ENTER_UNCONSTRAINED.
@@ -198,7 +209,7 @@ impl SyscallInstrsChip {
 
         // `op_a_val` is constrained.
         // When syscall_id is ENTER_UNCONSTRAINED, the new value of op_a should be 0.
-        let zero_word = Word::<AB::F>::from(0);
+        let zero_word = Word::<AB::F>::from(0u64);
         builder
             .when(local.is_real)
             .when(is_enter_unconstrained)
@@ -221,7 +232,7 @@ impl SyscallInstrsChip {
     pub(crate) fn eval_commit<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
-        prev_a_byte: &[AB::Expr; 4],
+        prev_a_byte: &[AB::Expr; 8],
         local: &SyscallInstrColumns<AB::Var>,
         commit_digest: [[AB::PublicVar; 4]; PV_DIGEST_NUM_WORDS],
         deferred_proofs_digest: [AB::PublicVar; POSEIDON_NUM_WORDS],
@@ -258,7 +269,7 @@ impl SyscallInstrsChip {
         builder
             .when(local.is_real)
             .when(is_commit.clone() + is_commit_deferred_proofs.clone())
-            .assert_zero(local.adapter.b()[1]);
+            .assert_zero(local.adapter.b()[1] + local.adapter.b()[2] + local.adapter.b()[3]);
 
         // Retrieve the expected public values digest word to check against the one passed into the
         // commit ecall. Note that for the interaction builder, it will not have any digest words,
@@ -281,6 +292,8 @@ impl SyscallInstrsChip {
                 + expected_pv_digest[1].clone() * AB::F::from_canonical_u32(1 << 8),
             expected_pv_digest[2].clone()
                 + expected_pv_digest[3].clone() * AB::F::from_canonical_u32(1 << 8),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
         ]);
 
         // Assert that the expected public value digest are valid bytes.
@@ -316,13 +329,17 @@ impl SyscallInstrsChip {
         local: &SyscallInstrColumns<AB::Var>,
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
     ) {
-        // `next_pc` is constrained for the case where `is_halt` is true to be `0`
-        builder.when(local.is_halt).assert_zero(local.next_pc);
+        // `next_pc` is constrained for the case where `is_halt` is true to be `1`
+        builder
+            .when(local.is_halt)
+            .assert_eq(local.next_pc[0], AB::Expr::from_canonical_u64(HALT_PC));
+        builder.when(local.is_halt).assert_zero(local.next_pc[1]);
+        builder.when(local.is_halt).assert_zero(local.next_pc[2]);
 
         // Check that the `op_b_value` reduced is the `public_values.exit_code`.
         builder
@@ -334,7 +351,7 @@ impl SyscallInstrsChip {
     pub(crate) fn eval_is_halt_syscall<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
-        prev_a_byte: &[AB::Expr; 4],
+        prev_a_byte: &[AB::Expr; 8],
         local: &SyscallInstrColumns<AB::Var>,
     ) {
         // `is_halt` is checked to be correct in `eval_is_halt_syscall`.
@@ -366,7 +383,7 @@ impl SyscallInstrsChip {
     pub(crate) fn get_is_commit_related_syscall<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
-        prev_a_byte: &[AB::Expr; 4],
+        prev_a_byte: &[AB::Expr; 8],
         local: &SyscallInstrColumns<AB::Var>,
     ) -> (AB::Expr, AB::Expr) {
         let syscall_id = prev_a_byte[0].clone();
@@ -407,7 +424,7 @@ impl SyscallInstrsChip {
     /// Returns the number of extra cycles from an ECALL instruction.
     pub(crate) fn get_num_extra_ecall_cycles<AB: SP1AirBuilder>(
         &self,
-        prev_a_byte: &[AB::Expr; 4],
+        prev_a_byte: &[AB::Expr; 8],
         local: &SyscallInstrColumns<AB::Var>,
     ) -> AB::Expr {
         let num_extra_cycles = prev_a_byte[2].clone();

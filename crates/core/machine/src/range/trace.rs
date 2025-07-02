@@ -40,11 +40,23 @@ impl<F: PrimeField32> MachineAir<F> for RangeChip<F> {
         let initial_timestamp_3 = (input.public_values.initial_timestamp & 0xFFFF) as u16;
         let last_timestamp_0 = ((input.public_values.last_timestamp >> 32) & 0xFFFF) as u16;
         let last_timestamp_3 = (input.public_values.last_timestamp & 0xFFFF) as u16;
+        let pc_start_0 = (input.public_values.pc_start & 0xFFFF) as u16;
+        let pc_start_1 = ((input.public_values.pc_start >> 16) & 0xFFFF) as u16;
+        let pc_start_2 = ((input.public_values.pc_start >> 32) & 0xFFFF) as u16;
+        let next_pc_0 = (input.public_values.next_pc & 0xFFFF) as u16;
+        let next_pc_1 = ((input.public_values.next_pc >> 16) & 0xFFFF) as u16;
+        let next_pc_2 = ((input.public_values.next_pc >> 32) & 0xFFFF) as u16;
 
         output.add_bit_range_check(initial_timestamp_0, 16);
         output.add_bit_range_check(initial_timestamp_3, 16);
         output.add_bit_range_check(last_timestamp_0, 16);
         output.add_bit_range_check(last_timestamp_3, 16);
+        output.add_bit_range_check(pc_start_0, 16);
+        output.add_bit_range_check(pc_start_1, 16);
+        output.add_bit_range_check(pc_start_2, 16);
+        output.add_bit_range_check(next_pc_0, 16);
+        output.add_bit_range_check(next_pc_1, 16);
+        output.add_bit_range_check(next_pc_2, 16);
     }
 
     fn generate_trace(
