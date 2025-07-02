@@ -150,20 +150,6 @@ pub struct RTypeReaderInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> RTypeReaderInput<AB> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: [AB::Var; 3],
-        opcode: AB::Expr,
-        op_a_write_value: Word<AB::Var>,
-        cols: RTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, op_a_write_value, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
     type Input = RTypeReaderInput<AB>;
     type Output = ();
@@ -193,19 +179,6 @@ pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
     pub opcode: AB::Expr,
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> RTypeReaderImmutableInput<AB> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: [AB::Var; 3],
-        opcode: AB::Expr,
-        cols: RTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {

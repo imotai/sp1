@@ -87,18 +87,6 @@ pub struct BitwiseOperationInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> BitwiseOperationInput<AB> {
-    pub fn new(
-        a: [AB::Expr; WORD_BYTE_SIZE],
-        b: [AB::Expr; WORD_BYTE_SIZE],
-        cols: BitwiseOperation<AB::Var>,
-        opcode: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { a, b, cols, opcode, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for BitwiseOperation<AB::F> {
     type Input = BitwiseOperationInput<AB>;
     type Output = ();

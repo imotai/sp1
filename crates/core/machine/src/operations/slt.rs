@@ -268,17 +268,6 @@ pub struct LtOperationUnsignedInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> LtOperationUnsignedInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: LtOperationUnsigned<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, is_real }
-    }
-}
-
 impl<AB> SP1Operation<AB> for LtOperationUnsigned<AB::F>
 where
     AB: SP1AirBuilder + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>,
@@ -298,18 +287,6 @@ pub struct LtOperationSignedInput<AB: SP1AirBuilder> {
     pub cols: LtOperationSigned<AB::Var>,
     pub is_signed: AB::Expr,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> LtOperationSignedInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: LtOperationSigned<AB::Var>,
-        is_signed: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, is_signed, is_real }
-    }
 }
 
 impl<AB> SP1Operation<AB> for LtOperationSigned<AB::F>

@@ -76,17 +76,6 @@ pub struct AddOperationInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> AddOperationInput<AB> {
-    pub fn new(
-        a: Word<AB::Expr>,
-        b: Word<AB::Expr>,
-        cols: AddOperation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { a, b, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for AddOperation<AB::F> {
     type Input = AddOperationInput<AB>;
     type Output = ();

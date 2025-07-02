@@ -89,12 +89,6 @@ pub struct IsZeroOperationInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> IsZeroOperationInput<AB> {
-    pub fn new(a: AB::Expr, cols: IsZeroOperation<AB::Var>, is_real: AB::Expr) -> Self {
-        Self { a, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for IsZeroOperation<AB::F> {
     type Input = IsZeroOperationInput<AB>;
     type Output = ();

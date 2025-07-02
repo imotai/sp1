@@ -2478,6 +2478,7 @@ dependencies = [
 name = "sp1-derive"
 version = "5.0.5"
 dependencies = [
+ "proc-macro2",
  "quote",
  "syn 1.0.109",
 ]

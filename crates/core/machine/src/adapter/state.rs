@@ -105,17 +105,6 @@ pub struct CPUStateInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> CPUStateInput<AB> {
-    pub fn new(
-        cols: CPUState<AB::Var>,
-        next_pc: [AB::Expr; 3],
-        clk_increment: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { cols, next_pc, clk_increment, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for CPUState<AB::F> {
     type Input = CPUStateInput<AB>;
     type Output = ();

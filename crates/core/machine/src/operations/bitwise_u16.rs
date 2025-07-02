@@ -112,18 +112,6 @@ pub struct BitwiseU16OperationInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> BitwiseU16OperationInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: BitwiseU16Operation<AB::Var>,
-        opcode: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, opcode, is_real }
-    }
-}
-
 impl<AB> SP1Operation<AB> for BitwiseU16Operation<AB::F>
 where
     AB: SP1AirBuilder

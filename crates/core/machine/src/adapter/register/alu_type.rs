@@ -166,20 +166,6 @@ pub struct ALUTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> ALUTypeReaderInput<AB, T> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: [AB::Var; 3],
-        opcode: AB::Expr,
-        op_a_write_value: Word<T>,
-        cols: ALUTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, op_a_write_value, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for ALUTypeReader<AB::F> {
     type Input = ALUTypeReaderInput<AB, AB::Expr>;
     type Output = ();

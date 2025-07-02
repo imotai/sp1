@@ -87,16 +87,6 @@ pub struct U16toU8OperationSafeInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> U16toU8OperationSafeInput<AB> {
-    pub fn new(
-        u16_values: [AB::Expr; WORD_SIZE],
-        cols: U16toU8Operation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { u16_values, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationSafe {
     type Input = U16toU8OperationSafeInput<AB>;
     type Output = [AB::Expr; WORD_BYTE_SIZE];
@@ -118,12 +108,6 @@ pub struct U16toU8OperationUnsafe;
 pub struct U16toU8OperationUnsafeInput<AB: SP1AirBuilder> {
     pub u16_values: [AB::Expr; WORD_SIZE],
     pub cols: U16toU8Operation<AB::Var>,
-}
-
-impl<AB: SP1AirBuilder> U16toU8OperationUnsafeInput<AB> {
-    pub fn new(u16_values: [AB::Expr; WORD_SIZE], cols: U16toU8Operation<AB::Var>) -> Self {
-        Self { u16_values, cols }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationUnsafe {

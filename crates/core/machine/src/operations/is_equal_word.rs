@@ -86,17 +86,6 @@ pub struct IsEqualWordOperationInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> IsEqualWordOperationInput<AB> {
-    pub fn new(
-        a: Word<AB::Expr>,
-        b: Word<AB::Expr>,
-        cols: IsEqualWordOperation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { a, b, cols, is_real }
-    }
-}
-
 impl<
         AB: SP1AirBuilder
             + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>

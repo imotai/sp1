@@ -99,16 +99,6 @@ pub struct IsZeroWordOperationInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> IsZeroWordOperationInput<AB> {
-    pub fn new(
-        a: Word<AB::Expr>,
-        cols: IsZeroWordOperation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> IsZeroWordOperationInput<AB> {
-        Self { a, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>>
     SP1Operation<AB> for IsZeroWordOperation<AB::F>
 {
