@@ -28,7 +28,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey, ShardProof,
+    BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey, ShardProof,
 };
 use std::{
     borrow::Borrow,

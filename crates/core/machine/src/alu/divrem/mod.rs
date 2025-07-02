@@ -796,7 +796,7 @@ where
 
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     truncated_b,
                     Word::from(i32::MIN as u32 as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_b,
@@ -806,7 +806,7 @@ where
 
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     truncated_c,
                     Word::from(-1i32 as u32 as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_c,

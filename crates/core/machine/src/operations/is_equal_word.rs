@@ -1,7 +1,7 @@
 use p3_air::AirBuilder;
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{air::SP1AirBuilder, Word};
 

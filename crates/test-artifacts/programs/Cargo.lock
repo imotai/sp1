@@ -328,7 +328,7 @@ version = "1.1.0"
 dependencies = [
  "common-test-utils",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm-64",
 ]
 
@@ -371,7 +371,7 @@ name = "bls12381-mul-test"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm-64",
 ]
 
@@ -381,7 +381,7 @@ version = "1.1.0"
 dependencies = [
  "common-test-utils",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm-64",
 ]
 
@@ -424,7 +424,7 @@ name = "bn254-mul-test"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm-64",
 ]
 
@@ -2183,7 +2183,7 @@ version = "1.1.0"
 dependencies = [
  "common-test-utils",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm-64",
 ]
 
@@ -2219,7 +2219,7 @@ dependencies = [
  "num",
  "p256",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm-64",
 ]
 
@@ -2240,7 +2240,7 @@ dependencies = [
  "num",
  "p256",
  "sp1-curves",
- "sp1-lib 5.0.0",
+ "sp1-lib 5.0.5",
  "sp1-zkvm-64",
 ]
 
@@ -2523,7 +2523,7 @@ dependencies = [
 
 [[package]]
 name = "sp1-zkvm-64"
-version = "5.0.0"
+version = "5.0.5"
 dependencies = [
  "cfg-if",
  "getrandom 0.2.16",
@@ -2922,7 +2922,7 @@ name = "verify-proof"
 version = "1.1.0"
 dependencies = [
  "hex",
- "sha2 0.10.8",
+ "sha2 0.10.9",
  "sp1-zkvm-64",
 ]
 

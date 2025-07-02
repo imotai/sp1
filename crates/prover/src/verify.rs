@@ -17,7 +17,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierError,
+    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierConfigError, MachineVerifierError,
 };
 // // use sp1_recursion_circuit::machine::RootPublicValues;
 // // use sp1_recursion_core::{air::RecursionPublicValues, stark::BabyBearPoseidon2Outer};

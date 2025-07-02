@@ -64,7 +64,9 @@ impl SP1OperationOutput<Word<ExprRef<F>>> for Word<ExprRef<F>> {
     fn alloc() -> Self {
         let a0 = GLOBAL_AST.lock().unwrap().alloc();
         let a1 = GLOBAL_AST.lock().unwrap().alloc();
-        Word([a0, a1])
+        let a2 = GLOBAL_AST.lock().unwrap().alloc();
+        let a3 = GLOBAL_AST.lock().unwrap().alloc();
+        Word([a0, a1, a2, a3])
     }
 
     fn to_output(&self, ctx: &mut FuncCtx) -> Self {

@@ -5,7 +5,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 
 use crate::air::{SP1Operation, SP1OperationBuilder};

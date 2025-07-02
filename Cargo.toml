@@ -101,27 +101,27 @@ sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "5.0.0", default-feature
 sp1-zkvm-64 = { path = "crates/zkvm/entrypoint64", version = "5.0.0", default-features = false }
 
 # slop
-slop-algebra = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-alloc = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-basefold = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-fri = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-commit = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-jagged = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-sumcheck = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-stacked = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-tensor = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-multilinear = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-challenger = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-air = { git = "https://github.com/succinctlabs/slop" , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324" }
-slop-matrix = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-baby-bear = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-bn254 = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-symmetric = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-merkle-tree = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-futures = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-maybe-rayon = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
-slop-poseidon2 = { git = "https://github.com/succinctlabs/slop"  , rev = "e5a97e34fc7b35617d8e436fec2db476efa52324"}
+slop-algebra = { git = "https://github.com/succinctlabs/slop" }
+slop-alloc = { git = "https://github.com/succinctlabs/slop" }
+slop-basefold = { git = "https://github.com/succinctlabs/slop" }
+slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
+slop-fri = { git = "https://github.com/succinctlabs/slop" }
+slop-commit = { git = "https://github.com/succinctlabs/slop" }
+slop-jagged = { git = "https://github.com/succinctlabs/slop" }
+slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
+slop-stacked = { git = "https://github.com/succinctlabs/slop" }
+slop-tensor = { git = "https://github.com/succinctlabs/slop" }
+slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
+slop-challenger = { git = "https://github.com/succinctlabs/slop" }
+slop-air = { git = "https://github.com/succinctlabs/slop" }
+slop-matrix = { git = "https://github.com/succinctlabs/slop" }
+slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
+slop-bn254 = { git = "https://github.com/succinctlabs/slop" }
+slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
+slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
+slop-futures = { git = "https://github.com/succinctlabs/slop" }
+slop-maybe-rayon = { git = "https://github.com/succinctlabs/slop" }
+slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
 
 # For local development.
 # slop-algebra = { path = "../slop/crates/algebra" }

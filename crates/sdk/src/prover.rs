@@ -18,7 +18,7 @@ use sp1_prover::{
     local::LocalProver,
     CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
-use sp1_stark::{air::PublicValues, MachineVerifierError};
+use sp1_stark::{air::PublicValues, MachineVerifierConfigError};
 use thiserror::Error;
 
 /// The module that exposes the [`ExecuteRequest`] type.
