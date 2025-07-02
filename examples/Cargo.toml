@@ -98,6 +98,7 @@ tracing = "0.1.40"
 # bls12_381 = { git = "https://github.com/sp1-patches/bls12_381", tag = "patch-0.8.0-sp1-4.0.0" }
 # bls12_381 = { path = "../../patch-64/bls12_381" }
 # sp1_bls12_381 = { path = "../../patch-64/sp1_bls12_381" }
+# k256 = { path = "../../patch-64/elliptic-curves/k256" }
 
 # todo!(n) remove
 sp1-lib = { path = "../crates/zkvm/lib" }
