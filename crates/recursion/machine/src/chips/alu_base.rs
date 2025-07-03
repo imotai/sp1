@@ -8,7 +8,7 @@ use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, Paral
 use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_executor::{
-    Address, BaseAluInstr, BaseAluIo, ExecutionRecord, Instruction, RecursionProgram,
+    Address, BaseAluInstr, BaseAluIo, BaseAluOpcode, ExecutionRecord, Instruction, RecursionProgram,
 };
 use sp1_stark::air::MachineAir;
 use std::{borrow::BorrowMut, iter::zip};
@@ -107,10 +107,23 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
         let populate_len = instrs.len() * NUM_BASE_ALU_ACCESS_COLS;
         values[..populate_len].par_chunks_mut(NUM_BASE_ALU_ACCESS_COLS).zip_eq(instrs).for_each(
             |(row, instr)| {
+                let BaseAluInstr { opcode, mult, addrs } = instr;
                 let access: &mut BaseAluAccessCols<_> = row.borrow_mut();
-                unsafe {
-                    crate::sys::alu_base_instr_to_row_babybear(instr, access);
-                }
+                *access = BaseAluAccessCols {
+                    addrs: addrs.to_owned(),
+                    is_add: BabyBear::from_bool(false),
+                    is_sub: BabyBear::from_bool(false),
+                    is_mul: BabyBear::from_bool(false),
+                    is_div: BabyBear::from_bool(false),
+                    mult: mult.to_owned(),
+                };
+                let target_flag = match opcode {
+                    BaseAluOpcode::AddF => &mut access.is_add,
+                    BaseAluOpcode::SubF => &mut access.is_sub,
+                    BaseAluOpcode::MulF => &mut access.is_mul,
+                    BaseAluOpcode::DivF => &mut access.is_div,
+                };
+                *target_flag = BabyBear::from_bool(true);
             },
         );
 
@@ -151,9 +164,7 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
         values[..populate_len].par_chunks_mut(NUM_BASE_ALU_VALUE_COLS).zip_eq(events).for_each(
             |(row, &vals)| {
                 let cols: &mut BaseAluValueCols<_> = row.borrow_mut();
-                unsafe {
-                    crate::sys::alu_base_event_to_row_babybear(&vals, cols);
-                }
+                *cols = BaseAluValueCols { vals };
             },
         );
 

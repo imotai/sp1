@@ -3,7 +3,10 @@ use p3_matrix::dense::RowMajorMatrix;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
 use slop_maybe_rayon::prelude::*;
-use sp1_core_machine::{operations::poseidon2::WIDTH, utils::next_multiple_of_32};
+use sp1_core_machine::{
+    operations::poseidon2::{trace::populate_perm, WIDTH},
+    utils::next_multiple_of_32,
+};
 use sp1_recursion_executor::{
     ExecutionRecord, Instruction::Poseidon2, Poseidon2Io, Poseidon2SkinnyInstr, RecursionProgram,
 };
@@ -12,6 +15,7 @@ use std::{borrow::BorrowMut, mem::size_of};
 use tracing::instrument;
 
 use super::{columns::preprocessed::Poseidon2PreprocessedColsWide, Poseidon2WideChip};
+use crate::chips::mem::MemoryAccessCols;
 
 const PREPROCESSED_POSEIDON2_WIDTH: usize = size_of::<Poseidon2PreprocessedColsWide<u8>>();
 
@@ -53,30 +57,21 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
             )
         };
         let padded_nb_rows = self.num_rows(input).unwrap();
-        let num_columns = <Self as BaseAir<F>>::width(self);
+        let num_columns = <Self as BaseAir<BabyBear>>::width(self);
         let mut values = vec![BabyBear::zero(); padded_nb_rows * num_columns];
 
         let populate_len = input.poseidon2_events.len() * num_columns;
         let (values_pop, values_dummy) = values.split_at_mut(populate_len);
 
-        let populate_perm_ffi = |input: &[BabyBear; WIDTH], input_row: &mut [BabyBear]| unsafe {
-            crate::sys::poseidon2_wide_event_to_row_babybear(
-                input.as_ptr(),
-                input_row.as_mut_ptr(),
-                DEGREE == 3,
-            )
-        };
-
         join(
             || {
-                values_pop
-                    .par_chunks_mut(num_columns)
-                    .zip_eq(events)
-                    .for_each(|(row, event)| populate_perm_ffi(&event.input, row))
+                values_pop.par_chunks_mut(num_columns).zip_eq(events).for_each(|(row, &event)| {
+                    populate_perm::<BabyBear, DEGREE>(event.input, Some(event.output), row);
+                })
             },
             || {
                 let mut dummy_row = vec![BabyBear::zero(); num_columns];
-                populate_perm_ffi(&[BabyBear::zero(); WIDTH], &mut dummy_row);
+                populate_perm::<BabyBear, DEGREE>([BabyBear::zero(); WIDTH], None, &mut dummy_row);
                 values_dummy
                     .par_chunks_mut(num_columns)
                     .for_each(|row| row.copy_from_slice(&dummy_row))
@@ -136,9 +131,15 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
             .par_chunks_mut(PREPROCESSED_POSEIDON2_WIDTH)
             .zip_eq(instrs)
             .for_each(|(row, instr)| {
-                let cols: &mut Poseidon2PreprocessedColsWide<_> = row.borrow_mut();
-                unsafe {
-                    crate::sys::poseidon2_wide_instr_to_row_babybear(instr, cols);
+                // Set the memory columns. We read once, at the first iteration,
+                // and write once, at the last iteration.
+                *row.borrow_mut() = Poseidon2PreprocessedColsWide {
+                    input: instr.addrs.input,
+                    output: std::array::from_fn(|j| MemoryAccessCols {
+                        addr: instr.addrs.output[j],
+                        mult: instr.mults[j],
+                    }),
+                    is_real_neg: BabyBear::neg_one(),
                 }
             });
 

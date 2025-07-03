@@ -7,7 +7,8 @@ use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, Paral
 use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_executor::{
-    Address, Block, ExecutionRecord, ExtAluInstr, ExtAluIo, Instruction, RecursionProgram, D,
+    Address, Block, ExecutionRecord, ExtAluInstr, ExtAluIo, ExtAluOpcode, Instruction,
+    RecursionProgram, D,
 };
 use sp1_stark::air::{ExtensionAirBuilder, MachineAir};
 use std::{borrow::BorrowMut, iter::zip};
@@ -107,10 +108,23 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ExtAluChip {
         let populate_len = instrs.len() * NUM_EXT_ALU_ACCESS_COLS;
         values[..populate_len].par_chunks_mut(NUM_EXT_ALU_ACCESS_COLS).zip_eq(instrs).for_each(
             |(row, instr)| {
+                let ExtAluInstr { opcode, mult, addrs } = instr;
                 let access: &mut ExtAluAccessCols<_> = row.borrow_mut();
-                unsafe {
-                    crate::sys::alu_ext_instr_to_row_babybear(instr, access);
-                }
+                *access = ExtAluAccessCols {
+                    addrs: addrs.to_owned(),
+                    is_add: BabyBear::from_bool(false),
+                    is_sub: BabyBear::from_bool(false),
+                    is_mul: BabyBear::from_bool(false),
+                    is_div: BabyBear::from_bool(false),
+                    mult: mult.to_owned(),
+                };
+                let target_flag = match opcode {
+                    ExtAluOpcode::AddE => &mut access.is_add,
+                    ExtAluOpcode::SubE => &mut access.is_sub,
+                    ExtAluOpcode::MulE => &mut access.is_mul,
+                    ExtAluOpcode::DivE => &mut access.is_div,
+                };
+                *target_flag = BabyBear::from_bool(true);
             },
         );
 
@@ -152,9 +166,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ExtAluChip {
         values[..populate_len].par_chunks_mut(NUM_EXT_ALU_VALUE_COLS).zip_eq(events).for_each(
             |(row, &vals)| {
                 let cols: &mut ExtAluValueCols<_> = row.borrow_mut();
-                unsafe {
-                    crate::sys::alu_ext_event_to_row_babybear(&vals, cols);
-                }
+                *cols = ExtAluValueCols { vals };
             },
         );
 

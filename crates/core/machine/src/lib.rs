@@ -28,8 +28,6 @@ pub mod operations;
 pub mod program;
 pub mod range;
 pub mod riscv;
-#[cfg(feature = "sys")]
-pub mod sys;
 pub mod syscall;
 pub mod utils;
 
