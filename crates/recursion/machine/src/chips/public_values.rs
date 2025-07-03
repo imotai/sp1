@@ -13,6 +13,7 @@ use sp1_stark::air::MachineAir;
 use std::borrow::{Borrow, BorrowMut};
 
 use super::mem::MemoryAccessColsChips;
+use crate::chips::mem::MemoryAccessCols;
 
 pub const NUM_PUBLIC_VALUES_COLS: usize = core::mem::size_of::<PublicValuesCols<u8>>();
 pub const NUM_PUBLIC_VALUES_PREPROCESSED_COLS: usize =
@@ -77,7 +78,7 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         );
 
         let mut rows: Vec<[BabyBear; NUM_PUBLIC_VALUES_PREPROCESSED_COLS]> = Vec::new();
-        let commit_pv_hash_instrs: Vec<&Box<CommitPublicValuesInstr<BabyBear>>> = program
+        let commit_pv_hash_instrs = program
             .inner
             .iter()
             .filter_map(|instruction| {
@@ -101,13 +102,12 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         // We only take 1 commit pv hash instruction, since our air only checks for one public
         // values hash.
         for instr in commit_pv_hash_instrs.iter().take(1) {
-            for i in 0..DIGEST_SIZE {
+            for (i, addr) in instr.pv_addrs.digest.iter().enumerate() {
                 let mut row = [BabyBear::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS];
                 let cols: &mut PublicValuesPreprocessedCols<BabyBear> =
                     row.as_mut_slice().borrow_mut();
-                unsafe {
-                    crate::sys::public_values_instr_to_row_babybear(instr, i, cols);
-                }
+                cols.pv_idx[i] = BabyBear::one();
+                cols.pv_mem = MemoryAccessCols { addr: *addr, mult: BabyBear::neg_one() };
                 rows.push(row);
             }
         }
@@ -156,12 +156,12 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
                     event,
                 )
             };
-            for i in 0..DIGEST_SIZE {
+
+            for element in bb_event.public_values.digest.iter() {
                 let mut row = [BabyBear::zero(); NUM_PUBLIC_VALUES_COLS];
                 let cols: &mut PublicValuesCols<BabyBear> = row.as_mut_slice().borrow_mut();
-                unsafe {
-                    crate::sys::public_values_event_to_row_babybear(bb_event, i, cols);
-                }
+
+                cols.pv_element = *element;
                 rows.push(row);
             }
         }

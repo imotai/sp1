@@ -8,7 +8,6 @@ license = { workspace = true }
 repository = { workspace = true }
 keywords = { workspace = true }
 categories = { workspace = true }
-links = "sp1-recursion-machine-sys"
 
 [dependencies]
 sp1-core-machine = { workspace = true }
@@ -56,12 +55,6 @@ sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 
 [dev-dependencies]
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
-
-
-[features]
-default = ["sys"]
-sys = ["sp1-core-machine/sys"]
-
 
 [lints]
 workspace = true
