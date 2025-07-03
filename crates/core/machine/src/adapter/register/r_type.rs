@@ -4,7 +4,7 @@ use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     Instruction, RTypeRecord,
 };
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use sp1_stark::{air::SP1AirBuilder, Word};
 
@@ -15,7 +15,17 @@ use crate::{
 };
 
 /// A set of columns to read operations with op_a, op_b, op_c being registers.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct RTypeReader<T> {
     pub op_a: T,
@@ -129,33 +139,19 @@ impl<F: Field> RTypeReader<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
-pub struct RTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
+#[derive(Clone, InputParams, InputExpr)]
+pub struct RTypeReaderInput<AB: SP1AirBuilder> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
     pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
-    pub op_a_write_value: Word<T>,
+    pub op_a_write_value: Word<AB::Var>,
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> RTypeReaderInput<AB, T> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: [AB::Var; 3],
-        opcode: AB::Expr,
-        op_a_write_value: Word<T>,
-        cols: RTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, op_a_write_value, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
-    type Input = RTypeReaderInput<AB, AB::Var>;
+    type Input = RTypeReaderInput<AB>;
     type Output = ();
 
     fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
@@ -172,10 +168,10 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, SP1OperationBuilder)]
 pub struct RTypeReaderImmutable;
 
-#[derive(Debug, Clone, SP1OperationInput)]
+#[derive(Debug, Clone, InputParams, InputExpr)]
 pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
@@ -183,19 +179,6 @@ pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
     pub opcode: AB::Expr,
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> RTypeReaderImmutableInput<AB> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: [AB::Var; 3],
-        opcode: AB::Expr,
-        cols: RTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
@@ -214,3 +197,53 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
         )
     }
 }
+
+// impl<T: Into<<ConstraintCompiler as AirBuilder>::Expr> + Clone>
+//     Into<Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>, ExprExtRef<sp1_stark::ir::EF>>>
+//     for RTypeReaderInput<ConstraintCompiler>
+// {
+//     fn into(
+//         self,
+//     ) -> Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>, ExprExtRef<sp1_stark::ir::EF>> {
+//         Shape::Struct(
+//             "RTypeReaderInput".to_string(),
+//             vec![
+//                 ("clk_high".to_string(), Box::new(self.clk_high.into())),
+//                 ("clk_low".to_string(), Box::new(self.clk_low.into())),
+//                 ("pc".to_string(), Box::new(self.pc.into())),
+//                 ("opcode".to_string(), Box::new(self.opcode.into())),
+//                 ("op_a_write_value".to_string(), Box::new(self.op_a_write_value.into())),
+//                 ("cols".to_string(), Box::new(self.cols.into())),
+//                 ("is_real".to_string(), Box::new(self.is_real.into())),
+//             ],
+//         )
+//     }
+// }
+
+// impl RTypeReaderInput<ConstraintCompiler>
+// {
+//     // fn params_vec(
+//     //     self,
+//     // ) -> Vec<(
+//     //     String,
+//     //     Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>, ExprExtRef<sp1_stark::ir::EF>>,
+//     // )> {
+//     //     vec![
+//     //         // for demonstration only; not all fields are filled in
+//     //         ("clk_high".to_string(), self.clk_high.into()),
+//     //         ("op_a_write_value".to_string(), self.op_a_write_value.into()),
+//     //     ]
+//     // }
+//
+//     fn to_input(&self, ctx: &mut FuncCtx) -> RTypeReaderInput<ConstraintCompiler> {
+//         RTypeReaderInput::new(
+//             Expr::input_arg(ctx),
+//             Expr::input_arg(ctx),
+//             Expr::input_arg(ctx),
+//             Expr::input_arg(ctx),
+//             Expr::input_from_struct(ctx),
+//             Expr::input_from_struct(ctx),
+//             Expr::input_arg(ctx),
+//         )
+//     }
+// }

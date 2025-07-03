@@ -6,7 +6,7 @@ use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::air::SP1AirBuilder;
 
-use super::IsZeroOperation;
+use super::{IsZeroOperation, IsZeroOperationInput};
 use crate::air::{SP1Operation, SP1OperationBuilder};
 
 /// A set of columns needed to validate the address and return the aligned address.
@@ -67,7 +67,7 @@ impl<F: Field> SyscallAddrOperation<F> {
 
         IsZeroOperation::<AB::F>::eval(
             builder,
-            (
+            IsZeroOperationInput::new(
                 sum_top_two_limb.clone() - AB::Expr::from_canonical_u16(u16::MAX) * AB::Expr::two(),
                 cols.top_two_limb_max,
                 is_real.clone(),

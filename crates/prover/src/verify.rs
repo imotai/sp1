@@ -17,7 +17,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierError,
+    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierConfigError, MachineVerifierError,
 };
 // // use sp1_recursion_circuit::machine::RootPublicValues;
 // // use sp1_recursion_core::{air::RecursionPublicValues, stark::BabyBearPoseidon2Outer};
@@ -68,7 +68,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         proof: &SP1CoreProofData,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         let SP1VerifyingKey { vk } = vk;
 
         if proof.0.is_empty() {
@@ -332,7 +332,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         proof: &SP1ReduceProof<BabyBearPoseidon2>,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         let SP1ReduceProof { vk: compress_vk, proof } = proof;
         let mut challenger = self.recursion_prover.verifier().challenger();
         compress_vk.observe_into(&mut challenger);
@@ -380,7 +380,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         proof: &SP1ReduceProof<BabyBearPoseidon2>,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         let SP1ReduceProof { vk: compress_vk, proof } = proof;
         let mut challenger = self.recursion_prover.shrink_verifier().challenger();
         compress_vk.observe_into(&mut challenger);
@@ -428,7 +428,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         proof: &SP1ReduceProof<Bn254JaggedConfig>,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierError<OuterSC>> {
+    ) -> Result<(), MachineVerifierConfigError<OuterSC>> {
         let SP1ReduceProof { vk: _, proof } = proof;
         let wrap_vk = self.recursion_prover.wrap_keys().1;
         let mut challenger = self.recursion_prover.wrap_verifier().challenger();
@@ -601,7 +601,7 @@ impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
         vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
         _vk_hash: [u32; 8],
         _committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerifierError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         // Check that the vk hash matches the vk hash from the input.
         // if vk.hash_u32() != vk_hash {
         //     return Err(MachineVerifierError::InvalidPublicValues(

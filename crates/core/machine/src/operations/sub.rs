@@ -5,12 +5,22 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::air::{SP1Operation, WordAirBuilder};
 
 /// A set of columns needed to compute the sub of two words.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct SubOperation<T> {
     /// The result of `a - b`.
@@ -56,23 +66,12 @@ impl<F: Field> SubOperation<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputExpr, InputParams)]
 pub struct SubOperationInput<AB: SP1AirBuilder> {
     pub a: Word<AB::Var>,
     pub b: Word<AB::Var>,
     pub cols: SubOperation<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> SubOperationInput<AB> {
-    pub fn new(
-        a: Word<AB::Var>,
-        b: Word<AB::Var>,
-        cols: SubOperation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { a, b, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for SubOperation<AB::F> {

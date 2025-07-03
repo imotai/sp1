@@ -5,7 +5,7 @@ use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     ALUTypeRecord, Instruction,
 };
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use sp1_stark::{air::SP1AirBuilder, Word};
 
@@ -17,7 +17,17 @@ use crate::{
 
 /// A set of columns to read operations with op_a and op_b being registers and op_c being a register
 /// or immediate.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct ALUTypeReader<T> {
     pub op_a: T,
@@ -145,7 +155,7 @@ impl<F: Field> ALUTypeReader<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputParams, InputExpr)]
 pub struct ALUTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
@@ -154,20 +164,6 @@ pub struct ALUTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub op_a_write_value: Word<T>,
     pub cols: ALUTypeReader<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> ALUTypeReaderInput<AB, T> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: [AB::Var; 3],
-        opcode: AB::Expr,
-        op_a_write_value: Word<T>,
-        cols: ALUTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, op_a_write_value, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for ALUTypeReader<AB::F> {

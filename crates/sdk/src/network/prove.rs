@@ -11,7 +11,7 @@ use crate::prover::BaseProveRequest;
 
 use crate::{prover::ProveRequest, utils::sp1_dump, NetworkProver, SP1ProofWithPublicValues};
 
-use super::proto::network::FulfillmentStrategy;
+use super::proto::types::FulfillmentStrategy;
 
 use std::{
     future::{Future, IntoFuture},
@@ -29,6 +29,10 @@ pub struct NetworkProveBuilder<'a> {
     pub(crate) tee_2fa: bool,
     pub(crate) min_auction_period: u64,
     pub(crate) whitelist: Vec<Address>,
+    pub(crate) auctioneer: Option<Address>,
+    pub(crate) executor: Option<Address>,
+    pub(crate) verifier: Option<Address>,
+    pub(crate) max_price_per_pgu: Option<u64>,
 }
 
 impl NetworkProveBuilder<'_> {
@@ -260,18 +264,6 @@ impl NetworkProveBuilder<'_> {
     /// let proof = client.prove(pk, stdin).run_async();
     /// ```
     pub async fn run_async(mut self) -> Result<SP1ProofWithPublicValues> {
-        let NetworkProveBuilder {
-            base: BaseProveRequest { prover, mode, pk, stdin, context_builder: _ },
-            timeout,
-            strategy,
-            skip_simulation,
-            cycle_limit,
-            gas_limit,
-            tee_2fa,
-            min_auction_period,
-            whitelist,
-        } = self;
-
         // Check for deprecated environment variable
         if let Ok(val) = std::env::var("SKIP_SIMULATION") {
             eprintln!(
@@ -280,21 +272,26 @@ impl NetworkProveBuilder<'_> {
             self.skip_simulation = matches!(val.to_lowercase().as_str(), "true" | "1");
         }
 
-        sp1_dump(&pk.elf, &stdin);
+        sp1_dump(&self.base.pk.elf, &self.base.stdin);
 
-        prover
+        self.base
+            .prover
             .prove_impl(
-                pk,
-                stdin,
-                mode,
-                strategy,
-                timeout,
-                skip_simulation,
-                cycle_limit,
-                gas_limit,
-                tee_2fa,
-                min_auction_period,
-                whitelist,
+                self.base.pk,
+                self.base.stdin,
+                self.base.mode,
+                self.strategy,
+                self.timeout,
+                self.skip_simulation,
+                self.cycle_limit,
+                self.gas_limit,
+                self.tee_2fa,
+                self.min_auction_period,
+                self.whitelist,
+                self.auctioneer,
+                self.executor,
+                self.verifier,
+                self.max_price_per_pgu,
             )
             .await
     }

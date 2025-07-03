@@ -5,7 +5,7 @@ use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{
     prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
-    BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierError, ShardVerifier,
+    BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierConfigError, ShardVerifier,
 };
 use tracing::Instrument;
 
@@ -22,7 +22,7 @@ use super::prove_core;
 pub async fn run_test(
     program: Program,
     inputs: SP1Stdin,
-) -> Result<SP1PublicValues, MachineVerifierError<BabyBearPoseidon2>> {
+) -> Result<SP1PublicValues, MachineVerifierConfigError<BabyBearPoseidon2>> {
     let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
     runtime.write_vecs(&inputs.buffer);
     runtime.run::<Trace>().unwrap();
@@ -71,7 +71,7 @@ pub async fn run_test(
 pub async fn run_test_core(
     runtime: Executor<'static>,
     inputs: SP1Stdin,
-) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierError<BabyBearPoseidon2>> {
+) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierConfigError<BabyBearPoseidon2>> {
     let log_blowup = 1;
     let log_stacking_height = 21;
     let max_log_row_count = 22;

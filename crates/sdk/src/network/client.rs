@@ -25,15 +25,19 @@ use super::{
 };
 use crate::network::proto::{
     artifact::{artifact_store_client::ArtifactStoreClient, ArtifactType, CreateArtifactRequest},
-    network::{
-        prover_network_client::ProverNetworkClient, CreateProgramRequest, CreateProgramRequestBody,
-        CreateProgramResponse, FulfillmentStatus, FulfillmentStrategy, GetBalanceRequest,
-        GetFilteredProofRequestsRequest, GetFilteredProofRequestsResponse, GetNonceRequest,
-        GetProgramRequest, GetProgramResponse, GetProofRequestStatusRequest,
-        GetProofRequestStatusResponse, MessageFormat, ProofMode, RequestProofRequest,
-        RequestProofRequestBody, RequestProofResponse,
+    network::prover_network_client::ProverNetworkClient,
+    types::{
+        CreateProgramRequest, CreateProgramRequestBody, CreateProgramResponse, FulfillmentStatus,
+        FulfillmentStrategy, GetBalanceRequest, GetFilteredProofRequestsRequest,
+        GetFilteredProofRequestsResponse, GetNonceRequest, GetProgramRequest, GetProgramResponse,
+        GetProofRequestDetailsRequest, GetProofRequestDetailsResponse,
+        GetProofRequestStatusRequest, GetProofRequestStatusResponse, MessageFormat, ProofMode,
+        RequestProofRequest, RequestProofRequestBody, RequestProofResponse,
     },
 };
+
+#[cfg(feature = "sepolia")]
+use crate::network::proto::types::{GetProofRequestParamsRequest, GetProofRequestParamsResponse};
 
 /// A client for interacting with the network.
 pub struct NetworkClient {
@@ -89,7 +93,9 @@ impl NetworkClient {
 impl NetworkClient {
     /// Creates a new [`NetworkClient`] with the given private key and rpc url.
     pub fn new(private_key: impl Into<String>, rpc_url: impl Into<String>) -> Self {
-        let private_key_bytes = hex::decode(private_key.into()).expect("Invalid private key");
+        let pk = private_key.into();
+        let private_key_bytes =
+            hex::decode(pk.strip_prefix("0x").unwrap_or(&pk)).expect("Invalid private key");
         let signer = SigningKey::from_slice(&private_key_bytes).expect("Invalid private key");
 
         let client = reqwest::Client::builder()
@@ -136,8 +142,8 @@ impl NetworkClient {
     /// # Details
     /// The verifying key hash is used to identify a program.
     pub fn get_vk_hash(vk: &SP1VerifyingKey) -> Result<B256> {
-        let vk_hash_str = B256::from_str(&vk.bytes32())?;
-        Ok(vk_hash_str)
+        let vk_hash = vk.bytes32_raw();
+        Ok(B256::from_slice(&vk_hash))
     }
 
     /// Registers a program with the network if it is not already registered.
@@ -212,6 +218,25 @@ impl NetworkClient {
                     .into_inner())
             },
             "creating program",
+        )
+        .await
+    }
+
+    /// Gets the proof request parameters from the network.
+    #[cfg(feature = "sepolia")]
+    pub async fn get_proof_request_params(
+        &self,
+        mode: ProofMode,
+    ) -> Result<GetProofRequestParamsResponse> {
+        self.with_retry(
+            || async {
+                let mut rpc = self.prover_network_client().await?;
+                Ok(rpc
+                    .get_proof_request_params(GetProofRequestParamsRequest { mode: mode.into() })
+                    .await?
+                    .into_inner())
+            },
+            "getting proof request parameters",
         )
         .await
     }
@@ -315,6 +340,31 @@ impl NetworkClient {
         Ok((res, proof))
     }
 
+    /// Get the details of a given proof request.
+    pub async fn get_proof_request_details(
+        &self,
+        request_id: B256,
+        timeout: Option<Duration>,
+    ) -> Result<GetProofRequestDetailsResponse> {
+        let res = self
+            .with_retry_timeout(
+                || async {
+                    let mut rpc = self.prover_network_client().await?;
+                    Ok(rpc
+                        .get_proof_request_details(GetProofRequestDetailsRequest {
+                            request_id: request_id.to_vec(),
+                        })
+                        .await?
+                        .into_inner())
+                },
+                timeout.unwrap_or(DEFAULT_RETRY_TIMEOUT),
+                "getting proof request details",
+            )
+            .await?;
+
+        Ok(res)
+    }
+
     /// Creates a proof request with the given verifying key hash and stdin.
     ///
     /// # Details
@@ -328,7 +378,15 @@ impl NetworkClient {
     /// * `gas_limit`: The gas limit for the proof request.
     /// * `min_auction_period`: The minimum auction period for the proof request in seconds.
     /// * `whitelist`: The auction whitelist for the proof request.
+    /// * `auctioneer`: The auctioneer for the proof request.
+    /// * `executor`: The executor for the proof request.
+    /// * `verifier`: The verifier for the proof request.
+    /// * `public_values_hash`: The hash of the public values to use for the proof.
+    /// * `base_fee`: The base fee to use for the proof request.
+    /// * `max_price_per_pgu`: The maximum price per PGU to use for the proof request.
+    /// * `domain`: The domain bytes to use for the proof request.
     #[allow(clippy::too_many_arguments)]
+    #[allow(unused_variables)]
     pub async fn request_proof(
         &self,
         vk_hash: B256,
@@ -341,6 +399,13 @@ impl NetworkClient {
         gas_limit: u64,
         min_auction_period: u64,
         whitelist: Vec<Address>,
+        auctioneer: Address,
+        executor: Address,
+        verifier: Address,
+        public_values_hash: Option<Vec<u8>>,
+        base_fee: u64,
+        max_price_per_pgu: u64,
+        domain: Vec<u8>,
     ) -> Result<RequestProofResponse> {
         // Calculate the deadline.
         let start = SystemTime::now();
@@ -357,19 +422,45 @@ impl NetworkClient {
             || async {
                 let mut rpc = self.prover_network_client().await?;
                 let nonce = self.get_nonce().await?;
-                let request_body = RequestProofRequestBody {
-                    nonce,
-                    version: format!("sp1-{version}"),
-                    vk_hash: vk_hash.to_vec(),
-                    mode: mode.into(),
-                    strategy: strategy.into(),
-                    stdin_uri: stdin_uri.clone(),
-                    deadline,
-                    cycle_limit,
-                    gas_limit,
-                    min_auction_period,
-                    whitelist: whitelist.clone().into_iter().map(|addr| addr.to_vec()).collect(),
-                };
+
+                cfg_if::cfg_if! {
+                    if #[cfg(feature = "sepolia")] {
+                        let request_body = RequestProofRequestBody {
+                            nonce,
+                            version: format!("sp1-{version}"),
+                            vk_hash: vk_hash.to_vec(),
+                            mode: mode.into(),
+                            strategy: strategy.into(),
+                            stdin_uri: stdin_uri.clone(),
+                            deadline,
+                            cycle_limit,
+                            gas_limit,
+                            min_auction_period,
+                            whitelist: whitelist.clone().into_iter().map(|addr| addr.to_vec()).collect(),
+                            domain: domain.clone(),
+                            auctioneer: auctioneer.to_vec(),
+                            executor: executor.to_vec(),
+                            verifier: verifier.to_vec(),
+                            public_values_hash: public_values_hash.clone(),
+                            base_fee: base_fee.to_string(),
+                            max_price_per_pgu: max_price_per_pgu.to_string(),
+                        };
+                } else {
+                    let request_body = RequestProofRequestBody {
+                        nonce,
+                        version: format!("sp1-{version}"),
+                        vk_hash: vk_hash.to_vec(),
+                        mode: mode.into(),
+                        strategy: strategy.into(),
+                        stdin_uri: stdin_uri.clone(),
+                        deadline,
+                        cycle_limit,
+                        gas_limit,
+                        min_auction_period,
+                        whitelist: whitelist.clone().into_iter().map(|addr| addr.to_vec()).collect(),
+                    };
+                }}
+
                 let request_response = rpc
                     .request_proof(RequestProofRequest {
                         format: MessageFormat::Binary.into(),
@@ -466,5 +557,19 @@ impl NetworkClient {
             "downloading artifact",
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::network::DEFAULT_NETWORK_RPC_URL;
+
+    #[test]
+    fn test_can_create_network_client_with_0x_bytes() {
+        // Anvil private key
+        let _ = super::NetworkClient::new(
+            "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+            DEFAULT_NETWORK_RPC_URL,
+        );
     }
 }

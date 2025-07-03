@@ -5,14 +5,24 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, Field};
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 
 use crate::air::{SP1Operation, SP1OperationBuilder};
 
 use super::{U16CompareOperation, U16CompareOperationInput, U16MSBOperation, U16MSBOperationInput};
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct LtOperationUnsigned<T> {
     /// Instance of the U16CompareOperation.
@@ -25,7 +35,17 @@ pub struct LtOperationUnsigned<T> {
     pub comparison_limbs: [T; 2],
 }
 
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct LtOperationSigned<T> {
     /// The result of the SLTU operation.
@@ -240,23 +260,12 @@ impl<F: Field> LtOperationUnsigned<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputExpr, InputParams)]
 pub struct LtOperationUnsignedInput<AB: SP1AirBuilder> {
     pub b: Word<AB::Expr>,
     pub c: Word<AB::Expr>,
     pub cols: LtOperationUnsigned<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> LtOperationUnsignedInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: LtOperationUnsigned<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, is_real }
-    }
 }
 
 impl<AB> SP1Operation<AB> for LtOperationUnsigned<AB::F>
@@ -271,25 +280,13 @@ where
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputExpr, InputParams)]
 pub struct LtOperationSignedInput<AB: SP1AirBuilder> {
     pub b: Word<AB::Expr>,
     pub c: Word<AB::Expr>,
     pub cols: LtOperationSigned<AB::Var>,
     pub is_signed: AB::Expr,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> LtOperationSignedInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: LtOperationSigned<AB::Var>,
-        is_signed: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, is_signed, is_real }
-    }
 }
 
 impl<AB> SP1Operation<AB> for LtOperationSigned<AB::F>

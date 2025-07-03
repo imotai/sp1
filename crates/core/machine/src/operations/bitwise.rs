@@ -7,12 +7,22 @@ use sp1_primitives::consts::WORD_BYTE_SIZE;
 use sp1_stark::air::SP1AirBuilder;
 
 use p3_field::Field;
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::air::SP1Operation;
 
 /// A set of columns needed to compute the bitwise operation over four bytes.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct BitwiseOperation<T> {
     /// The result of the bitwise operation in bytes.
@@ -68,25 +78,13 @@ impl<F: Field> BitwiseOperation<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputParams, InputExpr)]
 pub struct BitwiseOperationInput<AB: SP1AirBuilder> {
     pub a: [AB::Expr; WORD_BYTE_SIZE],
     pub b: [AB::Expr; WORD_BYTE_SIZE],
     pub cols: BitwiseOperation<AB::Var>,
     pub opcode: AB::Expr,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> BitwiseOperationInput<AB> {
-    pub fn new(
-        a: [AB::Expr; WORD_BYTE_SIZE],
-        b: [AB::Expr; WORD_BYTE_SIZE],
-        cols: BitwiseOperation<AB::Var>,
-        opcode: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { a, b, cols, opcode, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for BitwiseOperation<AB::F> {

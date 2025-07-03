@@ -5,7 +5,7 @@ use sp1_core_executor::{events::ByteRecord, Opcode};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_field::Field;
-use sp1_derive::{AlignedBorrow, SP1OperationInput};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::{
     air::{SP1Operation, SP1OperationBuilder},
@@ -15,7 +15,17 @@ use crate::{
 use super::{BitwiseOperation, BitwiseOperationInput, U16toU8Operation};
 
 /// A set of columns needed to compute the bitwise operation over two u16 limbs.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct BitwiseU16Operation<T> {
     /// Lower byte of two limbs of `b`.
@@ -93,25 +103,13 @@ impl<F: Field> BitwiseU16Operation<F> {
     }
 }
 
-#[derive(SP1OperationInput)]
+#[derive(Clone, InputParams, InputExpr)]
 pub struct BitwiseU16OperationInput<AB: SP1AirBuilder> {
     pub b: Word<AB::Expr>,
     pub c: Word<AB::Expr>,
     pub cols: BitwiseU16Operation<AB::Var>,
     pub opcode: AB::Expr,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> BitwiseU16OperationInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: BitwiseU16Operation<AB::Var>,
-        opcode: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, opcode, is_real }
-    }
 }
 
 impl<AB> SP1Operation<AB> for BitwiseU16Operation<AB::F>

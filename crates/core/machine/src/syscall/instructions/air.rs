@@ -17,7 +17,8 @@ use crate::{
     adapter::{register::r_type::RTypeReader, state::CPUState},
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        BabyBearWordRangeChecker, IsZeroOperation, U16toU8OperationSafe, U16toU8OperationSafeInput,
+        BabyBearWordRangeChecker, IsZeroOperation, IsZeroOperationInput, U16toU8OperationSafe,
+        U16toU8OperationSafeInput,
     },
 };
 
@@ -180,7 +181,7 @@ impl SyscallInstrsChip {
         let is_enter_unconstrained = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                (
+                IsZeroOperationInput::new(
                     syscall_id.clone()
                         - AB::Expr::from_canonical_u32(
                             SyscallCode::ENTER_UNCONSTRAINED.syscall_id(),
@@ -196,7 +197,7 @@ impl SyscallInstrsChip {
         let is_hint_len = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                (
+                IsZeroOperationInput::new(
                     syscall_id.clone()
                         - AB::Expr::from_canonical_u32(SyscallCode::HINT_LEN.syscall_id()),
                     local.is_hint_len,
@@ -360,7 +361,7 @@ impl SyscallInstrsChip {
         let is_halt = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                (
+                IsZeroOperationInput::new(
                     syscall_id.clone()
                         - AB::Expr::from_canonical_u32(SyscallCode::HALT.syscall_id()),
                     local.is_halt_check,
@@ -391,7 +392,7 @@ impl SyscallInstrsChip {
         let is_commit = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                (
+                IsZeroOperationInput::new(
                     syscall_id.clone()
                         - AB::Expr::from_canonical_u32(SyscallCode::COMMIT.syscall_id()),
                     local.is_commit,
@@ -405,7 +406,7 @@ impl SyscallInstrsChip {
         let is_commit_deferred_proofs = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                (
+                IsZeroOperationInput::new(
                     syscall_id.clone()
                         - AB::Expr::from_canonical_u32(
                             SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id(),

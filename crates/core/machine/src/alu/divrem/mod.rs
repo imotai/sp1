@@ -85,8 +85,9 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        AddOperation, IsEqualWordOperation, IsZeroWordOperation, LtOperationUnsigned,
-        LtOperationUnsignedInput, MulOperation, U16MSBOperation, U16MSBOperationInput,
+        AddOperation, IsEqualWordOperation, IsEqualWordOperationInput, IsZeroWordOperation,
+        IsZeroWordOperationInput, LtOperationUnsigned, LtOperationUnsignedInput, MulOperation,
+        U16MSBOperation, U16MSBOperationInput,
     },
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
@@ -766,9 +767,9 @@ where
         // u32, -1i32 as u32) * is_signed is_overflow_not_word = is_equal(b, -2^{63}) *
         // is_equal(c, -1i64 as u64) * is_signed
         {
-            IsEqualWordOperation::<AB::F>::eval(
+            <IsEqualWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     local.adapter.b().map(|x| x.into()),
                     Word::from(i64::MIN as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_b,
@@ -776,9 +777,9 @@ where
                 ),
             );
 
-            IsEqualWordOperation::<AB::F>::eval(
+            <IsEqualWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     local.adapter.c().map(|x| x.into()),
                     Word::from(-1i64 as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_c,
@@ -795,7 +796,7 @@ where
 
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     truncated_b,
                     Word::from(i32::MIN as u32 as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_b,
@@ -805,7 +806,7 @@ where
 
             IsEqualWordOperation::<AB::F>::eval(
                 builder,
-                (
+                IsEqualWordOperationInput::new(
                     truncated_c,
                     Word::from(-1i32 as u32 as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_c,
@@ -975,9 +976,13 @@ where
         // When division by 0, quotient must be u64::MAX per RISC-V spec.
         {
             // Calculate whether c is 0.
-            IsZeroWordOperation::<AB::F>::eval(
+            <IsZeroWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                (local.adapter.c().map(|x| x.into()), local.is_c_0, local.is_real.into()),
+                IsZeroWordOperationInput::new(
+                    local.adapter.c().map(|x| x.into()),
+                    local.is_c_0,
+                    local.is_real.into(),
+                ),
             );
 
             // If is_c_0 is true, then quotient must be 0xffffffff_ffffffff = u64::MAX.

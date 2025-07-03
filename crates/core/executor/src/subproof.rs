@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use sp1_stark::{BabyBearPoseidon2, MachineVerifierError, MachineVerifyingKey};
+use sp1_stark::{BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey};
 
 use crate::SP1ReduceProof;
 
@@ -20,7 +20,7 @@ pub trait SubproofVerifier: Sync + Send {
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>>;
+    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>>;
 }
 
 /// A dummy verifier which does nothing.
@@ -33,7 +33,7 @@ impl SubproofVerifier for NoOpSubproofVerifier {
         _vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         _vk_hash: [u32; 8],
         _committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         Ok(())
     }
 }
@@ -50,7 +50,7 @@ where
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         (*self).verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }
@@ -65,7 +65,7 @@ where
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }
@@ -80,7 +80,7 @@ where
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerifierError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }

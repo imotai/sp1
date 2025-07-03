@@ -68,7 +68,7 @@ jobs:
           command: test
           args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark -- --test-threads=4
         env:
-          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_BACKTRACE: 1
           SP1_DEV: 1
 
@@ -119,7 +119,7 @@ jobs:
           command: test
           args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark
         env:
-          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_BACKTRACE: 1
           SP1_DEV: 1
 
@@ -462,4 +462,3 @@ jobs:
   #     - name: "Build programs in host"
   #       run: |
   #         cd ./patch-testing/build-host
-  #         cargo build

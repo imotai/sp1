@@ -8,7 +8,7 @@ use sp1_recursion_executor::{
 };
 use sp1_stark::{
     prover::CpuProverBuilder, BabyBearPoseidon2, Machine, MachineProof, MachineVerifier,
-    MachineVerifierError, ShardVerifier,
+    MachineVerifierConfigError, ShardVerifier,
 };
 use tracing::Instrument;
 
@@ -49,7 +49,7 @@ pub async fn run_test_recursion<const DEGREE: usize>(
     records: Vec<ExecutionRecord<BabyBear>>,
     machine: Machine<BabyBear, RecursionAir<BabyBear, DEGREE>>,
     program: RecursionProgram<BabyBear>,
-) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierError<BabyBearPoseidon2>> {
+) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierConfigError<BabyBearPoseidon2>> {
     let log_blowup = 1;
     let log_stacking_height = 22;
     let max_log_row_count = 21;

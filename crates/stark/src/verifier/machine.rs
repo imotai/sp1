@@ -1,10 +1,11 @@
 use derive_where::derive_where;
 use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
-use slop_jagged::BabyBearPoseidon2;
+use slop_jagged::{BabyBearPoseidon2, JaggedConfig};
 
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
+use slop_multilinear::MultilinearPcsVerifier;
 use thiserror::Error;
 
 use crate::{air::MachineAir, prover::CoreProofShape, Machine, VerifierConstraintFolder};
@@ -23,10 +24,10 @@ pub struct MachineProof<C: MachineConfig> {
 
 /// An error that occurs during the verification of a machine proof.
 #[derive(Debug, Error)]
-pub enum MachineVerifierError<C: MachineConfig> {
+pub enum MachineVerifierError<EF, PcsError> {
     /// An error that occurs during the verification of a shard proof.
     #[error("invalid shard proof: {0}")]
-    InvalidShardProof(ShardVerifierError<C>),
+    InvalidShardProof(#[from] ShardVerifierError<EF, PcsError>),
     /// The public values are invalid
     #[error("invalid public values")]
     InvalidPublicValues(&'static str),
@@ -40,6 +41,12 @@ pub enum MachineVerifierError<C: MachineConfig> {
     #[error("empty proof")]
     EmptyProof,
 }
+
+/// Derive the error type from the machine config.
+pub type MachineVerifierConfigError<C> = MachineVerifierError<
+    <C as JaggedConfig>::EF,
+    <<C as JaggedConfig>::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
+>;
 
 /// A verifier for a machine proof.
 #[derive_where(Clone)]
@@ -93,7 +100,10 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
         &self,
         vk: &MachineVerifyingKey<C>,
         proof: &MachineProof<C>,
-    ) -> Result<(), MachineVerifierError<C>>
+    ) -> Result<
+        (),
+        MachineVerifierError<C::EF, <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError>,
+    >
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {
@@ -119,7 +129,10 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
         vk: &MachineVerifyingKey<C>,
         proof: &ShardProof<C>,
         challenger: &mut C::Challenger,
-    ) -> Result<(), ShardVerifierError<C>>
+    ) -> Result<
+        (),
+        ShardVerifierError<C::EF, <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError>,
+    >
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {

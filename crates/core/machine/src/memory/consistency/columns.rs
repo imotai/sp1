@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, IntoShape};
 use sp1_stark::Word;
 
 use crate::operations::U16toU8Operation;
@@ -41,7 +41,7 @@ pub struct MemoryAccessColsU8<T> {
 }
 
 /// Memory Access Timestamp, when the shard and previous shard are known to be equal
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize, IntoShape)]
 #[repr(C)]
 pub struct MemoryAccessInShardTimestamp<T> {
     /// The previous timestamp that this memory access is being read from.
@@ -51,7 +51,7 @@ pub struct MemoryAccessInShardTimestamp<T> {
 }
 
 /// Memory Access Columns, when the shard and previous shard are known to be equal
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize, IntoShape)]
 #[repr(C)]
 pub struct MemoryAccessInShardCols<T> {
     pub prev_value: Word<T>,
