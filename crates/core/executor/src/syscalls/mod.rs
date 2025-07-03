@@ -6,6 +6,7 @@ mod context;
 mod deferred;
 mod halt;
 mod hint;
+mod mprotect;
 mod precompiles;
 mod unconstrained;
 mod verify;
@@ -42,7 +43,7 @@ use unconstrained::{enter_unconstrained_syscall, exit_unconstrained_syscall};
 use verify::verify_syscall;
 use write::write_syscall;
 
-use crate::{ExecutionError, ExecutorConfig};
+use crate::{syscalls::mprotect::mprotect_syscall, ExecutionError, ExecutorConfig};
 
 pub use code::*;
 pub use context::*;
@@ -149,5 +150,6 @@ pub fn get_syscall<'a, 'b, E: ExecutorConfig>(
             Ok(Syscall::new(uint256_ops, 1))
         }
         SyscallCode::U256XU2048_MUL => Ok(Syscall::new(u256x2048_mul, 1)),
+        SyscallCode::MPROTECT => Ok(Syscall::new(mprotect_syscall, 0)),
     }
 }

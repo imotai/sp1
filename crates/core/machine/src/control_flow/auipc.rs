@@ -143,14 +143,13 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
                     let cols: &mut AuipcColumns<F> = row.borrow_mut();
 
                     if idx < input.auipc_events.len() {
-                        let event = &input.auipc_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let (event, record) = &input.auipc_events[idx];
                         cols.is_real = F::one();
-                        if instruction.op_a != 0 {
-                            cols.add_operation.populate(&mut blu, event.0.pc, event.0.b);
+                        if record.op_a != 0 {
+                            cols.add_operation.populate(&mut blu, event.pc, event.b);
                         }
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, instruction, event.1);
+                        cols.state.populate(&mut blu, event.clk, event.pc);
+                        cols.adapter.populate(&mut blu, *record);
                     }
                 });
                 blu

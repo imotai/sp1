@@ -3288,6 +3288,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mprotect-jit-program"
+version = "1.1.0"
+
+[[package]]
+name = "mprotect-program"
+version = "1.1.0"
+dependencies = [
+ "sp1-primitives 5.0.0",
+ "sp1-zkvm-64",
+]
+
+[[package]]
+name = "mprotect-script"
+version = "1.1.0"
+dependencies = [
+ "sp1-build",
+ "sp1-sdk",
+ "tokio",
+]
+
+[[package]]
 name = "nodrop"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

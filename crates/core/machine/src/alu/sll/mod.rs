@@ -112,10 +112,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
             let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
             let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
             let mut blu = Vec::new();
-            let instruction = input.program.fetch(event.0.pc);
             self.event_to_row(&event.0, cols, &mut blu);
             cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-            cols.adapter.populate(&mut blu, instruction, event.1);
+            cols.adapter.populate(&mut blu, event.1);
             rows.push(row);
         }
 
@@ -162,10 +161,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
                     let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, instruction, event.1);
+                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })

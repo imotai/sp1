@@ -178,18 +178,18 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
         self.rt.byte::<E>(addr)
     }
 
-    /// Get the current value of a word, but doesn't use a memory record.
+    /// Get the current value of a double word, but doesn't use a memory record.
     #[must_use]
-    pub fn word_unsafe(&mut self, addr: u64) -> u64 {
-        self.rt.word::<E>(addr)
+    pub fn double_word_unsafe(&mut self, addr: u64) -> u64 {
+        self.rt.double_word::<E>(addr)
     }
 
-    /// Get a slice of words, but doesn't use a memory record.
+    /// Get a slice of double words, but doesn't use a memory record.
     #[must_use]
     pub fn slice_unsafe(&mut self, addr: u64, len: usize) -> Vec<u64> {
         let mut values = Vec::new();
         for i in 0..len {
-            values.push(self.rt.word::<E>(addr + i as u64 * 8));
+            values.push(self.rt.double_word::<E>(addr + i as u64 * 8));
         }
         values
     }

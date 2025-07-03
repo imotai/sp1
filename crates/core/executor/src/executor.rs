@@ -10,7 +10,9 @@ use clap::ValueEnum;
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 use itertools::Itertools;
+use rrs_lib::process_instruction;
 use serde::{Deserialize, Serialize};
+use sp1_primitives::consts::{PAGE_SIZE, PROT_EXEC, PROT_READ, PROT_WRITE};
 // use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::air::PublicValues;
 use strum::IntoEnumIterator;
@@ -18,6 +20,7 @@ use thiserror::Error;
 
 use crate::{
     context::{IoOptions, SP1Context},
+    disassembler::InstructionTranspiler,
     estimate_trace_elements,
     events::{
         AUIPCEvent, AluEvent, BranchEvent, JumpEvent, LogicalShard, MemInstrEvent,
@@ -185,6 +188,12 @@ pub struct Executor<'a> {
 
     /// Temporary event counts for the current shard. This is a field to reuse memory.
     event_counts: EnumMap<RiscvAirId, u64>,
+
+    /// The transpiler for the program.
+    transpiler: InstructionTranspiler,
+
+    /// Decoded instruction cache.
+    decoded_instruction_cache: HashMap<u64, Instruction>,
 }
 
 /// The configuration of the executor.
@@ -442,6 +451,8 @@ impl<'a> Executor<'a> {
             internal_syscalls_air_id,
             io_options: context.io_options,
             total_unconstrained_cycles: 0,
+            transpiler: InstructionTranspiler,
+            decoded_instruction_cache: HashMap::new(),
             opts,
         }
     }
@@ -529,11 +540,11 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Get the current value of a word.
+    /// Get the current value of a double word.
     ///
     /// Assumes `addr` is a valid memory address, not a register.
     #[must_use]
-    pub fn word<E: ExecutorConfig>(&mut self, addr: u64) -> u64 {
+    pub fn double_word<E: ExecutorConfig>(&mut self, addr: u64) -> u64 {
         #[allow(clippy::single_match_else)]
         let record = self.state.memory.page_table.get(addr);
 
@@ -559,7 +570,7 @@ impl<'a> Executor<'a> {
     /// Assumes `addr` is a valid memory address, not a register.
     #[must_use]
     pub fn byte<E: ExecutorConfig>(&mut self, addr: u64) -> u8 {
-        let word = self.word::<E>(addr - addr % 8);
+        let word = self.double_word::<E>(addr - addr % 8);
         (word >> ((addr % 8) * 8)) as u8
     }
 
@@ -596,6 +607,12 @@ impl<'a> Executor<'a> {
         // if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
         //     panic!("Invalid memory access: addr={addr}");
         // }
+
+        // Check that the page is readable.
+        let page_prot_page_idx = addr / PAGE_SIZE as u64;
+        let page_prot =
+            self.state.page_prots.get(&page_prot_page_idx).unwrap_or(&(PROT_READ | PROT_WRITE));
+        assert!(*page_prot & PROT_READ != 0);
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
@@ -814,6 +831,12 @@ impl<'a> Executor<'a> {
         // if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
         //     panic!("Invalid memory access: addr={addr}");
         // }
+
+        // Check that the page is writable.
+        let page_prot_page_idx = addr / PAGE_SIZE as u64;
+        let page_prot =
+            self.state.page_prots.get(&page_prot_page_idx).unwrap_or(&(PROT_READ | PROT_WRITE));
+        assert!(*page_prot & PROT_WRITE != 0);
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
@@ -1167,21 +1190,31 @@ impl<'a> Executor<'a> {
         }
 
         if instruction.is_alu_instruction() {
-            self.emit_alu_event(instruction.opcode, a, b, c, record, op_a_0);
+            self.emit_alu_event(instruction, a, b, c, record, op_a_0);
         } else if instruction.is_memory_load_instruction()
             || instruction.is_memory_store_instruction()
         {
-            self.emit_mem_instr_event(instruction.opcode, a, b, c, record, op_a_0);
+            self.emit_mem_instr_event(instruction, a, b, c, record, op_a_0);
         } else if instruction.is_branch_instruction() {
-            self.emit_branch_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
+            self.emit_branch_event(instruction, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_jal_instruction() {
-            self.emit_jal_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
+            self.emit_jal_event(instruction, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_jalr_instruction() {
-            self.emit_jalr_event(instruction.opcode, a, b, c, record, op_a_0, next_pc);
+            self.emit_jalr_event(instruction, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_auipc_instruction() {
-            self.emit_auipc_event(instruction.opcode, a, b, c, record, op_a_0);
+            self.emit_auipc_event(instruction, a, b, c, record, op_a_0);
         } else if instruction.is_ecall_instruction() {
-            self.emit_syscall_event(clk, syscall_code, b, c, record, op_a_0, next_pc, exit_code);
+            self.emit_syscall_event(
+                clk,
+                syscall_code,
+                b,
+                c,
+                record,
+                op_a_0,
+                next_pc,
+                exit_code,
+                instruction,
+            );
         } else {
             unreachable!()
         }
@@ -1190,53 +1223,54 @@ impl<'a> Executor<'a> {
     /// Emit an ALU event.
     fn emit_alu_event(
         &mut self,
-        opcode: Opcode,
+        instruction: &Instruction,
         a: u64,
         b: u64,
         c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
+        let opcode = instruction.opcode;
         let event = AluEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
         match opcode {
             Opcode::ADD => {
-                let record = RTypeRecord::from(record);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.add_events.push((event, record));
             }
             Opcode::ADDW => {
-                let record = ALUTypeRecord::from(record);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.addw_events.push((event, record));
             }
             Opcode::ADDI => {
-                let record = ITypeRecord::from(record);
+                let record = ITypeRecord::new(record, instruction);
                 self.record.addi_events.push((event, record));
             }
             Opcode::SUB => {
-                let record = RTypeRecord::from(record);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.sub_events.push((event, record));
             }
             Opcode::SUBW => {
-                let record = RTypeRecord::from(record);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.subw_events.push((event, record));
             }
             Opcode::XOR | Opcode::OR | Opcode::AND => {
-                let record = ALUTypeRecord::from(record);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.bitwise_events.push((event, record));
             }
             Opcode::SLL | Opcode::SLLW => {
-                let record = ALUTypeRecord::from(record);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.shift_left_events.push((event, record));
             }
             Opcode::SRL | Opcode::SRA | Opcode::SRLW | Opcode::SRAW => {
-                let record = ALUTypeRecord::from(record);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.shift_right_events.push((event, record));
             }
             Opcode::SLT | Opcode::SLTU => {
-                let record = ALUTypeRecord::from(record);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.lt_events.push((event, record));
             }
             Opcode::MUL | Opcode::MULHU | Opcode::MULHSU | Opcode::MULH | Opcode::MULW => {
-                let record = ALUTypeRecord::from(record);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.mul_events.push((event, record));
             }
             Opcode::DIVU
@@ -1247,7 +1281,7 @@ impl<'a> Executor<'a> {
             | Opcode::DIVUW
             | Opcode::REMUW
             | Opcode::REMW => {
-                let record = ALUTypeRecord::from(record);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.divrem_events.push((event, record));
             }
             _ => unreachable!(),
@@ -1258,13 +1292,14 @@ impl<'a> Executor<'a> {
     #[inline]
     fn emit_mem_instr_event(
         &mut self,
-        opcode: Opcode,
+        instruction: &Instruction,
         a: u64,
         b: u64,
         c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
+        let opcode = instruction.opcode;
         let event = MemInstrEvent {
             shard: self.shard().get(),
             clk: self.state.clk,
@@ -1276,7 +1311,7 @@ impl<'a> Executor<'a> {
             op_a_0,
             mem_access: self.memory_accesses.memory.expect("Must have memory access"),
         };
-        let record = ITypeRecord::from(record);
+        let record = ITypeRecord::new(record, instruction);
         if matches!(
             opcode,
             Opcode::LB
@@ -1313,7 +1348,7 @@ impl<'a> Executor<'a> {
     #[allow(clippy::too_many_arguments)]
     fn emit_branch_event(
         &mut self,
-        opcode: Opcode,
+        instruction: &Instruction,
         a: u64,
         b: u64,
         c: u64,
@@ -1325,13 +1360,13 @@ impl<'a> Executor<'a> {
             clk: self.state.clk,
             pc: self.state.pc,
             next_pc,
-            opcode,
+            opcode: instruction.opcode,
             a,
             b,
             c,
             op_a_0,
         };
-        let record = ITypeRecord::from(record);
+        let record = ITypeRecord::new(record, instruction);
         self.record.branch_events.push((event, record));
     }
 
@@ -1340,7 +1375,7 @@ impl<'a> Executor<'a> {
     #[allow(clippy::too_many_arguments)]
     fn emit_jal_event(
         &mut self,
-        opcode: Opcode,
+        instruction: &Instruction,
         a: u64,
         b: u64,
         c: u64,
@@ -1348,9 +1383,17 @@ impl<'a> Executor<'a> {
         op_a_0: bool,
         next_pc: u64,
     ) {
-        let event =
-            JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
-        let record = JTypeRecord::from(record);
+        let event = JumpEvent {
+            clk: self.state.clk,
+            pc: self.state.pc,
+            next_pc,
+            opcode: instruction.opcode,
+            a,
+            b,
+            c,
+            op_a_0,
+        };
+        let record = JTypeRecord::new(record, instruction);
         self.record.jal_events.push((event, record));
     }
 
@@ -1359,7 +1402,7 @@ impl<'a> Executor<'a> {
     #[allow(clippy::too_many_arguments)]
     fn emit_jalr_event(
         &mut self,
-        opcode: Opcode,
+        instruction: &Instruction,
         a: u64,
         b: u64,
         c: u64,
@@ -1367,9 +1410,17 @@ impl<'a> Executor<'a> {
         op_a_0: bool,
         next_pc: u64,
     ) {
-        let event =
-            JumpEvent { clk: self.state.clk, pc: self.state.pc, next_pc, opcode, a, b, c, op_a_0 };
-        let record = ITypeRecord::from(record);
+        let event = JumpEvent {
+            clk: self.state.clk,
+            pc: self.state.pc,
+            next_pc,
+            opcode: instruction.opcode,
+            a,
+            b,
+            c,
+            op_a_0,
+        };
+        let record = ITypeRecord::new(record, instruction);
         self.record.jalr_events.push((event, record));
     }
 
@@ -1377,15 +1428,23 @@ impl<'a> Executor<'a> {
     #[inline]
     fn emit_auipc_event(
         &mut self,
-        opcode: Opcode,
+        instruction: &Instruction,
         a: u64,
         b: u64,
         c: u64,
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
-        let event = AUIPCEvent { clk: self.state.clk, pc: self.state.pc, opcode, a, b, c, op_a_0 };
-        let record = JTypeRecord::from(record);
+        let event = AUIPCEvent {
+            clk: self.state.clk,
+            pc: self.state.pc,
+            opcode: instruction.opcode,
+            a,
+            b,
+            c,
+            op_a_0,
+        };
+        let record = JTypeRecord::new(record, instruction);
         self.record.auipc_events.push((event, record));
     }
 
@@ -1432,10 +1491,11 @@ impl<'a> Executor<'a> {
         op_a_0: bool,
         next_pc: u64,
         exit_code: u32,
+        instruction: &Instruction,
     ) {
         let syscall_event =
             self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc, exit_code);
-        let record = RTypeRecord::from(record);
+        let record = RTypeRecord::new(record, instruction);
         self.record.syscall_events.push((syscall_event, record));
     }
 
@@ -1486,7 +1546,7 @@ impl<'a> Executor<'a> {
         let b = self.rr_cpu::<E>(rs2, MemoryAccessPosition::B);
         let a = self.rr_cpu::<E>(rs1, MemoryAccessPosition::A);
         let addr = b.wrapping_add(c);
-        let memory_value = self.word::<E>(align(addr));
+        let memory_value = self.double_word::<E>(align(addr));
         (a, b, c, addr, memory_value)
     }
 
@@ -1501,7 +1561,7 @@ impl<'a> Executor<'a> {
 
     /// Fetch the instruction at the current program counter.
     #[inline]
-    fn fetch(&self) -> Instruction {
+    fn fetch<E: ExecutorConfig>(&mut self) -> Instruction {
         // if 2500 <= self.state.global_clk && self.state.global_clk <= 2600 {
         //     tracing::info!(
         //         "global_clk: {}, pc: {}, instruction: {:?}",
@@ -1510,7 +1570,35 @@ impl<'a> Executor<'a> {
         //         self.program.fetch(self.state.pc)
         //     );
         // }
-        *self.program.fetch(self.state.pc)
+        let program_instruction = self.program.fetch(self.state.pc);
+        if let Some(instruction) = program_instruction {
+            *instruction
+        } else {
+            // Check that the page is executable.
+            let page_prot_page_idx = self.state.pc / PAGE_SIZE as u64;
+            let page_prot =
+                self.state.page_prots.get(&page_prot_page_idx).unwrap_or(&(PROT_READ | PROT_WRITE));
+            assert!(*page_prot & PROT_EXEC != 0);
+
+            // Fetch it from memory.
+            let aligned_pc = align(self.state.pc);
+
+            // TODO: Add a record for a dynamic program entry.
+            let memory_value = self.double_word::<E>(aligned_pc);
+
+            let alignment_offset = self.state.pc - aligned_pc;
+            let instruction_value: u32 =
+                (memory_value >> (alignment_offset * 8) & 0xffffffff).try_into().unwrap();
+
+            if let Some(instruction) = self.decoded_instruction_cache.get(&self.state.pc) {
+                *instruction
+            } else {
+                let instruction =
+                    process_instruction(&mut self.transpiler, instruction_value).unwrap();
+                self.decoded_instruction_cache.insert(self.state.pc, instruction);
+                instruction
+            }
+        }
     }
 
     /// Execute the given instruction over the current state of the runtime.
@@ -1950,7 +2038,7 @@ impl<'a> Executor<'a> {
     #[allow(clippy::too_many_lines)]
     fn execute_cycle<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
         // Fetch the instruction at the current program counter.
-        let instruction = self.fetch();
+        let instruction = self.fetch::<E>();
 
         // Log the current state of the runtime.
         self.log::<E>(&instruction);
@@ -2022,9 +2110,7 @@ impl<'a> Executor<'a> {
             }
         }
 
-        let done = self.state.pc == HALT_PC
-            || self.state.pc.wrapping_sub(self.program.pc_base)
-                >= (self.program.instructions.len() * 4) as u64;
+        let done = self.state.pc == HALT_PC;
         if done && E::UNCONSTRAINED {
             tracing::error!("program ended in unconstrained mode at clk {}", self.state.global_clk);
             return Err(ExecutionError::EndInUnconstrained());
@@ -2108,6 +2194,7 @@ impl<'a> Executor<'a> {
         let memory = std::mem::take(&mut self.state.memory);
         let uninitialized_memory = std::mem::take(&mut self.state.uninitialized_memory);
         let proof_stream = std::mem::take(&mut self.state.proof_stream);
+        let page_prots = self.state.page_prots.clone();
         let mut checkpoint = tracing::debug_span!("clone").in_scope(|| self.state.clone());
         self.state.memory = memory;
         self.state.uninitialized_memory = uninitialized_memory;
@@ -2131,6 +2218,7 @@ impl<'a> Executor<'a> {
                 // all memory so that memory events can be emitted from the checkpoint. But we need
                 // to first reset any modified memory to as it was before the execution.
                 checkpoint.memory.clone_from(&self.state.memory);
+                checkpoint.page_prots = page_prots;
                 memory_checkpoint.into_iter().for_each(|(addr, record)| {
                     if let Some(record) = record {
                         checkpoint.memory.insert(addr, record);
@@ -2212,7 +2300,7 @@ impl<'a> Executor<'a> {
         let mut done = false;
         while !done {
             // Fetch the instruction at the current program counter.
-            let instruction = self.fetch();
+            let instruction = self.fetch::<Unconstrained>();
 
             // Execute the instruction.
             self.execute_instruction::<Unconstrained>(&instruction)?;
@@ -2584,8 +2672,9 @@ impl Default for ExecutorMode {
     }
 }
 
-/// Aligns an address to the nearest word below or equal to it.
+/// Aligns an address to the nearest double word below or equal to it.
 #[must_use]
+#[inline]
 pub const fn align(addr: u64) -> u64 {
     addr - addr % 8
 }
@@ -2606,6 +2695,8 @@ mod tests {
         fibonacci_program, panic_program, secp256r1_add_program, secp256r1_double_program,
         simple_memory_program, simple_program, ssz_withdrawals_program, u256xu2048_mul_program,
     };
+
+    use crate::utils::add_halt;
 
     use crate::{Register, SP1Context, SP1CoreOpts, Simple};
 
@@ -2690,11 +2781,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     add x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run::<Simple>().unwrap();
@@ -2706,11 +2798,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     sub x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SUB, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2723,11 +2816,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     xor x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::XOR, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2740,11 +2834,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     or x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::OR, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2758,11 +2853,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     and x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::AND, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2775,11 +2871,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     sll x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SLL, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2792,11 +2889,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     srl x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SRL, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2809,11 +2907,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     sra x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SRA, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2826,11 +2925,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     slt x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SLT, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2843,11 +2943,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     sltu x31, x30, x29
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
             Instruction::new(Opcode::SLTU, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2860,11 +2961,12 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x29, 37
         //     addi x31, x30, 42
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 29, 37, false, true),
             Instruction::new(Opcode::ADD, 31, 30, 42, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2878,32 +2980,35 @@ mod tests {
         //     addi x30, x29, -1
         //     addi x31, x30, 4
         // Updated for 64-bit: negative immediate values must be properly sign-extended
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADD, 30, 29, 0xFFFFFFFFFFFFFFFF, false, true), // -1 in 64-bit
             Instruction::new(Opcode::ADD, 31, 30, 4, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
         assert_eq!(runtime.register::<Simple>(Register::X31), 5 - 1 + 4);
 
         // Additional test with larger negative immediate
-        let instructions2 = vec![
+        let mut instructions2 = vec![
             Instruction::new(Opcode::ADD, 28, 0, 100, false, true),
             Instruction::new(Opcode::ADD, 27, 28, 0xFFFFFFFFFFFFFF9C, false, true), /* -100 in 64-bit */
             Instruction::new(Opcode::ADD, 26, 27, 50, false, true),
         ];
+        add_halt(&mut instructions2);
         let program2 = Arc::new(Program::new(instructions2, 0, 0));
         let mut runtime2 = Executor::new(program2, SP1CoreOpts::default());
         runtime2.run_fast().unwrap();
         assert_eq!(runtime2.register::<Simple>(Register::X26), 50);
 
         // Test with 64-bit boundary values
-        let instructions3 = vec![
+        let mut instructions3 = vec![
             Instruction::new(Opcode::ADD, 25, 0, 0x7FFFFFFFFFFFFFFF, false, true), // i64::MAX
             Instruction::new(Opcode::ADD, 24, 25, 1, false, true), // Overflow to negative
         ];
+        add_halt(&mut instructions3);
         let program3 = Arc::new(Program::new(instructions3, 0, 0));
         let mut runtime3 = Executor::new(program3, SP1CoreOpts::default());
         runtime3.run_fast().unwrap();
@@ -2915,11 +3020,12 @@ mod tests {
         //     addi x29, x0, 5
         //     xori x30, x29, 37
         //     xori x31, x30, 42
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::XOR, 30, 29, 37, false, true),
             Instruction::new(Opcode::XOR, 31, 30, 42, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2931,11 +3037,12 @@ mod tests {
         //     addi x29, x0, 5
         //     ori x30, x29, 37
         //     ori x31, x30, 42
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::OR, 30, 29, 37, false, true),
             Instruction::new(Opcode::OR, 31, 30, 42, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2947,11 +3054,12 @@ mod tests {
         //     addi x29, x0, 5
         //     andi x30, x29, 37
         //     andi x31, x30, 42
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::AND, 30, 29, 37, false, true),
             Instruction::new(Opcode::AND, 31, 30, 42, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2962,10 +3070,11 @@ mod tests {
     fn test_slli() {
         //     addi x29, x0, 5
         //     slli x31, x29, 37
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
             Instruction::new(Opcode::SLL, 31, 29, 4, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2976,10 +3085,11 @@ mod tests {
     fn test_srli() {
         //    addi x29, x0, 5
         //    srli x31, x29, 37
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SRL, 31, 29, 4, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -2990,10 +3100,11 @@ mod tests {
     fn test_srai() {
         //   addi x29, x0, 5
         //   srai x31, x29, 37
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SRA, 31, 29, 4, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -3004,10 +3115,11 @@ mod tests {
     fn test_slti() {
         //   addi x29, x0, 5
         //   slti x31, x29, 37
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SLT, 31, 29, 37, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -3018,10 +3130,11 @@ mod tests {
     fn test_sltiu() {
         //   addi x29, x0, 5
         //   sltiu x31, x29, 37
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
             Instruction::new(Opcode::SLTU, 31, 29, 37, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -3030,31 +3143,34 @@ mod tests {
 
     #[test]
     fn test_jalr() {
-        //   addi x11, x11, 100
+        //   addi x11, x11, 4
         //   jalr x5, x11, 8
         //
         // `JALR rd offset(rs)` reads the value at rs, adds offset to it and uses it as the
         // destination address. It then stores the address of the next instruction in rd in case
         // we'd want to come back here.
 
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 11, 11, 100, false, true),
-            Instruction::new(Opcode::JALR, 5, 11, 8, false, true),
+        let mut instructions = vec![
+            Instruction::new(Opcode::ADD, 11, 11, 4, false, true),
+            Instruction::new(Opcode::JALR, 6, 11, 8, false, true),
+            Instruction::new(Opcode::ADD, 15, 0, 4, false, true),
+            Instruction::new(Opcode::ADD, 15, 15, 4, false, true),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
-        assert_eq!(runtime.registers::<Simple>()[Register::X5 as usize], 8);
-        assert_eq!(runtime.registers::<Simple>()[Register::X11 as usize], 100);
-        assert_eq!(runtime.state.pc, 108);
+        assert_eq!(runtime.registers::<Simple>()[Register::X15 as usize], 4);
+        assert_eq!(runtime.registers::<Simple>()[Register::X6 as usize], 8);
     }
 
     fn simple_op_code_test(opcode: Opcode, expected: u64, a: u64, b: u64) {
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 10, 0, a, false, true),
             Instruction::new(Opcode::ADD, 11, 0, b, false, true),
             Instruction::new(opcode, 12, 10, 11, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run_fast().unwrap();
@@ -3667,10 +3783,11 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_invalid_address_access_sw() {
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 0x1000000000000000, false, true), /* Use a very high address */
             Instruction::new(Opcode::SW, 0, 29, 0, false, true),
         ];
+        add_halt(&mut instructions);
 
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -3680,10 +3797,11 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_invalid_address_access_lw() {
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 0x1000000000000000, false, true), /* Use a very high address */
             Instruction::new(Opcode::LW, 29, 29, 0, false, true),
         ];
+        add_halt(&mut instructions);
 
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -3693,12 +3811,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_invalid_address_syscall() {
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADD, 5, 0, SHA_COMPRESS as u64, false, true),
             Instruction::new(Opcode::ADD, 10, 0, 10, false, true),
             Instruction::new(Opcode::ADD, 11, 10, 20, false, true),
             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false),
         ];
+        add_halt(&mut instructions);
 
         let program = Arc::new(Program::new(instructions, 0, 0));
         let mut runtime = Executor::new(program, SP1CoreOpts::default());

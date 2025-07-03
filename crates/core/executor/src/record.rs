@@ -29,7 +29,7 @@ use crate::{
     },
     program::Program,
     syscalls::SyscallCode,
-    ByteOpcode, RetainedEventsPreset, RiscvAirId, SplitOpts,
+    ByteOpcode, Instruction, RetainedEventsPreset, RiscvAirId, SplitOpts,
 };
 
 /// A record of the execution of a program.
@@ -351,39 +351,56 @@ pub struct MemoryAccessRecord {
 /// Memory record where all three operands are registers.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RTypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
     /// The register `op_b` record.
     pub b: MemoryRecordEnum,
+    /// The c operand.
+    pub op_c: u64,
     /// The register `op_c` record.
     pub c: MemoryRecordEnum,
 }
 
-impl From<MemoryAccessRecord> for RTypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl RTypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         Self {
+            op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in RTypeRecord"),
+            op_b: instruction.op_b,
             b: value.b.expect("expected MemoryRecord for op_b in RTypeRecord"),
+            op_c: instruction.op_c,
             c: value.c.expect("expected MemoryRecord for op_c in RTypeRecord"),
         }
     }
 }
-
 /// Memory record where the first two operands are registers.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ITypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
     /// The register `op_b` record.
     pub b: MemoryRecordEnum,
+    /// The c operand.
+    pub op_c: u64,
 }
 
-impl From<MemoryAccessRecord> for ITypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl ITypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         debug_assert!(value.c.is_none());
         Self {
+            op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in ITypeRecord"),
+            op_b: instruction.op_b,
             b: value.b.expect("expected MemoryRecord for op_b in ITypeRecord"),
+            op_c: instruction.op_c,
         }
     }
 }
@@ -391,34 +408,54 @@ impl From<MemoryAccessRecord> for ITypeRecord {
 /// Memory record where only one operand is a register.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct JTypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
+    /// The c operand.
+    pub op_c: u64,
 }
 
-impl From<MemoryAccessRecord> for JTypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl JTypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         debug_assert!(value.b.is_none());
         debug_assert!(value.c.is_none());
-        Self { a: value.a.expect("expected MemoryRecord for op_a in JTypeRecord") }
+        Self {
+            op_a: instruction.op_a,
+            a: value.a.expect("expected MemoryRecord for op_a in JTypeRecord"),
+            op_b: instruction.op_b,
+            op_c: instruction.op_c,
+        }
     }
 }
 
 /// Memory record where only the first two operands are known to be registers, but the third isn't.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ALUTypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
     /// The register `op_b` record.
     pub b: MemoryRecordEnum,
+    /// The c operand.
+    pub op_c: u64,
     /// The register `op_c` record.
     pub c: Option<MemoryRecordEnum>,
 }
 
-impl From<MemoryAccessRecord> for ALUTypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl ALUTypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         Self {
+            op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in ALUTypeRecord"),
+            op_b: instruction.op_b,
             b: value.b.expect("expected MemoryRecord for op_b in ALUTypeRecord"),
+            op_c: instruction.op_c,
             c: value.c,
         }
     }

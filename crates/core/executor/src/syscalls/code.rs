@@ -162,6 +162,9 @@ pub enum SyscallCode {
 
     /// Executes the `UINT256_MUL_CARRY` precompile.
     UINT256_MUL_CARRY = 0x00_01_01_31,
+
+    /// Executes the `MPROTECT` syscall.
+    MPROTECT = 0x00_00_01_32,
 }
 
 impl SyscallCode {
@@ -210,6 +213,7 @@ impl SyscallCode {
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
             0x00_01_01_30 => SyscallCode::UINT256_ADD_CARRY,
             0x00_01_01_31 => SyscallCode::UINT256_MUL_CARRY,
+            0x00_00_01_32 => SyscallCode::MPROTECT,
             _ => panic!("invalid syscall number: {value}"),
         }
     }
@@ -316,6 +320,7 @@ impl SyscallCode {
             SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => {
                 RiscvAirId::Uint256Ops
             }
+            SyscallCode::MPROTECT => RiscvAirId::Mprotect,
             SyscallCode::HALT
             | SyscallCode::WRITE
             | SyscallCode::ENTER_UNCONSTRAINED

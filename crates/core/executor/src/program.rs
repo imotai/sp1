@@ -97,9 +97,13 @@ impl Program {
 
     #[must_use]
     /// Fetch the instruction at the given program counter.
-    pub fn fetch(&self, pc: u64) -> &Instruction {
+    pub fn fetch(&self, pc: u64) -> Option<&Instruction> {
         let idx = ((pc - self.pc_base) / 4) as usize;
-        &self.instructions[idx]
+        if idx < self.instructions.len() {
+            Some(&self.instructions[idx])
+        } else {
+            None
+        }
     }
 
     // /// Returns `self.pc_start - self.pc_base`, that is, the relative `pc_start`.

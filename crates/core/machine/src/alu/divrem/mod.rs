@@ -294,9 +294,8 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
             {
                 let mut blu = vec![];
-                let instruction = input.program.fetch(event.pc);
                 cols.state.populate(&mut blu, event.clk, event.pc);
-                cols.adapter.populate(&mut blu, instruction, alu_record);
+                cols.adapter.populate(&mut blu, alu_record);
                 output.add_byte_lookup_events(blu);
             }
 

@@ -3,7 +3,7 @@ use std::{hash::Hash, str::FromStr};
 use hashbrown::HashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{Opcode, RiscvAirId};
+use crate::{Instruction, Opcode, Register, RiscvAirId};
 
 /// Serialize a `HashMap<u32, V>` as a `Vec<(u32, V)>`.
 pub fn serialize_hashmap_as_vec<K: Eq + Hash + Serialize, V: Serialize, S: Serializer>(
@@ -95,4 +95,18 @@ pub fn rv32im_costs() -> HashMap<RiscvAirId, usize> {
     let costs: HashMap<String, usize> =
         serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
     costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v)).collect()
+}
+
+/// Add a halt syscall to the end of the instructions vec.
+pub fn add_halt(instructions: &mut Vec<Instruction>) {
+    instructions.push(Instruction::new(Opcode::ADD, Register::X5 as u8, 0, 0, false, false));
+    instructions.push(Instruction::new(Opcode::ADD, Register::X10 as u8, 0, 0, false, false));
+    instructions.push(Instruction::new(
+        Opcode::ECALL,
+        Register::X5 as u8,
+        Register::X10 as u64,
+        Register::X11 as u64,
+        false,
+        false,
+    ));
 }

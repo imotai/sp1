@@ -22,6 +22,18 @@ pub const LONG_WORD_BYTE_SIZE: usize = 2 * WORD_BYTE_SIZE;
 /// The Baby Bear prime.
 pub const BABYBEAR_PRIME: u32 = 0x78000001;
 
+/// The log2 page size (in bytes).
+pub const LOG_PAGE_SIZE: usize = 12;
+
+/// The size of a page in bytes.
+pub const PAGE_SIZE: usize = 1 << LOG_PAGE_SIZE;
+
+/// MProtect flags.
+pub const PROT_NONE: u8 = 0b000;
+pub const PROT_READ: u8 = 0b001;
+pub const PROT_WRITE: u8 = 0b010;
+pub const PROT_EXEC: u8 = 0b100;
+
 pub mod fd {
     /// The minimum file descriptor.
     ///

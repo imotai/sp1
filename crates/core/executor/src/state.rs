@@ -29,6 +29,10 @@ pub struct ExecutionState {
     /// + timestamp that each memory address was accessed.
     pub memory: Memory<MemoryEntry>,
 
+    /// The page protection flags for each page in the memory.  The default values should be
+    /// `PROT_READ` | `PROT_WRITE`.
+    pub page_prots: HashMap<u64, u8>,
+
     /// The global clock keeps track of how many instructions have been executed through all
     /// shards.
     pub global_clk: u64,
@@ -73,6 +77,7 @@ impl ExecutionState {
             clk: 0,
             pc: pc_start,
             memory: Memory::new_preallocated(),
+            page_prots: HashMap::new(),
             uninitialized_memory: Memory::new_preallocated(),
             input_stream: VecDeque::new(),
             public_values_stream: Vec::new(),

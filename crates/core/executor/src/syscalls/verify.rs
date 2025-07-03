@@ -14,14 +14,14 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
     // Skip deferred proof verification if the corresponding runtime flag is set.
     if rt.deferred_proof_verification == DeferredProofVerification::Enabled {
         // vkey_ptr is a pointer to [u32; 8] which contains the verification key.
-        assert_eq!(vkey_ptr % 4, 0, "vkey_ptr must be word-aligned");
+        assert_eq!(vkey_ptr % 8, 0, "vkey_ptr must be word-aligned");
         // pv_digest_ptr is a pointer to [u32; 8] which contains the public values digest.
-        assert_eq!(pv_digest_ptr % 4, 0, "pv_digest_ptr must be word-aligned");
+        assert_eq!(pv_digest_ptr % 8, 0, "pv_digest_ptr must be word-aligned");
 
-        let vkey = (0..8).map(|i| rt.word::<E>(vkey_ptr + i * 4) as u32).collect::<Vec<u32>>();
+        let vkey = (0..4).map(|i| rt.double_word::<E>(vkey_ptr + i * 8)).collect::<Vec<u64>>();
 
         let pv_digest =
-            (0..8).map(|i| rt.word::<E>(pv_digest_ptr + i * 4) as u32).collect::<Vec<u32>>();
+            (0..4).map(|i| rt.double_word::<E>(pv_digest_ptr + i * 8)).collect::<Vec<u64>>();
 
         let proof_index = rt.state.proof_stream_ptr;
         if proof_index >= rt.state.proof_stream.len() {
@@ -29,8 +29,8 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
         }
         let (proof, proof_vk) = &rt.state.proof_stream[proof_index].clone();
         rt.state.proof_stream_ptr += 1;
-        let vkey_bytes: [u32; 8] = vkey.try_into().unwrap();
-        let pv_digest_bytes: [u32; 8] = pv_digest.try_into().unwrap();
+        let vkey_bytes: [u64; 4] = vkey.try_into().unwrap();
+        let pv_digest_bytes: [u64; 4] = pv_digest.try_into().unwrap();
         if let Some(verifier) = rt.subproof_verifier.as_ref() {
             verifier
                 .verify_deferred_proof(proof, proof_vk, vkey_bytes, pv_digest_bytes)

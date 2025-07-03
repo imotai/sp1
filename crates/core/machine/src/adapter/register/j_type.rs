@@ -1,7 +1,7 @@
 use p3_field::{AbstractField, Field, PrimeField32};
 use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
-    Instruction, JTypeRecord,
+    JTypeRecord,
 };
 use sp1_derive::AlignedBorrow;
 
@@ -26,17 +26,12 @@ pub struct JTypeReader<T> {
 }
 
 impl<F: PrimeField32> JTypeReader<F> {
-    pub fn populate(
-        &mut self,
-        blu_events: &mut impl ByteRecord,
-        instruction: &Instruction,
-        record: JTypeRecord,
-    ) {
-        self.op_a = F::from_canonical_u8(instruction.op_a);
+    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, record: JTypeRecord) {
+        self.op_a = F::from_canonical_u8(record.op_a);
         self.op_a_memory.populate(record.a, blu_events);
-        self.op_a_0 = F::from_bool(instruction.op_a == 0);
-        self.op_b_imm = Word::from(instruction.op_b);
-        self.op_c_imm = Word::from(instruction.op_c);
+        self.op_a_0 = F::from_bool(record.op_a == 0);
+        self.op_b_imm = Word::from(record.op_b);
+        self.op_c_imm = Word::from(record.op_c);
     }
 }
 

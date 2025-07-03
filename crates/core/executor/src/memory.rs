@@ -197,9 +197,10 @@ impl<V> Default for Page<V> {
     }
 }
 
+pub(crate) const MAX_LOG_ADDR: usize = 40;
 const LOG_PAGE_LEN: usize = 18;
 const PAGE_LEN: usize = 1 << LOG_PAGE_LEN;
-const MAX_PAGE_COUNT: usize = (1 << 40) / 8 / PAGE_LEN;
+const MAX_PAGE_COUNT: usize = (1 << MAX_LOG_ADDR) / 8 / PAGE_LEN;
 const NO_PAGE: u32 = u32::MAX;
 const PAGE_MASK: usize = PAGE_LEN - 1;
 
@@ -231,7 +232,7 @@ pub struct PagedMemory<V: Copy> {
 }
 
 impl<V: Copy> PagedMemory<V> {
-    /// The number of lower bits to ignore, since addresses (except registers) are a multiple of 4.
+    /// The number of lower bits to ignore, since addresses (except registers) are a multiple of 8.
     const NUM_IGNORED_LOWER_BITS: usize = 3;
 
     /// Create a `PagedMemory` with capacity `MAX_PAGE_COUNT`.

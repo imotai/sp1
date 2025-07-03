@@ -7,6 +7,7 @@ mod halt;
 mod io;
 mod keccak_permute;
 mod memory;
+mod mprotect;
 mod secp256k1;
 mod secp256r1;
 mod sha_compress;
@@ -28,6 +29,7 @@ pub use halt::*;
 pub use io::*;
 pub use keccak_permute::*;
 pub use memory::*;
+pub use mprotect::*;
 pub use secp256k1::*;
 pub use secp256r1::*;
 pub use sha_compress::*;
@@ -165,3 +167,6 @@ pub const UINT256_ADD_CARRY: u32 = 0x00_01_01_30;
 
 /// Executes the `UINT256_MUL_CARRY` precompile.
 pub const UINT256_MUL_CARRY: u32 = 0x00_01_01_31;
+
+/// Executes the `MPROTECT` syscall.
+pub const MPROTECT: u32 = 0x00_00_01_32;

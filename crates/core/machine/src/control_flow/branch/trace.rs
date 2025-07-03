@@ -52,9 +52,8 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
                     if idx < input.branch_events.len() {
                         let event = &input.branch_events[idx];
                         self.event_to_row(&event.0, cols, &mut blu);
-                        let instruction = input.program.fetch(event.0.pc);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, instruction, event.1);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu

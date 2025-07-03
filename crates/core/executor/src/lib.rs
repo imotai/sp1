@@ -69,7 +69,7 @@ pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
     pub mod tests {
-        use crate::{Instruction, Opcode, Program};
+        use crate::{utils::add_halt, Instruction, Opcode, Program};
 
         pub use test_artifacts::{
             FIBONACCI_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF, SSZ_WITHDRAWALS_ELF,
@@ -78,11 +78,12 @@ pub mod programs {
 
         #[must_use]
         pub fn simple_program() -> Program {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
                 Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
                 Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
 
@@ -149,7 +150,7 @@ pub mod programs {
         #[must_use]
         #[allow(clippy::unreadable_literal)]
         pub fn simple_memory_program() -> Program {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADD, 29, 0, 0x12348765, false, true),
                 // SW and LW
                 Instruction::new(Opcode::SW, 29, 0, 0x27654320, false, true),
@@ -200,6 +201,7 @@ pub mod programs {
                                                                                * bits of our
                                                                                * 64-bit value */
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
     }

@@ -194,6 +194,9 @@ pub enum RiscvAirId {
     Byte = 63,
     /// The range chip.
     Range = 64,
+    /// The mprotect chip.
+    #[subenum(CoreAirId)]
+    Mprotect = 65,
 }
 
 impl RiscvAirId {
@@ -231,6 +234,7 @@ impl RiscvAirId {
             RiscvAirId::SyscallCore,
             RiscvAirId::SyscallInstrs,
             RiscvAirId::Global,
+            RiscvAirId::Mprotect,
         ]
     }
 

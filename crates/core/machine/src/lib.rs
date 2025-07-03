@@ -46,7 +46,7 @@ pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
     pub mod tests {
-        use sp1_core_executor::{Instruction, Opcode, Program};
+        use sp1_core_executor::{add_halt, Instruction, Opcode, Program};
 
         pub use test_artifacts::{
             FIBONACCI_ELF, KECCAK_PERMUTE_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF,
@@ -55,11 +55,12 @@ pub mod programs {
 
         #[must_use]
         pub fn simple_program() -> Program {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
                 Instruction::new(Opcode::ADDI, 30, 0, 37, false, true),
                 Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
 

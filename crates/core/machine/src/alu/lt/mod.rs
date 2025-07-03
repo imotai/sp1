@@ -96,10 +96,9 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.lt_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                     }
                 });
             },
@@ -121,10 +120,9 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_LT_COLS];
                     let cols: &mut LtCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, instruction, event.1);
+                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })

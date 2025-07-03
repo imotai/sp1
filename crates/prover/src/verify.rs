@@ -599,8 +599,8 @@ impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
         &self,
         proof: &sp1_core_machine::reduce::SP1ReduceProof<InnerSC>,
         vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
-        _vk_hash: [u32; 8],
-        _committed_value_digest: [u32; 8],
+        _vk_hash: [u64; 4],
+        _committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         // Check that the vk hash matches the vk hash from the input.
         // if vk.hash_u32() != vk_hash {

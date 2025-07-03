@@ -11,6 +11,7 @@ pub mod ecdsa;
 
 pub mod ed25519;
 pub mod io;
+pub mod mprotect;
 pub mod secp256k1;
 pub mod secp256r1;
 pub mod unconstrained;
@@ -168,6 +169,9 @@ extern "C" {
 
     /// Executes a BN254 Fp2 multiplication on the given inputs.
     pub fn syscall_bn254_fp2_mulmod(p: *mut u64, q: *const u64);
+
+    /// Executes the mprotect syscall.
+    pub fn syscall_mprotect(addr: *const u8, prot: u8);
 
     /// Reads a buffer from the input stream.
     pub fn read_vec_raw() -> ReadVecResult;

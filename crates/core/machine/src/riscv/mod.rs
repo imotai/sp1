@@ -916,7 +916,7 @@ pub mod tests {
 
     use p3_air::BaseAir;
     use p3_baby_bear::BabyBear;
-    use sp1_core_executor::{Instruction, Opcode, Program};
+    use sp1_core_executor::{add_halt, Instruction, Opcode, Program};
 
     use crate::{programs::tests::*, riscv::RiscvAir, utils::setup_logger};
     use sp1_stark::InteractionKind;
@@ -1010,11 +1010,12 @@ pub mod tests {
     #[tokio::test]
     async fn test_add_prove() {
         setup_logger();
-        let instructions = vec![
+        let mut instructions = vec![
             Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
             Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
             Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
         ];
+        add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
         run_test(program, stdin).await.unwrap();
@@ -1067,6 +1068,7 @@ pub mod tests {
                 instructions.push(Instruction::new(*mul_op, 31, 30, 29, false, false));
             }
         }
+        add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
         run_test(program, stdin).await.unwrap();
@@ -1077,11 +1079,12 @@ pub mod tests {
         setup_logger();
         let less_than = [Opcode::SLT, Opcode::SLTU];
         for lt_op in less_than.iter() {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
                 Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
                 Instruction::new(*lt_op, 31, 30, 29, false, false),
             ];
+            add_halt(&mut instructions);
             let program = Program::new(instructions, 0, 0);
             let stdin = SP1Stdin::new();
             run_test(program, stdin).await.unwrap();
@@ -1094,11 +1097,12 @@ pub mod tests {
         let bitwise_opcodes = [Opcode::XOR, Opcode::OR, Opcode::AND];
 
         for bitwise_op in bitwise_opcodes.iter() {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
                 Instruction::new(Opcode::ADDI, 30, 0, 8, false, true),
                 Instruction::new(*bitwise_op, 31, 30, 29, false, false),
             ];
+            add_halt(&mut instructions);
             let program = Program::new(instructions, 0, 0);
             let stdin = SP1Stdin::new();
             run_test(program, stdin).await.unwrap();
@@ -1148,6 +1152,7 @@ pub mod tests {
                 instructions.push(Instruction::new(*div_rem_op, 31, 29, 30, false, false));
             }
         }
+        add_halt(&mut instructions);
         let program = Program::new(instructions.to_vec(), 0, 0);
         let stdin = SP1Stdin::new();
         run_test(program, stdin).await.unwrap();

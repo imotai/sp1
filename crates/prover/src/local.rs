@@ -701,8 +701,8 @@ impl<C: SP1ProverComponents> SubproofVerifier for LocalProver<C> {
         &self,
         proof: &SP1ReduceProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
-        vk_hash: [u32; 8],
-        committed_value_digest: [u32; 8],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         self.prover.verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
