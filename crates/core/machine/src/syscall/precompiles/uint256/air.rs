@@ -5,9 +5,7 @@ use crate::{
 
 use crate::{
     air::SP1CoreAirBuilder,
-    operations::{
-        field::range::FieldLtCols, IsZeroOperation, IsZeroOperationInput, SyscallAddrOperation,
-    },
+    operations::{field::range::FieldLtCols, IsZeroOperation, SyscallAddrOperation},
     utils::{
         limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
         words_to_bytes_le_vec,
