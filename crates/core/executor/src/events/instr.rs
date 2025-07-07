@@ -163,12 +163,12 @@ impl JumpEvent {
         Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
-/// AUIPC Instruction Event.
+/// UType Instruction Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V AUIPC operation.
+/// This object encapsulated the information needed to prove a RISC-V AUIPC and LUI operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
-pub struct AUIPCEvent {
+pub struct UTypeEvent {
     /// The clock cycle.
     pub clk: u64,
     /// The program counter.
@@ -185,8 +185,8 @@ pub struct AUIPCEvent {
     pub op_a_0: bool,
 }
 
-impl AUIPCEvent {
-    /// Create a new [`AUIPCEvent`].
+impl UTypeEvent {
+    /// Create a new [`UTypeEvent`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(clk: u64, pc: u64, opcode: Opcode, a: u64, b: u64, c: u64, op_a_0: bool) -> Self {

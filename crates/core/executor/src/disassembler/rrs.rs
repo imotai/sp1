@@ -44,6 +44,12 @@ impl Instruction {
         Self::new(opcode, dec_insn.rs1 as u8, dec_insn.rs2, dec_insn.imm as u64, false, true)
     }
 
+    /// Create a new [`Instruction`] from an U-type instruction.
+    #[must_use]
+    pub const fn from_u_type(opcode: Opcode, dec_insn: &UType) -> Self {
+        Self::new(opcode, dec_insn.rd as u8, dec_insn.imm as u64, dec_insn.imm as u64, true, true)
+    }
+
     /// Create a new [`Instruction`] that is not implemented.
     #[must_use]
     pub const fn unimp() -> Self {
@@ -265,15 +271,12 @@ impl InstructionProcessor for InstructionTranspiler {
     }
 
     fn process_lui(&mut self, dec_insn: UType) -> Self::InstructionResult {
-        // LUI instructions are handled in a special way inside the zkVM.
-        //
-        // To avoid ADD opcode having two immediate operands, we use register x0 as our `op_b`.
-        Instruction::new(Opcode::ADDI, dec_insn.rd as u8, 0, dec_insn.imm, false, true)
+        Instruction::from_u_type(Opcode::LUI, &dec_insn)
     }
 
     /// AUIPC instructions have the third operand set to imm << 12.
     fn process_auipc(&mut self, dec_insn: UType) -> Self::InstructionResult {
-        Instruction::new(Opcode::AUIPC, dec_insn.rd as u8, dec_insn.imm, dec_insn.imm, true, true)
+        Instruction::from_u_type(Opcode::AUIPC, &dec_insn)
     }
 
     fn process_ecall(&mut self) -> Self::InstructionResult {

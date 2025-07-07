@@ -36,7 +36,7 @@
   "Addi": 30,
   "DivRem": 252,
   "ShiftLeft": 70,
-  "Auipc": 27,
+  "UType": 31,
   "KeccakPermute": 2640,
   "MemoryLocal": 80,
   "Subw": 32,

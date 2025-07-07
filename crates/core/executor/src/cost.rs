@@ -84,10 +84,10 @@ pub fn estimate_trace_elements(
     cells += (num_events_per_air[RiscvAirId::Jalr]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::Jalr];
     max_height = max_height.max(num_events_per_air[RiscvAirId::Jalr]);
-    // Compute the auipc chip contribution.
-    cells += (num_events_per_air[RiscvAirId::Auipc]).next_multiple_of(32)
-        * costs_per_air[RiscvAirId::Auipc];
-    max_height = max_height.max(num_events_per_air[RiscvAirId::Auipc]);
+    // Compute the utype chip contribution.
+    cells += (num_events_per_air[RiscvAirId::UType]).next_multiple_of(32)
+        * costs_per_air[RiscvAirId::UType];
+    max_height = max_height.max(num_events_per_air[RiscvAirId::UType]);
     // Compute the memory instruction chip contribution.
     cells += (num_events_per_air[RiscvAirId::LoadByte]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::LoadByte];

@@ -98,39 +98,41 @@ pub enum Opcode {
     JALR = 34,
     /// rd ← pc + imm, pc ← pc + 4
     AUIPC = 35,
+    /// rd ← imm, pc ← pc + 4
+    LUI = 36,
+    /// Transfer control to the ecall handler.
+    ECALL = 37,
     /// Transfer control to the debugger.
-    ECALL = 36,
-    /// Transfer control to the debugger.
-    EBREAK = 37,
+    EBREAK = 38,
     // RISCV-64
     /// rd ← rs1 + rs2, pc ← pc + 4
-    ADDW = 38,
+    ADDW = 39,
     /// rd ← rs1 - rs2, pc ← pc + 4
-    SUBW = 39,
+    SUBW = 40,
     /// rd ← rs1 << rs2, pc ← pc + 4
-    SLLW = 40,
+    SLLW = 41,
     /// rd ← rs1 >> rs2 (logical), pc ← pc + 4
-    SRLW = 41,
+    SRLW = 42,
     /// rd ← rs1 >> rs2 (arithmetic), pc ← pc + 4
-    SRAW = 42,
+    SRAW = 43,
     /// rd ← sx(m32(rs1 + imm)), pc ← pc + 4
-    LWU = 43,
+    LWU = 44,
     /// rd ← sx(m8(rs1 + imm)), pc ← pc + 4
-    LD = 44,
+    LD = 45,
     /// m8(rs1 + imm) ← rs2[7:0], pc ← pc + 4
-    SD = 45,
+    SD = 46,
     /// rd ← rs1 + imm, pc ← pc + 4
-    MULW = 46,
+    MULW = 47,
     /// rd ← rs1 / rs2 (signed), pc ← pc + 4
-    DIVW = 47,
+    DIVW = 48,
     /// rd ← rs1 / rs2 (unsigned), pc ← pc + 4
-    DIVUW = 48,
+    DIVUW = 49,
     /// rd ← rs1 % rs2 (signed), pc ← pc + 4
-    REMW = 49,
+    REMW = 50,
     /// rd ← rs1 % rs2 (unsigned), pc ← pc + 4
-    REMUW = 50,
+    REMUW = 51,
     /// Unimplemented instruction.
-    UNIMP = 51,
+    UNIMP = 52,
 }
 /// Byte Opcode.
 ///
@@ -191,6 +193,7 @@ impl Opcode {
             Opcode::JAL => "jal",
             Opcode::JALR => "jalr",
             Opcode::AUIPC => "auipc",
+            Opcode::LUI => "lui",
             Opcode::ECALL => "ecall",
             Opcode::EBREAK => "ebreak",
             Opcode::MUL => "mul",

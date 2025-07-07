@@ -142,11 +142,11 @@ impl Instruction {
         matches!(self.opcode, Opcode::JALR)
     }
 
-    /// Returns if the instruction is an auipc instruction.
+    /// Returns if the instruction is a utype instruction.
     #[must_use]
     #[inline]
-    pub const fn is_auipc_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::AUIPC)
+    pub const fn is_utype_instruction(&self) -> bool {
+        matches!(self.opcode, Opcode::AUIPC | Opcode::LUI)
     }
 
     /// Returns if the instruction guarantees that the `next_pc` are with correct limbs.

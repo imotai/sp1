@@ -23,9 +23,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     events::{
-        AUIPCEvent, AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent,
-        JumpEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
-        MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SyscallEvent,
+        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent, JumpEvent,
+        MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryRecordEnum,
+        PrecompileEvent, PrecompileEvents, SyscallEvent, UTypeEvent,
     },
     program::Program,
     syscalls::SyscallCode,
@@ -81,8 +81,8 @@ pub struct ExecutionRecord {
     pub memory_store_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store double instructions.
     pub memory_store_double_events: Vec<(MemInstrEvent, ITypeRecord)>,
-    /// A trace of the AUIPC events.
-    pub auipc_events: Vec<(AUIPCEvent, JTypeRecord)>,
+    /// A trace of the AUIPC and LUI events.
+    pub utype_events: Vec<(UTypeEvent, JTypeRecord)>,
     /// A trace of the branch events.
     pub branch_events: Vec<(BranchEvent, ITypeRecord)>,
     /// A trace of the JAL events.
@@ -483,7 +483,7 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("branch_events".to_string(), self.branch_events.len());
         stats.insert("jal_events".to_string(), self.jal_events.len());
         stats.insert("jalr_events".to_string(), self.jalr_events.len());
-        stats.insert("auipc_events".to_string(), self.auipc_events.len());
+        stats.insert("utype_events".to_string(), self.utype_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
             stats.insert(format!("syscall {syscall_code:?}"), events.len());
@@ -535,7 +535,7 @@ impl MachineRecord for ExecutionRecord {
         self.branch_events.append(&mut other.branch_events);
         self.jal_events.append(&mut other.jal_events);
         self.jalr_events.append(&mut other.jalr_events);
-        self.auipc_events.append(&mut other.auipc_events);
+        self.utype_events.append(&mut other.utype_events);
         self.syscall_events.append(&mut other.syscall_events);
         self.bump_memory_events.append(&mut other.bump_memory_events);
         self.bump_state_events.append(&mut other.bump_state_events);

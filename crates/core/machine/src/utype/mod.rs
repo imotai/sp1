@@ -1,4 +1,3 @@
-use crate::air::WordAirBuilder;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -11,6 +10,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::AlignedBorrow;
 
+use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{air::MachineAir, Word};
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -25,34 +25,40 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct AuipcChip;
+pub struct UTypeChip;
 
-pub const NUM_AUIPC_COLS: usize = size_of::<AuipcColumns<u8>>();
+pub const NUM_UTYPE_COLS: usize = size_of::<UTypeColumns<u8>>();
 
-impl<F> BaseAir<F> for AuipcChip {
+impl<F> BaseAir<F> for UTypeChip {
     fn width(&self) -> usize {
-        NUM_AUIPC_COLS
+        NUM_UTYPE_COLS
     }
 }
 
-/// The column layout for AUIPC instructions.
+/// The column layout for UType instructions.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
-pub struct AuipcColumns<T> {
+pub struct UTypeColumns<T> {
     /// The current shard, timestamp, program counter of the CPU.
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
     pub adapter: JTypeReader<T>,
 
-    /// Computation of `pc + op_b`.
+    /// The value to add to op_b.
+    pub addend: [T; WORD_SIZE - 1],
+
+    /// Computation of `addend + op_b`.
     pub add_operation: AddOperation<T>,
 
-    /// Whether the instruction is an AUIPC instruction.
+    /// Flag to specify if it is an AUIPC instruction.  If false, then it's a LUI instruction.
+    pub is_auipc: T,
+
+    /// Whether the row is real.
     pub is_real: T,
 }
 
-impl<AB> Air<AB> for AuipcChip
+impl<AB> Air<AB> for UTypeChip
 where
     AB: SP1CoreAirBuilder,
     AB::Var: Sized,
@@ -61,11 +67,13 @@ where
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0);
-        let local: &AuipcColumns<AB::Var> = (*local).borrow();
+        let local: &UTypeColumns<AB::Var> = (*local).borrow();
 
         builder.assert_bool(local.is_real);
+        builder.assert_bool(local.is_auipc);
 
-        let opcode = AB::Expr::from_canonical_u32(Opcode::AUIPC as u32);
+        let opcode = local.is_auipc * AB::Expr::from_canonical_u32(Opcode::AUIPC as u32)
+            + (AB::Expr::one() - local.is_auipc) * AB::Expr::from_canonical_u32(Opcode::LUI as u32);
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(
@@ -80,19 +88,33 @@ where
             local.is_real.into(),
         );
 
-        let op_input = AddOperationInput::<AB>::new(
+        let addend: Word<AB::Expr> = Word([
+            local.addend[0].into(),
+            local.addend[1].into(),
+            local.addend[2].into(),
+            AB::Expr::zero(),
+        ]);
+
+        let expected_addend = builder.select_word(
+            local.is_auipc,
             Word([
                 local.state.pc[0].into(),
                 local.state.pc[1].into(),
                 local.state.pc[2].into(),
                 AB::Expr::zero(),
             ]),
+            Word::zero::<AB>(),
+        );
+
+        builder.assert_word_eq(addend.clone(), expected_addend);
+
+        let op_input = AddOperationInput::<AB>::new(
+            addend,
             local.adapter.b().map(|x| x.into()),
             local.add_operation,
             local.is_real.into() - local.adapter.op_a_0.into(),
         );
         <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
-        builder.when(local.adapter.op_a_0).assert_word_zero(local.add_operation.value);
 
         // Constrain the program and register reads.
         JTypeReader::<AB::F>::eval(
@@ -108,18 +130,18 @@ where
     }
 }
 
-impl<F: PrimeField32> MachineAir<F> for AuipcChip {
+impl<F: PrimeField32> MachineAir<F> for UTypeChip {
     type Record = ExecutionRecord;
 
     type Program = Program;
 
     fn name(&self) -> String {
-        "Auipc".to_string()
+        "UType".to_string()
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let nb_rows =
-            next_multiple_of_32(input.auipc_events.len(), input.fixed_log2_rows::<F, _>(self));
+            next_multiple_of_32(input.utype_events.len(), input.fixed_log2_rows::<F, _>(self));
         Some(nb_rows)
     }
 
@@ -128,25 +150,30 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        let chunk_size = std::cmp::max((input.auipc_events.len()) / num_cpus::get(), 1);
-        let padded_nb_rows = <AuipcChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_AUIPC_COLS);
+        let chunk_size = std::cmp::max((input.utype_events.len()) / num_cpus::get(), 1);
+        let padded_nb_rows = <UTypeChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let mut values = zeroed_f_vec(padded_nb_rows * NUM_UTYPE_COLS);
 
         let blu_events = values
-            .chunks_mut(chunk_size * NUM_AUIPC_COLS)
+            .chunks_mut(chunk_size * NUM_UTYPE_COLS)
             .enumerate()
             .par_bridge()
             .map(|(i, rows)| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                rows.chunks_mut(NUM_AUIPC_COLS).enumerate().for_each(|(j, row)| {
+                rows.chunks_mut(NUM_UTYPE_COLS).enumerate().for_each(|(j, row)| {
                     let idx = i * chunk_size + j;
-                    let cols: &mut AuipcColumns<F> = row.borrow_mut();
+                    let cols: &mut UTypeColumns<F> = row.borrow_mut();
 
-                    if idx < input.auipc_events.len() {
-                        let (event, record) = &input.auipc_events[idx];
+                    if idx < input.utype_events.len() {
+                        let (event, record) = &input.utype_events[idx];
+                        cols.is_auipc = F::from_bool(event.opcode == Opcode::AUIPC);
                         cols.is_real = F::one();
                         if record.op_a != 0 {
-                            cols.add_operation.populate(&mut blu, event.pc, event.b);
+                            let a = if event.opcode == Opcode::AUIPC { event.pc } else { 0 };
+                            cols.addend[0] = F::from_canonical_u16((a & 0xFFFF) as u16);
+                            cols.addend[1] = F::from_canonical_u16((a >> 16) as u16);
+                            cols.addend[2] = F::from_canonical_u16((a >> 32) as u16);
+                            cols.add_operation.populate(&mut blu, a, event.b);
                         }
                         cols.state.populate(&mut blu, event.clk, event.pc);
                         cols.adapter.populate(&mut blu, *record);
@@ -159,14 +186,14 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
         output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
 
         // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_AUIPC_COLS)
+        RowMajorMatrix::new(values, NUM_UTYPE_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
         if let Some(shape) = shard.shape.as_ref() {
             shape.included::<F, _>(self)
         } else {
-            !shard.auipc_events.is_empty()
+            !shard.utype_events.is_empty()
         }
     }
 

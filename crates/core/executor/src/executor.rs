@@ -23,10 +23,9 @@ use crate::{
     disassembler::InstructionTranspiler,
     estimate_trace_elements,
     events::{
-        AUIPCEvent, AluEvent, BranchEvent, JumpEvent, LogicalShard, MemInstrEvent,
-        MemoryAccessPosition, MemoryEntry, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
-        MemoryReadRecord, MemoryWriteRecord, Shard, SyscallEvent,
-        NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
+        AluEvent, BranchEvent, JumpEvent, LogicalShard, MemInstrEvent, MemoryAccessPosition,
+        MemoryEntry, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryReadRecord,
+        MemoryWriteRecord, Shard, SyscallEvent, UTypeEvent, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
     },
     hook::{HookEnv, HookRegistry},
     memory::{Entry, Memory},
@@ -1201,8 +1200,8 @@ impl<'a> Executor<'a> {
             self.emit_jal_event(instruction, a, b, c, record, op_a_0, next_pc);
         } else if instruction.is_jalr_instruction() {
             self.emit_jalr_event(instruction, a, b, c, record, op_a_0, next_pc);
-        } else if instruction.is_auipc_instruction() {
-            self.emit_auipc_event(instruction, a, b, c, record, op_a_0);
+        } else if instruction.is_utype_instruction() {
+            self.emit_utype_event(instruction, a, b, c, record, op_a_0);
         } else if instruction.is_ecall_instruction() {
             self.emit_syscall_event(
                 clk,
@@ -1424,9 +1423,9 @@ impl<'a> Executor<'a> {
         self.record.jalr_events.push((event, record));
     }
 
-    /// Emit an AUIPC event.
+    /// Emit a UType event.
     #[inline]
-    fn emit_auipc_event(
+    fn emit_utype_event(
         &mut self,
         instruction: &Instruction,
         a: u64,
@@ -1435,7 +1434,7 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
         op_a_0: bool,
     ) {
-        let event = AUIPCEvent {
+        let event = UTypeEvent {
             clk: self.state.clk,
             pc: self.state.pc,
             opcode: instruction.opcode,
@@ -1445,7 +1444,7 @@ impl<'a> Executor<'a> {
             op_a_0,
         };
         let record = JTypeRecord::new(record, instruction);
-        self.record.auipc_events.push((event, record));
+        self.record.utype_events.push((event, record));
     }
 
     /// Create a syscall event.
@@ -1644,10 +1643,10 @@ impl<'a> Executor<'a> {
             (a, b, c, next_pc) = self.execute_branch::<E>(instruction, next_pc);
         } else if instruction.is_jump_instruction() {
             (a, b, c, next_pc) = self.execute_jump::<E>(instruction);
-        } else if instruction.is_auipc_instruction() {
+        } else if instruction.is_utype_instruction() {
             let (rd, imm) = instruction.u_type();
             (b, c) = (imm, imm);
-            a = self.state.pc.wrapping_add(b);
+            a = if instruction.opcode == Opcode::AUIPC { self.state.pc.wrapping_add(b) } else { b };
             self.rw_cpu::<E>(rd, a);
         } else if instruction.is_ecall_instruction() {
             (a, b, c, clk, next_pc, syscall, exit_code) = self.execute_ecall::<E>()?;
@@ -2619,10 +2618,8 @@ impl<'a> Executor<'a> {
         event_counts[RiscvAirId::Jal] = opcode_counts[Opcode::JAL];
         event_counts[RiscvAirId::Jalr] = opcode_counts[Opcode::JALR];
 
-        // Compute the number of events in the auipc chip.
-        event_counts[RiscvAirId::Auipc] = opcode_counts[Opcode::AUIPC]
-            + opcode_counts[Opcode::UNIMP]
-            + opcode_counts[Opcode::EBREAK];
+        // Compute the number of events in the utype chip.
+        event_counts[RiscvAirId::UType] = opcode_counts[Opcode::AUIPC] + opcode_counts[Opcode::LUI];
 
         // Compute the number of events in the memory instruction chip.
         event_counts[RiscvAirId::LoadByte] = opcode_counts[Opcode::LB] + opcode_counts[Opcode::LBU];

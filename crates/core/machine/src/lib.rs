@@ -30,6 +30,7 @@ pub mod range;
 pub mod riscv;
 pub mod syscall;
 pub mod utils;
+pub mod utype;
 
 // Re-export the `SP1ReduceProof` struct from sp1_core_machine.
 //

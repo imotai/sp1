@@ -17,7 +17,7 @@ use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
     adapter::bump::StateBumpChip,
-    control_flow::{AuipcChip, BranchChip, JalChip, JalrChip},
+    control_flow::{BranchChip, JalChip, JalrChip},
     global::GlobalChip,
     memory::{
         load::{
@@ -35,6 +35,7 @@ use crate::{
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
     },
+    utype::UTypeChip,
 };
 
 /// A module for importing all the different RISC-V chips.
@@ -133,8 +134,8 @@ pub enum RiscvAir<F: PrimeField32> {
     StoreWord(StoreWordChip),
     /// An AIR for RISC-V memory store double instructions.
     StoreDouble(StoreDoubleChip),
-    /// An AIR for RISC-V AUIPC instruction.
-    AUIPC(AuipcChip),
+    /// An AIR for RISC-V UType instruction.
+    UType(UTypeChip),
     /// An AIR for RISC-V branch instructions.
     Branch(BranchChip),
     /// An AIR for RISC-V jal instructions.
@@ -294,7 +295,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::StoreHalf(StoreHalfChip::default()),
             RiscvAir::StoreWord(StoreWordChip::default()),
             RiscvAir::StoreDouble(StoreDoubleChip::default()),
-            RiscvAir::AUIPC(AuipcChip::default()),
+            RiscvAir::UType(UTypeChip::default()),
             RiscvAir::Branch(BranchChip::default()),
             RiscvAir::Jal(JalChip::default()),
             RiscvAir::Jalr(JalrChip::default()),
@@ -390,7 +391,7 @@ impl<F: PrimeField32> RiscvAir<F> {
                 StoreHalf,
                 StoreWord,
                 StoreDouble,
-                AUIPC,
+                UType,
                 Branch,
                 Jal,
                 Jalr,
@@ -716,9 +717,9 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(store_double.name(), store_double.cost());
         chips.push(store_double);
 
-        let auipc = Chip::new(RiscvAir::AUIPC(AuipcChip::default()));
-        costs.insert(auipc.name(), auipc.cost());
-        chips.push(auipc);
+        let utype = Chip::new(RiscvAir::UType(UTypeChip::default()));
+        costs.insert(utype.name(), utype.cost());
+        chips.push(utype);
 
         let branch = Chip::new(RiscvAir::Branch(BranchChip::default()));
         costs.insert(branch.name(), branch.cost());
@@ -809,7 +810,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             (RiscvAirId::StoreHalf, record.memory_store_half_events.len()),
             (RiscvAirId::StoreWord, record.memory_store_word_events.len()),
             (RiscvAirId::StoreDouble, record.memory_store_double_events.len()),
-            (RiscvAirId::Auipc, record.auipc_events.len()),
+            (RiscvAirId::UType, record.utype_events.len()),
             (RiscvAirId::Branch, record.branch_events.len()),
             (RiscvAirId::Jal, record.jal_events.len()),
             (RiscvAirId::Jalr, record.jalr_events.len()),
@@ -867,7 +868,7 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::RangeLookup => RiscvAirId::Range,
             RiscvAirDiscriminants::MemoryBump => RiscvAirId::MemoryBump,
             RiscvAirDiscriminants::StateBump => RiscvAirId::StateBump,
-            RiscvAirDiscriminants::AUIPC => RiscvAirId::Auipc,
+            RiscvAirDiscriminants::UType => RiscvAirId::UType,
             RiscvAirDiscriminants::Branch => RiscvAirId::Branch,
             RiscvAirDiscriminants::Jal => RiscvAirId::Jal,
             RiscvAirDiscriminants::Jalr => RiscvAirId::Jalr,

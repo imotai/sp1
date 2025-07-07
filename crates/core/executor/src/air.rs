@@ -159,9 +159,9 @@ pub enum RiscvAirId {
     /// The store double chip.
     #[subenum(CoreAirId)]
     StoreDouble = 51,
-    /// The auipc chip.
+    /// The utype chip.
     #[subenum(CoreAirId)]
-    Auipc = 52,
+    UType = 52,
     /// The branch chip.
     #[subenum(CoreAirId)]
     Branch = 53,
@@ -215,7 +215,7 @@ impl RiscvAirId {
             RiscvAirId::ShiftRight,
             RiscvAirId::DivRem,
             RiscvAirId::Lt,
-            RiscvAirId::Auipc,
+            RiscvAirId::UType,
             RiscvAirId::MemoryLocal,
             RiscvAirId::MemoryBump,
             RiscvAirId::StateBump,
