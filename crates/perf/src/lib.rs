@@ -5,7 +5,7 @@ use csl_cuda::TaskScope;
 use csl_prover::{local_gpu_opts, SP1CudaProverBuilder};
 use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{local::LocalProver, SP1CoreProofData};
+use sp1_prover::{local::LocalProver, shapes::DEFAULT_ARITY, SP1CoreProofData};
 use tokio::time::Instant;
 use tracing::Instrument;
 
@@ -34,8 +34,9 @@ pub async fn make_measurement(
 ) -> Measurement {
     let recursion_cache_size = 5;
     let sp1_prover = SP1CudaProverBuilder::new(t.clone())
-        .recursion_cache_size(recursion_cache_size)
-        .max_reduce_arity(4)
+        .normalize_cache_size(recursion_cache_size)
+        .set_max_compose_arity(DEFAULT_ARITY)
+        .without_vk_verification()
         .build()
         .await;
     let mut opts = local_gpu_opts();

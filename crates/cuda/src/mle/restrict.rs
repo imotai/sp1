@@ -353,7 +353,7 @@ mod tests {
             .zip(restriction.as_ref().unwrap().guts().as_slice().iter())
             .enumerate()
         {
-            assert_eq!(eval, host_eval, "Incorrect values at index {}", i);
+            assert_eq!(eval, host_eval, "Incorrect values at index {i}");
         }
     }
 

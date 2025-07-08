@@ -1,6 +1,6 @@
 use csl_cuda::TaskScope;
 use csl_prover::{local_gpu_opts, CudaSP1ProverComponents, SP1CudaProverBuilder};
-use sp1_core_executor::{Program, SP1Context, SP1ReduceProof};
+use sp1_core_executor::{Program, SP1Context, SP1RecursionProof};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_cuda::{
     api::{Request, Response},
@@ -102,7 +102,7 @@ impl Server {
             let request: Request = match bincode::deserialize(&request_buf) {
                 Ok(request) => request,
                 Err(e) => {
-                    eprintln!("Error deserializing request: {}", e);
+                    eprintln!("Error deserializing request: {e}");
                     let response = Response::InternalError(e.to_string());
                     send_response(stream, response).await?;
                     return Ok(());
@@ -188,7 +188,7 @@ impl ConnectionCtx {
         &mut self,
         vk: SP1VerifyingKey,
         proof: SP1CoreProof,
-        deferred_proofs: Vec<SP1ReduceProof<InnerSC>>,
+        deferred_proofs: Vec<SP1RecursionProof<InnerSC>>,
     ) -> Response {
         tracing::info!("Proving compress");
 
@@ -198,7 +198,7 @@ impl ConnectionCtx {
         }
     }
 
-    pub async fn prove_shrink(&mut self, proof: SP1ReduceProof<InnerSC>) -> Response {
+    pub async fn prove_shrink(&mut self, proof: SP1RecursionProof<InnerSC>) -> Response {
         tracing::info!("Proving shrink");
 
         match self.prover.shrink(proof).await {
@@ -207,7 +207,7 @@ impl ConnectionCtx {
         }
     }
 
-    pub async fn prove_wrap(&mut self, proof: SP1ReduceProof<InnerSC>) -> Response {
+    pub async fn prove_wrap(&mut self, proof: SP1RecursionProof<InnerSC>) -> Response {
         tracing::info!("Proving wrap");
 
         match self.prover.wrap(proof).await {

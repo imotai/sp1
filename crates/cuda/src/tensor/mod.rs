@@ -40,14 +40,14 @@ impl<'a, T, A: Backend> SmallTensor<'a, T, A> {
     }
 }
 
-impl<'a, T, A: Backend> HasBackend for SmallTensor<'a, T, A> {
+impl<T, A: Backend> HasBackend for SmallTensor<'_, T, A> {
     type Backend = A;
     fn backend(&self) -> &A {
         self.tensor.backend()
     }
 }
 
-impl<'a, T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallTensor<'a, T, TaskScope> {
+impl<T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallTensor<'_, T, TaskScope> {
     type Output = Tensor<T, CpuBackend>;
     async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
         let dimensions = self.tensor.dimensions.clone();
@@ -57,7 +57,7 @@ impl<'a, T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallTensor<'
     }
 }
 
-impl<'a, T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallTensor<'a, T, CpuBackend> {
+impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallTensor<'_, T, CpuBackend> {
     type Output = Tensor<T, TaskScope>;
     async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         let dimensions = self.tensor.dimensions.clone();

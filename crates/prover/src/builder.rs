@@ -27,7 +27,7 @@ impl SP1CudaProverBuilder {
         let prover_permits = ProverSemaphore::new(1);
 
         if gpu_memory_gb < 24 {
-            panic!("Unsupported GPU memory: {}, must be at least 24GB", gpu_memory_gb);
+            panic!("Unsupported GPU memory: {gpu_memory_gb}, must be at least 24GB");
         }
 
         let mut num_prover_workers = 4;
@@ -36,7 +36,7 @@ impl SP1CudaProverBuilder {
         let core_prover =
             new_cuda_prover_sumcheck_eval(core_verifier.shard_verifier().clone(), scope.clone());
 
-        let recursion_verifier = CudaSP1ProverComponents::recursion_verifier();
+        let recursion_verifier = CudaSP1ProverComponents::compress_verifier();
         let recursion_prover = new_cuda_prover_sumcheck_eval(
             recursion_verifier.shard_verifier().clone(),
             scope.clone(),

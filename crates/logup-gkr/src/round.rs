@@ -1102,8 +1102,8 @@ mod tests {
             num_row_variables,
         } = layer;
 
-        println!("num_row_variables: {}", num_row_variables);
-        println!("num_interaction_variables: {}", num_interaction_variables);
+        println!("num_row_variables: {num_row_variables}");
+        println!("num_interaction_variables: {num_interaction_variables}");
         let poly_point = Point::<EF>::rand(&mut rng, num_row_variables + num_interaction_variables);
         let (interaction_point, row_point) =
             poly_point.split_at(num_interaction_variables as usize);
@@ -1291,8 +1291,8 @@ mod tests {
                 .zip_eq(denominator_1.guts().as_slice())
                 .enumerate()
             {
-                assert_eq!(next_d, *d_0 * *d_1, "failed at index {}", i);
-                assert_eq!(*next_n, *n_0 * *d_1 + *n_1 * *d_0, "failed at index {}", i);
+                assert_eq!(next_d, *d_0 * *d_1, "failed at index {i}");
+                assert_eq!(*next_n, *n_0 * *d_1 + *n_1 * *d_0, "failed at index {i}");
             }
         })
         .await
@@ -1421,7 +1421,7 @@ mod tests {
             let mut denominator_eval = first_denominator_eval;
             let mut eval_point = first_eval_point;
             let num_proofs = round_proofs.len();
-            println!("Num rounds: {}", num_proofs);
+            println!("Num rounds: {num_proofs}");
             for (i, round_proof) in round_proofs.iter().enumerate() {
                 // Get the batching challenge for combining the claims.
                 let lambda = challenger.sample_ext_element::<EF>();

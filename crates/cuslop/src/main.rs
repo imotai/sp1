@@ -35,6 +35,6 @@ async fn main() {
     let server = Server { cuda_device_id };
 
     if let Err(e) = run_in_place(|scope| server.run(scope)).await.await {
-        eprintln!("Error running server: {}", e);
+        eprintln!("Error running server: {e}");
     }
 }

@@ -35,16 +35,11 @@ fn get_program_and_input(program: String) -> (Vec<u8>, SP1Stdin) {
     // Download files from S3
     let s3_path = program;
     std::process::Command::new("aws")
-        .args([
-            "s3",
-            "cp",
-            &format!("s3://sp1-testing-suite/{}/program.bin", s3_path),
-            "program.bin",
-        ])
+        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/program.bin"), "program.bin"])
         .output()
         .unwrap();
     std::process::Command::new("aws")
-        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{}/stdin.bin", s3_path), "stdin.bin"])
+        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
         .output()
         .unwrap();
 
@@ -89,5 +84,5 @@ async fn main() {
         tokio::task::spawn_blocking(opentelemetry::global::shutdown_tracer_provider).await.unwrap();
     }
 
-    println!("{}", measurement);
+    println!("{measurement}");
 }

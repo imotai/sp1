@@ -81,14 +81,14 @@ impl<'a, T, A: Backend> SmallBuffer<'a, T, A> {
     }
 }
 
-impl<'a, T, A: Backend> HasBackend for SmallBuffer<'a, T, A> {
+impl<T, A: Backend> HasBackend for SmallBuffer<'_, T, A> {
     type Backend = A;
     fn backend(&self) -> &A {
         self.buffer.backend()
     }
 }
 
-impl<'a, T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallBuffer<'a, T, TaskScope> {
+impl<T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallBuffer<'_, T, TaskScope> {
     type Output = Buffer<T, CpuBackend>;
     async fn copy_into_backend(self, _backend: &CpuBackend) -> Result<Self::Output, CopyError> {
         let mut vec = Vec::with_capacity(self.buffer.len());
@@ -103,7 +103,7 @@ impl<'a, T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallBuffer<'
     }
 }
 
-impl<'a, T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallBuffer<'a, T, CpuBackend> {
+impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallBuffer<'_, T, CpuBackend> {
     type Output = Buffer<T, TaskScope>;
     async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         let mut buffer = Buffer::with_capacity_in(self.buffer.len(), backend.clone());

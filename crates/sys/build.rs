@@ -143,7 +143,7 @@ fn main() {
     let cuda_version =
         std::process::Command::new(nvcc).arg("--version").output().expect("failed to get version");
     if !cuda_version.status.success() {
-        panic!("{:?}", cuda_version);
+        panic!("{cuda_version:?}");
     }
     let cuda_version = String::from_utf8(cuda_version.stdout).unwrap();
     let x =
@@ -151,7 +151,7 @@ fn main() {
     let y = cuda_version[x..].find(',').expect("can't parse \"release X.Y,\" in --version output");
     let v = cuda_version[x..x + y].parse::<f32>().unwrap();
     if v < 12.0 {
-        panic!("Unsupported CUDA version {} < 12.0", v);
+        panic!("Unsupported CUDA version {v} < 12.0");
     }
 
     // The crate directory.
@@ -222,7 +222,7 @@ fn main() {
             // We let rust-analyzer/rustc run to report the syntax error with diagnostics.
             return;
         }
-        Err(e) => panic!("{:?}", e),
+        Err(e) => panic!("{e:?}"),
     }
     build.include(out_include_dir);
 

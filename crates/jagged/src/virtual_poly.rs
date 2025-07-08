@@ -445,8 +445,7 @@ mod tests {
                 * std::mem::size_of::<F>()) as f64
                 / 1e9;
             println!(
-                "lde_area for total_number_of_variables: {:?}, lde_area: {:2}",
-                total_number_of_variables, lde_area
+                "lde_area for total_number_of_variables: {total_number_of_variables:?}, lde_area: {lde_area:2}"
             );
 
             assert!(row_counts.len() == column_counts.len());
@@ -510,8 +509,7 @@ mod tests {
                     commitments.push(commit);
                 }
                 println!(
-                    "commit_time for total_number_of_variables: {:?}, commit_time: {:?}",
-                    total_number_of_variables, commit_time
+                    "commit_time for total_number_of_variables: {total_number_of_variables:?}, commit_time: {commit_time:?}"
                 );
 
                 let num_col_variables = prover_data
@@ -538,7 +536,7 @@ mod tests {
                                 .copied()
                                 .zip(data.column_counts.iter().copied())
                                 .flat_map(|(row_count, column_count)| {
-                                    std::iter::repeat(row_count).take(column_count)
+                                    std::iter::repeat_n(row_count, column_count)
                                 })
                         })
                         .collect(),

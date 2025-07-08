@@ -440,9 +440,9 @@ pub(crate) mod tests {
             }
             let event = events.get(row_idx);
             if col_mismatches.is_empty() {
-                println!("row {row_idx} matches   . event (assuming events/row = 1): {:?}", event);
+                println!("row {row_idx} matches   . event (assuming events/row = 1): {event:?}");
             } else {
-                println!("row {row_idx} MISMATCHES. event (assuming events/row = 1): {:?}", event);
+                println!("row {row_idx} MISMATCHES. event (assuming events/row = 1): {event:?}");
             }
             if event.is_some() {
                 eventful_mismatched_columns.extend(col_mismatches);
@@ -450,8 +450,8 @@ pub(crate) mod tests {
                 padding_mismatched_columns.extend(col_mismatches);
             }
         }
-        println!("eventful mismatched columns: {:?}", eventful_mismatched_columns);
-        println!("padding mismatched columns: {:?}", padding_mismatched_columns);
+        println!("eventful mismatched columns: {eventful_mismatched_columns:?}");
+        println!("padding mismatched columns: {padding_mismatched_columns:?}");
 
         assert_eq!(gpu_trace, trace);
     }

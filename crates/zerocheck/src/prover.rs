@@ -494,17 +494,17 @@ mod tests {
         for (i, (calculated_y_0, expected_y_0)) in
             calculated_y_0s.iter().zip(expected_y_0s.iter()).enumerate()
         {
-            assert_eq!(*calculated_y_0, *expected_y_0, "Mismatch at index {}", i);
+            assert_eq!(*calculated_y_0, *expected_y_0, "Mismatch at index {i}");
         }
         for (i, (calculated_y_2, expected_y_2)) in
             calculated_y_2s.iter().zip(expected_y_2s.iter()).enumerate()
         {
-            assert_eq!(*calculated_y_2, *expected_y_2, "Mismatch at index {}", i);
+            assert_eq!(*calculated_y_2, *expected_y_2, "Mismatch at index {i}");
         }
         for (i, (calculated_y_4, expected_y_4)) in
             calculated_y_4s.iter().zip(expected_y_4s.iter()).enumerate()
         {
-            assert_eq!(*calculated_y_4, *expected_y_4, "Mismatch at index {}", i);
+            assert_eq!(*calculated_y_4, *expected_y_4, "Mismatch at index {i}");
         }
     }
 }

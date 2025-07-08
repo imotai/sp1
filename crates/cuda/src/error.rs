@@ -48,13 +48,13 @@ impl fmt::Debug for OtherError {
         // # Safety
         // This is safe because the error came from a well formed CudaRustError type.
         let message = unsafe { CStr::from_ptr(self.0.message).to_str().map_err(|_| fmt::Error)? };
-        write!(f, "CudaRustError: {}", message)
+        write!(f, "CudaRustError: {message}")
     }
 }
 
 impl fmt::Display for OtherError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

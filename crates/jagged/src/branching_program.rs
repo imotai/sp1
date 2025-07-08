@@ -729,11 +729,7 @@ mod tests {
             for (i, (sum_value, sum_value_from_device)) in
                 sum_values.iter().zip_eq(sum_values_from_device.iter()).enumerate()
             {
-                assert_eq!(
-                    sum_value, sum_value_from_device,
-                    "mismatch on sum values at index {}",
-                    i
-                );
+                assert_eq!(sum_value, sum_value_from_device, "mismatch on sum values at index {i}");
             }
         })
         .await;

@@ -128,7 +128,7 @@ mod tests {
                 .zip_eq(column_counts.iter())
                 .flat_map(|(row_counts, column_counts)| {
                     row_counts.iter().copied().zip_eq(column_counts.iter().copied()).flat_map(
-                        |(row_count, column_count)| std::iter::repeat(row_count).take(column_count),
+                        |(row_count, column_count)| std::iter::repeat_n(row_count, column_count),
                     )
                 })
                 .collect(),
@@ -194,7 +194,7 @@ mod tests {
                 .zip(device_component.guts().as_slice().iter())
                 .enumerate()
             {
-                assert_eq!(host_val, device_val, "Index: {:?}", idx);
+                assert_eq!(host_val, device_val, "Index: {idx:?}");
             }
         }
     }

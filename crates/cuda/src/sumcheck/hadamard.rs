@@ -253,7 +253,7 @@ mod tests {
                 let ext = LongMle::from_components(ext, log_stacking_height);
 
                 let product = HadamardProduct { base, ext };
-                println!("product num_variables: {}", num_variables);
+                println!("product num_variables: {num_variables}");
 
                 let verifier = BasefoldVerifier::<C>::new(1);
 

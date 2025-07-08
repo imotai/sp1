@@ -65,7 +65,7 @@ impl<T> Channel<T> {
         Ok(Self { events, events_permits: sem, _marker: PhantomData })
     }
 
-    pub fn split(&self) -> (Sender<T>, Receiver<T>) {
+    pub fn split(&self) -> (Sender<'_, T>, Receiver<'_, T>) {
         let (tx, rx) = mpsc::channel(self.events.len());
         (Sender { chan: self, tx }, Receiver { chan: self, rx })
     }

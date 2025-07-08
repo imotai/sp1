@@ -230,7 +230,7 @@ checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -241,7 +241,7 @@ checksum = "e539d3fca749fcee5236ab05e93a52867dd549cc157c8cb7f99595f3cedffdb5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -367,7 +367,7 @@ dependencies = [
  "regex",
  "rustc-hash 1.1.0",
  "shlex",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -451,9 +451,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.18.1"
+version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "793db76d6187cd04dff33004d8e6c9cc4e05cd330500379d2394209271b4aeee"
+checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "byte-slice-cast"
@@ -487,22 +487,22 @@ checksum = "3fce8dd7fcfcbf3a0a87d8f515194b49d6135acab73e18bd380d1d93bb1a15eb"
 dependencies = [
  "clap",
  "heck 0.4.1",
- "indexmap 2.9.0",
+ "indexmap 2.10.0",
  "log",
  "proc-macro2",
  "quote",
  "serde",
  "serde_json",
- "syn 2.0.103",
+ "syn 2.0.104",
  "tempfile",
  "toml",
 ]
 
 [[package]]
 name = "cc"
-version = "1.2.27"
+version = "1.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d487aa071b5f64da6f19a3e848e3578944b726ee5a4854b82172f02aa876bfdc"
+checksum = "5c1599538de2394445747c8cf7935946e3cc27e9625f889d979bfb2aaf569362"
 dependencies = [
  "jobserver",
  "libc",
@@ -584,7 +584,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -704,9 +704,9 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crunchy"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
+checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypto-bigint"
@@ -1214,7 +1214,7 @@ checksum = "510c292c8cf384b1a340b816a9a6cf2599eb8f566a44949024af88418000c50b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1234,7 +1234,7 @@ checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1299,7 +1299,7 @@ checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1392,7 +1392,7 @@ checksum = "f282cfdfe92516eb26c2af8589c274c7c17681f5ecc03c18255fe741c6aa64eb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1549,7 +1549,7 @@ checksum = "162ee34ebcb7c64a8abebc059ce0fee27c2262618d7b60ed8faf72fef13c3650"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1699,7 +1699,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 0.2.12",
- "indexmap 2.9.0",
+ "indexmap 2.10.0",
  "slab",
  "tokio",
  "tokio-util",
@@ -1941,9 +1941,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc2fdfdbff08affe55bb779f33b053aa1fe5dd5b54c257343c17edfa55711bdb"
+checksum = "7f66d5bd4c6f02bf0542fad85d626775bab9258cf795a4256dcaf3161114d1df"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2102,7 +2102,7 @@ checksum = "a0eb5a3343abf848c0984fe4604b2b105da9539376e24fc0a3b0007411ae4fd9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -2123,12 +2123,23 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.9.0"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
+checksum = "fe4cd85333e22411419a0bcae1297d25e58c9443848b11dc6a86fefe8c78a661"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.4",
+]
+
+[[package]]
+name = "io-uring"
+version = "0.7.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b86e202f00093dcba4275d4636b93ef9dd75d025ae560d2521b45ea28ab49013"
+dependencies = [
+ "bitflags 2.9.1",
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]
@@ -2296,9 +2307,9 @@ checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
 name = "libredox"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0ff37bd590ca25063e35af745c343cb7a0271906fb7b37e4813e8f79f00268d"
+checksum = "1580801010e535496706ba011c15f8532df6b42297d2e471fec38ceadd8c0638"
 dependencies = [
  "bitflags 2.9.1",
  "libc",
@@ -2612,7 +2623,7 @@ checksum = "1e32339a5dc40459130b3bd269e9892439f55b33e772d2a9d402a789baaf4e8a"
 dependencies = [
  "futures-core",
  "futures-sink",
- "indexmap 2.9.0",
+ "indexmap 2.10.0",
  "js-sys",
  "once_cell",
  "pin-project-lite",
@@ -2770,7 +2781,7 @@ dependencies = [
 [[package]]
 name = "p3-air"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "p3-field",
  "p3-matrix",
@@ -2780,7 +2791,7 @@ dependencies = [
 [[package]]
 name = "p3-baby-bear"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "num-bigint 0.4.6",
  "p3-field",
@@ -2794,7 +2805,7 @@ dependencies = [
 [[package]]
 name = "p3-bn254-fr"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "ff 0.13.1",
  "num-bigint 0.4.6",
@@ -2808,7 +2819,7 @@ dependencies = [
 [[package]]
 name = "p3-challenger"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "p3-field",
  "p3-maybe-rayon",
@@ -2821,7 +2832,7 @@ dependencies = [
 [[package]]
 name = "p3-commit"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "p3-challenger",
@@ -2834,7 +2845,7 @@ dependencies = [
 [[package]]
 name = "p3-dft"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "p3-field",
  "p3-matrix",
@@ -2846,7 +2857,7 @@ dependencies = [
 [[package]]
 name = "p3-field"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint 0.4.6",
@@ -2859,7 +2870,7 @@ dependencies = [
 [[package]]
 name = "p3-fri"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "p3-challenger",
@@ -2877,7 +2888,7 @@ dependencies = [
 [[package]]
 name = "p3-interpolation"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "p3-field",
  "p3-matrix",
@@ -2887,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "p3-keccak-air"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "p3-air",
  "p3-field",
@@ -2900,7 +2911,7 @@ dependencies = [
 [[package]]
 name = "p3-matrix"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "p3-field",
@@ -2914,7 +2925,7 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "rayon",
 ]
@@ -2922,7 +2933,7 @@ dependencies = [
 [[package]]
 name = "p3-mds"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "p3-dft",
@@ -2936,7 +2947,7 @@ dependencies = [
 [[package]]
 name = "p3-merkle-tree"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "p3-commit",
@@ -2952,7 +2963,7 @@ dependencies = [
 [[package]]
 name = "p3-poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "gcd",
  "p3-field",
@@ -2965,7 +2976,7 @@ dependencies = [
 [[package]]
 name = "p3-symmetric"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "p3-field",
@@ -2975,7 +2986,7 @@ dependencies = [
 [[package]]
 name = "p3-uni-stark"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "itertools 0.12.1",
  "p3-air",
@@ -2993,7 +3004,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#fef469e256a409c46678487b36d72337bcea0e3e"
 dependencies = [
  "serde",
 ]
@@ -3030,7 +3041,7 @@ dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -3130,7 +3141,7 @@ checksum = "6e918e4ff8c4549eb882f14b3a4bc8c8bc93de829416eacf579f1207a8fbf861"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -3181,12 +3192,12 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
-version = "0.2.34"
+version = "0.2.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6837b9e10d61f45f987d50808f83d1ee3d206c66acf650c3e4ae2e1f6ddedf55"
+checksum = "061c1221631e079b26479d25bbf2275bfe5917ae8419cd7e34f13bfc2aa7539a"
 dependencies = [
  "proc-macro2",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -3260,7 +3271,7 @@ dependencies = [
  "itertools 0.12.1",
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -3505,9 +3516,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reqwest"
-version = "0.12.20"
+version = "0.12.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eabf4c97d9130e2bf606614eb937e86edac8292eaa6f422f995d7e8de1eb1813"
+checksum = "cbc931937e6ca3a06e3b6c0aa7841849b160a90351d6ab467a8b9b9959767531"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3709,7 +3720,7 @@ dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -3773,7 +3784,7 @@ checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -3831,7 +3842,7 @@ checksum = "5d69265a08751de7844521fd15003ae0a888e035773ba05695c5c759a6f89eef"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -3904,7 +3915,7 @@ checksum = "04dc19736151f35336d325007ac991178d504a119863a2fcb3758cdb5e52c50d"
 [[package]]
 name = "slop-air"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-air",
 ]
@@ -3912,7 +3923,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-field",
  "serde",
@@ -3921,7 +3932,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "itertools 0.14.0",
  "serde",
@@ -3933,7 +3944,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-baby-bear",
 ]
@@ -3941,7 +3952,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -3969,7 +3980,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "clap",
  "derive-where",
@@ -4004,7 +4015,7 @@ dependencies = [
 [[package]]
 name = "slop-bn254"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-bn254-fr",
 ]
@@ -4012,7 +4023,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -4023,7 +4034,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-commit",
  "serde",
@@ -4035,7 +4046,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-dft",
  "serde",
@@ -4048,7 +4059,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-fri",
 ]
@@ -4056,7 +4067,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "crossbeam",
  "futures",
@@ -4069,7 +4080,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "derive-where",
  "futures",
@@ -4101,7 +4112,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-matrix",
 ]
@@ -4109,7 +4120,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-maybe-rayon",
 ]
@@ -4117,7 +4128,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
@@ -4143,7 +4154,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "derive-where",
  "futures",
@@ -4167,7 +4178,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -4175,7 +4186,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "derive-where",
  "futures",
@@ -4194,7 +4205,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "futures",
  "itertools 0.14.0",
@@ -4214,7 +4225,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-symmetric",
 ]
@@ -4222,7 +4233,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -4242,7 +4253,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#17e44dcfbedba8a405726215fd87d3e5ecf589f0"
+source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
 dependencies = [
  "p3-util",
  "tracing-forest",
@@ -4280,8 +4291,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-core-executor"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -4319,8 +4330,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-core-machine"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "bincode",
  "cbindgen",
@@ -4379,8 +4390,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-cuda"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "bincode",
  "reqwest",
@@ -4397,8 +4408,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-curves"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -4418,8 +4429,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-derive"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -4427,8 +4438,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-primitives"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "bincode",
  "blake3",
@@ -4447,8 +4458,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-prover"
-version = "5.0.1"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4501,8 +4512,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-circuit"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "derive-where",
  "hashbrown 0.14.5",
@@ -4552,8 +4563,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-compiler"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -4576,8 +4587,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-derive"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -4585,8 +4596,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-executor"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "backtrace",
  "cbindgen",
@@ -4629,8 +4640,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-gnark-ffi"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4654,8 +4665,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-recursion-machine"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "cbindgen",
  "cc",
@@ -4692,8 +4703,8 @@ dependencies = [
 
 [[package]]
 name = "sp1-stark"
-version = "5.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#1668db81612cebaa38579443c05847bb7787654f"
+version = "5.0.5"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#afcfae329dda5557d3b8d29d1988755a675a2f74"
 dependencies = [
  "arrayref",
  "derive-where",
@@ -4792,7 +4803,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -4826,9 +4837,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.103"
+version = "2.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4307e30089d6fd6aff212f2da3a1f9e32f3223b1f010fb09b7c95f90f3ca1e8"
+checksum = "17b6f705963418cdb9927482fa304bc562ece2fdd4f616084c50b7023b435a40"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4858,7 +4869,7 @@ checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -4946,7 +4957,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -4957,7 +4968,7 @@ checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -5036,17 +5047,19 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.45.1"
+version = "1.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75ef51a33ef1da925cea3e4eb122833cb377c61439ca401b770f54902b806779"
+checksum = "0cc3a2344dafbe23a245241fe8b09735b521110d30fcefbbd5feb1797ca35d17"
 dependencies = [
  "backtrace",
  "bytes",
+ "io-uring",
  "libc",
  "mio",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
+ "slab",
  "socket2",
  "tokio-macros",
  "windows-sys 0.52.0",
@@ -5070,7 +5083,7 @@ checksum = "6e06d43f1345a3bcd39f6a56dbb7dcab2ba47e68e8ac134855e7e2bdbaf8cab8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -5134,7 +5147,7 @@ version = "0.19.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b5bb770da30e5cbfde35a2d7b9b8a2c4b8ef89548a7a6aeab5c9a576e3e7421"
 dependencies = [
- "indexmap 2.9.0",
+ "indexmap 2.10.0",
  "toml_datetime",
  "winnow 0.5.40",
 ]
@@ -5145,7 +5158,7 @@ version = "0.22.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
 dependencies = [
- "indexmap 2.9.0",
+ "indexmap 2.10.0",
  "serde",
  "serde_spanned",
  "toml_datetime",
@@ -5282,7 +5295,7 @@ checksum = "81383ab64e72a7a8b8e13130c49e3dab29def6d0c7d76a03087b3cf71c5c6903"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -5497,7 +5510,7 @@ dependencies = [
  "log",
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
  "wasm-bindgen-shared",
 ]
 
@@ -5532,7 +5545,7 @@ checksum = "8ae87ea40c9f689fc23f209965b6fb8a99ad69aeeb0231408be24920604395de"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -5671,7 +5684,7 @@ checksum = "9107ddc059d5b6fbfbffdfa7a7fe3e22a226def0b2608f72e9d552763d3e1ad7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -5682,7 +5695,7 @@ checksum = "a47fddd13af08290e67f4acabf4b459f647552718f683a7b415d290ac744a836"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -5693,7 +5706,7 @@ checksum = "29bee4b38ea3cde66011baa44dba677c432a78593e202392d1e9070cf2a7fca7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -5704,7 +5717,7 @@ checksum = "bd9211b69f8dcdfa817bfd14bf1c97c9188afa36f4750130fcdf3f400eca9fa8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -6029,7 +6042,7 @@ checksum = "38da3c9736e16c5d3c8c597a9aaa5d1fa565d0532ae05e27c24aa62fb32c0ab6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
  "synstructure",
 ]
 
@@ -6050,7 +6063,7 @@ checksum = "9ecf5b4cc5364572d7f4c329661bcc82724222973f2cab6f050a4e5c22f75181"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -6070,7 +6083,7 @@ checksum = "d71e5d6e06ab090c67b5e44993ec16b72dcbaabc526db883a360057678b48502"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
  "synstructure",
 ]
 
@@ -6091,7 +6104,7 @@ checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -6124,7 +6137,7 @@ checksum = "5b96237efa0c878c64bd89c436f661be4e46b2f3eff1ebb976f7ef2321d2f58f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.103",
+ "syn 2.0.104",
 ]
 
 [[package]]

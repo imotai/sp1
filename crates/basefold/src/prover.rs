@@ -148,7 +148,7 @@ mod tests {
                     eval_claims.push(evaluations);
                 }
                 t.synchronize().await.unwrap();
-                println!("commit time for {} variables: {:?}", num_variables, commit_time);
+                println!("commit time for {num_variables} variables: {commit_time:?}");
 
                 t.synchronize().await.unwrap();
                 let time = std::time::Instant::now();
@@ -213,13 +213,13 @@ mod tests {
                 .map(|dims| dims.iter().map(|&(w, log_h)| w << log_h).sum::<usize>())
                 .sum::<usize>();
             let total_number_of_variables = total_data_length.next_power_of_two().ilog2();
-            println!("total_number_of_variables: {}", total_number_of_variables);
+            println!("total_number_of_variables: {total_number_of_variables}");
 
             let last_log_height = log_stacking_height;
             let last_batch_size = ((1 << total_number_of_variables) - total_data_length)
                 .checked_div(1 << last_log_height)
                 .unwrap();
-            println!("last_batch_size: {}", last_batch_size);
+            println!("last_batch_size: {last_batch_size}");
             if last_batch_size > 0 {
                 round_widths_and_log_heights
                     .last_mut()
@@ -284,10 +284,7 @@ mod tests {
                     prover_data.push(data);
                     batch_evaluations.push(evaluations);
                 }
-                println!(
-                    "commit time for {} variables: {:?}",
-                    total_number_of_variables, commit_time
-                );
+                println!("commit time for {total_number_of_variables} variables: {commit_time:?}");
 
                 let mut host_batch_evaluations = Rounds::new();
                 for round_evals in batch_evaluations.iter() {

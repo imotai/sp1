@@ -336,7 +336,7 @@ mod tests {
                     .zip_eq(intermediate_eq_full_evals_from_device.iter())
                     .enumerate()
                 {
-                    assert_eq!(expected, actual, "Mismatch at index {}", i);
+                    assert_eq!(expected, actual, "Mismatch at index {i}");
                 }
             }
         })

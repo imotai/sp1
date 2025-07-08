@@ -135,14 +135,14 @@ pub struct StreamCallbackFuture<S> {
     interval: Pin<Box<Interval>>,
 }
 
-/// A future that completes once the GPU has completed all work queued in `stream` so far.
-///
-/// This future uses a busy-wait loop to check if the GPU has completed all work. This is useful for
-/// a future waiting on stream completion with minimal overhead.
-#[repr(transparent)]
-pub struct StreamSpinFuture {
-    stream: CudaStream,
-}
+// /// A future that completes once the GPU has completed all work queued in `stream` so far.
+// ///
+// /// This future uses a busy-wait loop to check if the GPU has completed all work. This is useful for
+// /// a future waiting on stream completion with minimal overhead.
+// #[repr(transparent)]
+// pub struct StreamSpinFuture {
+//     stream: CudaStream,
+// }
 
 pub trait StreamRef {
     unsafe fn stream(&self) -> &CudaStream;
@@ -308,21 +308,21 @@ where
     }
 }
 
-impl Future for StreamSpinFuture {
-    type Output = Result<(), CudaError>;
+// impl Future for StreamSpinFuture {
+//     type Output = Result<(), CudaError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.stream.query() {
-            Ok(()) => Poll::Ready(Ok(())),
-            Err(CudaError::NotReady) => {
-                // Tell the scheduler to wake us up again
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
-    }
-}
+//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         match self.stream.query() {
+//             Ok(()) => Poll::Ready(Ok(())),
+//             Err(CudaError::NotReady) => {
+//                 // Tell the scheduler to wake us up again
+//                 cx.waker().wake_by_ref();
+//                 Poll::Pending
+//             }
+//             Err(e) => Poll::Ready(Err(e)),
+//         }
+//     }
+// }
 
 impl IntoFuture for CudaStream {
     type Output = Result<(), CudaError>;

@@ -283,7 +283,7 @@ mod tests {
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }
-            assert_eq!(*dot[[i]], dot_product, "Dot product at index {} is incorrect", i);
+            assert_eq!(*dot[[i]], dot_product, "Dot product at index {i} is incorrect");
         }
     }
 
@@ -314,7 +314,7 @@ mod tests {
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }
-            assert_eq!(*dot[[i]], dot_product, "Dot product at index {} is incorrect", i);
+            assert_eq!(*dot[[i]], dot_product, "Dot product at index {i} is incorrect");
         }
     }
 
@@ -345,7 +345,7 @@ mod tests {
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }
-            assert_eq!(*dot[[i]], dot_product, "Dot product at index {} is incorrect", i);
+            assert_eq!(*dot[[i]], dot_product, "Dot product at index {i} is incorrect");
         }
     }
 }
