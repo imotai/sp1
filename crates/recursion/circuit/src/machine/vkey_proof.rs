@@ -1,10 +1,10 @@
 use crate::{
-    machine::{InnerVal, SP1CompressWitnessValues},
+    machine::{InnerVal, SP1ShapedWitnessValues},
     shard::RecursiveShardVerifier,
 };
 use std::marker::PhantomData;
 
-use super::{PublicValuesOutputDigest, SP1CompressVerifier, SP1CompressWitnessVariable};
+use super::{PublicValuesOutputDigest, SP1CompressVerifier, SP1ShapedWitnessVariable};
 use crate::{
     basefold::{
         merkle_tree::{verify, MerkleProof},
@@ -100,13 +100,13 @@ pub struct SP1CompressWithVKeyWitnessVariable<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
 > {
-    pub compress_var: SP1CompressWitnessVariable<C, SC, JC>,
+    pub compress_var: SP1ShapedWitnessVariable<C, SC, JC>,
     pub merkle_var: SP1MerkleProofWitnessVariable<C, SC>,
 }
 
 /// An input layout for the verifier of the proof shape phase of the compress stage.
 pub struct SP1CompressWithVKeyWitnessValues<SC: MachineConfig + FieldHasher<BabyBear>> {
-    pub compress_val: SP1CompressWitnessValues<SC>,
+    pub compress_val: SP1ShapedWitnessValues<SC>,
     pub merkle_val: SP1MerkleProofWitnessValues<SC>,
 }
 

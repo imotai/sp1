@@ -16,7 +16,6 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::D;
 use std::{iter::once, marker::PhantomData};
 use tcs::{RecursiveMerkleTreeTcs, RecursiveTcs, RecursiveTensorCsOpening};
-use tracing::instrument;
 pub mod merkle_tree;
 pub mod stacked;
 pub mod tcs;
@@ -333,7 +332,6 @@ impl<
     /// The FRI verifier for a single query. We modify this from Plonky3 to be compatible with
     /// opening only a single vector.
     #[allow(clippy::too_many_arguments)]
-    #[instrument(name = "verify_queries", skip_all)]
     fn verify_queries(
         &self,
         builder: &mut Builder<C>,

@@ -17,7 +17,6 @@ use super::PROOF_MAX_NUM_PVS;
 pub const MAX_CONSTRAINT_DEGREE: usize = 3;
 
 /// An Air that encodes lookups based on interactions.
-#[derive(Debug)]
 pub struct Chip<F: Field, A> {
     /// The underlying AIR of the chip for constraint evaluation.
     pub air: Arc<A>,
@@ -29,6 +28,18 @@ pub struct Chip<F: Field, A> {
     pub log_quotient_degree: usize,
     /// The total number of constraints in the chip.
     pub num_constraints: usize,
+}
+
+impl<F: Field, A: MachineAir<F>> std::fmt::Debug for Chip<F, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Chip")
+            .field("air", &self.air.name())
+            .field("sends", &self.sends.len())
+            .field("receives", &self.receives.len())
+            .field("log_quotient_degree", &self.log_quotient_degree)
+            .field("num_constraints", &self.num_constraints)
+            .finish()
+    }
 }
 
 impl<F: Field, A> Clone for Chip<F, A> {

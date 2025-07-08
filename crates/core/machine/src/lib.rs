@@ -31,12 +31,12 @@ pub mod riscv;
 pub mod syscall;
 pub mod utils;
 
-// Re-export the `SP1ReduceProof` struct from sp1_core_machine.
+// Re-export the `SP1RecursionProof` struct from sp1_core_machine.
 //
 // This is done to avoid a circular dependency between sp1_core_machine and sp1_core_executor, and
-// enable crates that depend on sp1_core_machine to import the `SP1ReduceProof` type directly.
-pub mod reduce {
-    pub use sp1_core_executor::SP1ReduceProof;
+// enable crates that depend on sp1_core_machine to import the `SP1RecursionProof` type directly.
+pub mod recursion {
+    pub use sp1_core_executor::SP1RecursionProof;
 }
 
 #[cfg(test)]

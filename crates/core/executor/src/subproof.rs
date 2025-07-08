@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use sp1_stark::{BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey};
 
-use crate::SP1ReduceProof;
+use crate::SP1RecursionProof;
 
 /// Verifier used in runtime when `sp1_zkvm::precompiles::verify::verify_sp1_proof` is called. This
 /// is then used to sanity check that the user passed in the correct proof; the actual constraints
@@ -16,7 +16,7 @@ pub trait SubproofVerifier: Sync + Send {
     /// Verify a deferred proof.
     fn verify_deferred_proof(
         &self,
-        proof: &SP1ReduceProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
@@ -29,7 +29,7 @@ pub struct NoOpSubproofVerifier;
 impl SubproofVerifier for NoOpSubproofVerifier {
     fn verify_deferred_proof(
         &self,
-        _proof: &SP1ReduceProof<BabyBearPoseidon2>,
+        _proof: &SP1RecursionProof<BabyBearPoseidon2>,
         _vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         _vk_hash: [u32; 8],
         _committed_value_digest: [u32; 8],
@@ -46,7 +46,7 @@ where
 {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1ReduceProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
@@ -61,7 +61,7 @@ where
 {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1ReduceProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],
@@ -76,7 +76,7 @@ where
 {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1ReduceProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
         vk_hash: [u32; 8],
         committed_value_digest: [u32; 8],

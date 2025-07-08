@@ -7,7 +7,7 @@ use crate::{
     hash::FieldHasher,
     machine::{
         MerkleProofVariable, SP1CompressWithVKeyWitnessValues, SP1CompressWithVKeyWitnessVariable,
-        SP1MerkleProofWitnessValues, SP1MerkleProofWitnessVariable,
+        SP1MerkleProofWitnessValues, SP1MerkleProofWitnessVariable, SP1ShapedWitnessVariable,
     },
 };
 use slop_algebra::AbstractField;
@@ -18,9 +18,8 @@ use slop_merkle_tree::Perm;
 use slop_symmetric::Hash;
 
 use super::{
-    InnerChallenge, InnerVal, SP1CompressWitnessValues, SP1CompressWitnessVariable,
-    SP1DeferredWitnessValues, SP1DeferredWitnessVariable, SP1RecursionWitnessValues,
-    SP1RecursionWitnessVariable,
+    InnerChallenge, InnerVal, SP1DeferredWitnessValues, SP1DeferredWitnessVariable,
+    SP1NormalizeWitnessValues, SP1RecursionWitnessVariable, SP1ShapedWitnessValues,
 };
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
@@ -90,7 +89,7 @@ where
 pub type JC<C, SC> =
     RecursiveJaggedConfigImpl<C, SC, RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>>;
 
-impl Witnessable<InnerConfig> for SP1RecursionWitnessValues<BabyBearPoseidon2>
+impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<BabyBearPoseidon2>
 //where
 // C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<InnerVal>>,
 {
@@ -130,20 +129,20 @@ impl Witnessable<InnerConfig> for SP1RecursionWitnessValues<BabyBearPoseidon2>
 impl<
         C: CircuitConfig<F = InnerVal, EF = InnerChallenge>,
         SC: BabyBearFriConfigVariable<C> + Send + Sync,
-    > Witnessable<C> for SP1CompressWitnessValues<SC>
+    > Witnessable<C> for SP1ShapedWitnessValues<SC>
 where
     SC::Commitment:
         Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
     MachineVerifyingKey<SC>: Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SC>>,
     ShardProof<SC>: Witnessable<C, WitnessVariable = ShardProofVariable<C, SC, JC<C, SC>>>,
 {
-    type WitnessVariable = SP1CompressWitnessVariable<C, SC, JC<C, SC>>;
+    type WitnessVariable = SP1ShapedWitnessVariable<C, SC, JC<C, SC>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let vks_and_proofs = self.vks_and_proofs.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
 
-        SP1CompressWitnessVariable { vks_and_proofs, is_complete }
+        SP1ShapedWitnessVariable { vks_and_proofs, is_complete }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {

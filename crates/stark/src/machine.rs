@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use crate::{air::MachineAir, Chip, MachineRecord};
 
 /// A shape for a machine.
-#[derive(Debug)]
+#[derive_where(Debug; A: MachineAir<F>)]
 #[derive_where(Clone)]
 pub struct MachineShape<F: Field, A> {
     /// The chip clusters.
@@ -37,7 +37,7 @@ impl<F: Field, A: MachineAir<F>> MachineShape<F, A> {
 }
 
 /// A STARK for proving RISC-V execution.
-#[derive(Debug)]
+#[derive_where(Debug; A: MachineAir<F>)]
 #[derive_where(Clone)]
 pub struct Machine<F: Field, A> {
     /// The chips that make up the RISC-V STARK machine, in order of their execution.

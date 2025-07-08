@@ -10,7 +10,7 @@ use slop_baby_bear::BabyBear;
 use slop_futures::handle::TaskHandle;
 use slop_jagged::JaggedConfig;
 use slop_merkle_tree::my_bb_16_perm;
-use sp1_core_executor::SP1ReduceProof;
+use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_primitives::{consts::WORD_SIZE, hash_deferred_proof};
 use sp1_recursion_circuit::{
@@ -24,9 +24,9 @@ use sp1_recursion_circuit::{
     },
     machine::{
         InnerVal, PublicValuesOutputDigest, SP1CompressRootVerifierWithVKey,
-        SP1CompressWithVKeyVerifier, SP1CompressWithVKeyWitnessValues, SP1CompressWitnessValues,
-        SP1DeferredVerifier, SP1DeferredWitnessValues, SP1MerkleProofWitnessValues,
-        SP1RecursionWitnessValues, SP1RecursiveVerifier, JC,
+        SP1CompressWithVKeyVerifier, SP1CompressWithVKeyWitnessValues, SP1DeferredVerifier,
+        SP1DeferredWitnessValues, SP1MerkleProofWitnessValues, SP1NormalizeWitnessValues,
+        SP1RecursiveVerifier, SP1ShapedWitnessValues, JC,
     },
     shard::RecursiveShardVerifier,
     witness::Witnessable,
@@ -48,7 +48,7 @@ use sp1_stark::{
 
 use crate::{
     components::SP1ProverComponents,
-    shapes::{SP1RecursionCache, SP1RecursionShape, SP1ReduceShape},
+    shapes::{SP1NormalizeCache, SP1NormalizeInputShape, SP1RecursionProofShape},
     utils::words_to_bytes,
     CompressAir, CoreSC, HashableKey, InnerSC, OuterSC, SP1CircuitWitness, SP1RecursionProverError,
     WrapAir,
@@ -68,14 +68,14 @@ type WrapConfig<C> =
 
 #[allow(clippy::type_complexity)]
 pub struct SP1RecursionProver<C: SP1ProverComponents> {
-    prover: MachineProver<C::RecursionComponents>,
-    shrink_prover: MachineProver<C::RecursionComponents>,
+    pub(crate) prover: MachineProver<C::RecursionComponents>,
+    pub(crate) shrink_prover: MachineProver<C::RecursionComponents>,
     wrap_prover: MachineProver<C::WrapComponents>,
     pub(crate) core_verifier: MachineVerifier<CoreSC, RiscvAir<BabyBear>>,
-    pub(crate) recursion_program_cache: SP1RecursionCache,
-    reduce_shape: SP1ReduceShape,
-    reduce_programs: BTreeMap<usize, Arc<RecursionProgram<BabyBear>>>,
-    reduce_keys: BTreeMap<
+    pub(crate) normalize_program_cache: SP1NormalizeCache,
+    reduce_shape: SP1RecursionProofShape,
+    compose_programs: BTreeMap<usize, Arc<RecursionProgram<BabyBear>>>,
+    compose_keys: BTreeMap<
         usize,
         (Arc<MachineProvingKey<C::RecursionComponents>>, MachineVerifyingKey<RecursionConfig<C>>),
     >,
@@ -97,7 +97,7 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
     >,
     pub recursive_core_verifier:
         RecursiveShardVerifier<RiscvAir<BabyBear>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
-    recursive_compress_verifier: RecursiveShardVerifier<
+    pub(crate) recursive_compress_verifier: RecursiveShardVerifier<
         CompressAir<InnerVal>,
         InnerSC,
         InnerConfig,
@@ -110,9 +110,9 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
     /// The merkle root of allowed vks.
     pub recursion_vk_tree: MerkleTree<BabyBear, InnerSC>,
     /// Whether to verify the vk.
-    pub vk_verification: bool,
-    max_reduce_arity: usize,
-    recursion_batch_size: usize,
+    vk_verification: bool,
+    maximum_compose_arity: usize,
+    normalize_batch_size: usize,
 }
 
 impl<C: SP1ProverComponents> SP1RecursionProver<C> {
@@ -121,9 +121,11 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         prover: MachineProver<C::RecursionComponents>,
         shrink_prover: MachineProver<C::RecursionComponents>,
         wrap_prover: MachineProver<C::WrapComponents>,
-        recursion_programs_cache_size: usize,
-        recursion_programs: BTreeMap<SP1RecursionShape, Arc<RecursionProgram<BabyBear>>>,
-        max_reduce_arity: usize,
+        normalize_programs_cache_size: usize,
+        normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<BabyBear>>>,
+        max_compose_arity: usize,
+        vk_verification: bool,
+        vk_map_path: Option<String>,
     ) -> Self {
         let recursive_core_verifier =
             recursive_verifier::<_, CoreSC, InnerConfig, _>(&core_verifier);
@@ -136,29 +138,41 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         );
 
         // Instantiate the cache.
-        let recursion_program_cache = SP1RecursionCache::new(recursion_programs_cache_size);
-        for (shape, program) in recursion_programs {
-            recursion_program_cache.push(shape, program);
+        let normalize_program_cache = SP1NormalizeCache::new(normalize_programs_cache_size);
+        for (shape, program) in normalize_programs {
+            normalize_program_cache.push(shape, program);
         }
 
         // Get the reduce shape.
         let reduce_shape =
-            SP1ReduceShape::reduce_shape_from_arity(max_reduce_arity).expect("arity not supported");
+            SP1RecursionProofShape::compress_proof_shape_from_arity(max_compose_arity)
+                .expect("arity not supported");
 
         // Make the reduce programs and keys.
-        let mut reduce_programs = BTreeMap::new();
-        let mut reduce_keys = BTreeMap::new();
+        let mut compose_programs = BTreeMap::new();
+        let mut compose_keys = BTreeMap::new();
 
-        // Dummy merkle tree for now.
-        let allowed_vk_map: BTreeMap<[BabyBear; DIGEST_SIZE], usize> = (0..(1 << 18))
-            .map(|i| ([BabyBear::from_canonical_u32(i as u32); DIGEST_SIZE], i))
-            .collect();
+        let file = std::fs::File::open(vk_map_path.unwrap_or("./src/vk_map.bin".to_string())).ok();
+
+        let allowed_vk_map: BTreeMap<[BabyBear; DIGEST_SIZE], usize> = if vk_verification {
+            file.and_then(|file| bincode::deserialize_from(file).ok()).unwrap_or_else(|| {
+                (0..1 << 18)
+                    .map(|i| ([BabyBear::from_canonical_u32(i as u32); DIGEST_SIZE], i))
+                    .collect()
+            })
+        } else {
+            // Dummy merkle tree when vk_verification is false.
+            (0..1 << 18)
+                .map(|i| ([BabyBear::from_canonical_u32(i as u32); DIGEST_SIZE], i))
+                .collect()
+        };
+
         let (root, merkle_tree) = MerkleTree::commit(allowed_vk_map.keys().copied().collect());
-        let vk_verification = false;
 
-        for arity in 1..=max_reduce_arity {
-            let dummy_input = dummy_reduce_input(&prover, &reduce_shape, arity, merkle_tree.height);
-            let mut program = compress_program_from_input(
+        for arity in 1..=max_compose_arity {
+            let dummy_input =
+                dummy_compose_input(&prover, &reduce_shape, arity, merkle_tree.height);
+            let mut program = compose_program_from_input(
                 &recursive_compress_verifier,
                 vk_verification,
                 &dummy_input,
@@ -169,19 +183,19 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             // Make the reduce keys.
             let (pk, vk) = prover.setup(program.clone(), None).await.unwrap();
             let pk = unsafe { pk.into_inner() };
-            reduce_keys.insert(arity, (pk, vk));
-            reduce_programs.insert(arity, program);
+            compose_keys.insert(arity, (pk, vk));
+            compose_programs.insert(arity, program);
         }
 
-        let shrink_input = dummy_reduce_input(&prover, &reduce_shape, 1, merkle_tree.height);
+        let shrink_input = dummy_compose_input(&prover, &reduce_shape, 1, merkle_tree.height);
         let shrink_program =
             shrink_program_from_input(&recursive_compress_verifier, vk_verification, &shrink_input);
         let shrink_program = Arc::new(shrink_program);
 
-        let wrap_shape =
-            SP1ReduceShape::shrink_shape_from_arity(max_reduce_arity).expect("arity not supported");
+        let wrap_shape = SP1RecursionProofShape::shrink_proof_shape_from_arity(max_compose_arity)
+            .expect("arity not supported");
 
-        let wrap_input = dummy_reduce_input(&shrink_prover, &wrap_shape, 1, merkle_tree.height);
+        let wrap_input = dummy_compose_input(&shrink_prover, &wrap_shape, 1, merkle_tree.height);
         let wrap_program =
             wrap_program_from_input(&recursive_shrink_verifier, vk_verification, &wrap_input);
         let wrap_program = Arc::new(wrap_program);
@@ -212,18 +226,18 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             core_verifier: MachineVerifier::new(core_verifier),
             recursive_core_verifier,
             recursive_compress_verifier,
-            recursion_program_cache,
+            normalize_program_cache,
             reduce_shape,
-            reduce_keys,
-            reduce_programs,
+            compose_keys,
+            compose_programs,
             deferred_program,
             deferred_keys,
             shrink_program,
             shrink_keys,
             wrap_program,
             wrap_keys,
-            max_reduce_arity,
-            recursion_batch_size: 1,
+            maximum_compose_arity: max_compose_arity,
+            normalize_batch_size: 1,
             recursion_vk_map: allowed_vk_map,
             recursion_vk_root: root,
             recursion_vk_tree: merkle_tree,
@@ -233,7 +247,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
 
     pub fn make_merkle_proofs(
         &self,
-        input: SP1CompressWitnessValues<CoreSC>,
+        input: SP1ShapedWitnessValues<CoreSC>,
     ) -> SP1CompressWithVKeyWitnessValues<CoreSC> {
         let num_vks = self.recursion_vk_map.len();
         let (vk_indices, vk_digest_values): (Vec<_>, Vec<_>) = if self.vk_verification {
@@ -281,6 +295,10 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         self.prover.verifier()
     }
 
+    pub fn vk_verification(&self) -> bool {
+        self.vk_verification
+    }
+
     pub fn shrink_verifier(
         &self,
     ) -> &MachineVerifier<RecursionConfig<C>, CompressAir<RecursionF<C>>> {
@@ -295,9 +313,9 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         self.prover.machine()
     }
 
-    /// Get the maximum reduce arity supported by the prover.
-    pub fn max_reduce_arity(&self) -> usize {
-        self.max_reduce_arity
+    /// Get the maximum compose arity supported by the prover.
+    pub fn max_compose_arity(&self) -> usize {
+        self.maximum_compose_arity
     }
 
     #[inline]
@@ -342,32 +360,33 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     }
 
     #[inline]
-    pub fn recursion_batch_size(&self) -> usize {
-        self.recursion_batch_size
+    pub fn normalize_batch_size(&self) -> usize {
+        self.normalize_batch_size
     }
 
-    pub fn recursion_program(
+    pub fn normalize_program(
         &self,
-        input: &SP1RecursionWitnessValues<CoreSC>,
+        input: &SP1NormalizeWitnessValues<CoreSC>,
     ) -> Arc<RecursionProgram<BabyBear>> {
         let proof_shapes = input
             .shard_proofs
             .iter()
             .map(|proof| self.core_verifier.shape_from_proof(proof))
             .collect::<Vec<_>>();
-        let shape = SP1RecursionShape {
+        let shape = SP1NormalizeInputShape {
             proof_shapes,
             max_log_row_count: self.core_verifier.max_log_row_count(),
             log_blowup: self.core_verifier.fri_config().log_blowup,
             log_stacking_height: self.core_verifier.log_stacking_height() as usize,
         };
-        if let Some(program) = self.recursion_program_cache.get(&shape) {
+        if let Some(program) = self.normalize_program_cache.get(&shape) {
             return program.clone();
         }
-        let mut program = recursion_program_from_input(&self.recursive_core_verifier, input);
+
+        let mut program = normalize_program_from_input(&self.recursive_core_verifier, input);
         program.shape = Some(self.reduce_shape.shape.clone());
         let program = Arc::new(program);
-        self.recursion_program_cache.push(shape, program.clone());
+        self.normalize_program_cache.push(shape, program.clone());
         program
     }
 
@@ -376,20 +395,20 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
     ) -> Arc<RecursionProgram<BabyBear>> {
         let arity = input.compress_val.vks_and_proofs.len();
-        self.reduce_programs[&arity].clone()
+        self.compose_programs[&arity].clone()
     }
 
-    pub fn recursion_program_cache_stats(&self) -> (usize, usize, f64) {
-        self.recursion_program_cache.stats()
+    pub fn normalize_program_cache_stats(&self) -> (usize, usize, f64) {
+        self.normalize_program_cache.stats()
     }
 
     #[inline]
     #[must_use]
-    pub(crate) fn compress_program_from_input(
+    pub(crate) fn compose_program_from_input(
         &self,
         input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
     ) -> RecursionProgram<BabyBear> {
-        compress_program_from_input(&self.recursive_compress_verifier, self.vk_verification, input)
+        compose_program_from_input(&self.recursive_compress_verifier, self.vk_verification, input)
     }
 
     pub fn dummy_reduce_input(&self, arity: usize) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
@@ -399,9 +418,9 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub(crate) fn dummy_reduce_input_with_shape(
         &self,
         arity: usize,
-        shape: &SP1ReduceShape,
+        shape: &SP1RecursionProofShape,
     ) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
-        dummy_reduce_input(&self.prover, shape, arity, self.recursion_vk_tree.height)
+        dummy_compose_input(&self.prover, shape, arity, self.recursion_vk_tree.height)
     }
 
     #[inline]
@@ -439,7 +458,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
                 SP1CircuitWitness::Core(input) => {
                     let mut witness_stream = Vec::new();
                     Witnessable::<InnerConfig>::write(&input, &mut witness_stream);
-                    (self.recursion_program(&input), witness_stream)
+                    (self.normalize_program(&input), witness_stream)
                 }
                 SP1CircuitWitness::Deferred(input) => {
                     let mut witness_stream = Vec::new();
@@ -581,12 +600,12 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         Arc<MachineProvingKey<C::RecursionComponents>>,
         MachineVerifyingKey<RecursionConfig<C>>,
     )> {
-        self.reduce_keys.get(&arity).cloned()
+        self.compose_keys.get(&arity).cloned()
     }
 
     pub fn hash_deferred_proofs(
         prev_digest: [<CoreSC as JaggedConfig>::F; DIGEST_SIZE],
-        deferred_proofs: &[SP1ReduceProof<InnerSC>],
+        deferred_proofs: &[SP1RecursionProof<InnerSC>],
     ) -> [<CoreSC as JaggedConfig>::F; 8] {
         let mut digest = prev_digest;
         for proof in deferred_proofs.iter() {
@@ -603,21 +622,22 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     }
 }
 
-/// The "core" or "lift" program.
-pub fn recursion_program_from_input(
-    recursion_verifier: &RecursiveShardVerifier<
+/// The program that proves the correct execution of the verifier of a single shard of the core
+/// (RISC-V) machine.
+pub fn normalize_program_from_input(
+    recursive_verifier: &RecursiveShardVerifier<
         RiscvAir<BabyBear>,
         CoreSC,
         InnerConfig,
         JC<InnerConfig, CoreSC>,
     >,
-    input: &SP1RecursionWitnessValues<CoreSC>,
+    input: &SP1NormalizeWitnessValues<CoreSC>,
 ) -> RecursionProgram<BabyBear> {
     // Get the operations.
     let builder_span = tracing::debug_span!("build recursion program").entered();
     let mut builder = Builder::<InnerConfig>::default();
     let input_variable = input.read(&mut builder);
-    SP1RecursiveVerifier::verify(&mut builder, recursion_verifier, input_variable);
+    SP1RecursiveVerifier::verify(&mut builder, recursive_verifier, input_variable);
     let block = builder.into_root_block();
     // SAFETY: The circuit is well-formed. It does not use synchronization primitives
     // (or possibly other means) to violate the invariants.
@@ -633,8 +653,8 @@ pub fn recursion_program_from_input(
 }
 
 /// The deferred program.
-fn deferred_program_from_input(
-    recursion_verifier: &RecursiveShardVerifier<
+pub(crate) fn deferred_program_from_input(
+    recursive_verifier: &RecursiveShardVerifier<
         CompressAir<InnerVal>,
         InnerSC,
         InnerConfig,
@@ -652,7 +672,7 @@ fn deferred_program_from_input(
     let verify_span = tracing::debug_span!("Verify deferred program").entered();
 
     // Verify the proof.
-    SP1DeferredVerifier::verify(&mut builder, recursion_verifier, input, vk_verification);
+    SP1DeferredVerifier::verify(&mut builder, recursive_verifier, input, vk_verification);
     verify_span.exit();
     let block = builder.into_root_block();
     operations_span.exit();
@@ -667,9 +687,9 @@ fn deferred_program_from_input(
     program
 }
 
-/// The "compress" or "join" program.
-fn compress_program_from_input(
-    recursion_verifier: &RecursiveShardVerifier<
+/// The "compose" program, which verifies some number of normalized shard proofs.
+pub(crate) fn compose_program_from_input(
+    recursive_verifier: &RecursiveShardVerifier<
         CompressAir<InnerVal>,
         InnerSC,
         InnerConfig,
@@ -686,7 +706,7 @@ fn compress_program_from_input(
     // Verify the proof.
     SP1CompressWithVKeyVerifier::verify(
         &mut builder,
-        recursion_verifier,
+        recursive_verifier,
         input,
         vk_verification,
         PublicValuesOutputDigest::Reduce,
@@ -706,8 +726,8 @@ fn compress_program_from_input(
 }
 
 /// The "shrink" program, which only verifies the single root shard.
-fn shrink_program_from_input(
-    recursion_verifier: &RecursiveShardVerifier<
+pub(crate) fn shrink_program_from_input(
+    recursive_verifier: &RecursiveShardVerifier<
         CompressAir<InnerVal>,
         InnerSC,
         InnerConfig,
@@ -724,7 +744,7 @@ fn shrink_program_from_input(
     // Verify the root proof.
     SP1CompressRootVerifierWithVKey::verify(
         &mut builder,
-        recursion_verifier,
+        recursive_verifier,
         input,
         vk_verification,
         PublicValuesOutputDigest::Reduce,
@@ -747,7 +767,7 @@ fn shrink_program_from_input(
 
 /// The "wrap" program, which only verifies the single root shard.
 fn wrap_program_from_input(
-    recursion_verifier: &RecursiveShardVerifier<
+    recursive_verifier: &RecursiveShardVerifier<
         CompressAir<InnerVal>,
         InnerSC,
         InnerConfig,
@@ -764,7 +784,7 @@ fn wrap_program_from_input(
     // Verify the root proof.
     SP1CompressRootVerifierWithVKey::verify(
         &mut builder,
-        recursion_verifier,
+        recursive_verifier,
         input,
         vk_verification,
         PublicValuesOutputDigest::Root,
@@ -785,9 +805,9 @@ fn wrap_program_from_input(
     program
 }
 
-fn dummy_reduce_input<C: RecursionProverComponents>(
+pub(crate) fn dummy_compose_input<C: RecursionProverComponents>(
     prover: &MachineProver<C>,
-    shape: &SP1ReduceShape,
+    shape: &SP1RecursionProofShape,
     arity: usize,
     height: usize,
 ) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
@@ -807,9 +827,9 @@ fn dummy_reduce_input<C: RecursionProverComponents>(
     shape.dummy_input(arity, height, chips, max_log_row_count, log_blowup, log_stacking_height)
 }
 
-fn dummy_deferred_input<C: RecursionProverComponents>(
+pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
     prover: &MachineProver<C>,
-    shape: &SP1ReduceShape,
+    shape: &SP1RecursionProofShape,
     height: usize,
 ) -> SP1DeferredWitnessValues<InnerSC> {
     let chips = prover

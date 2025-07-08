@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use super::SP1CompressWitnessVariable;
+use super::SP1ShapedWitnessVariable;
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::CanObserveVariable,
@@ -44,7 +44,7 @@ where
     pub fn verify(
         builder: &mut Builder<C>,
         machine: &RecursiveShardVerifier<A, SC, C, JC>,
-        input: SP1CompressWitnessVariable<C, SC, JC>,
+        input: SP1ShapedWitnessVariable<C, SC, JC>,
     ) {
         // Assert the the proof is not malformed.
         assert!(input.vks_and_proofs.len() == 1);

@@ -22,11 +22,11 @@ pub use slop_jagged::{BabyBearPoseidon2, Bn254JaggedConfig};
 
 /// A specification of preprocessed polynomial batch dimensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ChipDimensions {
+pub struct ChipDimensions<T> {
     /// The height of the preprocessed polynomial.
-    pub height: usize,
+    pub height: T,
     /// The number of polynomials in the preprocessed batch.
-    pub num_polynomials: usize,
+    pub num_polynomials: T,
 }
 
 /// A verifying key.
@@ -39,7 +39,7 @@ pub struct MachineVerifyingKey<C: MachineConfig> {
     /// The preprocessed commitments.
     pub preprocessed_commit: Option<C::Commitment>,
     /// The dimensions of the preprocessed polynomials.
-    pub preprocessed_chip_information: BTreeMap<String, ChipDimensions>,
+    pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<C::F>>,
 }
 
 impl<C: MachineConfig> MachineVerifyingKey<C> {

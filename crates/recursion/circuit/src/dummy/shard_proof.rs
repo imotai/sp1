@@ -15,10 +15,11 @@ use crate::dummy::{
     jagged::dummy_pcs_proof, logup_gkr::dummy_gkr_proof, sumcheck::dummy_sumcheck_proof,
 };
 
+type F = <BabyBearPoseidon2 as JaggedConfig>::F;
 type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
 
 pub fn dummy_vk(
-    preprocessed_chip_information: BTreeMap<String, ChipDimensions>,
+    preprocessed_chip_information: BTreeMap<String, ChipDimensions<F>>,
 ) -> MachineVerifyingKey<BabyBearPoseidon2> {
     MachineVerifyingKey {
         pc_start: BabyBear::zero(),

@@ -38,7 +38,7 @@ pub trait SP1ProverComponents: Send + Sync + 'static {
         <Self::CoreComponents as CoreProverComponents>::verifier()
     }
 
-    fn recursion_verifier() -> MachineVerifier<InnerSC, CompressAir<InnerVal>> {
+    fn compress_verifier() -> MachineVerifier<InnerSC, CompressAir<InnerVal>> {
         <Self::RecursionComponents as RecursionProverComponents>::verifier()
     }
 

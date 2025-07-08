@@ -20,7 +20,6 @@ use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS}
 
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    shape::OrderedShape,
     MachineConfig, MachineVerifyingKey, ShardProof, Word, DIGEST_SIZE,
 };
 
@@ -53,7 +52,7 @@ pub enum PublicValuesOutputDigest {
 
 /// Witness layout for the compress stage verifier.
 #[allow(clippy::type_complexity)]
-pub struct SP1CompressWitnessVariable<
+pub struct SP1ShapedWitnessVariable<
     C: CircuitConfig<F = BabyBear, EF = EF>,
     SC: BabyBearFriConfigVariable<C> + Send + Sync,
     JC: RecursiveJaggedConfig<
@@ -65,18 +64,13 @@ pub struct SP1CompressWitnessVariable<
     pub is_complete: Felt<C::F>,
 }
 
-/// An input layout for the reduce verifier.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "ShardProof<SC>: Serialize"))]
 #[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>"))]
-pub struct SP1CompressWitnessValues<SC: MachineConfig> {
+/// An input layout for the shard proofs that have been normalized to a standard shape.
+pub struct SP1ShapedWitnessValues<SC: MachineConfig> {
     pub vks_and_proofs: Vec<(MachineVerifyingKey<SC>, ShardProof<SC>)>,
     pub is_complete: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1CompressShape {
-    proof_shapes: Vec<OrderedShape>,
 }
 
 impl<C, SC, A, JC> SP1CompressVerifier<C, SC, A, JC>
@@ -110,12 +104,12 @@ where
     pub fn verify(
         builder: &mut Builder<C>,
         machine: &RecursiveShardVerifier<A, SC, C, JC>,
-        input: SP1CompressWitnessVariable<C, SC, JC>,
+        input: SP1ShapedWitnessVariable<C, SC, JC>,
         vk_root: [Felt<C::F>; DIGEST_SIZE],
         kind: PublicValuesOutputDigest,
     ) {
         // Read input.
-        let SP1CompressWitnessVariable { vks_and_proofs, is_complete } = input;
+        let SP1ShapedWitnessVariable { vks_and_proofs, is_complete } = input;
 
         // Initialize the values for the aggregated public output.
 
@@ -520,9 +514,3 @@ where
 //         Self { vks_and_proofs, is_complete: false }
 //     }
 // }
-
-impl From<Vec<OrderedShape>> for SP1CompressShape {
-    fn from(proof_shapes: Vec<OrderedShape>) -> Self {
-        Self { proof_shapes }
-    }
-}

@@ -23,7 +23,7 @@ use slop_commit::TensorCs;
 use slop_merkle_tree::{
     MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
 };
-use sp1_stark::{shape::OrderedShape, BabyBearPoseidon2, Bn254JaggedConfig};
+use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
 pub mod basefold;
 pub mod challenger;
 pub mod dummy;
@@ -696,22 +696,4 @@ impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFr
         let vk_root: Var<_> = felts_to_bn254_var(builder, &public_values.vk_root);
         builder.commit_vk_root_circuit(vk_root);
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1CompressShape {
-    proof_shapes: Vec<OrderedShape>,
-}
-
-/// The shape of the compress proof with vk validation proofs.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1CompressWithVkeyShape {
-    pub compress_shape: SP1CompressShape,
-    pub merkle_tree_height: usize,
-}
-
-#[derive(Debug, Clone, Hash)]
-pub struct SP1DeferredShape {
-    inner: SP1CompressShape,
-    height: usize,
 }

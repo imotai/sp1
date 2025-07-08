@@ -15,7 +15,7 @@ use std::path::PathBuf;
 pub use client::CudaClientError;
 pub use pk::CudaProvingKey;
 use semver::Version;
-use sp1_core_machine::{io::SP1Stdin, reduce::SP1ReduceProof};
+use sp1_core_machine::{io::SP1Stdin, recursion::SP1RecursionProof};
 use sp1_primitives::Elf;
 use sp1_prover::{InnerSC, OuterSC, SP1CoreProof, SP1VerifyingKey};
 
@@ -55,22 +55,22 @@ impl CudaProver {
         &self,
         vk: &SP1VerifyingKey,
         proof: SP1CoreProof,
-        deferred: Vec<SP1ReduceProof<InnerSC>>,
-    ) -> Result<SP1ReduceProof<InnerSC>, CudaClientError> {
+        deferred: Vec<SP1RecursionProof<InnerSC>>,
+    ) -> Result<SP1RecursionProof<InnerSC>, CudaClientError> {
         self.client.compress(vk, proof, deferred).await
     }
 
     pub async fn shrink(
         &self,
-        proof: SP1ReduceProof<InnerSC>,
-    ) -> Result<SP1ReduceProof<InnerSC>, CudaClientError> {
+        proof: SP1RecursionProof<InnerSC>,
+    ) -> Result<SP1RecursionProof<InnerSC>, CudaClientError> {
         self.client.shrink(proof).await
     }
 
     pub async fn wrap(
         &self,
-        proof: SP1ReduceProof<InnerSC>,
-    ) -> Result<SP1ReduceProof<OuterSC>, CudaClientError> {
+        proof: SP1RecursionProof<InnerSC>,
+    ) -> Result<SP1RecursionProof<OuterSC>, CudaClientError> {
         self.client.wrap(proof).await
     }
 }

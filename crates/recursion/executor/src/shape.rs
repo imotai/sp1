@@ -3,7 +3,7 @@ use std::{
     marker::PhantomData,
 };
 
-use p3_field::Field;
+use p3_field::{Field, PrimeField32};
 use serde::{Deserialize, Serialize};
 use sp1_stark::{air::MachineAir, ChipDimensions};
 
@@ -13,7 +13,7 @@ pub struct RecursionShape<F> {
     _marker: PhantomData<F>,
 }
 
-impl<F> RecursionShape<F> {
+impl<F: PrimeField32> RecursionShape<F> {
     pub const fn new(heights: BTreeMap<String, usize>) -> Self {
         Self { heights, _marker: PhantomData }
     }
@@ -45,7 +45,7 @@ impl<F> RecursionShape<F> {
     pub fn preprocessed_chip_information<A>(
         &self,
         chips: &BTreeSet<A>,
-    ) -> BTreeMap<String, ChipDimensions>
+    ) -> BTreeMap<String, ChipDimensions<F>>
     where
         F: Field,
         A: MachineAir<F>,
@@ -56,7 +56,10 @@ impl<F> RecursionShape<F> {
                 self.height(chip).map(|height| {
                     (
                         chip.name(),
-                        ChipDimensions { height, num_polynomials: chip.preprocessed_width() },
+                        ChipDimensions {
+                            height: F::from_canonical_u32(height as u32),
+                            num_polynomials: F::from_canonical_u32(chip.preprocessed_width() as u32),
+                        },
                     )
                 })
             })

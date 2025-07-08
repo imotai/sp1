@@ -133,7 +133,7 @@ impl StoreWordChip {
         cols.memory_access.populate(event.mem_access, blu);
 
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        debug_assert!(memory_addr % 4 == 0);
+        debug_assert!(memory_addr.is_multiple_of(4));
 
         cols.is_real = F::one();
     }

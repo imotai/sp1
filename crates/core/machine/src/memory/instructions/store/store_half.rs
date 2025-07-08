@@ -140,7 +140,7 @@ impl StoreHalfChip {
         cols.memory_access.populate(event.mem_access, blu);
 
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        debug_assert!(memory_addr % 2 == 0);
+        debug_assert!(memory_addr.is_multiple_of(2));
 
         let bit = ((memory_addr >> 1) & 1) as u16;
         cols.offset_bit = F::from_canonical_u16(bit);

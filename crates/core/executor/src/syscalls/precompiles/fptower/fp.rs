@@ -19,11 +19,11 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
 ) -> Option<u32> {
     let clk = rt.clk;
     let x_ptr = arg1;
-    if x_ptr % 4 != 0 {
+    if !x_ptr.is_multiple_of(4) {
         panic!();
     }
     let y_ptr = arg2;
-    if y_ptr % 4 != 0 {
+    if !y_ptr.is_multiple_of(4) {
         panic!();
     }
 

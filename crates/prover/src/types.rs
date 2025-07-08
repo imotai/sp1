@@ -5,15 +5,15 @@ use std::{borrow::Borrow, fs::File, path::Path};
 use anyhow::Result;
 use clap::ValueEnum;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{AbstractField, PrimeField32};
+use slop_algebra::PrimeField32;
 use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::{io::SP1PublicValues, poseidon2_hash};
 use sp1_recursion_circuit::{
     machine::{
-        SP1CompressWithVKeyWitnessValues, SP1CompressWitnessValues, SP1DeferredWitnessValues,
-        SP1RecursionWitnessValues,
+        SP1CompressWithVKeyWitnessValues, SP1DeferredWitnessValues, SP1NormalizeWitnessValues,
+        SP1ShapedWitnessValues,
     },
     utils::babybears_to_bn254,
     InnerSC,
@@ -101,7 +101,7 @@ where
         for ChipDimensions { height, num_polynomials: _ } in
             self.preprocessed_chip_information.values()
         {
-            inputs.push(BabyBear::from_canonical_usize(*height));
+            inputs.push(*height);
         }
 
         poseidon2_hash(inputs)
@@ -236,9 +236,9 @@ pub enum SP1RecursionProverError {
 
 #[allow(clippy::large_enum_variant)]
 pub enum SP1CircuitWitness {
-    Core(SP1RecursionWitnessValues<CoreSC>),
+    Core(SP1NormalizeWitnessValues<CoreSC>),
     Deferred(SP1DeferredWitnessValues<InnerSC>),
-    Compress(SP1CompressWitnessValues<InnerSC>),
+    Compress(SP1ShapedWitnessValues<InnerSC>),
     Shrink(SP1CompressWithVKeyWitnessValues<InnerSC>),
     Wrap(SP1CompressWithVKeyWitnessValues<InnerSC>),
 }

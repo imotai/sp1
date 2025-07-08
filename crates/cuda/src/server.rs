@@ -195,8 +195,7 @@ mod docker {
 
         if let Err(e) = Command::new("docker").args(["pull", &image]).output().await {
             return Err(CudaClientError::Unexpected(format!(
-                "Failed to pull Docker image: {}. Ensure docker is installed and running.",
-                e
+                "Failed to pull Docker image: {e}. Ensure docker is installed and running."
             )));
         }
 
@@ -223,7 +222,7 @@ mod docker {
                 "all",
                 // The name of the container.
                 "--name",
-                format!("cuslop-server-{}", cuda_id).as_str(),
+                format!("cuslop-server-{cuda_id}").as_str(),
                 // The image to run.
                 &image,
             ])
@@ -245,8 +244,7 @@ mod docker {
             }
             Err(e) => {
                 return Err(CudaClientError::Unexpected(format!(
-                    "Failed to start new Docker container for CUDA device {}: {}",
-                    cuda_id, e
+                    "Failed to start new Docker container for CUDA device {cuda_id}: {e}"
                 )));
             }
         }

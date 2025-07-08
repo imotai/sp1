@@ -73,7 +73,7 @@ impl<T: Clone> ChallengerPublicValues<T> {
     }
 }
 
-/// The PublicValues struct is used to store all of a reduce proof's public values.
+/// The PublicValues struct is used to store all of a recursion proof's public values.
 #[derive(AlignedBorrow, Serialize, Deserialize, Clone, Copy, Default, Debug)]
 #[repr(C)]
 pub struct RecursionPublicValues<T> {

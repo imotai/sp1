@@ -412,8 +412,8 @@ impl<C: ShardProverComponents> ShardProver<C> {
                 (
                     name.to_owned(),
                     ChipDimensions {
-                        height: trace.num_real_entries(),
-                        num_polynomials: trace.num_polynomials(),
+                        height: C::F::from_canonical_usize(trace.num_real_entries()),
+                        num_polynomials: C::F::from_canonical_usize(trace.num_polynomials()),
                     },
                 )
             })
@@ -792,7 +792,6 @@ impl<C: ShardProverComponents> ShardProver<C> {
 /// The shape of the core proof. This and prover setup parameters should entirely determine the
 /// verifier circuit.
 #[derive_where(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Debug)]
 pub struct CoreProofShape<F: Field, A: MachineAir<F>> {
     /// The chips included in the record.
     pub shard_chips: BTreeSet<Chip<F, A>>,
@@ -810,6 +809,25 @@ pub struct CoreProofShape<F: Field, A: MachineAir<F>> {
     /// The number of columns added to the main commit to round to the nearest multiple of
     /// `stacking_height`.
     pub main_padding_cols: usize,
+}
+
+impl<F, A> Debug for CoreProofShape<F, A>
+where
+    F: Field + Debug,
+    A: MachineAir<F> + Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProofShape")
+            .field(
+                "shard_chips",
+                &self.shard_chips.iter().map(MachineAir::name).collect::<BTreeSet<_>>(),
+            )
+            .field("preprocessed_multiple", &self.preprocessed_multiple)
+            .field("main_multiple", &self.main_multiple)
+            .field("preprocessed_padding_cols", &self.preprocessed_padding_cols)
+            .field("main_padding_cols", &self.main_padding_cols)
+            .finish()
+    }
 }
 
 /// A proving key for a STARK.

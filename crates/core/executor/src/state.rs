@@ -12,7 +12,7 @@ use crate::{
     events::{MemoryEntry, Shard},
     memory::Memory,
     syscalls::SyscallCode,
-    SP1ReduceProof,
+    SP1RecursionProof,
 };
 
 /// Holds data describing the current state of a program's execution.
@@ -46,7 +46,7 @@ pub struct ExecutionState {
 
     /// A stream of proofs (reduce vk, proof, verifying key) inputted to the program.
     pub proof_stream:
-        Vec<(SP1ReduceProof<BabyBearPoseidon2>, MachineVerifyingKey<BabyBearPoseidon2>)>,
+        Vec<(SP1RecursionProof<BabyBearPoseidon2>, MachineVerifyingKey<BabyBearPoseidon2>)>,
 
     /// A ptr to the current position in the proof stream, incremented after verifying a proof.
     pub proof_stream_ptr: usize,
