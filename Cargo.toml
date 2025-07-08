@@ -71,7 +71,7 @@ p3-symmetric = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_c
 p3-fri = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 
 
-#s slop
+# slop
 slop-basefold = { path = "crates/basefold" }
 slop-bn254 = { path = "crates/bn254" }
 slop-algebra = { path = "crates/algebra" }
