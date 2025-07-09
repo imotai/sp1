@@ -1,7 +1,10 @@
 mod alu_base;
 mod alu_ext;
+mod convert;
+mod linear_layer;
 mod poseidon2_wide;
 mod prefix_sum_checks;
+mod sbox;
 mod select;
 
 use csl_cuda::TaskScope;
@@ -11,12 +14,17 @@ use sp1_recursion_machine::RecursionAir;
 
 use crate::{CudaTracegenAir, F};
 
-impl<const DEGREE: usize> CudaTracegenAir<F> for RecursionAir<F, DEGREE> {
+impl<const DEGREE: usize, const VAR_EVENTS_PER_ROW: usize> CudaTracegenAir<F>
+    for RecursionAir<F, DEGREE, VAR_EVENTS_PER_ROW>
+{
     fn supports_device_preprocessed_tracegen(&self) -> bool {
         match self {
             Self::BaseAlu(chip) => chip.supports_device_preprocessed_tracegen(),
             Self::ExtAlu(chip) => chip.supports_device_preprocessed_tracegen(),
             Self::Poseidon2Wide(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::Poseidon2LinearLayer(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::Poseidon2SBox(chip) => chip.supports_device_preprocessed_tracegen(),
+            Self::ExtFeltConvert(chip) => chip.supports_device_preprocessed_tracegen(),
             Self::Select(chip) => chip.supports_device_preprocessed_tracegen(),
             Self::PrefixSumChecks(chip) => chip.supports_device_preprocessed_tracegen(),
             Self::PublicValues(_) => false,
@@ -36,6 +44,15 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for RecursionAir<F, DEGREE> {
             Self::Poseidon2Wide(chip) => {
                 chip.generate_preprocessed_trace_device(program, scope).await
             }
+            Self::Poseidon2LinearLayer(chip) => {
+                chip.generate_preprocessed_trace_device(program, scope).await
+            }
+            Self::Poseidon2SBox(chip) => {
+                chip.generate_preprocessed_trace_device(program, scope).await
+            }
+            Self::ExtFeltConvert(chip) => {
+                chip.generate_preprocessed_trace_device(program, scope).await
+            }
             Self::Select(chip) => chip.generate_preprocessed_trace_device(program, scope).await,
             Self::PrefixSumChecks(chip) => {
                 chip.generate_preprocessed_trace_device(program, scope).await
@@ -51,6 +68,9 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for RecursionAir<F, DEGREE> {
             Self::BaseAlu(chip) => chip.supports_device_main_tracegen(),
             Self::ExtAlu(chip) => chip.supports_device_main_tracegen(),
             Self::Poseidon2Wide(chip) => chip.supports_device_main_tracegen(),
+            Self::Poseidon2LinearLayer(chip) => chip.supports_device_main_tracegen(),
+            Self::Poseidon2SBox(chip) => chip.supports_device_main_tracegen(),
+            Self::ExtFeltConvert(chip) => chip.supports_device_main_tracegen(),
             Self::Select(chip) => chip.supports_device_main_tracegen(),
             Self::PrefixSumChecks(chip) => chip.supports_device_main_tracegen(),
             Self::PublicValues(_) => false,
@@ -69,6 +89,11 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for RecursionAir<F, DEGREE> {
             Self::BaseAlu(chip) => chip.generate_trace_device(input, output, scope).await,
             Self::ExtAlu(chip) => chip.generate_trace_device(input, output, scope).await,
             Self::Poseidon2Wide(chip) => chip.generate_trace_device(input, output, scope).await,
+            Self::Poseidon2LinearLayer(chip) => {
+                chip.generate_trace_device(input, output, scope).await
+            }
+            Self::Poseidon2SBox(chip) => chip.generate_trace_device(input, output, scope).await,
+            Self::ExtFeltConvert(chip) => chip.generate_trace_device(input, output, scope).await,
             Self::Select(chip) => chip.generate_trace_device(input, output, scope).await,
             Self::PrefixSumChecks(chip) => chip.generate_trace_device(input, output, scope).await,
             Self::PublicValues(_) => unimplemented!(),

@@ -149,16 +149,16 @@ class Bn254 {
 };
 
 static __device__ __constant__ __align__(16
-) const uint32_t ALT_BN128_1ls32[8] = {
-    /* (1<<32) % P_bn254 */
-    0x15b8b9da,
-    0x93e78865,
-    0xb05ea154,
-    0x16df2426,
-    0x302ab839,
-    0x1271b743,
-    0xec6c226e,
-    0x06bc037e
+) const uint32_t ALT_BN128_1ls31[8] = {
+    /* (1<<31) % P_bn254 */
+    0x8adc5ced,
+    0x49f3c432,
+    0x582f50aa,
+    0x8b6f9213,
+    0x98155c1c,
+    0x0938dba1,
+    0x76361137,
+    0x035e01bf,
 };
 
 template<int SIZE>
@@ -238,7 +238,7 @@ __device__ inline bn254_t reduceBabyBear(
     int stride1 = 1,
     int stride2 = 1
 ) {
-    const bn254_t po2 = bn254_t(ALT_BN128_1ls32);
+    const bn254_t po2 = bn254_t(ALT_BN128_1ls31);
     bn254_t res;
     res.set_to_zero();
     if (n2 > 0) {

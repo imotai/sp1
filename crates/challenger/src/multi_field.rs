@@ -12,6 +12,7 @@ pub struct MultiField32Challenger<F, PF, B: Backend> {
     pub input_buffer_size: usize,
     pub output_buffer: Buffer<F, B>,
     pub output_buffer_size: usize,
+    pub num_duplex_elms: usize,
     pub num_f_elms: usize,
 }
 
@@ -59,6 +60,7 @@ impl<
         let input_buffer = Buffer::from(input_buffer);
         let output_buffer = Buffer::from(output_buffer);
         let sponge_state = Buffer::from(sponge_state.to_vec());
+        let num_duplex_elms = challenger.num_duplex_elms;
         let num_f_elms = challenger.num_f_elms;
 
         Self {
@@ -67,6 +69,7 @@ impl<
             output_buffer,
             output_buffer_size,
             sponge_state,
+            num_duplex_elms,
             num_f_elms,
         }
     }
@@ -88,6 +91,7 @@ pub struct MultiField32ChallengerRawMut<F, PF> {
     pub input_buffer_size: usize,
     pub output_buffer: *mut F,
     pub output_buffer_size: usize,
+    pub num_duplex_elms: usize,
     pub num_f_elms: usize,
 }
 
@@ -99,6 +103,7 @@ impl<F, PF> MultiField32Challenger<F, PF, TaskScope> {
             input_buffer_size: self.input_buffer_size,
             output_buffer: self.output_buffer.as_mut_ptr(),
             output_buffer_size: self.output_buffer_size,
+            num_duplex_elms: self.num_duplex_elms,
             num_f_elms: self.num_f_elms,
         }
     }
@@ -122,6 +127,7 @@ impl<F: PrimeField32, PF: Field> CopyIntoBackend<TaskScope, CpuBackend>
             output_buffer,
             output_buffer_size: self.output_buffer_size,
             sponge_state,
+            num_duplex_elms: self.num_duplex_elms,
             num_f_elms: self.num_f_elms,
         })
     }
@@ -145,6 +151,7 @@ impl<F: Field, PF: Field> CopyIntoBackend<CpuBackend, TaskScope>
             output_buffer,
             output_buffer_size: self.output_buffer_size,
             sponge_state,
+            num_duplex_elms: self.num_duplex_elms,
             num_f_elms: self.num_f_elms,
         })
     }

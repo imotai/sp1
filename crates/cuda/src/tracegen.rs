@@ -125,3 +125,73 @@ unsafe impl TracegenRecursionPrefixSumChecksKernel<BabyBear> for TaskScope {
         unsafe { csl_sys::tracegen::recursion_prefix_sum_checks_generate_trace_baby_bear_kernel() }
     }
 }
+
+/// # Safety
+pub unsafe trait TracegenPreprocessedRecursionConvertKernel<F> {
+    fn tracegen_preprocessed_recursion_convert_kernel() -> KernelPtr;
+}
+
+unsafe impl TracegenPreprocessedRecursionConvertKernel<BabyBear> for TaskScope {
+    fn tracegen_preprocessed_recursion_convert_kernel() -> KernelPtr {
+        unsafe {
+            csl_sys::tracegen::recursion_convert_generate_preprocessed_trace_baby_bear_kernel()
+        }
+    }
+}
+
+/// # Safety
+pub unsafe trait TracegenRecursionConvertKernel<F> {
+    fn tracegen_recursion_convert_kernel() -> KernelPtr;
+}
+
+unsafe impl TracegenRecursionConvertKernel<BabyBear> for TaskScope {
+    fn tracegen_recursion_convert_kernel() -> KernelPtr {
+        unsafe { csl_sys::tracegen::recursion_convert_generate_trace_baby_bear_kernel() }
+    }
+}
+
+/// # Safety
+pub unsafe trait TracegenPreprocessedRecursionLinearLayerKernel<F> {
+    fn tracegen_preprocessed_recursion_linear_layer_kernel() -> KernelPtr;
+}
+
+unsafe impl TracegenPreprocessedRecursionLinearLayerKernel<BabyBear> for TaskScope {
+    fn tracegen_preprocessed_recursion_linear_layer_kernel() -> KernelPtr {
+        unsafe {
+            csl_sys::tracegen::recursion_linear_layer_generate_preprocessed_trace_baby_bear_kernel()
+        }
+    }
+}
+
+/// # Safety
+pub unsafe trait TracegenRecursionLinearLayerKernel<F> {
+    fn tracegen_recursion_linear_layer_kernel() -> KernelPtr;
+}
+
+unsafe impl TracegenRecursionLinearLayerKernel<BabyBear> for TaskScope {
+    fn tracegen_recursion_linear_layer_kernel() -> KernelPtr {
+        unsafe { csl_sys::tracegen::recursion_linear_layer_generate_trace_baby_bear_kernel() }
+    }
+}
+
+/// # Safety
+pub unsafe trait TracegenPreprocessedRecursionSBoxKernel<F> {
+    fn tracegen_preprocessed_recursion_sbox_kernel() -> KernelPtr;
+}
+
+unsafe impl TracegenPreprocessedRecursionSBoxKernel<BabyBear> for TaskScope {
+    fn tracegen_preprocessed_recursion_sbox_kernel() -> KernelPtr {
+        unsafe { csl_sys::tracegen::recursion_sbox_generate_preprocessed_trace_baby_bear_kernel() }
+    }
+}
+
+/// # Safety
+pub unsafe trait TracegenRecursionSBoxKernel<F> {
+    fn tracegen_recursion_sbox_kernel() -> KernelPtr;
+}
+
+unsafe impl TracegenRecursionSBoxKernel<BabyBear> for TaskScope {
+    fn tracegen_recursion_sbox_kernel() -> KernelPtr {
+        unsafe { csl_sys::tracegen::recursion_sbox_generate_trace_baby_bear_kernel() }
+    }
+}

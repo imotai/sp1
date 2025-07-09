@@ -184,23 +184,21 @@ class MultiField32Challenger
     size_t input_buffer_size;
     bb31_t *output_buffer;
     size_t output_buffer_size;
+    size_t num_duplex_elms;
     size_t num_f_elms;
-
-   
 
     __device__ void duplexing()
     {
         // Assert input size doesn't exceed RATE
-        assert(num_f_elms == 3);
-        assert(input_buffer_size <= num_f_elms * RATE);
+        assert(num_f_elms == 4);
+        assert(input_buffer_size <= num_duplex_elms * RATE);
 
         // Copy input buffer elements to sponge state
-        for (size_t i = 0; i < input_buffer_size; i += num_f_elms)
+        for (size_t i = 0; i < input_buffer_size; i += num_duplex_elms)
         {
-            // [i, min(input_buffer_size, i + num_f_elms)]
-            size_t end = min(input_buffer_size, i + num_f_elms);
+            size_t end = min(input_buffer_size, i + num_duplex_elms);
             bn254_t reduced = poseidon2_bn254_3::reduceBabyBear(input_buffer + i, nullptr, end - i, 0);
-            sponge_state[i / num_f_elms] = reduced;
+            sponge_state[i / num_duplex_elms] = reduced;
         }
 
         // Clear input buffer.
@@ -225,9 +223,11 @@ class MultiField32Challenger
             uint32_t v0 = (uint32_t)(((uint64_t)(x[0]) + (uint64_t(1) << 32) * (uint64_t)(x[1])) % 0x78000001);
             uint32_t v1 = (uint32_t)(((uint64_t)(x[2]) + (uint64_t(1) << 32) * (uint64_t)(x[3])) % 0x78000001);
             uint32_t v2 = (uint32_t)(((uint64_t)(x[4]) + (uint64_t(1) << 32) * (uint64_t)(x[5])) % 0x78000001);
-            output_buffer[i * 3] = bb31_t::from_canonical_u32(v0);
-            output_buffer[i * 3 + 1] = bb31_t::from_canonical_u32(v1);
-            output_buffer[i * 3 + 2] = bb31_t::from_canonical_u32(v2);
+            uint32_t v3 = (uint32_t)(((uint64_t)(x[6]) + (uint64_t(1) << 32) * (uint64_t)(x[7])) % 0x78000001);
+            output_buffer[i * 4] = bb31_t::from_canonical_u32(v0);
+            output_buffer[i * 4 + 1] = bb31_t::from_canonical_u32(v1);
+            output_buffer[i * 4 + 2] = bb31_t::from_canonical_u32(v2);
+            output_buffer[i * 4 + 3] = bb31_t::from_canonical_u32(v3);
         }
     }
 
@@ -241,7 +241,7 @@ public:
         input_buffer_size += 1;
         input_buffer[input_buffer_size - 1] = *value;
 
-        if (input_buffer_size == num_f_elms * RATE)
+        if (input_buffer_size == num_duplex_elms * RATE)
         {
             duplexing();
         }

@@ -80,8 +80,8 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for RiscvAir<F> {
     }
 }
 
-impl<'a, const DEGREE: usize> BlockAir<SymbolicProverFolder<'a>>
-    for RecursionAir<BabyBear, DEGREE>
+impl<'a, const DEGREE: usize, const VAR_EVENTS_PER_ROW: usize> BlockAir<SymbolicProverFolder<'a>>
+    for RecursionAir<BabyBear, DEGREE, VAR_EVENTS_PER_ROW>
 {
     fn num_blocks(&self) -> usize {
         match self {

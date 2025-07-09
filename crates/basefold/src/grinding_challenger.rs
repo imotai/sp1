@@ -3,7 +3,7 @@ use csl_challenger::{
 };
 use csl_cuda::sys::challenger::grind_baby_bear;
 use csl_cuda::{args, sys::runtime::KernelPtr, TaskScope};
-use slop_algebra::{Field, PrimeField, PrimeField32, PrimeField64};
+use slop_algebra::{Field, PrimeField, PrimeField31, PrimeField64};
 use slop_alloc::{Buffer, CpuBackend, IntoHost};
 use slop_baby_bear::BabyBear;
 use slop_challenger::GrindingChallenger;
@@ -104,7 +104,7 @@ where
 
 impl<F, PF, TaskScope> AsMutRawChallenger for MultiField32Challenger<F, PF, TaskScope>
 where
-    F: PrimeField32 + Send + Sync,
+    F: PrimeField31 + Send + Sync,
     PF: PrimeField + Field + Send + Sync,
     TaskScope: GrindingChallengerKernel<F> + slop_alloc::Backend,
 {
@@ -117,6 +117,7 @@ where
             input_buffer_size: self.input_buffer_size,
             output_buffer: self.output_buffer.as_mut_ptr(),
             output_buffer_size: self.output_buffer_size,
+            num_duplex_elms: self.num_duplex_elms,
             num_f_elms: self.num_f_elms,
         }
     }
@@ -125,7 +126,7 @@ where
 impl<F, PF, P, const WIDTH: usize, const RATE: usize> DeviceGrindingChallenger
     for slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>
 where
-    F: PrimeField64 + PrimeField32 + Send + Sync,
+    F: PrimeField64 + PrimeField31 + Send + Sync,
     PF: PrimeField + Field + Send + Sync,
     P: CryptographicPermutation<[PF; WIDTH]> + Send + Sync,
     TaskScope: GrindingChallengerKernel<F>,
