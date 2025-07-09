@@ -667,6 +667,9 @@ mod tests {
     };
 
     use sp1_recursion_executor::RecursionAirEventCount;
+    use sp1_recursion_machine::chips::poseidon2_helper::{
+        convert::ConvertChip, linear::Poseidon2LinearLayerChip, sbox::Poseidon2SBoxChip,
+    };
 
     use crate::SP1ProverBuilder;
 
@@ -718,7 +721,16 @@ mod tests {
             mem_var_events: max(a.mem_var_events, b.mem_var_events),
             base_alu_events: max(a.base_alu_events, b.base_alu_events),
             ext_alu_events: max(a.ext_alu_events, b.ext_alu_events),
+            ext_felt_conversion_events: max(
+                a.ext_felt_conversion_events,
+                b.ext_felt_conversion_events,
+            ),
             poseidon2_wide_events: max(a.poseidon2_wide_events, b.poseidon2_wide_events),
+            poseidon2_linear_layer_events: max(
+                a.poseidon2_linear_layer_events,
+                b.poseidon2_linear_layer_events,
+            ),
+            poseidon2_sbox_events: max(a.poseidon2_sbox_events, b.poseidon2_sbox_events),
             fri_fold_events: max(a.fri_fold_events, b.fri_fold_events),
             batch_fri_events: max(a.batch_fri_events, b.batch_fri_events),
             select_events: max(a.select_events, b.select_events),
@@ -763,20 +775,32 @@ mod tests {
                 .height(&CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()))
                 .unwrap(),
             mem_var_events: shape
-                .height(&CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()))
-                .unwrap(),
+                .height(
+                    &CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::<BabyBear, 2>::default()),
+                )
+                .unwrap()
+                * 2,
             base_alu_events: shape.height(&CompressAir::<BabyBear>::BaseAlu(BaseAluChip)).unwrap(),
             ext_alu_events: shape.height(&CompressAir::<BabyBear>::ExtAlu(ExtAluChip)).unwrap(),
+            ext_felt_conversion_events: shape
+                .height(&CompressAir::<BabyBear>::ExtFeltConvert(ConvertChip))
+                .unwrap_or(0),
             poseidon2_wide_events: shape
                 .height(&CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip))
-                .unwrap(),
+                .unwrap_or(0),
+            poseidon2_linear_layer_events: shape
+                .height(&CompressAir::<BabyBear>::Poseidon2LinearLayer(Poseidon2LinearLayerChip))
+                .unwrap_or(0),
+            poseidon2_sbox_events: shape
+                .height(&CompressAir::<BabyBear>::Poseidon2SBox(Poseidon2SBoxChip))
+                .unwrap_or(0),
             fri_fold_events: 0,
             batch_fri_events: 0,
             select_events: shape.height(&CompressAir::<BabyBear>::Select(SelectChip)).unwrap(),
             exp_reverse_bits_len_events: 0,
             prefix_sum_checks_events: shape
                 .height(&CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip))
-                .unwrap(),
+                .unwrap_or(0),
             commit_pv_hash_events: shape
                 .height(&CompressAir::<BabyBear>::PublicValues(PublicValuesChip))
                 .unwrap(),

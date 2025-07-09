@@ -174,7 +174,6 @@ p3-maybe-rayon = { git = "https://github.com/erabinov/Plonky3/", branch = "clone
 p3-bn254-fr = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 
 # For local development. 
-
 # p3-air = { path = "../Plonky3/air" }
 # p3-field = { path = "../Plonky3/field" }
 # p3-commit = { path = "../Plonky3/commit" }

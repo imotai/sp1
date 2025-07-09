@@ -220,7 +220,7 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "p3-baby-bear"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "num-bigint",
  "p3-field",
@@ -234,7 +234,7 @@ dependencies = [
 [[package]]
 name = "p3-dft"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "p3-field",
  "p3-matrix",
@@ -246,7 +246,7 @@ dependencies = [
 [[package]]
 name = "p3-field"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint",
@@ -259,7 +259,7 @@ dependencies = [
 [[package]]
 name = "p3-matrix"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-field",
@@ -273,12 +273,12 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 
 [[package]]
 name = "p3-mds"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-dft",
@@ -292,7 +292,7 @@ dependencies = [
 [[package]]
 name = "p3-poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "gcd",
  "p3-field",
@@ -305,7 +305,7 @@ dependencies = [
 [[package]]
 name = "p3-symmetric"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-field",
@@ -315,7 +315,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "serde",
 ]

@@ -133,7 +133,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         let recursive_compress_verifier =
             recursive_verifier::<_, InnerSC, InnerConfig, _>(prover.verifier().shard_verifier());
 
-        let recursive_shrink_verifier = recursive_verifier::<_, InnerSC, InnerConfig, _>(
+        let recursive_shrink_verifier = recursive_verifier::<_, InnerSC, CircuitWrapConfig, _>(
             shrink_prover.verifier().shard_verifier(),
         );
 
@@ -770,14 +770,14 @@ fn wrap_program_from_input(
     recursive_verifier: &RecursiveShardVerifier<
         CompressAir<InnerVal>,
         InnerSC,
-        InnerConfig,
-        JC<InnerConfig, InnerSC>,
+        CircuitWrapConfig,
+        JC<CircuitWrapConfig, InnerSC>,
     >,
     vk_verification: bool,
     input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
 ) -> RecursionProgram<BabyBear> {
     let builder_span = tracing::debug_span!("build wrap program").entered();
-    let mut builder = Builder::<InnerConfig>::default();
+    let mut builder = Builder::<CircuitWrapConfig>::default();
     // read the input.
     let input = input.read(&mut builder);
 
@@ -798,7 +798,7 @@ fn wrap_program_from_input(
 
     // Compile the program.
     let compiler_span = tracing::debug_span!("compile wrap program").entered();
-    let mut compiler = AsmCompiler::<InnerConfig>::default();
+    let mut compiler = AsmCompiler::<CircuitWrapConfig>::default();
     let program = compiler.compile(dsl_program);
     compiler_span.exit();
 

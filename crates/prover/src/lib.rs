@@ -74,9 +74,9 @@ const WRAP_DEGREE: usize = 3;
 // const CORE_CACHE_SIZE: usize = 5;
 pub const COMPOSE_BATCH_SIZE: usize = 2;
 
-pub type CompressAir<F> = RecursionAir<F, COMPRESS_DEGREE>;
-pub type ShrinkAir<F> = RecursionAir<F, SHRINK_DEGREE>;
-pub type WrapAir<F> = RecursionAir<F, WRAP_DEGREE>;
+pub type CompressAir<F> = RecursionAir<F, COMPRESS_DEGREE, 2>;
+pub type ShrinkAir<F> = RecursionAir<F, SHRINK_DEGREE, 2>;
+pub type WrapAir<F> = RecursionAir<F, WRAP_DEGREE, 1>;
 
 pub struct SP1Prover<C: SP1ProverComponents> {
     core_prover: SP1CoreProver<C::CoreComponents>,

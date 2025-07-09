@@ -3,9 +3,7 @@ use crate::{
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use itertools::Itertools;
-use slop_algebra::{
-    extension::BinomialExtensionField, AbstractExtensionField, AbstractField, TwoAdicField,
-};
+use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
 use slop_multilinear::{Evaluations, Point};
@@ -373,20 +371,14 @@ impl<
                 let index_sibling_complement = index[0];
                 let index_pair = &index[1..];
 
+                builder.reduce_e(*folded_eval);
+
                 let evals: [Ext<C::F, C::EF>; 2] = opening
                     .as_slice()
                     .chunks_exact(D)
                     .map(|slice| {
-                        let mut reconstructed_ext: Ext<C::F, C::EF> =
-                            builder.constant(C::EF::zero());
-                        for i in 0..D {
-                            let mut monomial_slice = [C::F::zero(); D];
-                            monomial_slice[i] = C::F::one();
-                            let monomial: Ext<C::F, C::EF> =
-                                builder.constant(C::EF::from_base_slice(&monomial_slice));
-                            reconstructed_ext =
-                                builder.eval(reconstructed_ext + monomial * slice[i]);
-                        }
+                        let reconstructed_ext: Ext<C::F, C::EF> =
+                            C::felt2ext(builder, slice.try_into().unwrap());
                         reconstructed_ext
                     })
                     .collect::<Vec<_>>()

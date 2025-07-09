@@ -31,6 +31,9 @@ pub use program::*;
 pub use public_values::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS};
 pub use record::*;
 use serde::{Deserialize, Serialize};
+use sp1_core_machine::operations::poseidon2::air::{
+    external_linear_layer_mut, internal_linear_layer_mut,
+};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{septic_curve::SepticCurve, septic_extension::SepticExtension, MachineRecord};
 use std::{
@@ -167,6 +170,62 @@ pub struct Poseidon2SkinnyInstr<F> {
 }
 
 pub type Poseidon2Event<F> = Poseidon2Io<F>;
+
+/// The inputs and outputs to a Poseidon2 permutation linear layers.
+/// The `4` here is calculated from `PERMUTATION_WIDTH / D`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct Poseidon2LinearLayerIo<V> {
+    pub input: [V; 4],
+    pub output: [V; 4],
+}
+
+/// An instruction invoking the Poseidon2 permutation linear layers.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[repr(C)]
+pub struct Poseidon2LinearLayerInstr<F> {
+    pub addrs: Poseidon2LinearLayerIo<Address<F>>,
+    pub mults: [F; 4],
+    pub external: bool,
+}
+
+pub type Poseidon2LinearLayerEvent<F> = Poseidon2LinearLayerIo<Block<F>>;
+
+/// The inputs and outputs to an SBOX operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct Poseidon2SBoxIo<V> {
+    pub input: V,
+    pub output: V,
+}
+
+/// An instruction invoking the SBOX operation.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[repr(C)]
+pub struct Poseidon2SBoxInstr<F> {
+    pub addrs: Poseidon2SBoxIo<Address<F>>,
+    pub mults: F,
+    pub external: bool,
+}
+
+pub type Poseidon2SBoxEvent<F> = Poseidon2SBoxIo<Block<F>>;
+
+/// An instruction invoking the ext2felt or felt2ext operation.
+/// This `5` is derived from `D + 1`. The first address is the extension, and the rest are felts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct ExtFeltInstr<F> {
+    pub addrs: [Address<F>; 5],
+    pub mults: [F; 5],
+    pub ext2felt: bool,
+}
+
+/// An event recording an ext2felt or felt2ext operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C)]
+pub struct ExtFeltEvent<F> {
+    pub input: Block<F>,
+}
 
 /// The inputs and outputs to a select operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -679,7 +738,6 @@ where
         let instruction = &analyzed_instruction.inner;
         let offset = analyzed_instruction.offset;
 
-        // let record = &mut state.record;
         match *instruction {
             Instruction::BaseAlu(ref instr @ BaseAluInstr { opcode, mult: _, addrs }) => {
                 let in1 = memory.mr_unchecked(addrs.in1).val[0];
@@ -768,6 +826,28 @@ where
                 }
                 MemAccessKind::Write => memory.mw_unchecked(addr, val),
             },
+            Instruction::ExtFelt(ExtFeltInstr { addrs, mults: _, ext2felt }) => {
+                if ext2felt {
+                    let in_val = memory.mr_unchecked(addrs[0]).val;
+                    for (addr, value) in addrs[1..].iter().zip_eq(in_val.0) {
+                        memory.mw_unchecked(*addr, Block::from(value));
+                    }
+                    // Write the event to the record.
+                    UnsafeCell::raw_get(record.ext_felt_conversion_events[offset].as_ptr())
+                        .write(ExtFeltEvent { input: in_val });
+                } else {
+                    let in_val = Block([
+                        memory.mr_unchecked(addrs[1]).val.0[0],
+                        memory.mr_unchecked(addrs[2]).val.0[0],
+                        memory.mr_unchecked(addrs[3]).val.0[0],
+                        memory.mr_unchecked(addrs[4]).val.0[0],
+                    ]);
+                    memory.mw_unchecked(addrs[0], in_val);
+                    // Write the event to the record.
+                    UnsafeCell::raw_get(record.ext_felt_conversion_events[offset].as_ptr())
+                        .write(ExtFeltEvent { input: in_val });
+                }
+            }
             Instruction::Poseidon2(ref instr) => {
                 let Poseidon2Instr { addrs: Poseidon2Io { input, output }, mults: _ } =
                     instr.as_ref();
@@ -781,6 +861,62 @@ where
                 // Write the event to the record.
                 UnsafeCell::raw_get(record.poseidon2_events[offset].as_ptr())
                     .write(Poseidon2Event { input: in_vals, output: perm_output });
+            }
+            Instruction::Poseidon2LinearLayer(ref instr) => {
+                let Poseidon2LinearLayerInstr {
+                    addrs: Poseidon2LinearLayerIo { input, output },
+                    mults: _,
+                    external,
+                } = instr.as_ref();
+                let mut state = [F::zero(); PERMUTATION_WIDTH];
+                let mut io_input = [Block::from(F::zero()); PERMUTATION_WIDTH / D];
+                let mut io_output = [Block::from(F::zero()); PERMUTATION_WIDTH / D];
+                for i in 0..PERMUTATION_WIDTH / D {
+                    io_input[i] = memory.mr_unchecked(input[i]).val;
+                    for j in 0..D {
+                        state[i * D + j] = io_input[i].0[j];
+                    }
+                }
+                if *external {
+                    external_linear_layer_mut(&mut state);
+                } else {
+                    internal_linear_layer_mut(&mut state);
+                }
+                for i in 0..PERMUTATION_WIDTH / D {
+                    io_output[i] = Block(state[i * D..i * D + D].try_into().unwrap());
+                    memory.mw_unchecked(output[i], io_output[i]);
+                }
+
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.poseidon2_linear_layer_events[offset].as_ptr())
+                    .write(Poseidon2LinearLayerEvent { input: io_input, output: io_output });
+            }
+            Instruction::Poseidon2SBox(Poseidon2SBoxInstr {
+                addrs: Poseidon2SBoxIo { input, output },
+                mults: _,
+                external,
+            }) => {
+                let io_input = memory.mr_unchecked(input).val;
+                let pow7 = |x: F| -> F {
+                    let x3 = x * x * x;
+                    x3 * x3 * x
+                };
+
+                let io_output = if external {
+                    Block([
+                        pow7(io_input.0[0]),
+                        pow7(io_input.0[1]),
+                        pow7(io_input.0[2]),
+                        pow7(io_input.0[3]),
+                    ])
+                } else {
+                    Block([pow7(io_input.0[0]), io_input.0[1], io_input.0[2], io_input.0[3]])
+                };
+                memory.mw_unchecked(output, io_output);
+
+                // Write the event to the record.
+                UnsafeCell::raw_get(record.poseidon2_sbox_events[offset].as_ptr())
+                    .write(Poseidon2SBoxEvent { input: io_input, output: io_output });
             }
             Instruction::Select(SelectInstr {
                 addrs: SelectIo { bit, out1, out2, in1, in2 },
