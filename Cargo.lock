@@ -1009,6 +1009,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "p3-keccak-air"
+version = "0.1.0"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+dependencies = [
+ "p3-air",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-util",
+ "tracing",
+]
+
+[[package]]
 name = "p3-matrix"
 version = "0.1.0"
 source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
@@ -1081,6 +1094,24 @@ dependencies = [
  "itertools 0.12.1",
  "p3-field",
  "serde",
+]
+
+[[package]]
+name = "p3-uni-stark"
+version = "0.1.0"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+dependencies = [
+ "itertools 0.12.1",
+ "p3-air",
+ "p3-challenger",
+ "p3-commit",
+ "p3-dft",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-util",
+ "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -1632,6 +1663,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "slop-keccak-air"
+version = "1.2.0"
+dependencies = [
+ "p3-keccak-air",
+]
+
+[[package]]
 name = "slop-matrix"
 version = "1.2.0"
 dependencies = [
@@ -1780,6 +1818,13 @@ dependencies = [
  "thiserror",
  "tokio",
  "transpose",
+]
+
+[[package]]
+name = "slop-uni-stark"
+version = "1.2.0"
+dependencies = [
+ "p3-uni-stark",
 ]
 
 [[package]]

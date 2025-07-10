@@ -36,6 +36,8 @@ members = [
     "crates/stacked",
     "crates/pcs-bench",
     "crates/futures",
+    "crates/keccak-air",
+    "crates/uni-stark",
 ]
 resolver = "2"
 
@@ -69,6 +71,8 @@ p3-merkle-tree = { git = "https://github.com/erabinov/Plonky3/", branch = "clone
 p3-poseidon2 = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-symmetric = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-fri = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-uni-stark = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-keccak-air = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 
 
 # slop
@@ -96,6 +100,8 @@ slop-basefold-prover = { path = "crates/basefold-prover" }
 slop-stacked = { path = "crates/stacked" }
 slop-pcs-bench = { path = "crates/pcs-bench" }
 slop-futures = { path = "crates/futures" }
+slop-keccak-air = { path = "crates/keccak-air" }
+slop-uni-stark = { path = "crates/uni-stark" }
 
 # For local development. 
 # p3-air = { path = "../Plonky3/air" }
