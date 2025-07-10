@@ -91,6 +91,11 @@ runs:
         rustup override set ${{ inputs.rustup_override }}
         rustup show
 
+    - name: Ensure nightly is installed
+      shell: bash
+      run: |
+        rustup toolchain install nightly
+
     # install pkg-config and openssl
     - name: Install pkg-config and openssl
       shell: bash
