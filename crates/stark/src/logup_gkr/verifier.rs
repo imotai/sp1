@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, marker::PhantomData, ops::Deref};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    marker::PhantomData,
+    ops::Deref,
+};
 
 use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};
@@ -63,7 +67,7 @@ where
     #[allow(clippy::too_many_lines)]
     pub fn verify_logup_gkr(
         shard_chips: &BTreeSet<Chip<F, A>>,
-        degrees: &[Point<F>],
+        degrees: &BTreeMap<String, Point<F>>,
         alpha: EF,
         beta: EF,
         cumulative_sum: EF,
@@ -184,7 +188,7 @@ where
         let mut point_extended = point.clone();
         point_extended.add_dimension(EF::zero());
         for ((chip, openings), threshold) in
-            shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees)
+            shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees.values())
         {
             // Observe the opening
             if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {

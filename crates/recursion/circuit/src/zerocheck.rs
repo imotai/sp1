@@ -188,7 +188,7 @@ where
             gkr_batch_open_challenge.powers().skip(1).take(max_elements).collect::<Vec<_>>();
 
         for ((chip, openings), zerocheck_eq_val) in
-            shard_chips.iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
+            shard_chips.iter().zip_eq(opened_values.chips.values()).zip_eq(zerocheck_eq_vals)
         {
             // Verify the shape of the opening arguments matches the expected values.
             verify_opening_shape::<C, A>(chip, openings).unwrap();
@@ -268,7 +268,7 @@ where
         verify_sumcheck::<C, SC>(builder, challenger, zerocheck_proof);
 
         // Observe the openings
-        for opening in opened_values.chips.iter() {
+        for opening in opened_values.chips.values() {
             for eval in opening.preprocessed.local.iter() {
                 challenger.observe_ext_element(builder, *eval);
             }

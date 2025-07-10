@@ -632,14 +632,17 @@ impl<C: ShardProverComponents> ShardProver<C> {
 
                 let main = AirOpenedValues { local: main_evals.to_vec(), next: vec![] };
 
-                ChipOpenedValues {
-                    preprocessed,
-                    main,
-                    local_cumulative_sum: C::EF::zero(),
-                    degree: chip_heights[&air.name()].clone(),
-                }
+                (
+                    air.name().to_string(),
+                    ChipOpenedValues {
+                        preprocessed,
+                        main,
+                        local_cumulative_sum: C::EF::zero(),
+                        degree: chip_heights[&air.name()].clone(),
+                    },
+                )
             })
-            .collect::<Vec<_>>();
+            .collect::<BTreeMap<_, _>>();
 
         let shard_open_values = ShardOpenedValues { chips: shard_open_values };
 
@@ -730,7 +733,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
 
         let alloc = self.trace_generator.allocator();
 
-        for open_values in shard_open_values.chips.iter() {
+        for (_, open_values) in shard_open_values.chips.iter() {
             let prep_local = &open_values.preprocessed.local;
             let main_local = &open_values.main.local;
             if !prep_local.is_empty() {

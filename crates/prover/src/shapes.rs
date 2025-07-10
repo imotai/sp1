@@ -174,12 +174,12 @@ impl SP1RecursionProofShape {
     pub fn compress_proof_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 401792),
+                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 517344),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486112),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
-                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 776964),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120064),
+                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 236400),
                 (CompressAir::<BabyBear>::Select(SelectChip), 807008),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
             ]
@@ -194,11 +194,11 @@ impl SP1RecursionProofShape {
         let shape = match arity {
             DEFAULT_ARITY => [
                 (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 121664),
-                (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 187808),
-                (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 100736),
-                (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 129472),
-                (ShrinkAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 30048),
-                (ShrinkAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 26112),
+                (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 186432),
+                (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 100640),
+                (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 129184),
+                (ShrinkAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 29952),
+                (ShrinkAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 25888),
                 (ShrinkAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
                 (ShrinkAir::<BabyBear>::Select(SelectChip), 201760),
             ],
@@ -680,7 +680,7 @@ mod tests {
     #[allow(clippy::ignore_without_reason)]
     async fn test_max_arity() {
         setup_logger();
-        let prover = SP1ProverBuilder::cpu().without_vk_verification().build().await;
+        let prover = SP1ProverBuilder::cpu().build().await;
         // arity 3:
         // let shape = [
         //     (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 154816),
@@ -696,13 +696,13 @@ mod tests {
         // .collect()
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402016),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 485856),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 780484),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
-            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-            (CompressAir::<BabyBear>::Select(SelectChip), 806976),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 401792),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 517344),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486112),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 776964),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120064),
+            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 236400),
+            (CompressAir::<BabyBear>::Select(SelectChip), 807008),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()
@@ -811,7 +811,7 @@ mod tests {
     async fn test_core_shape_fit() {
         setup_logger();
         let elf = test_artifacts::FIBONACCI_ELF;
-        let prover = SP1ProverBuilder::cpu().without_vk_verification().build().await;
+        let prover = SP1ProverBuilder::cpu().build().await;
         let (_, _, vk) = prover.core().setup(&elf).await;
 
         let machine = RiscvAir::<BabyBear>::machine();

@@ -200,17 +200,21 @@ where
         } = proof;
 
         // Convert height bits to felts.
-        let heights = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
-        let mut height_felts: Vec<Felt<C::F>> = Vec::new();
+        let heights = opened_values
+            .chips
+            .iter()
+            .map(|(name, x)| (name.clone(), x.degree.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let mut height_felts_map: BTreeMap<String, Felt<C::F>> = BTreeMap::new();
         let two = SymbolicFelt::from_canonical_u32(2);
-        for height in heights {
+        for (name, height) in heights {
             let mut acc = SymbolicFelt::zero();
             // Assert max height to avoid overflow during prefix-sum-checks.
             assert!(height.len() <= 29);
             height.iter().for_each(|x| {
                 acc = *x + two * acc;
             });
-            height_felts.push(builder.eval(acc));
+            height_felts_map.insert(name.clone(), builder.eval(acc));
         }
 
         // Observe the public values.
@@ -220,8 +224,16 @@ where
         // Observe the main commitment.
         challenger.observe(builder, *main_commitment);
 
-        for height in height_felts.iter() {
+        for height in height_felts_map.values() {
             challenger.observe(builder, *height);
+        }
+
+        for (chip, dimensions) in vk.preprocessed_chip_information.iter() {
+            if let Some(height) = height_felts_map.get(chip) {
+                builder.assert_felt_eq(*height, dimensions.height);
+            } else {
+                builder.assert_felt_eq(SymbolicFelt::zero(), SymbolicFelt::one());
+            }
         }
 
         // Sample the permutation challenges.
@@ -241,7 +253,7 @@ where
             .cloned()
             .collect::<BTreeSet<_>>();
 
-        let degrees = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
+        let degrees = opened_values.chips.values().map(|x| x.degree.clone()).collect::<Vec<_>>();
 
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
 
@@ -277,7 +289,7 @@ where
         let (preprocessed_openings_for_proof, main_openings_for_proof): (Vec<_>, Vec<_>) = proof
             .opened_values
             .chips
-            .iter()
+            .values()
             .map(|opening| (opening.preprocessed.clone(), opening.main.clone()))
             .unzip();
 
@@ -357,7 +369,7 @@ where
                 round
                     .iter()
                     .copied()
-                    .zip(height_felts.iter().copied().chain(std::iter::once(row_count_felt)))
+                    .zip(height_felts_map.values().copied().chain(std::iter::once(row_count_felt)))
                     .flat_map(|(column_count, height)| {
                         std::iter::repeat_n(height, column_count).collect::<Vec<_>>()
                     })
