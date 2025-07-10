@@ -19,7 +19,7 @@ pub async fn run_recursion_test_machines(
     program: RecursionProgram<BabyBear>,
     witness: Vec<Block<BabyBear>>,
 ) {
-    type A = RecursionAir<BabyBear, 3>;
+    type A = RecursionAir<BabyBear, 3, 2>;
 
     let mut runtime = Runtime::<
         BabyBear,
@@ -45,9 +45,9 @@ pub async fn test_recursion_linear_program(instrs: Vec<Instruction<BabyBear>>) {
     run_recursion_test_machines(linear_program(instrs).unwrap(), Vec::new()).await;
 }
 
-pub async fn run_test_recursion<const DEGREE: usize>(
+pub async fn run_test_recursion<const DEGREE: usize, const VAR_EVENTS_PER_ROW: usize>(
     records: Vec<ExecutionRecord<BabyBear>>,
-    machine: Machine<BabyBear, RecursionAir<BabyBear, DEGREE>>,
+    machine: Machine<BabyBear, RecursionAir<BabyBear, DEGREE, VAR_EVENTS_PER_ROW>>,
     program: RecursionProgram<BabyBear>,
 ) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierConfigError<BabyBearPoseidon2>> {
     let log_blowup = 1;

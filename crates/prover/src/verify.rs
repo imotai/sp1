@@ -8,7 +8,7 @@ use anyhow::Result;
 use num_bigint::BigUint;
 use slop_algebra::{AbstractField, PrimeField};
 use slop_baby_bear::BabyBear;
-use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
+use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
 use sp1_primitives::io::{blake3_hash, SP1PublicValues};
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_executor::RecursionPublicValues;
@@ -330,10 +330,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a compressed proof.
     pub fn verify_compressed(
         &self,
-        proof: &SP1ReduceProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
-        let SP1ReduceProof { vk: compress_vk, proof } = proof;
+        let SP1RecursionProof { vk: compress_vk, proof } = proof;
         let mut challenger = self.recursion_prover.verifier().challenger();
         compress_vk.observe_into(&mut challenger);
         self.recursion_prover
@@ -354,7 +354,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
         }
 
-        if self.recursion_prover.vk_verification
+        if self.recursion_prover.vk_verification()
             && !self.recursion_prover.recursion_vk_map.contains_key(&compress_vk.hash_babybear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
@@ -378,10 +378,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a shrink proof.
     pub fn verify_shrink(
         &self,
-        proof: &SP1ReduceProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
-        let SP1ReduceProof { vk: compress_vk, proof } = proof;
+        let SP1RecursionProof { vk: compress_vk, proof } = proof;
         let mut challenger = self.recursion_prover.shrink_verifier().challenger();
         compress_vk.observe_into(&mut challenger);
         self.recursion_prover
@@ -402,7 +402,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
         }
 
-        if self.recursion_prover.vk_verification
+        if self.recursion_prover.vk_verification()
             && !self.recursion_prover.recursion_vk_map.contains_key(&compress_vk.hash_babybear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
@@ -426,10 +426,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a wrap bn254 proof.
     pub fn verify_wrap_bn254(
         &self,
-        proof: &SP1ReduceProof<Bn254JaggedConfig>,
+        proof: &SP1RecursionProof<Bn254JaggedConfig>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<OuterSC>> {
-        let SP1ReduceProof { vk: _, proof } = proof;
+        let SP1RecursionProof { vk: _, proof } = proof;
         let wrap_vk = self.recursion_prover.wrap_keys().1;
         let mut challenger = self.recursion_prover.wrap_verifier().challenger();
         wrap_vk.observe_into(&mut challenger);
@@ -597,7 +597,7 @@ use crate::{
 impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
     fn verify_deferred_proof(
         &self,
-        proof: &sp1_core_machine::reduce::SP1ReduceProof<InnerSC>,
+        proof: &sp1_core_machine::recursion::SP1RecursionProof<InnerSC>,
         vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
         _vk_hash: [u64; 4],
         _committed_value_digest: [u64; 4],
@@ -610,7 +610,7 @@ impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
         // }
         // Check that proof is valid.
         self.verify_compressed(
-            &SP1ReduceProof { vk: proof.vk.clone(), proof: proof.proof.clone() },
+            &SP1RecursionProof { vk: proof.vk.clone(), proof: proof.proof.clone() },
             &SP1VerifyingKey { vk: vk.clone() },
         )?;
         // // Check that the committed value digest matches the one from syscall

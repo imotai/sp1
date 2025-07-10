@@ -54,8 +54,17 @@ impl<F> RawProgram<Instruction<F>> {
                                 Instruction::BaseAlu(_) => incr(&mut counts.base_alu_events, 1),
                                 Instruction::ExtAlu(_) => incr(&mut counts.ext_alu_events, 1),
                                 Instruction::Mem(_) => incr(&mut counts.mem_const_events, 1),
+                                Instruction::ExtFelt(_) => {
+                                    incr(&mut counts.ext_felt_conversion_events, 1)
+                                }
                                 Instruction::Poseidon2(_) => {
                                     incr(&mut counts.poseidon2_wide_events, 1)
+                                }
+                                Instruction::Poseidon2LinearLayer(_) => {
+                                    incr(&mut counts.poseidon2_linear_layer_events, 1)
+                                }
+                                Instruction::Poseidon2SBox(_) => {
+                                    incr(&mut counts.poseidon2_sbox_events, 1)
                                 }
                                 Instruction::Select(_) => incr(&mut counts.select_events, 1),
                                 Instruction::ExpReverseBitsLen(_) => {

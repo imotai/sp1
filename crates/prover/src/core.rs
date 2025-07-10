@@ -13,7 +13,9 @@ use sp1_stark::{
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
-use crate::{error::RecursionProgramError, shapes::SP1RecursionShape, CoreSC, SP1VerifyingKey};
+use crate::{
+    error::RecursionProgramError, shapes::SP1NormalizeInputShape, CoreSC, SP1VerifyingKey,
+};
 
 pub struct SP1CoreProver<C: CoreProverComponents> {
     prover: MachineProver<C>,
@@ -141,16 +143,16 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
     }
 
     /// Get the witness for a core shard
-    pub fn recursion_shape(
+    pub fn normalize_input_shape(
         &self,
         record: &ExecutionRecord,
-    ) -> Result<SP1RecursionShape, RecursionProgramError> {
+    ) -> Result<SP1NormalizeInputShape, RecursionProgramError> {
         let proof_shape = self
             .prover
             .shape_from_record(record)
             .ok_or(RecursionProgramError::InvalidRecordShape)?;
 
-        Ok(SP1RecursionShape {
+        Ok(SP1NormalizeInputShape {
             proof_shapes: vec![proof_shape],
             max_log_row_count: self.prover.max_log_row_count(),
             log_blowup: self.prover.verifier().fri_config().log_blowup,

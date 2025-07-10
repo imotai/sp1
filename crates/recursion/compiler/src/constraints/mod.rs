@@ -396,6 +396,11 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
                         vec![a[3].id()],
                     ],
                 }),
+                DslIr::EqEval(a, b, c) => constraints.push(Constraint {
+                    opcode: ConstraintOpcode::EqEval,
+                    args: vec![vec![c.id()], vec![a.id()], vec![b.id()]],
+                }),
+
                 // Ignore cycle tracker instruction.
                 // It currently serves as a marker for calculation at compile time.
                 DslIr::CycleTracker(_) => (),

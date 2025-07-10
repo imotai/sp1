@@ -38,16 +38,10 @@ use crate::{
     CircuitConfig, // {ShardProofVariable, StarkVerifier, VerifyingKeyVariable},
 };
 
-use super::{assert_complete, recursion_public_values_digest, SP1CompressShape};
+use super::{assert_complete, recursion_public_values_digest};
 
 pub struct SP1DeferredVerifier<C, SC, A, JC> {
     _phantom: std::marker::PhantomData<(C, SC, A, JC)>,
-}
-
-#[derive(Debug, Clone, Hash)]
-pub struct SP1DeferredShape {
-    inner: SP1CompressShape,
-    height: usize,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -269,7 +263,7 @@ where
 //         shape: &SP1DeferredShape,
 //     ) -> Self {
 //         let inner_witness =
-//             SP1CompressWitnessValues::<BabyBearPoseidon2>::dummy(machine, &shape.inner);
+//             SP1ComposeWitnessValues::<BabyBearPoseidon2>::dummy(machine, &shape.inner);
 //         let vks_and_proofs = inner_witness.vks_and_proofs;
 
 //         let vk_merkle_data = SP1MerkleProofWitnessValues::dummy(vks_and_proofs.len(),
@@ -291,9 +285,3 @@ where
 //         }
 //     }
 // }
-
-impl SP1DeferredShape {
-    pub const fn new(inner: SP1CompressShape, height: usize) -> Self {
-        Self { inner, height }
-    }
-}

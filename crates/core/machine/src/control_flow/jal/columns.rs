@@ -19,7 +19,7 @@ pub struct JalColumns<T> {
     /// AddOperation to get `imm_b + imm_c` as the next program counter.
     pub add_operation: AddOperation<T>,
 
-    /// AddOpeartion to get `op_a` as `pc + 4` if `op_a_0` is false.
+    /// AddOperation to get `op_a` as `pc + 4` if `op_a_0` is false.
     pub op_a_operation: AddOperation<T>,
 
     /// Whether or not the current row is a real row.

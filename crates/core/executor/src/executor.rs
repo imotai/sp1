@@ -1803,20 +1803,20 @@ impl<'a> Executor<'a> {
         let a = match instruction.opcode {
             Opcode::LB => ((memory_read_value >> ((addr % 8) * 8)) & 0xFF) as i8 as i64 as u64,
             Opcode::LH => {
-                if addr % 2 != 0 {
+                if !addr.is_multiple_of(2) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LH, addr));
                 }
                 ((memory_read_value >> (((addr / 2) % 4) * 16)) & 0xFFFF) as i16 as i64 as u64
             }
             Opcode::LW => {
-                if addr % 4 != 0 {
+                if !addr.is_multiple_of(4) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LW, addr));
                 }
                 ((memory_read_value >> (((addr / 4) % 2) * 32)) & 0xFFFFFFFF) as i32 as u64
             }
             Opcode::LBU => ((memory_read_value >> ((addr % 8) * 8)) & 0xFF) as u8 as u64,
             Opcode::LHU => {
-                if addr % 2 != 0 {
+                if !addr.is_multiple_of(2) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LHU, addr));
                 }
                 ((memory_read_value >> (((addr / 2) % 4) * 16)) & 0xFFFF) as u16 as u64
@@ -1853,14 +1853,14 @@ impl<'a> Executor<'a> {
                 ((a & 0xFF) << shift) | (memory_read_value & !(0xFF << shift))
             }
             Opcode::SH => {
-                if addr % 2 != 0 {
+                if !addr.is_multiple_of(2) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::SH, addr));
                 }
                 let shift = ((addr / 2) % 4) * 16;
                 ((a & 0xFFFF) << shift) | (memory_read_value & !(0xFFFF << shift))
             }
             Opcode::SW => {
-                if addr % 4 != 0 {
+                if !addr.is_multiple_of(4) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::SW, addr));
                 }
                 let shift = ((addr / 4) % 2) * 32;
@@ -2057,7 +2057,7 @@ impl<'a> Executor<'a> {
             //
             // If we're close to not fitting, early stop the shard to ensure we don't OOM.
             let mut maximal_size_reached = true;
-            if self.state.global_clk % self.size_check_frequency == 0 {
+            if self.state.global_clk.is_multiple_of(self.size_check_frequency) {
                 // Estimate the number of events in the trace.
                 Self::estimate_riscv_event_counts(
                     &mut self.event_counts,
@@ -2657,7 +2657,7 @@ impl<'a> Executor<'a> {
             }
         }
 
-        if !E::UNCONSTRAINED && self.state.global_clk % 10_000_000 == 0 {
+        if !E::UNCONSTRAINED && self.state.global_clk.is_multiple_of(10_000_000) {
             tracing::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
         }
     }

@@ -2046,7 +2046,7 @@ dependencies = [
 [[package]]
 name = "p3-air"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "p3-field 0.1.0",
  "p3-matrix 0.1.0",
@@ -2056,7 +2056,7 @@ dependencies = [
 [[package]]
 name = "p3-baby-bear"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "num-bigint 0.4.6",
  "p3-field 0.1.0",
@@ -2085,7 +2085,7 @@ dependencies = [
 [[package]]
 name = "p3-bn254-fr"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "ff 0.13.1",
  "num-bigint 0.4.6",
@@ -2099,7 +2099,7 @@ dependencies = [
 [[package]]
 name = "p3-challenger"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "p3-field 0.1.0",
  "p3-maybe-rayon 0.1.0",
@@ -2112,7 +2112,7 @@ dependencies = [
 [[package]]
 name = "p3-commit"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-challenger",
@@ -2125,7 +2125,7 @@ dependencies = [
 [[package]]
 name = "p3-dft"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "p3-field 0.1.0",
  "p3-matrix 0.1.0",
@@ -2150,7 +2150,7 @@ dependencies = [
 [[package]]
 name = "p3-field"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint 0.4.6",
@@ -2177,7 +2177,7 @@ dependencies = [
 [[package]]
 name = "p3-fri"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-challenger",
@@ -2195,7 +2195,7 @@ dependencies = [
 [[package]]
 name = "p3-interpolation"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "p3-field 0.1.0",
  "p3-matrix 0.1.0",
@@ -2205,7 +2205,7 @@ dependencies = [
 [[package]]
 name = "p3-keccak-air"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "p3-air",
  "p3-field 0.1.0",
@@ -2218,7 +2218,7 @@ dependencies = [
 [[package]]
 name = "p3-matrix"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-field 0.1.0",
@@ -2247,7 +2247,7 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "rayon",
 ]
@@ -2261,7 +2261,7 @@ checksum = "c3968ad1160310296eb04f91a5f4edfa38fe1d6b2b8cd6b5c64e6f9b7370979e"
 [[package]]
 name = "p3-mds"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-dft 0.1.0",
@@ -2290,7 +2290,7 @@ dependencies = [
 [[package]]
 name = "p3-merkle-tree"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-commit",
@@ -2306,7 +2306,7 @@ dependencies = [
 [[package]]
 name = "p3-poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "gcd",
  "p3-field 0.1.0",
@@ -2333,7 +2333,7 @@ dependencies = [
 [[package]]
 name = "p3-symmetric"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-field 0.1.0",
@@ -2354,7 +2354,7 @@ dependencies = [
 [[package]]
 name = "p3-uni-stark"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "itertools 0.12.1",
  "p3-air",
@@ -2372,7 +2372,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#09f54843af7b3c63cba090d20419585c57fae468"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "serde",
 ]
@@ -3244,7 +3244,7 @@ checksum = "04dc19736151f35336d325007ac991178d504a119863a2fcb3758cdb5e52c50d"
 [[package]]
 name = "slop-air"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-air",
 ]
@@ -3252,7 +3252,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-field 0.1.0",
  "serde",
@@ -3261,7 +3261,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "itertools 0.14.0",
  "serde",
@@ -3273,7 +3273,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-baby-bear 0.1.0",
 ]
@@ -3281,7 +3281,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -3309,7 +3309,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "clap",
  "derive-where",
@@ -3344,7 +3344,7 @@ dependencies = [
 [[package]]
 name = "slop-bn254"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-bn254-fr",
 ]
@@ -3352,7 +3352,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -3363,7 +3363,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-commit",
  "serde",
@@ -3375,7 +3375,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-dft 0.1.0",
  "serde",
@@ -3388,7 +3388,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-fri",
 ]
@@ -3396,7 +3396,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "crossbeam",
  "futures",
@@ -3409,7 +3409,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "derive-where",
  "futures",
@@ -3441,7 +3441,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-matrix 0.1.0",
 ]
@@ -3449,7 +3449,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-maybe-rayon 0.1.0",
 ]
@@ -3457,7 +3457,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
@@ -3483,7 +3483,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "derive-where",
  "futures",
@@ -3507,7 +3507,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-poseidon2 0.1.0",
 ]
@@ -3515,7 +3515,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "derive-where",
  "futures",
@@ -3534,7 +3534,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "futures",
  "itertools 0.14.0",
@@ -3554,7 +3554,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-symmetric 0.1.0",
 ]
@@ -3562,7 +3562,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -3582,7 +3582,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#79f1bc6a3ec8d3a51a3e1ccda6351ca94ef71a5d"
+source = "git+https://github.com/succinctlabs/slop#b85744bba35d0874e283cfd4447c9ac38a2f28a7"
 dependencies = [
  "p3-util 0.1.0",
  "tracing-forest",

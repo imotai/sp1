@@ -7,7 +7,7 @@ use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
-    machine::{SP1CompressWitnessValues, SP1WrapVerifier},
+    machine::{SP1ShapedWitnessValues, SP1WrapVerifier},
     utils::{babybear_bytes_to_bn254, babybears_to_bn254},
 };
 use sp1_recursion_compiler::{
@@ -128,7 +128,7 @@ pub fn build_constraints_and_witness(
     template_proof: &ShardProof<OuterSC>,
 ) -> (Vec<Constraint>, OuterWitness<OuterConfig>) {
     tracing::info!("building verifier constraints");
-    let template_input = SP1CompressWitnessValues {
+    let template_input = SP1ShapedWitnessValues {
         vks_and_proofs: vec![(template_vk.clone(), template_proof.clone())],
         is_complete: true,
     };
@@ -185,7 +185,7 @@ pub async fn dummy_proof() -> (MachineVerifyingKey<OuterSC>, ShardProof<OuterSC>
     (wrapped_proof.vk, wrapped_proof.proof)
 }
 
-fn build_outer_circuit(template_input: &SP1CompressWitnessValues<OuterSC>) -> Vec<Constraint> {
+fn build_outer_circuit(template_input: &SP1ShapedWitnessValues<OuterSC>) -> Vec<Constraint> {
     let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
     let wrap_verifier = wrap_verifier.shard_verifier();
     let recursive_wrap_verifier =

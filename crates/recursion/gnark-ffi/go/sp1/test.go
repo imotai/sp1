@@ -15,7 +15,7 @@ func (circuit *TestPoseidon2BabyBearCircuit) Define(api frontend.API) error {
 	poseidon2BabyBearChip := poseidon2.NewBabyBearChip(api)
 	fieldApi := babybear.NewChip(api)
 
-	zero := babybear.NewF("0")
+	zero := babybear.NewFConst("0")
 	input := [poseidon2.BABYBEAR_WIDTH]babybear.Variable{}
 	for i := 0; i < poseidon2.BABYBEAR_WIDTH; i++ {
 		input[i] = fieldApi.AddF(circuit.Input[i], zero)

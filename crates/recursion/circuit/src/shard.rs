@@ -67,7 +67,7 @@ pub struct MachineVerifyingKeyVariable<
     /// The preprocessed commitments.
     pub preprocessed_commit: Option<SC::DigestVariable>,
     /// The preprocessed chip information.
-    pub preprocessed_chip_information: BTreeMap<String, ChipDimensions>,
+    pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<Felt<C::F>>>,
 }
 impl<C, SC> MachineVerifyingKeyVariable<C, SC>
 where
@@ -93,8 +93,7 @@ where
         for ChipDimensions { height, num_polynomials: _ } in
             self.preprocessed_chip_information.values()
         {
-            let height = builder.eval(C::F::from_canonical_usize(*height));
-            inputs.push(height);
+            inputs.push(*height);
         }
         // for domain in prep_domains {
         //     inputs.push(builder.eval(C::F::from_canonical_usize(domain.log_n)));

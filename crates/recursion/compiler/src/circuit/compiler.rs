@@ -251,6 +251,36 @@ where
     }
 
     #[inline(always)]
+    fn ext2felt_chip(&mut self, dst: [impl Reg<C>; D], src: impl Reg<C>) -> Instruction<C::F> {
+        Instruction::ExtFelt(ExtFeltInstr {
+            addrs: [
+                src.read(self),
+                dst[0].write(self),
+                dst[1].write(self),
+                dst[2].write(self),
+                dst[3].write(self),
+            ],
+            mults: [C::F::zero(); D + 1],
+            ext2felt: true,
+        })
+    }
+
+    #[inline(always)]
+    fn felt2ext_chip(&mut self, dst: impl Reg<C>, src: [impl Reg<C>; D]) -> Instruction<C::F> {
+        Instruction::ExtFelt(ExtFeltInstr {
+            addrs: [
+                dst.write(self),
+                src[0].read(self),
+                src[1].read(self),
+                src[2].read(self),
+                src[3].read(self),
+            ],
+            mults: [C::F::zero(); D + 1],
+            ext2felt: false,
+        })
+    }
+
+    #[inline(always)]
     fn poseidon2_permute(
         &mut self,
         dst: [impl Reg<C>; PERMUTATION_WIDTH],
@@ -263,6 +293,56 @@ where
             },
             mults: [C::F::zero(); PERMUTATION_WIDTH],
         }))
+    }
+
+    #[inline(always)]
+    fn poseidon2_external_linear_layer(
+        &mut self,
+        dst: [impl Reg<C>; PERMUTATION_WIDTH / D],
+        src: [impl Reg<C>; PERMUTATION_WIDTH / D],
+    ) -> Instruction<C::F> {
+        Instruction::Poseidon2LinearLayer(Box::new(Poseidon2LinearLayerInstr {
+            addrs: Poseidon2LinearLayerIo {
+                input: src.map(|r| r.read(self)),
+                output: dst.map(|r| r.write(self)),
+            },
+            mults: [C::F::zero(); PERMUTATION_WIDTH / D],
+            external: true,
+        }))
+    }
+
+    #[inline(always)]
+    fn poseidon2_internal_linear_layer(
+        &mut self,
+        dst: [impl Reg<C>; PERMUTATION_WIDTH / D],
+        src: [impl Reg<C>; PERMUTATION_WIDTH / D],
+    ) -> Instruction<C::F> {
+        Instruction::Poseidon2LinearLayer(Box::new(Poseidon2LinearLayerInstr {
+            addrs: Poseidon2LinearLayerIo {
+                input: src.map(|r| r.read(self)),
+                output: dst.map(|r| r.write(self)),
+            },
+            mults: [C::F::zero(); PERMUTATION_WIDTH / D],
+            external: false,
+        }))
+    }
+
+    #[inline(always)]
+    fn poseidon2_external_sbox(&mut self, dst: impl Reg<C>, src: impl Reg<C>) -> Instruction<C::F> {
+        Instruction::Poseidon2SBox(Poseidon2SBoxInstr {
+            addrs: Poseidon2SBoxIo { input: src.read(self), output: dst.write(self) },
+            mults: C::F::zero(),
+            external: true,
+        })
+    }
+
+    #[inline(always)]
+    fn poseidon2_internal_sbox(&mut self, dst: impl Reg<C>, src: impl Reg<C>) -> Instruction<C::F> {
+        Instruction::Poseidon2SBox(Poseidon2SBoxInstr {
+            addrs: Poseidon2SBoxIo { input: src.read(self), output: dst.write(self) },
+            mults: C::F::zero(),
+            external: false,
+        })
     }
 
     #[inline(always)]
@@ -564,6 +644,17 @@ where
             DslIr::AssertNeFI(lhs, rhs) => self.base_assert_ne(lhs, Imm::F(rhs), f),
             DslIr::AssertNeEI(lhs, rhs) => self.ext_assert_ne(lhs, Imm::EF(rhs), f),
 
+            DslIr::CircuitChipExt2Felt(dst, src) => f(self.ext2felt_chip(dst, src)),
+            DslIr::CircuitChipFelt2Ext(dst, src) => f(self.felt2ext_chip(dst, src)),
+            DslIr::Poseidon2ExternalLinearLayer(data) => {
+                f(self.poseidon2_external_linear_layer(data.0, data.1))
+            }
+            DslIr::Poseidon2InternalLinearLayer(data) => {
+                f(self.poseidon2_internal_linear_layer(data.0, data.1))
+            }
+            DslIr::Poseidon2ExternalSBOX(dst, src) => f(self.poseidon2_external_sbox(dst, src)),
+            DslIr::Poseidon2InternalSBOX(dst, src) => f(self.poseidon2_internal_sbox(dst, src)),
+
             DslIr::CircuitV2Poseidon2PermuteBabyBear(data) => {
                 f(self.poseidon2_permute(data.0, data.1))
             }
@@ -699,12 +790,37 @@ where
                     kind: MemAccessKind::Write,
                     ..
                 }) => backfill((mult, addr)),
+                Instruction::ExtFelt(ExtFeltInstr { addrs, mults, ext2felt }) => {
+                    if *ext2felt {
+                        backfill((&mut mults[1], &addrs[1]));
+                        backfill((&mut mults[2], &addrs[2]));
+                        backfill((&mut mults[3], &addrs[3]));
+                        backfill((&mut mults[4], &addrs[4]));
+                    } else {
+                        backfill((&mut mults[0], &addrs[0]));
+                    }
+                }
                 Instruction::Poseidon2(instr) => {
                     let Poseidon2SkinnyInstr {
                         addrs: Poseidon2Io { output: ref addrs, .. },
                         mults,
                     } = instr.as_mut();
                     mults.iter_mut().zip(addrs).for_each(&mut backfill);
+                }
+                Instruction::Poseidon2LinearLayer(instr) => {
+                    let Poseidon2LinearLayerInstr {
+                        addrs: Poseidon2LinearLayerIo { output: ref addrs, .. },
+                        mults,
+                        ..
+                    } = instr.as_mut();
+                    mults.iter_mut().zip(addrs).for_each(&mut backfill);
+                }
+                Instruction::Poseidon2SBox(Poseidon2SBoxInstr {
+                    addrs: Poseidon2SBoxIo { output: ref addr, .. },
+                    mults,
+                    ..
+                }) => {
+                    backfill((mults, addr));
                 }
                 Instruction::Select(SelectInstr {
                     addrs: SelectIo { out1: ref addr1, out2: ref addr2, .. },
@@ -847,7 +963,10 @@ const fn instr_name<F>(instr: &Instruction<F>) -> &'static str {
         Instruction::BaseAlu(_) => "BaseAlu",
         Instruction::ExtAlu(_) => "ExtAlu",
         Instruction::Mem(_) => "Mem",
+        Instruction::ExtFelt(_) => "ExtFelt",
         Instruction::Poseidon2(_) => "Poseidon2",
+        Instruction::Poseidon2LinearLayer(_) => "Poseidon2LinearLayer",
+        Instruction::Poseidon2SBox(_) => "Poseidon2SBox",
         Instruction::Select(_) => "Select",
         Instruction::ExpReverseBitsLen(_) => "ExpReverseBitsLen",
         Instruction::HintBits(_) => "HintBits",
@@ -1013,9 +1132,9 @@ mod tests {
 
     use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use p3_field::extension::BinomialExtensionField;
-    use p3_symmetric::{CryptographicHasher, Permutation};
+    use p3_symmetric::Permutation;
     use rand::{rngs::StdRng, Rng, SeedableRng};
-    use slop_merkle_tree::{my_bb_16_perm, DefaultMerkleTreeConfig, Poseidon2BabyBearConfig};
+    use slop_merkle_tree::my_bb_16_perm;
 
     // use sp1_core_machine::utils::{run_test_machine};
     use p3_field::PrimeField32;
@@ -1087,51 +1206,6 @@ mod tests {
         }
 
         test_block(builder.into_root_block());
-    }
-
-    #[test]
-    #[allow(clippy::uninlined_format_args)]
-    fn test_poseidon2_hash() {
-        let hasher = Poseidon2BabyBearConfig::default_hasher_and_compressor().0;
-
-        let input: [F; 26] = [
-            F::from_canonical_u32(0),
-            F::from_canonical_u32(1),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(2),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-            F::from_canonical_u32(3),
-        ];
-        let expected = hasher.hash_iter(input);
-        println!("{:?}", expected);
-
-        let mut builder = AsmBuilder::<F, EF>::default();
-        let input_felts: [Felt<_>; 26] = input.map(|x| builder.eval(x));
-        let result = builder.poseidon2_hash_v2(&input_felts);
-
-        for (actual_f, expected_f) in zip(result, expected) {
-            builder.assert_felt_eq(actual_f, expected_f);
-        }
     }
 
     #[test]

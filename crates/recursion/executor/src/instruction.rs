@@ -14,6 +14,9 @@ pub enum Instruction<F> {
     ExtAlu(ExtAluInstr<F>),
     Mem(MemInstr<F>),
     Poseidon2(Box<Poseidon2Instr<F>>),
+    Poseidon2LinearLayer(Box<Poseidon2LinearLayerInstr<F>>),
+    Poseidon2SBox(Poseidon2SBoxInstr<F>),
+    ExtFelt(ExtFeltInstr<F>),
     Select(SelectInstr<F>),
     ExpReverseBitsLen(ExpReverseBitsInstr<F>),
     HintBits(HintBitsInstr<F>),
@@ -44,11 +47,29 @@ impl<F: Copy> Instruction<F> {
                 (svec![in1, in2], svec![out])
             }
             Instruction::Mem(MemInstr { addrs: MemIo { inner }, .. }) => (svec![], svec![inner]),
+            Instruction::ExtFelt(ExtFeltInstr { addrs, ext2felt, .. }) => {
+                if ext2felt {
+                    (svec![addrs[0]], svec![addrs[1], addrs[2], addrs[3], addrs[4]])
+                } else {
+                    (svec![addrs[1], addrs[2], addrs[3], addrs[4]], svec![addrs[0]])
+                }
+            }
             Instruction::Poseidon2(ref instr) => {
                 let Poseidon2SkinnyInstr { addrs: Poseidon2Io { input, output }, .. } =
                     instr.as_ref();
                 (SmallVec::from_slice(input), SmallVec::from_slice(output))
             }
+            Instruction::Poseidon2LinearLayer(ref instr) => {
+                let Poseidon2LinearLayerInstr {
+                    addrs: Poseidon2LinearLayerIo { input, output },
+                    ..
+                } = instr.as_ref();
+                (SmallVec::from_slice(input), SmallVec::from_slice(output))
+            }
+            Instruction::Poseidon2SBox(Poseidon2SBoxInstr {
+                addrs: Poseidon2SBoxIo { input, output },
+                ..
+            }) => (svec![input], svec![output]),
             Instruction::Select(SelectInstr {
                 addrs: SelectIo { bit, out1, out2, in1, in2 },
                 ..

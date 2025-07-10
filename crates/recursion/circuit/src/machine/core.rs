@@ -57,7 +57,8 @@ pub struct SP1RecursionWitnessVariable<
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "ShardProof<SC>: Serialize"))]
 #[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>"))]
-pub struct SP1RecursionWitnessValues<SC: MachineConfig> {
+/// A struct to contain the inputs to the `normalize` program.
+pub struct SP1NormalizeWitnessValues<SC: MachineConfig> {
     pub vk: MachineVerifyingKey<SC>,
     pub shard_proofs: Vec<ShardProof<SC>>,
     pub is_complete: bool,

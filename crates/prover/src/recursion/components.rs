@@ -8,8 +8,10 @@ use crate::{CompressAir, InnerSC, OuterSC, WrapAir};
 const RECURSION_LOG_BLOWUP: usize = 1;
 const RECURSION_LOG_STACKING_HEIGHT: u32 = 20;
 pub(crate) const RECURSION_MAX_LOG_ROW_COUNT: usize = 20;
+const SHRINK_LOG_STACKING_HEIGHT: u32 = 18;
+pub(crate) const SHRINK_MAX_LOG_ROW_COUNT: usize = 18;
 
-const SHRINK_LOG_BLOWUP: usize = 2;
+const SHRINK_LOG_BLOWUP: usize = 4;
 const WRAP_LOG_BLOWUP: usize = 4;
 
 pub trait RecursionProverComponents:
@@ -24,7 +26,7 @@ pub trait RecursionProverComponents:
         let compress_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
         let compress_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
 
-        let machine = CompressAir::<BabyBear>::machine_wide_with_all_chips();
+        let machine = CompressAir::<BabyBear>::compress_machine();
         let recursion_shard_verifier = ShardVerifier::from_basefold_parameters(
             compress_log_blowup,
             compress_log_stacking_height,
@@ -37,10 +39,10 @@ pub trait RecursionProverComponents:
 
     fn shrink_verifier() -> MachineVerifier<InnerSC, CompressAir<InnerVal>> {
         let shrink_log_blowup = SHRINK_LOG_BLOWUP;
-        let shrink_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
-        let shrink_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
+        let shrink_log_stacking_height = SHRINK_LOG_STACKING_HEIGHT;
+        let shrink_max_log_row_count = SHRINK_MAX_LOG_ROW_COUNT;
 
-        let machine = CompressAir::<BabyBear>::machine_wide_with_all_chips();
+        let machine = CompressAir::<BabyBear>::shrink_machine();
         let recursion_shard_verifier = ShardVerifier::from_basefold_parameters(
             shrink_log_blowup,
             shrink_log_stacking_height,
@@ -64,7 +66,7 @@ pub trait WrapProverComponents:
         let wrap_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
         let wrap_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
 
-        let machine = WrapAir::<BabyBear>::machine_wide_with_all_chips();
+        let machine = WrapAir::<BabyBear>::wrap_machine();
         let wrap_shard_verifier = ShardVerifier::from_basefold_parameters(
             wrap_log_blowup,
             wrap_log_stacking_height,

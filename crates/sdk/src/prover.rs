@@ -61,7 +61,7 @@ pub trait Prover: Clone + Send + Sync {
     fn prove<'a>(&'a self, pk: &'a Self::ProvingKey, stdin: SP1Stdin) -> Self::ProveRequest<'a>;
 
     /// Execute the program on the given input.
-    fn execute(&self, elf: Elf, stdin: SP1Stdin) -> ExecuteRequest<Self> {
+    fn execute(&self, elf: Elf, stdin: SP1Stdin) -> ExecuteRequest<'_, Self> {
         ExecuteRequest::new(self, elf, stdin)
     }
 
