@@ -6,7 +6,7 @@ use elf::{
 };
 use eyre::OptionExt;
 use hashbrown::HashMap;
-use sp1_primitives::consts::{INSTRUCTION_WORD_SIZE, MAXIMUM_MEMORY_SIZE};
+use sp1_primitives::consts::{INSTRUCTION_WORD_SIZE, MAXIMUM_MEMORY_SIZE, STACK_TOP};
 
 /// RISC-V 32IM ELF (Executable and Linkable Format) File.
 ///
@@ -69,8 +69,8 @@ impl Elf {
         let entry = elf.ehdr.e_entry;
 
         // Make sure the entrypoint is valid.
-        if entry == MAXIMUM_MEMORY_SIZE || entry % 8 != 0 {
-            eyre::bail!("invalid entrypoint");
+        if entry == MAXIMUM_MEMORY_SIZE || entry % 4 != 0 {
+            eyre::bail!("invalid entrypoint, entry: {}", entry);
         }
 
         // Get the segments of the ELF file.
@@ -108,21 +108,11 @@ impl Elf {
             if is_execute && base_address > vaddr {
                 base_address = vaddr;
             }
-            if vaddr < 0x00200800 {
-                eprintln!("detected old compiler flags: recompile the ELF for additional security");
-                for sh in elf
-                    .section_headers()
-                    .ok_or_else(|| eyre::eyre!("failed to get section headers"))?
-                {
-                    let sec_start = sh.sh_addr;
-                    let seg_start = segment.p_vaddr;
-                    if sec_start < seg_start + segment.p_filesz
-                        && seg_start < sec_start + sh.sh_size
-                        && (sh.sh_type == 1 || sh.sh_type == 8)
-                    {
-                        eyre::bail!("program data is not allowed to overlap with program headers with vaddr < 0x00200800");
-                    }
-                }
+
+            // If there are sections below the STACK_TOP, we want to error, this could cause
+            // collisions with static values.
+            if vaddr < STACK_TOP {
+                eyre::bail!("ELF has a segment that is below the STACK_TOP");
             }
 
             if (segment.p_flags & PF_X) != 0 && (segment.p_flags & PF_W) != 0 {

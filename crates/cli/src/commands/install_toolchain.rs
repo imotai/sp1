@@ -101,12 +101,10 @@ impl InstallToolchainCmd {
         let toolchain_asset_name = format!("rust-toolchain-{}.tar.gz", target);
         let toolchain_archive_path = root_dir.join(toolchain_asset_name.clone());
         let toolchain_dir = root_dir.join(&target);
-        let rt = tokio::runtime::Runtime::new()?;
 
-        let toolchain_download_url =
-            rt.block_on(get_toolchain_download_url(&client, target.to_string()));
+        let toolchain_download_url = get_toolchain_download_url(&client, target.to_string()).await;
 
-        let artifact_exists = rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
+        let artifact_exists = url_exists(&client, toolchain_download_url.as_str()).await;
         if !artifact_exists {
             return Err(anyhow::anyhow!(
                 "Unsupported architecture. Please build the toolchain from source."

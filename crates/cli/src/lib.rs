@@ -1,34 +1,14 @@
 pub mod commands;
 
-use anyhow::{Context, Result};
 use reqwest::Client;
-use std::process::{Command, Stdio};
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "succinct";
 
 /// The latest version (github tag) of the toolchain that is supported by our build system.
-///
-/// This tag has support for older x86 libc versions (like the one found in Ubuntu 20.04).
-/// This tag has support for the recent Macos and ARM targets.
-pub const LATEST_SUPPORTED_TOOLCHAIN_VERSION_TAG: &str = "succinct-1.87.0";
+pub const LATEST_SUPPORTED_TOOLCHAIN_VERSION_TAG: &str = "succinct-1.8.8-64bit";
 
 pub const SP1_VERSION_MESSAGE: &str =
     concat!("sp1", " (", env!("VERGEN_GIT_SHA"), " ", env!("VERGEN_BUILD_TIMESTAMP"), ")");
-
-trait CommandExecutor {
-    fn run(&mut self) -> Result<()>;
-}
-
-impl CommandExecutor for Command {
-    fn run(&mut self) -> Result<()> {
-        self.stderr(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stdin(Stdio::inherit())
-            .output()
-            .with_context(|| format!("while executing `{:?}`", &self))
-            .map(|_| ())
-    }
-}
 
 pub async fn url_exists(client: &Client, url: &str) -> bool {
     let res = client.head(url).send().await;

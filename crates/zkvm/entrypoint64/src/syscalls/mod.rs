@@ -169,4 +169,5 @@ pub const UINT256_ADD_CARRY: u32 = 0x00_01_01_30;
 pub const UINT256_MUL_CARRY: u32 = 0x00_01_01_31;
 
 /// Executes the `MPROTECT` syscall.
+#[allow(clippy::mistyped_literal_suffixes)]
 pub const MPROTECT: u32 = 0x00_00_01_32;

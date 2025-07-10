@@ -163,7 +163,6 @@ impl Instruction {
                 | Opcode::BGEU
                 | Opcode::JAL
                 | Opcode::JALR
-                | Opcode::AUIPC
         )
     }
 

@@ -34,6 +34,9 @@ pub const PROT_READ: u8 = 0b001;
 pub const PROT_WRITE: u8 = 0b010;
 pub const PROT_EXEC: u8 = 0b100;
 
+/// The stack top for the 64-bit zkvm.
+pub const STACK_TOP: u64 = 0x78000000;
+
 pub mod fd {
     /// The minimum file descriptor.
     ///

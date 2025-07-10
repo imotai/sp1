@@ -1423,7 +1423,7 @@ impl<'a> Executor<'a> {
         self.record.jalr_events.push((event, record));
     }
 
-    /// Emit a UType event.
+    /// Emit a `UType` event.
     #[inline]
     fn emit_utype_event(
         &mut self,
@@ -2509,10 +2509,11 @@ impl<'a> Executor<'a> {
             }
             for addr in 1..32 {
                 let record = self.state.memory.registers.get(addr);
-                if record.is_some() {
+                if let Some(record) = record {
                     if self.print_report {
                         self.report.touched_memory_addresses += 1;
                     }
+
                     // Program memory is initialized in the MemoryProgram chip and doesn't require
                     // any events, so we only send init events for other memory
                     // addresses.
@@ -2523,9 +2524,8 @@ impl<'a> Executor<'a> {
                             .push(MemoryInitializeFinalizeEvent::initialize(addr, *initial_value));
                     }
 
-                    let record = *record.unwrap();
                     memory_finalize_events
-                        .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record));
+                        .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, record));
                 }
             }
             for addr in self.state.memory.page_table.keys() {

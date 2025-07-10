@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Memory addresses must be lower than BabyBear prime.
-pub const MAX_MEMORY: usize = 0x78000000;
+use sp1_primitives::consts::MAXIMUM_MEMORY_SIZE;
 
 /// Allocate memory aligned to the given alignment.
 ///
@@ -22,29 +21,20 @@ pub const MAX_MEMORY: usize = 0x78000000;
 #[no_mangle]
 #[cfg(feature = "bump")]
 pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
-    #[cfg(target_os = "zkvm")]
-    let heap_bottom: usize;
-    // UNSAFE: This is fine, just loading some constants.
-    #[cfg(target_os = "zkvm")]
-    unsafe {
-        // using inline assembly is easier to access linker constants
-        core::arch::asm!(
-        "la {heap_bottom}, _kernel_heap_bottom",
-        heap_bottom = out(reg) heap_bottom,
-        options(nomem)
-        )
-    };
-
     // Pointer to next heap address to use, or 0 if the heap has not yet been
     // initialized.
     static mut HEAP_POS: usize = 0;
 
+    extern "C" {
+        // https://lld.llvm.org/ELF/linker_script.html#sections-command
+        static _end: u8;
+    }
+
     // SAFETY: Single threaded, so nothing else can touch this while we're working.
     let mut heap_pos = unsafe { HEAP_POS };
 
-    #[cfg(target_os = "zkvm")]
     if heap_pos == 0 {
-        heap_pos = heap_bottom;
+        heap_pos = unsafe { (&_end) as *const u8 as usize };
     }
 
     let offset = heap_pos & (align - 1);
@@ -53,7 +43,11 @@ pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u
     }
 
     let ptr = heap_pos as *mut u8;
-    heap_pos += bytes;
+    let (heap_pos, overflowed) = heap_pos.overflowing_add(bytes);
+
+    if overflowed || MAXIMUM_MEMORY_SIZE < heap_pos as u64 {
+        panic!("Memory limit exceeded (0x78000000)");
+    }
 
     unsafe { HEAP_POS = heap_pos };
 

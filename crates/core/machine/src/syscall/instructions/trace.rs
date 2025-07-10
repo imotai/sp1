@@ -90,11 +90,6 @@ impl SyscallInstrsChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.next_pc = [
-            F::from_canonical_u16((event.next_pc & 0xFFFF) as u16),
-            F::from_canonical_u16(((event.next_pc >> 16) & 0xFFFF) as u16),
-            F::from_canonical_u16(((event.next_pc >> 32) & 0xFFFF) as u16),
-        ];
 
         cols.op_a_value = Word::from(record.a.value());
         cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
@@ -107,6 +102,16 @@ impl SyscallInstrsChip {
         cols.num_extra_cycles = num_cycles;
         cols.is_halt =
             F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
+
+        if cols.is_halt == F::one() {
+            cols.next_pc = [F::one(), F::zero(), F::zero()];
+        } else {
+            cols.next_pc = [
+                F::from_canonical_u32(((event.pc & 0xFFFF) as u32) + 4),
+                F::from_canonical_u32(((event.pc >> 16) & 0xFFFF) as u32),
+                F::from_canonical_u32(((event.pc >> 32) & 0xFFFF) as u32),
+            ];
+        }
 
         // Populate `is_enter_unconstrained`.
         cols.is_enter_unconstrained.populate_from_field_element(

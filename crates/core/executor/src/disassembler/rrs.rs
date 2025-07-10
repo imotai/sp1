@@ -47,7 +47,7 @@ impl Instruction {
     /// Create a new [`Instruction`] from an U-type instruction.
     #[must_use]
     pub const fn from_u_type(opcode: Opcode, dec_insn: &UType) -> Self {
-        Self::new(opcode, dec_insn.rd as u8, dec_insn.imm as u64, dec_insn.imm as u64, true, true)
+        Self::new(opcode, dec_insn.rd as u8, dec_insn.imm, dec_insn.imm, true, true)
     }
 
     /// Create a new [`Instruction`] that is not implemented.

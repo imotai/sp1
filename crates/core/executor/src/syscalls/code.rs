@@ -164,6 +164,7 @@ pub enum SyscallCode {
     UINT256_MUL_CARRY = 0x00_01_01_31,
 
     /// Executes the `MPROTECT` syscall.
+    #[allow(clippy::mistyped_literal_suffixes)]
     MPROTECT = 0x00_00_01_32,
 }
 
@@ -213,6 +214,7 @@ impl SyscallCode {
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
             0x00_01_01_30 => SyscallCode::UINT256_ADD_CARRY,
             0x00_01_01_31 => SyscallCode::UINT256_MUL_CARRY,
+            #[allow(clippy::mistyped_literal_suffixes)]
             0x00_00_01_32 => SyscallCode::MPROTECT,
             _ => panic!("invalid syscall number: {value}"),
         }

@@ -2,8 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use sp1_cli::{
     commands::{
-        build::BuildCmd, build_toolchain::BuildToolchainCmd,
-        install_toolchain::InstallToolchainCmd, new::NewCmd, vkey::VkeyCmd,
+        build::BuildCmd, install_toolchain::InstallToolchainCmd, new::NewCmd, vkey::VkeyCmd,
     },
     SP1_VERSION_MESSAGE,
 };
@@ -25,7 +24,6 @@ pub struct ProveCli {
 pub enum ProveCliCommands {
     New(NewCmd),
     Build(BuildCmd),
-    BuildToolchain(BuildToolchainCmd),
     InstallToolchain(InstallToolchainCmd),
     Vkey(VkeyCmd),
 }
@@ -37,7 +35,6 @@ async fn main() -> Result<()> {
     match args.command {
         ProveCliCommands::New(cmd) => cmd.run(),
         ProveCliCommands::Build(cmd) => cmd.run(),
-        ProveCliCommands::BuildToolchain(cmd) => cmd.run(),
         ProveCliCommands::InstallToolchain(cmd) => cmd.run().await,
         ProveCliCommands::Vkey(cmd) => cmd.run().await,
     }

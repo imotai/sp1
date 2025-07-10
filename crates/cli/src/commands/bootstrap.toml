@@ -1,12 +1,8 @@
 [build]
-target = ["riscv32im-succinct-zkvm-elf", "riscv64im-succinct-zkvm-elf"]
 extended = true
 tools = ["cargo", "cargo-clippy", "clippy", "rustfmt"]
 configure-args = []
 cargo-native-static = true
-
-[target.riscv64im-succinct-zkvm-elf]
-cc = "riscv64-unknown-elf-gcc"
 
 [rust]
 lld = true

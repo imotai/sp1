@@ -186,31 +186,26 @@ mod zkvm {
         syscall_halt(0);
     }
 
-    #[no_mangle]
-    #[link_section = ".text.init"]
-    unsafe extern "C" fn _start() -> ! {
-        core::arch::asm!(
-            // 64-bit implementation
-            ".option push",
-            ".option norelax",
-            "la gp, _global_pointer",
-            ".option pop",
-            "la sp, _init_stack_top",
-            "call {__start}",
-            "csrr t0, marchid",
-            "li   t1, 0xFFFEEEE",
-            "beq t0, t1, 1f",
-            "li t0, 0x100000",
-            "li t1, 0x5555",
-            "sw t1, 0(t0)",
-            "j 2f",
-            "1: li   a7, 93",
-            "ecall",
-            "2: j 2b",
-            __start = sym __start,
-            options(noreturn)
-        );
-    }
+    // core::arch::global_asm!(include_str!("memset.s"));
+    // core::arch::global_asm!(include_str!("memcpy.s"));
+
+    // Alias the stack top to a static we can load easily.
+    static _STACK_TOP: u64 = sp1_primitives::consts::STACK_TOP;
+    core::arch::global_asm!(
+        r#"
+    .section .text._start;
+    .globl _start;
+    _start:
+        .option push;
+        .option norelax;
+        la gp, __global_pointer$;
+        .option pop;
+        la sp, {0}
+        ld sp, 0(sp)
+        call __start;
+    "#,
+        sym _STACK_TOP
+    );
 
     pub fn zkvm_getrandom(s: &mut [u8]) -> Result<(), getrandom::Error> {
         unsafe {

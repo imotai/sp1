@@ -163,7 +163,7 @@ impl JumpEvent {
         Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
-/// UType Instruction Event.
+/// `UType` Instruction Event.
 ///
 /// This object encapsulated the information needed to prove a RISC-V AUIPC and LUI operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
