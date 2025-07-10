@@ -69,7 +69,7 @@ impl Elf {
         let entry = elf.ehdr.e_entry;
 
         // Make sure the entrypoint is valid.
-        if entry == MAXIMUM_MEMORY_SIZE || entry % 4 != 0 {
+        if entry == MAXIMUM_MEMORY_SIZE || !entry.is_multiple_of(4) {
             eyre::bail!("invalid entrypoint, entry: {}", entry);
         }
 

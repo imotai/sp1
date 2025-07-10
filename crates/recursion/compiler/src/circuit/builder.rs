@@ -1,12 +1,12 @@
 //! An implementation of Poseidon2 over BN254.
 
-use std::{borrow::Cow, iter::repeat};
+use std::borrow::Cow;
 
 use crate::prelude::*;
 use itertools::Itertools;
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractExtensionField, AbstractField};
-use sp1_recursion_executor::{RecursionPublicValues, D, DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
+use sp1_recursion_executor::{RecursionPublicValues, D, PERMUTATION_WIDTH};
 use sp1_stark::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
 };
@@ -34,11 +34,6 @@ pub trait CircuitV2Builder<C: Config> {
         &mut self,
         state: [Felt<C::F>; PERMUTATION_WIDTH],
     ) -> [Felt<C::F>; PERMUTATION_WIDTH];
-    fn poseidon2_hash_v2(&mut self, array: &[Felt<C::F>]) -> [Felt<C::F>; DIGEST_SIZE];
-    fn poseidon2_compress_v2(
-        &mut self,
-        input: impl IntoIterator<Item = Felt<C::F>>,
-    ) -> [Felt<C::F>; DIGEST_SIZE];
     fn fri_fold_v2(&mut self, input: CircuitV2FriFoldInput<C>) -> CircuitV2FriFoldOutput<C>;
     fn ext2felt_v2(&mut self, ext: Ext<C::F, C::EF>) -> [Felt<C::F>; D];
     fn add_curve_v2(
@@ -183,35 +178,6 @@ impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
         let output: [Felt<C::F>; PERMUTATION_WIDTH] = core::array::from_fn(|_| self.uninit());
         self.push_op(DslIr::CircuitV2Poseidon2PermuteBabyBear(Box::new((output, array))));
         output
-    }
-
-    /// Applies the Poseidon2 hash function to the given array.
-    ///
-    /// Reference: [p3_symmetric::PaddingFreeSponge]
-    fn poseidon2_hash_v2(&mut self, input: &[Felt<C::F>]) -> [Felt<C::F>; DIGEST_SIZE] {
-        // static_assert(RATE < WIDTH)
-        let mut state = core::array::from_fn(|_| self.eval(C::F::zero()));
-        for input_chunk in input.chunks(HASH_RATE) {
-            state[..input_chunk.len()].copy_from_slice(input_chunk);
-            state = self.poseidon2_permute_v2(state);
-        }
-        let state: [Felt<C::F>; DIGEST_SIZE] = state[..DIGEST_SIZE].try_into().unwrap();
-        state
-    }
-
-    /// Applies the Poseidon2 compression function to the given array.
-    ///
-    /// Reference: [p3_symmetric::TruncatedPermutation]
-    fn poseidon2_compress_v2(
-        &mut self,
-        input: impl IntoIterator<Item = Felt<C::F>>,
-    ) -> [Felt<C::F>; DIGEST_SIZE] {
-        // debug_assert!(DIGEST_SIZE * N <= WIDTH);
-        let mut pre_iter = input.into_iter().chain(repeat(self.eval(C::F::default())));
-        let pre = core::array::from_fn(move |_| pre_iter.next().unwrap());
-        let post = self.poseidon2_permute_v2(pre);
-        let post: [Felt<C::F>; DIGEST_SIZE] = post[..DIGEST_SIZE].try_into().unwrap();
-        post
     }
 
     /// Runs FRI fold.

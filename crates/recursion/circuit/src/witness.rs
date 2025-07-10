@@ -20,8 +20,8 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::Block;
 use sp1_stark::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
-    AirOpenedValues, ChipOpenedValues, MachineConfig, MachineVerifyingKey, ShardOpenedValues,
-    ShardProof,
+    AirOpenedValues, ChipDimensions, ChipOpenedValues, MachineConfig, MachineVerifyingKey,
+    ShardOpenedValues, ShardProof,
 };
 
 pub trait WitnessWriter<C: CircuitConfig>: Sized {
@@ -364,7 +364,19 @@ where
         let pc_start = self.pc_start.read(builder);
         let initial_global_cumulative_sum = self.initial_global_cumulative_sum.read(builder);
         let preprocessed_commit = self.preprocessed_commit.as_ref().map(|x| x.read(builder));
-        let preprocessed_chip_information = self.preprocessed_chip_information.clone();
+        let preprocessed_chip_information = self
+            .preprocessed_chip_information
+            .iter()
+            .map(|(name, dimensions)| {
+                (
+                    name.clone(),
+                    ChipDimensions {
+                        height: dimensions.height.read(builder),
+                        num_polynomials: dimensions.num_polynomials.read(builder),
+                    },
+                )
+            })
+            .collect();
         Self::WitnessVariable {
             pc_start,
             initial_global_cumulative_sum,
@@ -379,5 +391,9 @@ where
         if let Some(x) = self.preprocessed_commit.as_ref() {
             x.write(witness);
         }
+        self.preprocessed_chip_information.values().for_each(|dims| {
+            dims.height.write(witness);
+            dims.num_polynomials.write(witness)
+        });
     }
 }

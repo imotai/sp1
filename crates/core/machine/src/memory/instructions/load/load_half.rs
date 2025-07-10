@@ -149,7 +149,7 @@ impl LoadHalfChip {
         cols.memory_access.populate(event.mem_access, blu);
 
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        debug_assert!(memory_addr % 2 == 0);
+        debug_assert!(memory_addr.is_multiple_of(2));
 
         let bit_1 = ((memory_addr >> 1) & 1) as u16;
         let bit_2 = ((memory_addr >> 2) & 1) as u16;

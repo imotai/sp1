@@ -16,37 +16,39 @@ use crate::builder::SP1RecursionAirBuilder;
 
 use super::{MemoryAccessCols, NUM_MEM_ACCESS_COLS};
 
-pub const NUM_VAR_MEM_ENTRIES_PER_ROW: usize = 2;
-
 #[derive(Default)]
-pub struct MemoryVarChip<F> {
+pub struct MemoryVarChip<F, const VAR_EVENTS_PER_ROW: usize> {
     _marker: PhantomData<F>,
 }
 
-pub const NUM_MEM_INIT_COLS: usize = core::mem::size_of::<MemoryVarCols<u8>>();
+pub const NUM_MEM_INIT_COLS: usize = core::mem::size_of::<MemoryVarCols<u8, 1>>();
 
 #[derive(AlignedBorrow, Debug, Clone, Copy)]
 #[repr(C)]
-pub struct MemoryVarCols<F: Copy> {
-    values: [Block<F>; NUM_VAR_MEM_ENTRIES_PER_ROW],
+pub struct MemoryVarCols<F: Copy, const VAR_EVENTS_PER_ROW: usize> {
+    values: [Block<F>; VAR_EVENTS_PER_ROW],
 }
 
 pub const NUM_MEM_PREPROCESSED_INIT_COLS: usize =
-    core::mem::size_of::<MemoryVarPreprocessedCols<u8>>();
+    core::mem::size_of::<MemoryVarPreprocessedCols<u8, 1>>();
 
 #[derive(AlignedBorrow, Debug, Clone, Copy)]
 #[repr(C)]
-pub struct MemoryVarPreprocessedCols<F: Copy> {
-    accesses: [MemoryAccessCols<F>; NUM_VAR_MEM_ENTRIES_PER_ROW],
+pub struct MemoryVarPreprocessedCols<F: Copy, const VAR_EVENTS_PER_ROW: usize> {
+    accesses: [MemoryAccessCols<F>; VAR_EVENTS_PER_ROW],
 }
 
-impl<F: Send + Sync> BaseAir<F> for MemoryVarChip<F> {
+impl<F: Send + Sync, const VAR_EVENTS_PER_ROW: usize> BaseAir<F>
+    for MemoryVarChip<F, VAR_EVENTS_PER_ROW>
+{
     fn width(&self) -> usize {
-        NUM_MEM_INIT_COLS
+        NUM_MEM_INIT_COLS * VAR_EVENTS_PER_ROW
     }
 }
 
-impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
+impl<F: PrimeField32, const VAR_EVENTS_PER_ROW: usize> MachineAir<F>
+    for MemoryVarChip<F, VAR_EVENTS_PER_ROW>
+{
     type Record = ExecutionRecord<F>;
 
     type Program = RecursionProgram<F>;
@@ -55,7 +57,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
         "MemoryVar".to_string()
     }
     fn preprocessed_width(&self) -> usize {
-        NUM_MEM_PREPROCESSED_INIT_COLS
+        NUM_MEM_PREPROCESSED_INIT_COLS * VAR_EVENTS_PER_ROW
     }
 
     fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
@@ -90,9 +92,10 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
             })
             .collect::<Vec<_>>();
 
-        let nb_rows = accesses.len().div_ceil(NUM_VAR_MEM_ENTRIES_PER_ROW);
+        let nb_rows = accesses.len().div_ceil(VAR_EVENTS_PER_ROW);
         let padded_nb_rows = self.preprocessed_num_rows(program, nb_rows).unwrap();
-        let mut values = vec![F::zero(); padded_nb_rows * NUM_MEM_PREPROCESSED_INIT_COLS];
+        let mut values =
+            vec![F::zero(); padded_nb_rows * NUM_MEM_PREPROCESSED_INIT_COLS * VAR_EVENTS_PER_ROW];
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let populate_len = accesses.len() * NUM_MEM_ACCESS_COLS;
@@ -101,7 +104,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
             .zip_eq(accesses)
             .for_each(|(row, &(addr, mult))| *row.borrow_mut() = MemoryAccessCols { addr, mult });
 
-        Some(RowMajorMatrix::new(values, NUM_MEM_PREPROCESSED_INIT_COLS))
+        Some(RowMajorMatrix::new(values, NUM_MEM_PREPROCESSED_INIT_COLS * VAR_EVENTS_PER_ROW))
     }
 
     fn generate_dependencies(&self, _: &Self::Record, _: &mut Self::Record) {
@@ -112,7 +115,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
         // if let Some(shape) = input.program.shape.as_ref() {
         //     Some(shape.height(self).expect("chip mot included"))
         let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
-        let nb_rows = input.mem_var_events.len().div_ceil(NUM_VAR_MEM_ENTRIES_PER_ROW);
+        let nb_rows = input.mem_var_events.len().div_ceil(VAR_EVENTS_PER_ROW);
         let padded_nb_rows = next_multiple_of_32(nb_rows, height);
         Some(padded_nb_rows)
     }
@@ -121,10 +124,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let mut rows = input
             .mem_var_events
-            .chunks(NUM_VAR_MEM_ENTRIES_PER_ROW)
+            .chunks(VAR_EVENTS_PER_ROW)
             .map(|row_events| {
-                let mut row = [F::zero(); NUM_MEM_INIT_COLS];
-                let cols: &mut MemoryVarCols<_> = row.as_mut_slice().borrow_mut();
+                let mut row = vec![F::zero(); NUM_MEM_INIT_COLS * VAR_EVENTS_PER_ROW];
+                let cols: &mut MemoryVarCols<_, VAR_EVENTS_PER_ROW> =
+                    row.as_mut_slice().borrow_mut();
                 for (cell, vals) in zip(&mut cols.values, row_events) {
                     *cell = vals.inner;
                 }
@@ -134,10 +138,17 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
 
         let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         // Pad the rows to the next power of two.
-        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_INIT_COLS], height);
+        pad_rows_fixed(
+            &mut rows,
+            || vec![F::zero(); NUM_MEM_INIT_COLS * VAR_EVENTS_PER_ROW],
+            height,
+        );
 
         // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_MEM_INIT_COLS)
+        RowMajorMatrix::new(
+            rows.into_iter().flatten().collect::<Vec<_>>(),
+            NUM_MEM_INIT_COLS * VAR_EVENTS_PER_ROW,
+        )
     }
 
     fn included(&self, _record: &Self::Record) -> bool {
@@ -149,17 +160,18 @@ impl<F: PrimeField32> MachineAir<F> for MemoryVarChip<F> {
     }
 }
 
-impl<AB> Air<AB> for MemoryVarChip<AB::F>
+impl<AB, const VAR_EVENTS_PER_ROW: usize> Air<AB> for MemoryVarChip<AB::F, VAR_EVENTS_PER_ROW>
 where
     AB: SP1RecursionAirBuilder + PairBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0);
-        let local: &MemoryVarCols<AB::Var> = (*local).borrow();
+        let local: &MemoryVarCols<AB::Var, VAR_EVENTS_PER_ROW> = (*local).borrow();
         let prep = builder.preprocessed();
         let prep_local = prep.row_slice(0);
-        let prep_local: &MemoryVarPreprocessedCols<AB::Var> = (*prep_local).borrow();
+        let prep_local: &MemoryVarPreprocessedCols<AB::Var, VAR_EVENTS_PER_ROW> =
+            (*prep_local).borrow();
 
         for (value, access) in zip(local.values, prep_local.accesses) {
             builder.send_block(access.addr, value, access.mult);
@@ -187,7 +199,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let chip = MemoryVarChip::default();
+        let chip = MemoryVarChip::<BabyBear, 2>::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values)

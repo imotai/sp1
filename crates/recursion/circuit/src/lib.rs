@@ -4,14 +4,15 @@ use challenger::{
 };
 use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
 use itertools::izip;
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractExtensionField, AbstractField};
 use slop_bn254::Bn254Fr;
+use sp1_core_machine::operations::poseidon2::{NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},
     ir::{Builder, Config, DslIr, Ext, Felt, SymbolicExt, SymbolicFelt, Var, Variable},
 };
-use sp1_recursion_executor::RecursionPublicValues;
+use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, PERMUTATION_WIDTH};
 use std::iter::{repeat, zip};
 use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
@@ -23,7 +24,7 @@ use slop_commit::TensorCs;
 use slop_merkle_tree::{
     MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
 };
-use sp1_stark::{shape::OrderedShape, BabyBearPoseidon2, Bn254JaggedConfig};
+use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
 pub mod basefold;
 pub mod challenger;
 pub mod dummy;
@@ -41,7 +42,7 @@ pub const D: usize = 4;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
 use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
-
+use sp1_primitives::RC_16_30_U32;
 type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
@@ -109,6 +110,11 @@ pub trait CircuitConfig: Config {
         ext: Ext<<Self as Config>::F, <Self as Config>::EF>,
     ) -> [Felt<<Self as Config>::F>; D];
 
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<<Self as Config>::F>; D],
+    ) -> Ext<<Self as Config>::F, <Self as Config>::EF>;
+
     fn exp_reverse_bits(
         builder: &mut Builder<Self>,
         input: Felt<<Self as Config>::F>,
@@ -170,6 +176,22 @@ pub trait CircuitConfig: Config {
             Self::assert_bit_zero(builder, bit);
         }
     }
+
+    fn poseidon2_permute_v2(
+        builder: &mut Builder<Self>,
+        input: [Felt<Self::F>; PERMUTATION_WIDTH],
+    ) -> [Felt<Self::F>; PERMUTATION_WIDTH];
+
+    fn poseidon2_compress_v2(
+        builder: &mut Builder<Self>,
+        input: impl IntoIterator<Item = Felt<Self::F>>,
+    ) -> [Felt<Self::F>; DIGEST_SIZE] {
+        let mut pre_iter = input.into_iter().chain(repeat(builder.eval(Self::F::zero())));
+        let pre = core::array::from_fn(move |_| pre_iter.next().unwrap());
+        let post = Self::poseidon2_permute_v2(builder, pre);
+        let post: [Felt<Self::F>; DIGEST_SIZE] = post[..DIGEST_SIZE].try_into().unwrap();
+        post
+    }
 }
 
 impl CircuitConfig for InnerConfig {
@@ -200,6 +222,21 @@ impl CircuitConfig for InnerConfig {
         ext: Ext<<Self as Config>::F, <Self as Config>::EF>,
     ) -> [Felt<<Self as Config>::F>; D] {
         builder.ext2felt_v2(ext)
+    }
+
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<<Self as Config>::F>; D],
+    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
+        let mut reconstructed_ext: Ext<Self::F, Self::EF> = builder.constant(Self::EF::zero());
+        for i in 0..D {
+            let mut monomial_slice = [Self::F::zero(); D];
+            monomial_slice[i] = Self::F::one();
+            let monomial: Ext<Self::F, Self::EF> =
+                builder.constant(Self::EF::from_base_slice(&monomial_slice));
+            reconstructed_ext = builder.eval(reconstructed_ext + monomial * felt[i]);
+        }
+        reconstructed_ext
     }
 
     fn exp_reverse_bits(
@@ -296,6 +333,13 @@ impl CircuitConfig for InnerConfig {
             power_bits.iter().rev().copied().collect(),
         )
     }
+
+    fn poseidon2_permute_v2(
+        builder: &mut Builder<Self>,
+        input: [Felt<Self::F>; PERMUTATION_WIDTH],
+    ) -> [Felt<Self::F>; PERMUTATION_WIDTH] {
+        builder.poseidon2_permute_v2(input)
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -305,6 +349,26 @@ impl Config for WrapConfig {
     type F = <InnerConfig as Config>::F;
     type EF = <InnerConfig as Config>::EF;
     type N = <InnerConfig as Config>::N;
+    fn initialize(builder: &mut Builder<Self>) {
+        for round in 0..RC_16_30_U32.len() {
+            for i in 0..PERMUTATION_WIDTH / D {
+                let add_rc = if (NUM_EXTERNAL_ROUNDS / 2
+                    ..NUM_EXTERNAL_ROUNDS / 2 + NUM_INTERNAL_ROUNDS)
+                    .contains(&round)
+                {
+                    builder.constant(<Self as Config>::EF::from_base(
+                        <Self as Config>::F::from_wrapped_u32(RC_16_30_U32[round][i * D]),
+                    ))
+                } else {
+                    builder.constant(<Self as Config>::EF::from_base_fn(|idx| {
+                        <Self as Config>::F::from_wrapped_u32(RC_16_30_U32[round][i * D + idx])
+                    }))
+                };
+
+                builder.poseidon2_constants.push(add_rc);
+            }
+        }
+    }
 }
 
 impl CircuitConfig for WrapConfig {
@@ -334,7 +398,18 @@ impl CircuitConfig for WrapConfig {
         builder: &mut Builder<Self>,
         ext: Ext<<Self as Config>::F, <Self as Config>::EF>,
     ) -> [Felt<<Self as Config>::F>; D] {
-        builder.ext2felt_v2(ext)
+        let felts = core::array::from_fn(|_| builder.uninit());
+        builder.push_op(DslIr::CircuitChipExt2Felt(felts, ext));
+        felts
+    }
+
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<<Self as Config>::F>; D],
+    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
+        let ext = builder.uninit();
+        builder.push_op(DslIr::CircuitChipFelt2Ext(ext, felt));
+        ext
     }
 
     fn exp_reverse_bits(
@@ -385,7 +460,6 @@ impl CircuitConfig for WrapConfig {
         point_1: Vec<Felt<Self::F>>,
         point_2: Vec<Ext<Self::F, Self::EF>>,
     ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
-        // builder.lagrange_eval_v2(x1, x2)
         let mut acc: Ext<_, _> = builder.uninit();
         builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
         let mut acc_felt: Felt<_> = builder.uninit();
@@ -464,6 +538,139 @@ impl CircuitConfig for WrapConfig {
             power_bits.iter().rev().copied().collect(),
         )
     }
+
+    fn poseidon2_permute_v2(
+        builder: &mut Builder<Self>,
+        input: [Felt<Self::F>; PERMUTATION_WIDTH],
+    ) -> [Felt<Self::F>; PERMUTATION_WIDTH] {
+        // builder.poseidon2_permute_v2(input)
+        let mut state = Self::blockify(builder, input);
+        for i in 0..NUM_EXTERNAL_ROUNDS / 2 {
+            state = Self::external_round(builder, state, i);
+        }
+        for i in 0..NUM_INTERNAL_ROUNDS {
+            state[0] = Self::internal_constant_addition(builder, state[0], i);
+            state[0] = Self::pow7_internal(builder, state[0]);
+            state = Self::internal_linear_layer(builder, state);
+        }
+        for i in NUM_EXTERNAL_ROUNDS / 2..NUM_EXTERNAL_ROUNDS {
+            state = Self::external_round(builder, state, i);
+        }
+        Self::unblockify(builder, state)
+    }
+}
+
+impl WrapConfig {
+    fn blockify(
+        builder: &mut Builder<Self>,
+        input: [Felt<<Self as Config>::F>; PERMUTATION_WIDTH],
+    ) -> [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D] {
+        let mut ret: [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D] =
+            core::array::from_fn(|_| builder.uninit());
+        for i in 0..PERMUTATION_WIDTH / D {
+            ret[i] = Self::felt2ext(builder, input[i * D..i * D + D].try_into().unwrap());
+        }
+        ret
+    }
+
+    fn unblockify(
+        builder: &mut Builder<Self>,
+        input: [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D],
+    ) -> [Felt<<Self as Config>::F>; PERMUTATION_WIDTH] {
+        let mut ret = core::array::from_fn(|_| builder.uninit());
+        for i in 0..PERMUTATION_WIDTH / D {
+            let felts = Self::ext2felt(builder, input[i]);
+            for j in 0..D {
+                ret[i * D + j] = felts[j];
+            }
+        }
+        ret
+    }
+
+    fn external_round(
+        builder: &mut Builder<Self>,
+        input: [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D],
+        round_index: usize,
+    ) -> [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D] {
+        let mut state = input;
+        if round_index == 0 {
+            state = Self::external_linear_layer(builder, state);
+        }
+        state = Self::external_constant_addition(builder, state, round_index);
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..PERMUTATION_WIDTH / D {
+            state[i] = Self::pow7(builder, state[i]);
+        }
+        state = Self::external_linear_layer(builder, state);
+        state
+    }
+
+    fn external_linear_layer(
+        builder: &mut Builder<Self>,
+        input: [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D],
+    ) -> [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D] {
+        let output = core::array::from_fn(|_| builder.uninit());
+        builder.push_op(DslIr::Poseidon2ExternalLinearLayer(Box::new((output, input))));
+        output
+    }
+
+    fn internal_linear_layer(
+        builder: &mut Builder<Self>,
+        input: [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D],
+    ) -> [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D] {
+        let output = core::array::from_fn(|_| builder.uninit());
+        builder.push_op(DslIr::Poseidon2InternalLinearLayer(Box::new((output, input))));
+        output
+    }
+
+    fn pow7(
+        builder: &mut Builder<Self>,
+        input: Ext<<Self as Config>::F, <Self as Config>::EF>,
+    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
+        let output = builder.uninit();
+        builder.push_op(DslIr::Poseidon2ExternalSBOX(output, input));
+        output
+    }
+
+    fn pow7_internal(
+        builder: &mut Builder<Self>,
+        input: Ext<<Self as Config>::F, <Self as Config>::EF>,
+    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
+        let output = builder.uninit();
+        builder.push_op(DslIr::Poseidon2InternalSBOX(output, input));
+        output
+    }
+
+    fn external_constant_addition(
+        builder: &mut Builder<Self>,
+        input: [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D],
+        round_index: usize,
+    ) -> [Ext<<Self as Config>::F, <Self as Config>::EF>; PERMUTATION_WIDTH / D] {
+        let output = core::array::from_fn(|_| builder.uninit());
+        let round = if round_index < NUM_EXTERNAL_ROUNDS / 2 {
+            round_index
+        } else {
+            round_index + NUM_INTERNAL_ROUNDS
+        };
+        for i in 0..PERMUTATION_WIDTH / D {
+            let add_rc = builder.poseidon2_constants[(PERMUTATION_WIDTH / D) * round + i];
+            builder.push_op(DslIr::AddE(output[i], input[i], add_rc));
+        }
+
+        output
+    }
+
+    fn internal_constant_addition(
+        builder: &mut Builder<Self>,
+        input: Ext<<Self as Config>::F, <Self as Config>::EF>,
+        round_index: usize,
+    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
+        let round = round_index + NUM_EXTERNAL_ROUNDS / 2;
+        let add_rc = builder.poseidon2_constants[(PERMUTATION_WIDTH / D) * round];
+        let output = builder.uninit();
+        builder.push_op(DslIr::AddE(output, input, add_rc));
+        output
+    }
 }
 
 impl CircuitConfig for OuterConfig {
@@ -496,6 +703,15 @@ impl CircuitConfig for OuterConfig {
         let felts = core::array::from_fn(|_| builder.uninit());
         builder.push_op(DslIr::CircuitExt2Felt(felts, ext));
         felts
+    }
+
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<<Self as Config>::F>; D],
+    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
+        let ext = builder.uninit();
+        builder.push_op(DslIr::CircuitFelts2Ext(felt, ext));
+        ext
     }
 
     fn exp_reverse_bits(
@@ -546,18 +762,12 @@ impl CircuitConfig for OuterConfig {
         point_1: Vec<Felt<Self::F>>,
         point_2: Vec<Ext<Self::F, Self::EF>>,
     ) -> (Ext<Self::F, Self::EF>, Felt<Self::F>) {
-        let mut acc: Ext<_, _> = builder.uninit();
+        let acc: Ext<_, _> = builder.uninit();
         builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::one()));
         let mut acc_felt: Felt<_> = builder.uninit();
         builder.push_op(DslIr::ImmF(acc_felt, Self::F::zero()));
-        let one: Felt<_> = builder.constant(Self::F::one());
         for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
-            let prod = builder.uninit();
-            builder.push_op(DslIr::MulEF(prod, x2, x1));
-            let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
-            // Check that x1 is boolean.
-            builder.assert_felt_eq(x1 * (x1 - one), SymbolicFelt::zero());
-            acc = builder.eval(acc * lagrange_term);
+            builder.push_op(DslIr::EqEval(x1, x2, acc));
             // Only need felt of first half of point_1 (current prefix sum).
             if i < point_1.len() / 2 {
                 acc_felt = builder.eval(x1 + acc_felt * SymbolicFelt::from_canonical_u32(2));
@@ -636,6 +846,13 @@ impl CircuitConfig for OuterConfig {
         }
         result
     }
+
+    fn poseidon2_permute_v2(
+        _: &mut Builder<Self>,
+        _: [Felt<Self::F>; PERMUTATION_WIDTH],
+    ) -> [Felt<Self::F>; PERMUTATION_WIDTH] {
+        unimplemented!();
+    }
 }
 
 impl BabyBearFriConfig for BabyBearPoseidon2 {
@@ -696,22 +913,4 @@ impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFr
         let vk_root: Var<_> = felts_to_bn254_var(builder, &public_values.vk_root);
         builder.commit_vk_root_circuit(vk_root);
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1CompressShape {
-    proof_shapes: Vec<OrderedShape>,
-}
-
-/// The shape of the compress proof with vk validation proofs.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SP1CompressWithVkeyShape {
-    pub compress_shape: SP1CompressShape,
-    pub merkle_tree_height: usize,
-}
-
-#[derive(Debug, Clone, Hash)]
-pub struct SP1DeferredShape {
-    inner: SP1CompressShape,
-    height: usize,
 }

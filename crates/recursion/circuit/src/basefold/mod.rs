@@ -3,9 +3,7 @@ use crate::{
     BabyBearFriConfigVariable, CircuitConfig,
 };
 use itertools::Itertools;
-use slop_algebra::{
-    extension::BinomialExtensionField, AbstractExtensionField, AbstractField, TwoAdicField,
-};
+use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
 use slop_multilinear::{Evaluations, Point};
@@ -16,7 +14,6 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::D;
 use std::{iter::once, marker::PhantomData};
 use tcs::{RecursiveMerkleTreeTcs, RecursiveTcs, RecursiveTensorCsOpening};
-use tracing::instrument;
 pub mod merkle_tree;
 pub mod stacked;
 pub mod tcs;
@@ -333,7 +330,6 @@ impl<
     /// The FRI verifier for a single query. We modify this from Plonky3 to be compatible with
     /// opening only a single vector.
     #[allow(clippy::too_many_arguments)]
-    #[instrument(name = "verify_queries", skip_all)]
     fn verify_queries(
         &self,
         builder: &mut Builder<C>,
@@ -375,20 +371,14 @@ impl<
                 let index_sibling_complement = index[0];
                 let index_pair = &index[1..];
 
+                builder.reduce_e(*folded_eval);
+
                 let evals: [Ext<C::F, C::EF>; 2] = opening
                     .as_slice()
                     .chunks_exact(D)
                     .map(|slice| {
-                        let mut reconstructed_ext: Ext<C::F, C::EF> =
-                            builder.constant(C::EF::zero());
-                        for i in 0..D {
-                            let mut monomial_slice = [C::F::zero(); D];
-                            monomial_slice[i] = C::F::one();
-                            let monomial: Ext<C::F, C::EF> =
-                                builder.constant(C::EF::from_base_slice(&monomial_slice));
-                            reconstructed_ext =
-                                builder.eval(reconstructed_ext + monomial * slice[i]);
-                        }
+                        let reconstructed_ext: Ext<C::F, C::EF> =
+                            C::felt2ext(builder, slice.try_into().unwrap());
                         reconstructed_ext
                     })
                     .collect::<Vec<_>>()

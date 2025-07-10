@@ -13,7 +13,8 @@ use sp1_stark::{air::SP1AirBuilder, MachineRecord, PROOF_MAX_NUM_PVS};
 use crate::{
     instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr},
     public_values::RecursionPublicValues,
-    ExpReverseBitsInstr, Instruction, PrefixSumChecksEvent,
+    ExpReverseBitsInstr, ExtFeltEvent, Instruction, Poseidon2LinearLayerEvent, Poseidon2SBoxEvent,
+    PrefixSumChecksEvent,
 };
 
 use super::{
@@ -34,7 +35,10 @@ pub struct ExecutionRecord<F> {
     /// The public values.
     pub public_values: RecursionPublicValues<F>,
 
+    pub ext_felt_conversion_events: Vec<ExtFeltEvent<F>>,
     pub poseidon2_events: Vec<Poseidon2Event<F>>,
+    pub poseidon2_linear_layer_events: Vec<Poseidon2LinearLayerEvent<F>>,
+    pub poseidon2_sbox_events: Vec<Poseidon2SBoxEvent<F>>,
     pub select_events: Vec<SelectEvent<F>>,
     pub exp_reverse_bits_len_events: Vec<ExpReverseBitsEvent<F>>,
     pub fri_fold_events: Vec<FriFoldEvent<F>>,
@@ -53,7 +57,10 @@ pub struct UnsafeRecord<F> {
     /// The public values.
     pub public_values: MaybeUninit<UnsafeCell<RecursionPublicValues<F>>>,
 
+    pub ext_felt_conversion_events: Vec<MaybeUninit<UnsafeCell<ExtFeltEvent<F>>>>,
     pub poseidon2_events: Vec<MaybeUninit<UnsafeCell<Poseidon2Event<F>>>>,
+    pub poseidon2_linear_layer_events: Vec<MaybeUninit<UnsafeCell<Poseidon2LinearLayerEvent<F>>>>,
+    pub poseidon2_sbox_events: Vec<MaybeUninit<UnsafeCell<Poseidon2SBoxEvent<F>>>>,
     pub select_events: Vec<MaybeUninit<UnsafeCell<SelectEvent<F>>>>,
     pub exp_reverse_bits_len_events: Vec<MaybeUninit<UnsafeCell<ExpReverseBitsEvent<F>>>>,
     pub fri_fold_events: Vec<MaybeUninit<UnsafeCell<FriFoldEvent<F>>>>,
@@ -82,7 +89,10 @@ impl<F> UnsafeRecord<F> {
             mem_const_count: self.mem_const_count,
             mem_var_events: std::mem::transmute(self.mem_var_events),
             public_values: self.public_values.assume_init().into_inner(),
+            ext_felt_conversion_events: std::mem::transmute(self.ext_felt_conversion_events),
             poseidon2_events: std::mem::transmute(self.poseidon2_events),
+            poseidon2_linear_layer_events: std::mem::transmute(self.poseidon2_linear_layer_events),
+            poseidon2_sbox_events: std::mem::transmute(self.poseidon2_sbox_events),
             select_events: std::mem::transmute(self.select_events),
             exp_reverse_bits_len_events: std::mem::transmute(self.exp_reverse_bits_len_events),
             fri_fold_events: std::mem::transmute(self.fri_fold_events),
@@ -111,7 +121,12 @@ impl<F> UnsafeRecord<F> {
             mem_const_count: event_counts.mem_const_events,
             mem_var_events: create_uninit_vec(event_counts.mem_var_events),
             public_values: MaybeUninit::uninit(),
+            ext_felt_conversion_events: create_uninit_vec(event_counts.ext_felt_conversion_events),
             poseidon2_events: create_uninit_vec(event_counts.poseidon2_wide_events),
+            poseidon2_linear_layer_events: create_uninit_vec(
+                event_counts.poseidon2_linear_layer_events,
+            ),
+            poseidon2_sbox_events: create_uninit_vec(event_counts.poseidon2_sbox_events),
             select_events: create_uninit_vec(event_counts.select_events),
             exp_reverse_bits_len_events: create_uninit_vec(
                 event_counts.exp_reverse_bits_len_events,
@@ -135,7 +150,10 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
             ("ext_alu_events", self.ext_alu_events.len()),
             ("mem_const_count", self.mem_const_count),
             ("mem_var_events", self.mem_var_events.len()),
+            ("ext_felt_conversion_events", self.ext_felt_conversion_events.len()),
             ("poseidon2_events", self.poseidon2_events.len()),
+            ("poseidon2_linear_layer_events", self.poseidon2_linear_layer_events.len()),
+            ("poseidon2_sbox_events", self.poseidon2_sbox_events.len()),
             ("select_events", self.select_events.len()),
             ("exp_reverse_bits_len_events", self.exp_reverse_bits_len_events.len()),
             ("fri_fold_events", self.fri_fold_events.len()),
@@ -158,7 +176,10 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
             mem_const_count,
             mem_var_events,
             public_values: _,
+            ext_felt_conversion_events,
             poseidon2_events,
+            poseidon2_linear_layer_events,
+            poseidon2_sbox_events,
             select_events,
             exp_reverse_bits_len_events,
             fri_fold_events,
@@ -170,7 +191,10 @@ impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
         ext_alu_events.append(&mut other.ext_alu_events);
         *mem_const_count += other.mem_const_count;
         mem_var_events.append(&mut other.mem_var_events);
+        ext_felt_conversion_events.append(&mut other.ext_felt_conversion_events);
         poseidon2_events.append(&mut other.poseidon2_events);
+        poseidon2_linear_layer_events.append(&mut other.poseidon2_linear_layer_events);
+        poseidon2_sbox_events.append(&mut other.poseidon2_sbox_events);
         select_events.append(&mut other.select_events);
         exp_reverse_bits_len_events.append(&mut other.exp_reverse_bits_len_events);
         fri_fold_events.append(&mut other.fri_fold_events);
@@ -222,7 +246,10 @@ pub struct RecursionAirEventCount {
     pub mem_var_events: usize,
     pub base_alu_events: usize,
     pub ext_alu_events: usize,
+    pub ext_felt_conversion_events: usize,
     pub poseidon2_wide_events: usize,
+    pub poseidon2_linear_layer_events: usize,
+    pub poseidon2_sbox_events: usize,
     pub fri_fold_events: usize,
     pub batch_fri_events: usize,
     pub select_events: usize,
@@ -237,8 +264,11 @@ impl<F> AddAssign<&Instruction<F>> for RecursionAirEventCount {
         match rhs {
             Instruction::BaseAlu(_) => self.base_alu_events += 1,
             Instruction::ExtAlu(_) => self.ext_alu_events += 1,
+            Instruction::ExtFelt(_) => self.ext_felt_conversion_events += 1,
             Instruction::Mem(_) => self.mem_const_events += 1,
             Instruction::Poseidon2(_) => self.poseidon2_wide_events += 1,
+            Instruction::Poseidon2LinearLayer(_) => self.poseidon2_linear_layer_events += 1,
+            Instruction::Poseidon2SBox(_) => self.poseidon2_sbox_events += 1,
             Instruction::Select(_) => self.select_events += 1,
             Instruction::ExpReverseBitsLen(ExpReverseBitsInstr { addrs, .. }) => {
                 self.exp_reverse_bits_len_events += addrs.exp.len()

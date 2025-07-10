@@ -11,15 +11,12 @@ use slop_algebra::{AbstractField, Field};
 use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use slop_merkle_tree::{my_bb_16_perm, outer_perm, OUTER_CHALLENGER_STATE_WIDTH};
-use sp1_recursion_compiler::{
-    circuit::CircuitV2Builder,
-    ir::{Builder, Config, DslIr, Felt, Var},
-};
+use sp1_recursion_compiler::ir::{Builder, Config, DslIr, Felt, Var};
 use sp1_recursion_executor::{DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
 use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
 
 use crate::{
-    challenger::{reduce_32, POSEIDON_2_BB_RATE},
+    challenger::{reduce_31, POSEIDON_2_BB_RATE},
     CircuitConfig,
 };
 
@@ -86,7 +83,7 @@ impl<C: CircuitConfig<F = BabyBear>> Posedion2BabyBearHasherVariable<C> for Baby
         builder: &mut Builder<C>,
         input: [Felt<<C>::F>; PERMUTATION_WIDTH],
     ) -> [Felt<<C>::F>; PERMUTATION_WIDTH] {
-        builder.poseidon2_permute_v2(input)
+        C::poseidon2_permute_v2(builder, input)
     }
 }
 
@@ -103,7 +100,7 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> FieldHasherVariable<C
         builder: &mut Builder<C>,
         input: [Self::DigestVariable; 2],
     ) -> Self::DigestVariable {
-        builder.poseidon2_compress_v2(input.into_iter().flatten())
+        C::poseidon2_compress_v2(builder, input.into_iter().flatten())
     }
 
     fn assert_digest_eq(
@@ -181,7 +178,7 @@ impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> FieldHashe
         for block_chunk in &input.iter().chunks(POSEIDON_2_BB_RATE) {
             for (chunk_id, chunk) in (&block_chunk.chunks(num_f_elms)).into_iter().enumerate() {
                 let chunk = chunk.copied().collect::<Vec<_>>();
-                state[chunk_id] = reduce_32(builder, chunk.as_slice());
+                state[chunk_id] = reduce_31(builder, chunk.as_slice());
             }
             builder.push_op(DslIr::CircuitPoseidon2Permute(state))
         }

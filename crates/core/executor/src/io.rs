@@ -4,7 +4,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use sp1_stark::{BabyBearPoseidon2, MachineVerifyingKey};
 
 use super::Executor;
-use crate::SP1ReduceProof;
+use crate::SP1RecursionProof;
 
 impl Read for Executor<'_> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -36,7 +36,7 @@ impl Executor<'_> {
     /// Write a proof and verifying key to the proof stream.
     pub fn write_proof(
         &mut self,
-        proof: SP1ReduceProof<BabyBearPoseidon2>,
+        proof: SP1RecursionProof<BabyBearPoseidon2>,
         vk: MachineVerifyingKey<BabyBearPoseidon2>,
     ) {
         self.state.proof_stream.push((proof, vk));

@@ -87,7 +87,9 @@ pub trait ByteRecord {
 
     /// Adds `ByteLookupEvent`s to verify that all the bytes in the input slice are indeed u16s.
     fn add_u16_range_checks(&mut self, ls: &[u16]) {
-        ls.iter().for_each(|x| self.add_u16_range_check(*x));
+        for x in ls.iter() {
+            self.add_u16_range_check(*x);
+        }
     }
 
     /// Adds `ByteLookupEvent`s to verify that all the field elements in the input slice are indeed

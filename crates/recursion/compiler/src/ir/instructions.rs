@@ -208,6 +208,15 @@ pub enum DslIr<C: Config> {
     CircuitFelt2Var(Felt<C::F>, Var<C::N>),
 
     // Hashing.
+    /// Performs the external linear layer of Poseidon2.
+    Poseidon2ExternalLinearLayer(Box<([Ext<C::F, C::EF>; 4], [Ext<C::F, C::EF>; 4])>),
+    /// Performs the internal linear layer of Poseidon2.
+    Poseidon2InternalLinearLayer(Box<([Ext<C::F, C::EF>; 4], [Ext<C::F, C::EF>; 4])>),
+    /// Performs the external SBOX mapping for Poseidon2 in a batch.
+    Poseidon2ExternalSBOX(Ext<C::F, C::EF>, Ext<C::F, C::EF>),
+    /// Performs the internal SBOX mapping for Poseidon2 in a batch.
+    Poseidon2InternalSBOX(Ext<C::F, C::EF>, Ext<C::F, C::EF>),
+
     /// Permutes an array of baby bear elements using Poseidon2 (output = p2_permute(array)).
     Poseidon2PermuteBabyBear(Box<(Array<C, Felt<C::F>>, Array<C, Felt<C::F>>)>),
     /// Compresses two baby bear element arrays using Poseidon2 (output = p2_compress(array1,
@@ -332,6 +341,13 @@ pub enum DslIr<C: Config> {
     CircuitExt2Felt([Felt<C::F>; 4], Ext<C::F, C::EF>),
     /// Converts a slice of felts to an ext. Should only be used when target is a gnark circuit.
     CircuitFelts2Ext([Felt<C::F>; 4], Ext<C::F, C::EF>),
+    /// Evaluates a single `eq` computation, while verifying that the first element is a bit.
+    /// Should only be used when target is a gnark circuit.
+    EqEval(Felt<C::F>, Ext<C::F, C::EF>, Ext<C::F, C::EF>),
+    /// Converts a slice of felts to an ext, using a chip. Should be used for wrap.
+    CircuitChipExt2Felt([Felt<C::F>; 4], Ext<C::F, C::EF>),
+    /// Converts an ext to a slice of felts, using a chip. Should be used for wrap.
+    CircuitChipFelt2Ext(Ext<C::F, C::EF>, [Felt<C::F>; 4]),
 
     // Debugging instructions.
     /// Executes less than (var = var < var).  This operation is NOT constrained.

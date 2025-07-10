@@ -125,7 +125,7 @@ where
     P: Fn(usize, &mut [F]) + Send + Sync,
 {
     // Split the vector into `num_cpus` chunks, but at least `num_cpus` rows per chunk.
-    assert!(vec.len() % num_elements_per_event == 0);
+    assert!(vec.len().is_multiple_of(num_elements_per_event));
     let len = vec.len() / num_elements_per_event;
     let cpus = num_cpus::get();
     let ceil_div = len.div_ceil(cpus);

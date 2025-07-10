@@ -13,9 +13,11 @@ use strum_macros::EnumDiscriminants;
 use crate::chips::{
     alu_base::{BaseAluChip, NUM_BASE_ALU_ENTRIES_PER_ROW},
     alu_ext::{ExtAluChip, NUM_EXT_ALU_ENTRIES_PER_ROW},
-    mem::{
-        constant::NUM_CONST_MEM_ENTRIES_PER_ROW, variable::NUM_VAR_MEM_ENTRIES_PER_ROW,
-        MemoryConstChip, MemoryVarChip,
+    mem::{constant::NUM_CONST_MEM_ENTRIES_PER_ROW, MemoryConstChip, MemoryVarChip},
+    poseidon2_helper::{
+        convert::{ConvertChip, NUM_CONVERT_ENTRIES_PER_ROW},
+        linear::{Poseidon2LinearLayerChip, NUM_LINEAR_ENTRIES_PER_ROW},
+        sbox::{Poseidon2SBoxChip, NUM_SBOX_ENTRIES_PER_ROW},
     },
     poseidon2_skinny::Poseidon2SkinnyChip,
     poseidon2_wide::Poseidon2WideChip,
@@ -32,20 +34,30 @@ use crate::chips::{
 #[eval_trait_bound = "AB::Var: 'static"]
 #[strum_discriminants(derive(Hash, EnumIter))]
 #[allow(dead_code)]
-pub enum RecursionAir<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> {
+pub enum RecursionAir<
+    F: PrimeField32 + BinomiallyExtendable<D>,
+    const DEGREE: usize,
+    const VAR_EVENTS_PER_ROW: usize,
+> {
     MemoryConst(MemoryConstChip<F>),
-    MemoryVar(MemoryVarChip<F>),
+    MemoryVar(MemoryVarChip<F, VAR_EVENTS_PER_ROW>),
     BaseAlu(BaseAluChip),
     ExtAlu(ExtAluChip),
     Poseidon2Skinny(Poseidon2SkinnyChip<DEGREE>),
     Poseidon2Wide(Poseidon2WideChip<DEGREE>),
+    Poseidon2LinearLayer(Poseidon2LinearLayerChip),
+    Poseidon2SBox(Poseidon2SBoxChip),
+    ExtFeltConvert(ConvertChip),
     Select(SelectChip),
     PrefixSumChecks(PrefixSumChecksChip),
     PublicValues(PublicValuesChip),
 }
 
-impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> fmt::Debug
-    for RecursionAir<F, DEGREE>
+impl<
+        F: PrimeField32 + BinomiallyExtendable<D>,
+        const DEGREE: usize,
+        const VAR_EVENTS_PER_ROW: usize,
+    > fmt::Debug for RecursionAir<F, DEGREE, VAR_EVENTS_PER_ROW>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
@@ -53,15 +65,23 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> fmt::Debug
 }
 
 #[allow(dead_code)]
-impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAir<F, DEGREE> {
+impl<
+        F: PrimeField32 + BinomiallyExtendable<D>,
+        const DEGREE: usize,
+        const VAR_EVENTS_PER_ROW: usize,
+    > RecursionAir<F, DEGREE, VAR_EVENTS_PER_ROW>
+{
     /// Get a machine with all chips, except the dummy chip.
     pub fn machine_wide_with_all_chips() -> Machine<F, Self> {
         let chips = [
             RecursionAir::MemoryConst(MemoryConstChip::default()),
-            RecursionAir::MemoryVar(MemoryVarChip::default()),
+            RecursionAir::MemoryVar(MemoryVarChip::<F, VAR_EVENTS_PER_ROW>::default()),
             RecursionAir::BaseAlu(BaseAluChip),
             RecursionAir::ExtAlu(ExtAluChip),
             RecursionAir::Poseidon2Wide(Poseidon2WideChip::<DEGREE>),
+            RecursionAir::Poseidon2LinearLayer(Poseidon2LinearLayerChip),
+            RecursionAir::Poseidon2SBox(Poseidon2SBoxChip),
+            RecursionAir::ExtFeltConvert(ConvertChip),
             RecursionAir::PrefixSumChecks(PrefixSumChecksChip),
             RecursionAir::Select(SelectChip),
             RecursionAir::PublicValues(PublicValuesChip),
@@ -99,7 +119,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
     pub fn compress_machine() -> Machine<F, Self> {
         let chips = [
             RecursionAir::MemoryConst(MemoryConstChip::default()),
-            RecursionAir::MemoryVar(MemoryVarChip::default()),
+            RecursionAir::MemoryVar(MemoryVarChip::<F, VAR_EVENTS_PER_ROW>::default()),
             RecursionAir::BaseAlu(BaseAluChip),
             RecursionAir::ExtAlu(ExtAluChip),
             RecursionAir::Poseidon2Wide(Poseidon2WideChip::<DEGREE>),
@@ -125,11 +145,12 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
     pub fn wrap_machine() -> Machine<F, Self> {
         let chips = [
             RecursionAir::MemoryConst(MemoryConstChip::default()),
-            RecursionAir::MemoryVar(MemoryVarChip::default()),
+            RecursionAir::MemoryVar(MemoryVarChip::<F, VAR_EVENTS_PER_ROW>::default()),
             RecursionAir::BaseAlu(BaseAluChip),
             RecursionAir::ExtAlu(ExtAluChip),
-            RecursionAir::Poseidon2Skinny(Poseidon2SkinnyChip::<DEGREE>::default()),
-            RecursionAir::PrefixSumChecks(PrefixSumChecksChip),
+            RecursionAir::Poseidon2LinearLayer(Poseidon2LinearLayerChip),
+            RecursionAir::Poseidon2SBox(Poseidon2SBoxChip),
+            RecursionAir::ExtFeltConvert(ConvertChip),
             RecursionAir::Select(SelectChip),
             RecursionAir::PublicValues(PublicValuesChip),
         ]
@@ -153,7 +174,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
             ),
             (
                 Self::MemoryVar(MemoryVarChip::default()),
-                heights.mem_var_events.div_ceil(NUM_VAR_MEM_ENTRIES_PER_ROW),
+                heights.mem_var_events.div_ceil(VAR_EVENTS_PER_ROW),
             ),
             (
                 Self::BaseAlu(BaseAluChip),
@@ -164,6 +185,18 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>, const DEGREE: usize> RecursionAi
                 heights.ext_alu_events.div_ceil(NUM_EXT_ALU_ENTRIES_PER_ROW),
             ),
             (Self::Poseidon2Wide(Poseidon2WideChip::<DEGREE>), heights.poseidon2_wide_events),
+            (
+                Self::Poseidon2LinearLayer(Poseidon2LinearLayerChip),
+                heights.poseidon2_linear_layer_events.div_ceil(NUM_LINEAR_ENTRIES_PER_ROW),
+            ),
+            (
+                Self::Poseidon2SBox(Poseidon2SBoxChip),
+                heights.poseidon2_sbox_events.div_ceil(NUM_SBOX_ENTRIES_PER_ROW),
+            ),
+            (
+                Self::ExtFeltConvert(ConvertChip),
+                heights.ext_felt_conversion_events.div_ceil(NUM_CONVERT_ENTRIES_PER_ROW),
+            ),
             (Self::PrefixSumChecks(PrefixSumChecksChip), heights.prefix_sum_checks_events),
             (Self::Select(SelectChip), heights.select_events),
             (Self::PublicValues(PublicValuesChip), PUB_VALUES_LOG_HEIGHT),

@@ -357,7 +357,7 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
                 let denominator_1 = layer.denominator_1.clone();
                 let eq_row = self.eq_row.clone();
                 // println!("eq_row.num_non_zero_entries(): {:?}", eq_row.num_non_zero_entries());
-                assert!(eq_row.num_non_zero_entries() % 2 == 0);
+                assert!(eq_row.num_non_zero_entries().is_multiple_of(2));
                 let eq_interaction = self.eq_interaction.clone();
                 let lambda = self.lambda;
 
