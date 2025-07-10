@@ -165,9 +165,6 @@ where
         builder.assert_bool(local.is_real);
 
         let opcode = AB::Expr::from_f(Opcode::ADD.as_field());
-        let funct3 = AB::Expr::from_canonical_u8(Opcode::ADD.funct3().unwrap());
-        let funct7 = AB::Expr::from_canonical_u8(Opcode::ADD.funct7().unwrap());
-        let base_opcode = AB::Expr::from_canonical_u32(Opcode::ADD.base_opcode().0);
 
         // Constrain the add operation over `op_b` and `op_c`.
         let op_input = AddOperationInput::<AB>::new(
@@ -199,7 +196,6 @@ where
             local.state.pc,
             opcode,
             local.add_operation.value,
-            [base_opcode, funct3, funct7],
             local.adapter,
             local.is_real.into(),
         );

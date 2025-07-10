@@ -180,14 +180,6 @@ where
         let opcode = local.is_lw.into() * AB::Expr::from_canonical_u32(Opcode::LW as u32)
             + local.is_lwu.into() * AB::Expr::from_canonical_u32(Opcode::LWU as u32);
 
-        // Compute instruction field constants
-        let funct3 = local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct3().unwrap())
-            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct3().unwrap());
-        let funct7 = local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct7().unwrap_or(0))
-            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct7().unwrap_or(0));
-        let base_opcode = local.is_lw * AB::Expr::from_canonical_u32(Opcode::LW.base_opcode().0)
-            + local.is_lwu * AB::Expr::from_canonical_u32(Opcode::LWU.base_opcode().0);
-
         let is_real = local.is_lw + local.is_lwu;
         builder.assert_bool(local.is_lw);
         builder.assert_bool(local.is_lwu);
@@ -257,7 +249,6 @@ where
             clk_low.clone(),
             local.state.pc,
             opcode,
-            [base_opcode, funct3, funct7],
             Word([
                 local.selected_word[0].into(),
                 local.selected_word[1].into(),

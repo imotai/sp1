@@ -47,9 +47,6 @@ pub struct AddwCols<T> {
 
     /// Boolean to indicate whether the row is not a padding row.
     pub is_real: T,
-
-    /// The base opcode for the ADDW instruction.
-    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for AddwChip {
@@ -88,9 +85,9 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
                         let mut byte_lookup_events = Vec::new();
                         let event = merged_events[idx];
                         // tracing::info!("instruction: {:?}", instruction.opcode);
-                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                     }
                 });
             },
@@ -112,9 +109,9 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_ADDW_COLS];
                     let cols: &mut AddwCols<F> = row.as_mut_slice().borrow_mut();
-                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
@@ -146,12 +143,6 @@ impl AddwChip {
     ) {
         cols.is_real = F::one();
         cols.addw_operation.populate(blu, event.b, event.c, true);
-
-        // Get base opcode variants
-        let (addw_base, addw_imm) = Opcode::ADDW.base_opcode();
-        let addw_imm = addw_imm.expect("ADDW immediate opcode not found");
-        let is_imm_c = cols.adapter.imm_c.is_one();
-        cols.base_op_code = F::from_canonical_u32(if is_imm_c { addw_imm } else { addw_base });
     }
 }
 
@@ -170,18 +161,9 @@ where
         let local = main.row_slice(0);
         let local: &AddwCols<AB::Var> = (*local).borrow();
 
-        // Assert boolean constraints
         builder.assert_bool(local.is_real);
 
-        // The opcode is always ADDW (both for immediate and non-immediate variants)
         let opcode = AB::Expr::from_f(Opcode::ADDW.as_field());
-
-        // ADDW always has the same funct3 and funct7
-        let funct3 = AB::Expr::from_canonical_u8(Opcode::ADDW.funct3().unwrap());
-        let funct7 = AB::Expr::from_canonical_u8(Opcode::ADDW.funct7().unwrap());
-
-        // Calculate base_opcode based on immediate flag
-        let base_opcode = local.base_op_code.into();
 
         // Constrain the add operation over `op_b` and `op_c`.
         AddwOperation::<AB::F>::eval(
@@ -221,7 +203,6 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
-            [base_opcode, funct3, funct7],
             word,
             local.adapter,
             local.is_real.into(),

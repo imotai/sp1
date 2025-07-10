@@ -54,26 +54,6 @@ where
             + local.is_bltu * Opcode::BLTU.as_field::<AB::F>()
             + local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
 
-        // Compute instruction field constants for each opcode
-        let funct3 = local.is_beq * AB::Expr::from_canonical_u8(Opcode::BEQ.funct3().unwrap())
-            + local.is_bne * AB::Expr::from_canonical_u8(Opcode::BNE.funct3().unwrap())
-            + local.is_blt * AB::Expr::from_canonical_u8(Opcode::BLT.funct3().unwrap())
-            + local.is_bge * AB::Expr::from_canonical_u8(Opcode::BGE.funct3().unwrap())
-            + local.is_bltu * AB::Expr::from_canonical_u8(Opcode::BLTU.funct3().unwrap())
-            + local.is_bgeu * AB::Expr::from_canonical_u8(Opcode::BGEU.funct3().unwrap());
-        let funct7 = local.is_beq * AB::Expr::from_canonical_u8(Opcode::BEQ.funct7().unwrap_or(0))
-            + local.is_bne * AB::Expr::from_canonical_u8(Opcode::BNE.funct7().unwrap_or(0))
-            + local.is_blt * AB::Expr::from_canonical_u8(Opcode::BLT.funct7().unwrap_or(0))
-            + local.is_bge * AB::Expr::from_canonical_u8(Opcode::BGE.funct7().unwrap_or(0))
-            + local.is_bltu * AB::Expr::from_canonical_u8(Opcode::BLTU.funct7().unwrap_or(0))
-            + local.is_bgeu * AB::Expr::from_canonical_u8(Opcode::BGEU.funct7().unwrap_or(0));
-        let base_opcode = local.is_beq * AB::Expr::from_canonical_u32(Opcode::BEQ.base_opcode().0)
-            + local.is_bne * AB::Expr::from_canonical_u32(Opcode::BNE.base_opcode().0)
-            + local.is_blt * AB::Expr::from_canonical_u32(Opcode::BLT.base_opcode().0)
-            + local.is_bge * AB::Expr::from_canonical_u32(Opcode::BGE.base_opcode().0)
-            + local.is_bltu * AB::Expr::from_canonical_u32(Opcode::BLTU.base_opcode().0)
-            + local.is_bgeu * AB::Expr::from_canonical_u32(Opcode::BGEU.base_opcode().0);
-
         // Constrain the state of the CPU.
         // The `next_pc` is constrained by the AIR.
         // The clock is incremented by `4`.
@@ -92,7 +72,6 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
-            [base_opcode, funct3, funct7],
             local.adapter,
             is_real.clone(),
         );

@@ -164,9 +164,6 @@ where
         let clk_low = local.state.clk_low::<AB>();
 
         let opcode = AB::Expr::from_canonical_u32(Opcode::SH as u32);
-        let funct3 = AB::Expr::from_canonical_u8(Opcode::SH.funct3().unwrap());
-        let funct7 = AB::Expr::from_canonical_u8(Opcode::SH.funct7().unwrap_or(0));
-        let base_opcode = AB::Expr::from_canonical_u32(Opcode::SH.base_opcode().0);
         builder.assert_bool(local.is_real);
 
         // Step 1. Compute the address, and check offsets and address bounds.
@@ -243,7 +240,6 @@ where
             clk_low.clone(),
             local.state.pc,
             opcode,
-            [base_opcode, funct3, funct7],
             local.adapter,
             local.is_real.into(),
         );

@@ -6,16 +6,17 @@ use std::collections::HashMap;
 
 use crate::{
     air::ProgramAirBuilder,
-    cpu::columns::InstructionCols,
     utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
 };
 use p3_air::{Air, BaseAir, PairBuilder};
 use p3_field::PrimeField32;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-use sp1_core_executor::{ExecutionRecord, Opcode, Program};
+use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
+
+use crate::cpu::columns::InstructionCols;
 
 /// The number of preprocessed program columns.
 pub const NUM_PROGRAM_PREPROCESSED_COLS: usize = size_of::<ProgramPreprocessedCols<u8>>();
@@ -29,10 +30,6 @@ pub const NUM_PROGRAM_MULT_COLS: usize = size_of::<ProgramMultiplicityCols<u8>>(
 pub struct ProgramPreprocessedCols<T> {
     pub pc: [T; 3],
     pub instruction: InstructionCols<T>,
-    pub base_opcode: T,
-    pub funct3: T,
-    pub funct7: T,
-    // TODO: Do we need funct12? How do we handle ECALLs? Just for precompiles?
 }
 
 /// The column layout for the chip.
@@ -108,27 +105,8 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                     ];
                     // let instruction =
                     //     program.instructions[idx].preprocess::<F>(program.pc_base, pc);
-                    let instruction = program.instructions[idx].0;
+                    let instruction = program.instructions[idx];
                     cols.instruction.populate(&instruction);
-
-                    if instruction.opcode != Opcode::UNIMP {
-                        let (base_opcode, base_imm_opcode) = instruction.opcode.base_opcode();
-                        cols.base_opcode = if base_imm_opcode.is_some() && instruction.imm_c {
-                            F::from_canonical_u32(base_imm_opcode.unwrap())
-                        } else {
-                            F::from_canonical_u32(base_opcode)
-                        };
-                        cols.funct3 = if let Some(funct3) = instruction.opcode.funct3() {
-                            F::from_canonical_u8(funct3)
-                        } else {
-                            F::zero()
-                        };
-                        cols.funct7 = if let Some(funct7) = instruction.opcode.funct7() {
-                            F::from_canonical_u8(funct7)
-                        } else {
-                            F::zero()
-                        };
-                    }
                 });
             });
 
@@ -302,12 +280,7 @@ where
         let mult_local: &ProgramMultiplicityCols<AB::Var> = (*mult_local).borrow();
 
         // Constrain the interaction with CPU table
-        builder.receive_program(
-            prep_local.pc,
-            prep_local.instruction,
-            [prep_local.base_opcode.into(), prep_local.funct3.into(), prep_local.funct7.into()],
-            mult_local.multiplicity,
-        );
+        builder.receive_program(prep_local.pc, prep_local.instruction, mult_local.multiplicity);
     }
 }
 

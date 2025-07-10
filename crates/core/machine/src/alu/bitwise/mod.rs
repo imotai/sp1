@@ -54,9 +54,6 @@ pub struct BitwiseCols<T> {
 
     /// If the opcode is AND.
     pub is_and: T,
-
-    /// The base opcode for the bitwise instruction.
-    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
@@ -86,9 +83,9 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                 let mut row = [F::zero(); NUM_BITWISE_COLS];
                 let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
                 let mut blu = Vec::new();
-                cols.adapter.populate(&mut blu, event.1);
                 self.event_to_row(&event.0, cols, &mut blu);
                 cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                cols.adapter.populate(&mut blu, event.1);
 
                 row
             })
@@ -118,9 +115,9 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_BITWISE_COLS];
                     let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
-                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
@@ -155,26 +152,6 @@ impl BitwiseChip {
         cols.is_xor = F::from_bool(event.opcode == Opcode::XOR);
         cols.is_or = F::from_bool(event.opcode == Opcode::OR);
         cols.is_and = F::from_bool(event.opcode == Opcode::AND);
-
-        let (xor_base, xor_imm) = Opcode::XOR.base_opcode();
-        let xor_imm = xor_imm.expect("XOR immediate opcode not found");
-        let (or_base, or_imm) = Opcode::OR.base_opcode();
-        let or_imm = or_imm.expect("OR immediate opcode not found");
-        let (and_base, and_imm) = Opcode::AND.base_opcode();
-        let and_imm = and_imm.expect("AND immediate opcode not found");
-
-        let is_imm_c = cols.adapter.imm_c.is_one();
-
-        let xor_base_opcode = F::from_canonical_u32(if is_imm_c { xor_imm } else { xor_base });
-        let or_base_opcode = F::from_canonical_u32(if is_imm_c { or_imm } else { or_base });
-        let and_base_opcode = F::from_canonical_u32(if is_imm_c { and_imm } else { and_base });
-
-        cols.base_op_code = match event.opcode {
-            Opcode::XOR => xor_base_opcode,
-            Opcode::OR => or_base_opcode,
-            Opcode::AND => and_base_opcode,
-            _ => unreachable!(),
-        };
     }
 }
 
@@ -213,16 +190,6 @@ where
             + local.is_or * Opcode::OR.as_field::<AB::F>()
             + local.is_and * Opcode::AND.as_field::<AB::F>();
 
-        // Compute instruction field constants for each opcode
-        let funct3 = local.is_xor * AB::Expr::from_canonical_u8(Opcode::XOR.funct3().unwrap())
-            + local.is_or * AB::Expr::from_canonical_u8(Opcode::OR.funct3().unwrap())
-            + local.is_and * AB::Expr::from_canonical_u8(Opcode::AND.funct3().unwrap());
-        let funct7 = local.is_xor * AB::Expr::from_canonical_u8(Opcode::XOR.funct7().unwrap_or(0))
-            + local.is_or * AB::Expr::from_canonical_u8(Opcode::OR.funct7().unwrap_or(0))
-            + local.is_and * AB::Expr::from_canonical_u8(Opcode::AND.funct7().unwrap_or(0));
-
-        let base_opcode = local.base_op_code.into();
-
         // Constrain the bitwise operation over `op_b` and `op_c`.
         let bitwise_u16_input = BitwiseU16OperationInput::<AB>::new(
             local.adapter.b().map(Into::into),
@@ -254,7 +221,6 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             cpu_opcode,
-            [base_opcode, funct3, funct7],
             result,
             local.adapter,
             is_real,
