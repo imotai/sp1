@@ -72,7 +72,8 @@ runs:
         aws --version
 
     - name: rust-cache
-      uses: actions/cache@v3
+      # actions/cache@v4.2.3
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
       with:
         path: |
           ~/.cargo/bin/
@@ -81,18 +82,8 @@ runs:
           ~/.cargo/git/db/
           target/
           ~/.rustup/
-        key: sp1-rust-
-        restore-keys: sp1-rust-
+        key: sp1-rust-${{ runner.arch }}-${{ runner.os }}-${{ github.base_ref || github.ref_name }}
 
-    - name: Setup toolchain
-      id: rustc-toolchain
-      shell: bash
-      run: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        . "$HOME/.cargo/env"
-        rustup show
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-    
     - name: Override toolchain
       if: inputs.rustup_override != null
       shell: bash
