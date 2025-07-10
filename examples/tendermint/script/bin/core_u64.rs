@@ -1,5 +1,5 @@
 use std::time::Duration;
-use sp1_build::{include_elf, Elf};
+use sp1_build::include_elf;
 use sp1_core_executor::{Executor, Program, RetainedEventsPreset, SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_core_machine::utils::setup_logger;
@@ -17,9 +17,9 @@ use tendermint_light_client_verifier::{
     options::Options, types::LightBlock, ProdVerifier, Verdict, Verifier,
 };
 
-use tendermint_script::util::load_light_block;
+use crate::util::load_light_block;
 
-const TENDERMINT_ELF: Elf = include_elf!("tendermint-program");
+const TENDERMINT_ELF: &[u8] = include_elf!("tendermint-program");
 
 fn get_light_blocks() -> (LightBlock, LightBlock) {
     let light_block_1 = load_light_block(2279100).expect("Failed to generate light block 1");
@@ -58,7 +58,7 @@ async fn main() {
     let (pk, program, vk) = prover
         .prover()
         .core()
-        .setup(&*TENDERMINT_ELF)
+        .setup(TENDERMINT_ELF)
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
 

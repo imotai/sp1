@@ -71,17 +71,12 @@ where
         );
 
         // Constrain the program and register reads.
-        let funct3 = AB::Expr::from_canonical_u8(Opcode::ECALL.funct3().unwrap_or(0));
-        let funct7 = AB::Expr::from_canonical_u8(Opcode::ECALL.funct7().unwrap_or(0));
-        let base_opcode = AB::Expr::from_canonical_u32(Opcode::ECALL.base_opcode().0);
-
         RTypeReader::<AB::F>::eval(
             builder,
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
             AB::Expr::from_canonical_u32(Opcode::ECALL as u32),
-            [base_opcode, funct3, funct7],
             local.op_a_value,
             local.adapter,
             local.is_real.into(),
