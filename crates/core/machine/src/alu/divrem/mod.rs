@@ -192,6 +192,9 @@ pub struct DivRemCols<T> {
     /// Flag to indicate whether the opcode is REMUW.
     pub is_remuw: T,
 
+    /// The base opcode for the divrem instruction.
+    pub base_op_code: T,
+
     /// Flag to indicate whether the division operation overflows.
     ///
     /// Overflow occurs in a specific case of signed 32-bit integer division: when `b` is the
@@ -312,15 +315,50 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                     cols.b = Word::from(event.b);
                     cols.c = Word::from(event.c);
                 }
+
                 cols.is_real = F::one();
+
                 cols.is_divu = F::from_bool(event.opcode == Opcode::DIVU);
                 cols.is_remu = F::from_bool(event.opcode == Opcode::REMU);
                 cols.is_div = F::from_bool(event.opcode == Opcode::DIV);
                 cols.is_rem = F::from_bool(event.opcode == Opcode::REM);
                 cols.is_divw = F::from_bool(event.opcode == Opcode::DIVW);
-                cols.is_remw = F::from_bool(event.opcode == Opcode::REMW);
                 cols.is_divuw = F::from_bool(event.opcode == Opcode::DIVUW);
+                cols.is_remw = F::from_bool(event.opcode == Opcode::REMW);
                 cols.is_remuw = F::from_bool(event.opcode == Opcode::REMUW);
+
+                let (divw_base, divw_imm) = Opcode::DIVW.base_opcode();
+                let divw_imm = divw_imm.expect("DIVW immediate opcode not found");
+                let (remw_base, remw_imm) = Opcode::REMW.base_opcode();
+                let remw_imm = remw_imm.expect("REMW immediate opcode not found");
+                let (divuw_base, divuw_imm) = Opcode::DIVUW.base_opcode();
+                let divuw_imm = divuw_imm.expect("DIVUW immediate opcode not found");
+                let (remuw_base, remuw_imm) = Opcode::REMUW.base_opcode();
+                let remuw_imm = remuw_imm.expect("REMUW immediate opcode not found");
+
+                let is_imm_c = cols.adapter.imm_c.is_one();
+
+                let divw_base_opcode =
+                    F::from_canonical_u32(if is_imm_c { divw_imm } else { divw_base });
+                let remw_base_opcode =
+                    F::from_canonical_u32(if is_imm_c { remw_imm } else { remw_base });
+                let divuw_base_opcode =
+                    F::from_canonical_u32(if is_imm_c { divuw_imm } else { divuw_base });
+                let remuw_base_opcode =
+                    F::from_canonical_u32(if is_imm_c { remuw_imm } else { remuw_base });
+
+                cols.base_op_code = match event.opcode {
+                    Opcode::DIVU => F::from_canonical_u32(Opcode::DIVU.base_opcode().0),
+                    Opcode::REMU => F::from_canonical_u32(Opcode::REMU.base_opcode().0),
+                    Opcode::DIV => F::from_canonical_u32(Opcode::DIV.base_opcode().0),
+                    Opcode::REM => F::from_canonical_u32(Opcode::REM.base_opcode().0),
+                    Opcode::DIVW => divw_base_opcode,
+                    Opcode::REMW => remw_base_opcode,
+                    Opcode::DIVUW => divuw_base_opcode,
+                    Opcode::REMUW => remuw_base_opcode,
+                    _ => unreachable!(),
+                };
+
                 let not_word_operation =
                     F::one() - cols.is_divw - cols.is_remw - cols.is_divuw - cols.is_remuw;
                 cols.is_real_not_word = cols.is_real * not_word_operation;
@@ -1223,6 +1261,28 @@ where
                     + local.is_remuw * remuw
             };
 
+            // Compute instruction field constants for each opcode
+            let funct3 = local.is_divu
+                * AB::Expr::from_canonical_u8(Opcode::DIVU.funct3().unwrap())
+                + local.is_remu * AB::Expr::from_canonical_u8(Opcode::REMU.funct3().unwrap())
+                + local.is_div * AB::Expr::from_canonical_u8(Opcode::DIV.funct3().unwrap())
+                + local.is_rem * AB::Expr::from_canonical_u8(Opcode::REM.funct3().unwrap())
+                + local.is_divw * AB::Expr::from_canonical_u8(Opcode::DIVW.funct3().unwrap())
+                + local.is_remw * AB::Expr::from_canonical_u8(Opcode::REMW.funct3().unwrap())
+                + local.is_divuw * AB::Expr::from_canonical_u8(Opcode::DIVUW.funct3().unwrap())
+                + local.is_remuw * AB::Expr::from_canonical_u8(Opcode::REMUW.funct3().unwrap());
+            let funct7 = local.is_divu
+                * AB::Expr::from_canonical_u8(Opcode::DIVU.funct7().unwrap())
+                + local.is_remu * AB::Expr::from_canonical_u8(Opcode::REMU.funct7().unwrap())
+                + local.is_div * AB::Expr::from_canonical_u8(Opcode::DIV.funct7().unwrap())
+                + local.is_rem * AB::Expr::from_canonical_u8(Opcode::REM.funct7().unwrap())
+                + local.is_divw * AB::Expr::from_canonical_u8(Opcode::DIVW.funct7().unwrap())
+                + local.is_remw * AB::Expr::from_canonical_u8(Opcode::REMW.funct7().unwrap())
+                + local.is_divuw * AB::Expr::from_canonical_u8(Opcode::DIVUW.funct7().unwrap())
+                + local.is_remuw * AB::Expr::from_canonical_u8(Opcode::REMUW.funct7().unwrap());
+
+            let base_opcode = local.base_op_code.into();
+
             // Constrain the state of the CPU.
             // The program counter and timestamp increment by `4` and `8`.
             <CPUState<AB::F> as SP1Operation<AB>>::eval(
@@ -1245,6 +1305,7 @@ where
                 local.state.clk_low::<AB>(),
                 local.state.pc,
                 opcode,
+                [base_opcode, funct3, funct7],
                 local.a.map(|x| x.into()),
                 local.adapter,
                 local.is_real.into(),

@@ -161,6 +161,9 @@ where
         builder.assert_bool(local.is_real);
 
         let opcode = AB::Expr::from_f(Opcode::ADDI.as_field());
+        let funct3 = AB::Expr::from_canonical_u8(Opcode::ADDI.funct3().unwrap());
+        let funct7 = AB::Expr::from_canonical_u8(Opcode::ADDI.funct7().unwrap_or(0));
+        let base_opcode = AB::Expr::from_canonical_u32(Opcode::ADDI.base_opcode().0);
 
         // Constrain the add operation over `op_b` and `op_c`.
         AddOperation::<AB::F>::eval(
@@ -192,6 +195,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.add_operation.value,
             local.adapter,
             local.is_real.into(),

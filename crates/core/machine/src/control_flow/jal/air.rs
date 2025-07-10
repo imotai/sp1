@@ -27,6 +27,9 @@ where
         builder.assert_bool(local.is_real);
 
         let opcode = Opcode::JAL.as_field::<AB::F>();
+        let funct3 = AB::Expr::from_canonical_u8(Opcode::JAL.funct3().unwrap_or(0));
+        let funct7 = AB::Expr::from_canonical_u8(Opcode::JAL.funct7().unwrap_or(0));
+        let base_opcode = AB::Expr::from_canonical_u32(Opcode::JAL.base_opcode().0);
 
         // We constrain `next_pc` to be the sum of `pc` and `op_b`.
         let op_input = AddOperationInput::<AB>::new(
@@ -90,6 +93,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.op_a_operation.value,
             local.adapter,
             local.is_real.into(),

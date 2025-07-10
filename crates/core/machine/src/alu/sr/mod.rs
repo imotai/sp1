@@ -93,6 +93,9 @@ pub struct ShiftRightCols<T> {
 
     /// If the opcode is SRAW.
     pub is_sraw: T,
+
+    /// The base opcode for the SRL instruction.
+    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
@@ -132,9 +135,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.shift_right_events[idx];
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                     } else {
                         cols.v_01 = F::from_canonical_u32(16);
                         cols.v_012 = F::from_canonical_u32(256);
@@ -159,9 +162,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SHIFT_RIGHT_COLS];
                     let cols: &mut ShiftRightCols<F> = row.as_mut_slice().borrow_mut();
+                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
@@ -194,10 +197,35 @@ impl ShiftRightChip {
         let mut b = u64_to_u16_limbs(event.b);
         let c = u64_to_u16_limbs(event.c)[0];
         cols.a = Word::from(event.a);
+
         cols.is_srl = F::from_bool(event.opcode == Opcode::SRL);
         cols.is_sra = F::from_bool(event.opcode == Opcode::SRA);
         cols.is_srlw = F::from_bool(event.opcode == Opcode::SRLW);
         cols.is_sraw = F::from_bool(event.opcode == Opcode::SRAW);
+
+        let (srl_base, srl_imm) = Opcode::SRL.base_opcode();
+        let srl_imm = srl_imm.expect("SRL immediate opcode not found");
+        let (sra_base, sra_imm) = Opcode::SRA.base_opcode();
+        let sra_imm = sra_imm.expect("SRA immediate opcode not found");
+        let (srlw_base, srlw_imm) = Opcode::SRLW.base_opcode();
+        let srlw_imm = srlw_imm.expect("SRLW immediate opcode not found");
+        let (sraw_base, sraw_imm) = Opcode::SRAW.base_opcode();
+        let sraw_imm = sraw_imm.expect("SRAW immediate opcode not found");
+
+        let is_imm_c = cols.adapter.imm_c.is_one();
+        let srl_base_opcode = F::from_canonical_u32(if is_imm_c { srl_imm } else { srl_base });
+        let sra_base_opcode = F::from_canonical_u32(if is_imm_c { sra_imm } else { sra_base });
+        let srlw_base_opcode = F::from_canonical_u32(if is_imm_c { srlw_imm } else { srlw_base });
+        let sraw_base_opcode = F::from_canonical_u32(if is_imm_c { sraw_imm } else { sraw_base });
+
+        cols.base_op_code = match event.opcode {
+            Opcode::SRL => srl_base_opcode,
+            Opcode::SRA => sra_base_opcode,
+            Opcode::SRLW => srlw_base_opcode,
+            Opcode::SRAW => sraw_base_opcode,
+            _ => unreachable!(),
+        };
+
         let is_word = event.opcode == Opcode::SRLW || event.opcode == Opcode::SRAW;
         if is_word {
             b[2] = 0;
@@ -342,6 +370,18 @@ where
             + local.is_sra * AB::F::from_canonical_u32(Opcode::SRA as u32)
             + local.is_srlw * AB::F::from_canonical_u32(Opcode::SRLW as u32)
             + local.is_sraw * AB::F::from_canonical_u32(Opcode::SRAW as u32);
+
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_srl * AB::Expr::from_canonical_u8(Opcode::SRL.funct3().unwrap())
+            + local.is_sra * AB::Expr::from_canonical_u8(Opcode::SRA.funct3().unwrap())
+            + local.is_srlw * AB::Expr::from_canonical_u8(Opcode::SRLW.funct3().unwrap())
+            + local.is_sraw * AB::Expr::from_canonical_u8(Opcode::SRAW.funct3().unwrap());
+        let funct7 = local.is_srl * AB::Expr::from_canonical_u8(Opcode::SRL.funct7().unwrap_or(0))
+            + local.is_sra * AB::Expr::from_canonical_u8(Opcode::SRA.funct7().unwrap())
+            + local.is_srlw * AB::Expr::from_canonical_u8(Opcode::SRLW.funct7().unwrap_or(0))
+            + local.is_sraw * AB::Expr::from_canonical_u8(Opcode::SRAW.funct7().unwrap());
+
+        let base_opcode = local.base_op_code.into();
 
         // Check that local.c_bits is the bit representation for the low byte of c.
         for i in 0..8 {
@@ -543,6 +583,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.a.map(|x| x.into()),
             local.adapter,
             is_real,

@@ -193,6 +193,29 @@ where
             + AB::Expr::from_canonical_u32(Opcode::LW as u32) * local.is_lw
             + AB::Expr::from_canonical_u32(Opcode::LWU as u32) * local.is_lwu
             + AB::Expr::from_canonical_u32(Opcode::LD as u32) * local.is_ld;
+
+        // Compute instruction field constants
+        let funct3 = local.is_lb * AB::Expr::from_canonical_u8(Opcode::LB.funct3().unwrap())
+            + local.is_lbu * AB::Expr::from_canonical_u8(Opcode::LBU.funct3().unwrap())
+            + local.is_lh * AB::Expr::from_canonical_u8(Opcode::LH.funct3().unwrap())
+            + local.is_lhu * AB::Expr::from_canonical_u8(Opcode::LHU.funct3().unwrap())
+            + local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct3().unwrap())
+            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct3().unwrap())
+            + local.is_ld * AB::Expr::from_canonical_u8(Opcode::LD.funct3().unwrap());
+        let funct7 = local.is_lb * AB::Expr::from_canonical_u8(Opcode::LB.funct7().unwrap_or(0))
+            + local.is_lbu * AB::Expr::from_canonical_u8(Opcode::LBU.funct7().unwrap_or(0))
+            + local.is_lh * AB::Expr::from_canonical_u8(Opcode::LH.funct7().unwrap_or(0))
+            + local.is_lhu * AB::Expr::from_canonical_u8(Opcode::LHU.funct7().unwrap_or(0))
+            + local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct7().unwrap_or(0))
+            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct7().unwrap_or(0))
+            + local.is_ld * AB::Expr::from_canonical_u8(Opcode::LD.funct7().unwrap_or(0));
+        let base_opcode = local.is_lb * AB::Expr::from_canonical_u32(Opcode::LB.base_opcode().0)
+            + local.is_lbu * AB::Expr::from_canonical_u32(Opcode::LBU.base_opcode().0)
+            + local.is_lh * AB::Expr::from_canonical_u32(Opcode::LH.base_opcode().0)
+            + local.is_lhu * AB::Expr::from_canonical_u32(Opcode::LHU.base_opcode().0)
+            + local.is_lw * AB::Expr::from_canonical_u32(Opcode::LW.base_opcode().0)
+            + local.is_lwu * AB::Expr::from_canonical_u32(Opcode::LWU.base_opcode().0)
+            + local.is_ld * AB::Expr::from_canonical_u32(Opcode::LD.base_opcode().0);
         let is_real = local.is_lb
             + local.is_lbu
             + local.is_lh
@@ -259,6 +282,7 @@ where
             clk_low,
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.adapter,
             is_real.clone(),
         );

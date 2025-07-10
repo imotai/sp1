@@ -71,6 +71,7 @@ impl<F: Field> RTypeReader<F> {
         clk_low: AB::Expr,
         pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
+        instr_field_consts: [AB::Expr; 3],
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
@@ -85,7 +86,7 @@ impl<F: Field> RTypeReader<F> {
             imm_b: AB::Expr::zero(),
             imm_c: AB::Expr::zero(),
         };
-        builder.send_program(pc, instruction, is_real.clone());
+        builder.send_program(pc, instruction, instr_field_consts, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
@@ -118,6 +119,7 @@ impl<F: Field> RTypeReader<F> {
         clk_low: AB::Expr,
         pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
+        instr_field_consts: [AB::Expr; 3],
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
@@ -127,6 +129,7 @@ impl<F: Field> RTypeReader<F> {
             clk_low,
             pc,
             opcode,
+            instr_field_consts,
             cols.op_a_memory.prev_value,
             cols,
             is_real,
@@ -141,6 +144,7 @@ pub struct RTypeReaderInput<AB: SP1AirBuilder> {
     pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
     pub op_a_write_value: Word<AB::Var>,
+    pub instr_field_consts: [AB::Expr; 3],
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
 }
@@ -156,6 +160,7 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
             input.clk_low,
             input.pc,
             input.opcode,
+            input.instr_field_consts,
             input.op_a_write_value,
             input.cols,
             input.is_real,
@@ -172,6 +177,7 @@ pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
     pub clk_low: AB::Expr,
     pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
+    pub instr_field_consts: [AB::Expr; 3],
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
 }
@@ -187,6 +193,7 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
             input.clk_low,
             input.pc,
             input.opcode,
+            input.instr_field_consts,
             input.cols,
             input.is_real,
         )

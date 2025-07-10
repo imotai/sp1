@@ -26,7 +26,7 @@ use sp1_stark::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Program {
     /// The instructions of the program.
-    pub instructions: Vec<Instruction>,
+    pub instructions: Vec<(Instruction, u32)>,
     /// The start address of the program. It is absolute, meaning not relative to `pc_base`.
     pub pc_start_abs: u64,
     /// The base address of the program.
@@ -41,6 +41,11 @@ impl Program {
     /// Create a new [Program].
     #[must_use]
     pub fn new(instructions: Vec<Instruction>, pc_start_abs: u64, pc_base: u64) -> Self {
+        let instructions = instructions
+            .into_iter()
+            .map(|instruction| (instruction, instruction.encode()))
+            .collect();
+
         Self {
             instructions,
             pc_start_abs,
@@ -100,7 +105,7 @@ impl Program {
     pub fn fetch(&self, pc: u64) -> Option<&Instruction> {
         let idx = ((pc - self.pc_base) / 4) as usize;
         if idx < self.instructions.len() {
-            Some(&self.instructions[idx])
+            Some(&self.instructions[idx].0)
         } else {
             None
         }
