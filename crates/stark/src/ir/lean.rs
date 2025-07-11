@@ -17,11 +17,9 @@ impl<F: Field, EF: ExtensionField<F>> Shape<ExprRef<F>, ExprExtRef<EF>> {
             Shape::Unit => unimplemented!("Unit shouldn't appear in constructors"),
             Shape::Expr(expr) => expr.to_lean_string(mapping),
             Shape::ExprExt(_) => todo!(),
-            Shape::Word(word) => format!(
-                "#v[{}, {}]",
-                word[0].to_lean_string(mapping),
-                word[1].to_lean_string(mapping)
-            ),
+            Shape::Word(word) => {
+                format!("#v[{}]", word.iter().map(|x| x.to_lean_string(mapping)).join(", "))
+            }
             Shape::Array(vals) => {
                 format!("#v[{}]", vals.iter().map(|x| x.to_lean_constructor(mapping)).join(", "))
             }
@@ -47,9 +45,8 @@ impl<F: Field, EF: ExtensionField<F>> Shape<ExprRef<F>, ExprExtRef<EF>> {
             Shape::Expr(expr) => expr.to_lean_string(&HashMap::default()),
             Shape::ExprExt(_) => todo!(),
             Shape::Word(word) => format!(
-                "⟨⟨[{}, {}]⟩, _⟩",
-                word[0].to_lean_string(&HashMap::default()),
-                word[1].to_lean_string(&HashMap::default()),
+                "⟨⟨[{}]⟩, _⟩",
+                word.iter().map(|x| x.to_lean_string(&HashMap::default())).join(", ")
             ),
             Shape::Array(vals) => {
                 format!("⟨⟨[{}]⟩, _⟩", vals.iter().map(|x| x.to_lean_destructor()).join(", "))
@@ -122,7 +119,10 @@ impl<F: Field> AirInteraction<ExprRef<F>> {
 
         match self.kind {
             InteractionKind::Byte => {
-                res.push_str(&format!(" (ByteOpcode.ofNat {})", self.values.first().unwrap()));
+                res.push_str(&format!(
+                    " (ByteOpcode.ofNat {})",
+                    self.values.first().unwrap().to_lean_string(input_mapping)
+                ));
                 for val in self.values.iter().skip(1) {
                     res.push_str(&format!(" {}", val.to_lean_string(input_mapping)));
                 }

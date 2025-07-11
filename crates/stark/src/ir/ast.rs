@@ -192,11 +192,11 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         for opexpr in &self.operations {
             match opexpr {
                 OpExpr::AssertZero(expr) => {
-                    constraints.push(expr.to_lean_string(mapping));
+                    constraints.push(format!("(.assertZero {})", expr.to_lean_string(mapping)));
                 }
                 OpExpr::Neg(a, b) => {
                     steps.push(format!(
-                        "let {} : BabyBear := -{}",
+                        "let {} : Fin BB := -{}",
                         a.expr_to_lean_string(),
                         b.to_lean_string(mapping),
                     ));
@@ -207,27 +207,33 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                     let b_str = b.to_lean_string(mapping);
                     match op {
                         BinOp::Add => {
-                            steps.push(format!("let {result_str} : BabyBear = {a_str} + {b_str}"));
+                            steps.push(format!("let {result_str} : Fin BB := {a_str} + {b_str}"));
                         }
                         BinOp::Sub => {
-                            steps.push(format!("let {result_str} : BabyBear = {a_str} - {b_str}"));
+                            steps.push(format!("let {result_str} : Fin BB := {a_str} - {b_str}"));
                         }
                         BinOp::Mul => {
-                            steps.push(format!("let {result_str} : BabyBear = {a_str} * {b_str}"));
+                            steps.push(format!("let {result_str} : Fin BB := {a_str} * {b_str}"));
                         }
                     }
                 }
                 OpExpr::Send(interaction, _) => match interaction.kind {
                     InteractionKind::Byte | InteractionKind::State | InteractionKind::Memory => {
-                        constraints
-                            .push(format!("(.send {})", interaction.to_lean_string(mapping)));
+                        constraints.push(format!(
+                            "(.send {} {})",
+                            interaction.to_lean_string(mapping),
+                            interaction.multiplicity.to_lean_string(mapping)
+                        ));
                     }
                     _ => {}
                 },
                 OpExpr::Receive(interaction, _) => match interaction.kind {
                     InteractionKind::Byte | InteractionKind::State | InteractionKind::Memory => {
-                        constraints
-                            .push(format!("(.receive {})", interaction.to_lean_string(mapping)));
+                        constraints.push(format!(
+                            "(.receive {} {})",
+                            interaction.to_lean_string(mapping),
+                            interaction.multiplicity.to_lean_string(mapping),
+                        ));
                     }
                     _ => {}
                 },
@@ -246,7 +252,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                         }
                     }
 
-                    step.push_str(&decl.name.to_string());
+                    step.push_str(&format!("{}.constraints", decl.name));
 
                     for input in &decl.input {
                         step.push(' ');
