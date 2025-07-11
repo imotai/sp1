@@ -94,7 +94,7 @@ runs:
     - name: Ensure nightly is installed
       shell: bash
       run: |
-        rustup toolchain install nightly --component rustfmt clippy
+        rustup toolchain install nightly --component rustfmt,clippy
         
     # install pkg-config and openssl
     - name: Install pkg-config and openssl
