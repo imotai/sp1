@@ -27,6 +27,8 @@ use sp1_stark::{
 pub struct Program {
     /// The instructions of the program.
     pub instructions: Vec<Instruction>,
+    /// The encoded instructions of the program. Only used if program is untrusted
+    pub instructions_encoded: Option<Vec<u32>>,
     /// The start address of the program. It is absolute, meaning not relative to `pc_base`.
     pub pc_start_abs: u64,
     /// The base address of the program.
@@ -43,6 +45,7 @@ impl Program {
     pub fn new(instructions: Vec<Instruction>, pc_start_abs: u64, pc_base: u64) -> Self {
         Self {
             instructions,
+            instructions_encoded: None,
             pc_start_abs,
             pc_base,
             memory_image: HashMap::new(),
@@ -62,11 +65,13 @@ impl Program {
         assert!(elf.pc_base != 0, "elf with pc_base == 0 is not supported");
 
         // Transpile the RV32IM instructions.
-        let instructions = transpile(&elf.instructions);
+        let instruction_pair = transpile(&elf.instructions);
+        let (instructions, instructions_encoded) = instruction_pair.into_iter().unzip();
 
         // Return the program.
         Ok(Program {
             instructions,
+            instructions_encoded: Some(instructions_encoded),
             pc_start_abs: elf.pc_start,
             pc_base: elf.pc_base,
             memory_image: elf.memory_image,

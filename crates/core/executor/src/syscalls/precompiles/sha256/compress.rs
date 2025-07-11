@@ -25,8 +25,8 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     let w_ptr = arg1;
     let h_ptr = arg2;
     assert_ne!(w_ptr, h_ptr);
-    assert!(arg1 % 8 == 0);
-    assert!(arg2 % 8 == 0);
+    assert!(arg1.is_multiple_of(8));
+    assert!(arg2.is_multiple_of(8));
 
     let start_clk = rt.clk;
     let mut h_read_records = Vec::new();

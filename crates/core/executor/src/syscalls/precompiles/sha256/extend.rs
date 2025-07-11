@@ -13,7 +13,7 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
     let clk_init = rt.clk;
     let w_ptr = arg1;
     assert!(arg2 == 0, "arg2 must be 0");
-    assert!(arg1 % 8 == 0);
+    assert!(arg1.is_multiple_of(8));
 
     let w_ptr_init = w_ptr;
     let mut w_i_minus_15_reads = Vec::with_capacity(48);

@@ -83,6 +83,9 @@ pub struct ShiftLeftCols<T> {
 
     /// If the opcode is SLLW.
     pub is_sllw: T,
+
+    /// The base opcode for the SLL instruction.
+    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
@@ -112,9 +115,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
             let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
             let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
             let mut blu = Vec::new();
+            cols.adapter.populate(&mut blu, event.1);
             self.event_to_row(&event.0, cols, &mut blu);
             cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-            cols.adapter.populate(&mut blu, event.1);
             rows.push(row);
         }
 
@@ -161,9 +164,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
                     let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
+                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
@@ -203,9 +206,24 @@ impl ShiftLeft {
 
         let b_bytes = event.b.to_le_bytes();
         cols.a = Word::from(event.a);
-        cols.is_sll = F::from_bool(event.opcode == Opcode::SLL);
-        cols.is_sllw = F::from_bool(event.opcode == Opcode::SLLW);
         let is_sll = event.opcode == Opcode::SLL;
+        cols.is_sll = F::from_bool(is_sll);
+
+        cols.is_sllw = F::from_bool(event.opcode == Opcode::SLLW);
+
+        let (sll_base, sll_imm) = Opcode::SLL.base_opcode();
+        let sll_imm = sll_imm.expect("SLL immediate opcode not found");
+        let (sllw_base, sllw_imm) = Opcode::SLLW.base_opcode();
+        let sllw_imm = sllw_imm.expect("SLLW immediate opcode not found");
+
+        let is_imm_c = cols.adapter.imm_c.is_one();
+        let sll_base_opcode = F::from_canonical_u32(if is_imm_c { sll_imm } else { sll_base });
+        let sllw_base_opcode = F::from_canonical_u32(if is_imm_c { sllw_imm } else { sllw_base });
+        cols.base_op_code = match event.opcode {
+            Opcode::SLL => sll_base_opcode,
+            Opcode::SLLW => sllw_base_opcode,
+            _ => unreachable!(),
+        };
 
         let mut bits = [0u8; 8];
         for i in 0..8 {
@@ -443,6 +461,15 @@ where
         let opcode = local.is_sll * AB::F::from_canonical_u32(Opcode::SLL as u32)
             + local.is_sllw * AB::F::from_canonical_u32(Opcode::SLLW as u32);
 
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_sll * AB::Expr::from_canonical_u8(Opcode::SLL.funct3().unwrap())
+            + local.is_sllw * AB::Expr::from_canonical_u8(Opcode::SLLW.funct3().unwrap());
+        let funct7 = local.is_sll * AB::Expr::from_canonical_u8(Opcode::SLL.funct7().unwrap_or(0))
+            + local.is_sllw * AB::Expr::from_canonical_u8(Opcode::SLLW.funct7().unwrap_or(0));
+
+        // Combine the opcodes based on which instruction is active
+        let base_opcode = local.base_op_code.into();
+
         // Constrain the CPU state.
         // The program counter and timestamp increment by `4`.
         CPUState::<AB::F>::eval(
@@ -463,6 +490,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.a.map(|x| x.into()),
             local.adapter,
             is_real.clone(),

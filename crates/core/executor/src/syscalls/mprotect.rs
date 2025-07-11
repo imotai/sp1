@@ -12,7 +12,7 @@ pub fn mprotect_syscall<E: ExecutorConfig>(
 ) -> Option<u64> {
     let prot: u8 = prot.try_into().expect("prot must be 8 bits");
 
-    assert!(addr % PAGE_SIZE as u64 == 0, "addr must be page aligned");
+    assert!(addr.is_multiple_of(PAGE_SIZE as u64), "addr must be page aligned");
     assert!(addr < 1 << MAX_LOG_ADDR, "addr must be less than 2^48");
 
     let page_idx = addr / PAGE_SIZE as u64;

@@ -53,7 +53,7 @@ impl<F: Field> SyscallAddrOperation<F> {
         is_real: AB::Expr,
     ) -> [AB::Var; 3] {
         // This is not a constraint, but a sanity check
-        assert!(len % 8 == 0);
+        assert!(len.is_multiple_of(8));
 
         // Check that `is_real` and offset bits are boolean.
         builder.assert_bool(is_real.clone());

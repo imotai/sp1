@@ -177,7 +177,7 @@ impl SP1RecursionProofShape {
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402048),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486144),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 784656),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 785344),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
                 (CompressAir::<BabyBear>::Select(SelectChip), 807008),

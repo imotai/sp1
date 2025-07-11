@@ -106,6 +106,7 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
             // Case 1: Single type parameter with SP1AirBuilder constraint
             quote! {
                 impl<#first_param_name: SP1AirBuilder> #name<#first_param_name> {
+                    #[allow(clippy::too_many_arguments)]
                     pub const fn new(#(#field_type_params),*) -> Self {
                         Self {
                             #(#field_names),*
@@ -152,6 +153,7 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
             let type_args_clone = type_args.clone();
             quote! {
                 impl<#first_param_name: SP1AirBuilder, #(#remaining_params),*> #name<#first_param_name, #(#type_args_clone),*> {
+                    #[allow(clippy::too_many_arguments)]
                     pub const fn new(#(#field_type_params),*) -> Self {
                         Self {
                             #(#field_names),*

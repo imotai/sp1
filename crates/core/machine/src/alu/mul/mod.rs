@@ -95,6 +95,9 @@ pub struct MulCols<T> {
 
     /// Whether the operation is MULW.
     pub is_mulw: T,
+
+    /// The base opcode for the mul instruction.
+    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for MulChip {
@@ -132,9 +135,9 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.mul_events[idx];
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                     }
                 });
             },
@@ -155,9 +158,9 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_MUL_COLS];
                     let cols: &mut MulCols<F> = row.as_mut_slice().borrow_mut();
+                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
@@ -201,9 +204,25 @@ impl MulChip {
         cols.is_mulhu = F::from_bool(event.opcode == Opcode::MULHU);
         cols.is_mulhsu = F::from_bool(event.opcode == Opcode::MULHSU);
         cols.is_mulw = F::from_bool(event.opcode == Opcode::MULW);
-
         cols.a = Word::from(event.a);
         cols.is_real = F::one();
+
+        let (mulw_base, mulw_imm) = Opcode::MULW.base_opcode();
+        let mulw_imm = mulw_imm.expect("MULW immediate opcode not found");
+
+        let is_imm_c = cols.adapter.imm_c.is_one();
+        let mulw_base_opcode = F::from_canonical_u32(if is_imm_c { mulw_imm } else { mulw_base });
+
+        let base_opcode = match event.opcode {
+            Opcode::MUL => F::from_canonical_u32(Opcode::MUL.base_opcode().0),
+            Opcode::MULH => F::from_canonical_u32(Opcode::MULH.base_opcode().0),
+            Opcode::MULHU => F::from_canonical_u32(Opcode::MULHU.base_opcode().0),
+            Opcode::MULHSU => F::from_canonical_u32(Opcode::MULHSU.base_opcode().0),
+            Opcode::MULW => mulw_base_opcode,
+            _ => unreachable!(),
+        };
+
+        cols.base_op_code = base_opcode;
     }
 }
 
@@ -263,6 +282,20 @@ where
                 + local.is_mulw * mulw
         };
 
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_mul * AB::Expr::from_canonical_u8(Opcode::MUL.funct3().unwrap())
+            + local.is_mulh * AB::Expr::from_canonical_u8(Opcode::MULH.funct3().unwrap())
+            + local.is_mulhu * AB::Expr::from_canonical_u8(Opcode::MULHU.funct3().unwrap())
+            + local.is_mulhsu * AB::Expr::from_canonical_u8(Opcode::MULHSU.funct3().unwrap())
+            + local.is_mulw * AB::Expr::from_canonical_u8(Opcode::MULW.funct3().unwrap());
+        let funct7 = local.is_mul * AB::Expr::from_canonical_u8(Opcode::MUL.funct7().unwrap())
+            + local.is_mulh * AB::Expr::from_canonical_u8(Opcode::MULH.funct7().unwrap())
+            + local.is_mulhu * AB::Expr::from_canonical_u8(Opcode::MULHU.funct7().unwrap())
+            + local.is_mulhsu * AB::Expr::from_canonical_u8(Opcode::MULHSU.funct7().unwrap())
+            + local.is_mulw * AB::Expr::from_canonical_u8(Opcode::MULW.funct7().unwrap());
+
+        let base_opcode = local.base_op_code.into();
+
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.
         CPUState::<AB::F>::eval(
@@ -284,6 +317,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             a_expr,
             local.adapter,
             local.is_real.into(),

@@ -133,7 +133,7 @@ pub fn num_to_comma_separated<T: ToString>(value: T) -> String {
 
 /// Converts a little endian u32 array into u64 array.
 pub fn u32_to_u64(limbs: &[u32]) -> Vec<u64> {
-    debug_assert!(limbs.len() % 2 == 0, "need an even number of u32s");
+    debug_assert!(limbs.len().is_multiple_of(2), "need an even number of u32s");
     limbs.chunks_exact(2).map(|pair| (pair[0] as u64) | ((pair[1] as u64) << 32)).collect()
 }
 

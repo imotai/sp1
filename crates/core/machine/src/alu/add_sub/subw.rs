@@ -163,6 +163,9 @@ where
         builder.assert_bool(local.is_real);
 
         let opcode = AB::Expr::from_f(Opcode::SUBW.as_field());
+        let funct3 = AB::Expr::from_canonical_u8(Opcode::SUBW.funct3().unwrap());
+        let funct7 = AB::Expr::from_canonical_u8(Opcode::SUBW.funct7().unwrap());
+        let base_opcode = AB::Expr::from_canonical_u32(Opcode::SUBW.base_opcode().0);
 
         // Constrain the sub operation over `op_b` and `op_c`.
         SubwOperation::<AB::F>::eval(
@@ -203,6 +206,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             word,
             local.adapter,
             local.is_real.into(),

@@ -1823,13 +1823,13 @@ impl<'a> Executor<'a> {
             }
             // RISCV-64
             Opcode::LWU => {
-                if addr % 4 != 0 {
+                if !addr.is_multiple_of(4) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LWU, addr));
                 }
                 (memory_read_value >> (((addr / 4) % 2) * 32)) & 0xFFFFFFFF
             }
             Opcode::LD => {
-                if addr % 8 != 0 {
+                if !addr.is_multiple_of(8) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::LD, addr));
                 }
                 memory_read_value
@@ -1868,7 +1868,7 @@ impl<'a> Executor<'a> {
             }
             // RISCV-64
             Opcode::SD => {
-                if addr % 8 != 0 {
+                if !addr.is_multiple_of(8) {
                     return Err(ExecutionError::InvalidMemoryAccess(Opcode::SD, addr));
                 }
                 a

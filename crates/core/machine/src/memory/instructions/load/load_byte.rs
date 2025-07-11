@@ -202,6 +202,14 @@ where
         // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
         let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
             + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu;
+
+        // Compute instruction field constants
+        let funct3 = local.is_lb * AB::Expr::from_canonical_u8(Opcode::LB.funct3().unwrap())
+            + local.is_lbu * AB::Expr::from_canonical_u8(Opcode::LBU.funct3().unwrap());
+        let funct7 = local.is_lb * AB::Expr::from_canonical_u8(Opcode::LB.funct7().unwrap_or(0))
+            + local.is_lbu * AB::Expr::from_canonical_u8(Opcode::LBU.funct7().unwrap_or(0));
+        let base_opcode = local.is_lb * AB::Expr::from_canonical_u32(Opcode::LB.base_opcode().0)
+            + local.is_lbu * AB::Expr::from_canonical_u32(Opcode::LBU.base_opcode().0);
         let is_real = local.is_lb + local.is_lbu;
         builder.assert_bool(local.is_lb);
         builder.assert_bool(local.is_lbu);
@@ -297,6 +305,7 @@ where
             clk_low,
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             Word([limb0, limb1, limb2, limb3]),
             local.adapter,
             is_real.clone(),

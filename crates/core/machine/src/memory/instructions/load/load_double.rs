@@ -151,6 +151,9 @@ where
         let clk_low = local.state.clk_low::<AB>();
 
         let opcode = AB::Expr::from_canonical_u32(Opcode::LD as u32);
+        let funct3 = AB::Expr::from_canonical_u8(Opcode::LD.funct3().unwrap());
+        let funct7 = AB::Expr::from_canonical_u8(Opcode::LD.funct7().unwrap_or(0));
+        let base_opcode = AB::Expr::from_canonical_u32(Opcode::LD.base_opcode().0);
 
         builder.assert_bool(local.is_real);
 
@@ -198,6 +201,7 @@ where
             clk_low,
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.memory_access.prev_value,
             local.adapter,
             local.is_real.into(),

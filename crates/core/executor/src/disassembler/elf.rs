@@ -131,7 +131,7 @@ impl Elf {
                 .ok_or_else(|| eyre::eyre!("address overflow in segment"))?;
 
             // Make sure the virtual address is aligned.
-            if vaddr % (step_size as u64) != 0 {
+            if !vaddr.is_multiple_of(step_size as u64) {
                 eyre::bail!("segment vaddr is not aligned");
             }
 
@@ -173,7 +173,7 @@ impl Elf {
                         .ok_or_else(|| eyre::eyre!("failed to read segment offset"))?;
                     word |= u64::from(*byte) << (8 * i);
                 }
-                if addr % 8 == 0 {
+                if addr.is_multiple_of(8) {
                     image
                         .entry(addr)
                         .and_modify(|value| {
@@ -187,7 +187,7 @@ impl Elf {
                         .and_modify(|value| {
                             *value += word << 32;
                         })
-                        .or_insert_with(|| (word << 32));
+                        .or_insert_with(|| word << 32);
                 }
                 if is_execute {
                     instructions.push(word as u32);
