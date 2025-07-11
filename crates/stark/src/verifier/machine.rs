@@ -22,6 +22,12 @@ pub struct MachineProof<C: MachineConfig> {
     pub shard_proofs: Vec<ShardProof<C>>,
 }
 
+impl<C: MachineConfig> From<Vec<ShardProof<C>>> for MachineProof<C> {
+    fn from(shard_proofs: Vec<ShardProof<C>>) -> Self {
+        Self { shard_proofs }
+    }
+}
+
 /// An error that occurs during the verification of a machine proof.
 #[derive(Debug, Error)]
 pub enum MachineVerifierError<EF, PcsError> {

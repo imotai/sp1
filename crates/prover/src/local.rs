@@ -1034,7 +1034,7 @@ pub mod tests {
         let elf = test_artifacts::FIBONACCI_ELF;
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu()
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new()
             .without_vk_verification()
             .build()
             .await;
@@ -1056,7 +1056,7 @@ pub mod tests {
     async fn test_deferred_compress() -> Result<()> {
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu()
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new()
             .without_vk_verification()
             .build()
             .await;

@@ -680,7 +680,7 @@ mod tests {
     #[allow(clippy::ignore_without_reason)]
     async fn test_max_arity() {
         setup_logger();
-        let prover = SP1ProverBuilder::cpu().without_vk_verification().build().await;
+        let prover = SP1ProverBuilder::new().without_vk_verification().build().await;
         // arity 3:
         // let shape = [
         //     (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 154816),
@@ -811,7 +811,7 @@ mod tests {
     async fn test_core_shape_fit() {
         setup_logger();
         let elf = test_artifacts::FIBONACCI_ELF;
-        let prover = SP1ProverBuilder::cpu().without_vk_verification().build().await;
+        let prover = SP1ProverBuilder::new().without_vk_verification().build().await;
         let (_, _, vk) = prover.core().setup(&elf).await;
 
         let machine = RiscvAir::<BabyBear>::machine();
@@ -841,7 +841,7 @@ mod tests {
     #[tokio::test]
     async fn test_build_vk_map() {
         setup_logger();
-        let prover = SP1ProverBuilder::cpu().build().await;
+        let prover = SP1ProverBuilder::new().build().await;
 
         let elf = test_artifacts::FIBONACCI_ELF;
         let (pk, program, vk) = prover.core().setup(&elf).await;
@@ -873,7 +873,7 @@ mod tests {
         }
 
         // Build the vk map that includes all of the proof shapes in the proof.
-        let prover = Arc::new(SP1ProverBuilder::cpu().build().await);
+        let prover = Arc::new(SP1ProverBuilder::new().build().await);
 
         let shape_indices =
             shape_indices.into_iter().chain(shapes.len() - 12..shapes.len()).collect::<Vec<_>>();
@@ -896,7 +896,7 @@ mod tests {
 
         // Build a new prover that performs the vk verification check using the built vk map.
         let prover =
-            SP1ProverBuilder::cpu().with_vk_map_path("../../../vk_map.bin".into()).build().await;
+            SP1ProverBuilder::new().with_vk_map_path("../../../vk_map.bin".into()).build().await;
 
         tracing::info!("Rebuilt prover with vk map.");
 

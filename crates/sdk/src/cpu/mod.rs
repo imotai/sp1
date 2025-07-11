@@ -107,7 +107,7 @@ impl CpuProver {
     /// Creates a new [`CpuProver`], using the default [`LocalProverOpts`].
     #[must_use]
     pub async fn new() -> Self {
-        let prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
+        let prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
         let opts = LocalProverOpts::default();
         let prover = Arc::new(LocalProver::new(prover, opts));
 

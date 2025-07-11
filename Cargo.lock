@@ -4749,6 +4749,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-perf"
+version = "5.0.5"
+dependencies = [
+ "bincode",
+ "clap",
+ "p3-baby-bear",
+ "rand 0.8.5",
+ "serde_json",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-cuda",
+ "sp1-prover",
+ "sp1-sdk",
+ "sp1-stark",
+ "test-artifacts",
+ "time",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "sp1-primitives"
 version = "5.0.5"
 dependencies = [
