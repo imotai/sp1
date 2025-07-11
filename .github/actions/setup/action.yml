@@ -95,7 +95,8 @@ runs:
       shell: bash
       run: |
         rustup toolchain install nightly
-
+        rustup +nightly component add rustfmt
+        
     # install pkg-config and openssl
     - name: Install pkg-config and openssl
       shell: bash
