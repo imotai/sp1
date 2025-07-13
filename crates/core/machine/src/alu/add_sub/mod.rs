@@ -6,8 +6,8 @@ pub mod sub;
 // mod tests {
 //     #![allow(clippy::print_stdout)]
 
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use rand::{thread_rng, Rng};
 //     use sp1_core_executor::{
 //         events::{AluEvent, MemoryRecordEnum},

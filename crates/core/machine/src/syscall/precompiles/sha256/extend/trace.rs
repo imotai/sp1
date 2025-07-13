@@ -1,8 +1,8 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_field::PrimeField32;
-use p3_matrix::dense::RowMajorMatrix;
-use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
+use slop_algebra::PrimeField32;
+use slop_matrix::dense::RowMajorMatrix;
+use slop_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent, ShaExtendEvent},
     syscalls::SyscallCode,

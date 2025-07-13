@@ -16,10 +16,10 @@ use crate::{
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{
         ByteLookupEvent, ByteRecord, EllipticCurveDoubleEvent, FieldOperation, MemoryRecordEnum,

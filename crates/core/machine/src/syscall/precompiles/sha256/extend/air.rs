@@ -1,6 +1,6 @@
-use p3_air::{Air, BaseAir};
-use p3_field::AbstractField;
-use p3_matrix::Matrix;
+use slop_air::{Air, BaseAir};
+use slop_algebra::AbstractField;
+use slop_matrix::Matrix;
 use sp1_core_executor::ByteOpcode;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope},

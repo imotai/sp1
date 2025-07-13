@@ -9,9 +9,9 @@ use crate::{
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, Field, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::{AbstractField, Field, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Program,

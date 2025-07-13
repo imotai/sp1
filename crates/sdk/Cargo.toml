@@ -12,7 +12,6 @@ categories = { workspace = true }
 [dependencies]
 prost = { version = "0.13", optional = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 twirp = { package = "twirp-rs", version = "0.13.0-succinct", optional = true }
 async-trait = "0.1.81"
 reqwest-middleware = { version = "0.3.2", optional = true }
@@ -30,9 +29,7 @@ sp1-build = { workspace = true }
 futures = "0.3.30"
 bincode = "1.3.3"
 tokio = { workspace = true }
-p3-field = { workspace = true }
-p3-baby-bear = { workspace = true }
-p3-fri = { workspace = true }
+slop-algebra = { workspace = true }
 indicatif = "0.17.8"
 tracing = { workspace = true }
 hex = "0.4.3"
@@ -42,7 +39,6 @@ cfg-if = "1.0"
 strum = { workspace = true }
 strum_macros = { workspace = true }
 thiserror = "1.0.63"
-hashbrown = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-stark = { workspace = true }
 sp1-primitives = { workspace = true }
@@ -57,8 +53,6 @@ k256 = { version = "0.13.3", features = ["serde"] } # Signing
 eventsource-stream = { version = "0.2.0" }          # SSE Extenstion for reqwest
 
 [dev-dependencies]
-test-artifacts = { workspace = true }
-tokio-test = { version = "0.4" }
 
 [features]
 default = ["network"]

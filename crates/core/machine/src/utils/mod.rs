@@ -7,14 +7,14 @@ mod test;
 mod zerocheck_unit_test;
 
 pub use logger::*;
-use p3_field::{AbstractField, Field};
 pub use prove::*;
+use slop_algebra::{AbstractField, Field};
 pub use span::*;
 #[cfg(test)]
 pub use test::*;
 pub use zerocheck_unit_test::*;
 
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_primitives::consts::WORD_BYTE_SIZE;
 pub use sp1_primitives::consts::{
     bytes_to_words_le, bytes_to_words_le_vec, num_to_comma_separated, words_to_bytes_le,
@@ -148,4 +148,36 @@ pub fn zeroed_f_vec<F: Field>(len: usize) -> Vec<F> {
 
     let vec = vec![0u32; len];
     unsafe { std::mem::transmute::<Vec<u32>, Vec<F>>(vec) }
+}
+
+/// Reverse the bits of an integer within a specified bit length.
+///
+/// Takes an integer `x` and reverses its bits within the least significant `bit_len` bits.
+/// For example, reverse_bits_len(0b101, 3) = 0b101 (reversed) = 0b101.
+/// reverse_bits_len(0b001, 3) = 0b100.
+pub fn reverse_bits_len(x: usize, bit_len: usize) -> usize {
+    let mut result = 0;
+    let mut x = x;
+    for _ in 0..bit_len {
+        result = (result << 1) | (x & 1);
+        x >>= 1;
+    }
+    result
+}
+
+/// Reverse the order of elements in a slice using bit-reversed indices.
+///
+/// This function reorders the elements of a slice such that the element at index `i`
+/// is moved to index `reverse_bits_len(i, log2(len))`.
+pub fn reverse_slice_index_bits<T>(slice: &mut [T]) {
+    let n = slice.len();
+    assert!(n.is_power_of_two(), "Slice length must be a power of two");
+    let log_n = log2_strict_usize(n);
+
+    for i in 0..n {
+        let j = reverse_bits_len(i, log_n);
+        if i < j {
+            slice.swap(i, j);
+        }
+    }
 }

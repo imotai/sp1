@@ -8,10 +8,10 @@ use crate::{
     air::ProgramAirBuilder,
     utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
 };
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_field::PrimeField32;
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use slop_air::{Air, BaseAir, PairBuilder};
+use slop_algebra::PrimeField32;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
@@ -282,9 +282,9 @@ mod tests {
     use std::sync::Arc;
 
     use hashbrown::HashMap;
-    use p3_baby_bear::BabyBear;
+    use slop_baby_bear::BabyBear;
 
-    use p3_matrix::dense::RowMajorMatrix;
+    use slop_matrix::dense::RowMajorMatrix;
     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
     use sp1_stark::air::MachineAir;
 

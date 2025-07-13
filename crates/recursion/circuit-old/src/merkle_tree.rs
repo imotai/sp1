@@ -2,8 +2,8 @@ use std::fmt::Debug;
 
 use rayon::prelude::*;
 
-use p3_field::Field;
-use p3_util::{reverse_bits_len, reverse_slice_index_bits};
+use slop_algebra::Field;
+use slop_algebra::{reverse_bits_len, reverse_slice_index_bits};
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::utils::log2_strict_usize;
 use sp1_recursion_compiler::ir::Builder;
@@ -152,9 +152,9 @@ pub fn verify<C: CircuitConfig, HV: FieldHasherVariable<C>>(
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_util::log2_ceil_usize;
+    use slop_baby_bear::BabyBear;
+    use slop_algebra::AbstractField;
+    use slop_algebra::log2_ceil_usize;
     use rand::rngs::OsRng;
     use sp1_recursion_compiler::{
         config::InnerConfig,

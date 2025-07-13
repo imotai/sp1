@@ -1,7 +1,7 @@
 use std::borrow::BorrowMut;
 
-use p3_field::PrimeField32;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_algebra::PrimeField32;
+use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
 use sp1_stark::air::MachineAir;
 

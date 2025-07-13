@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use p3_baby_bear::BabyBear;
+use slop_baby_bear::BabyBear;
 use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_stark::{

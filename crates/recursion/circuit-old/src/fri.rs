@@ -1,12 +1,12 @@
 use itertools::{izip, Itertools};
-use p3_baby_bear::BabyBear;
-use p3_commit::PolynomialSpace;
-use p3_field::{AbstractField, TwoAdicField};
-use p3_fri::{
+use slop_baby_bear::BabyBear;
+use slop_commit::PolynomialSpace;
+use slop_algebra::{AbstractField, TwoAdicField};
+use slop_fri::{
     BatchOpening, CommitPhaseProofStep, FriConfig, FriProof, QueryProof, TwoAdicFriPcsProof,
 };
-use p3_symmetric::Hash;
-use p3_util::log2_strict_usize;
+use slop_symmetric::Hash;
+use slop_algebra::log2_strict_usize;
 use sp1_recursion_compiler::ir::{Builder, DslIr, Felt, IrIter, SymbolicExt};
 use sp1_recursion_core::DIGEST_SIZE;
 use sp1_stark::{InnerChallenge, InnerChallengeMmcs, InnerPcsProof, InnerVal};
@@ -495,11 +495,11 @@ mod tests {
         FriCommitPhaseProofStepVariable, FriProofVariable, FriQueryProofVariable,
         TwoAdicPcsMatsVariable,
     };
-    use p3_challenger::{CanObserve, CanSample, FieldChallenger};
-    use p3_commit::Pcs;
-    use p3_field::{extension::BinomialExtensionField, AbstractField};
-    use p3_fri::verifier;
-    use p3_matrix::dense::RowMajorMatrix;
+    use slop_challenger::{CanObserve, CanSample, FieldChallenger};
+    use slop_commit::Pcs;
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_fri::verifier;
+    use slop_matrix::dense::RowMajorMatrix;
     use rand::{
         rngs::{OsRng, StdRng},
         SeedableRng,
@@ -571,7 +571,7 @@ mod tests {
     /// Reference: https://github.com/Plonky3/Plonky3/blob/4809fa7bedd9ba8f6f5d3267b1592618e3776c57/merkle-tree/src/mmcs.rs#L421
     #[test]
     fn size_gaps() {
-        use p3_commit::Mmcs;
+        use slop_commit::Mmcs;
         let perm = inner_perm();
         let hash = InnerHash::new(perm.clone());
         let compress = InnerCompress::new(perm);

@@ -1,4 +1,4 @@
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 use sp1_curves::params::FieldParameters;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::air::SP1AirBuilder;

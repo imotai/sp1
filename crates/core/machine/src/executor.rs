@@ -6,7 +6,7 @@ use std::{
 };
 
 use futures::stream::{AbortHandle, AbortRegistration};
-use p3_field::PrimeField32;
+use slop_algebra::PrimeField32;
 use slop_futures::{handle::TaskHandle, queue::WorkerQueue};
 use sp1_core_executor::{
     subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport,

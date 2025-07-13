@@ -1,5 +1,5 @@
-use p3_field::{AbstractField, Field, PrimeField32};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractField, Field, PrimeField32};
 use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     Instruction, RTypeRecord,

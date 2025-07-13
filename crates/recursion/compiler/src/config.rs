@@ -1,6 +1,6 @@
-use p3_baby_bear::BabyBear;
-use p3_bn254_fr::Bn254Fr;
-use p3_field::extension::BinomialExtensionField;
+use slop_algebra::extension::BinomialExtensionField;
+use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
 
 use crate::{circuit::AsmConfig, prelude::Config};
 

@@ -91,8 +91,8 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                     ) -> Vec<(
                         String,
                         sp1_stark::ir::Shape<
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr,
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::ExtensionBuilder>::ExprEF,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
                         >,
                     )> {
                         vec![
@@ -116,7 +116,7 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                         // Token streams have spaces, so "AB :: Expr" not "AB::Expr"
                         let ab_pattern = format!("{first_param} ::");
                         let replacement =
-                            "< sp1_stark :: ir :: ConstraintCompiler as p3_air :: AirBuilder > ::";
+                            "< sp1_stark :: ir :: ConstraintCompiler as slop_air :: AirBuilder > ::";
                         let new_bounds_str = bounds_str.replace(&ab_pattern, replacement);
 
                         syn::parse_str::<syn::TypeParam>(&format!("{ident}: {new_bounds_str}"))
@@ -147,8 +147,8 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                     ) -> Vec<(
                         String,
                         sp1_stark::ir::Shape<
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr,
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::ExtensionBuilder>::ExprEF,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
                         >,
                     )> {
                         vec![

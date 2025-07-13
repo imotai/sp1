@@ -14,11 +14,11 @@ use crate::{
     zerocheck::RecursiveVerifierConstraintFolder,
     BabyBearFriConfigVariable, CircuitConfig,
 };
-use p3_air::Air;
-use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_air::Air;
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
+use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use slop_multilinear::{Evaluations, MleEval};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{

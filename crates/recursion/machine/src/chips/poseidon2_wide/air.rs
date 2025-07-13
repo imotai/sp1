@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_matrix::Matrix;
+use slop_air::{Air, BaseAir, PairBuilder};
+use slop_matrix::Matrix;
 use sp1_core_machine::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
 
 use sp1_core_machine::operations::poseidon2::{

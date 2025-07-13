@@ -4,9 +4,9 @@
 //!
 //! The idea is that 1 - input * inverse is exactly the boolean value indicating whether the input
 //! is 0.
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field};
 use serde::{Deserialize, Serialize};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use sp1_stark::air::SP1AirBuilder;

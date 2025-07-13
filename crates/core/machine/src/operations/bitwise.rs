@@ -6,7 +6,7 @@ use sp1_core_executor::{
 use sp1_primitives::consts::WORD_BYTE_SIZE;
 use sp1_stark::air::SP1AirBuilder;
 
-use p3_field::Field;
+use slop_algebra::Field;
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::air::SP1Operation;

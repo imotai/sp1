@@ -1,9 +1,9 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rayon::iter::{ParallelBridge, ParallelIterator};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
@@ -160,9 +160,9 @@ impl<F: PrimeField32> MachineAir<F> for AuipcChip {
 // mod tests {
 //     use std::borrow::BorrowMut;
 
-//     use p3_baby_bear::BabyBear;
-//     use p3_field::AbstractField;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_algebra::AbstractField;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{
 //         ExecutionError, ExecutionRecord, Executor, Instruction, Opcode, Program, Simple,
 //     };

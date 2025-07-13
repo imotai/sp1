@@ -1,10 +1,10 @@
 use crate::builder::SP1RecursionAirBuilder;
 use core::borrow::Borrow;
 use itertools::Itertools;
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_executor::{

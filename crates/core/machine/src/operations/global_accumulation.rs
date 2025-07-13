@@ -1,5 +1,5 @@
 use crate::operations::GlobalInteractionOperation;
-use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField32};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, SP1AirBuilder, SepticExtensionAirBuilder},

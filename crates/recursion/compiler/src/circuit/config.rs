@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use p3_field::{ExtensionField, PrimeField32, TwoAdicField};
+use slop_algebra::{ExtensionField, PrimeField32, TwoAdicField};
 
 use crate::{ir::Builder, prelude::Config};
 

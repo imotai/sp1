@@ -13,7 +13,7 @@ use generic_array::sequence::GenericSequence;
 use generic_array::{ArrayLength, GenericArray};
 use num::BigUint;
 
-use p3_field::Field;
+use slop_algebra::Field;
 
 use sp1_curves::utils::biguint_from_limbs;
 

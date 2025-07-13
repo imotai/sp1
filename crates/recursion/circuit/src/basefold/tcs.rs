@@ -141,7 +141,7 @@ mod tests {
 
         let mut index_bits = Vec::new();
         for index in indices {
-            let bits = (0..bit_len).map(|i| ((index >> i) & 1 == 1)).collect_vec();
+            let bits = (0..bit_len).map(|i| (index >> i) & 1 == 1).collect_vec();
             Witnessable::<AsmConfig<F, EF>>::write(&bits, &mut witness_stream);
             let bits = bits.read(&mut builder);
             index_bits.push(bits);

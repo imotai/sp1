@@ -1,12 +1,12 @@
 use std::{borrow::BorrowMut, mem::MaybeUninit};
 
-use p3_challenger::DuplexChallenger;
-use p3_symmetric::CryptographicPermutation;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_challenger::DuplexChallenger;
 use slop_merkle_tree::{OUTER_CHALLENGER_RATE, OUTER_DIGEST_SIZE};
 use slop_multilinear::Point;
+use slop_symmetric::CryptographicPermutation;
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -542,17 +542,18 @@ pub(crate) mod tests {
         hash::{FieldHasherVariable, BN254_DIGEST_SIZE},
         witness::OuterWitness,
     };
-    use p3_challenger::{CanObserve, CanSample, CanSampleBits, FieldChallenger};
-    use p3_symmetric::{CryptographicHasher, PseudoCompressionFunction};
     use slop_algebra::AbstractField;
     use slop_baby_bear::BabyBear;
     use slop_bn254::Bn254Fr;
-    use slop_challenger::{DuplexChallenger, MultiField32Challenger};
+    use slop_challenger::{
+        CanObserve, CanSample, CanSampleBits, DuplexChallenger, FieldChallenger,
+        MultiField32Challenger,
+    };
     use slop_jagged::JaggedConfig;
     use slop_merkle_tree::{
         my_bb_16_perm, outer_perm, DefaultMerkleTreeConfig, OuterPerm, Perm, Poseidon2Bn254Config,
     };
-    use slop_symmetric::Hash;
+    use slop_symmetric::{CryptographicHasher, Hash, PseudoCompressionFunction};
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig},
         config::OuterConfig,

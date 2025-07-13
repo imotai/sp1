@@ -11,10 +11,10 @@ use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{ByteRecord, GlobalInteractionEvent, MemoryInitializeFinalizeEvent},
     ExecutionRecord, Program,
@@ -448,7 +448,7 @@ where
 //         riscv::RiscvAir, syscall::precompiles::sha256::extend_tests::sha_extend_program,
 //         utils::setup_logger,
 //     };
-//     use p3_baby_bear::BabyBear;
+//     use slop_baby_bear::BabyBear;
 //     use sp1_core_executor::{Executor, Trace};
 //     use sp1_stark::InteractionKind;
 //     use sp1_stark::{

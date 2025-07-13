@@ -5,10 +5,10 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
@@ -231,8 +231,8 @@ where
 // mod tests {
 //     #![allow(clippy::print_stdout)]
 
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{events::AluEvent, ExecutionRecord, Opcode};
 //     use sp1_stark::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},

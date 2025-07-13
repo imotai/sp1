@@ -8,9 +8,9 @@ use crate::{
     RiscvAirId,
 };
 use hashbrown::HashMap;
-use p3_field::{AbstractExtensionField, Field, PrimeField32};
-use p3_maybe_rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, Field, PrimeField32};
+use slop_maybe_rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use sp1_stark::{
     air::{MachineAir, MachineProgram},
     septic_curve::{SepticCurve, SepticCurveComplete},

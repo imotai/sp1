@@ -10,7 +10,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedSender};
 use crate::{executor::MachineExecutorBuilder, riscv::RiscvAir};
 use thiserror::Error;
 
-use p3_field::PrimeField32;
+use slop_algebra::PrimeField32;
 use sp1_stark::{
     air::PublicValues,
     prover::{MachineProverBuilder, MachineProverComponents, MachineProvingKey, ProverSemaphore},

@@ -3,8 +3,8 @@
 mod fix_last_variable;
 mod sum_as_poly;
 
-use p3_uni_stark::SymbolicAirBuilder;
 use slop_air::Air;
+use slop_uni_stark::SymbolicAirBuilder;
 
 use std::marker::PhantomData;
 

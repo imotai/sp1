@@ -5,9 +5,9 @@ use crate::{
 
 use super::{KeccakPermuteControlChip, STATE_NUM_WORDS};
 use core::borrow::Borrow;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,

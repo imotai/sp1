@@ -2,9 +2,9 @@ use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
     air::SP1CoreAirBuilder,
 };
-use p3_air::{Air, AirBuilder};
-use p3_field::AbstractField;
-use p3_matrix::Matrix;
+use slop_air::{Air, AirBuilder};
+use slop_algebra::AbstractField;
+use slop_matrix::Matrix;
 use sp1_core_executor::{Opcode, DEFAULT_CLK_INC, DEFAULT_PC_INC};
 use sp1_stark::air::BaseAirBuilder;
 use std::borrow::Borrow;

@@ -1,7 +1,7 @@
-use p3_baby_bear::BabyBear;
-use p3_field::{
+use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, AbstractField, Field, PrimeField32,
 };
+use slop_baby_bear::BabyBear;
 
 #[no_mangle]
 pub extern "C" fn babybearextinv(a: u32, b: u32, c: u32, d: u32, i: u32) -> u32 {

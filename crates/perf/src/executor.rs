@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use clap::{command, Parser};
-use p3_baby_bear::BabyBear;
+use slop_baby_bear::BabyBear;
 use sp1_core_executor::{Executor, ExecutorMode, Program, Trace};
 use sp1_core_machine::shape::CoreShapeConfig;
 use sp1_sdk::{self, SP1Stdin};

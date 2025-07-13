@@ -1,8 +1,8 @@
 use std::iter::once;
 
 use itertools::Itertools;
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
 use sp1_core_executor::ByteOpcode;
 use sp1_stark::{
     air::{AirInteraction, BaseAirBuilder, ByteAirBuilder, InteractionScope},

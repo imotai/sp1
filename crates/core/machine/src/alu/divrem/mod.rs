@@ -65,9 +65,9 @@ use core::{
     mem::size_of,
 };
 
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     get_msb, get_quotient_and_remainder, is_signed_operation, ExecutionRecord, Opcode, Program,
@@ -896,8 +896,8 @@ where
 //         riscv::RiscvAir,
 //         utils::{run_malicious_test, run_test_machine, setup_test_machine},
 //     };
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use rand::{thread_rng, Rng};
 //     use sp1_core_executor::{
 //         events::{AluEvent, MemoryRecordEnum},

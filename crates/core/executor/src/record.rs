@@ -1,8 +1,8 @@
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, PrimeField};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, PrimeField};
 use sp1_stark::{
     air::{
         AirInteraction, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,

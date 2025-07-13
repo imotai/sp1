@@ -33,9 +33,9 @@ pub fn sha_extend(w: &mut [u32]) {
 // pub mod extend_tests {
 //     #![allow(clippy::print_stdout)]
 
-//     use p3_baby_bear::BabyBear;
+//     use slop_baby_bear::BabyBear;
 
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{
 //         events::AluEvent, syscalls::SyscallCode, ExecutionRecord, Instruction, Opcode, Program,
 //     };

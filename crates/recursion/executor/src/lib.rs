@@ -22,17 +22,19 @@ use instruction::{
 use itertools::Itertools;
 use memory::*;
 pub use opcode::*;
-use p3_field::{AbstractExtensionField, AbstractField, ExtensionField, PrimeField32, PrimeField64};
-use p3_maybe_rayon::prelude::*;
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-use p3_symmetric::{CryptographicPermutation, Permutation};
-use p3_util::reverse_bits_len;
 pub use program::*;
 pub use public_values::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS};
 pub use record::*;
 use serde::{Deserialize, Serialize};
-use sp1_core_machine::operations::poseidon2::air::{
-    external_linear_layer_mut, internal_linear_layer_mut,
+use slop_algebra::{
+    AbstractExtensionField, AbstractField, ExtensionField, PrimeField32, PrimeField64,
+};
+use slop_maybe_rayon::prelude::*;
+use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use slop_symmetric::{CryptographicPermutation, Permutation};
+use sp1_core_machine::{
+    operations::poseidon2::air::{external_linear_layer_mut, internal_linear_layer_mut},
+    utils::reverse_bits_len,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{septic_curve::SepticCurve, septic_extension::SepticExtension, MachineRecord};

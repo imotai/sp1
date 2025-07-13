@@ -5,7 +5,7 @@ pub use air::*;
 // #[cfg(test)]
 // mod tests {
 //     use num::{BigUint, Integer, One};
-//     use p3_baby_bear::BabyBear;
+//     use slop_baby_bear::BabyBear;
 //     use rand::Rng;
 //     use sp1_core_executor::{
 //         events::{

@@ -10,8 +10,8 @@ pub use config::*;
 mod tests {
     use std::sync::Arc;
 
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_field::{extension::BinomialExtensionField, AbstractField};
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 
     // use sp1_core_machine::utils::run_test_machine;
     // use sp1_recursion_core::{machine::RecursionAir, Runtime, RuntimeError};
