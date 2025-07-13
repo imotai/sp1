@@ -128,7 +128,7 @@ impl BasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
 
 impl DefaultBasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
     fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
-        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 100);
+        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 84);
         let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
         BasefoldVerifier::<Self> { fri_config, tcs }
     }
@@ -170,7 +170,7 @@ impl BasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
 
 impl DefaultBasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
     fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
-        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 100);
+        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 84);
         let tcs = MerkleTreeTcs::<Poseidon2Bn254Config>::default();
         BasefoldVerifier::<Self> { fri_config, tcs }
     }
