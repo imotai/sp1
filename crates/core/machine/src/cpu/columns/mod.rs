@@ -2,7 +2,7 @@ mod instruction;
 
 pub use instruction::*;
 
-use p3_util::indices_arr;
+use crate::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
 use std::mem::{size_of, transmute};
 

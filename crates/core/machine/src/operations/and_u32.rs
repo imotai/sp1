@@ -1,4 +1,4 @@
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
@@ -6,7 +6,7 @@ use sp1_core_executor::{
 use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;
 
-use p3_field::Field;
+use slop_algebra::Field;
 use sp1_derive::AlignedBorrow;
 
 use crate::operations::U32toU8Operation;

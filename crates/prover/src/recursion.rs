@@ -196,6 +196,23 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             .expect("arity not supported");
 
         let wrap_input = dummy_compose_input(&shrink_prover, &wrap_shape, 1, merkle_tree.height);
+
+        tracing::warn!(
+            "Shrink prover num queries: {}",
+            shrink_prover.verifier().fri_config().num_queries
+        );
+
+        tracing::warn!(
+            "Number of wrap queries: {:?}",
+            wrap_input.compress_val.vks_and_proofs[0]
+                .1
+                .evaluation_proof
+                .stacked_pcs_proof
+                .pcs_proof
+                .component_polynomials_query_openings[0]
+                .values
+                .shape()
+        );
         let wrap_program =
             wrap_program_from_input(&recursive_shrink_verifier, vk_verification, &wrap_input);
         let wrap_program = Arc::new(wrap_program);

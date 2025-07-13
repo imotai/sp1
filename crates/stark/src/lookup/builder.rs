@@ -1,7 +1,7 @@
-use p3_uni_stark::{Entry, SymbolicExpression, SymbolicVariable};
 use slop_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder, PairCol, VirtualPairCol};
 use slop_algebra::Field;
 use slop_matrix::dense::RowMajorMatrix;
+use slop_uni_stark::{Entry, SymbolicExpression, SymbolicVariable};
 
 use crate::{
     air::{AirInteraction, InteractionScope, MessageBuilder},

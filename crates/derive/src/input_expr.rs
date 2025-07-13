@@ -112,7 +112,7 @@ pub fn input_expr_derive(input: TokenStream) -> TokenStream {
                 if has_into_expr {
                     type_param_replacements.push((
                         type_param.ident.clone(),
-                        quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr },
+                        quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr },
                     ));
                 } else {
                     panic!(
@@ -137,8 +137,8 @@ pub fn input_expr_derive(input: TokenStream) -> TokenStream {
                     let (input_expr, output_expr) = if let Type::Array(_array_type) = &field.ty {
                         // For arrays, use core::array::from_fn
                         (
-                            quote! { core::array::from_fn(|_| <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::input_arg(ctx)) },
-                            quote! { core::array::from_fn(|_| <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::output_arg(ctx)) }
+                            quote! { core::array::from_fn(|_| <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::input_arg(ctx)) },
+                            quote! { core::array::from_fn(|_| <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::output_arg(ctx)) }
                         )
                     } else if let Type::Path(type_path) = &field.ty {
                         // Check if the field type is AB::Expr or AB::Var
@@ -147,25 +147,25 @@ pub fn input_expr_derive(input: TokenStream) -> TokenStream {
                             let second_seg = &type_path.path.segments[1];
                             if first_seg.ident == *first_param_name && (second_seg.ident == "Expr" || second_seg.ident == "Var") {
                                 (
-                                    quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::input_arg(ctx) },
-                                    quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::output_arg(ctx) }
+                                    quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::input_arg(ctx) },
+                                    quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::output_arg(ctx) }
                                 )
                             } else {
                                 (
-                                    quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::input_from_struct(ctx) },
-                                    quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::output_from_struct(ctx) }
+                                    quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::input_from_struct(ctx) },
+                                    quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::output_from_struct(ctx) }
                                 )
                             }
                         } else {
                             (
-                                quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::input_from_struct(ctx) },
-                                quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::output_from_struct(ctx) }
+                                quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::input_from_struct(ctx) },
+                                quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::output_from_struct(ctx) }
                             )
                         }
                     } else {
                         (
-                            quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::input_from_struct(ctx) },
-                            quote! { <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr::output_from_struct(ctx) }
+                            quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::input_from_struct(ctx) },
+                            quote! { <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr::output_from_struct(ctx) }
                         )
                     };
 

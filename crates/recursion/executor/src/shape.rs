@@ -3,8 +3,8 @@ use std::{
     marker::PhantomData,
 };
 
-use p3_field::{Field, PrimeField32};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{Field, PrimeField32};
 use sp1_stark::{air::MachineAir, ChipDimensions};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]

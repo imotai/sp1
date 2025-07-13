@@ -1,10 +1,10 @@
 use crate::builder::SP1RecursionAirBuilder;
 use core::borrow::Borrow;
 use itertools::Itertools;
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
 use sp1_recursion_executor::{
@@ -29,7 +29,6 @@ pub struct PrefixSumChecksChip;
 pub struct PrefixSumChecksCols<T: Copy> {
     pub x1: T,
     pub x2: Block<T>,
-    pub prod: Block<T>,
     pub acc: Block<T>,
     pub new_acc: Block<T>,
     pub felt_acc: T,
@@ -182,7 +181,6 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
                     let cols: &mut PrefixSumChecksCols<BabyBear> = row.as_mut_slice().borrow_mut();
                     cols.x1 = bb_event.x1;
                     cols.x2 = bb_event.x2;
-                    cols.prod = bb_event.prod;
                     cols.acc = bb_event.acc;
                     cols.new_acc = bb_event.new_acc;
                     cols.felt_acc = bb_event.field_acc;
@@ -228,14 +226,9 @@ where
         let prep_local: &PrefixSumChecksPreprocessedCols<_> = (*prep_local).borrow();
 
         let x2 = local.x2.as_extension::<AB>();
-        let prod = local.prod.as_extension::<AB>();
+        let prod = BinomialExtension::from_base(local.x1.into()) * x2.clone();
         let one: BinomialExtension<AB::Expr> = BinomialExtension::from_base(AB::Expr::one());
         let two = AB::Expr::from_canonical_u32(2);
-
-        builder.assert_ext_eq(
-            BinomialExtension::from_base(local.x1.into()) * x2.clone(),
-            local.prod.as_extension::<AB>(),
-        );
 
         let sum_x_y = BinomialExtension::from_base(local.x1.into()) + x2;
 

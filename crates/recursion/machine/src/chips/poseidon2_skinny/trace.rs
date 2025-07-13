@@ -7,9 +7,9 @@ use crate::chips::{
     },
 };
 use itertools::Itertools;
-use p3_matrix::dense::RowMajorMatrix;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_primitives::RC_16_30_U32;
 use sp1_recursion_executor::{
@@ -303,7 +303,7 @@ mod tests {
         },
         test_fixtures,
     };
-    use p3_matrix::{dense::RowMajorMatrix, Matrix};
+    use slop_matrix::{dense::RowMajorMatrix, Matrix};
     use sp1_primitives::RC_16_30_U32;
     use sp1_stark::air::MachineAir;
     use std::{array, borrow::Borrow};

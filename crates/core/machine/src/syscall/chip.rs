@@ -1,10 +1,10 @@
 use crate::{air::WordAirBuilder, utils::next_multiple_of_32};
 use core::fmt;
 use itertools::Itertools;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{ByteRecord, GlobalInteractionEvent, SyscallEvent},
     ExecutionRecord, Program,

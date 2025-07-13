@@ -9,7 +9,7 @@ cfg_if::cfg_if! {
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "zkvm", feature = "verify"))] {
-        use p3_field::PrimeField64;
+        use slop_algebra::PrimeField64;
     }
 }
 

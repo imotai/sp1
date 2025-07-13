@@ -5,9 +5,9 @@ pub mod store;
 // mod tests {
 //     use std::borrow::BorrowMut;
 
-//     use p3_baby_bear::BabyBear;
-//     use p3_field::AbstractField;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_algebra::AbstractField;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{
 //         events::MemoryRecordEnum, ExecutionRecord, Instruction, Opcode, Program,
 //     };

@@ -1,7 +1,7 @@
-use p3_air::BaseAir;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_air::BaseAir;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_matrix::dense::RowMajorMatrix;
 use slop_maybe_rayon::prelude::*;
 use sp1_core_machine::{
     operations::poseidon2::{trace::populate_perm, WIDTH},
@@ -153,7 +153,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
 #[cfg(test)]
 mod tests {
     use crate::chips::{mem::MemoryAccessCols, poseidon2_wide::Poseidon2WideChip, test_fixtures};
-    use p3_matrix::{dense::RowMajorMatrix, Matrix};
+    use slop_matrix::{dense::RowMajorMatrix, Matrix};
     use sp1_core_machine::operations::poseidon2::{trace::populate_perm, WIDTH};
     use sp1_stark::air::MachineAir;
 

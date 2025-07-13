@@ -81,7 +81,7 @@ pub fn sp1_operation_builder_derive(input: TokenStream) -> TokenStream {
     let struct_type = if ast.generics.params.is_empty() {
         quote! { #name }
     } else {
-        quote! { #name<<sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::F> }
+        quote! { #name<<sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::F> }
     };
 
     // Generate the implementation
@@ -97,7 +97,7 @@ pub fn sp1_operation_builder_derive(input: TokenStream) -> TokenStream {
             ) -> <#struct_type as crate::air::SP1Operation<
                 sp1_stark::ir::ConstraintCompiler
             >>::Output{
-                type F = <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::F;
+                type F = <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::F;
                 type O = <#struct_type as crate::air::SP1Operation<
                     sp1_stark::ir::ConstraintCompiler,
                 >>::Output;

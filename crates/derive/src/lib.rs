@@ -129,19 +129,19 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
             let width_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as p3_air::BaseAir<F>>::width(x)
+                    #name::#variant_name(x) => <#field_ty as slop_air::BaseAir<F>>::width(x)
                 }
             });
 
             let base_air = quote! {
-                impl #impl_generics p3_air::BaseAir<F> for #name #ty_generics #where_clause {
+                impl #impl_generics slop_air::BaseAir<F> for #name #ty_generics #where_clause {
                     fn width(&self) -> usize {
                         match self {
                             #(#width_arms,)*
                         }
                     }
 
-                    fn preprocessed_trace(&self) -> Option<p3_matrix::dense::RowMajorMatrix<F>> {
+                    fn preprocessed_trace(&self) -> Option<slop_matrix::dense::RowMajorMatrix<F>> {
                         unreachable!("A machine air should use the preprocessed trace from the `MachineAir` trait")
                     }
                 }
@@ -231,7 +231,7 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                     fn generate_preprocessed_trace(
                         &self,
                         program: &#program_path,
-                    ) -> Option<p3_matrix::dense::RowMajorMatrix<F>> {
+                    ) -> Option<slop_matrix::dense::RowMajorMatrix<F>> {
                         match self {
                             #(#generate_preprocessed_trace_arms,)*
                         }
@@ -241,7 +241,7 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                         &self,
                         input: &#execution_record_path,
                         output: &mut #execution_record_path,
-                    ) -> p3_matrix::dense::RowMajorMatrix<F> {
+                    ) -> slop_matrix::dense::RowMajorMatrix<F> {
                         match self {
                             #(#generate_trace_arms,)*
                         }
@@ -286,14 +286,16 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
             let eval_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as p3_air::Air<AB>>::eval(x, builder)
+                    #name::#variant_name(x) => <#field_ty as slop_air::Air<AB>>::eval(x, builder)
                 }
             });
 
             // Attach an extra generic AB : crate::air::SP1AirBuilder to the generics of the enum
             let generics = &ast.generics;
             let mut new_generics = generics.clone();
-            new_generics.params.push(syn::parse_quote! { AB: p3_air::PairBuilder + #builder_path });
+            new_generics
+                .params
+                .push(syn::parse_quote! { AB: slop_air::PairBuilder + #builder_path });
 
             let (air_impl_generics, _, _) = new_generics.split_for_impl();
 
@@ -305,7 +307,7 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
             }
 
             let air = quote! {
-                impl #air_impl_generics p3_air::Air<AB> for #name #ty_generics #where_clause {
+                impl #air_impl_generics slop_air::Air<AB> for #name #ty_generics #where_clause {
                     fn eval(&self, builder: &mut AB) {
                         match self {
                             #(#eval_arms,)*

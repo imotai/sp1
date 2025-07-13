@@ -67,7 +67,7 @@ pub fn into_shape_derive(input: TokenStream) -> TokenStream {
 
     // Generate the implementation
     let expanded = quote! {
-        impl<F: p3_field::Field, EF: p3_field::ExtensionField<F>> Into<sp1_stark::ir::Shape<sp1_stark::ir::ExprRef<F>, sp1_stark::ir::ExprExtRef<EF>>>
+        impl<F: slop_algebra::Field, EF: slop_algebra::ExtensionField<F>> Into<sp1_stark::ir::Shape<sp1_stark::ir::ExprRef<F>, sp1_stark::ir::ExprExtRef<EF>>>
             for #name<sp1_stark::ir::ExprRef<F>>
         {
             fn into(self) -> sp1_stark::ir::Shape<sp1_stark::ir::ExprRef<F>, sp1_stark::ir::ExprExtRef<EF>> {

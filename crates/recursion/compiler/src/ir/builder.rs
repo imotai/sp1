@@ -1,6 +1,6 @@
 use std::{cell::UnsafeCell, ptr};
 
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 use sp1_primitives::types::RecursionProgramType;
 
 use super::{

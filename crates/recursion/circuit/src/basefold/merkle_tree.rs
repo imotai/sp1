@@ -1,12 +1,11 @@
 use crate::{hash::FieldHasher, CircuitConfig, FieldHasherVariable};
-use p3_util::{reverse_bits_len, reverse_slice_index_bits};
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSlice,
 };
 use serde::{Deserialize, Serialize};
 use slop_algebra::Field;
-use sp1_core_machine::utils::log2_strict_usize;
+use sp1_core_machine::utils::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits};
 use sp1_recursion_compiler::ir::Builder;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

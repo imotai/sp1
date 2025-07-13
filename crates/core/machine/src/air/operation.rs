@@ -1,8 +1,8 @@
 use std::ops::{Add, Mul, MulAssign, Sub};
 
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, ExtensionField, Field};
-use p3_uni_stark::SymbolicAirBuilder;
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, ExtensionField, Field};
+use slop_uni_stark::SymbolicAirBuilder;
 use sp1_stark::{
     air::SP1AirBuilder, ConstraintSumcheckFolder, GenericVerifierConstraintFolder,
     InteractionBuilder,

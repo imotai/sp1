@@ -1,4 +1,4 @@
-use p3_field::{AbstractExtensionField, AbstractField};
+use slop_algebra::{AbstractExtensionField, AbstractField};
 use std::ops::{Add, Mul, MulAssign};
 
 use super::{Array, Builder, Config, DslIr, Ext, Felt, SymbolicExt, Usize, Var, Variable};

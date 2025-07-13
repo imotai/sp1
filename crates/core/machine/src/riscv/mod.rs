@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_field::PrimeField32;
+use slop_algebra::PrimeField32;
 use sp1_core_executor::{ExecutionRecord, RiscvAirId};
 use sp1_curves::weierstrass::{bls12_381::Bls12381BaseField, bn254::Bn254BaseField};
 use sp1_stark::{
@@ -915,13 +915,14 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
 #[cfg(test)]
 pub mod tests {
 
-    use p3_air::BaseAir;
-    use p3_baby_bear::BabyBear;
-    use sp1_core_executor::{add_halt, Instruction, Opcode, Program};
+    use slop_air::BaseAir;
+    use slop_baby_bear::BabyBear;
+    use sp1_core_executor::{Instruction, Opcode, Program};
 
     use crate::{programs::tests::*, riscv::RiscvAir, utils::setup_logger};
+    use sp1_core_executor::add_halt;
     use sp1_stark::InteractionKind;
-    //     use p3_baby_bear::BabyBear;
+    //     use slop_baby_bear::BabyBear;
     //     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
     //     use sp1_stark::{
     //         baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,

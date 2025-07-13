@@ -2,9 +2,9 @@
 //!
 //! This is bijective (i.e., returns 1 if and only if the input is 0). It is also worth noting that
 //! this operation doesn't do a range check.
-use p3_air::AirBuilder;
-use p3_field::Field;
 use serde::{Deserialize, Serialize};
+use slop_air::AirBuilder;
+use slop_algebra::Field;
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{air::SP1AirBuilder, Word};

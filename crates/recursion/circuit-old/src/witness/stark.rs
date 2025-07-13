@@ -1,8 +1,8 @@
 use std::borrow::Borrow;
 
-use p3_baby_bear::BabyBear;
-use p3_field::{AbstractExtensionField, AbstractField};
-use p3_fri::{CommitPhaseProofStep, QueryProof};
+use slop_baby_bear::BabyBear;
+use slop_algebra::{AbstractExtensionField, AbstractField};
+use slop_fri::{CommitPhaseProofStep, QueryProof};
 
 use sp1_recursion_compiler::ir::{Builder, Config, Ext, Felt};
 use sp1_recursion_core::air::Block;

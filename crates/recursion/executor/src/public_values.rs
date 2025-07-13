@@ -1,8 +1,8 @@
 use core::fmt::Debug;
-use p3_challenger::DuplexChallenger;
-use p3_field::PrimeField32;
-use p3_symmetric::CryptographicPermutation;
 use serde::{Deserialize, Serialize};
+use slop_algebra::PrimeField32;
+use slop_challenger::DuplexChallenger;
+use slop_symmetric::CryptographicPermutation;
 use sp1_core_machine::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};

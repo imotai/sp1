@@ -1,6 +1,6 @@
 use core::ops::{Add, Sub};
 
-use p3_field::Field;
+use slop_algebra::Field;
 
 use super::{Builder, Config, DslIr, MemIndex, MemVariable, SymbolicVar, Usize, Var, Variable};
 

@@ -31,11 +31,11 @@ impl<Expr, ExprExt> Shape<Expr, ExprExt> {
     pub fn to_lean_type(&self) -> String {
         match self {
             Shape::Unit => "Unit".to_string(),
-            Shape::Expr(_) => "BabyBear".to_string(),
+            Shape::Expr(_) => "(Fin BB)".to_string(),
             Shape::ExprExt(_) => todo!("extension field not implemented yet"),
-            Shape::Word(_) => "Word BabyBear".to_string(),
+            Shape::Word(_) => "(Word (Fin BB))".to_string(),
             Shape::Array(elems) => {
-                format!("Vector {} {}", elems.first().unwrap().to_lean_type(), elems.len())
+                format!("(Vector {} {})", elems.first().unwrap().to_lean_type(), elems.len())
             }
             Shape::Struct(name, _) => name.clone(),
         }

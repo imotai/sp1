@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write};
 
-use p3_field::{AbstractExtensionField, AbstractField, PrimeField};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, AbstractField, PrimeField};
 use sp1_recursion_compiler::ir::{Config, Witness};
 
 /// A witness that can be used to initialize values for witness generation inside Gnark.

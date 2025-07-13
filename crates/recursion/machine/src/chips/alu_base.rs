@@ -1,9 +1,9 @@
 use crate::builder::SP1RecursionAirBuilder;
 use core::borrow::Borrow;
-use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, Field, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_derive::AlignedBorrow;

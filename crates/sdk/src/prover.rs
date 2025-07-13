@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::Result;
 use itertools::Itertools;
-use p3_field::PrimeField32;
+use slop_algebra::PrimeField32;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::types::Elf;
 use sp1_prover::{

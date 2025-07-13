@@ -6,11 +6,11 @@ use std::{
 // use itertools::Itertools;
 
 use itertools::Itertools;
-use p3_symmetric::Permutation;
 use slop_algebra::{AbstractField, Field};
 use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use slop_merkle_tree::{my_bb_16_perm, outer_perm, OUTER_CHALLENGER_STATE_WIDTH};
+use slop_symmetric::Permutation;
 use sp1_recursion_compiler::ir::{Builder, Config, DslIr, Felt, Var};
 use sp1_recursion_executor::{DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
 use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};

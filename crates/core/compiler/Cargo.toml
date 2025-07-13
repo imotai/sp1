@@ -9,26 +9,16 @@ categories.workspace = true
 include.workspace = true
 
 [dependencies]
-slop-algebra = { workspace = true }
 slop-air = { workspace = true }
 slop-baby-bear = { workspace = true }
-slop-matrix = { workspace = true }
-sp1-primitives = { workspace = true }
 
 sp1-core-machine = { workspace = true }
 sp1-stark = { workspace = true }
 
-strum = { workspace = true }
-strum_macros = { workspace = true }
-
 # dependencies for the binary
 
 clap = { version = "4.5.7", features = ["derive", "env"] }
-
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-
-itertools = { workspace = true }
 
 [lints]
 workspace = true

@@ -10,8 +10,8 @@ use sp1_core_executor::{
 };
 use sp1_stark::{air::SP1AirBuilder, Word};
 
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{
     u64_to_u16_limbs, BYTE_SIZE, LONG_WORD_BYTE_SIZE, WORD_BYTE_SIZE, WORD_SIZE,

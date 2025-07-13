@@ -5,7 +5,7 @@ use instruction::{
     FieldEltType, HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr, PrintInstr,
 };
 use itertools::Itertools;
-use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField64, TwoAdicField};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField64, TwoAdicField};
 #[cfg(feature = "debug")]
 use sp1_core_machine::utils::SpanBuilder;
 use sp1_recursion_executor::{
@@ -1130,14 +1130,14 @@ mod tests {
 
     use std::{collections::VecDeque, io::BufRead, iter::zip, sync::Arc};
 
-    use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use p3_field::extension::BinomialExtensionField;
-    use p3_symmetric::Permutation;
     use rand::{rngs::StdRng, Rng, SeedableRng};
+    use slop_algebra::extension::BinomialExtensionField;
+    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use slop_merkle_tree::my_bb_16_perm;
+    use slop_symmetric::Permutation;
 
     // use sp1_core_machine::utils::{run_test_machine};
-    use p3_field::PrimeField32;
+    use slop_algebra::PrimeField32;
     use sp1_core_machine::utils::setup_logger;
     use sp1_recursion_executor::Runtime;
 

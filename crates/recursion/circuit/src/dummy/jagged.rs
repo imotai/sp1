@@ -292,7 +292,8 @@ mod tests {
         .max(1);
 
         let dummy_proof = dummy_pcs_proof(
-            100,
+            // Magic constant is the number of queries in the FRI phase.
+            84,
             &[prep_multiple, main_multiple],
             log_stacking_height as usize,
             log_blowup,

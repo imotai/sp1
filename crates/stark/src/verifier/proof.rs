@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use slop_jagged::JaggedPcsProof;
@@ -57,7 +57,7 @@ pub struct ShardProof<C: MachineConfig> {
 pub struct ShardOpenedValues<F, EF> {
     /// For each chip with respect to the canonical ordering, the values of the chip at the random
     /// point.
-    pub chips: Vec<ChipOpenedValues<F, EF>>,
+    pub chips: BTreeMap<String, ChipOpenedValues<F, EF>>,
 }
 
 /// The opening values for a given chip at a random point.

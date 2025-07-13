@@ -3,7 +3,7 @@ mod columns;
 mod trace;
 
 pub use columns::*;
-use p3_air::BaseAir;
+use slop_air::BaseAir;
 
 #[derive(Default)]
 pub struct JalrChip;
@@ -18,9 +18,9 @@ impl<F> BaseAir<F> for JalrChip {
 // mod tests {
 //     use std::borrow::BorrowMut;
 
-//     use p3_baby_bear::BabyBear;
-//     use p3_field::AbstractField;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_algebra::AbstractField;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
 //     use sp1_stark::{
 //         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,

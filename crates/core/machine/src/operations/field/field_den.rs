@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
 use num::BigUint;
-use p3_air::AirBuilder;
-use p3_field::PrimeField32;
+use slop_air::AirBuilder;
+use slop_algebra::PrimeField32;
 use sp1_core_executor::events::ByteRecord;
 use sp1_curves::params::{FieldParameters, Limbs};
 use sp1_derive::AlignedBorrow;
@@ -167,8 +167,8 @@ where
 //     #![allow(clippy::print_stdout)]
 
 //     use num::BigUint;
-//     use p3_air::BaseAir;
-//     use p3_field::{Field, PrimeField32};
+//     use slop_air::BaseAir;
+//     use slop_algebra::{Field, PrimeField32};
 //     use sp1_core_executor::{ExecutionRecord, Program};
 //     use sp1_curves::params::FieldParameters;
 //     use sp1_stark::{
@@ -186,10 +186,10 @@ where
 //         mem::size_of,
 //     };
 //     use num::bigint::RandBigInt;
-//     use p3_air::Air;
-//     use p3_baby_bear::BabyBear;
-//     use p3_field::AbstractField;
-//     use p3_matrix::{dense::RowMajorMatrix, Matrix};
+//     use slop_air::Air;
+//     use slop_baby_bear::BabyBear;
+//     use slop_algebra::AbstractField;
+//     use slop_matrix::{dense::RowMajorMatrix, Matrix};
 //     use rand::thread_rng;
 //     use sp1_curves::edwards::ed25519::Ed25519BaseField;
 //     use sp1_derive::AlignedBorrow;

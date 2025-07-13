@@ -461,9 +461,9 @@ mod tests {
     use super::*;
     use futures::prelude::*;
 
-    use p3_challenger::CanObserve;
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
+    use slop_challenger::CanObserve;
 
     use slop_commit::Rounds;
 

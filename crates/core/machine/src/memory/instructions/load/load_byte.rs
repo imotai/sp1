@@ -1,5 +1,5 @@
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_matrix::Matrix;
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::BaseAirBuilder, Word};
 use std::{
@@ -16,9 +16,9 @@ use crate::{
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_field::{AbstractField, Field, PrimeField32};
-use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
+use slop_algebra::{AbstractField, Field, PrimeField32};
+use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,

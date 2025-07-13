@@ -9,7 +9,7 @@ use std::{
     ops::{AddAssign, DivAssign, MulAssign, SubAssign},
 };
 
-use p3_field::{AbstractField, ExtensionField, Field};
+use slop_algebra::{AbstractField, ExtensionField, Field};
 
 use crate::ir::ExtHandle;
 

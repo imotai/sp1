@@ -4,8 +4,8 @@ use std::borrow::Cow;
 
 use crate::prelude::*;
 use itertools::Itertools;
-use p3_baby_bear::BabyBear;
-use p3_field::{AbstractExtensionField, AbstractField};
+use slop_algebra::{AbstractExtensionField, AbstractField};
+use slop_baby_bear::BabyBear;
 use sp1_recursion_executor::{RecursionPublicValues, D, PERMUTATION_WIDTH};
 use sp1_stark::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,

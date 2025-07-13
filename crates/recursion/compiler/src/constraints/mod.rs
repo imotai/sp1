@@ -1,8 +1,8 @@
 pub mod opcodes;
 
 use core::fmt::Debug;
-use p3_field::{AbstractExtensionField, PrimeField};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, PrimeField};
 use std::marker::PhantomData;
 
 use self::opcodes::ConstraintOpcode;

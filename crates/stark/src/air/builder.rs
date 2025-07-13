@@ -5,12 +5,12 @@ use std::{
 };
 
 use itertools::Itertools;
-use p3_uni_stark::{
-    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, VerifierConstraintFolder,
-};
 use serde::{Deserialize, Serialize};
 use slop_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder, PermutationAirBuilder};
 use slop_algebra::{AbstractField, Field};
+use slop_uni_stark::{
+    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, VerifierConstraintFolder,
+};
 use strum_macros::{Display, EnumIter};
 
 use super::{interaction::AirInteraction, BinomialExtension};
@@ -435,4 +435,4 @@ impl<F: Field> EmptyMessageBuilder for SymbolicAirBuilder<F> {}
 
 #[cfg(debug_assertions)]
 #[cfg(not(doctest))]
-impl<F: Field> EmptyMessageBuilder for p3_uni_stark::DebugConstraintBuilder<'_, F> {}
+impl<F: Field> EmptyMessageBuilder for slop_uni_stark::DebugConstraintBuilder<'_, F> {}

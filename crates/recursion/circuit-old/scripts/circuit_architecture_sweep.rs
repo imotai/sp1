@@ -1,6 +1,6 @@
 //! Sweeps end-to-end prover performance across a wide range of parameters for the Plonk circuit builder.
 
-use p3_baby_bear::BabyBear;
+use slop_baby_bear::BabyBear;
 
 use sp1_core::{stark::StarkMachine, utils::log2_strict_usize};
 use sp1_recursion_circuit::build_wrap_v2::{machine_with_all_chips, test_machine};

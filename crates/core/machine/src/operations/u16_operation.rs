@@ -4,7 +4,7 @@ use sp1_primitives::consts::{u64_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;
 
 use crate::air::{SP1Operation, WordAirBuilder};
-use p3_field::{AbstractField, Field};
+use slop_algebra::{AbstractField, Field};
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 /// A set of columns for a u16 to u8 adapter.

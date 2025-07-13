@@ -3,12 +3,12 @@
 use std::fmt::Display;
 
 use enum_map::Enum;
-use p3_field::Field;
 use rrs_lib::instruction_formats::{
     OPCODE_AUIPC, OPCODE_BRANCH, OPCODE_JAL, OPCODE_JALR, OPCODE_LOAD, OPCODE_LUI, OPCODE_OP,
     OPCODE_OP_32, OPCODE_OP_IMM, OPCODE_OP_IMM_32, OPCODE_STORE, OPCODE_SYSTEM,
 };
 use serde::{Deserialize, Serialize};
+use slop_algebra::Field;
 
 /// An opcode (short for "operation code") specifies the operation to be performed by the processor.
 ///

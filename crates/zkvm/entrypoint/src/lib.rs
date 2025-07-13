@@ -138,8 +138,8 @@ mod zkvm {
 
     cfg_if! {
         if #[cfg(feature = "verify")] {
-            use p3_baby_bear::BabyBear;
-            use p3_field::AbstractField;
+            use slop_baby_bear::BabyBear;
+            use slop_algebra::AbstractField;
 
             pub static mut DEFERRED_PROOFS_DIGEST: Option<[BabyBear; 8]> = None;
         }

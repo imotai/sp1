@@ -4,7 +4,6 @@ use std::{
     sync::Arc,
 };
 
-use p3_uni_stark::SymbolicAirBuilder;
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::extension::BinomialExtensionField;
@@ -14,6 +13,7 @@ use slop_jagged::{
     DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents,
     Poseidon2BabyBearJaggedCpuProverComponents,
 };
+use slop_uni_stark::SymbolicAirBuilder;
 
 use crate::{
     air::MachineAir, prover::MachineProverComponents, BabyBearPoseidon2, ConstraintSumcheckFolder,

@@ -1,5 +1,5 @@
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;

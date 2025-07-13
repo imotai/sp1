@@ -1,5 +1,5 @@
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field, PrimeField32};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};

@@ -1,10 +1,10 @@
-use p3_air::AirBuilder;
-use p3_field::AbstractField;
 use serde::{Deserialize, Serialize};
+use slop_air::AirBuilder;
+use slop_algebra::AbstractField;
 use sp1_core_executor::{events::ByteRecord, Opcode};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
-use p3_field::Field;
+use slop_algebra::Field;
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::{

@@ -7,7 +7,7 @@ use std::{
 
 use itertools::{izip, Itertools};
 
-use p3_air::Air;
+use slop_air::Air;
 use slop_baby_bear::BabyBear;
 
 use slop_algebra::AbstractField;

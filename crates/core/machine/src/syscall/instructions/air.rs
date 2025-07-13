@@ -1,9 +1,9 @@
 use std::borrow::Borrow;
 
 use itertools::Itertools;
-use p3_air::{Air, AirBuilder};
-use p3_field::AbstractField;
-use p3_matrix::Matrix;
+use slop_air::{Air, AirBuilder};
+use slop_algebra::AbstractField;
+use slop_matrix::Matrix;
 use sp1_core_executor::{syscalls::SyscallCode, Opcode, CLK_INC, HALT_PC};
 use sp1_stark::{
     air::{

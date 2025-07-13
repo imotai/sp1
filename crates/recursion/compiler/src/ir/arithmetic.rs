@@ -1,6 +1,6 @@
 use std::{cell::UnsafeCell, mem::ManuallyDrop};
 
-use p3_field::{AbstractExtensionField, AbstractField, Field};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 
 use crate::ir::DslIr;
 

@@ -3,7 +3,7 @@ use std::{
     mem::{self, MaybeUninit},
 };
 
-use p3_field::PrimeField64;
+use slop_algebra::PrimeField64;
 
 use crate::{block::Block, Address};
 
