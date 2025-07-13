@@ -3,8 +3,10 @@ use std::{
     mem::size_of,
 };
 
-use crate::air::WordAirBuilder;
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::{
+    air::WordAirBuilder,
+    utils::{next_multiple_of_32, zeroed_f_vec},
+};
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
