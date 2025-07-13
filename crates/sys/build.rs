@@ -63,6 +63,7 @@ fn cbindgen_builder() -> cbindgen::Builder {
         .with_parse_include(&[
             "sp1-stark",
             "sp1-primitives",
+            "slop-baby-bear",
             "p3-baby-bear",
             "sp1-core-machine",
             "sp1-core-executor",
@@ -72,6 +73,7 @@ fn cbindgen_builder() -> cbindgen::Builder {
         .with_parse_extra_bindings(&[
             "sp1-stark",
             "sp1-primitives",
+            "slop-baby-bear",
             "p3-baby-bear",
             // TODO(tqn) I think this pulls in all the extern fns from this crate, which is undesirable.
             "sp1-recursion-executor",

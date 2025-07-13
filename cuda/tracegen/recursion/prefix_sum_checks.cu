@@ -19,7 +19,6 @@ __global__ void recursion_prefix_sum_checks_generate_trace_kernel(
         const auto &event = events[i];
         cols.x1 = event.x1;
         cols.x2 = event.x2;
-        cols.prod = event.prod;
         cols.acc = event.acc;
         cols.new_acc = event.new_acc;
         cols.felt_acc = event.field_acc;

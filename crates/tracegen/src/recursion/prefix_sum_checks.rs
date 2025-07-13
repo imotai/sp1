@@ -77,7 +77,6 @@ mod tests {
                     x2: Block(rng.gen()),
                     zero: rng.gen(),
                     one: Block(rng.gen()),
-                    prod: Block(rng.gen()),
                     acc: Block(rng.gen()),
                     new_acc: Block(rng.gen()),
                     field_acc: rng.gen(),
