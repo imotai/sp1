@@ -1,13 +1,13 @@
 use std::{borrow::Borrow, mem::transmute};
 
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_field::PrimeField32;
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelBridge,
     ParallelIterator,
 };
 use rayon_scan::ScanParallelIterator;
+use slop_air::{Air, BaseAir, PairBuilder};
+use slop_algebra::PrimeField32;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, GlobalInteractionEvent},
     ExecutionRecord, Program,
@@ -281,8 +281,8 @@ mod tests {
 
     use super::*;
     use crate::programs::tests::*;
-    use p3_baby_bear::BabyBear;
-    use p3_matrix::dense::RowMajorMatrix;
+    use slop_baby_bear::BabyBear;
+    use slop_matrix::dense::RowMajorMatrix;
     use sp1_core_executor::{ExecutionRecord, Executor, SP1CoreOpts, Trace};
     use sp1_stark::air::MachineAir;
 

@@ -1,4 +1,4 @@
-use p3_field::PrimeField32;
+use slop_algebra::PrimeField32;
 use sp1_core_executor::events::{ByteRecord, MemoryRecord, MemoryRecordEnum};
 
 use super::{

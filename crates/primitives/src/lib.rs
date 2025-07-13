@@ -2,9 +2,9 @@
 //! Because it is imported in the zkvm entrypoint, it should be kept minimal.
 
 use lazy_static::lazy_static;
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use p3_field::AbstractField;
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use slop_algebra::AbstractField;
+use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 
 pub mod consts;
 pub mod io;
@@ -1128,7 +1128,7 @@ pub fn poseidon2_init(
     )
 }
 
-use p3_symmetric::{CryptographicHasher, PaddingFreeSponge};
+use slop_symmetric::{CryptographicHasher, PaddingFreeSponge};
 
 pub fn poseidon2_hash(input: Vec<BabyBear>) -> [BabyBear; 8] {
     POSEIDON2_HASHER.hash_iter(input)

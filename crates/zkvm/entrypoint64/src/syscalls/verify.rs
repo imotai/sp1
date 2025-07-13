@@ -5,8 +5,8 @@ cfg_if::cfg_if! {
     if #[cfg(target_os = "zkvm")] {
         use crate::syscalls::VERIFY_SP1_PROOF;
         use crate::zkvm::DEFERRED_PROOFS_DIGEST;
-        use p3_baby_bear::BabyBear;
-        use p3_field::AbstractField;
+        use slop_baby_bear::BabyBear;
+        use slop_algebra::AbstractField;
         use sp1_primitives::hash_deferred_proof;
     }
 }

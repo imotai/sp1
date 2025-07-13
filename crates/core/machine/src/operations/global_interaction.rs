@@ -5,8 +5,8 @@ use super::poseidon2::{
     Poseidon2Operation, NUM_EXTERNAL_ROUNDS,
 };
 use crate::air::WordAirBuilder;
-use p3_air::AirBuilder;
-use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField32};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::SP1AirBuilder,
@@ -95,7 +95,7 @@ impl<F: PrimeField32> GlobalInteractionOperation<F> {
 impl<F: Field> GlobalInteractionOperation<F> {
     /// Constrain that the elliptic curve point for the global interaction is correctly derived.
     #[allow(clippy::too_many_arguments)]
-    pub fn eval_single_digest<AB: SP1AirBuilder + p3_air::PairBuilder>(
+    pub fn eval_single_digest<AB: SP1AirBuilder + slop_air::PairBuilder>(
         builder: &mut AB,
         values: [AB::Expr; 8],
         cols: GlobalInteractionOperation<AB::Var>,

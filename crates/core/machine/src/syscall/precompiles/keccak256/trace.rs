@@ -1,9 +1,9 @@
 use std::borrow::BorrowMut;
 
-use p3_field::PrimeField32;
-use p3_keccak_air::{generate_trace_rows, NUM_KECCAK_COLS, NUM_ROUNDS};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
+use slop_algebra::PrimeField32;
+use slop_keccak_air::{generate_trace_rows, NUM_KECCAK_COLS, NUM_ROUNDS};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{ByteLookupEvent, KeccakPermuteEvent, PrecompileEvent, SyscallEvent},
     syscalls::SyscallCode,

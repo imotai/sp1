@@ -1,6 +1,6 @@
 use crate::{analyzed::AnalyzedInstruction, shape::RecursionShape, *};
-use p3_field::Field;
 use serde::{Deserialize, Serialize};
+use slop_algebra::Field;
 use sp1_stark::{air::MachineProgram, septic_digest::SepticDigest};
 use std::ops::{Deref, DerefMut};
 
@@ -87,8 +87,8 @@ mod validation {
 
     use std::{fmt::Debug, iter, mem};
 
-    use p3_field::PrimeField32;
     use range_set_blaze::{MultiwayRangeSetBlazeRef, RangeSetBlaze};
+    use slop_algebra::PrimeField32;
     use smallvec::{smallvec, SmallVec};
     use thiserror::Error;
 

@@ -3,10 +3,10 @@ use core::{
     mem::size_of,
 };
 
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
@@ -128,7 +128,7 @@ where
 //     use std::sync::Arc;
 
 //     use itertools::Itertools;
-//     use p3_uni_stark::get_symbolic_constraints;
+//     use slop_uni_stark::get_symbolic_constraints;
 //     use rand::Rng;
 //     use slop_air::Air;
 //     use slop_algebra::{extension::BinomialExtensionField, AbstractField};

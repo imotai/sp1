@@ -3,9 +3,9 @@
 
 use std::{array, borrow::Borrow};
 
-use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
-use p3_matrix::Matrix;
+use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use slop_algebra::AbstractField;
+use slop_matrix::Matrix;
 
 use crate::{builder::SP1RecursionAirBuilder, chips::poseidon2_skinny::columns::Poseidon2};
 

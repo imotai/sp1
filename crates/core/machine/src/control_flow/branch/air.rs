@@ -1,13 +1,14 @@
 use std::borrow::Borrow;
 
+use slop_air::{Air, AirBuilder};
+use slop_algebra::{AbstractField, Field};
+use slop_matrix::Matrix;
+
 use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{LtOperationSigned, LtOperationSignedInput},
 };
-use p3_air::{Air, AirBuilder};
-use p3_field::{AbstractField, Field};
-use p3_matrix::Matrix;
 use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
 
 use super::{BranchChip, BranchColumns};

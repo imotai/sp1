@@ -1,4 +1,4 @@
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 use sp1_recursion_executor::{DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
 
 use super::{Array, Builder, Config, DslIr, Ext, Felt, Usize, Var};

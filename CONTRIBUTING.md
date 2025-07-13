@@ -107,6 +107,15 @@ changes that are split across multiple commits.
 That said, if you have a number of commits that are "checkpoints" and don't represent a single logical change, please
 squash those together.
 
+**Code Formatting:**
+All code must be properly formatted before submitting a pull request. Run the following command to format your code:
+
+```bash
+cargo +nightly fmt --all
+```
+
+This ensures consistent code style across the project and is enforced by CI checks.
+
 **Conventional Commit Messages and PR Titles:**
 To ensure consistency and aid in automated tooling (such as changelog generation), please follow the
 [Conventional Commits](https://www.conventionalcommits.org/) style for commit messages and PR titles. Prefix your commit

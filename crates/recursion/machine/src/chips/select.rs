@@ -1,8 +1,8 @@
 use core::borrow::Borrow;
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, Field, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_derive::AlignedBorrow;
@@ -183,9 +183,9 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{chips::test_fixtures, test::test_recursion_linear_program};
-    use p3_matrix::dense::RowMajorMatrix;
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_jagged::JaggedConfig;
+    use slop_matrix::dense::RowMajorMatrix;
     use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};
     use sp1_stark::BabyBearPoseidon2;

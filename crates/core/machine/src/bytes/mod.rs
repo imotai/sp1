@@ -8,8 +8,8 @@ use core::borrow::BorrowMut;
 use std::marker::PhantomData;
 
 use itertools::Itertools;
-use p3_field::Field;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_algebra::Field;
+use slop_matrix::dense::RowMajorMatrix;
 
 use self::columns::{BytePreprocessedCols, NUM_BYTE_PREPROCESSED_COLS};
 use crate::{bytes::trace::NUM_ROWS, utils::zeroed_f_vec};
@@ -92,7 +92,7 @@ impl<F: Field> ByteChip<F> {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use p3_baby_bear::BabyBear;
+    use slop_baby_bear::BabyBear;
     use std::time::Instant;
 
     use super::*;

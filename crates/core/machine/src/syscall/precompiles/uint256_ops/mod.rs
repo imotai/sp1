@@ -1,8 +1,8 @@
 mod air;
 
 use num::{BigUint, One, Zero};
-use p3_field::PrimeField32;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_algebra::PrimeField32;
+use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,

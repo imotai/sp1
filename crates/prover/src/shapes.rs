@@ -174,13 +174,13 @@ impl SP1RecursionProofShape {
     pub fn compress_proof_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402048),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486144),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 785344),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
-                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-                (CompressAir::<BabyBear>::Select(SelectChip), 807008),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_424),
+                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_208),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 413_504),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 761_088),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_536),
+                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_880),
+                (CompressAir::<BabyBear>::Select(SelectChip), 700_008),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
             ]
             .into_iter()
@@ -193,14 +193,14 @@ impl SP1RecursionProofShape {
     pub fn shrink_proof_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 121664),
-                (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 187808),
-                (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 100736),
-                (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 129472),
-                (ShrinkAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 30048),
-                (ShrinkAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 26112),
+                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 103520),
+                (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 167936),
+                (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 87072),
+                (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 110560),
+                (ShrinkAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 25408),
+                (ShrinkAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 25888),
                 (ShrinkAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
-                (ShrinkAir::<BabyBear>::Select(SelectChip), 201760),
+                (ShrinkAir::<BabyBear>::Select(SelectChip), 169504),
             ],
             _ => return None,
         };
@@ -680,7 +680,7 @@ mod tests {
     #[allow(clippy::ignore_without_reason)]
     async fn test_max_arity() {
         setup_logger();
-        let prover = SP1ProverBuilder::new().without_vk_verification().build().await;
+        let prover = SP1ProverBuilder::new().build().await;
         // arity 3:
         // let shape = [
         //     (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 154816),
@@ -695,14 +695,25 @@ mod tests {
         // .into_iter()
         // .collect()
 
+        // [
+        //     (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_392),
+        //     (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 441_824),
+        //     (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 413_472),
+        //     (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 753_588),
+        //     (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_184),
+        //     (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 200_400),
+        //     (CompressAir::<BabyBear>::Select(SelectChip), 700_008),
+        //     (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
+        // ]
+
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 402048),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 529280),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 486144),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 784656),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 120096),
-            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-            (CompressAir::<BabyBear>::Select(SelectChip), 806976),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_424),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_208),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 413_504),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 753_588),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_536),
+            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 236_400),
+            (CompressAir::<BabyBear>::Select(SelectChip), 700_008),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()
@@ -811,7 +822,7 @@ mod tests {
     async fn test_core_shape_fit() {
         setup_logger();
         let elf = test_artifacts::FIBONACCI_ELF;
-        let prover = SP1ProverBuilder::new().without_vk_verification().build().await;
+        let prover = SP1ProverBuilder::new().build().await;
         let (_, _, vk) = prover.core().setup(&elf).await;
 
         let machine = RiscvAir::<BabyBear>::machine();

@@ -2,8 +2,8 @@ use std::borrow::Borrow;
 
 use crate::{block::Block, *};
 use backtrace::Backtrace;
-use p3_field::{AbstractExtensionField, AbstractField};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, AbstractField};
 
 #[cfg(any(test, feature = "program_validation"))]
 use smallvec::SmallVec;

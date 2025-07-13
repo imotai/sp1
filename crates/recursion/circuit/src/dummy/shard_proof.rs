@@ -69,17 +69,22 @@ pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
         opened_values: ShardOpenedValues {
             chips: shard_chips
                 .iter()
-                .map(|chip| ChipOpenedValues {
-                    preprocessed: AirOpenedValues {
-                        local: vec![EF::zero(); chip.preprocessed_width()],
-                        next: vec![],
-                    },
-                    main: AirOpenedValues {
-                        local: vec![EF::zero(); chip.air.width()],
-                        next: vec![],
-                    },
-                    local_cumulative_sum: EF::zero(),
-                    degree: Point::from_usize(0, max_log_row_count + 1),
+                .map(|chip| {
+                    (
+                        chip.name().to_string(),
+                        ChipOpenedValues {
+                            preprocessed: AirOpenedValues {
+                                local: vec![EF::zero(); chip.preprocessed_width()],
+                                next: vec![],
+                            },
+                            main: AirOpenedValues {
+                                local: vec![EF::zero(); chip.air.width()],
+                                next: vec![],
+                            },
+                            local_cumulative_sum: EF::zero(),
+                            degree: Point::from_usize(0, max_log_row_count + 1),
+                        },
+                    )
                 })
                 .collect(),
         },

@@ -2446,6 +2446,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "slop-algebra"
+version = "1.2.0"
+source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+dependencies = [
+ "p3-field",
+ "serde",
+]
+
+[[package]]
+name = "slop-baby-bear"
+version = "1.2.0"
+source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+dependencies = [
+ "p3-baby-bear",
+]
+
+[[package]]
+name = "slop-poseidon2"
+version = "1.2.0"
+source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+dependencies = [
+ "p3-poseidon2",
+]
+
+[[package]]
+name = "slop-symmetric"
+version = "1.2.0"
+source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+dependencies = [
+ "p3-symmetric",
+]
+
+[[package]]
 name = "snowbridge-amcl"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2467,8 +2500,8 @@ dependencies = [
  "k256",
  "num",
  "p256",
- "p3-field",
  "serde",
+ "slop-algebra",
  "snowbridge-amcl",
  "sp1-primitives",
  "typenum",
@@ -2509,17 +2542,16 @@ version = "6.0.0"
 dependencies = [
  "bincode",
  "blake3",
- "cfg-if",
  "hex",
  "itertools 0.13.0",
  "lazy_static",
  "num-bigint",
- "p3-baby-bear",
- "p3-field",
- "p3-poseidon2",
- "p3-symmetric",
  "serde",
  "sha2 0.10.9",
+ "slop-algebra",
+ "slop-baby-bear",
+ "slop-poseidon2",
+ "slop-symmetric",
 ]
 
 [[package]]
@@ -2530,10 +2562,10 @@ dependencies = [
  "getrandom 0.2.16",
  "lazy_static",
  "libm",
- "p3-baby-bear",
- "p3-field",
  "rand 0.8.5",
  "sha2 0.10.9",
+ "slop-algebra",
+ "slop-baby-bear",
  "sp1-lib 6.0.0",
  "sp1-primitives",
 ]

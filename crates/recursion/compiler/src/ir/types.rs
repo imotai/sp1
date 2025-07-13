@@ -1,7 +1,7 @@
 use alloc::format;
 
-use p3_field::{AbstractExtensionField, AbstractField, ExtensionField, Field};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
 
 use super::{
     Builder, Config, DslIr, ExtConst, ExtHandle, FeltHandle, FromConstant, MemIndex, MemVariable,

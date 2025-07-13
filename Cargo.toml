@@ -84,7 +84,6 @@ slop-algebra = { git = "https://github.com/succinctlabs/slop" }
 slop-alloc = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
-slop-fri = { git = "https://github.com/succinctlabs/slop" }
 slop-commit = { git = "https://github.com/succinctlabs/slop" }
 slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
@@ -101,6 +100,8 @@ slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
 slop-futures = { git = "https://github.com/succinctlabs/slop" }
 slop-maybe-rayon = { git = "https://github.com/succinctlabs/slop" }
 slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
+slop-uni-stark = { git = "https://github.com/succinctlabs/slop" }
+slop-keccak-air = { git = "https://github.com/succinctlabs/slop" }
 
 # For local development.
 # slop-algebra = { path = "../slop/crates/algebra" }
@@ -124,57 +125,11 @@ slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
 # slop-futures = { path = "../slop/crates/futures" }
 # slop-maybe-rayon = { path = "../slop/crates/maybe-rayon" }
 # slop-poseidon2 = { path = "../slop/crates/poseidon2" }
+# slop-uni-stark = { path = "../slop/crates/uni-stark" }
+# slop-keccak-air = { path = "../slop/crates/keccak-air" }
 
 # For testing.
 test-artifacts = { path = "crates/test-artifacts" }
-
-# p3
-p3-air = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-field = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-commit = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-matrix = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-baby-bear = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config", features = [
-  "nightly-features",
-] }
-p3-util = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-challenger = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-dft = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-fri = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-goldilocks = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-keccak = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-keccak-air = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-blake3 = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-mds = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-merkle-tree = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-poseidon2 = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-symmetric = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-uni-stark = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-p3-maybe-rayon = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config", features = [
-  "parallel",
-] }
-p3-bn254-fr = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
-
-# For local development. 
-# p3-air = { path = "../Plonky3/air" }
-# p3-field = { path = "../Plonky3/field" }
-# p3-commit = { path = "../Plonky3/commit" }
-# p3-matrix = { path = "../Plonky3/matrix" }
-# p3-baby-bear = { path = "../Plonky3/baby-bear" }
-# p3-util = { path = "../Plonky3/util" }
-# p3-challenger = { path = "../Plonky3/challenger" }
-# p3-dft = { path = "../Plonky3/dft" }
-# p3-fri = { path = "../Plonky3/fri" }
-# p3-goldilocks = { path = "../Plonky3/goldilocks" }
-# p3-keccak = { path = "../Plonky3/keccak" }
-# p3-keccak-air = { path = "../Plonky3/keccak-air" }
-# p3-blake3 = { path = "../Plonky3/blake3" }
-# p3-mds = { path = "../Plonky3/mds" }
-# p3-merkle-tree = { path = "../Plonky3/merkle-tree" }
-# p3-poseidon2 = { path = "../Plonky3/poseidon2" }
-# p3-symmetric = { path = "../Plonky3/symmetric" }
-# p3-uni-stark = { path = "../Plonky3/uni-stark" }
-# p3-maybe-rayon = { path = "../Plonky3/maybe-rayon" }
-# p3-bn254-fr = { path = "../Plonky3/bn254-fr" }
 
 
 # misc
@@ -186,7 +141,6 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tokio = "1.42.0"
 futures = "0.3"
-futures-util = "0.3.31"
 derive-where = "1.2.7"
 strum_macros = "0.27.1"
 strum = "0.27.1"

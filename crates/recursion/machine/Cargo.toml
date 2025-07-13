@@ -16,9 +16,6 @@ sp1-primitives = { workspace = true }
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 sp1-stark = { workspace = true }
 
-p3-air = { workspace = true }
-p3-util = { workspace = true }
-p3-matrix = { workspace = true }
 
 slop-air = { workspace = true }
 slop-matrix = { workspace = true }
@@ -29,10 +26,7 @@ slop-maybe-rayon = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-poseidon2 = { workspace = true }
 slop-symmetric = { workspace = true }
-
-hashbrown = { workspace = true, features = ["serde"] }
 itertools = { workspace = true }
-serde = { workspace = true, features = ["derive", "rc"] }
 strum = { workspace = true }
 strum_macros = { workspace = true }
 tokio = { workspace = true }
@@ -45,11 +39,7 @@ zkhash = "0.2.0"
 rand = "0.8.5"
 sp1-stark = { workspace = true }
 sp1-primitives = { workspace = true }
-p3-baby-bear = { workspace = true }
-cbindgen = "0.27.0"
-cc = "1.1"
-pathdiff = "0.2.1"
-glob = "0.3.1"
+slop-baby-bear = { workspace = true }
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 
 

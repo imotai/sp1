@@ -11,9 +11,9 @@ use core::{
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{
         ByteLookupEvent, ByteRecord, EdDecompressEvent, FieldOperation, MemoryRecordEnum,

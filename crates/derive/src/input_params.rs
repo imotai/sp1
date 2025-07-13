@@ -120,8 +120,8 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                     ) -> Vec<(
                         String,
                         sp1_stark::ir::Shape<
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr,
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::ExtensionBuilder>::ExprEF,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
                         >,
                     )> {
                         vec![
@@ -136,7 +136,7 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
             let remaining_params_with_constraint_compiler = replace_bounds(
                 ast.generics.params.iter().skip(1),
                 first_param_name.clone(),
-                "< sp1_stark :: ir :: ConstraintCompiler as p3_air :: AirBuilder >",
+                "< sp1_stark :: ir :: ConstraintCompiler as slop_air :: AirBuilder >",
             );
 
             let remaining_params = ast.generics.params.iter().skip(1);
@@ -167,8 +167,8 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                     ) -> Vec<(
                         String,
                         sp1_stark::ir::Shape<
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::AirBuilder>::Expr,
-                            <sp1_stark::ir::ConstraintCompiler as p3_air::ExtensionBuilder>::ExprEF,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
+                            <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
                         >,
                     )> {
                         vec![

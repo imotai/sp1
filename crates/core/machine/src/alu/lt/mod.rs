@@ -5,10 +5,10 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::*;
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::*;
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
@@ -273,9 +273,9 @@ where
 //         riscv::RiscvAir,
 //         utils::{run_malicious_test, run_test_machine, setup_test_machine},
 //     };
-//     use p3_baby_bear::BabyBear;
-//     use p3_field::AbstractField;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_algebra::AbstractField;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use rand::{thread_rng, Rng};
 //     use sp1_core_executor::{
 //         events::{AluEvent, MemoryRecordEnum},

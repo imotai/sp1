@@ -1,4 +1,4 @@
-use p3_air::AirBuilder;
+use slop_air::AirBuilder;
 use sp1_stark::{
     air::{AirInteraction, BaseAirBuilder, InteractionScope},
     InteractionKind,

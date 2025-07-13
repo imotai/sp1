@@ -24,7 +24,6 @@ semver = { version = "1.0.26", features = ["serde"] }
 
 [dev-dependencies]
 sp1-core-machine = { path = "../core/machine" }
-test-artifacts = { path = "../test-artifacts" }
 
 [features]
 native = []

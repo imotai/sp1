@@ -1,8 +1,8 @@
 // #![allow(clippy::print_stdout)]
 
 // use clap::Parser;
-// use p3_baby_bear::BabyBear;
-// use p3_util::log2_ceil_usize;
+// use slop_baby_bear::BabyBear;
+// use slop_algebra::log2_ceil_usize;
 // use sp1_core_executor::{Executor, Program, RiscvAirId, SP1Context};
 // use sp1_core_machine::{
 //     io::SP1Stdin, riscv::RiscvAir, shape::CoreShapeConfig, utils::setup_logger,

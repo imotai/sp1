@@ -1,9 +1,9 @@
 use std::{fmt::Display, hash::Hash, sync::Arc};
 
-use p3_uni_stark::{get_max_constraint_degree, get_symbolic_constraints, SymbolicAirBuilder};
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{Field, PrimeField32};
 use slop_matrix::dense::RowMajorMatrix;
+use slop_uni_stark::{get_max_constraint_degree, get_symbolic_constraints, SymbolicAirBuilder};
 
 use crate::{
     air::{MachineAir, MultiTableAirBuilder, SP1AirBuilder},

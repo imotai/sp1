@@ -1,5 +1,9 @@
 use derive_where::derive_where;
-use std::{collections::BTreeSet, marker::PhantomData, ops::Deref};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    marker::PhantomData,
+    ops::Deref,
+};
 
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
@@ -49,6 +53,10 @@ pub enum ShardVerifierError<EF, PcsError> {
     /// The preprocessed chip id mismatch.
     #[error("preprocessed chip id mismatch: {0}")]
     PreprocessedChipIdMismatch(String, String),
+    /// The error to report when the preprocessed chip height in the verifying key does not match
+    /// the chip opening height.
+    #[error("preprocessed chip height mismatch: {0}")]
+    PreprocessedChipHeightMismatch(String),
     /// The chip opening length mismatch.
     #[error("chip opening length mismatch")]
     ChipOpeningLengthMismatch,
@@ -292,7 +300,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         // proof is correct.
         let mut rlc_eval = C::EF::zero();
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
-        for ((chip, openings), zerocheck_eq_val) in
+        for ((chip, (_, openings)), zerocheck_eq_val) in
             shard_chips.iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
         {
             // Verify the shape of the opening arguments matches the expected values.
@@ -383,7 +391,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         })?;
 
         // Observe the openings
-        for opening in opened_values.chips.iter() {
+        for (_, opening) in opened_values.chips.iter() {
             for eval in opening.preprocessed.local.iter() {
                 challenger.observe_ext_element(*eval);
             }
@@ -466,12 +474,22 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         // Observe the main commitment.
         challenger.observe(main_commitment.clone());
 
-        let mut heights: Vec<C::F> = Vec::new();
-        for chip_values in opened_values.chips.iter() {
+        let mut heights: BTreeMap<String, C::F> = BTreeMap::new();
+        for (name, chip_values) in opened_values.chips.iter() {
             assert!(chip_values.degree.len() <= 29);
             let acc = chip_values.degree.iter().fold(C::F::zero(), |acc, &x| x + C::F::two() * acc);
-            heights.push(acc);
+            heights.insert(name.clone(), acc);
             challenger.observe(acc);
+        }
+
+        for (chip, dimensions) in vk.preprocessed_chip_information.iter() {
+            if let Some(height) = heights.get(chip) {
+                if *height != dimensions.height {
+                    return Err(ShardVerifierError::PreprocessedChipHeightMismatch(chip.clone()));
+                }
+            } else {
+                return Err(ShardVerifierError::PreprocessedChipHeightMismatch(chip.clone()));
+            }
         }
 
         let alpha = challenger.sample_ext_element::<C::EF>();
@@ -490,7 +508,11 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             .cloned()
             .collect::<BTreeSet<_>>();
 
-        let degrees = opened_values.chips.iter().map(|x| x.degree.clone()).collect::<Vec<_>>();
+        let degrees = opened_values
+            .chips
+            .iter()
+            .map(|(name, x)| (name.clone(), x.degree.clone()))
+            .collect::<BTreeMap<_, _>>();
 
         // println!("shard_chips: {:?}", shard_chips.iter().map(|x| x.name()).collect::<Vec<_>>());
 
@@ -521,7 +543,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         let (preprocessed_openings_for_proof, main_openings_for_proof): (Vec<_>, Vec<_>) = proof
             .opened_values
             .chips
-            .iter()
+            .values()
             .map(|opening| (opening.preprocessed.clone(), opening.main.clone()))
             .unzip();
 
@@ -558,7 +580,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         let added_columns = &evaluation_proof.added_columns;
 
         let column_counts = heights
-            .iter()
+            .values()
             .zip_eq(&unfiltered_preprocessed_column_count)
             .flat_map(|(&h, &c)| std::iter::repeat_n(h, c))
             // Add the preprocessed padding columns (except the last one)
@@ -568,7 +590,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             ))
             .chain(
                 heights
-                    .iter()
+                    .values()
                     .zip_eq(&main_column_count)
                     .flat_map(|(&h, &c)| std::iter::repeat_n(h, c)),
             )

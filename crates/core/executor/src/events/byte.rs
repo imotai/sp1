@@ -1,8 +1,8 @@
 use std::hash::Hash;
 
 use hashbrown::HashMap;
-use p3_field::{Field, PrimeField32};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{Field, PrimeField32};
 
 use crate::{ByteOpcode, Opcode};
 

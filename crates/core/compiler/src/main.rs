@@ -102,7 +102,10 @@ fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
             println!("namespace {}Chip", chip_name);
             println!();
 
-            println!("def constraints (Main : {})", builder.num_cols());
+            println!(
+                "def constraints (Main : Vector (Fin BB) {}) : SP1ConstraintList :=",
+                builder.num_cols()
+            );
 
             for step in steps {
                 println!("  {}", step)

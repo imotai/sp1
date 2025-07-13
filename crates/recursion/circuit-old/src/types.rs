@@ -1,7 +1,7 @@
 use hashbrown::HashMap;
-use p3_commit::TwoAdicMultiplicativeCoset;
-use p3_field::{AbstractField, TwoAdicField};
-use p3_matrix::Dimensions;
+use slop_commit::TwoAdicMultiplicativeCoset;
+use slop_algebra::{AbstractField, TwoAdicField};
+use slop_matrix::Dimensions;
 use sp1_stark::septic_digest::SepticDigest;
 
 use sp1_recursion_compiler::ir::{Builder, Ext, Felt};

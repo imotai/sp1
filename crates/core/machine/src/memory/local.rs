@@ -3,13 +3,12 @@ use std::{
     mem::size_of,
 };
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
-
 use crate::air::WordAirBuilder;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{
+use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 use sp1_core_executor::{
@@ -353,8 +352,8 @@ where
 //         memory::MemoryLocalChip, riscv::RiscvAir,
 //         syscall::precompiles::sha256::extend_tests::sha_extend_program, utils::setup_logger,
 //     };
-//     use p3_baby_bear::BabyBear;
-//     use p3_matrix::dense::RowMajorMatrix;
+//     use slop_baby_bear::BabyBear;
+//     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Executor, Trace};
 //     use sp1_stark::{
 //         air::{InteractionScope, MachineAir},
@@ -453,7 +452,7 @@ where
 
 //     #[cfg(feature = "sys")]
 //     fn get_test_execution_record() -> ExecutionRecord {
-//         use p3_field::PrimeField32;
+//         use slop_algebra::PrimeField32;
 //         use rand::{thread_rng, Rng};
 //         use sp1_core_executor::events::{MemoryLocalEvent, MemoryRecord};
 
@@ -489,7 +488,7 @@ where
 //     #[cfg(feature = "sys")]
 //     #[test]
 //     fn test_generate_trace_ffi_eq_rust() {
-//         use p3_matrix::Matrix;
+//         use slop_matrix::Matrix;
 
 //         let record = get_test_execution_record();
 //         let chip = MemoryLocalChip::new();

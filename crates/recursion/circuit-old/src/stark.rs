@@ -9,11 +9,11 @@ use crate::{
     hash::FieldHasherVariable,
     BabyBearFriConfig, CircuitConfig, TwoAdicPcsMatsVariable, TwoAdicPcsProofVariable,
 };
-use p3_air::{Air, BaseAir};
-use p3_baby_bear::BabyBear;
-use p3_commit::{Mmcs, Pcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
-use p3_field::{AbstractField, ExtensionField, Field, TwoAdicField};
-use p3_matrix::{dense::RowMajorMatrix, Dimensions};
+use slop_air::{Air, BaseAir};
+use slop_baby_bear::BabyBear;
+use slop_commit::{Mmcs, Pcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
+use slop_algebra::{AbstractField, ExtensionField, Field, TwoAdicField};
+use slop_matrix::{dense::RowMajorMatrix, Dimensions};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Config, Ext, ExtConst},

@@ -3,9 +3,9 @@ use crate::{air::SP1CoreAirBuilder, operations::SyscallAddrOperation, utils::nex
 use super::ShaCompressControlChip;
 use crate::utils::u32_to_half_word;
 use core::borrow::Borrow;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteRecord, PrecompileEvent},
     syscalls::SyscallCode,

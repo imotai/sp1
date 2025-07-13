@@ -1,4 +1,4 @@
-use p3_field::PrimeField;
+use slop_algebra::PrimeField;
 use sp1_core_executor::{Instruction, Register};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;

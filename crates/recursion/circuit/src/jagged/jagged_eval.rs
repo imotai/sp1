@@ -166,11 +166,11 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
 mod tests {
     use std::{marker::PhantomData, sync::Arc};
 
-    use p3_challenger::DuplexChallenger;
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
     use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use slop_challenger::DuplexChallenger;
     use slop_jagged::{
         JaggedEvalProver, JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams,
         JaggedProverComponents, Poseidon2BabyBearJaggedCpuProverComponents,

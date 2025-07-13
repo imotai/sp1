@@ -1,9 +1,9 @@
 use std::array;
 
-use p3_air::PairBuilder;
-use p3_baby_bear::{MONTY_INVERSE, POSEIDON2_INTERNAL_MATRIX_DIAG_16_BABYBEAR_MONTY};
-use p3_field::{AbstractField, PrimeField32};
-use p3_poseidon2::matmul_internal;
+use slop_air::PairBuilder;
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_baby_bear::{MONTY_INVERSE, POSEIDON2_INTERNAL_MATRIX_DIAG_16_BABYBEAR_MONTY};
+use slop_poseidon2::matmul_internal;
 use sp1_primitives::RC_16_30_U32;
 use sp1_stark::air::MachineAirBuilder;
 

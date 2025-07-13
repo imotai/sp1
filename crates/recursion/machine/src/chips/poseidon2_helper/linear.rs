@@ -1,8 +1,8 @@
 use core::borrow::Borrow;
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{extension::BinomiallyExtendable, AbstractField, Field, PrimeField32};
 use slop_baby_bear::BabyBear;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_core_machine::{
     operations::poseidon2::air::{external_linear_layer_mut, internal_linear_layer_mut},

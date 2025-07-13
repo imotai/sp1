@@ -1,10 +1,10 @@
 use core::borrow::Borrow;
 use std::iter::once;
 
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::AbstractField;
-use p3_keccak_air::{NUM_ROUNDS, U64_LIMBS};
-use p3_matrix::Matrix;
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::AbstractField;
+use slop_keccak_air::{NUM_ROUNDS, U64_LIMBS};
+use slop_matrix::Matrix;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, SP1AirBuilder},
     InteractionKind,

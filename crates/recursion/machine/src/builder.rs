@@ -1,6 +1,6 @@
 use std::iter::once;
 
-use p3_air::AirBuilderWithPublicValues;
+use slop_air::AirBuilderWithPublicValues;
 use slop_algebra::AbstractField;
 use sp1_recursion_executor::{Address, Block};
 use sp1_stark::{

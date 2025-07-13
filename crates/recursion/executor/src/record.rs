@@ -6,8 +6,8 @@ use std::{
     sync::Arc,
 };
 
-use p3_field::{AbstractField, Field, PrimeField32};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractField, Field, PrimeField32};
 use sp1_stark::{air::SP1AirBuilder, MachineRecord, PROOF_MAX_NUM_PVS};
 
 use crate::{

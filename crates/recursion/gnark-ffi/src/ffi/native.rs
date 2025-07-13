@@ -291,9 +291,9 @@ impl Groth16Bn254Proof {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_symmetric::Permutation;
+    use slop_algebra::AbstractField;
+    use slop_baby_bear::BabyBear;
+    use slop_symmetric::Permutation;
     use sp1_stark::inner_perm;
 
     #[test]

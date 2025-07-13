@@ -42,7 +42,7 @@ impl<F: Field, EF: ExtensionField<F>> FuncDecl<ExprRef<F>, ExprExtRef<EF>> {
     pub fn to_output_lean_type(&self) -> String {
         match self.output {
             Shape::Unit => "SP1ConstraintList".to_string(),
-            _ => format!("SP1ConstraintList × {}", self.output.to_lean_type()),
+            _ => format!("{} × SP1ConstraintList", self.output.to_lean_type()),
         }
     }
 }

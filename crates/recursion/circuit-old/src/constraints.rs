@@ -1,8 +1,8 @@
-use p3_air::{Air, BaseAir};
-use p3_baby_bear::BabyBear;
-use p3_commit::{LagrangeSelectors, Mmcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
-use p3_field::{AbstractExtensionField, AbstractField, Field, TwoAdicField};
-use p3_matrix::dense::RowMajorMatrix;
+use slop_air::{Air, BaseAir};
+use slop_baby_bear::BabyBear;
+use slop_commit::{LagrangeSelectors, Mmcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field, TwoAdicField};
+use slop_matrix::dense::RowMajorMatrix;
 
 use sp1_recursion_compiler::ir::{
     Builder, Config, Ext, ExtConst, ExtensionOperand, Felt, SymbolicExt, SymbolicFelt,

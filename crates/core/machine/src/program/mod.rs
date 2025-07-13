@@ -1,21 +1,21 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-use std::collections::HashMap;
-
 use crate::{
     air::ProgramAirBuilder,
     cpu::columns::InstructionCols,
     utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
 };
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_field::PrimeField32;
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-use sp1_core_executor::{ExecutionRecord, Opcode, Program};
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
+};
+use slop_air::{Air, BaseAir, PairBuilder};
+use slop_algebra::PrimeField32;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use sp1_core_executor::Opcode;
+use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use std::collections::HashMap;
 
 /// The number of preprocessed program columns.
 pub const NUM_PROGRAM_PREPROCESSED_COLS: usize = size_of::<ProgramPreprocessedCols<u8>>();
@@ -318,9 +318,9 @@ mod tests {
     use std::sync::Arc;
 
     use hashbrown::HashMap;
-    use p3_baby_bear::BabyBear;
+    use slop_baby_bear::BabyBear;
 
-    use p3_matrix::dense::RowMajorMatrix;
+    use slop_matrix::dense::RowMajorMatrix;
     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
     use sp1_stark::air::MachineAir;
 

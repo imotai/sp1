@@ -5,7 +5,7 @@ use sp1_core_executor::{
 };
 use sp1_stark::air::SP1AirBuilder;
 
-use p3_field::{AbstractField, Field};
+use slop_algebra::{AbstractField, Field};
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use crate::air::SP1Operation;

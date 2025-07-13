@@ -6,9 +6,9 @@ use crate::{
         CpuChip,
     },
 };
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
-use p3_field::AbstractField;
-use p3_matrix::Matrix;
+use slop_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
+use slop_algebra::AbstractField;
+use slop_matrix::Matrix;
 use std::borrow::Borrow;
 
 impl<AB> Air<AB> for CpuChip
