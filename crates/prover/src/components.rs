@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 use csl_air::{air_block::BlockAir, SymbolicProverFolder};
 use csl_cuda::TaskScope;
@@ -16,7 +16,9 @@ use sp1_core_machine::riscv::RiscvAir;
 use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, OuterSC, WrapAir};
 use sp1_stark::{
     air::MachineAir,
-    prover::{MachineProverComponents, ShardProver, ShardProverComponents, ZerocheckAir},
+    prover::{
+        MachineProverComponents, ProvingKey, ShardProver, ShardProverComponents, ZerocheckAir,
+    },
     GkrProverImpl, MachineConfig, ShardVerifier,
 };
 
@@ -119,4 +121,14 @@ where
     type Config = JC::Config;
     type Prover = ShardProver<CudaShardProverComponents<JC, A>>;
     type Air = A;
+
+    fn preprocessed_table_heights(
+        pk: Arc<ProvingKey<Self::Config, Self::Air, Self::Prover>>,
+    ) -> BTreeMap<String, usize> {
+        pk.preprocessed_data
+            .preprocessed_traces
+            .iter()
+            .map(|(k, v)| (k.clone(), v.num_real_entries()))
+            .collect()
+    }
 }
