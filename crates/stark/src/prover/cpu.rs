@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::Arc,
@@ -51,6 +52,16 @@ where
     type Config = <PcsComponents as JaggedProverComponents>::Config;
     type Air = A;
     type Prover = ShardProver<CpuShardProverComponents<PcsComponents, A>>;
+
+    fn preprocessed_table_heights(
+        pk: Arc<super::ProvingKey<Self::Config, Self::Air, Self::Prover>>,
+    ) -> BTreeMap<String, usize> {
+        pk.preprocessed_data
+            .preprocessed_traces
+            .iter()
+            .map(|(name, trace)| (name.to_owned(), trace.num_real_entries()))
+            .collect()
+    }
 }
 
 /// A CPU prover.
