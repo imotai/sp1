@@ -112,7 +112,7 @@ pub struct ExecutionRecord {
     /// Record where the `clk >> 24` or `pc >> 16` has incremented.
     pub bump_state_events: Vec<(u64, u64, bool, u64)>,
     /// The public values.
-    pub public_values: PublicValues<u64, u64, u64, u32>,
+    pub public_values: PublicValues<u32, u64, u64, u32>,
     /// The next nonce to use for a new lookup.
     pub next_nonce: u64,
     /// The shape of the proof.
@@ -661,6 +661,7 @@ impl ExecutionRecord {
             AB::Expr::one(),
         );
 
+        // Range check all the initial, final program counter limbs.
         for i in 0..3 {
             builder.send_byte(
                 AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),

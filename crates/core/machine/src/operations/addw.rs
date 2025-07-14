@@ -19,13 +19,7 @@ pub struct AddwOperation<T> {
 }
 
 impl<F: Field> AddwOperation<F> {
-    pub fn populate(
-        &mut self,
-        record: &mut impl ByteRecord,
-        a_u64: u64,
-        b_u64: u64,
-        _is_real: bool,
-    ) {
+    pub fn populate(&mut self, record: &mut impl ByteRecord, a_u64: u64, b_u64: u64) {
         let value = (a_u64 as u32).wrapping_add(b_u64 as u32);
         let limbs = u32_to_u16_limbs(value);
         self.value = [F::from_canonical_u16(limbs[0]), F::from_canonical_u16(limbs[1])];

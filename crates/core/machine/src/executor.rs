@@ -92,7 +92,7 @@ struct RecordTask {
     done: bool,
     program: Arc<Program>,
     record_gen_sync: Arc<TurnBasedSync>,
-    state: Arc<Mutex<PublicValues<u64, u64, u64, u32>>>,
+    state: Arc<Mutex<PublicValues<u32, u64, u64, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     record_tx: mpsc::Sender<ExecutionRecord>,
     abort_handle: AbortHandle,
@@ -116,9 +116,26 @@ pub fn trace_checkpoint(
     runtime.subproof_verifier = Some(Arc::new(noop));
 
     // Execute from the checkpoint.
-    let (records, _) = runtime.execute_record(true).unwrap();
+    let (records, done) = runtime.execute_record(true).unwrap();
 
-    (records.into_iter().map(|r| *r).collect(), runtime.report)
+    let mut records = records.into_iter().map(|r| *r).collect::<Vec<_>>();
+    let pv = records.last().unwrap().public_values;
+
+    // Handle the case where the COMMIT happens across the last two shards.
+    if !done
+        && (pv.committed_value_digest.iter().any(|v| *v != 0)
+            || pv.deferred_proofs_digest.iter().any(|v| *v != 0))
+    {
+        // We turn off the `print_report` flag to avoid modifying the report.
+        runtime.print_report = false;
+        let (_, next_pv, _) = runtime.execute_state(true).unwrap();
+        for record in records.iter_mut() {
+            record.public_values.committed_value_digest = next_pv.committed_value_digest;
+            record.public_values.deferred_proofs_digest = next_pv.deferred_proofs_digest;
+        }
+    }
+
+    (records, runtime.report)
 }
 
 impl<F: PrimeField32> MachineExecutorBuilder<F> {
@@ -210,8 +227,15 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                             .as_canonical_u32();
                         }
 
-                        state.committed_value_digest = record.public_values.committed_value_digest;
-                        state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
+                        if state.committed_value_digest == [0u32; 8] {
+                            state.committed_value_digest =
+                                record.public_values.committed_value_digest;
+                        }
+                        if state.deferred_proofs_digest == [0u32; 8] {
+                            state.deferred_proofs_digest =
+                                record.public_values.deferred_proofs_digest;
+                        }
+
                         record.public_values = *state;
                         state.prev_exit_code = record.public_values.exit_code;
                         state.initial_timestamp = record.public_values.last_timestamp;
@@ -300,7 +324,7 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                 // Initialize the record generation state.
                 let record_gen_sync = Arc::new(TurnBasedSync::new());
                 let state =
-                    Arc::new(Mutex::new(PublicValues::<u64, u64, u64, u32>::default().reset()));
+                    Arc::new(Mutex::new(PublicValues::<u32, u64, u64, u32>::default().reset()));
                 let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
 
                 // Check if the task was aborted again.

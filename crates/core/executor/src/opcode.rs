@@ -158,10 +158,8 @@ pub enum ByteOpcode {
     LTU = 4,
     /// Most Significant Bit.
     MSB = 5,
-    /// Shift Right.
-    SR = 6,
     /// Range Check.
-    Range = 7,
+    Range = 6,
 }
 
 impl Opcode {

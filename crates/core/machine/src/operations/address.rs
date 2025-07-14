@@ -67,8 +67,8 @@ impl<F: Field> AddressOperation<F> {
         // If `is_real = 1`, then `addr.0[1] != 0`, so `addr >= 2^16`.
         builder.assert_eq(cols.top_two_limb_min * sum_top_two_limb.clone(), is_real.clone());
 
-        // Check `0 <= (addr[0] - 2 * bit1 - bit0) / 4 < 2^14`.
-        // This enforces that `addr[0] - 2 * bit1 - bit0` is a multiple of `4` within `u16`.
+        // Check `0 <= (addr[0] - 4 * bit2 - 2 * bit1 - bit0) / 8 < 2^13`.
+        // This shows `addr[0] - 4 * bit2 - 2 * bit1 - bit0` is a multiple of `8` within `u16`.
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
             (addr[0]

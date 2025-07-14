@@ -70,7 +70,6 @@ impl<F: Field> LtOperationSigned<F> {
         if is_signed {
             self.b_msb.populate_msb(record, b_comp[3]);
             self.c_msb.populate_msb(record, c_comp[3]);
-            // (a as i64) < (b as i64) if and only if (a ^ (1 << 63)) < (b ^ (1 << 63))
             self.result.populate_unsigned(record, a_u64, b_u64 ^ (1 << 63), c_u64 ^ (1 << 63));
         } else {
             self.result.populate_unsigned(record, a_u64, b_u64, c_u64);
@@ -128,7 +127,7 @@ impl<F: Field> LtOperationSigned<F> {
 
         let base = AB::Expr::from_canonical_u32(1 << 16);
 
-        // XOR `1 << 31` to `b` and `c` if `is_signed` is true.
+        // XOR `1 << 63` to `b` and `c` if `is_signed` is true.
         // If `is_signed` is false, the `msb` values are constrained to be zero.
         // If `is_signed` is true, the `msb` values are constrained by `U16MSBOperation`.
         // In both cases, `b_compare` and `c_compare` are correct.

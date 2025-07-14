@@ -748,7 +748,7 @@ where
                 local.c.map(|x| x.into()),
                 local.c_times_quotient_lower,
                 local.is_real.into(),
-                one.clone() - is_signed_word_operation.clone(),
+                local.is_real.into() - is_signed_word_operation.clone(),
                 AB::Expr::zero(),
                 is_signed_word_operation.clone(),
                 AB::Expr::zero(),

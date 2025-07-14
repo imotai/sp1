@@ -15,7 +15,7 @@ use self::columns::{BytePreprocessedCols, NUM_BYTE_PREPROCESSED_COLS};
 use crate::{bytes::trace::NUM_ROWS, utils::zeroed_f_vec};
 
 /// The number of different byte operations in the byte table.
-pub const NUM_BYTE_OPS: usize = 7;
+pub const NUM_BYTE_OPS: usize = 6;
 
 /// A chip for computing byte operations.
 ///
@@ -71,13 +71,6 @@ impl<F: Field> ByteChip<F> {
                     ByteOpcode::MSB => {
                         let msb = (b & 0b1000_0000) != 0;
                         col.msb = F::from_bool(msb);
-                    }
-                    ByteOpcode::SR => {
-                        // Cast to u16 first to handle shifts >= 8 correctly.
-                        // For example, 244u8 >> 8 would still be 244 due to u8 overflow,
-                        // but (244u16 >> 8) gives us the expected 0.
-                        let sr = (b as u16).overflowing_shr(c as u32).0 as u8;
-                        col.sr = F::from_canonical_u8(sr);
                     }
                     _ => panic!("invalid opcode found in byte table"),
                 };

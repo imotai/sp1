@@ -72,7 +72,6 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
     ) -> RowMajorMatrix<F> {
         // Generate the rows for the trace.
         let chunk_size = std::cmp::max(input.sub_events.len() / num_cpus::get(), 1);
-        let merged_events = input.sub_events.iter().collect::<Vec<_>>();
         let padded_nb_rows = <SubChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_SUB_COLS);
 
@@ -82,9 +81,9 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
                     let idx = i * chunk_size + j;
                     let cols: &mut SubCols<F> = row.borrow_mut();
 
-                    if idx < merged_events.len() {
+                    if idx < input.sub_events.len() {
                         let mut byte_lookup_events = Vec::new();
-                        let event = merged_events[idx];
+                        let event = input.sub_events[idx];
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut byte_lookup_events, event.1);

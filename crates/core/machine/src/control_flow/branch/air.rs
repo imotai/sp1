@@ -151,5 +151,7 @@ where
             carry = (carry.clone() + pc + increment - next_pc) * base_inverse;
             builder.when(is_real.clone() - local.is_branching).assert_bool(carry.clone());
         }
+
+        builder.slice_range_check_u16(&local.next_pc, is_real);
     }
 }

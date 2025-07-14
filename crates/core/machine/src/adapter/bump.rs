@@ -65,16 +65,20 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
         let blu_batches = event_iter
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|(clk, increment, _, _)| {
+                events.iter().for_each(|(clk, increment, _, pc)| {
                     let next_clk = clk + increment;
                     let next_clk_0_16 = (next_clk & 0xFFFF) as u16;
                     let next_clk_16_24 = ((next_clk >> 16) & 0xFF) as u8;
                     let next_clk_24_32 = ((next_clk >> 24) & 0xFF) as u8;
                     let next_clk_32_48 = (next_clk >> 32) as u16;
+                    let pc_0 = (pc & 0xFFFF) as u16;
+                    let pc_1 = ((pc >> 16) & 0xFFFF) as u16;
+                    let pc_2 = ((pc >> 32) & 0xFFFF) as u16;
 
                     blu.add_bit_range_check((next_clk_0_16 - 1) / 8, 13);
                     blu.add_bit_range_check(next_clk_32_48, 16);
                     blu.add_u8_range_checks(&[next_clk_16_24, next_clk_24_32]);
+                    blu.add_u16_range_checks(&[pc_0, pc_1, pc_2]);
                 });
                 blu
             })
@@ -176,6 +180,8 @@ where
             local.is_real,
         );
 
+        // Check that the sent state's clk is valid.
+        // The bottom 16 bits of the `clk` is a u16 value that is 1 (mod 8).
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
             (local.next_clk_0_16 - AB::Expr::one()) * AB::F::from_canonical_u8(8).inverse(),
@@ -183,6 +189,7 @@ where
             AB::Expr::zero(),
             local.is_real,
         );
+        // The top 16 bits of the `clk` is a u16 value.
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
             local.next_clk_32_48.into(),
@@ -190,7 +197,10 @@ where
             AB::Expr::zero(),
             local.is_real,
         );
+        // The two 8 bit limbs in the middle of the clk are valid u8 values.
+        builder.slice_range_check_u8(&[local.next_clk_16_24, local.next_clk_24_32], local.is_real);
 
+        // If `is_clk` is true, a carry happens from the bottom 24 bit limb to the top.
         builder.assert_bool(local.is_clk);
         builder.when(local.is_real).assert_eq(
             local.next_clk_24_32 + local.next_clk_32_48 * AB::F::from_canonical_u32(1 << 8),
@@ -203,8 +213,7 @@ where
             local.clk_low,
         );
 
-        builder.slice_range_check_u8(&[local.next_clk_16_24, local.next_clk_24_32], local.is_real);
-
+        // The `next_pc` is the `pc` with propagated carries.
         let mut carry = AB::Expr::zero();
         for i in 0..3 {
             carry = (carry.clone() + local.pc[i] - local.next_pc[i])
@@ -212,5 +221,6 @@ where
             builder.assert_bool(carry.clone());
         }
         builder.assert_zero(carry);
+        builder.slice_range_check_u16(&local.next_pc, local.is_real);
     }
 }

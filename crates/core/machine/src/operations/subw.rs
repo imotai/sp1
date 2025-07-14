@@ -21,20 +21,13 @@ pub struct SubwOperation<T> {
 }
 
 impl<F: Field> SubwOperation<F> {
-    pub fn populate(
-        &mut self,
-        record: &mut impl ByteRecord,
-        a_u64: u64,
-        b_u64: u64,
-        _is_real: bool,
-    ) {
+    pub fn populate(&mut self, record: &mut impl ByteRecord, a_u64: u64, b_u64: u64) {
         let value = (Wrapping(a_u64 as i32) - Wrapping(b_u64 as i32)).0 as i64 as u64;
         let limbs = u64_to_u16_limbs(value);
         self.value = [F::from_canonical_u16(limbs[0]), F::from_canonical_u16(limbs[1])];
 
         // Range check
         record.add_u16_range_checks(&limbs[..WORD_SIZE / 2]);
-
         self.msb.populate_msb(record, limbs[1]);
     }
 

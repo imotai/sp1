@@ -125,6 +125,7 @@ impl BranchChip {
             F::from_canonical_u16(((event.next_pc >> 16) & 0xFFFF) as u16),
             F::from_canonical_u16(((event.next_pc >> 32) & 0xFFFF) as u16),
         ];
+        blu.add_u16_range_checks_field(&cols.next_pc);
 
         if branching {
             cols.is_branching = F::one();

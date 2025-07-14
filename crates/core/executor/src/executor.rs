@@ -2,9 +2,9 @@
 use std::{fs::File, io::BufWriter};
 use std::{num::Wrapping, str::FromStr, sync::Arc};
 
-use crate::estimator::RecordEstimator;
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
+use crate::{estimator::RecordEstimator, NUM_REGISTERS};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
@@ -253,6 +253,8 @@ pub struct LocalCounts {
     pub retained_precompile_counts: Box<EnumMap<RiscvAirId, u64>>,
     /// The load x0 counts.
     pub load_x0_counts: u64,
+    /// The state bump counts.
+    pub state_bump_counts: u64,
     /// The number of syscalls sent globally in the current shard.
     pub syscalls_sent: usize,
     /// The number of addresses touched in this shard.
@@ -1666,6 +1668,18 @@ impl<'a> Executor<'a> {
             a = 0;
         }
 
+        // The `StateBump` chip is used in two cases.
+        // - When the clk's top 24 bits increment, or
+        // - `pc` increments by 4 in a non-control flow opcode, and a carry happens in low 16 bits.
+        // The `state_bump_counts` value increments when the second case occurs.
+        if !E::UNCONSTRAINED
+            && !instruction.is_with_correct_next_pc()
+            && next_pc == self.state.pc.wrapping_add(4)
+            && (next_pc >> 16) != (self.state.pc >> 16)
+        {
+            self.local_counts.state_bump_counts += 1;
+        }
+
         // Emit the events for this cycle.
         if E::MODE == ExecutorMode::Trace {
             self.emit_events(
@@ -2058,8 +2072,13 @@ impl<'a> Executor<'a> {
             // If we're close to not fitting, early stop the shard to ensure we don't OOM.
             let mut maximal_size_reached = true;
             if self.state.global_clk.is_multiple_of(self.size_check_frequency) {
+                // The `StateBump` chip is used when the top 24 bits of the clk increment.
+                // The `bump_clk_high` value calculates the maximum such instances in this shard.
+                let bump_clk_high =
+                    (self.state.clk >> 24) + 32 - (self.record.initial_timestamp >> 24);
                 // Estimate the number of events in the trace.
                 Self::estimate_riscv_event_counts(
+                    bump_clk_high,
                     &mut self.event_counts,
                     &self.local_counts,
                     self.local_counts.load_x0_counts,
@@ -2072,12 +2091,8 @@ impl<'a> Executor<'a> {
                 {
                     let padded_event_counts =
                         pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
-                    // TODO(rkm0959): estimate this correctly.
-                    let bump_clk_high =
-                        (self.state.clk >> 24) + 1 - (self.record.initial_timestamp >> 24);
                     let (padded_element_count, max_height) = estimate_trace_elements(
                         padded_event_counts,
-                        bump_clk_high,
                         &self.costs,
                         self.program_len,
                         &self.internal_syscalls_air_id,
@@ -2120,7 +2135,10 @@ impl<'a> Executor<'a> {
     /// Bump the record.
     pub fn bump_record<E: ExecutorConfig>(&mut self) {
         if let Some(estimator) = &mut self.record_estimator {
+            // Refer to the `execute_cycle` function for explanation of `bump_clk_high`.
+            let bump_clk_high = (self.state.clk >> 24) + 32 - (self.record.initial_timestamp >> 24);
             Self::estimate_riscv_event_counts(
+                bump_clk_high,
                 &mut self.event_counts,
                 &self.local_counts,
                 self.local_counts.load_x0_counts,
@@ -2129,10 +2147,8 @@ impl<'a> Executor<'a> {
             // The above method estimates event counts only for core shards.
             estimator.core_records.push(self.event_counts);
         }
-        let bump_clk_high = (self.state.clk >> 24) + 1 - (self.record.initial_timestamp >> 24);
         self.record.estimated_trace_area = estimate_trace_elements(
             self.event_counts,
-            bump_clk_high,
             &self.costs,
             self.program_len,
             &self.internal_syscalls_air_id,
@@ -2185,7 +2201,7 @@ impl<'a> Executor<'a> {
     pub fn execute_state(
         &mut self,
         emit_global_memory_events: bool,
-    ) -> Result<(ExecutionState, PublicValues<u64, u64, u64, u32>, bool), ExecutionError> {
+    ) -> Result<(ExecutionState, PublicValues<u32, u64, u64, u32>, bool), ExecutionError> {
         self.memory_checkpoint.clear();
         self.emit_global_memory_events = emit_global_memory_events;
 
@@ -2550,6 +2566,7 @@ impl<'a> Executor<'a> {
 
     /// Maps the opcode counts to the number of events in each air.
     fn estimate_riscv_event_counts(
+        bump_clk_high: u64,
         event_counts: &mut EnumMap<RiscvAirId, u64>,
         local_counts: &LocalCounts,
         load_x0_counts: u64,
@@ -2559,14 +2576,27 @@ impl<'a> Executor<'a> {
         let syscalls_sent: u64 = local_counts.syscalls_sent as u64;
         let opcode_counts: &EnumMap<Opcode, u64> = &local_counts.event_counts;
 
+        // Compute the maximum number of MemoryBump events.
+        // `MemoryBump` chip is used when each register's memory timestamp's top 24 bits increment.
+        event_counts[RiscvAirId::MemoryBump] = (NUM_REGISTERS as u64) * bump_clk_high;
+
+        // Compute the maximum number of StateBump events;
+        event_counts[RiscvAirId::StateBump] = bump_clk_high + local_counts.state_bump_counts;
+
         // Compute the number of events in the add chip.
         event_counts[RiscvAirId::Add] = opcode_counts[Opcode::ADD];
 
         // Compute the number of events in the addi chip.
         event_counts[RiscvAirId::Addi] = opcode_counts[Opcode::ADDI];
 
+        // Compute the number of events in the addw chip.
+        event_counts[RiscvAirId::Addw] = opcode_counts[Opcode::ADDW];
+
         // Compute the number of events in the sub chip.
         event_counts[RiscvAirId::Sub] = opcode_counts[Opcode::SUB];
+
+        // Compute the number of events in the subw chip.
+        event_counts[RiscvAirId::Subw] = opcode_counts[Opcode::SUBW];
 
         // Compute the number of events in the bitwise chip.
         event_counts[RiscvAirId::Bitwise] =

@@ -236,6 +236,7 @@ where
             local.msb,
             local.is_lw.into(),
         );
+        builder.when_not(local.is_lw).assert_zero(local.msb.msb);
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(

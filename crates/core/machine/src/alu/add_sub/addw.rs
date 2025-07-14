@@ -74,7 +74,6 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
     ) -> RowMajorMatrix<F> {
         // Generate the rows for the trace.
         let chunk_size = std::cmp::max(input.addw_events.len() / num_cpus::get(), 1);
-        let merged_events = input.addw_events.iter().collect::<Vec<_>>();
         let padded_nb_rows = <AddwChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_ADDW_COLS);
 
@@ -84,13 +83,12 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
                     let idx = i * chunk_size + j;
                     let cols: &mut AddwCols<F> = row.borrow_mut();
 
-                    if idx < merged_events.len() {
+                    if idx < input.addw_events.len() {
                         let mut byte_lookup_events = Vec::new();
-                        let event = merged_events[idx];
-                        // tracing::info!("instruction: {:?}", instruction.opcode);
+                        let event = input.addw_events[idx];
                         cols.adapter.populate(&mut byte_lookup_events, event.1);
-                        self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
+                        self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                     }
                 });
             },
@@ -145,7 +143,7 @@ impl AddwChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.addw_operation.populate(blu, event.b, event.c, true);
+        cols.addw_operation.populate(blu, event.b, event.c);
 
         // Get base opcode variants
         let (addw_base, addw_imm) = Opcode::ADDW.base_opcode();
@@ -193,7 +191,7 @@ where
         );
 
         // Constrain the state of the CPU.
-        // The program counter and timestamp increment by `4`.
+        // The program counter and timestamp increment by `4` and `8`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
@@ -206,7 +204,7 @@ where
             local.is_real.into(),
         );
 
-        let u16_max = AB::F::from_canonical_u32((1 << 16) - 1 as u32);
+        let u16_max = AB::F::from_canonical_u32((1 << 16) - 1);
 
         let word: Word<AB::Expr> = Word([
             local.addw_operation.value[0].into(),

@@ -177,7 +177,7 @@ impl SP1RecursionProofShape {
                 (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_424),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_208),
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 413_504),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 761_088),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 760_800),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_536),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_880),
                 (CompressAir::<BabyBear>::Select(SelectChip), 700_008),
@@ -837,6 +837,8 @@ mod tests {
             );
             max_cluster_count = max_count(max_cluster_count, program.event_counts);
         }
+
+        tracing::info!("max_cluster_count: {:?}", max_cluster_count);
 
         let reduce_shape =
             SP1RecursionProofShape::compress_proof_shape_from_arity(DEFAULT_ARITY).unwrap();

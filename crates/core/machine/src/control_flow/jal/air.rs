@@ -59,6 +59,8 @@ where
             local.is_real.into(),
         );
 
+        builder.when_not(local.is_real).assert_zero(local.adapter.op_a_0);
+
         let op_input = AddOperationInput::<AB>::new(
             Word([
                 local.state.pc[0].into(),

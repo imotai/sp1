@@ -93,7 +93,7 @@ pub struct PublicValues<W1, W2, W3, T> {
     pub global_cumulative_sum: SepticDigest<T>,
 }
 
-impl PublicValues<u64, u64, u64, u32> {
+impl PublicValues<u32, u64, u64, u32> {
     /// Convert the public values into a vector of field elements.  This function will pad the
     /// vector to the maximum number of public values.
     #[must_use]
@@ -159,10 +159,10 @@ impl<T: Clone> BorrowMut<PublicValues<[T; 4], [T; 3], [T; 4], T>> for [T] {
     }
 }
 
-impl<F: AbstractField> From<PublicValues<u64, u64, u64, u32>>
+impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
     for PublicValues<[F; 4], [F; 3], [F; 4], F>
 {
-    fn from(value: PublicValues<u64, u64, u64, u32>) -> Self {
+    fn from(value: PublicValues<u32, u64, u64, u32>) -> Self {
         let PublicValues {
             committed_value_digest,
             deferred_proofs_digest,
@@ -192,10 +192,10 @@ impl<F: AbstractField> From<PublicValues<u64, u64, u64, u32>>
 
         let committed_value_digest: [_; PV_DIGEST_NUM_WORDS] = core::array::from_fn(|i| {
             [
-                F::from_canonical_u64(committed_value_digest[i] & 0xFF),
-                F::from_canonical_u64((committed_value_digest[i] >> 8) & 0xFF),
-                F::from_canonical_u64((committed_value_digest[i] >> 16) & 0xFF),
-                F::from_canonical_u64((committed_value_digest[i] >> 24) & 0xFF),
+                F::from_canonical_u32(committed_value_digest[i] & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 8) & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 16) & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 24) & 0xFF),
             ]
         });
 

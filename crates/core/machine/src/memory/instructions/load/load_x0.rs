@@ -243,7 +243,7 @@ where
         );
 
         // Check the alignment of the address.
-        builder.when(local.is_ld).assert_zero(local.offset_bit[0]);
+        builder.when(local.is_ld).assert_zero(local.offset_bit[2]);
         builder.when(local.is_lw + local.is_lwu + local.is_ld).assert_zero(local.offset_bit[1]);
         builder
             .when(local.is_lh + local.is_lhu + local.is_lw + local.is_lwu + local.is_ld)

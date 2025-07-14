@@ -68,6 +68,8 @@ where
             local.is_real.into(),
         );
 
+        builder.when_not(local.is_real).assert_zero(local.adapter.op_a_0);
+
         // Verify that pc_abs + 4 is saved in op_a.
         // When op_a is set to register X0, the RISC-V spec states that the jump instruction will
         // not have a return destination address (it is effectively a GOTO command).  In this case,

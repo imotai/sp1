@@ -9,6 +9,6 @@ pub fn commit_syscall<E: ExecutorConfig>(
     public_values_digest_word: u64,
 ) -> Option<u64> {
     ctx.rt.record.public_values.committed_value_digest[word_idx as usize] =
-        public_values_digest_word;
+        public_values_digest_word.try_into().expect("digest word should fit in u32");
     None
 }
