@@ -5,7 +5,7 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::*;
@@ -245,6 +245,24 @@ where
         let funct7 = local.is_slt * AB::Expr::from_canonical_u8(Opcode::SLT.funct7().unwrap_or(0))
             + local.is_sltu * AB::Expr::from_canonical_u8(Opcode::SLTU.funct7().unwrap_or(0));
         let base_opcode = local.base_op_code.into();
+
+        let (slt_base, slt_imm) = Opcode::SLT.base_opcode();
+        let slt_imm = slt_imm.expect("SLT immediate opcode not found");
+        let (sltu_base, sltu_imm) = Opcode::SLTU.base_opcode();
+        let sltu_imm = sltu_imm.expect("SLTU immediate opcode not found");
+
+        let slt_base_expr = AB::Expr::from_canonical_u32(slt_base);
+        let sltu_base_expr = AB::Expr::from_canonical_u32(sltu_base);
+        let slt_imm_expr = AB::Expr::from_canonical_u32(slt_imm);
+        let sltu_imm_expr = AB::Expr::from_canonical_u32(sltu_imm);
+
+        let correct_imm_opcode = local.is_slt * slt_imm_expr + local.is_sltu * sltu_imm_expr;
+        let correct_reg_opcode = local.is_slt * slt_base_expr + local.is_sltu * sltu_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
 
         // Constrain the program and register reads.
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(

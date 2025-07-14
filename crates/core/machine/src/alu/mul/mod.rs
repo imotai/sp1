@@ -34,7 +34,7 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
@@ -289,6 +289,33 @@ where
             + local.is_mulw * AB::Expr::from_canonical_u8(Opcode::MULW.funct7().unwrap());
 
         let base_opcode = local.base_op_code.into();
+
+        let mul_base = Opcode::MUL.base_opcode().0;
+        let mulh_base = Opcode::MULH.base_opcode().0;
+        let mulhu_base = Opcode::MULHU.base_opcode().0;
+        let mulhsu_base = Opcode::MULHSU.base_opcode().0;
+
+        let (mulw_base, mulw_imm) = Opcode::MULW.base_opcode();
+        let mulw_imm = mulw_imm.expect("MULW immediate opcode not found");
+
+        let mul_base_expr = AB::Expr::from_canonical_u32(mul_base);
+        let mulh_base_expr = AB::Expr::from_canonical_u32(mulh_base);
+        let mulhu_base_expr = AB::Expr::from_canonical_u32(mulhu_base);
+        let mulhsu_base_expr = AB::Expr::from_canonical_u32(mulhsu_base);
+        let mulw_base_expr = AB::Expr::from_canonical_u32(mulw_base);
+        let mulw_imm_expr = AB::Expr::from_canonical_u32(mulw_imm);
+
+        let correct_imm_opcode = local.is_mulw * mulw_imm_expr;
+        let correct_reg_opcode = local.is_mul * mul_base_expr
+            + local.is_mulh * mulh_base_expr
+            + local.is_mulhu * mulhu_base_expr
+            + local.is_mulhsu * mulhsu_base_expr
+            + local.is_mulw * mulw_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.

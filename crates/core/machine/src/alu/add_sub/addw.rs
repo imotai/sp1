@@ -5,7 +5,7 @@ use core::{
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
@@ -170,6 +170,24 @@ where
 
         // Assert boolean constraints
         builder.assert_bool(local.is_real);
+
+        // Get base opcode variants for ADDW
+        let (addw_base, addw_imm) = Opcode::ADDW.base_opcode();
+        let addw_imm = addw_imm.expect("ADDW immediate opcode not found");
+
+        // Constrain that base_op_code is either addw_base or addw_imm
+        let addw_base_expr = AB::Expr::from_canonical_u32(addw_base);
+        let addw_imm_expr = AB::Expr::from_canonical_u32(addw_imm);
+
+        // If imm_c is set, base_op_code must be addw_imm; otherwise it must be addw_base
+        // Get proper base opcode based on imm_c, then check equality
+        let proper_base_op_code =
+            builder.if_else(local.adapter.imm_c.into(), addw_imm_expr, addw_base_expr);
+
+        // Constrain base_op_code to be correct based on imm_c.
+        builder
+            .when(local.is_real.into())
+            .assert_eq(local.base_op_code.into(), proper_base_op_code);
 
         // The opcode is always ADDW (both for immediate and non-immediate variants)
         let opcode = AB::Expr::from_f(Opcode::ADDW.as_field());

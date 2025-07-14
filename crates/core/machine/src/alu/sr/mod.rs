@@ -332,6 +332,70 @@ where
 
         let base_opcode = local.base_op_code.into();
 
+        let (srl_base, srl_imm) = Opcode::SRL.base_opcode();
+        let srl_imm = srl_imm.expect("SRL immediate opcode not found");
+        let (sra_base, sra_imm) = Opcode::SRA.base_opcode();
+        let sra_imm = sra_imm.expect("SRA immediate opcode not found");
+        let (srlw_base, srlw_imm) = Opcode::SRLW.base_opcode();
+        let srlw_imm = srlw_imm.expect("SRLW immediate opcode not found");
+        let (sraw_base, sraw_imm) = Opcode::SRAW.base_opcode();
+        let sraw_imm = sraw_imm.expect("SRAW immediate opcode not found");
+
+        let srl_base_expr = AB::Expr::from_canonical_u32(srl_base);
+        let sra_base_expr = AB::Expr::from_canonical_u32(sra_base);
+        let srlw_base_expr = AB::Expr::from_canonical_u32(srlw_base);
+        let sraw_base_expr = AB::Expr::from_canonical_u32(sraw_base);
+        let srl_imm_expr = AB::Expr::from_canonical_u32(srl_imm);
+        let sra_imm_expr = AB::Expr::from_canonical_u32(sra_imm);
+        let srlw_imm_expr = AB::Expr::from_canonical_u32(srlw_imm);
+        let sraw_imm_expr = AB::Expr::from_canonical_u32(sraw_imm);
+
+        let correct_imm_opcode = local.is_srl * srl_imm_expr
+            + local.is_sra * sra_imm_expr
+            + local.is_srlw * srlw_imm_expr
+            + local.is_sraw * sraw_imm_expr;
+        let correct_reg_opcode = local.is_srl * srl_base_expr
+            + local.is_sra * sra_base_expr
+            + local.is_srlw * srlw_base_expr
+            + local.is_sraw * sraw_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
+
+        let (srl_base, srl_imm) = Opcode::SRL.base_opcode();
+        let srl_imm = srl_imm.expect("SRL immediate opcode not found");
+        let (sra_base, sra_imm) = Opcode::SRA.base_opcode();
+        let sra_imm = sra_imm.expect("SRA immediate opcode not found");
+        let (srlw_base, srlw_imm) = Opcode::SRLW.base_opcode();
+        let srlw_imm = srlw_imm.expect("SRLW immediate opcode not found");
+        let (sraw_base, sraw_imm) = Opcode::SRAW.base_opcode();
+        let sraw_imm = sraw_imm.expect("SRAW immediate opcode not found");
+
+        let srl_base_expr = AB::Expr::from_canonical_u32(srl_base);
+        let sra_base_expr = AB::Expr::from_canonical_u32(sra_base);
+        let srlw_base_expr = AB::Expr::from_canonical_u32(srlw_base);
+        let sraw_base_expr = AB::Expr::from_canonical_u32(sraw_base);
+        let srl_imm_expr = AB::Expr::from_canonical_u32(srl_imm);
+        let sra_imm_expr = AB::Expr::from_canonical_u32(sra_imm);
+        let srlw_imm_expr = AB::Expr::from_canonical_u32(srlw_imm);
+        let sraw_imm_expr = AB::Expr::from_canonical_u32(sraw_imm);
+
+        let correct_imm_opcode = local.is_srl * srl_imm_expr
+            + local.is_sra * sra_imm_expr
+            + local.is_srlw * srlw_imm_expr
+            + local.is_sraw * sraw_imm_expr;
+        let correct_reg_opcode = local.is_srl * srl_base_expr
+            + local.is_sra * sra_base_expr
+            + local.is_srlw * srlw_base_expr
+            + local.is_sraw * sraw_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.assert_zero(is_real.clone() * (local.base_op_code.into() - correct_opcode));
+
         // Check that `local.c_bits` are the 6 lowest bits of `c`.
         for i in 0..6 {
             builder.assert_bool(local.c_bits[i]);

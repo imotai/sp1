@@ -1283,6 +1283,51 @@ where
 
             let base_opcode = local.base_op_code.into();
 
+            let divu_base = Opcode::DIVU.base_opcode().0;
+            let remu_base = Opcode::REMU.base_opcode().0;
+            let div_base = Opcode::DIV.base_opcode().0;
+            let rem_base = Opcode::REM.base_opcode().0;
+            let (divw_base, divw_imm) = Opcode::DIVW.base_opcode();
+            let divw_imm = divw_imm.expect("DIVW immediate opcode not found");
+            let (remw_base, remw_imm) = Opcode::REMW.base_opcode();
+            let remw_imm = remw_imm.expect("REMW immediate opcode not found");
+            let (divuw_base, divuw_imm) = Opcode::DIVUW.base_opcode();
+            let divuw_imm = divuw_imm.expect("DIVUW immediate opcode not found");
+            let (remuw_base, remuw_imm) = Opcode::REMUW.base_opcode();
+            let remuw_imm = remuw_imm.expect("REMUW immediate opcode not found");
+
+            let divu_base_expr = AB::Expr::from_canonical_u32(divu_base);
+            let remu_base_expr = AB::Expr::from_canonical_u32(remu_base);
+            let div_base_expr = AB::Expr::from_canonical_u32(div_base);
+            let rem_base_expr = AB::Expr::from_canonical_u32(rem_base);
+
+            let divw_base_expr = AB::Expr::from_canonical_u32(divw_base);
+            let divw_imm_expr = AB::Expr::from_canonical_u32(divw_imm);
+            let remw_base_expr = AB::Expr::from_canonical_u32(remw_base);
+            let remw_imm_expr = AB::Expr::from_canonical_u32(remw_imm);
+            let divuw_base_expr = AB::Expr::from_canonical_u32(divuw_base);
+            let divuw_imm_expr = AB::Expr::from_canonical_u32(divuw_imm);
+            let remuw_base_expr = AB::Expr::from_canonical_u32(remuw_base);
+            let remuw_imm_expr = AB::Expr::from_canonical_u32(remuw_imm);
+
+            let correct_imm_opcode = local.is_divw * divw_imm_expr
+                + local.is_remw * remw_imm_expr
+                + local.is_divuw * divuw_imm_expr
+                + local.is_remuw * remuw_imm_expr;
+            let correct_reg_opcode = local.is_divu * divu_base_expr
+                + local.is_remu * remu_base_expr
+                + local.is_div * div_base_expr
+                + local.is_rem * rem_base_expr
+                + local.is_divw * divw_base_expr
+                + local.is_remw * remw_base_expr
+                + local.is_divuw * divuw_base_expr
+                + local.is_remuw * remuw_base_expr;
+
+            // Constrain base_op_code to be correct based on imm_c and is_* columns.
+            let correct_opcode =
+                builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+            builder.when(local.is_real.into()).assert_eq(local.base_op_code.into(), correct_opcode);
+
             // Constrain the state of the CPU.
             // The program counter and timestamp increment by `4` and `8`.
             <CPUState<AB::F> as SP1Operation<AB>>::eval(

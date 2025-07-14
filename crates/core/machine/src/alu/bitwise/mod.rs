@@ -5,7 +5,7 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
@@ -222,6 +222,31 @@ where
             + local.is_and * AB::Expr::from_canonical_u8(Opcode::AND.funct7().unwrap_or(0));
 
         let base_opcode = local.base_op_code.into();
+
+        let (xor_base, xor_imm) = Opcode::XOR.base_opcode();
+        let xor_imm = xor_imm.expect("XOR immediate opcode not found");
+        let (or_base, or_imm) = Opcode::OR.base_opcode();
+        let or_imm = or_imm.expect("OR immediate opcode not found");
+        let (and_base, and_imm) = Opcode::AND.base_opcode();
+        let and_imm = and_imm.expect("AND immediate opcode not found");
+
+        let xor_base_expr = AB::Expr::from_canonical_u32(xor_base);
+        let xor_imm_expr = AB::Expr::from_canonical_u32(xor_imm);
+        let or_base_expr = AB::Expr::from_canonical_u32(or_base);
+        let or_imm_expr = AB::Expr::from_canonical_u32(or_imm);
+        let and_base_expr = AB::Expr::from_canonical_u32(and_base);
+        let and_imm_expr = AB::Expr::from_canonical_u32(and_imm);
+
+        let correct_imm_opcode =
+            local.is_xor * xor_imm_expr + local.is_or * or_imm_expr + local.is_and * and_imm_expr;
+        let correct_reg_opcode = local.is_xor * xor_base_expr
+            + local.is_or * or_base_expr
+            + local.is_and * and_base_expr;
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
 
         // Constrain the bitwise operation over `op_b` and `op_c`.
         let bitwise_u16_input = BitwiseU16OperationInput::<AB>::new(

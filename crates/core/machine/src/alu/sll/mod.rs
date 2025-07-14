@@ -419,6 +419,24 @@ where
         // Combine the opcodes based on which instruction is active
         let base_opcode = local.base_op_code.into();
 
+        let (sll_base, sll_imm) = Opcode::SLL.base_opcode();
+        let sll_imm = sll_imm.expect("SLL immediate opcode not found");
+        let (sllw_base, sllw_imm) = Opcode::SLLW.base_opcode();
+        let sllw_imm = sllw_imm.expect("SLLW immediate opcode not found");
+
+        let sll_base_expr = AB::Expr::from_canonical_u32(sll_base);
+        let sllw_base_expr = AB::Expr::from_canonical_u32(sllw_base);
+        let sll_imm_expr = AB::Expr::from_canonical_u32(sll_imm);
+        let sllw_imm_expr = AB::Expr::from_canonical_u32(sllw_imm);
+
+        let correct_imm_opcode = local.is_sll * sll_imm_expr + local.is_sllw * sllw_imm_expr;
+        let correct_reg_opcode = local.is_sll * sll_base_expr + local.is_sllw * sllw_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
+
         // Constrain the CPU state.
         // The program counter and timestamp increment by `4` and `8`.
         CPUState::<AB::F>::eval(
