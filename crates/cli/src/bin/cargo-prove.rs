@@ -1,11 +1,10 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use sp1_cli::{
-    commands::{
-        build::BuildCmd, install_toolchain::InstallToolchainCmd, new::NewCmd, vkey::VkeyCmd,
-    },
-    SP1_VERSION_MESSAGE,
-};
+
+use sp1_cli::{commands::install_toolchain::InstallToolchainCmd, SP1_VERSION_MESSAGE};
+
+#[cfg(feature = "full")]
+use sp1_cli::commands::{build::BuildCmd, new::NewCmd, vkey::VkeyCmd};
 
 #[derive(Parser)]
 #[command(name = "cargo", bin_name = "cargo")]
@@ -22,10 +21,13 @@ pub struct ProveCli {
 
 #[derive(Subcommand)]
 pub enum ProveCliCommands {
+    #[cfg(feature = "full")]
     New(NewCmd),
+    #[cfg(feature = "full")]
     Build(BuildCmd),
-    InstallToolchain(InstallToolchainCmd),
+    #[cfg(feature = "full")]
     Vkey(VkeyCmd),
+    InstallToolchain(InstallToolchainCmd),
 }
 
 #[tokio::main]
@@ -33,9 +35,12 @@ async fn main() -> Result<()> {
     let Cargo::Prove(args) = Cargo::parse();
 
     match args.command {
+        #[cfg(feature = "full")]
         ProveCliCommands::New(cmd) => cmd.run(),
+        #[cfg(feature = "full")]
         ProveCliCommands::Build(cmd) => cmd.run(),
-        ProveCliCommands::InstallToolchain(cmd) => cmd.run().await,
+        #[cfg(feature = "full")]
         ProveCliCommands::Vkey(cmd) => cmd.run().await,
+        ProveCliCommands::InstallToolchain(cmd) => cmd.run().await,
     }
 }

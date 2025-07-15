@@ -4263,6 +4263,8 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "dirs",
+ "futures",
+ "indicatif",
  "rand 0.8.5",
  "reqwest",
  "serde_json",

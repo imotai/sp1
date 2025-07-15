@@ -20,8 +20,8 @@ vergen = { version = "8", default-features = false, features = [
 
 anyhow = { version = "1.0.83", features = ["backtrace"] }
 clap = { version = "4.5.9", features = ["derive", "env"] }
-sp1-build = { workspace = true }
-sp1-sdk = { workspace = true }
+sp1-build = { workspace = true, optional = true }
+sp1-sdk = { workspace = true, optional = true }
 reqwest = { version = "0.12.4", features = [
   "stream",
   "json",
@@ -34,3 +34,13 @@ serde_json = { workspace = true }
 yansi = "1.0.1"
 target-lexicon = "0.12.15"
 cargo_metadata = "0.18.1"
+indicatif = "0.17.8"
+futures.workspace = true
+
+[features]
+default = ["full"]
+
+full = [
+  "dep:sp1-build",
+  "dep:sp1-sdk"
+]

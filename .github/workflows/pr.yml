@@ -44,10 +44,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
-          cargo install --force --locked --path .
-          cargo clean
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -88,10 +86,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
-          cargo install --force --locked --path .
-          cargo clean
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -133,11 +129,9 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
-  #         cargo install --locked --force --path .
-  #         cargo clean
-
+  
   #     - name: Run cargo check
   #       uses: actions-rs/cargo@v1
   #       with:
@@ -169,10 +163,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
-          cd crates/cli
-          cargo install --force --locked --path .
-          cargo clean          
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli          
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
@@ -180,24 +172,18 @@ jobs:
           command: fmt
           args: --all -- --check
           toolchain: nightly
-        env:
-          CARGO_INCREMENTAL: 1
 
       - name: Check test-artifacts
         uses: actions-rs/cargo@v1
         with:
           command: check
           args: -p test-artifacts
-        env:
-          CARGO_INCREMENTAL: 1
 
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: --all-features --all-targets -- -D warnings -A incomplete-features
-        env:
-          CARGO_INCREMENTAL: 1
 
   check:
     name: Cargo Check
@@ -215,10 +201,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
-          cargo install --force --locked --path .
-          cargo clean
 
       - name: Check workspace no features
         uses: actions-rs/cargo@v1
@@ -255,10 +239,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
-          cd crates/cli
-          cargo install --force --locked --path .
-          cargo clean  
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli  
 
       - name: Check workspace no features
         uses: actions-rs/cargo@v1
@@ -301,7 +283,7 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
   #         cargo install --force --locked --path .
   #         cargo clean  
@@ -376,7 +358,7 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
   #         cargo install --force --locked --path .
   #         cargo clean

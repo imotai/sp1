@@ -7,9 +7,9 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 use dirs::home_dir;
+use indicatif::{ProgressBar, ProgressStyle};
 use rand::{distributions::Alphanumeric, Rng};
 use reqwest::Client;
-use sp1_sdk::install::download_file;
 
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -175,4 +175,36 @@ impl InstallToolchainCmd {
 
         Ok(())
     }
+}
+
+pub async fn download_file(
+    client: &Client,
+    url: &str,
+    file: &mut (impl tokio::io::AsyncWrite + Unpin),
+) -> std::result::Result<(), String> {
+    use futures::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let res = client.get(url).send().await.or(Err(format!("Failed to GET from '{}'", &url)))?;
+
+    let total_size =
+        res.content_length().ok_or(format!("Failed to get content length from '{}'", &url))?;
+
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})").unwrap()
+        .progress_chars("#>-"));
+
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+    while let Some(item) = stream.next().await {
+        let chunk = item.or(Err("Error while downloading file"))?;
+        file.write_all(&chunk).await.or(Err("Error while writing to file"))?;
+        let new = (downloaded + (chunk.len() as u64)).min(total_size);
+        downloaded = new;
+        pb.set_position(new);
+    }
+    pb.finish();
+
+    Ok(())
 }

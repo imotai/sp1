@@ -80,9 +80,22 @@ runs:
           ~/.cargo/registry/index/
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
-          target/
           ~/.rustup/
-        key: sp1-rust-${{ runner.arch }}-${{ runner.os }}-${{ github.base_ref || github.ref_name }}
+        key: sp1-rust-${{ runner.arch }}-${{ runner.os }}
+
+    - name: Run sccache-cache only on non-release runs
+      if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+      uses: mozilla-actions/sccache-action@v0.0.9
+      with:
+        version: v0.10.0
+
+    - name: Set Rust caching env vars only on non-release runs
+      if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+      shell: bash
+      run: |
+        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+        echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
 
     - name: Override toolchain
       if: inputs.rustup_override != null
