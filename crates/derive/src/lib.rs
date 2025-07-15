@@ -444,7 +444,7 @@ pub fn input_expr_derive(input: TokenStream) -> TokenStream {
     input_expr::input_expr_derive(input)
 }
 
-#[proc_macro_derive(InputParams)]
+#[proc_macro_derive(InputParams, attributes(picus))]
 pub fn input_params_derive(input: TokenStream) -> TokenStream {
     input_params::input_params_derive(input)
 }

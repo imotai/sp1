@@ -70,8 +70,11 @@ impl<F: Field> AddOperation<F> {
 
 #[derive(Clone, InputParams, InputExpr)]
 pub struct AddOperationInput<AB: SP1AirBuilder> {
+    #[picus(input)]
     pub a: Word<AB::Expr>,
+    #[picus(input)]
     pub b: Word<AB::Expr>,
+    #[picus(output)]
     pub cols: AddOperation<AB::Var>,
     pub is_real: AB::Expr,
 }

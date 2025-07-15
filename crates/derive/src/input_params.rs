@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, GenericParam, Ident, TypeParamBound};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, GenericParam, Ident, TypeParamBound};
 
 /// Derive macro for generating a `params_vec` function that returns a vector of tuples
 /// containing field names and their values with `.into()` called on them.
@@ -51,10 +51,13 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                 let field_name = field.ident.as_ref()?;
                 let field_name_str = field_name.to_string();
 
+                // Parse attributes from the field
+                let attribute = parse_picus_attributes(&field.attrs);
+
                 Some((
                     field.clone(),
                     quote! {
-                        (#field_name_str.to_string(), self.#field_name.into())
+                        (#field_name_str.to_string(), #attribute, self.#field_name.into())
                     },
                 ))
             })
@@ -119,6 +122,7 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                         self,
                     ) -> Vec<(
                         String,
+                        sp1_stark::ir::Attribute,
                         sp1_stark::ir::Shape<
                             <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
                             <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
@@ -166,6 +170,7 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                         self,
                     ) -> Vec<(
                         String,
+                        sp1_stark::ir::Attribute,
                         sp1_stark::ir::Shape<
                             <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
                             <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
@@ -209,4 +214,35 @@ where
             }
         })
         .collect()
+}
+
+/// Parse SP1 attributes from field attributes
+fn parse_picus_attributes(attrs: &[Attribute]) -> TokenStream2 {
+    for attr in attrs {
+        if attr.path.is_ident("picus") {
+            // Parse the meta inside the attribute
+            if let Ok(syn::Meta::List(meta_list)) = attr.parse_meta() {
+                // Check if the list contains the identifier "input" or "output"
+                for nested in meta_list.nested {
+                    if let syn::NestedMeta::Meta(syn::Meta::Path(path)) = nested {
+                        if path.is_ident("input") {
+                            return quote! {
+                                sp1_stark::ir::Attribute {
+                                    picus: sp1_stark::ir::PicusArg::Input,
+                                }
+                            };
+                        } else if path.is_ident("output") {
+                            return quote! {
+                                sp1_stark::ir::Attribute {
+                                    picus: sp1_stark::ir::PicusArg::Output,
+                                }
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Default to Unknown if no attribute is specified
+    quote! { sp1_stark::ir::Attribute::default() }
 }

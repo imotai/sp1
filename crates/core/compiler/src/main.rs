@@ -185,7 +185,7 @@ fn compile_operation(chip_name: &str, operation_name: &str, output_format: &Outp
             println!();
 
             println!("def constraints");
-            for (param_name, param) in &operation.decl.input {
+            for (param_name, _, param) in &operation.decl.input {
                 println!("  ({param_name} : {})", param.to_lean_type());
             }
 
