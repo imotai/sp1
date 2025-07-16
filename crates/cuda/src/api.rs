@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sp1_prover::{InnerSC, OuterSC, SP1CoreProof, SP1VerifyingKey};
 
-use crate::client::CudaClientError;
+use crate::CudaClientError;
 use sp1_core_machine::{io::SP1Stdin, recursion::SP1RecursionProof};
 
 #[derive(Serialize, Deserialize)]
@@ -18,6 +18,8 @@ pub enum Request {
     Wrap { proof: SP1RecursionProof<InnerSC> },
     /// Tell the server to destroy a proving key.
     Destroy { key: [u8; 32] },
+    /// Ping the server to check if it is running.
+    Ping,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -6,6 +6,7 @@ use std::{
 
 use clap::{command, Parser};
 use sp1_core_executor::Program;
+use sp1_cuda::CudaProver;
 use sp1_prover::{
     local::{LocalProver, LocalProverOpts},
     CpuSP1ProverComponents, ProverMode, SP1ProverBuilder,
@@ -152,58 +153,57 @@ async fn main() {
             println!("{result:?}");
         }
         ProverMode::Cuda => {
-            // let server = SP1CudaProver::new(MoongateServer::default())
-            //     .expect("failed to initialize CUDA prover");
+            let server = CudaProver::new().await.unwrap();
+            let cuda_pk = server.setup(elf.clone()).await.unwrap();
 
-            // let context = SP1Context::default();
-            // let (report, execution_duration) =
-            //     time_operation(|| prover.execute(&elf, &stdin, context.clone()));
+            let (report, execution_duration) =
+                time_operation(|| prover.clone().execute(&elf, &stdin, Default::default()));
 
-            // let cycles = report.expect("execution failed").2.total_instruction_count();
+            let cycles = report.expect("execution failed").2.total_instruction_count();
 
-            // let (_, _) = time_operation(|| server.setup(&elf).unwrap());
+            let (core_proof, prove_core_duration) = time_operation_fut(|| async {
+                server.core(&cuda_pk, stdin.clone()).await.unwrap()
+            })
+            .await;
 
-            // let (core_proof, prove_core_duration) =
-            //     time_operation(|| server.prove_core(&stdin).unwrap());
+            let machine_proof: MachineProof<_> =
+                MachineProof { shard_proofs: core_proof.proof.0.clone() };
+            let (_, verify_core_duration) =
+                time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
 
-            // let (_, verify_core_duration) = time_operation(|| {
-            //     prover.verify(&core_proof.proof, &vk).expect("Proof verification failed")
-            // });
+            let proofs = stdin.proofs.into_iter().map(|(proof, _)| proof).collect::<Vec<_>>();
+            let (compress_proof, compress_duration) = time_operation_fut(|| async {
+                server.compress(&vk, core_proof, proofs).await.unwrap()
+            })
+            .await;
 
-            // let proofs = stdin.proofs.into_iter().map(|(proof, _)| proof).collect::<Vec<_>>();
-            // let (compress_proof, compress_duration) =
-            //     time_operation(|| server.compress(&vk, core_proof, proofs).unwrap());
-
-            // let (_, verify_compressed_duration) =
-            //     time_operation(|| prover.verify_compressed(&compress_proof, &vk));
+            let (_, verify_compressed_duration) =
+                time_operation(|| prover.prover().verify_compressed(&compress_proof, &vk));
 
             // let (shrink_proof, shrink_duration) =
-            //     time_operation(|| server.shrink(compress_proof).unwrap());
+            //     time_operation_fut(|| async { server.shrink(compress_proof).await.unwrap()
+            // }).await;
 
             // let (_, verify_shrink_duration) =
-            //     time_operation(|| prover.verify_shrink(&shrink_proof, &vk));
+            //     time_operation(|| prover.prover().verify_shrink(&shrink_proof, &vk));
 
-            // let (_, wrap_duration) = time_operation(|| server.wrap_bn254(shrink_proof).unwrap());
+            // let (wrap_proof, wrap_duration) =
+            //     time_operation_fut(|| async { server.wrap(shrink_proof).await.unwrap() }).await;
 
-            // // TODO: FIX
-            // //
-            // // let (_, verify_wrap_duration) =
-            // //     time_operation(|| prover.verify_wrap_bn254(&wrapped_bn254_proof, &vk));
+            // let (_, verify_wrap_duration) =
+            //     time_operation(|| prover.prover().verify_wrap_bn254(&wrap_proof, &vk));
 
-            // let result = PerfResult {
-            //     cycles,
-            //     execution_duration,
-            //     prove_core_duration,
-            //     verify_core_duration,
-            //     compress_duration,
-            //     verify_compressed_duration,
-            //     shrink_duration,
-            //     verify_shrink_duration,
-            //     wrap_duration,
-            //     ..Default::default()
-            // };
+            let result = PerfResult {
+                cycles,
+                execution_duration,
+                prove_core_duration,
+                verify_core_duration,
+                compress_duration,
+                verify_compressed_duration,
+                ..Default::default() // todo: fix when unsound flag removed.
+            };
 
-            // println!("{:?}", result);
+            println!("{:?}", result);
         }
         ProverMode::Network => {
             // let prover = ProverClient::builder().network().build();

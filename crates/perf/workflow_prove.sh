@@ -11,7 +11,11 @@ CPU_WORKLOADS=(
 )
 
 # Define the list of CUDA workloads.
-CUDA_WORKLOADS=()
+CUDA_WORKLOADS=(
+    "ssz-withdrawals"
+    "fibonacci-1k"
+    "fibonacci-100k"
+)
 
 # Define the list of network workloads.
 NETWORK_WORKLOADS=()

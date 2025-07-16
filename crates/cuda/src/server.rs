@@ -1,110 +1,125 @@
 #![allow(unused)]
 
-#[cfg(feature = "native")]
+#[cfg(all(feature = "native", target_arch = "x86_64"))]
 mod native {
-    use crate::client::CudaClientError;
-    use std::{path::PathBuf, process::Stdio};
+    use crate::CudaClientError;
+    use std::{
+        os::unix::process::CommandExt,
+        path::{Path, PathBuf},
+        process::Stdio,
+    };
     use tokio::{io::AsyncWriteExt, process::Command};
 
     /// Install a systemd unit for the given CUDA device id, and try to start it.
     ///
     /// Note: This method may cause race conditions, it should be called in a critical section.
     pub(crate) async fn start_server(cuda_id: u32) -> Result<(), CudaClientError> {
-        assert_is_systemd().await;
+        const PATH: &str = ".sp1/bin/cuslop-server";
 
-        maybe_download_server(cuda_id).await?;
-        maybe_install_systemd_unit(cuda_id).await?;
+        // Get the path to where the server binary is located.
+        let path = PathBuf::from(std::env::var("HOME").expect("$HOME is not set")).join(PATH);
 
-        let mut cmd = Command::new("systemctl");
-        // Ensure the unit is known to the system.
-        cmd.arg("--user").arg("daemon-reload").status().await.map_err(CudaClientError::Connect)?;
+        // Download the server binary if it doesn't exist.
+        maybe_download_server(&path).await?;
 
-        // Enable the unit.
-        let mut cmd = Command::new("systemctl");
-        cmd.arg("--user")
-            .arg("enable")
-            .arg("--now")
-            .arg(unit_name(cuda_id))
-            .status()
-            .await
-            .map_err(CudaClientError::Connect)?;
-
-        let output = cmd.output().await.map_err(CudaClientError::Connect)?;
-        if !output.status.success() {
-            return Err(CudaClientError::Connect(std::io::Error::other(String::from_utf8_lossy(
-                &output.stderr,
-            ))));
-        }
+        // Start the server binary.
+        start_binary(cuda_id, &path).await?;
 
         Ok(())
     }
 
-    async fn maybe_install_systemd_unit(cuda_id: u32) -> Result<(), CudaClientError> {
-        const SYSTEMD_TEMPLATE: &str = include_str!("cuslop.service.template");
-        const USR_SERVICE_PATH: &str = ".config/systemd/user";
+    /// Start the server binary, ideally with systemd-run. If systemd (--user) is not available,
+    /// we will run the binary as a daemon.
+    async fn start_binary(cuda_id: u32, path: &Path) -> Result<(), CudaClientError> {
+        let is_root = is_root();
+        let has_systemd = Command::new("which")
+            .arg("systemd")
+            .output()
+            .await
+            .map_err(|e| {
+                CudaClientError::new_connect(e, "Could not check if `systemd` is installed")
+            })?
+            .status
+            .success();
 
-        let home = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| {
-            std::env::var("HOME").expect("$HOME or $XDG_CONFIG_HOME is not set.")
-        });
+        // If we are not root, and we dont have a dbug / xdg setup
+        // OR
+        // We dont have systemd, run the binary directly.
+        if (!is_root
+            && !(std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some()
+                && std::env::var_os("XDG_RUNTIME_DIR").is_some()))
+            || !has_systemd
+        {
+            tracing::warn!(
+                "Failed to detect a suitable systemd setup, the server will run as a daemon."
+            );
 
-        let unit_path = PathBuf::from(home)
-            .join(USR_SERVICE_PATH)
-            .join(format!("{}.service", unit_name(cuda_id)));
+            let path = path.to_path_buf();
+            if let Err(e) = daemonize::Daemonize::new()
+                .privileged_action(move || {
+                    let mut cmd = std::process::Command::new(path);
 
-        tracing::debug!("Installing cuslop-server systemd unit at {}", unit_path.display());
+                    // On success, the `exec` method will not return.
+                    let err = cmd.env("CUDA_VISIBLE_DEVICES", cuda_id.to_string()).exec();
+                    tracing::error!("Failed to start `cuslop-server`: {err}");
+                })
+                .start()
+            {
+                return Err(CudaClientError::new_unexpected(
+                    e.to_string(),
+                    "Failed to daemonize `cuslop-server`",
+                ));
+            }
 
-        if unit_path.exists() {
             return Ok(());
         }
 
-        let unit_content = SYSTEMD_TEMPLATE.replace("{%}", &cuda_id.to_string());
+        let mut cmd = Command::new("systemd-run");
 
-        tokio::fs::create_dir_all(unit_path.parent().unwrap())
+        // If we're not root, we need to run the command as a user.
+        if !is_root {
+            cmd.arg("--user");
+        }
+
+        cmd.arg("--unit").arg(unit_name(cuda_id));
+        cmd.arg("--property").arg("Restart=on-failure");
+        cmd.arg("--setenv").arg(format!("CUDA_VISIBLE_DEVICES={cuda_id}"));
+        cmd.arg(path);
+
+        let output = cmd
+            .output()
             .await
-            .map_err(CudaClientError::Connect)?;
+            .map_err(|e| CudaClientError::new_connect(e, "Could not call `systemd-run`"))?;
 
-        let mut file =
-            tokio::fs::File::create(unit_path).await.map_err(CudaClientError::Connect)?;
-
-        file.write_all(unit_content.as_bytes()).await.map_err(CudaClientError::Connect)?;
+        if !output.status.success() {
+            return Err(CudaClientError::new_connect(
+                std::io::Error::other(String::from_utf8_lossy(&output.stderr)),
+                "Could not start `cuslop-server` with systemd-run",
+            ));
+        }
 
         Ok(())
-    }
-
-    /// Asserts that the system is using systemd.
-    async fn assert_is_systemd() {
-        let mut cmd = Command::new("which");
-        let status = cmd
-            .stdout(Stdio::null())
-            .arg("systemctl")
-            .status()
-            .await
-            .expect("`which systemctl` command failed");
-
-        if !status.success() {
-            panic!("only systemd is supported for native mode");
-        }
     }
 
     // If the server binary is not found in the path, or if it the version is not compatible,
     // download the server binary from the release page.
-    async fn maybe_download_server(cuda_id: u32) -> Result<(), CudaClientError> {
+    async fn maybe_download_server(path: &Path) -> Result<(), CudaClientError> {
         // Check if the server binary is in the path.
         let mut download = false;
-        let home = std::env::var("HOME").expect("$HOME is not set");
-        let path = PathBuf::from(home).join(".sp1/bin/cuslop-server");
         if !path.exists() {
+            // If the path doesnt exist then there shouldnt be any instances of the server running.
             download = true;
         } else {
-            let version = Command::new(&path)
-                .arg("--version")
-                .output()
-                .await
-                .map_err(CudaClientError::DownloadIO)?;
+            let version = Command::new(&path).arg("--version").output().await.map_err(|e| {
+                CudaClientError::new_download_io(e, "Could not check `cuslop-server` version")
+            })?;
 
             let version = String::from_utf8_lossy(&version.stdout);
+            tracing::debug!("cuslop-server version: {}", version);
 
-            if version != sp1_primitives::SP1_VERSION {
+            // If the version is not compatible, stop all instances of the server
+            // and download the new version.
+            if version.trim() != sp1_primitives::SP1_VERSION {
                 download = true;
 
                 // Stop *ALL* services, so we can replace it with a new version.
@@ -112,66 +127,153 @@ mod native {
                 // NOTE: If a user is running a CUDA prover, across different versions,
                 // on the same machine, this will cause other instances to crash!
                 let mut cmd = Command::new("systemctl");
-                cmd.arg("--user").arg("stop").arg("'cuslop-server-*'");
+                cmd.arg("--user").arg("stop").arg(r#"cuslop-server-\*"#);
 
-                let _ = cmd.status().await.map_err(CudaClientError::DownloadIO)?;
+                let _ = cmd.status().await.map_err(|e| {
+                    CudaClientError::new_download_io(e, "Could not stop `cuslop-server`")
+                })?;
             }
         }
 
         if download {
             let version = format!("v{}", sp1_primitives::SP1_VERSION);
+            let repo = "succinctlabs/sp1-wip";
 
-            // todo!(nathan): sp1-wip -> sp1
-            // note this doesnt work since wip is not public we would need to add an auth token.
-            let url = format!(
-                "https://github.com/succinctlabs/sp1-wip/releases/download/{version}/cuslop_server_{version}_x86_64.tar.gz",
-            );
+            // todo!(nhtyy): sp1-wip -> sp1
+            let static_url = format!("https://github.com/{repo}/releases/download");
+            let asset_name = format!("cuslop_server_{version}_x86_64.tar.gz");
 
-            tracing::debug!("Downloading CUDA server from {}", url);
-
-            // Download the tar file.
+            // Create the tar file were going to extract from.
             let tar_file = path.with_extension("tar.gz");
-            let mut file =
-                tokio::fs::File::create(&tar_file).await.map_err(CudaClientError::DownloadIO)?;
 
-            let client = reqwest::Client::new();
+            // Ensure that the `.sp1` directory exists.
+            tokio::fs::create_dir_all(path.parent().expect("path has no parent")).await.map_err(
+                |e| CudaClientError::new_download_io(e, "Could not create `.sp1` directory"),
+            )?;
 
-            let mut request = client.get(url);
-            // We add the token to the request if it is set, this is used when were working in the
-            // private repo.
-            if let Ok(token) = std::env::var("GH_TOKEN") {
-                request = request.bearer_auth(token);
-            }
-            let mut response = request.send().await.map_err(CudaClientError::Download)?;
+            let mut file = tokio::fs::File::create(&tar_file).await.map_err(|e| {
+                CudaClientError::new_download_io(e, "Could not create `cuslop-server` tar file")
+            })?;
 
-            if !response.status().is_success() {
-                tracing::error!("Bad status code from download attempt: {}", response.status());
+            // Download the release, use a token if it exists for private releases.
+            let bytes = match std::env::var("DEV_GITHUB_TOKEN").ok() {
+                Some(token) => download_with_auth(&version, repo, &token, &asset_name).await,
+                None => {
+                    // Create the static url of the release that we expect to exist.
+                    let url = format!("{static_url}/{version}/{asset_name}");
 
-                return Err(CudaClientError::Unexpected(format!(
-                    "Failed to download CUDA server: {}",
-                    response.text().await.expect("failed to read response text")
-                )));
-            }
+                    // Download the release.
+                    let client = reqwest::Client::new();
+                    let response =
+                        client.get(url).send().await.map_err(CudaClientError::Download)?;
 
-            let bytes = response.bytes().await?;
-            file.write_all(&bytes).await.map_err(CudaClientError::DownloadIO)?;
+                    if !response.status().is_success() {
+                        return Err(CudaClientError::Unexpected(format!(
+                            "Failed to download CUDA server: {}",
+                            response.text().await.expect("failed to read response text")
+                        )));
+                    }
+
+                    response.bytes().await.map_err(CudaClientError::Download)
+                }
+            }?;
+
+            file.write_all(&bytes).await.map_err(|e| {
+                CudaClientError::new_download_io(e, "Could not write `cuslop-server` tar file")
+            })?;
 
             // Extract the tar file.
             let mut cmd = Command::new("tar");
-            cmd.arg("-xzf").arg(&tar_file).arg("-C").arg(path.parent().unwrap());
-            cmd.status().await.map_err(CudaClientError::DownloadIO)?;
+            cmd.arg("-xzf")
+                .arg(&tar_file)
+                .arg("-C")
+                .arg(path.parent().expect("path has no parent"));
+
+            cmd.status().await.map_err(|e| {
+                CudaClientError::new_download_io(e, "Could not extract `cuslop-server` tar file")
+            })?;
 
             // Remove the tar file.
-            tokio::fs::remove_file(tar_file).await.map_err(CudaClientError::DownloadIO)?;
+            tokio::fs::remove_file(tar_file).await.map_err(|e| {
+                CudaClientError::new_download_io(e, "Could not remove `cuslop-server` tar file")
+            })?;
         }
 
         Ok(())
     }
 
-    #[allow(clippy::uninlined_format_args)]
+    async fn download_with_auth(
+        tag: &str,
+        repo: &str,
+        token: &str,
+        asset_name: &str,
+    ) -> Result<bytes::Bytes, CudaClientError> {
+        tracing::trace!("downloading with auth");
+
+        // 1. Find the release by tag
+        #[derive(serde::Deserialize)]
+        struct Release {
+            assets: Vec<Asset>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Asset {
+            id: u64,
+            name: String,
+        }
+
+        let api = format!("https://api.github.com/repos/{repo}");
+        let client = reqwest::Client::builder()
+            .user_agent("sp1-cuda-downloader")
+            .build()
+            .expect("failed to build reqwest client");
+
+        let release: Release = client
+            .get(format!("{api}/releases/tags/{tag}"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(CudaClientError::Download)?
+            .error_for_status()
+            .map_err(CudaClientError::Download)?
+            .json()
+            .await
+            .map_err(CudaClientError::Download)?;
+
+        let asset_id = release
+            .assets
+            .into_iter()
+            .find(|a| a.name == asset_name)
+            .ok_or_else(|| {
+                CudaClientError::Unexpected(format!(
+                    "asset {asset_name} not found in release {tag}"
+                ))
+            })?
+            .id;
+
+        // 2. Download the binary content
+        let bytes = client
+            .get(format!("{api}/releases/assets/{asset_id}"))
+            .bearer_auth(token)
+            .header(reqwest::header::ACCEPT, "application/octet-stream")
+            .send()
+            .await
+            .map_err(CudaClientError::Download)?
+            .error_for_status()
+            .map_err(CudaClientError::Download)?
+            .bytes()
+            .await
+            .map_err(CudaClientError::Download)?;
+
+        Ok(bytes)
+    }
+
+    fn is_root() -> bool {
+        users::get_current_uid() == 0
+    }
+
     /// The name of the systemd unit for the given CUDA device id.
     fn unit_name(cuda_id: u32) -> String {
-        format!("cuslop-server-{}", cuda_id)
+        format!("cuslop-server-{cuda_id}")
     }
 }
 
@@ -180,7 +282,7 @@ pub(crate) use native::start_server;
 
 #[cfg(any(not(feature = "native"), not(target_arch = "x86_64")))]
 mod docker {
-    use crate::client::CudaClientError;
+    use crate::CudaClientError;
     use std::process::Stdio;
     use tokio::process::Command;
 

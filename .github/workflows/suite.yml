@@ -92,7 +92,7 @@ jobs:
         "runs-on",
         "family=g6.4xlarge",
         "hdd=200",
-        "ami=ami-0a63dc9cb9e934ba3",
+        # "ami=ami-090f8a62ba9de38d0",
         "spot=false",
         "run-id=${{ github.run_id }}",
       ]
@@ -115,8 +115,8 @@ jobs:
       - name: Copy files from S3
         run: |
           mkdir -p workdir
-          aws s3 cp s3://sp1-testing-suite/${{ matrix.workload }}/program.bin workdir/program.bin
-          aws s3 cp s3://sp1-testing-suite/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
+          aws s3 cp s3://sp1-testing-suite-64bit/${{ matrix.workload }}/program.bin workdir/program.bin
+          aws s3 cp s3://sp1-testing-suite-64bit/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
 
       - name: Install SP1 toolchain from repo
         run: |
@@ -127,12 +127,45 @@ jobs:
         run: |
           sudo apt-get install m4
 
+      - name: Install CUDA (driver + runtime)
+        uses: Jimver/cuda-toolkit@v0.2.26
+        id: cuda-toolkit
+        with:
+          cuda: '12.8.1'                 # Toolkit/driver branch you need
+          method: 'network'              # Required when you list sub-packages
+          # ────────────────────────────────────────────────────────────────
+          # "sub-packages" → the action prepends "cuda-" and appends "-12-8"
+          # The meta-package "drivers" resolves to "cuda-drivers-12-8", which
+          # installs the NVIDIA kernel driver + nvidia-smi.
+          # "cudart" installs the runtime libraries that user code links
+          # against; other entries are optional build-time bits.
+          sub-packages: '[
+            "cudart",       
+            "cudart-dev",
+            "nvcc",
+            "nvrtc",
+            "nvtx" 
+          ]'
+          use-github-cache: false
+          use-local-cache:  false
+          log-file-suffix:  '${{ matrix.platform }}-${{ matrix.arch }}.txt'
+
+      - name: Run Nvidia-smi
+        run: |
+          # Cursed isntallation of the actual driver itself, not the runtime.
+          # todo: ensure the runner type / os doesnt change is alwaus ubuntu.
+          sudo apt-get install nvidia-driver-565
+          nvidia-smi
+          nvcc --version
+
       - name: Run sp1-perf
         uses: actions-rs/cargo@v1
         with:
           command: run
           args: --release -p sp1-perf -- --program workdir/program.bin --stdin workdir/stdin.bin --mode cuda
         env:
+          CUDA_PATH: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}
+          DEV_GITHUB_TOKEN: ${{ secrets.PRIVATE_PULL_TOKEN }}
           RUST_LOG: debug
           RUSTFLAGS: -Copt-level=3 -Ctarget-cpu=native
           RUST_BACKTRACE: 1
@@ -176,21 +209,12 @@ jobs:
           aws s3 cp s3://sp1-testing-suite/${{ matrix.workload }}/program.bin workdir/program.bin
           aws s3 cp s3://sp1-testing-suite/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
 
-      - name: Clean Cargo cache
-        uses: actions-rs/cargo@v1
-        with:
-          command: clean
-
       - name: Install SP1 toolchain from repo
         run: |
           cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
 
       - name: Run sp1-perf
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --release -p sp1-perf --features "native-gnark" -- --program workdir/program.bin --stdin workdir/stdin.bin --mode network
         env:
           RUST_LOG: info
           VERIFY_VK: false
@@ -200,3 +224,5 @@ jobs:
           SP1_PRIVATE_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
           NETWORK_PRIVATE_KEY: ${{ secrets.NETWORK_PRIVATE_KEY }}
           NETWORK_RPC_URL: "https://rpc.production.succinct.xyz" 
+        run: |
+          cargo run --release -p sp1-perf --features "native-gnark" -- --program workdir/program.bin --stdin workdir/stdin.bin --mode network

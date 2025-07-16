@@ -10,9 +10,11 @@ pub mod pk;
 /// The server startup logic.
 mod server;
 
+mod error;
+pub use error::CudaClientError;
+
 use std::path::PathBuf;
 
-pub use client::CudaClientError;
 pub use pk::CudaProvingKey;
 use semver::Version;
 use sp1_core_machine::{io::SP1Stdin, recursion::SP1RecursionProof};
@@ -75,7 +77,10 @@ impl CudaProver {
     }
 }
 
-async fn check_cuda_version() -> Result<(), CudaClientError> {
+/// Panics if we detect an incompatible CUDA installation.
+///
+/// Note: This method is a noop if no cuda `version.json` can be found.
+async fn check_cuda_version() {
     #[derive(serde::Deserialize, Debug)]
     struct CudaVersions {
         cuda_cudart: CudaVersion,
@@ -86,21 +91,39 @@ async fn check_cuda_version() -> Result<(), CudaClientError> {
         version: semver::Version,
     }
 
-    let cuda_path: PathBuf = std::env::var("CUDA_PATH")
-        .map_err(|_| CudaClientError::Unexpected("CUDA_PATH env var is not set".to_string()))?
-        .into();
+    let cuda_paths: Vec<PathBuf> = match std::env::var("CUDA_PATH").ok() {
+        Some(path) => vec![path.into()],
+        // todo: Check is there more than one CUDA installation.
+        None => vec![PathBuf::from("/usr/local/cuda")],
+    };
 
-    let version_file = cuda_path.join("version.json");
-    let version_file = tokio::fs::read_to_string(&version_file)
-        .await
-        .map_err(|_| CudaClientError::Unexpected("Failed to read version.json".to_string()))?;
+    for cuda_path in &cuda_paths {
+        let version_file = cuda_path.join("version.json");
+        if !version_file.exists() {
+            continue;
+        }
 
-    let versions: CudaVersions = serde_json::from_str(&version_file)
-        .map_err(|_| CudaClientError::Unexpected("Failed to parse version.json".to_string()))?;
+        let Ok(version_file) = tokio::fs::read_to_string(&version_file).await else {
+            tracing::error!("Failed to read version.json for CUDA path: {:?}", cuda_path);
+            continue;
+        };
 
-    if versions.cuda_cudart.version < MIN_CUDA_VERSION {
-        return Err(CudaClientError::CudaVersionTooOld);
+        let Ok(versions): Result<CudaVersions, _> = serde_json::from_str(&version_file) else {
+            tracing::error!("Failed to parse version.json for CUDA path: {:?}", cuda_path);
+            continue;
+        };
+
+        // If weve successfully parsed the version file, and the version is greater than or equal to
+        // the minimum version, we can return Ok.
+        if versions.cuda_cudart.version >= MIN_CUDA_VERSION {
+            return;
+        } else {
+            panic!("CUDA version is too old. Please upgrade to at least {} or set the CUDA_PATH env var.", MIN_CUDA_VERSION);
+        }
     }
 
-    Ok(())
+    tracing::error!(
+        "Failed to find a compatible CUDA installation, locations checked: {:?}",
+        cuda_paths
+    );
 }
