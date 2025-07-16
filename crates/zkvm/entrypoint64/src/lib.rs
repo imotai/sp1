@@ -187,7 +187,7 @@ mod zkvm {
     }
 
     // core::arch::global_asm!(include_str!("memset.s"));
-    // core::arch::global_asm!(include_str!("memcpy.s"));
+    core::arch::global_asm!(include_str!("memcpy.s"));
 
     // Alias the stack top to a static we can load easily.
     static _STACK_TOP: u64 = sp1_primitives::consts::STACK_TOP;
