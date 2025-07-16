@@ -38,7 +38,8 @@ use sp1_recursion_compiler::{
     ir::{Builder, DslIrProgram},
 };
 use sp1_recursion_executor::{
-    ExecutionRecord, RecursionProgram, RecursionPublicValues, Runtime, DIGEST_SIZE,
+    shape::RecursionShape, ExecutionRecord, RecursionProgram, RecursionPublicValues, Runtime,
+    DIGEST_SIZE,
 };
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
@@ -192,27 +193,19 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             shrink_program_from_input(&recursive_compress_verifier, vk_verification, &shrink_input);
         let shrink_program = Arc::new(shrink_program);
 
-        let wrap_shape = SP1RecursionProofShape::shrink_proof_shape_from_arity(max_compose_arity)
-            .expect("arity not supported");
+        let (pk, _) = shrink_prover.setup(shrink_program.clone(), None).await.unwrap();
 
-        let wrap_input = dummy_compose_input(&shrink_prover, &wrap_shape, 1, merkle_tree.height);
+        let pk: Arc<MachineProvingKey<C::RecursionComponents>> = unsafe { pk.into_inner() };
 
-        tracing::warn!(
-            "Shrink prover num queries: {}",
-            shrink_prover.verifier().fri_config().num_queries
-        );
+        let shrink_proof_shape = SP1RecursionProofShape {
+            shape: RecursionShape::new(
+                <C::RecursionComponents as MachineProverComponents>::preprocessed_table_heights(pk),
+            ),
+        };
 
-        tracing::warn!(
-            "Number of wrap queries: {:?}",
-            wrap_input.compress_val.vks_and_proofs[0]
-                .1
-                .evaluation_proof
-                .stacked_pcs_proof
-                .pcs_proof
-                .component_polynomials_query_openings[0]
-                .values
-                .shape()
-        );
+        let wrap_input =
+            dummy_compose_input(&shrink_prover, &shrink_proof_shape, 1, merkle_tree.height);
+
         let wrap_program =
             wrap_program_from_input(&recursive_shrink_verifier, vk_verification, &wrap_input);
         let wrap_program = Arc::new(wrap_program);
