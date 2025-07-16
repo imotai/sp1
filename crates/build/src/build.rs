@@ -213,7 +213,7 @@ fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) 
         let elf_path_str = elf_path.to_string();
 
         #[cfg(feature = "64bit")]
-        let elf_path_64 = {
+        let elf_path_str = {
             if elf_path_str.contains(crate::DEFAULT_TARGET_64) {
                 elf_path_str
             } else if elf_path_str.contains(DEFAULT_TARGET) {
@@ -228,10 +228,6 @@ fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) 
             }
         };
 
-        #[cfg(feature = "64bit")]
-        println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path_64);
-
-        #[cfg(not(feature = "64bit"))]
         println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path_str);
     }
 }

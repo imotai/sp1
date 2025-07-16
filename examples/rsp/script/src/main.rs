@@ -39,7 +39,7 @@ fn load_input_from_cache(chain_id: u64, block_number: u64) -> ClientExecutorInpu
 async fn main() {
     setup_logger();
     // Load the input from the cache.
-    let client_input = load_input_from_cache(CHAIN_ID_ETH_MAINNET, 21740164);
+    let client_input = load_input_from_cache(CHAIN_ID_ETH_MAINNET, 21740137);
     let mut stdin = SP1Stdin::default();
     let buffer = bincode::serialize(&client_input).unwrap();
     stdin.write_vec(buffer);
@@ -56,6 +56,7 @@ async fn main() {
     println!("total elapsed: {:?}", now.elapsed());
 
     println!("Full execution report:\n{:?}", runtime.report);
+    println!("Cycles: {:?}", runtime.report.total_instruction_count());
 
     let mut public_values = SP1PublicValues::from(&runtime.state.public_values_stream); 
 

@@ -8,13 +8,18 @@ publish.workspace = true
 sp1-zkvm = { workspace = true }
 sp1-sdk = { workspace = true }
 sp1-core-executor = { workspace = true }
-rand.workspace = true
+rand = { workspace = true }
 sp1-test = { workspace = true }
+tokio = { workspace = true }
+color-eyre = { workspace = true }
 
 # note: we use the patched version (which should be mostly equivalent to the original, outside the vm)
 # because we want to test the field ops which are not exposed in the original
-bls12_381 = { git = "https://github.com/sp1-patches/bls12_381", tag = "patch-0.8.0-sp1-5.0.0", features = ["groups"] }
+bls12_381-patched = { workspace = true }
 group = "0.13.0"
+
+[target.'cfg(tokio_unstable)'.dependencies]
+console-subscriber = { workspace = true }
 
 [features]
 prove = []

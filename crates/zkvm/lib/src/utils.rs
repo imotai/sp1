@@ -67,14 +67,14 @@ pub trait AffinePoint<const N: usize>: Clone + Sized {
     fn double(&mut self);
 
     /// Multiplies `self` by the given scalar.
-    fn mul_assign(&mut self, scalar: &[u32]) {
-        debug_assert!(scalar.len() == N / 4);
+    fn mul_assign(&mut self, scalar: &[u64]) {
+        debug_assert_eq!(scalar.len(), N / 2);
 
         let mut res: Self = Self::identity();
         let mut temp = self.clone();
 
         for &words in scalar.iter() {
-            for i in 0..32 {
+            for i in 0..u64::BITS {
                 if (words >> i) & 1 == 1 {
                     res.complete_add_assign(&temp);
                 }

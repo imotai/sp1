@@ -15,7 +15,7 @@ impl fmt::Debug for CudaClientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "CudaClientError: {:?}", self.variant)?;
         if let Some(ctx) = &self.ctx {
-            writeln!(f, "Context: {:?}", ctx)?;
+            writeln!(f, "Context: {ctx:?}")?;
         }
         Ok(())
     }

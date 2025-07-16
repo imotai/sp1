@@ -118,13 +118,13 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let maybe_client_setup = options.setup().map(|setup| {
         quote! {
-            fn __asset_proper_setup<F: FnOnce(::sp1_sdk::CpuProver) -> ::sp1_sdk::ProverClient>(setup: F) {
+            async fn __asset_proper_setup<F: FnOnce(::sp1_sdk::CpuProver) -> ::sp1_sdk::ProverClient>(setup: F) {
                 let _ = setup;
             }
 
-            __asset_proper_setup(#setup);
+            __asset_proper_setup(#setup).await;
 
-            let __macro_internal_client = #setup(__macro_internal_client);
+            let __macro_internal_client = #setup(__macro_internal_client).await;
         }
     });
 
@@ -136,12 +136,17 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let execute_test = quote! {
         #[cfg(not(any(feature = "prove", feature = "gpu")))]
-        #[test]
-        fn #test_name() {
-            const __MACRO_INTERNAL_ELF: &[u8] = ::sp1_sdk::include_elf!(#elf_name);
+        #[::tokio::test]
+        async fn #test_name() -> ::color_eyre::eyre::Result<()> {
+            ::sp1_test::SUBSCRIBER_ONCE.call_once(|| {
+                #[cfg(tokio_unstable)]
+                ::console_subscriber::init();
+            });
+
+            const __MACRO_INTERNAL_ELF: ::sp1_sdk::Elf = ::sp1_sdk::include_elf!(#elf_name);
 
             let mut __macro_internal_stdin = ::sp1_sdk::SP1Stdin::new();
-            let __macro_internal_client = &*::sp1_test::SP1_CPU_PROVER;
+            let __macro_internal_client = ::sp1_test::sp1_cpu_prover().await;
 
             #setup_fn
 
@@ -151,7 +156,8 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             #maybe_client_setup
 
-            let (__macro_internal_public, __macro_internal_execution_report) = __macro_internal_client.execute(__MACRO_INTERNAL_ELF, &__macro_internal_stdin).run().unwrap();
+            let (__macro_internal_public, __macro_internal_execution_report) =
+                ::sp1_sdk::Prover::execute(__macro_internal_client, __MACRO_INTERNAL_ELF, __macro_internal_stdin).await?;
 
             for syscall in [#(::sp1_core_executor::syscalls::SyscallCode::#syscalls),*] {
                 assert!(__macro_internal_execution_report.syscall_counts[syscall] > 0, "Syscall {syscall} has not been emitted");
@@ -161,7 +167,14 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             println!("Cycle Count: {}", __macro_internal_execution_report.total_instruction_count());
 
-            ::sp1_test::write_cycles(concat!(env!("CARGO_CRATE_NAME"), "_", stringify!(#test_name)), __macro_internal_execution_report.total_instruction_count());
+            ::tokio::task::spawn_blocking(move || {
+                ::sp1_test::write_cycles(
+                    concat!(env!("CARGO_CRATE_NAME"), "_", stringify!(#test_name)),
+                    __macro_internal_execution_report.total_instruction_count(),
+                );
+            }).await?;
+
+            Ok(())
         }
     };
 
@@ -170,12 +183,17 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         let prove_fn = quote! {
             #[cfg(feature = "prove")]
-            #[test]
-            fn #prove_name() {
-                use ::sp1_sdk::Prover;
-                const __MACRO_INTERNAL_ELF: &[u8] = ::sp1_sdk::include_elf!(#elf_name);
+            #[::tokio::test]
+            async fn #prove_name() {
+                ::sp1_test::SUBSCRIBER_ONCE.call_once(|| {
+                    #[cfg(tokio_unstable)]
+                    ::console_subscriber::init();
+                });
 
-                let __macro_internal_client = &*::sp1_test::SP1_CPU_PROVER;
+                use ::sp1_sdk::Prover;
+                const __MACRO_INTERNAL_ELF: ::sp1_sdk::Elf = ::sp1_sdk::include_elf!(#elf_name);
+
+                let __macro_internal_client = ::sp1_test::sp1_cpu_prover().await;
                 let mut __macro_internal_stdin = ::sp1_sdk::SP1Stdin::new();
 
                 #setup_fn
@@ -184,9 +202,11 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 #bounds_check
 
-                let (__macro_internal_pk, __macro_internal_vk) = __macro_internal_client.setup(__MACRO_INTERNAL_ELF);
-                let __macro_internal_proof = __macro_internal_client.prove(&__macro_internal_pk, &__macro_internal_stdin).compressed().run().unwrap();
+                let __macro_internal_pk = __macro_internal_client.setup(__MACRO_INTERNAL_ELF).await.unwrap();
+                let __macro__internal_proof_req = __macro_internal_client.prove(&__macro_internal_pk, __macro_internal_stdin);
+                let __macro_internal_proof = ::sp1_sdk::ProveRequest::compressed(__macro__internal_proof_req).await.unwrap();
 
+                let __macro_internal_vk = ::sp1_sdk::ProvingKey::verifying_key(&__macro_internal_pk);
                 #verify
 
                 __macro_internal_cb(__macro_internal_proof.public_values);
@@ -203,19 +223,24 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         Some(quote! {
             #[cfg(feature = "gpu")]
-            #[test]
-            fn #gpu_prove_name() {
+            #[::tokio::test]
+            async fn #gpu_prove_name() {
+                ::sp1_test::SUBSCRIBER_ONCE.call_once(|| {
+                    #[cfg(tokio_unstable)]
+                    ::console_subscriber::init();
+                });
+
                 use ::sp1_sdk::Prover;
-                const __MACRO_INTERNAL_ELF: &[u8] = ::sp1_sdk::include_elf!(#elf_name);
+                const __MACRO_INTERNAL_ELF: ::sp1_sdk::Elf = ::sp1_sdk::include_elf!(#elf_name);
 
                 // Note: Gpu tests must be ran serially.
-                // A parking-lot mutex is used internally to avoid priority inversion.
-                let _lock = ::sp1_test::lock_serial();
+                // A tokio semaphore is used internally to avoid priority inversion.
+                let _lock = ::sp1_test::SERIAL_SEMAPHORE.acquire().await.unwrap();
 
                 // Note: We must sleep on gpu tests to wait for Docker cleanup.
                 std::thread::sleep(std::time::Duration::from_secs(5));
 
-                let __macro_internal_client = ::sp1_sdk::ProverClient::builder().cuda().build();
+                let __macro_internal_client = ::sp1_sdk::ProverClient::builder().cuda().build().await;
                 let mut __macro_internal_stdin = ::sp1_sdk::SP1Stdin::new();
 
                 #setup_fn
@@ -224,9 +249,11 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 #bounds_check
 
-                let (__macro_internal_pk, __macro_internal_vk) = __macro_internal_client.setup(__MACRO_INTERNAL_ELF);
-                let __macro_internal_proof = __macro_internal_client.prove(&__macro_internal_pk, &__macro_internal_stdin).compressed().run().unwrap();
+                let __macro_internal_pk = __macro_internal_client.setup(__MACRO_INTERNAL_ELF).await.unwrap();
+                let __macro__internal_proof_req = __macro_internal_client.prove(&__macro_internal_pk, __macro_internal_stdin);
+                let __macro_internal_proof = ::sp1_sdk::ProveRequest::compressed(__macro__internal_proof_req).await.unwrap();
 
+                let __macro_internal_vk = ::sp1_sdk::ProvingKey::verifying_key(&__macro_internal_pk);
                 #verify
 
                 __macro_internal_cb(__macro_internal_proof.public_values);

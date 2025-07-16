@@ -118,7 +118,7 @@ async fn check_cuda_version() {
         if versions.cuda_cudart.version >= MIN_CUDA_VERSION {
             return;
         } else {
-            panic!("CUDA version is too old. Please upgrade to at least {} or set the CUDA_PATH env var.", MIN_CUDA_VERSION);
+            panic!("CUDA version is too old. Please upgrade to at least {MIN_CUDA_VERSION} or set the CUDA_PATH env var.");
         }
     }
 

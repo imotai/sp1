@@ -18,8 +18,10 @@ serde = { workspace = true, features = ["derive"] }
 tokio = { version = "1.4", features = ["full"] }
 tracing = { workspace = true }
 thiserror = "1.0"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-serde_json.workspace = true
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+] }
+serde_json = { workspace = true }
 semver = { version = "1.0.26", features = ["serde"] }
 bytes = "1.10.1"
 users = "0.11.0"

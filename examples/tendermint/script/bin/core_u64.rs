@@ -45,7 +45,7 @@ async fn main() {
     stdin.write_vec(encoded_1);
     stdin.write_vec(encoded_2);
 
-    let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
+    let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
     let opts = LocalProverOpts {
         core_opts: SP1CoreOpts {
             retained_events_presets: [RetainedEventsPreset::Sha256].into(),

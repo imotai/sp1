@@ -203,7 +203,7 @@ async fn main() {
                 ..Default::default() // todo: fix when unsound flag removed.
             };
 
-            println!("{:?}", result);
+            println!("{result:?}");
         }
         ProverMode::Network => {
             // let prover = ProverClient::builder().network().build();

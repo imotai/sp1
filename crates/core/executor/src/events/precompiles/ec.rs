@@ -101,13 +101,9 @@ pub fn create_ec_add_event<E: EllipticCurve, Ex: ExecutorConfig>(
 ) -> EllipticCurveAddEvent {
     let start_clk = rt.clk;
     let p_ptr = arg1;
-    if !p_ptr.is_multiple_of(8) {
-        panic!();
-    }
+    assert!(p_ptr.is_multiple_of(8), "p_ptr must be 8-byte aligned");
     let q_ptr = arg2;
-    if !q_ptr.is_multiple_of(8) {
-        panic!();
-    }
+    assert!(q_ptr.is_multiple_of(8), "q_ptr must be 8-byte aligned");
 
     let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
 
@@ -150,9 +146,7 @@ pub fn create_ec_double_event<E: EllipticCurve, Ex: ExecutorConfig>(
 ) -> EllipticCurveDoubleEvent {
     let start_clk = rt.clk;
     let p_ptr = arg1;
-    if !p_ptr.is_multiple_of(8) {
-        panic!();
-    }
+    assert!(p_ptr.is_multiple_of(8), "p_ptr must be 8-byte aligned");
 
     let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
 
@@ -186,7 +180,7 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
     sign_bit: u64,
 ) -> EllipticCurveDecompressEvent {
     let start_clk = rt.clk;
-    assert!(slice_ptr.is_multiple_of(8), "slice_ptr must be 4-byte aligned");
+    assert!(slice_ptr.is_multiple_of(8), "slice_ptr must be 8-byte aligned");
     assert!(sign_bit <= 1, "is_odd must be 0 or 1");
 
     let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;

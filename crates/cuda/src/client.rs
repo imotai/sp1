@@ -112,7 +112,7 @@ impl CudaClient {
         }
     }
 
-    async fn lock(&self) -> tokio::sync::MutexGuard<UnixStream> {
+    async fn lock(&self) -> tokio::sync::MutexGuard<'_, UnixStream> {
         self.inner.stream.as_ref().expect("expected a valid stream").lock().await
     }
 }

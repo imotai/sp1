@@ -128,7 +128,7 @@ extern "C" {
     /// Computes a big integer operation with a modulus.
     pub fn sys_bigint(
         result: *mut [u64; 4],
-        op: u32,
+        op: u64,
         x: *const [u64; 4],
         y: *const [u64; 4],
         modulus: *const [u64; 4],

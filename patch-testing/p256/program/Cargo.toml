@@ -13,11 +13,14 @@ name = "p256_recover"
 path = "bin/recover.rs"
 
 [dependencies]
-sp1-zkvm = { path = "../../../crates/zkvm/entrypoint" }
-p256 = { version = "0.13.2", default-features = false, features = ["ecdsa", "alloc", "serde"] }
+sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
+p256 = { version = "0.13.2", default-features = false, features = [
+    "ecdsa",
+    "alloc",
+    "serde",
+] }
 ecdsa-core = { version = "0.16.9", package = "ecdsa", features = ["verifying"] }
 
 [patch.crates-io]
-p256 = { git = "https://github.com/sp1-patches/elliptic-curves", tag = "patch-p256-13.2-sp1-5.0.0" }
+p256 = { git = "https://github.com/sp1-patches/elliptic-curves", tag = "patch-p256-13.2-sp1-6.0.0" }
 sp1-lib = { path = "../../../crates/zkvm/lib" }
-

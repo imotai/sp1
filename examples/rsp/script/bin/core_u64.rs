@@ -11,6 +11,7 @@ use sp1_prover::{
 use std::sync::Arc;
 use tracing::Instrument;
 use sp1_core_machine::utils::setup_logger;
+use sp1_sdk::prelude::*;
 
 use alloy_primitives::B256;
 use clap::Parser;
@@ -21,7 +22,7 @@ use std::path::PathBuf;
 
 
 /// The ELF we want to execute inside the zkVM.
-const ELF: &[u8] = include_elf!("rsp-program");
+const ELF: Elf = include_elf!("rsp-program");
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -47,7 +48,7 @@ async fn main() {
     let buffer = bincode::serialize(&client_input).unwrap();
     stdin.write_vec(buffer);
 
-    let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu().build().await;
+    let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
     let opts = LocalProverOpts {
         core_opts: SP1CoreOpts {
             retained_events_presets: [RetainedEventsPreset::Sha256].into(),
@@ -59,7 +60,7 @@ async fn main() {
 
 
     let (pk, program, vk) = prover.prover().core()
-        .setup(ELF)
+        .setup(&ELF)
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
 

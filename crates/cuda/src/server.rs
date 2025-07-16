@@ -45,9 +45,9 @@ mod native {
         // If we are not root, and we dont have a dbug / xdg setup
         // OR
         // We dont have systemd, run the binary directly.
-        if (!is_root
-            && !(std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some()
-                && std::env::var_os("XDG_RUNTIME_DIR").is_some()))
+        if !(is_root
+            || std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some()
+                && std::env::var_os("XDG_RUNTIME_DIR").is_some())
             || !has_systemd
         {
             tracing::warn!(
@@ -91,6 +91,7 @@ mod native {
             .await
             .map_err(|e| CudaClientError::new_connect(e, "Could not call `systemd-run`"))?;
 
+        // This could be a problem if multiple processes independently try to start the server.
         if !output.status.success() {
             return Err(CudaClientError::new_connect(
                 std::io::Error::other(String::from_utf8_lossy(&output.stderr)),
@@ -110,7 +111,7 @@ mod native {
             // If the path doesnt exist then there shouldnt be any instances of the server running.
             download = true;
         } else {
-            let version = Command::new(&path).arg("--version").output().await.map_err(|e| {
+            let version = Command::new(path).arg("--version").output().await.map_err(|e| {
                 CudaClientError::new_download_io(e, "Could not check `cuslop-server` version")
             })?;
 

@@ -14,8 +14,9 @@ rsp-client-executor = { git = "https://github.com/succinctlabs/rsp/", rev = "364
 
 # sp1
 sp1-prover = { path = "../../../crates/prover" }
+sp1-sdk = { workspace = true }
 
-sp1-core-executor = { workspace = true }
+sp1-core-executor = { workspace = true, features = ["profiling"] }
 sp1-build = { workspace = true, features = ["64bit"] }
 sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }

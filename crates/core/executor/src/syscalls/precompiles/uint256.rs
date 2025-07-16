@@ -18,13 +18,9 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
     let clk = rt.clk;
 
     let x_ptr = arg1;
-    if !x_ptr.is_multiple_of(8) {
-        panic!();
-    }
+    assert!(x_ptr.is_multiple_of(8), "x_ptr must be 8-byte aligned");
     let y_ptr = arg2;
-    if !y_ptr.is_multiple_of(8) {
-        panic!();
-    }
+    assert!(y_ptr.is_multiple_of(8), "y_ptr must be 8-byte aligned");
 
     // First read the words for the x value. We can read a slice_unsafe here because we write
     // the computed result to x later.

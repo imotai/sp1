@@ -25,9 +25,9 @@ name = "bn_test_g1_double"
 path = "bin/test_g1_double.rs"
 
 [dependencies]
-sp1-zkvm = { path = "../../../crates/zkvm/entrypoint" }
+sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
 sp1-lib = { path = "../../../crates/zkvm/lib" }
-substrate-bn = { git = "https://github.com/sp1-patches/bn", tag = "patch-0.6.0-sp1-5.0.0" }
+substrate-bn = { git = "https://github.com/sp1-patches/bn", tag = "patch-0.6.0-sp1-6.0.0" }
 
 [patch.crates-io]
 sp1-lib = { path = "../../../crates/zkvm/lib" }
