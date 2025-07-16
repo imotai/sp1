@@ -57,8 +57,7 @@ use crate::{
         shrink_program_from_input, RECURSION_MAX_LOG_ROW_COUNT,
     },
     types::HashableKey,
-    CompressAir, CoreSC, InnerSC, SP1Prover, SP1RecursionProver, SP1VerifyingKey, ShrinkAir,
-    CORE_LOG_BLOWUP,
+    CompressAir, CoreSC, InnerSC, SP1Prover, SP1RecursionProver, SP1VerifyingKey, CORE_LOG_BLOWUP,
 };
 
 pub const DEFAULT_ARITY: usize = 4;
@@ -188,24 +187,6 @@ impl SP1RecursionProofShape {
             _ => return None,
         };
         Some(Self { shape })
-    }
-
-    pub fn shrink_proof_shape_from_arity(arity: usize) -> Option<Self> {
-        let shape = match arity {
-            DEFAULT_ARITY => [
-                (ShrinkAir::<BabyBear>::BaseAlu(BaseAluChip), 103520),
-                (ShrinkAir::<BabyBear>::ExtAlu(ExtAluChip), 167936),
-                (ShrinkAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 87072),
-                (ShrinkAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 110560),
-                (ShrinkAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 25408),
-                (ShrinkAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 25888),
-                (ShrinkAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
-                (ShrinkAir::<BabyBear>::Select(SelectChip), 169504),
-            ],
-            _ => return None,
-        };
-
-        Some(Self { shape: shape.into_iter().collect() })
     }
 
     pub fn dummy_input(
