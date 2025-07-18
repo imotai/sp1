@@ -270,6 +270,7 @@ jobs:
           cd cuslop/crates/cuslop
           git checkout min/rv64
           set -eo pipefail
+          cargo update
           cargo build --release --bin cuslop-server
 
       - name: Archive binaries
