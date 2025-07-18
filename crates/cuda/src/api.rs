@@ -18,8 +18,6 @@ pub enum Request {
     Wrap { proof: SP1RecursionProof<InnerSC> },
     /// Tell the server to destroy a proving key.
     Destroy { key: [u8; 32] },
-    /// Ping the server to check if it is running.
-    Ping,
 }
 
 #[derive(Serialize, Deserialize)]
