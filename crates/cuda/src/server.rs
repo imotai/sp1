@@ -116,6 +116,8 @@ mod native {
         }
 
         if download {
+            tracing::debug!("Downloading `cuslop-server`");
+
             let version = format!("v{}", sp1_primitives::SP1_VERSION);
             let repo = "succinctlabs/sp1-wip";
 

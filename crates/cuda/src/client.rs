@@ -175,6 +175,8 @@ impl CudaClientInner {
             let connection = Arc::new(client);
             let _ = global.insert(cuda_id, Arc::downgrade(&connection));
             return Ok(CudaClient { inner: connection });
+        } else {
+            tracing::debug!("Failed to connect to find for CUDA device {}", cuda_id);
         }
 
         // Print a warning if the CUDA version is not found,
