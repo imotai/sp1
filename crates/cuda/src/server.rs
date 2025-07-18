@@ -42,57 +42,43 @@ mod native {
             .status
             .success();
 
-        // If we are not root, and we dont have a dbug / xdg setup
-        // OR
-        // We dont have systemd, run the binary directly.
-        if !(is_root
-            || std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some()
-                && std::env::var_os("XDG_RUNTIME_DIR").is_some())
-            || !has_systemd
-        {
-            tracing::warn!(
-                "Failed to detect a suitable systemd setup, the server will run as a daemon."
-            );
+        if has_systemd {
+            let mut cmd = Command::new("systemd-run");
 
-            let path = path.to_path_buf();
-            match daemonize::Daemonize::new().execute() {
-                daemonize::Outcome::Child(_) => {
-                    let mut cmd = std::process::Command::new(path);
+            // If we're not root, we need to run the command as a user.
+            if !is_root {
+                cmd.arg("--user");
+            }
 
-                    // On success, the `exec` method will not return.
-                    let err = cmd.env("CUDA_VISIBLE_DEVICES", cuda_id.to_string()).exec();
-                    unreachable!("Failed to start `cuslop-server`: {err}");
-                }
-                daemonize::Outcome::Parent(_) => return Ok(()),
+            cmd.arg("--unit").arg(unit_name(cuda_id));
+            cmd.arg("--property").arg("Restart=on-failure");
+            cmd.arg("--setenv").arg(format!("CUDA_VISIBLE_DEVICES={cuda_id}"));
+            cmd.arg(path);
+
+            let output = cmd
+                .output()
+                .await
+                .map_err(|e| CudaClientError::new_connect(e, "Could not call `systemd-run`"))?;
+
+            // This could be a problem if multiple processes independently try to start the server.
+            if !output.status.success() {
+                tracing::warn!("failed to start `cuslop-server` with systemd-run");
+            } else {
+                tracing::debug!("started `cuslop-server` with systemd-run");
             }
         }
 
-        let mut cmd = Command::new("systemd-run");
+        let path = path.to_path_buf();
+        match daemonize::Daemonize::new().execute() {
+            daemonize::Outcome::Child(_) => {
+                let mut cmd = std::process::Command::new(path);
 
-        // If we're not root, we need to run the command as a user.
-        if !is_root {
-            cmd.arg("--user");
+                // On success, the `exec` method will not return.
+                let err = cmd.env("CUDA_VISIBLE_DEVICES", cuda_id.to_string()).exec();
+                unreachable!("Failed to start `cuslop-server`: {err}");
+            }
+            daemonize::Outcome::Parent(_) => Ok(()),
         }
-
-        cmd.arg("--unit").arg(unit_name(cuda_id));
-        cmd.arg("--property").arg("Restart=on-failure");
-        cmd.arg("--setenv").arg(format!("CUDA_VISIBLE_DEVICES={cuda_id}"));
-        cmd.arg(path);
-
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| CudaClientError::new_connect(e, "Could not call `systemd-run`"))?;
-
-        // This could be a problem if multiple processes independently try to start the server.
-        if !output.status.success() {
-            return Err(CudaClientError::new_connect(
-                std::io::Error::other(String::from_utf8_lossy(&output.stderr)),
-                "Could not start `cuslop-server` with systemd-run",
-            ));
-        }
-
-        Ok(())
     }
 
     // If the server binary is not found in the path, or if it the version is not compatible,
