@@ -170,6 +170,8 @@ impl CudaClientInner {
         // Try to connect to the server, its possible this was started by another process and thats
         // why we dont have a client.
         if let Ok(client) = Self::connect_once(&socket_path(cuda_id)).await {
+            tracing::debug!("Found existing server for CUDA device {}", cuda_id);
+
             let connection = Arc::new(client);
             let _ = global.insert(cuda_id, Arc::downgrade(&connection));
             return Ok(CudaClient { inner: connection });
