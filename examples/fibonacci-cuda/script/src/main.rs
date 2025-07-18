@@ -42,7 +42,9 @@ async fn main() {
 
     handle.await.unwrap();
 
-    // println!("generated proof");
+
+
+    println!("generated proof");
 
     // // Read and verify the output.
     // //

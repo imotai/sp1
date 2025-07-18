@@ -55,23 +55,16 @@ mod native {
             );
 
             let path = path.to_path_buf();
-            if let Err(e) = daemonize::Daemonize::new()
-                .privileged_action(move || {
+            match daemonize::Daemonize::new().execute() {
+                daemonize::Outcome::Child(_) => {
                     let mut cmd = std::process::Command::new(path);
 
                     // On success, the `exec` method will not return.
                     let err = cmd.env("CUDA_VISIBLE_DEVICES", cuda_id.to_string()).exec();
-                    tracing::error!("Failed to start `cuslop-server`: {err}");
-                })
-                .start()
-            {
-                return Err(CudaClientError::new_unexpected(
-                    e.to_string(),
-                    "Failed to daemonize `cuslop-server`",
-                ));
+                    unreachable!("Failed to start `cuslop-server`: {err}");
+                }
+                daemonize::Outcome::Parent(_) => return Ok(()),
             }
-
-            return Ok(());
         }
 
         let mut cmd = Command::new("systemd-run");
