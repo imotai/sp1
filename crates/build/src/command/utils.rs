@@ -68,6 +68,8 @@ pub(crate) fn get_rust_compiler_flags(_args: &BuildArgs, version: &semver::Versi
         &format!("link-arg=--image-base={}", sp1_primitives::consts::STACK_TOP),
         "-C",
         "panic=abort",
+        "--cfg",
+        "getrandom_backend=\"custom\"",
     ];
 
     rust_flags.join("\x1f")
