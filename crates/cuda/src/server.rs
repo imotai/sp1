@@ -2,6 +2,7 @@
 
 #[cfg(all(feature = "native", target_arch = "x86_64"))]
 mod native {
+    use crate::client::Child;
     use crate::CudaClientError;
     use std::{
         os::unix::process::CommandExt,
@@ -13,7 +14,7 @@ mod native {
     /// Install a systemd unit for the given CUDA device id, and try to start it.
     ///
     /// Note: This method may cause race conditions, it should be called in a critical section.
-    pub(crate) async fn start_server(cuda_id: u32) -> Result<(), CudaClientError> {
+    pub(crate) async fn start_server(cuda_id: u32) -> Result<Child, CudaClientError> {
         const PATH: &str = ".sp1/bin/cuslop-server";
 
         // Get the path to where the server binary is located.
@@ -23,62 +24,25 @@ mod native {
         maybe_download_server(&path).await?;
 
         // Start the server binary.
-        start_binary(cuda_id, &path).await?;
+        let child = start_binary(cuda_id, &path).await?;
 
-        Ok(())
+        Ok(child)
     }
 
     /// Start the server binary, ideally with systemd-run. If systemd (--user) is not available,
     /// we will run the binary as a daemon.
-    async fn start_binary(cuda_id: u32, path: &Path) -> Result<(), CudaClientError> {
-        let is_root = is_root();
-        let has_systemd = Command::new("which")
-            .arg("systemd")
-            .output()
-            .await
-            .map_err(|e| {
-                CudaClientError::new_connect(e, "Could not check if `systemd` is installed")
-            })?
-            .status
-            .success();
+    async fn start_binary(cuda_id: u32, path: &Path) -> Result<Child, CudaClientError> {
+        let mut cmd = Command::new(path);
+        cmd.env("CUDA_VISIBLE_DEVICES", cuda_id.to_string());
 
-        if has_systemd {
-            let mut cmd = Command::new("systemd-run");
+        let child = cmd
+            .kill_on_drop(true)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|e| CudaClientError::new_connect(e, "Could not start `cuslop-server`"))?;
 
-            // If we're not root, we need to run the command as a user.
-            if !is_root {
-                cmd.arg("--user");
-            }
-
-            cmd.arg("--unit").arg(unit_name(cuda_id));
-            cmd.arg("--property").arg("Restart=on-failure");
-            cmd.arg("--setenv").arg(format!("CUDA_VISIBLE_DEVICES={cuda_id}"));
-            cmd.arg(path);
-
-            let output = cmd
-                .output()
-                .await
-                .map_err(|e| CudaClientError::new_connect(e, "Could not call `systemd-run`"))?;
-
-            // This could be a problem if multiple processes independently try to start the server.
-            if !output.status.success() {
-                tracing::warn!("failed to start `cuslop-server` with systemd-run");
-            } else {
-                tracing::debug!("started `cuslop-server` with systemd-run");
-            }
-        }
-
-        let path = path.to_path_buf();
-        match daemonize::Daemonize::new().execute() {
-            daemonize::Outcome::Child(_) => {
-                let mut cmd = std::process::Command::new(path);
-
-                // On success, the `exec` method will not return.
-                let err = cmd.env("CUDA_VISIBLE_DEVICES", cuda_id.to_string()).exec();
-                unreachable!("Failed to start `cuslop-server`: {err}");
-            }
-            daemonize::Outcome::Parent(_) => Ok(()),
-        }
+        Ok(Child::Native(child))
     }
 
     // If the server binary is not found in the path, or if it the version is not compatible,
@@ -249,10 +213,6 @@ mod native {
         Ok(bytes)
     }
 
-    fn is_root() -> bool {
-        users::get_current_uid() == 0
-    }
-
     /// The name of the systemd unit for the given CUDA device id.
     fn unit_name(cuda_id: u32) -> String {
         format!("cuslop-server-{cuda_id}")
@@ -264,6 +224,7 @@ pub(crate) use native::start_server;
 
 #[cfg(any(not(feature = "native"), not(target_arch = "x86_64")))]
 mod docker {
+    use crate::client::Child;
     use crate::CudaClientError;
     use std::process::Stdio;
     use tokio::process::Command;
@@ -274,7 +235,7 @@ mod docker {
     ///
     /// This method should only be called in a critical section
     #[allow(clippy::uninlined_format_args)]
-    pub(crate) async fn start_server(cuda_id: u32) -> Result<(), CudaClientError> {
+    pub(crate) async fn start_server(cuda_id: u32) -> Result<Child, CudaClientError> {
         let image =
             format!("public.ecr.aws/succinct-labs/cuslop-server:v{}", sp1_primitives::SP1_VERSION);
 
@@ -334,9 +295,13 @@ mod docker {
             }
         }
 
-        Ok(())
+        Ok(Child::Docker)
     }
 }
 
 #[cfg(any(not(feature = "native"), not(target_arch = "x86_64")))]
 pub(crate) use docker::start_server;
+
+pub(crate) async fn kill_server(cuda_id: u32) -> Result<(), crate::CudaClientError> {
+    todo!()
+}

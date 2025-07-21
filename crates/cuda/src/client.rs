@@ -16,7 +16,7 @@ use tokio::{
 use crate::{
     api::{Request, Response},
     pk::CudaProvingKey,
-    CudaClientError,
+    server, CudaClientError,
 };
 
 /// The global client to be shared, if other clients still exist (like in a proving key.)
@@ -152,6 +152,18 @@ impl CudaClient {
 
 struct CudaClientInner {
     stream: Option<Mutex<UnixStream>>,
+    id: u32,
+    child: Child,
+}
+
+#[allow(dead_code)] // todo: feature flag this properly in-line with the `native` flag.
+pub(crate) enum Child {
+    /// A server was started in a native process.
+    ///
+    /// Note: We need to keep the child around as we rely on `kill_on_drop`
+    Native(tokio::process::Child),
+    /// A server was started in a docker container.
+    Docker,
 }
 
 impl CudaClientInner {
@@ -167,35 +179,25 @@ impl CudaClientInner {
             return Ok(CudaClient { inner: client });
         }
 
-        // Try to connect to the server, its possible this was started by another process and thats
-        // why we dont have a client.
-        if let Ok(client) = Self::connect_once(&socket_path(cuda_id)).await {
-            tracing::debug!("Found existing server for CUDA device {}", cuda_id);
-
-            let connection = Arc::new(client);
-            let _ = global.insert(cuda_id, Arc::downgrade(&connection));
-            return Ok(CudaClient { inner: connection });
-        } else {
-            tracing::debug!("Failed to connect to find for CUDA device {}", cuda_id);
-        }
-
         // Print a warning if the CUDA version is not found,
         // panic if the version is too old.
         crate::check_cuda_version().await;
 
         // Actually start the server now that we know there isnt one running.
-        crate::server::start_server(cuda_id).await?;
+        let child = crate::server::start_server(cuda_id).await?;
 
         // Connect to the server we just started.
         let connection = Self::connect_inner(cuda_id).await?;
-        let connection = Arc::new(connection);
-        let _ = global.insert(cuda_id, Arc::downgrade(&connection));
+        let inner = CudaClientInner { stream: Some(Mutex::new(connection)), id: cuda_id, child };
 
-        Ok(CudaClient { inner: connection })
+        let inner = Arc::new(inner);
+        let _ = global.insert(cuda_id, Arc::downgrade(&inner));
+
+        Ok(CudaClient { inner })
     }
 
     /// Connects to the server at [`CUDA_SOCKET`], retrying if the server is not running yet.
-    async fn connect_inner(cuda_id: u32) -> Result<Self, CudaClientError> {
+    async fn connect_inner(cuda_id: u32) -> Result<UnixStream, CudaClientError> {
         let socket_path = socket_path(cuda_id);
 
         // Retry a few times, just in case the server hasnt started yet.
@@ -214,12 +216,12 @@ impl CudaClientInner {
     }
 
     /// Connects to the server at the given path.
-    async fn connect_once(path: &Path) -> Result<Self, CudaClientError> {
+    async fn connect_once(path: &Path) -> Result<UnixStream, CudaClientError> {
         let stream = UnixStream::connect(path).await.map_err(|e| {
             CudaClientError::new_connect(e, "Could not connect to `cuslop-server` socket")
         })?;
 
-        Ok(Self { stream: Some(Mutex::new(stream)) })
+        Ok(stream)
     }
 
     /// Sends a [`Request`] message to the server.
@@ -273,5 +275,19 @@ impl Drop for CudaClientInner {
                 tracing::error!("Failed to shutdown the stream: {}", e);
             }
         });
+
+        match &self.child {
+            Child::Native(_) => {
+                // Do nothing, we have kill on drop.
+            }
+            Child::Docker => {
+                let id = self.id;
+                tokio::spawn(async move {
+                    if let Err(e) = server::kill_server(id).await {
+                        tracing::error!("Failed to kill the server: {}", e);
+                    }
+                });
+            }
+        }
     }
 }
