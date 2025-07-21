@@ -1,5 +1,3 @@
-use std::{fmt::Debug, marker::PhantomData};
-
 use serde::{Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Buffer, CanCopyFrom, CpuBackend};
@@ -8,6 +6,7 @@ use slop_multilinear::{Mle, Point, PointBackend};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use slop_tensor::Tensor;
 use slop_utils::log2_ceil_usize;
+use std::{fmt::Debug, marker::PhantomData};
 use thiserror::Error;
 
 use crate::{
@@ -35,6 +34,8 @@ pub enum JaggedEvalSumcheckError<F: Field> {
     SumcheckError(SumcheckError),
     #[error("jagged evaluation proof verification failed, expected: {0}, got: {1}")]
     JaggedEvaluationFailed(F, F),
+    #[error("proof has incorrect shape")]
+    IncorrectShape,
 }
 
 impl<F, EF, Challenger> JaggedEvalConfig<F, EF, Challenger> for JaggedEvalSumcheckConfig<F>
@@ -60,6 +61,14 @@ where
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
+        if z_col_partial_lagrange.len() < branching_program_evals.len() {
+            return Err(JaggedEvalSumcheckError::IncorrectShape);
+        }
+
+        if branching_program_evals.len() + 1 != params.col_prefix_sums.len() {
+            return Err(JaggedEvalSumcheckError::IncorrectShape);
+        }
+
         // Calcuate the jagged eval from the branching program eval claims.
         let jagged_eval = z_col_partial_lagrange
             .iter()
@@ -70,7 +79,12 @@ where
             .sum::<EF>();
 
         // Verify the jagged eval proof.
-        let result = partially_verify_sumcheck_proof(partial_sumcheck_proof, challenger);
+        let result = partially_verify_sumcheck_proof(
+            partial_sumcheck_proof,
+            challenger,
+            2 * params.col_prefix_sums[0].len(),
+            2,
+        );
         if let Err(result) = result {
             println!("Sumcheck proof verification failed");
             println!("Sumcheck error: {:?}", result);
@@ -80,7 +94,14 @@ where
             .point_and_eval
             .0
             .split_at(partial_sumcheck_proof.point_and_eval.0.dimension() / 2);
-        assert!(first_half_z_index.len() == second_half_z_index.len());
+
+        if first_half_z_index.len() != second_half_z_index.len() {
+            return Err(JaggedEvalSumcheckError::IncorrectShape);
+        }
+
+        if params.col_prefix_sums.len() > z_col_partial_lagrange.len() {
+            return Err(JaggedEvalSumcheckError::IncorrectShape);
+        }
 
         // Compute the jagged eval sc expected eval and assert it matches the proof's eval.
         let current_column_prefix_sums = params.col_prefix_sums.iter();
@@ -91,28 +112,38 @@ where
         let mut jagged_eval_sc_expected_eval = current_column_prefix_sums
             .zip(next_column_prefix_sums)
             .zip(z_col_partial_lagrange.iter())
-            .map(|((current_column_prefix_sum, next_column_prefix_sum), z_col_eq_val)| {
-                let mut merged_prefix_sum = current_column_prefix_sum.clone();
-                merged_prefix_sum.extend(next_column_prefix_sum);
+            .try_fold(
+                EF::zero(),
+                |acc, ((current_column_prefix_sum, next_column_prefix_sum), z_col_eq_val)| {
+                    let mut merged_prefix_sum = current_column_prefix_sum.clone();
+                    merged_prefix_sum.extend(next_column_prefix_sum);
 
-                let full_lagrange_eval =
-                    if prev_merged_prefix_sum == merged_prefix_sum && !is_first_column {
-                        prev_full_lagrange_eval
-                    } else {
-                        let full_lagrange_eval = Mle::full_lagrange_eval(
-                            &merged_prefix_sum,
-                            &partial_sumcheck_proof.point_and_eval.0,
-                        );
-                        prev_full_lagrange_eval = full_lagrange_eval;
-                        full_lagrange_eval
-                    };
+                    if current_column_prefix_sum.len() != next_column_prefix_sum.len() {
+                        return Err(JaggedEvalSumcheckError::IncorrectShape);
+                    }
 
-                prev_merged_prefix_sum = merged_prefix_sum;
-                is_first_column = false;
+                    if merged_prefix_sum.len() != partial_sumcheck_proof.point_and_eval.0.len() {
+                        return Err(JaggedEvalSumcheckError::IncorrectShape);
+                    }
 
-                *z_col_eq_val * full_lagrange_eval
-            })
-            .sum::<EF>();
+                    let full_lagrange_eval =
+                        if prev_merged_prefix_sum == merged_prefix_sum && !is_first_column {
+                            prev_full_lagrange_eval
+                        } else {
+                            let full_lagrange_eval = Mle::full_lagrange_eval(
+                                &merged_prefix_sum,
+                                &partial_sumcheck_proof.point_and_eval.0,
+                            );
+                            prev_full_lagrange_eval = full_lagrange_eval;
+                            full_lagrange_eval
+                        };
+
+                    prev_merged_prefix_sum = merged_prefix_sum;
+                    is_first_column = false;
+
+                    Ok(acc + *z_col_eq_val * full_lagrange_eval)
+                },
+            )?;
 
         let branching_program = BranchingProgram::new(z_row.clone(), z_trace.clone());
         jagged_eval_sc_expected_eval *=

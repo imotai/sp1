@@ -26,6 +26,8 @@ pub fn partially_verify_sumcheck_proof<
 >(
     proof: &PartialSumcheckProof<EF>,
     challenger: &mut Challenger,
+    expected_num_variable: usize,
+    expected_degree: usize,
 ) -> Result<(), SumcheckError> {
     let num_variables = proof.univariate_polys.len();
     let mut alpha_point = Point::default();
@@ -35,11 +37,19 @@ pub fn partially_verify_sumcheck_proof<
         return Err(SumcheckError::InvalidProofShape);
     }
 
+    if num_variables != expected_num_variable {
+        return Err(SumcheckError::InvalidProofShape);
+    }
+
     // There is a way to structure a sumcheck proof so that this check is not needed, but it doesn't
     // actually save the verifier work.
     let first_poly = &proof.univariate_polys[0];
     if first_poly.eval_one_plus_eval_zero() != proof.claimed_sum {
         return Err(SumcheckError::InconsistencyWithClaimedSum);
+    }
+
+    if first_poly.coefficients.len() != expected_degree + 1 {
+        return Err(SumcheckError::InvalidProofShape);
     }
 
     challenger.observe_slice(
@@ -53,6 +63,9 @@ pub fn partially_verify_sumcheck_proof<
     let mut previous_poly = first_poly;
 
     for poly in proof.univariate_polys.iter().skip(1) {
+        if poly.coefficients.len() != expected_degree + 1 {
+            return Err(SumcheckError::InvalidProofShape);
+        }
         let alpha = challenger.sample_ext_element();
         alpha_point.add_dimension(alpha);
         let expected_eval = previous_poly.eval_at_point(alpha);

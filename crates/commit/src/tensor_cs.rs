@@ -44,6 +44,7 @@ pub trait TensorCs: 'static + Clone + Send + Sync {
         commit: &Self::Commitment,
         indices: &[usize],
         opening: &TensorCsOpening<Self>,
+        expected_path_len: usize,
     ) -> Result<(), Self::VerifierError>;
 }
 

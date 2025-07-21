@@ -261,7 +261,8 @@ mod tests {
     async fn test_merkle_proof() {
         let mut rng = thread_rng();
 
-        let height = 1000;
+        let height: usize = 1000;
+        let merkle_path_len = height.next_power_of_two().ilog2() as usize;
         let width = 25;
         let num_tensors = 10;
 
@@ -280,6 +281,6 @@ mod tests {
 
         let opening = TensorCsOpening { values: openings, proof };
         let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
-        tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
+        tcs.verify_tensor_openings(&root, &indices, &opening, merkle_path_len).unwrap();
     }
 }

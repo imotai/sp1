@@ -41,6 +41,8 @@ pub struct MerkleTreeTcs<M: MerkleTreeConfig> {
 pub enum MerkleTreeTcsError {
     #[error("root mismatch")]
     RootMismatch,
+    #[error("proof has incorrect shape")]
+    IncorrectShape,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,10 +69,18 @@ impl<M: MerkleTreeConfig> TensorCs for MerkleTreeTcs<M> {
         commit: &Self::Commitment,
         indices: &[usize],
         opening: &TensorCsOpening<Self>,
+        expected_path_len: usize,
     ) -> Result<(), Self::VerifierError> {
+        if indices.len() != opening.proof.paths.dimensions.sizes()[0] {
+            return Err(Self::VerifierError::IncorrectShape);
+        }
+        if indices.len() != opening.values.dimensions.sizes()[0] {
+            return Err(Self::VerifierError::IncorrectShape);
+        }
         for (i, (index, path)) in indices.iter().zip_eq(opening.proof.paths.split()).enumerate() {
             // Collect the lead slices of the claimed values.
-            let claimed_values_slices = opening.values.get(i).unwrap().as_slice();
+            let claimed_values_slices =
+                opening.values.get(i).ok_or(Self::VerifierError::IncorrectShape)?.as_slice();
 
             let path = path.as_slice();
 
@@ -79,6 +89,11 @@ impl<M: MerkleTreeConfig> TensorCs for MerkleTreeTcs<M> {
 
             let mut root = digest;
             let mut index = *index;
+
+            if path.len() != expected_path_len {
+                return Err(Self::VerifierError::IncorrectShape);
+            }
+
             for sibling in path.iter().cloned() {
                 let (left, right) = if index & 1 == 0 { (root, sibling) } else { (sibling, root) };
                 root = self.compressor.compress([left, right]);

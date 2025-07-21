@@ -41,6 +41,8 @@ pub enum BaseFoldVerifierError<TcsError> {
     QueryFinalPolyMismatch,
     #[error("sumcheck final polynomial mismatch")]
     SumcheckFinalPolyMismatch,
+    #[error("incorrect shape of proof")]
+    IncorrectShape,
 }
 
 impl<TcsError: std::fmt::Display> std::fmt::Debug for BaseFoldVerifierError<TcsError> {
@@ -58,6 +60,9 @@ impl<TcsError: std::fmt::Display> std::fmt::Debug for BaseFoldVerifierError<TcsE
             }
             BaseFoldVerifierError::SumcheckFinalPolyMismatch => {
                 write!(f, "sumcheck final polynomial mismatch")
+            }
+            BaseFoldVerifierError::IncorrectShape => {
+                write!(f, "incorrect shape of proof")
             }
         }
     }
@@ -129,7 +134,10 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             .sum::<B::EF>();
 
         // Assert correctness of shape.
-        if proof.fri_commitments.len() != proof.univariate_messages.len() {
+        if proof.fri_commitments.len() != proof.univariate_messages.len()
+            || proof.fri_commitments.len() != point.len()
+            || proof.univariate_messages.is_empty()
+        {
             return Err(BaseFoldVerifierError::SumcheckFriLengthMismatch);
         }
 
@@ -141,7 +149,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         let betas = proof
             .fri_commitments
             .iter()
-            .zip(proof.univariate_messages.iter())
+            .zip_eq(proof.univariate_messages.iter())
             .map(|(commitment, poly)| {
                 poly.iter().copied().for_each(|x| challenger.observe_ext_element(x));
                 challenger.observe(commitment.clone());
@@ -164,7 +172,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
 
         // Check round-by-round consistency between the successive sumcheck univariate messages.
         for (i, (poly, beta)) in
-            proof.univariate_messages[1..].iter().zip(betas[1..].iter()).enumerate()
+            proof.univariate_messages[1..].iter().zip_eq(betas[1..].iter()).enumerate()
         {
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
@@ -197,15 +205,23 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         let mut batch_challenge_power = B::EF::one();
         for opening in proof.component_polynomials_query_openings.iter() {
             let values = &opening.values;
+            if values.dimensions.sizes()[0] != query_indices.len() {
+                return Err(BaseFoldVerifierError::IncorrectShape);
+            }
             for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
                 let beta_powers = batching_challenge.shifted_powers(batch_challenge_power);
                 for (value, beta_power) in values.as_slice().iter().zip(beta_powers) {
                     *batch_eval += beta_power * *value;
                 }
             }
-            let count = values.get(0).unwrap().as_slice().len();
+            let count =
+                values.get(0).ok_or(BaseFoldVerifierError::IncorrectShape)?.as_slice().len();
             batch_challenge_power =
                 batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
+        }
+
+        if commitments.len() != proof.component_polynomials_query_openings.len() {
+            return Err(BaseFoldVerifierError::IncorrectShape);
         }
 
         // Verify the proof of the claimed values.
@@ -213,7 +229,12 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             commitments.iter().zip_eq(proof.component_polynomials_query_openings.iter())
         {
             self.tcs
-                .verify_tensor_openings(commit, &query_indices, opening)
+                .verify_tensor_openings(
+                    commit,
+                    &query_indices,
+                    opening,
+                    log_len + self.fri_config.log_blowup(),
+                )
                 .map_err(BaseFoldVerifierError::TcsError)?;
         }
 
@@ -262,11 +283,24 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             })
             .collect::<Vec<_>>();
 
+        if commitments.len() != query_openings.len() || commitments.len() != betas.len() {
+            return Err(BaseFoldVerifierError::IncorrectShape);
+        }
+
         // Loop over the FRI queries.
-        for ((commitment, query_opening), beta) in
-            commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas)
+        for (idx, ((commitment, query_opening), beta)) in (self.fri_config.log_blowup()
+            ..log_max_height)
+            .rev()
+            .zip_eq(commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas))
         {
             let openings = &query_opening.values;
+            if indices.len() != folded_evals.len()
+                || indices.len() != openings.dimensions.sizes()[0]
+                || indices.len() != xis.len()
+            {
+                return Err(BaseFoldVerifierError::IncorrectShape);
+            }
+
             for (((index, folded_eval), opening), x) in indices
                 .iter_mut()
                 .zip_eq(folded_evals.iter_mut())
@@ -275,6 +309,10 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             {
                 let index_sibling = *index ^ 1;
                 let index_pair = *index >> 1;
+
+                if opening.total_len() != 2 * B::EF::D {
+                    return Err(BaseFoldVerifierError::IncorrectShape);
+                }
 
                 let evals: [B::EF; 2] = opening
                     .as_slice()
@@ -301,7 +339,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             }
             // Check that the opening is consistent with the commitment.
             self.tcs
-                .verify_tensor_openings(commitment, &indices, query_opening)
+                .verify_tensor_openings(commitment, &indices, query_opening, idx)
                 .map_err(BaseFoldVerifierError::TcsError)?;
         }
 

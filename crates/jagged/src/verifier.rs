@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::FieldChallenger;
@@ -40,6 +41,8 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     BooleanityCheckFailed,
     #[error("montonicity check failed")]
     MonotonicityCheckFailed,
+    #[error("proof has incorrect shape")]
+    IncorrectShape,
 }
 
 impl<C: JaggedConfig> JaggedPcsVerifier<C> {
@@ -69,6 +72,11 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             params,
             added_columns,
         } = proof;
+
+        if params.col_prefix_sums.is_empty() {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
+
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
             .map(|_| challenger.sample_ext_element::<C::EF>())
@@ -80,20 +88,32 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         let mut column_claims =
             evaluation_claims.iter().flatten().flatten().copied().collect::<Vec<_>>();
 
+        if insertion_points.len() != added_columns.len() {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
+
         // For each commit, the stacked PCS needed a commitment to a vector of length a multiple of
         // 1 << self.pcs.log_stacking_height, and this is achieved by adding columns of zeroes after
         // the "real" columns. We insert these "artificial" zeroes into the evaluation claims on the
         // verifier side.
         for (insertion_point, num_added_columns) in
-            insertion_points.iter().rev().zip(added_columns.iter().rev())
+            insertion_points.iter().rev().zip_eq(added_columns.iter().rev())
         {
             for _ in 0..*num_added_columns {
                 column_claims.insert(*insertion_point, C::EF::zero());
             }
         }
 
+        if params.col_prefix_sums.len() != column_claims.len() + 1 {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
+
         // Pad the column claims to the next power of two.
         column_claims.resize(column_claims.len().next_power_of_two(), C::EF::zero());
+
+        if (1 << z_col.len()) != column_claims.len() {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
 
         let column_mle = Mle::from(column_claims);
         let sumcheck_claim = column_mle.blocking_eval_at(&z_col)[0];
@@ -105,8 +125,13 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             ));
         }
 
-        partially_verify_sumcheck_proof(sumcheck_proof, challenger)
-            .map_err(JaggedPcsVerifierError::SumcheckError)?;
+        partially_verify_sumcheck_proof(
+            sumcheck_proof,
+            challenger,
+            params.col_prefix_sums[0].len() - 1,
+            2,
+        )
+        .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
         // Check the booleanity of the column prefix sums.
         for t_col in params.col_prefix_sums.iter() {
@@ -120,6 +145,9 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         for (t_col, next_t_col) in
             params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))
         {
+            if t_col.len() != next_t_col.len() || t_col.len() >= 31 {
+                return Err(JaggedPcsVerifierError::IncorrectShape);
+            }
             // Check monotonicity of the column prefix sums.
             if full_geq(t_col, next_t_col) != C::F::one() {
                 return Err(JaggedPcsVerifierError::MonotonicityCheckFailed);

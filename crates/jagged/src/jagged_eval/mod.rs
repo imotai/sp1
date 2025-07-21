@@ -161,7 +161,7 @@ mod tests {
         assert!(sc_proof.claimed_sum == expected_sum);
 
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
-        partially_verify_sumcheck_proof(&sc_proof, &mut challenger).unwrap();
+        partially_verify_sumcheck_proof(&sc_proof, &mut challenger, 2 * (log_m + 1), 2).unwrap();
 
         let out_of_domain_point = sc_proof.point_and_eval.0;
 

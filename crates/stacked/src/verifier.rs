@@ -15,6 +15,8 @@ pub enum StackedVerifierError<PcsError> {
     PcsError(PcsError),
     #[error("Batch evaluations do not match the claimed evaluations")]
     StackingError,
+    #[error("Proof has incorrect shape")]
+    IncorrectShape,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +43,10 @@ impl<P: MultilinearPcsVerifier> StackedPcsVerifier<P> {
         evaluation_claim: P::EF,
         challenger: &mut P::Challenger,
     ) -> Result<(), StackedVerifierError<P::VerifierError>> {
+        if point.dimension() < self.log_stacking_height as usize {
+            return Err(StackedVerifierError::IncorrectShape);
+        }
+
         // Split the point into the interleaved and batched parts.
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - self.log_stacking_height as usize);

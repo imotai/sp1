@@ -132,6 +132,6 @@ mod tests {
 
         // Verify the proof.
         let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
-        partially_verify_sumcheck_proof(&sumcheck_proof, &mut challenger).unwrap()
+        partially_verify_sumcheck_proof(&sumcheck_proof, &mut challenger, 10, 1).unwrap()
     }
 }

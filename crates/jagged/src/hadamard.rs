@@ -230,7 +230,13 @@ mod tests {
 
         let mut challenger = verifier.challenger();
         let _lambda: EF = challenger.sample();
-        assert!(partially_verify_sumcheck_proof::<F, EF, _>(&proof, &mut challenger).is_ok());
+        assert!(partially_verify_sumcheck_proof::<F, EF, _>(
+            &proof,
+            &mut challenger,
+            num_variables as usize,
+            2
+        )
+        .is_ok());
         assert_eq!(proof.univariate_polys.len(), num_variables as usize);
     }
 }
