@@ -36,6 +36,7 @@ pub trait LogUpGkrTraceGenerator<F: Field, EF: ExtensionField<F>, A: MachineAir<
         chips: &BTreeSet<Chip<F, A>>,
         preprocessed_traces: Traces<F, B>,
         traces: Traces<F, B>,
+        public_values: Vec<F>,
         alpha: EF,
         beta: EF,
     ) -> impl Future<Output = (LogUpGkrOutput<EF, B>, Self::Circuit)> + Send;

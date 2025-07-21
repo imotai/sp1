@@ -451,14 +451,6 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         }
     }
 
-    #[inline]
-    #[allow(clippy::type_complexity)]
-    pub fn wrap_keys(
-        &self,
-    ) -> (Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>) {
-        self.get_wrap_keys()
-    }
-
     pub fn execute(
         &self,
         input: SP1CircuitWitness,

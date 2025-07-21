@@ -34,7 +34,10 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
     builder.assert_felt_eq(is_complete * (is_complete - C::F::one()), C::F::zero());
 
     // Assert that `next_pc` is equal to one (so program execution has completed)
-    builder.assert_felt_eq(is_complete * (next_pc[0] - C::F::one()), C::F::zero());
+    builder.assert_felt_eq(
+        is_complete * (next_pc[0] - C::F::from_canonical_u64(sp1_core_executor::HALT_PC)),
+        C::F::zero(),
+    );
     builder.assert_felt_eq(is_complete * next_pc[1], C::F::zero());
     builder.assert_felt_eq(is_complete * next_pc[2], C::F::zero());
 

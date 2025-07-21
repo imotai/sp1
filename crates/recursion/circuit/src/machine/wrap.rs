@@ -29,7 +29,6 @@ impl<C, SC, A, JC> SP1WrapVerifier<C, SC, A, JC>
 where
     SC: BabyBearFriConfigVariable<C> + Send + Sync,
     C: CircuitConfig<F = SC::F, EF = SC::EF>,
-    // <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
     A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     JC: RecursiveJaggedConfig<
         F = C::F,
@@ -57,9 +56,7 @@ where
         assert_root_public_values_valid::<C, SC>(builder, public_values);
 
         let mut challenger = <SC as BabyBearFriConfigVariable<C>>::challenger_variable(builder);
-        if let Some(vk) = vk.preprocessed_commit.as_ref() {
-            challenger.observe(builder, *vk)
-        }
+        challenger.observe(builder, vk.preprocessed_commit);
         challenger.observe_slice(builder, vk.pc_start);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);

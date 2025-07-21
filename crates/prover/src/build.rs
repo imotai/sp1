@@ -205,15 +205,10 @@ fn build_outer_circuit(template_input: &SP1ShapedWitnessValues<OuterSC>) -> Vec<
     // Get the vk variable from the input.
     let vk = &input.vks_and_proofs.first().unwrap().0;
     // Get the expected commitment.
-    let expected_commitment: [_; 1] =
-        template_vk.preprocessed_commit.expect("expected preprocessed commitment").into();
+    let expected_commitment: [_; 1] = template_vk.preprocessed_commit.into();
     let expected_commitment = expected_commitment.map(|x| builder.eval(x));
     // Constrain `commit` to be the same as the template `vk`.
-    OuterSC::assert_digest_eq(
-        &mut builder,
-        expected_commitment,
-        vk.preprocessed_commit.expect("expected preprocessed commitment"),
-    );
+    OuterSC::assert_digest_eq(&mut builder, expected_commitment, vk.preprocessed_commit);
     // Constrain `pc_start` to be the same as the template `vk`.
     for (vk_pc, template_vk_pc) in vk.pc_start.iter().zip_eq(template_vk.pc_start.iter()) {
         builder.assert_felt_eq(*vk_pc, *template_vk_pc);

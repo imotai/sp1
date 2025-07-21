@@ -1,11 +1,8 @@
-// use std::{fs::File, path::Path};
-
-use std::{borrow::Borrow, fs::File, path::Path};
-
+use crate::utils::words_to_bytes_be;
 use anyhow::Result;
 use clap::ValueEnum;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::PrimeField32;
+use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
@@ -20,6 +17,7 @@ use sp1_recursion_circuit::{
 };
 pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
 use sp1_stark::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
+use std::{borrow::Borrow, fs::File, path::Path};
 use thiserror::Error;
 
 use crate::CoreSC;
@@ -47,27 +45,35 @@ pub trait HashableKey {
     ///
     /// This is ideal for generating a vkey hash for onchain verification.
     fn bytes32(&self) -> String {
-        todo!()
-        // let vkey_digest_bn254 = self.hash_bn254();
-        // format!("0x{:0>64}", vkey_digest_bn254.as_canonical_biguint().to_str_radix(16))
+        let vkey_digest_bn254 = self.hash_bn254();
+        format!("0x{:0>64}", vkey_digest_bn254.as_canonical_biguint().to_str_radix(16))
     }
 
     /// Hash the key into a 32 byte array.
     ///
     /// This has the same value as `bytes32`, but as a raw byte array.
     fn bytes32_raw(&self) -> [u8; 32] {
-        todo!()
-        // let vkey_digest_bn254 = self.hash_bn254();
-        // let vkey_bytes = vkey_digest_bn254.as_canonical_biguint().to_bytes_be();
-        // let mut result = [0u8; 32];
-        // result[1..].copy_from_slice(&vkey_bytes);
-        // result
+        let vkey_digest_bn254 = self.hash_bn254();
+        let vkey_bytes = vkey_digest_bn254.as_canonical_biguint().to_bytes_be();
+        let mut result = [0u8; 32];
+        result[1..].copy_from_slice(&vkey_bytes);
+        result
     }
 
-    // /// Hash the key into a digest of bytes elements.
-    // fn hash_bytes(&self) -> [u8; DIGEST_SIZE * 4] {
-    //     words_to_bytes_be(&self.hash_u32())
-    // }
+    /// Hash the key into a digest of bytes elements.
+    fn hash_bytes(&self) -> [u8; DIGEST_SIZE * 4] {
+        words_to_bytes_be(&self.hash_u32())
+    }
+
+    /// Hash the key into a digest of u64 elements.
+    fn hash_u64(&self) -> [u64; DIGEST_SIZE / 2] {
+        self.hash_u32()
+            .chunks_exact(2)
+            .map(|chunk| chunk[0] as u64 | ((chunk[1] as u64) << 32))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
 }
 
 impl HashableKey for SP1VerifyingKey {
@@ -85,23 +91,20 @@ where
     C::Commitment: Borrow<[BabyBear; DIGEST_SIZE]>,
 {
     fn hash_babybear(&self) -> [BabyBear; DIGEST_SIZE] {
-        let num_inputs = DIGEST_SIZE + 1 + 14 + (4 * self.preprocessed_chip_information.len());
+        let num_inputs = DIGEST_SIZE + 1 + 14;
         let mut inputs = Vec::with_capacity(num_inputs);
-        inputs.extend(
-            self.preprocessed_commit
-                .as_ref()
-                .map(Borrow::borrow)
-                .map(IntoIterator::into_iter)
-                .unwrap_or_default()
-                .copied(),
-        );
+        inputs.extend(self.preprocessed_commit.borrow());
         inputs.extend(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
-        for ChipDimensions { height, num_polynomials: _ } in
-            self.preprocessed_chip_information.values()
+        for (name, ChipDimensions { height, num_polynomials: _ }) in
+            self.preprocessed_chip_information.iter()
         {
             inputs.push(*height);
+            inputs.push(BabyBear::from_canonical_usize(name.len()));
+            for byte in name.as_bytes() {
+                inputs.push(BabyBear::from_canonical_u8(*byte));
+            }
         }
 
         poseidon2_hash(inputs)

@@ -56,9 +56,6 @@ pub struct MulOperation<T> {
 
     /// The sign extension of `c`.
     pub c_sign_extend: T,
-
-    /// Whether the operation is MULW.
-    pub is_mulw: T,
 }
 
 impl<F: Field> MulOperation<F> {
@@ -77,8 +74,6 @@ impl<F: Field> MulOperation<F> {
 
         let mulw_value = (Wrapping(b_u64 as i32) * Wrapping(c_u64 as i32)).0 as i64 as u64;
         let limbs = u64_to_u16_limbs(mulw_value);
-
-        self.is_mulw = F::from_canonical_u8(is_mulw as u8);
 
         if is_mulw {
             self.product_msb.populate_msb(record, limbs[1]);
@@ -125,7 +120,6 @@ impl<F: Field> MulOperation<F> {
                 record.add_byte_lookup_events(blu_events);
             }
         }
-        // tracing::info!("b mulh: {:?}, c mulh: {:?}", b, c);
 
         let mut product = [0u32; LONG_WORD_BYTE_SIZE];
         for i in 0..b.len() {

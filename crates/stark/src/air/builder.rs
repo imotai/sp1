@@ -6,7 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slop_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder, PermutationAirBuilder};
+use slop_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder};
 use slop_algebra::{AbstractField, Field};
 use slop_uni_stark::{
     ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, VerifierConstraintFolder,
@@ -382,15 +382,6 @@ pub trait SepticExtensionAirBuilder: BaseAirBuilder {
             self.assert_eq(left, right);
         }
     }
-}
-
-/// A builder that implements a permutation argument.
-pub trait MultiTableAirBuilder<'a>: PermutationAirBuilder {
-    /// The type of the local cumulative sum.
-    type LocalSum: Into<Self::ExprEF> + Copy;
-
-    /// Returns the local cumulative sum of the permutation.
-    fn local_cumulative_sum(&self) -> &'a Self::LocalSum;
 }
 
 /// A trait that contains the common helper methods for building `SP1 recursion` and SP1 machine

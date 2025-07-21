@@ -303,8 +303,7 @@ where
                 }
 
                 // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the
-                // digest. If it's not the first shard, we add the zero digest to
-                // the digest.
+                // digest. If it's not the first shard, we add the zero digest to the digest.
                 global_cumulative_sums.push(builder.select_global_cumulative_sum(
                     is_first_shard,
                     vk.initial_global_cumulative_sum,
@@ -353,9 +352,7 @@ where
             let mut challenger = SC::challenger_variable(builder);
 
             // Observe the vk and start pc.
-            if let Some(commit) = vk.preprocessed_commit {
-                challenger.observe(builder, commit);
-            }
+            challenger.observe(builder, vk.preprocessed_commit);
             challenger.observe_slice(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);

@@ -16,15 +16,14 @@ use slop_jagged::{
 };
 use slop_uni_stark::SymbolicAirBuilder;
 
+use super::{
+    DefaultTraceGenerator, MachineProver, MachineProverBuilder, ProverSemaphore, ShardProver,
+    ShardProverComponents, ZerocheckAir, ZerocheckCpuProverData,
+};
 use crate::{
     air::MachineAir, prover::MachineProverComponents, BabyBearPoseidon2, ConstraintSumcheckFolder,
     GkrProverImpl, LogupGkrCpuProverComponents, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator,
     ShardVerifier,
-};
-
-use super::{
-    DefaultTraceGenerator, MachineProver, MachineProverBuilder, ProverSemaphore, ShardProver,
-    ShardProverComponents, ZerocheckAir, ZerocheckCpuProverData,
 };
 
 /// The components of a CPU shard prover.

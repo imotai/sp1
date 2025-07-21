@@ -8,7 +8,7 @@ use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, SyscallEvent},
     syscalls::SyscallCode,
-    ExecutionRecord, Program, RTypeRecord,
+    ExecutionRecord, Program, RTypeRecord, HALT_PC,
 };
 use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::{air::MachineAir, Word};
@@ -104,7 +104,7 @@ impl SyscallInstrsChip {
             F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
 
         if cols.is_halt == F::one() {
-            cols.next_pc = [F::one(), F::zero(), F::zero()];
+            cols.next_pc = [F::from_canonical_u64(HALT_PC), F::zero(), F::zero()];
         } else {
             cols.next_pc = [
                 F::from_canonical_u32(((event.pc & 0xFFFF) as u32) + 4),

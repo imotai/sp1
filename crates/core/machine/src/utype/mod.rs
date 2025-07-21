@@ -1,7 +1,7 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
@@ -121,6 +121,7 @@ where
 
         builder.assert_word_eq(addend.clone(), expected_addend);
 
+        builder.when_not(local.is_real).assert_zero(local.adapter.op_a_0);
         let op_input = AddOperationInput::<AB>::new(
             addend,
             local.adapter.b().map(|x| x.into()),

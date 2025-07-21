@@ -399,14 +399,10 @@ impl<C: ShardProverComponents> ShardProver<C> {
         preprocessed_traces: Traces<C::F, C::B>,
     ) -> (ShardProverData<C>, MachineVerifyingKey<C::Config>) {
         // Commit to the preprocessed traces, if there are any.
-        let (preprocessed_commit, preprocessed_data) = if !preprocessed_traces.is_empty() {
-            let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
-            let (commit, data) = self.pcs_prover.commit_multilinears(message).await.unwrap();
-
-            (Some(commit), Some(data))
-        } else {
-            (None, None)
-        };
+        assert!(!preprocessed_traces.is_empty(), "preprocessed trace cannot be empty");
+        let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
+        let (preprocessed_commit, preprocessed_data) =
+            self.pcs_prover.commit_multilinears(message).await.unwrap();
 
         let preprocessed_chip_information = preprocessed_traces
             .iter()
@@ -629,10 +625,9 @@ impl<C: ShardProverComponents> ShardProver<C> {
                     challenger.observe_ext_element(*eval);
                 }
 
-                let preprocessed =
-                    AirOpenedValues { local: preprocessed_evals.to_vec(), next: vec![] };
+                let preprocessed = AirOpenedValues { local: preprocessed_evals.to_vec() };
 
-                let main = AirOpenedValues { local: main_evals.to_vec(), next: vec![] };
+                let main = AirOpenedValues { local: main_evals.to_vec() };
 
                 (
                     air.name().to_string(),
@@ -705,6 +700,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
                 &shard_chips,
                 pk.preprocessed_data.preprocessed_traces.clone(),
                 traces.clone(),
+                public_values.clone(),
                 alpha,
                 beta,
                 challenger,
@@ -760,11 +756,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
             .chain(once(main_evaluation_claims))
             .collect::<Rounds<_>>();
 
-        let round_prover_data = pk
-            .preprocessed_data
-            .preprocessed_data
-            .clone()
-            .into_iter()
+        let round_prover_data = once(pk.preprocessed_data.preprocessed_data.clone())
             .chain(once(main_data))
             .collect::<Rounds<_>>();
 
@@ -850,5 +842,5 @@ pub struct ShardProverData<C: ShardProverComponents> {
     /// The preprocessed traces.
     pub preprocessed_traces: Traces<C::F, C::B>,
     /// The pcs data for the preprocessed traces.
-    pub preprocessed_data: Option<JaggedProverData<C::PcsProverComponents>>,
+    pub preprocessed_data: JaggedProverData<C::PcsProverComponents>,
 }

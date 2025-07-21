@@ -88,6 +88,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     let message0_16bit_limb = (event.message[0] & 0xffff) as u16;
                     let message0_8bit_limb = ((event.message[0] >> 16) & 0xff) as u8;
                     blu.add_u16_range_check(message0_16bit_limb);
+                    blu.add_u16_range_check(event.message[7] as u16);
                     blu.add_u8_range_check(0, message0_8bit_limb);
                 });
                 blu
@@ -220,7 +221,7 @@ where
         let local = main.row_slice(0);
         let local: &GlobalCols<AB::Var> = (*local).borrow();
 
-        // Receive the arguments, which consists of 7 message columns, `is_send`, `is_receive`, and
+        // Receive the arguments, which consists of 8 message columns, `is_send`, `is_receive`, and
         // `kind`. In MemoryGlobal, MemoryLocal, Syscall chips, `is_send`, `is_receive`,
         // `kind` are sent with correct constant values. For a global send interaction,
         // `is_send = 1` and `is_receive = 0` are used. For a global receive interaction,

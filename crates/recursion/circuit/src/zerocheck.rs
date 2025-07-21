@@ -13,7 +13,7 @@ use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 use slop_baby_bear::BabyBear;
-use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{full_geq, Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
@@ -45,23 +45,10 @@ pub fn eval_constraints<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVar
 where
     A: MachineAir<C::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
 {
-    let default_challenge: Ext<C::F, C::EF> = builder.constant(C::EF::default());
     let mut folder = RecursiveVerifierConstraintFolder::<C> {
-        preprocessed: VerticalPair::new(
-            RowMajorMatrixView::new_row(&opening.preprocessed.local),
-            RowMajorMatrixView::new_row(&opening.preprocessed.local),
-        ),
-        main: VerticalPair::new(
-            RowMajorMatrixView::new_row(&opening.main.local),
-            RowMajorMatrixView::new_row(&opening.main.local),
-        ),
-        perm: VerticalPair::new(RowMajorMatrixView::new_row(&[]), RowMajorMatrixView::new_row(&[])),
-        perm_challenges: &[],
-        local_cumulative_sum: &default_challenge,
+        preprocessed: RowMajorMatrixView::new_row(&opening.preprocessed.local),
+        main: RowMajorMatrixView::new_row(&opening.main.local),
         public_values,
-        is_first_row: default_challenge,
-        is_last_row: default_challenge,
-        is_transition: default_challenge,
         alpha,
         accumulator: SymbolicExt::zero(),
         _marker: std::marker::PhantomData,
@@ -85,22 +72,9 @@ where
     let dummy_preprocessed_trace = vec![zero; chip.preprocessed_width()];
     let dummy_main_trace = vec![zero; chip.width()];
 
-    let default_challenge: Ext<C::F, C::EF> = builder.constant(C::EF::default());
     let mut folder = RecursiveVerifierConstraintFolder::<C> {
-        preprocessed: VerticalPair::new(
-            RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
-            RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
-        ),
-        main: VerticalPair::new(
-            RowMajorMatrixView::new_row(&dummy_main_trace),
-            RowMajorMatrixView::new_row(&dummy_main_trace),
-        ),
-        perm: VerticalPair::new(RowMajorMatrixView::new_row(&[]), RowMajorMatrixView::new_row(&[])),
-        perm_challenges: &[],
-        local_cumulative_sum: &default_challenge,
-        is_first_row: default_challenge,
-        is_last_row: default_challenge,
-        is_transition: default_challenge,
+        preprocessed: RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
+        main: RowMajorMatrixView::new_row(&dummy_main_trace),
         alpha,
         accumulator: SymbolicExt::zero(),
         public_values,
@@ -203,6 +177,7 @@ where
                 openings.degree.iter().map(|x| SymbolicExt::from(*x)).collect::<Point<_>>();
             degree_symbolic_ext.iter().for_each(|x| {
                 builder.assert_ext_eq(*x * (*x - one), zero);
+                builder.assert_ext_eq(*x * *degree_symbolic_ext.last().unwrap(), zero);
             });
             let geq_val = full_geq(&degree_symbolic_ext, &proof_point_extended);
 

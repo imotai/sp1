@@ -87,6 +87,7 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F
         chips: &BTreeSet<Chip<F, A>>,
         preprocessed_traces: Traces<F, CpuBackend>,
         traces: Traces<F, CpuBackend>,
+        public_values: Vec<F>,
         alpha: EF,
         beta: EF,
     ) -> (LogUpGkrOutput<EF>, Self::Circuit) {
@@ -109,6 +110,7 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F
                     &chips.iter().cloned().collect::<Vec<_>>(),
                     &preprocessed_traces,
                     &traces,
+                    public_values,
                     InteractionKind::all_kinds(),
                     InteractionScope::Local,
                 )

@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 use num_bigint::BigUint;
-use slop_algebra::{AbstractField, PrimeField};
+use slop_algebra::{AbstractField, PrimeField, PrimeField64};
 use slop_baby_bear::BabyBear;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
 use sp1_primitives::io::{blake3_hash, SP1PublicValues};
@@ -19,20 +19,7 @@ use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierConfigError, MachineVerifierError,
 };
-// // use sp1_recursion_circuit::machine::RootPublicValues;
-// // use sp1_recursion_core::{air::RecursionPublicValues, stark::BabyBearPoseidon2Outer};
-// // use sp1_recursion_gnark_ffi::{
-// //     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
-// // };
-// use sp1_stark::{
-//     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-//     MachineProof, MachineVerifierError, Word,
-// };
 use thiserror::Error;
-
-// use crate::{
-//     components::SP1ProverComponents, CoreSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
-// };
 
 #[derive(Error, Debug)]
 pub enum PlonkVerificationError {
@@ -142,7 +129,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Program counter constraints.
         //
         // Initialization:
-        // - `pc_start_rel` should start as `vk.pc_start_rel`.
+        // - `pc_start` should start as `vk.pc_start`.
         //
         // Transition:
         // - `next_pc` of the previous shard should equal `pc_start`.
@@ -162,7 +149,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 shard_proof.public_values.as_slice().borrow();
             if i == 0 && public_values.pc_start != vk.pc_start {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "pc_start != vk.pc_start_rel: program counter should start at vk.pc_start_rel",
+                    "pc_start != vk.pc_start: program counter should start at vk.pc_start",
                 ));
             } else if i != 0 && public_values.pc_start != prev_next_pc {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -381,12 +368,13 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
-        let SP1RecursionProof { vk: compress_vk, proof } = proof;
+        let SP1RecursionProof { vk: _, proof } = proof;
+        let shrink_vk = self.recursion_prover.get_shrink_keys().1;
         let mut challenger = self.recursion_prover.shrink_verifier().challenger();
-        compress_vk.observe_into(&mut challenger);
+        shrink_vk.observe_into(&mut challenger);
         self.recursion_prover
             .shrink_verifier()
-            .verify_shard(compress_vk, proof, &mut challenger)
+            .verify_shard(&shrink_vk, proof, &mut challenger)
             .map_err(MachineVerifierError::InvalidShardProof)?;
 
         // Validate public values
@@ -403,7 +391,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         if self.recursion_prover.vk_verification()
-            && !self.recursion_prover.recursion_vk_map.contains_key(&compress_vk.hash_babybear())
+            && !self.recursion_prover.recursion_vk_map.contains_key(&shrink_vk.hash_babybear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
@@ -430,7 +418,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<OuterSC>> {
         let SP1RecursionProof { vk: _, proof } = proof;
-        let wrap_vk = self.recursion_prover.wrap_keys().1;
+        let wrap_vk = self.recursion_prover.get_wrap_keys().1;
         let mut challenger = self.recursion_prover.wrap_verifier().challenger();
         wrap_vk.observe_into(&mut challenger);
         self.recursion_prover
@@ -592,37 +580,42 @@ fn verify_public_values(
 use crate::{
     components::SP1ProverComponents, CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
 };
-// use sp1_stark::DIGEST_SIZE;
 
 impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
     fn verify_deferred_proof(
         &self,
         proof: &sp1_core_machine::recursion::SP1RecursionProof<InnerSC>,
         vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
-        _vk_hash: [u64; 4],
-        _committed_value_digest: [u64; 4],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         // Check that the vk hash matches the vk hash from the input.
-        // if vk.hash_u32() != vk_hash {
-        //     return Err(MachineVerifierError::InvalidPublicValues(
-        //         "vk hash from syscall does not match vkey from input",
-        //     ));
-        // }
+        if vk.hash_u64() != vk_hash {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "vk hash from syscall does not match vkey from input",
+            ));
+        }
         // Check that proof is valid.
         self.verify_compressed(
             &SP1RecursionProof { vk: proof.vk.clone(), proof: proof.proof.clone() },
             &SP1VerifyingKey { vk: vk.clone() },
         )?;
-        // // Check that the committed value digest matches the one from syscall
-        // let public_values: &RecursionPublicValues<_> =
-        //     proof.proof.public_values.as_slice().borrow();
-        // for (i, word) in public_values.committed_value_digest.iter().enumerate() {
-        //     if *word != committed_value_digest[i].into() {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "committed_value_digest does not match",
-        //         ));
-        //     }
-        // }
+        // Check that the committed value digest matches the one from syscall
+        let public_values: &RecursionPublicValues<_> =
+            proof.proof.public_values.as_slice().borrow();
+        let pv_committed_value_digest: [u64; 4] = std::array::from_fn(|i| {
+            public_values.committed_value_digest[2 * i]
+                .iter()
+                .chain(public_values.committed_value_digest[2 * i + 1].iter())
+                .enumerate()
+                .fold(0u64, |acc, (j, &val)| acc | (val.as_canonical_u64() << (8 * j)))
+        });
+        if committed_value_digest != pv_committed_value_digest {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "committed_value_digest does not match",
+            ));
+        }
+
         Ok(())
     }
 }

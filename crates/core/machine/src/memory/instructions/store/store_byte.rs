@@ -242,23 +242,23 @@ where
             .when(local.offset_bit[2])
             .assert_eq(local.mem_limb, local.memory_access.prev_value[3]);
 
-        // Split the u16 memory limb into two bytes.
-        let byte0 = local.mem_limb_low_byte;
-        let byte1 = (local.mem_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
-        builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
-
         // Split the u16 register limb into two bytes.
         let byte0 = local.register_low_byte;
         let byte1 =
             (local.adapter.prev_a().0[0] - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
         builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
 
+        // Split the u16 memory limb into two bytes.
+        let byte0 = local.mem_limb_low_byte;
+        let byte1 = (local.mem_limb - byte0) * AB::F::from_canonical_u32(1 << 8).inverse();
+        builder.slice_range_check_u8(&[byte0.into(), byte1.clone()], local.is_real);
+
         builder.assert_eq(
             local.increment,
             (local.register_low_byte - local.mem_limb_low_byte)
                 * (AB::Expr::one() - local.offset_bit[0])
-                + (AB::Expr::from_canonical_u16(1 << 8) * local.register_low_byte - local.mem_limb
-                    + local.mem_limb_low_byte)
+                + AB::Expr::from_canonical_u16(1 << 8)
+                    * (local.register_low_byte - byte1)
                     * local.offset_bit[0],
         );
 

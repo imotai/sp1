@@ -1,4 +1,5 @@
 use derive_where::derive_where;
+use slop_algebra::PrimeField32;
 use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
 use slop_jagged::{BabyBearPoseidon2, JaggedConfig};
@@ -100,7 +101,12 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
     pub fn shard_verifier(&self) -> &ShardVerifier<C, A> {
         &self.shard_verifier
     }
+}
 
+impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A>
+where
+    C::F: PrimeField32,
+{
     /// Verify the machine proof.
     pub fn verify(
         &self,

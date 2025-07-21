@@ -121,7 +121,7 @@ impl<F: Field> GlobalInteractionOperation<F> {
             values[0].clone(),
             shard_limbs[0] + shard_limbs[1] * AB::F::from_canonical_u32(1 << 16),
         );
-        builder.slice_range_check_u16(&[shard_limbs[0]], is_real);
+        builder.slice_range_check_u16(&[shard_limbs[0].into(), values[7].clone()], is_real);
         builder.slice_range_check_u8(&[shard_limbs[1]], is_real);
 
         // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate

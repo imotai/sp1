@@ -1,7 +1,3 @@
-use std::borrow::Borrow;
-// use std::marker::PhantomData;
-
-// use slop_air::Air;
 use crate::{
     basefold::merkle_tree::MerkleProof,
     hash::FieldHasher,
@@ -16,6 +12,7 @@ use slop_challenger::DuplexChallenger;
 use slop_jagged::JaggedConfig;
 use slop_merkle_tree::Perm;
 use slop_symmetric::Hash;
+use std::borrow::Borrow;
 
 use super::{
     InnerChallenge, InnerVal, SP1DeferredWitnessValues, SP1DeferredWitnessVariable,

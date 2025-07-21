@@ -18,7 +18,6 @@ use slop_air::Air;
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
-use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
 use slop_multilinear::{Evaluations, MleEval};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_recursion_compiler::{
@@ -65,7 +64,7 @@ pub struct MachineVerifyingKeyVariable<
     /// The starting global digest of the program, after incorporating the initial memory.
     pub initial_global_cumulative_sum: SepticDigest<Felt<C::F>>,
     /// The preprocessed commitments.
-    pub preprocessed_commit: Option<SC::DigestVariable>,
+    pub preprocessed_commit: SC::DigestVariable,
     /// The preprocessed chip information.
     pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<Felt<C::F>>>,
 }
@@ -75,34 +74,28 @@ where
     SC: BabyBearFriConfigVariable<C>,
 {
     /// Hash the verifying key + prep domains into a single digest.
-    /// poseidon2( commit[0..8] || pc_start || initial_global_cumulative_sum ||
-    /// prep_domains[N].{log_n, .size, .shift, .g})
+    /// poseidon2(commit[0..8] || pc_start || initial_global_cumulative_sum ||
+    /// height || name)
     pub fn hash(&self, builder: &mut Builder<C>) -> SC::DigestVariable
     where
         C::F: TwoAdicField,
         SC::DigestVariable: IntoIterator<Item = Felt<C::F>>,
     {
-        let num_inputs = DIGEST_SIZE + 1 + 14; //(4 * prep_domains.len());
+        let num_inputs = DIGEST_SIZE + 1 + 14;
         let mut inputs = Vec::with_capacity(num_inputs);
-        if let Some(commit) = self.preprocessed_commit {
-            inputs.extend(commit)
-        }
+        inputs.extend(self.preprocessed_commit);
         inputs.extend(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
-        for ChipDimensions { height, num_polynomials: _ } in
-            self.preprocessed_chip_information.values()
+        for (name, ChipDimensions { height, num_polynomials: _ }) in
+            self.preprocessed_chip_information.iter()
         {
             inputs.push(*height);
+            inputs.push(builder.eval(C::F::from_canonical_usize(name.len())));
+            for byte in name.as_bytes() {
+                inputs.push(builder.eval(C::F::from_canonical_u8(*byte)));
+            }
         }
-        // for domain in prep_domains {
-        //     inputs.push(builder.eval(C::F::from_canonical_usize(domain.log_n)));
-        //     let size = 1 << domain.log_n;
-        //     inputs.push(builder.eval(C::F::from_canonical_usize(size)));
-        //     let g = C::F::two_adic_generator(domain.log_n);
-        //     inputs.push(builder.eval(domain.shift));
-        //     inputs.push(builder.eval(g));
-        // }
 
         SC::hash(builder, &inputs)
     }
@@ -148,26 +141,8 @@ where
         beta: Ext<C::F, C::EF>,
         public_values: &[Felt<C::F>],
     ) -> SymbolicExt<C::F, C::EF> {
-        let zero_ext: Ext<_, _> = builder.constant(C::EF::zero());
-        let one_ext: Ext<_, _> = builder.constant(C::EF::one());
         let mut folder = RecursiveVerifierPublicValuesConstraintFolder::<C> {
-            preprocessed: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
-            main: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
-            perm: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
             perm_challenges: &[alpha, beta],
-            local_cumulative_sum: &zero_ext,
-            is_first_row: one_ext,
-            is_last_row: one_ext,
-            is_transition: one_ext,
             alpha: challenge,
             accumulator: SymbolicExt::zero(),
             local_interaction_digest: SymbolicExt::zero(),
@@ -210,7 +185,7 @@ where
         for (name, height) in heights {
             let mut acc = SymbolicFelt::zero();
             // Assert max height to avoid overflow during prefix-sum-checks.
-            assert!(height.len() <= 29);
+            assert!(height.len() == self.pcs_verifier.max_log_row_count + 1);
             height.iter().for_each(|x| {
                 acc = *x + two * acc;
             });
@@ -321,30 +296,21 @@ where
             .chain(std::iter::once(proof.evaluation_proof.added_columns[0] - 1))
             .collect::<Vec<_>>();
 
-        let main_column_count = main_openings
+        let main_column_count =
+            main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
+
+        let unfiltered_main_column_count = main_openings
             .iter()
             .map(|table_openings| table_openings.len())
             .chain(std::iter::once(proof.evaluation_proof.added_columns[1] - 1))
             .collect::<Vec<_>>();
 
-        let only_has_main_commitment = vk.preprocessed_commit.is_none();
-
-        let (commitments, column_counts, unfiltered_column_counts, openings) =
-            if only_has_main_commitment {
-                (
-                    vec![*main_commitment],
-                    vec![main_column_count.clone()],
-                    vec![main_column_count],
-                    Rounds { rounds: vec![main_openings] },
-                )
-            } else {
-                (
-                    vec![vk.preprocessed_commit.unwrap(), *main_commitment],
-                    vec![preprocessed_column_count, main_column_count.clone()],
-                    vec![unfiltered_preprocessed_column_count, main_column_count],
-                    Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
-                )
-            };
+        let (commitments, column_counts, unfiltered_column_counts, openings) = (
+            vec![vk.preprocessed_commit, *main_commitment],
+            vec![preprocessed_column_count, main_column_count.clone()],
+            vec![unfiltered_preprocessed_column_count, unfiltered_main_column_count],
+            Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
+        );
 
         let machine_jagged_verifier =
             RecursiveMachineJaggedPcsVerifier::new(&self.pcs_verifier, column_counts.clone());

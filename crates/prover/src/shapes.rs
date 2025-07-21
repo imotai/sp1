@@ -173,11 +173,11 @@ impl SP1RecursionProofShape {
     pub fn compress_proof_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_424),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_712),
                 (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_208),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 413_504),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 761_344),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_536),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 414_176),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 764_796),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_600),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_904),
                 (CompressAir::<BabyBear>::Select(SelectChip), 700_032),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
@@ -690,11 +690,11 @@ mod tests {
         let shape = [
             (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_424),
             (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_208),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 413_504),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 761_325),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 414_176),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 764_796),
             (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_536),
-            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_880),
-            (CompressAir::<BabyBear>::Select(SelectChip), 700_008),
+            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_904),
+            (CompressAir::<BabyBear>::Select(SelectChip), 700_032),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()

@@ -38,11 +38,13 @@ pub trait LogUpGkrProver: 'static + Send + Sync {
     type Challenger: FieldChallenger<Self::F>;
 
     /// TODO
+    #[allow(clippy::too_many_arguments)]
     fn prove_logup_gkr(
         &self,
         chips: &BTreeSet<Chip<Self::F, Self::A>>,
         preprocessed_traces: Traces<Self::F, Self::B>,
         traces: Traces<Self::F, Self::B>,
+        public_values: Vec<Self::F>,
         alpha: Self::EF,
         beta: Self::EF,
         challenger: &mut Self::Challenger,
@@ -184,6 +186,7 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         chips: &BTreeSet<Chip<Self::F, Self::A>>,
         preprocessed_traces: Traces<Self::F, Self::B>,
         traces: Traces<Self::F, Self::B>,
+        public_values: Vec<Self::F>,
         alpha: Self::EF,
         beta: Self::EF,
         challenger: &mut Self::Challenger,
@@ -194,7 +197,14 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         // Run the GKR circuit and get the output.
         let (output, circuit) = self
             .trace_generator
-            .generate_gkr_circuit(chips, preprocessed_traces.clone(), traces.clone(), alpha, beta)
+            .generate_gkr_circuit(
+                chips,
+                preprocessed_traces.clone(),
+                traces.clone(),
+                public_values,
+                alpha,
+                beta,
+            )
             .instrument(tracing::info_span!("generate GKR circuit"))
             .await;
 

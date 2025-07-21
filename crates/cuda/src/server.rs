@@ -2,8 +2,7 @@
 
 #[cfg(all(feature = "native", target_arch = "x86_64"))]
 mod native {
-    use crate::client::Child;
-    use crate::CudaClientError;
+    use crate::{client::Child, CudaClientError};
     use std::{
         os::unix::process::CommandExt,
         path::{Path, PathBuf},
@@ -224,8 +223,7 @@ pub(crate) use native::start_server;
 
 #[cfg(any(not(feature = "native"), not(target_arch = "x86_64")))]
 mod docker {
-    use crate::client::Child;
-    use crate::CudaClientError;
+    use crate::{client::Child, CudaClientError};
     use std::process::Stdio;
     use tokio::process::Command;
 

@@ -9,7 +9,7 @@ use crate::air::SP1Operation;
 
 /// A set of columns to describe the state of the CPU.
 /// The state is composed of the shard, clock, and the program counter.
-/// The clock is split into two 14-limb bits to range check it to 28 bits.
+/// The clock is split into 24 bits, 8 bits, 16 bits limbs.
 #[derive(
     AlignedBorrow,
     Default,

@@ -18,7 +18,7 @@ pub struct AddressOperation<T> {
     pub addr_word_operation: AddrAddOperation<T>,
 
     /// This is used to check if the top two limbs of the address is not both zero.
-    pub top_two_limb_min: T,
+    pub top_two_limb_inv: T,
 }
 
 impl<F: PrimeField32> AddressOperation<F> {
@@ -28,7 +28,7 @@ impl<F: PrimeField32> AddressOperation<F> {
         self.addr_word_operation.populate(record, b, c);
         let sum_top_two_limb =
             F::from_canonical_u16(addr_word_limbs[1]) + F::from_canonical_u16(addr_word_limbs[2]);
-        self.top_two_limb_min = sum_top_two_limb.inverse();
+        self.top_two_limb_inv = sum_top_two_limb.inverse();
         record.add_bit_range_check(addr_word_limbs[0] / 8, 13);
         memory_addr
     }
@@ -56,7 +56,7 @@ impl<F: Field> AddressOperation<F> {
         builder.assert_bool(offset_bit1.clone());
         builder.assert_bool(offset_bit2.clone());
 
-        // `addr` is computed as `op_b + op_c`, and is range checked to be two u16 limbs.
+        // `addr` is computed as `op_b + op_c`, and is range checked to be three u16 limbs.
         AddrAddOperation::<AB::F>::eval(builder, b, c, cols.addr_word_operation, is_real.clone());
         let addr = cols.addr_word_operation.value;
 
@@ -64,8 +64,8 @@ impl<F: Field> AddressOperation<F> {
 
         // Check that `addr >= 2^16`, so it doesn't touch registers.
         // This implements a stack guard of size 2^16 bytes = 64KB.
-        // If `is_real = 1`, then `addr.0[1] != 0`, so `addr >= 2^16`.
-        builder.assert_eq(cols.top_two_limb_min * sum_top_two_limb.clone(), is_real.clone());
+        // If `is_real = 1`, then `addr[1] + addr[2] != 0`, so `addr >= 2^16`.
+        builder.assert_eq(cols.top_two_limb_inv * sum_top_two_limb.clone(), is_real.clone());
 
         // Check `0 <= (addr[0] - 4 * bit2 - 2 * bit1 - bit0) / 8 < 2^13`.
         // This shows `addr[0] - 4 * bit2 - 2 * bit1 - bit0` is a multiple of `8` within `u16`.

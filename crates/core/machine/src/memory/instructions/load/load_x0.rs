@@ -182,9 +182,9 @@ where
         let clk_high = local.state.clk_high::<AB>();
         let clk_low = local.state.clk_low::<AB>();
 
-        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw` are checked to be
-        // boolean. Each "real" row has exactly one selector turned on, as `is_real`, the
-        // sum of the selectors, is boolean. Therefore, the `opcode` matches the
+        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw`, `is_lwu`, `is_ld`
+        // are checked to be boolean. Each "real" row has exactly one selector turned on, as
+        // `is_real`, the sum of the selectors, is boolean. Therefore, the `opcode` matches the
         // corresponding opcode.
         let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
             + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu
@@ -228,6 +228,8 @@ where
         builder.assert_bool(local.is_lh);
         builder.assert_bool(local.is_lhu);
         builder.assert_bool(local.is_lw);
+        builder.assert_bool(local.is_lwu);
+        builder.assert_bool(local.is_ld);
         builder.assert_bool(is_real.clone());
 
         // Step 1. Compute the address, and check offsets and address bounds.
