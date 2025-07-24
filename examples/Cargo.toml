@@ -52,6 +52,8 @@ members = [
   "u256x2048-mul/script",
   "uint256/program",
   "uint256/script",
+  "poseidon2/program",
+  "poseidon2/script",
 ]
 resolver = "2"
 

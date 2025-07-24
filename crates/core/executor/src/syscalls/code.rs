@@ -166,6 +166,9 @@ pub enum SyscallCode {
     /// Executes the `MPROTECT` syscall.
     #[allow(clippy::mistyped_literal_suffixes)]
     MPROTECT = 0x00_00_01_32,
+
+    /// Executes the `POSEIDON2` syscall.
+    POSEIDON2 = 0x00_00_01_33,
 }
 
 impl SyscallCode {
@@ -216,6 +219,7 @@ impl SyscallCode {
             0x00_01_01_31 => SyscallCode::UINT256_MUL_CARRY,
             #[allow(clippy::mistyped_literal_suffixes)]
             0x00_00_01_32 => SyscallCode::MPROTECT,
+            0x00_00_01_33 => SyscallCode::POSEIDON2,
             _ => panic!("invalid syscall number: {value}"),
         }
     }
@@ -323,6 +327,7 @@ impl SyscallCode {
                 RiscvAirId::Uint256Ops
             }
             SyscallCode::MPROTECT => RiscvAirId::Mprotect,
+            SyscallCode::POSEIDON2 => RiscvAirId::Poseidon2,
             SyscallCode::HALT
             | SyscallCode::WRITE
             | SyscallCode::ENTER_UNCONSTRAINED

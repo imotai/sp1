@@ -54,6 +54,7 @@ pub(crate) mod riscv_chips {
             precompiles::{
                 edwards::{EdAddAssignChip, EdDecompressChip},
                 keccak256::{KeccakPermuteChip, KeccakPermuteControlChip},
+                poseidon2::Poseidon2Chip,
                 sha256::{
                     ShaCompressChip, ShaCompressControlChip, ShaExtendChip, ShaExtendControlChip,
                 },
@@ -220,6 +221,8 @@ pub enum RiscvAir<F: PrimeField32> {
     Bn254Fp2Mul(Fp2MulAssignChip<Bn254BaseField>),
     /// A precompile for BN-254 fp2 addition/subtraction.
     Bn254Fp2AddSub(Fp2AddSubAssignChip<Bn254BaseField>),
+    /// A precompile for Poseidon2 permutation.
+    Poseidon2(Poseidon2Chip),
 }
 
 impl<F: PrimeField32> RiscvAir<F> {
@@ -273,6 +276,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::Bls12381Decompress(
                 WeierstrassDecompressChip::<SwCurve<Bls12381Parameters>>::with_lexicographic_rule(),
             ),
+            RiscvAir::Poseidon2(Poseidon2Chip::new()),
             RiscvAir::SyscallCore(SyscallChip::core()),
             RiscvAir::SyscallPrecompile(SyscallChip::precompile()),
             RiscvAir::DivRem(DivRemChip::default()),
@@ -363,6 +367,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             [Bn254Fp2AddSub].as_slice(),
             [Bn254Fp2Mul].as_slice(),
             [Bls12381Decompress].as_slice(),
+            [Poseidon2].as_slice(),
         ]
         .into_iter()
         .map(|ids| extend_base(&base_precompile_cluster, ids.iter().cloned()));
@@ -412,8 +417,8 @@ impl<F: PrimeField32> RiscvAir<F> {
             [Bls12381Fp].as_slice(),
             [Bn254Fp].as_slice(),
             [Sha256Extend, Sha256ExtendControl, Sha256Compress, Sha256CompressControl].as_slice(),
-            [Uint256Mul].as_slice(),
             [Uint256Ops].as_slice(),
+            [Poseidon2].as_slice(),
         ];
 
         // These extended clusters support the AIR retainment setting in SP1Context.
@@ -772,6 +777,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(range.name(), range.cost());
         chips.push(range);
 
+        let poseidon2 = Chip::new(RiscvAir::Poseidon2(Poseidon2Chip::new()));
+        costs.insert(poseidon2.name(), poseidon2.cost());
+        chips.push(poseidon2);
+
         assert_eq!(chips.len(), costs.len(), "chips and costs must have the same length",);
 
         (chips, costs)
@@ -908,6 +917,7 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::Sha256ExtendControl => RiscvAirId::ShaExtendControl,
             RiscvAirDiscriminants::Sha256CompressControl => RiscvAirId::ShaCompressControl,
             RiscvAirDiscriminants::KeccakPControl => RiscvAirId::KeccakPermuteControl,
+            RiscvAirDiscriminants::Poseidon2 => RiscvAirId::Poseidon2,
         }
     }
 }

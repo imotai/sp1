@@ -169,7 +169,7 @@ impl SyscallInstrsChip {
         // SAFETY: The multiplicities are zero when `is_real = 0`.
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,
-            *local.adapter.b(),
+            local.adapter.b().map(Into::into),
             local.op_b_range_check,
             local.is_halt.into(),
         );
@@ -177,7 +177,7 @@ impl SyscallInstrsChip {
         // Check if `op_c` is a valid BabyBear word.
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,
-            *local.adapter.c(),
+            local.adapter.c().map(Into::into),
             local.op_c_range_check,
             local.is_commit_deferred_proofs.result.into(),
         );

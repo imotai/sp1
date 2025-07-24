@@ -178,7 +178,7 @@ impl SP1RecursionProofShape {
                 (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 414_176),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 764_796),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_600),
-                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_904),
+                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 245_248),
                 (CompressAir::<BabyBear>::Select(SelectChip), 700_032),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
             ]

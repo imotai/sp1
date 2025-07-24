@@ -20,6 +20,7 @@ use precompiles::{
     edwards::{add::edwards_add_assign_syscall, decompress::edwards_decompress_syscall},
     fptower::{fp2_addsub_syscall, fp2_mul_syscall, fp_op_syscall},
     keccak256::permute::keccak256_permute_syscall,
+    poseidon2::poseidon2_syscall,
     sha256::{compress::sha256_compress_syscall, extend::sha256_extend_syscall},
     u256x2048_mul::u256x2048_mul,
     uint256::uint256_mul,
@@ -151,5 +152,6 @@ pub fn get_syscall<'a, 'b, E: ExecutorConfig>(
         }
         SyscallCode::U256XU2048_MUL => Ok(Syscall::new(u256x2048_mul, 1)),
         SyscallCode::MPROTECT => Ok(Syscall::new(mprotect_syscall, 0)),
+        SyscallCode::POSEIDON2 => Ok(Syscall::new(poseidon2_syscall, 0)),
     }
 }

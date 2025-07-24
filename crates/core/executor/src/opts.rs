@@ -56,7 +56,10 @@ impl Default for SP1CoreOpts {
         let sharding_threshold = ShardingThreshold { element_threshold, height_threshold };
 
         let mut retained_events_presets = HashSet::new();
+        retained_events_presets.insert(RetainedEventsPreset::Bls12381Field);
+        retained_events_presets.insert(RetainedEventsPreset::Bn254Field);
         retained_events_presets.insert(RetainedEventsPreset::Sha256);
+        retained_events_presets.insert(RetainedEventsPreset::Poseidon2);
         retained_events_presets.insert(RetainedEventsPreset::U256Ops);
 
         Self {

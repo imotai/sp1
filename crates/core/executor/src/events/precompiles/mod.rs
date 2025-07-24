@@ -2,6 +2,7 @@ mod ec;
 mod edwards;
 mod fptower;
 mod keccak256_permute;
+mod poseidon2;
 mod sha256_compress;
 mod sha256_extend;
 mod u256x2048_mul;
@@ -15,6 +16,7 @@ pub use edwards::*;
 pub use fptower::*;
 use hashbrown::HashMap;
 pub use keccak256_permute::*;
+pub use poseidon2::*;
 use serde::{Deserialize, Serialize};
 pub use sha256_compress::*;
 pub use sha256_extend::*;
@@ -80,6 +82,8 @@ pub enum PrecompileEvent {
     Uint256Ops(Uint256OpsEvent),
     /// U256XU2048 mul precompile event.
     U256xU2048Mul(U256xU2048MulEvent),
+    /// POSEIDON2 precompile event.
+    POSEIDON2(Poseidon2PrecompileEvent),
 }
 
 /// Trait to retrieve all the local memory events from a vec of precompile events.
@@ -141,6 +145,9 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Bls12381Fp2Mul(e) | PrecompileEvent::Bn254Fp2Mul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::POSEIDON2(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
             }

@@ -197,6 +197,8 @@ pub enum RiscvAirId {
     /// The mprotect chip.
     #[subenum(CoreAirId)]
     Mprotect = 65,
+    /// The poseidon2 chip.
+    Poseidon2 = 66,
 }
 
 impl RiscvAirId {
@@ -284,6 +286,7 @@ impl RiscvAirId {
                 | RiscvAirId::Bn254Fp2AddSubAssign
                 | RiscvAirId::Bn254Fp2MulAssign
                 | RiscvAirId::Bls12381Decompress
+                | RiscvAirId::Poseidon2
         )
     }
 
