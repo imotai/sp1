@@ -12,7 +12,7 @@ use sp1_recursion_compiler::{
     config::{InnerConfig, OuterConfig},
     ir::{Builder, Config, DslIr, Ext, Felt, SymbolicExt, SymbolicFelt, Var, Variable},
 };
-use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, PERMUTATION_WIDTH};
+use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_BITS, PERMUTATION_WIDTH};
 use std::iter::{repeat, zip};
 use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
@@ -171,7 +171,7 @@ pub trait CircuitConfig: Config {
     ) -> Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>;
 
     fn range_check_felt(builder: &mut Builder<Self>, value: Felt<Self::F>, num_bits: usize) {
-        let bits = Self::num2bits(builder, value, 31);
+        let bits = Self::num2bits(builder, value, NUM_BITS);
         for bit in bits.into_iter().skip(num_bits) {
             Self::assert_bit_zero(builder, bit);
         }

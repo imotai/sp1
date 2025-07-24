@@ -25,7 +25,7 @@ use sp1_recursion_compiler::{
     ir::{Builder, Config, Felt, SymbolicExt},
     prelude::{Ext, SymbolicFelt},
 };
-use sp1_recursion_executor::DIGEST_SIZE;
+use sp1_recursion_executor::{DIGEST_SIZE, NUM_BITS};
 use sp1_stark::{
     air::MachineAir, septic_digest::SepticDigest, ChipDimensions,
     GenericVerifierPublicValuesConstraintFolder, LogupGkrProof, Machine, MachineConfig,
@@ -378,6 +378,52 @@ where
                         .sum::<u32>(),
             ),
         );
+
+        let preprocessed_padding_col_height =
+            builder.eval(prefix_sum_felts[skip_indices[0] + 1] - prefix_sum_felts[skip_indices[0]]);
+        let preprocessed_padding_col_bit_decomp = C::num2bits(
+            builder,
+            preprocessed_padding_col_height,
+            self.pcs_verifier.max_log_row_count + 1,
+        );
+
+        // We want to constrain the padding column to be in the range [0, 2^{max_log_row_count}].
+        // The above constraints ensure that the padding column is in the range [0,
+        // 2^{max_log_row_count+1}). The following constraints exclude the range
+        // (2^{max_log_row_count}, 2^{max_log_row_count+1}), namely by ensuring that if the
+        // the `max_log_row_count`-th bit is 1, then the less significant bits must be zero.
+        //
+        // NOTE: Strictly speaking, this is not necessary, since the jagged polynomial will
+        // force a zero evaluation in case any column height is greater than
+        // `2^{max_log_row_count}`, but we add this constraint for extra security, since it
+        // does not have a significant performance impact.
+        let max_bit = preprocessed_padding_col_bit_decomp[self.pcs_verifier.max_log_row_count];
+        let max_bit = C::bits2num(builder, vec![max_bit]);
+        let zero: Felt<_> = builder.constant(C::F::zero());
+        for bit in
+            preprocessed_padding_col_bit_decomp.iter().take(self.pcs_verifier.max_log_row_count)
+        {
+            let bit_felt = C::bits2num(builder, vec![*bit]);
+            builder.assert_felt_eq(max_bit * bit_felt, zero);
+        }
+        let num_cols = prefix_sum_felts.len();
+
+        // Repeat the process above for the main trace padding column.
+        let main_padding_col_height =
+            builder.eval(prefix_sum_felts[num_cols - 1] - prefix_sum_felts[num_cols - 2]);
+
+        let main_padding_col_bit_decomp = C::num2bits(builder, main_padding_col_height, NUM_BITS);
+
+        let max_bit = main_padding_col_bit_decomp[self.pcs_verifier.max_log_row_count];
+        let max_bit = C::bits2num(builder, vec![max_bit]);
+        for bit in main_padding_col_bit_decomp.iter().skip(self.pcs_verifier.max_log_row_count + 1)
+        {
+            C::assert_bit_zero(builder, *bit);
+        }
+        for bit in main_padding_col_bit_decomp.iter().take(self.pcs_verifier.max_log_row_count) {
+            let bit_felt = C::bits2num(builder, vec![*bit]);
+            builder.assert_felt_eq(max_bit * bit_felt, zero);
+        }
 
         // Compute the total area from the shape of the stacked PCS proof.
         let total_area_felt: Felt<_> = builder.constant(C::F::from_canonical_usize(

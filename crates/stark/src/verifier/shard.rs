@@ -691,6 +691,9 @@ where
                 * C::F::from_canonical_u32(preprocessed_round_num_poly)
             || preprocessed_round_num_poly.saturating_mul(1 << self.log_stacking_height())
                 >= (1 << 30)
+            || (col_prefix_sum[skip_indices[0] + 1] - col_prefix_sum[skip_indices[0]])
+                .as_canonical_u32()
+                > (1u32 << max_log_row_count)
         {
             return Err(ShardVerifierError::InvalidPrefixSum);
         }
@@ -703,6 +706,9 @@ where
             || (preprocessed_round_num_poly.saturating_add(main_round_num_poly))
                 .saturating_mul(1 << self.log_stacking_height())
                 >= (1 << 30)
+            || (col_prefix_sum[skip_indices[1] + 1] - col_prefix_sum[skip_indices[1]])
+                .as_canonical_u32()
+                > (1u32 << max_log_row_count)
         {
             return Err(ShardVerifierError::InvalidPrefixSum);
         }

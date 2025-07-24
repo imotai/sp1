@@ -173,9 +173,9 @@ impl SP1RecursionProofShape {
     pub fn compress_proof_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_712),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_208),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 414_176),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 348_064),
+                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_336),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 418_944),
                 (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 764_796),
                 (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_600),
                 (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 245_248),
@@ -576,21 +576,25 @@ fn create_all_input_shapes(
     max_arity: usize,
 ) -> Vec<SP1RecursionProgramShape> {
     let (max_preprocessed_multiple, _, capacity) = normalize_program_parameter_space();
-    let num_padding_cols =
+    let max_num_padding_cols =
         ((1 << CORE_LOG_STACKING_HEIGHT) as usize).div_ceil(1 << CORE_MAX_LOG_ROW_COUNT);
 
     let mut result: Vec<SP1RecursionProgramShape> = Vec::with_capacity(capacity);
     for preprocessed_multiple in 1..=max_preprocessed_multiple {
         for main_multiple in 1..=max_main_multiple_for_preprocessed_multiple(preprocessed_multiple)
         {
-            for cluster in &core_shape.chip_clusters {
-                result.push(SP1RecursionProgramShape::Normalize(CoreProofShape {
-                    shard_chips: cluster.clone(),
-                    preprocessed_multiple,
-                    main_multiple,
-                    preprocessed_padding_cols: num_padding_cols,
-                    main_padding_cols: num_padding_cols,
-                }));
+            for main_padding_cols in 1..=max_num_padding_cols {
+                for preprocessed_padding_cols in 1..=max_num_padding_cols {
+                    for cluster in &core_shape.chip_clusters {
+                        result.push(SP1RecursionProgramShape::Normalize(CoreProofShape {
+                            shard_chips: cluster.clone(),
+                            preprocessed_multiple,
+                            main_multiple,
+                            preprocessed_padding_cols,
+                            main_padding_cols,
+                        }));
+                    }
+                }
             }
         }
     }
@@ -614,7 +618,7 @@ pub fn normalize_program_parameter_space() -> (usize, usize, usize) {
         .div_ceil(1 << CORE_LOG_STACKING_HEIGHT);
     let max_main_multiple = (ELEMENT_THRESHOLD).div_ceil(1 << CORE_LOG_STACKING_HEIGHT) as usize;
 
-    let num_shapes = (0..max_preprocessed_multiple)
+    let num_shapes = (0..=max_preprocessed_multiple)
         .map(max_main_multiple_for_preprocessed_multiple)
         .sum::<usize>();
 
@@ -688,11 +692,11 @@ mod tests {
         // ]
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_424),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_208),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 414_176),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_904),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_304),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 416_864),
             (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 764_796),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_536),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_600),
             (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_904),
             (CompressAir::<BabyBear>::Select(SelectChip), 700_032),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
