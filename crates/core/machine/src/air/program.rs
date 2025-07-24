@@ -4,7 +4,7 @@ use sp1_stark::{
     InteractionKind,
 };
 
-use crate::cpu::columns::InstructionCols;
+use crate::program::instruction::InstructionCols;
 
 /// A trait which contains methods related to program interactions in an AIR.
 pub trait ProgramAirBuilder: BaseAirBuilder {

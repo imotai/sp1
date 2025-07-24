@@ -12,10 +12,8 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use rrs_lib::process_instruction;
 use serde::{Deserialize, Serialize};
-use sp1_primitives::consts::{PAGE_SIZE, PROT_EXEC, PROT_READ, PROT_WRITE};
-// use sp1_primitives::consts::BABYBEAR_PRIME;
+use sp1_primitives::consts::{MAXIMUM_MEMORY_SIZE, PAGE_SIZE, PROT_EXEC, PROT_READ, PROT_WRITE};
 use sp1_stark::air::PublicValues;
-use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use crate::{
@@ -120,9 +118,6 @@ pub struct Executor<'a> {
 
     /// The maximum number of shards to execute at once.
     pub shard_batch_size: u32,
-
-    /// The maximum number of cycles for a syscall.
-    pub max_syscall_cycles: u32,
 
     /// The options for the runtime.
     pub opts: SP1CoreOpts,
@@ -384,12 +379,6 @@ impl<'a> Executor<'a> {
         // Create a default record with the program.
         let record = ExecutionRecord::new(program.clone());
 
-        // Determine the maximum number of cycles for any syscall.
-        let max_syscall_cycles = SyscallCode::iter()
-            .map(|code| get_syscall::<Simple>(code).unwrap().num_extra_cycles)
-            .max()
-            .expect("No syscalls found");
-
         let hook_registry = context.hook_registry.unwrap_or_default();
 
         let costs: HashMap<String, usize> =
@@ -432,7 +421,6 @@ impl<'a> Executor<'a> {
             profiler: None,
             unconstrained_state: Box::new(ForkState::default()),
             emit_global_memory_events: true,
-            max_syscall_cycles,
             report: ExecutionReport::default(),
             local_counts: LocalCounts::default(),
             print_report: false,
@@ -605,9 +593,9 @@ impl<'a> Executor<'a> {
     ) -> MemoryReadRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        // if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
-        //     panic!("Invalid memory access: addr={addr}");
-        // }
+        if addr % 8 != 0 || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
+            panic!("Invalid memory access: addr={addr}");
+        }
 
         // Check that the page is readable.
         let page_prot_page_idx = addr / PAGE_SIZE as u64;
@@ -829,9 +817,9 @@ impl<'a> Executor<'a> {
     ) -> MemoryWriteRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        // if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
-        //     panic!("Invalid memory access: addr={addr}");
-        // }
+        if addr % 8 != 0 || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
+            panic!("Invalid memory access: addr={addr}");
+        }
 
         // Check that the page is writable.
         let page_prot_page_idx = addr / PAGE_SIZE as u64;
@@ -1563,14 +1551,6 @@ impl<'a> Executor<'a> {
     /// Fetch the instruction at the current program counter.
     #[inline]
     fn fetch<E: ExecutorConfig>(&mut self) -> Instruction {
-        // if 2500 <= self.state.global_clk && self.state.global_clk <= 2600 {
-        //     tracing::info!(
-        //         "global_clk: {}, pc: {}, instruction: {:?}",
-        //         self.state.global_clk,
-        //         self.state.pc,
-        //         self.program.fetch(self.state.pc)
-        //     );
-        // }
         let program_instruction = self.program.fetch(self.state.pc);
         if let Some(instruction) = program_instruction {
             *instruction
@@ -1963,14 +1943,13 @@ impl<'a> Executor<'a> {
         }
 
         let mut precompile_rt: SyscallContext<'_, '_, E> = SyscallContext::new(self, external);
-        let (a, precompile_next_pc, _, returned_exit_code) = {
+        let (a, precompile_next_pc, returned_exit_code) = {
             // Executing a syscall optionally returns a value to write to the t0
-            // register. If it returns None, we just keep the
-            // syscall_id in t0.
+            // register. If it returns None, we just keep the syscall_id in t0.
             let res = (syscall_impl.handler)(&mut precompile_rt, syscall, b, c);
             let a = if let Some(val) = res { val } else { syscall_id };
 
-            (a, precompile_rt.next_pc, syscall_impl.num_extra_cycles, precompile_rt.exit_code)
+            (a, precompile_rt.next_pc, precompile_rt.exit_code)
         };
 
         // TODO(tqn) measure local memory events for the precompiles,

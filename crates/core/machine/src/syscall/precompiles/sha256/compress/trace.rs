@@ -80,8 +80,6 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
             if octet == 0 {
                 octet_num = (octet_num + 1) % 10;
             }
-
-            cols.is_last_row = cols.octet[7] * cols.octet_num[9];
         }
 
         // Convert the trace to a row major matrix.
@@ -346,7 +344,6 @@ impl ShaCompressChip {
             };
 
             cols.is_real = F::one();
-            cols.is_last_row = cols.octet[7] * cols.octet_num[9];
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

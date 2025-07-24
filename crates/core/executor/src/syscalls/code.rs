@@ -236,12 +236,6 @@ impl SyscallCode {
         (self as u32).to_le_bytes()[1].into()
     }
 
-    /// Get the number of additional cycles the syscall uses.
-    #[must_use]
-    pub fn num_cycles(self) -> u32 {
-        (self as u32).to_le_bytes()[2].into()
-    }
-
     /// Map a syscall to another one in order to coalesce their counts.
     #[must_use]
     #[allow(clippy::match_same_arms)]

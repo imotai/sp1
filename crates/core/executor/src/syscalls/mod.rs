@@ -55,15 +55,13 @@ pub use context::*;
 pub struct Syscall<'a, 'b, E: ExecutorConfig> {
     /// The handler for the syscall.
     pub handler: SyscallHandler<'a, 'b, E>,
-    /// The number of extra cycles the syscall takes.
-    pub num_extra_cycles: u32,
 }
 
 impl<'a, 'b, E: ExecutorConfig> Syscall<'a, 'b, E> {
     /// Create a new syscall.
     #[inline]
-    pub fn new(handler: SyscallHandler<'a, 'b, E>, num_extra_cycles: u32) -> Self {
-        Self { handler, num_extra_cycles }
+    pub fn new(handler: SyscallHandler<'a, 'b, E>) -> Self {
+        Self { handler }
     }
 }
 
@@ -78,80 +76,76 @@ pub fn get_syscall<'a, 'b, E: ExecutorConfig>(
 ) -> Result<Syscall<'a, 'b, E>, ExecutionError> {
     match code {
         // Control flow
-        SyscallCode::HALT => Ok(Syscall::new(halt_syscall, 0)),
-        SyscallCode::WRITE => Ok(Syscall::new(write_syscall, 0)),
-        SyscallCode::COMMIT => Ok(Syscall::new(commit_syscall, 0)),
-        SyscallCode::COMMIT_DEFERRED_PROOFS => Ok(Syscall::new(commit_deferred_proofs_syscall, 0)),
-        SyscallCode::VERIFY_SP1_PROOF => Ok(Syscall::new(verify_syscall, 0)),
-        SyscallCode::HINT_LEN => Ok(Syscall::new(hint_len_syscall, 0)),
-        SyscallCode::HINT_READ => Ok(Syscall::new(hint_read_syscall, 0)),
-        SyscallCode::ENTER_UNCONSTRAINED => Ok(Syscall::new(enter_unconstrained_syscall, 0)),
-        SyscallCode::EXIT_UNCONSTRAINED => Ok(Syscall::new(exit_unconstrained_syscall, 0)),
+        SyscallCode::HALT => Ok(Syscall::new(halt_syscall)),
+        SyscallCode::WRITE => Ok(Syscall::new(write_syscall)),
+        SyscallCode::COMMIT => Ok(Syscall::new(commit_syscall)),
+        SyscallCode::COMMIT_DEFERRED_PROOFS => Ok(Syscall::new(commit_deferred_proofs_syscall)),
+        SyscallCode::VERIFY_SP1_PROOF => Ok(Syscall::new(verify_syscall)),
+        SyscallCode::HINT_LEN => Ok(Syscall::new(hint_len_syscall)),
+        SyscallCode::HINT_READ => Ok(Syscall::new(hint_read_syscall)),
+        SyscallCode::ENTER_UNCONSTRAINED => Ok(Syscall::new(enter_unconstrained_syscall)),
+        SyscallCode::EXIT_UNCONSTRAINED => Ok(Syscall::new(exit_unconstrained_syscall)),
         // Weierstrass curve operations
         SyscallCode::SECP256K1_ADD => {
-            Ok(Syscall::new(weierstrass_add_assign_syscall::<Secp256k1, E>, 1))
+            Ok(Syscall::new(weierstrass_add_assign_syscall::<Secp256k1, E>))
         }
         SyscallCode::SECP256K1_DOUBLE => {
-            Ok(Syscall::new(weierstrass_double_assign_syscall::<Secp256k1, E>, 0))
+            Ok(Syscall::new(weierstrass_double_assign_syscall::<Secp256k1, E>))
         }
         SyscallCode::SECP256K1_DECOMPRESS => {
-            Ok(Syscall::new(weierstrass_decompress_syscall::<Secp256k1, E>, 0))
+            Ok(Syscall::new(weierstrass_decompress_syscall::<Secp256k1, E>))
         }
         SyscallCode::BLS12381_ADD => {
-            Ok(Syscall::new(weierstrass_add_assign_syscall::<Bls12381, E>, 1))
+            Ok(Syscall::new(weierstrass_add_assign_syscall::<Bls12381, E>))
         }
         SyscallCode::BLS12381_DOUBLE => {
-            Ok(Syscall::new(weierstrass_double_assign_syscall::<Bls12381, E>, 0))
+            Ok(Syscall::new(weierstrass_double_assign_syscall::<Bls12381, E>))
         }
         SyscallCode::BLS12381_DECOMPRESS => {
-            Ok(Syscall::new(weierstrass_decompress_syscall::<Bls12381, E>, 0))
+            Ok(Syscall::new(weierstrass_decompress_syscall::<Bls12381, E>))
         }
-        SyscallCode::BN254_ADD => Ok(Syscall::new(weierstrass_add_assign_syscall::<Bn254, E>, 1)),
+        SyscallCode::BN254_ADD => Ok(Syscall::new(weierstrass_add_assign_syscall::<Bn254, E>)),
         SyscallCode::BN254_DOUBLE => {
-            Ok(Syscall::new(weierstrass_double_assign_syscall::<Bn254, E>, 0))
+            Ok(Syscall::new(weierstrass_double_assign_syscall::<Bn254, E>))
         }
         SyscallCode::SECP256R1_ADD => {
-            Ok(Syscall::new(weierstrass_add_assign_syscall::<Secp256r1, E>, 1))
+            Ok(Syscall::new(weierstrass_add_assign_syscall::<Secp256r1, E>))
         }
         SyscallCode::SECP256R1_DOUBLE => {
-            Ok(Syscall::new(weierstrass_double_assign_syscall::<Secp256r1, E>, 0))
+            Ok(Syscall::new(weierstrass_double_assign_syscall::<Secp256r1, E>))
         }
         SyscallCode::SECP256R1_DECOMPRESS => {
-            Ok(Syscall::new(weierstrass_decompress_syscall::<Secp256r1, E>, 0))
+            Ok(Syscall::new(weierstrass_decompress_syscall::<Secp256r1, E>))
         }
         // Edwards curve operations
-        SyscallCode::ED_ADD => Ok(Syscall::new(edwards_add_assign_syscall::<Ed25519, E>, 1)),
-        SyscallCode::ED_DECOMPRESS => Ok(Syscall::new(edwards_decompress_syscall::<E>, 0)),
+        SyscallCode::ED_ADD => Ok(Syscall::new(edwards_add_assign_syscall::<Ed25519, E>)),
+        SyscallCode::ED_DECOMPRESS => Ok(Syscall::new(edwards_decompress_syscall::<E>)),
         // Field operations
         SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
-            Ok(Syscall::new(fp2_addsub_syscall::<Bls12381BaseField, E>, 1))
+            Ok(Syscall::new(fp2_addsub_syscall::<Bls12381BaseField, E>))
         }
         SyscallCode::BN254_FP2_ADD | SyscallCode::BN254_FP2_SUB => {
-            Ok(Syscall::new(fp2_addsub_syscall::<Bn254BaseField, E>, 1))
+            Ok(Syscall::new(fp2_addsub_syscall::<Bn254BaseField, E>))
         }
         SyscallCode::BLS12381_FP_ADD
         | SyscallCode::BLS12381_FP_SUB
-        | SyscallCode::BLS12381_FP_MUL => {
-            Ok(Syscall::new(fp_op_syscall::<Bls12381BaseField, E>, 1))
-        }
+        | SyscallCode::BLS12381_FP_MUL => Ok(Syscall::new(fp_op_syscall::<Bls12381BaseField, E>)),
         SyscallCode::BN254_FP_ADD | SyscallCode::BN254_FP_SUB | SyscallCode::BN254_FP_MUL => {
-            Ok(Syscall::new(fp_op_syscall::<Bn254BaseField, E>, 1))
+            Ok(Syscall::new(fp_op_syscall::<Bn254BaseField, E>))
         }
-        SyscallCode::BLS12381_FP2_MUL => {
-            Ok(Syscall::new(fp2_mul_syscall::<Bls12381BaseField, E>, 1))
-        }
-        SyscallCode::BN254_FP2_MUL => Ok(Syscall::new(fp2_mul_syscall::<Bn254BaseField, E>, 1)),
+        SyscallCode::BLS12381_FP2_MUL => Ok(Syscall::new(fp2_mul_syscall::<Bls12381BaseField, E>)),
+        SyscallCode::BN254_FP2_MUL => Ok(Syscall::new(fp2_mul_syscall::<Bn254BaseField, E>)),
         // Hash functions
-        SyscallCode::KECCAK_PERMUTE => Ok(Syscall::new(keccak256_permute_syscall, 1)),
-        SyscallCode::SHA_COMPRESS => Ok(Syscall::new(sha256_compress_syscall, 1)),
-        SyscallCode::SHA_EXTEND => Ok(Syscall::new(sha256_extend_syscall, 48)),
+        SyscallCode::KECCAK_PERMUTE => Ok(Syscall::new(keccak256_permute_syscall)),
+        SyscallCode::SHA_COMPRESS => Ok(Syscall::new(sha256_compress_syscall)),
+        SyscallCode::SHA_EXTEND => Ok(Syscall::new(sha256_extend_syscall)),
         // Misc
-        SyscallCode::UINT256_MUL => Ok(Syscall::new(uint256_mul, 1)),
+        SyscallCode::UINT256_MUL => Ok(Syscall::new(uint256_mul)),
         SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => {
-            Ok(Syscall::new(uint256_ops, 1))
+            Ok(Syscall::new(uint256_ops))
         }
-        SyscallCode::U256XU2048_MUL => Ok(Syscall::new(u256x2048_mul, 1)),
-        SyscallCode::MPROTECT => Ok(Syscall::new(mprotect_syscall, 0)),
-        SyscallCode::POSEIDON2 => Ok(Syscall::new(poseidon2_syscall, 0)),
+        SyscallCode::U256XU2048_MUL => Ok(Syscall::new(u256x2048_mul)),
+        SyscallCode::MPROTECT => Ok(Syscall::new(mprotect_syscall)),
+        SyscallCode::POSEIDON2 => Ok(Syscall::new(poseidon2_syscall)),
     }
 }

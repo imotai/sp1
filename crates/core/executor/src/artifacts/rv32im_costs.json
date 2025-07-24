@@ -2,7 +2,7 @@
   "UType": 31,
   "LoadX0": 48,
   "Bn254Fp2MulAssign": 1095,
-  "SyscallInstrs": 66,
+  "SyscallInstrs": 65,
   "Add": 33,
   "Secp256r1Decompress": 997,
   "ShiftRight": 69,
@@ -62,6 +62,6 @@
   "Secp256r1DoubleAssign": 1591,
   "SyscallCore": 10,
   "Bls12381FpOpAssign": 450,
-  "ShaCompress": 207,
+  "ShaCompress": 206,
   "LoadDouble": 39
 }

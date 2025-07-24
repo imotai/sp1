@@ -21,9 +21,6 @@ pub struct SyscallInstrColumns<T> {
     /// The next program counter.
     pub next_pc: [T; 3],
 
-    /// The number of extra cycles to add to the clk for a syscall instruction.
-    pub num_extra_cycles: T,
-
     /// Whether the current instruction is a halt instruction.  This is verified by the
     /// is_halt_check operation.
     pub is_halt: T,

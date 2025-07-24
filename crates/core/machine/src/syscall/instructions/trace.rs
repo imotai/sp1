@@ -97,9 +97,7 @@ impl SyscallInstrsChip {
         let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
 
         let syscall_id = a_prev_value[0];
-        let num_cycles = a_prev_value[2];
 
-        cols.num_extra_cycles = num_cycles;
         cols.is_halt =
             F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
 

@@ -4539,6 +4539,7 @@ dependencies = [
  "sp1-recursion-gnark-ffi",
  "sp1-recursion-machine",
  "sp1-stark",
+ "static_assertions",
  "sysinfo",
  "test-artifacts",
  "thiserror 1.0.69",

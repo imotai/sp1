@@ -10,8 +10,8 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},
-    cpu::columns::InstructionCols,
     memory::MemoryAccessInShardCols,
+    program::instruction::InstructionCols,
 };
 
 /// A set of columns to read operations with op_a, op_b, op_c being registers.

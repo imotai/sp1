@@ -6,7 +6,7 @@ use crate::RetainedEventsPreset;
 
 const MAX_SHARD_SIZE: usize = 1 << 24;
 const MAX_SHARD_BATCH_SIZE: usize = 8;
-const MAX_DEFERRED_SPLIT_THRESHOLD: usize = 1 << 15;
+const MAX_DEFERRED_SPLIT_THRESHOLD: usize = 1 << 14;
 
 /// The trace area threshold for a shard.
 pub const ELEMENT_THRESHOLD: u64 = (1 << 29) - (1 << 27);
@@ -119,18 +119,18 @@ impl SplitOpts {
         Self {
             combine_memory_threshold: (1 << 28, 1 << 17),
             deferred: deferred_split_threshold,
-            fp_operation_256bit: deferred_split_threshold * 9 / 5,
+            fp_operation_256bit: deferred_split_threshold * 16 / 5,
             ec_add_256bit: deferred_split_threshold * 37 / 25,
             ec_double_256bit: deferred_split_threshold * 21 / 8,
-            ec_add_384bit: deferred_split_threshold * 8 / 15,
-            ec_double_384bit: deferred_split_threshold,
-            keccak: 7 * deferred_split_threshold / 25,
-            sha_extend: 64 * deferred_split_threshold / 129,
-            sha_compress: 32 * deferred_split_threshold / 80,
+            ec_add_384bit: deferred_split_threshold,
+            ec_double_384bit: deferred_split_threshold * 7 / 4,
+            keccak: 27 * deferred_split_threshold / 100,
+            sha_extend: 5 * deferred_split_threshold / 13,
+            sha_compress: 3 * deferred_split_threshold / 10,
             memory: 26 * deferred_split_threshold,
-            fp2_operation_256bit: deferred_split_threshold * 8 / 9,
-            fp_operation_384bit: deferred_split_threshold * 11 / 10,
-            fp2_operation_384bit: deferred_split_threshold * 14 / 25,
+            fp2_operation_256bit: deferred_split_threshold * 5 / 3,
+            fp_operation_384bit: deferred_split_threshold * 21 / 10,
+            fp2_operation_384bit: deferred_split_threshold,
         }
     }
 }

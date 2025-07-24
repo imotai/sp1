@@ -1,12 +1,13 @@
 use crate::{
     air::ProgramAirBuilder,
-    cpu::columns::InstructionCols,
     utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
 };
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
+pub mod instruction;
+use instruction::InstructionCols;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};

@@ -50,6 +50,7 @@ lru = "0.12.4"
 eyre = "0.6.12"
 hashbrown = { workspace = true, features = ["inline-more"] }
 enum-map = { version = "2.7.3" }
+static_assertions = "1.1.0"
 
 [build-dependencies]
 downloader = { version = "0.2", default-features = false, features = [

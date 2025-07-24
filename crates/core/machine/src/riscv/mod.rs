@@ -46,7 +46,6 @@ pub(crate) mod riscv_chips {
             BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip,
         },
         bytes::ByteChip,
-        cpu::CpuChip,
         memory::MemoryGlobalChip,
         program::ProgramChip,
         syscall::{
