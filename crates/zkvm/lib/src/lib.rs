@@ -40,7 +40,7 @@ extern "C" {
     pub fn syscall_ed_add(p: *mut [u64; 8], q: *const [u64; 8]);
 
     /// Executes an Ed25519 curve decompression on the given point.
-    pub fn syscall_ed_decompress(point: &mut [u8; 64]);
+    pub fn syscall_ed_decompress(point: &mut [u64; 8]);
 
     /// Executes an Sepc256k1 curve addition on the given points.
     pub fn syscall_secp256k1_add(p: *mut [u64; 8], q: *const [u64; 8]);
@@ -49,7 +49,7 @@ extern "C" {
     pub fn syscall_secp256k1_double(p: *mut [u64; 8]);
 
     /// Executes an Secp256k1 curve decompression on the given point.
-    pub fn syscall_secp256k1_decompress(point: &mut [u8; 64], is_odd: bool);
+    pub fn syscall_secp256k1_decompress(point: &mut [u64; 8], is_odd: bool);
 
     /// Executes an Secp256r1 curve addition on the given points.
     pub fn syscall_secp256r1_add(p: *mut [u64; 8], q: *const [u64; 8]);
@@ -58,7 +58,7 @@ extern "C" {
     pub fn syscall_secp256r1_double(p: *mut [u64; 8]);
 
     /// Executes an Secp256r1 curve decompression on the given point.
-    pub fn syscall_secp256r1_decompress(point: &mut [u8; 64], is_odd: bool);
+    pub fn syscall_secp256r1_decompress(point: &mut [u64; 8], is_odd: bool);
 
     /// Executes a Bn254 curve addition on the given points.
     pub fn syscall_bn254_add(p: *mut [u64; 8], q: *const [u64; 8]);
@@ -111,7 +111,7 @@ extern "C" {
     pub fn syscall_exit_unconstrained();
 
     /// Defers the verification of a valid SP1 zkVM proof.
-    pub fn syscall_verify_sp1_proof(vk_digest: &[u32; 8], pv_digest: &[u8; 32]);
+    pub fn syscall_verify_sp1_proof(vk_digest: &[u64; 4], pv_digest: &[u64; 4]);
 
     /// Returns the length of the next element in the hint stream.
     pub fn syscall_hint_len() -> usize;
@@ -123,7 +123,7 @@ extern "C" {
     pub fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8;
 
     /// Decompresses a BLS12-381 point.
-    pub fn syscall_bls12381_decompress(point: &mut [u8; 96], is_odd: bool);
+    pub fn syscall_bls12381_decompress(point: &mut [u64; 12], is_odd: bool);
 
     /// Computes a big integer operation with a modulus.
     pub fn sys_bigint(

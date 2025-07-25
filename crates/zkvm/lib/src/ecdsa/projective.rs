@@ -70,6 +70,10 @@ impl<C: ECDSACurve> ProjectivePoint<C> {
     fn from_zkvm_point(p: C::SP1AffinePoint) -> Self {
         Self { inner: AffinePoint { inner: p } }
     }
+
+    pub fn double(&self) -> Self {
+        <Self as Group>::double(self)
+    }
 }
 
 impl<C: ECDSACurve> From<AffinePoint<C>> for ProjectivePoint<C> {

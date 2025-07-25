@@ -213,7 +213,7 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
         clk: start_clk,
         ptr: slice_ptr,
         sign_bit: sign_bit != 0,
-        x_bytes: x_bytes.clone(),
+        x_bytes,
         decompressed_y_bytes,
         x_memory_records,
         y_memory_records,

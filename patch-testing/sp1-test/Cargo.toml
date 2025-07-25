@@ -17,6 +17,9 @@ reqwest = { version = "0.12.12", features = ["json"] }
 tokio = { workspace = true }
 color-eyre = { workspace = true }
 
+[target.'cfg(tokio_unstable)'.dependencies]
+console-subscriber = { workspace = true }
+
 [[bin]]
 name = "post-to-github"
 path = "bin/post_to_github.rs"

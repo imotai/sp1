@@ -593,7 +593,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryReadRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 8 != 0 || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
+        if !addr.is_multiple_of(8) || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
             panic!("Invalid memory access: addr={addr}");
         }
 
@@ -817,7 +817,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryWriteRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 8 != 0 || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
+        if !addr.is_multiple_of(8) || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
             panic!("Invalid memory access: addr={addr}");
         }
 

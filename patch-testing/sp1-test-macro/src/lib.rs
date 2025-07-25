@@ -138,10 +138,7 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[cfg(not(any(feature = "prove", feature = "gpu")))]
         #[::tokio::test]
         async fn #test_name() -> ::color_eyre::eyre::Result<()> {
-            ::sp1_test::SUBSCRIBER_ONCE.call_once(|| {
-                #[cfg(tokio_unstable)]
-                ::console_subscriber::init();
-            });
+            ::sp1_test::setup().await;
 
             const __MACRO_INTERNAL_ELF: ::sp1_sdk::Elf = ::sp1_sdk::include_elf!(#elf_name);
 
@@ -185,10 +182,7 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             #[cfg(feature = "prove")]
             #[::tokio::test]
             async fn #prove_name() {
-                ::sp1_test::SUBSCRIBER_ONCE.call_once(|| {
-                    #[cfg(tokio_unstable)]
-                    ::console_subscriber::init();
-                });
+                ::sp1_test::setup().await;
 
                 use ::sp1_sdk::Prover;
                 const __MACRO_INTERNAL_ELF: ::sp1_sdk::Elf = ::sp1_sdk::include_elf!(#elf_name);
@@ -225,10 +219,7 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             #[cfg(feature = "gpu")]
             #[::tokio::test]
             async fn #gpu_prove_name() {
-                ::sp1_test::SUBSCRIBER_ONCE.call_once(|| {
-                    #[cfg(tokio_unstable)]
-                    ::console_subscriber::init();
-                });
+                ::sp1_test::setup().await;
 
                 use ::sp1_sdk::Prover;
                 const __MACRO_INTERNAL_ELF: ::sp1_sdk::Elf = ::sp1_sdk::include_elf!(#elf_name);

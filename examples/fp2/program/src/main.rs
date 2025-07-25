@@ -6,7 +6,7 @@ use rand::Rng;
 use sp1_zkvm::syscalls::{
     syscall_bls12381_fp2_addmod, syscall_bls12381_fp2_mulmod, syscall_bls12381_fp2_submod,
 };
-use std::{mem::transmute, str::FromStr};
+use std::str::FromStr;
 
 const MODULUS: &str = "4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787";
 

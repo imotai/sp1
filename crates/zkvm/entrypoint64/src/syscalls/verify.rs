@@ -13,7 +13,7 @@ cfg_if::cfg_if! {
 
 #[no_mangle]
 #[allow(unused_variables)]
-pub fn syscall_verify_sp1_proof(vk_digest: &[u32; 8], pv_digest: &[u8; 32]) {
+pub fn syscall_verify_sp1_proof(vk_digest: &[u64; 4], pv_digest: &[u64; 4]) {
     #[cfg(target_os = "zkvm")]
     {
         // Call syscall to verify the next proof at runtime
@@ -36,18 +36,21 @@ pub fn syscall_verify_sp1_proof(vk_digest: &[u32; 8], pv_digest: &[u8; 32]) {
         }
         hash_input.extend_from_slice(deferred_proofs_digest);
 
-        // Next 8 elements are vkey_digest
-        let vk_digest_babybear =
-            vk_digest.iter().map(|x| BabyBear::from_canonical_u32(*x)).collect::<Vec<_>>();
+        #[cfg(not(target_endian = "little"))]
+        compile_error!("expected target to be little endian");
+        // SAFETY: Arrays are always laid out in the obvious way. Any possible element value is
+        // always valid. The pointee types have the same size, and the target of each transmute has
+        // finer alignment than the source.
+        // Although not a safety invariant, note that the guest target is always little-endian,
+        // which was just sanity-checked, so this will always have the expected behavior.
+        let vk_digest_babybear = unsafe { core::mem::transmute::<&[u64; 4], &[u32; 8]>(vk_digest) }
+            .map(BabyBear::from_canonical_u32);
         // Remaining 32 elements are pv_digest converted from u8 to BabyBear
-        let pv_digest_babybear =
-            pv_digest.iter().map(|b| BabyBear::from_canonical_u8(*b)).collect::<Vec<_>>();
+        let pv_digest_babybear = unsafe { core::mem::transmute::<&[u64; 4], &[u8; 32]>(pv_digest) }
+            .map(BabyBear::from_canonical_u8);
 
-        *deferred_proofs_digest = hash_deferred_proof(
-            deferred_proofs_digest,
-            &vk_digest_babybear.try_into().unwrap(),
-            &pv_digest_babybear.try_into().unwrap(),
-        );
+        *deferred_proofs_digest =
+            hash_deferred_proof(deferred_proofs_digest, &vk_digest_babybear, &pv_digest_babybear);
     }
 
     #[cfg(not(target_os = "zkvm"))]

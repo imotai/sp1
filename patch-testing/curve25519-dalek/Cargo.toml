@@ -14,9 +14,6 @@ color-eyre = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }
 
-[target.'cfg(tokio_unstable)'.dependencies]
-console-subscriber = { workspace = true }
-
 [features]
 prove = []
 gpu = ["sp1-sdk/cuda"]

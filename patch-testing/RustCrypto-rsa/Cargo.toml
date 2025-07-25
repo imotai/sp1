@@ -14,9 +14,6 @@ tokio = { workspace = true }
 color-eyre = { workspace = true }
 rsa = { version = "0.9.7", features = ["std", "sha2", "serde"] }
 
-[target.'cfg(tokio_unstable)'.dependencies]
-console-subscriber = { workspace = true }
-
 [features]
 prove = []
 gpu = ["sp1-sdk/cuda"]

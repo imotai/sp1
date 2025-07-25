@@ -18,9 +18,6 @@ color-eyre = { workspace = true }
 bls12_381-patched = { workspace = true }
 group = "0.13.0"
 
-[target.'cfg(tokio_unstable)'.dependencies]
-console-subscriber = { workspace = true }
-
 [features]
 prove = []
 gpu = ["sp1-sdk/cuda"]

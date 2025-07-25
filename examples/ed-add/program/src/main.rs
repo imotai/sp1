@@ -4,6 +4,18 @@ use hex_literal::hex;
 use sp1_zkvm::syscalls::{syscall_ed_add, syscall_ed_decompress};
 sp1_zkvm::entrypoint!(main);
 
+#[inline]
+fn as_bytes_le(xs: &mut [u64; 8]) -> &mut [u8; 64] {
+    #[cfg(not(target_endian = "little"))]
+    compile_error!("expected target to be little endian");
+    // SAFETY: Arrays are always laid out in the obvious way. Any possible element value is
+    // always valid. The pointee types have the same size, and the target of each transmute has
+    // finer alignment than the source.
+    // Although not a safety invariant, note that the guest target is always little-endian,
+    // which was just sanity-checked, so this will always have the expected behavior.
+    unsafe { core::mem::transmute::<&mut [u64; 8], &mut [u8; 64]>(xs) }
+}
+
 pub fn main() {
     for _ in 0..1 {
         // 90393249858788985237231628593243673548167146579814268721945474994541877372611
@@ -38,8 +50,8 @@ pub fn main() {
         assert_eq!(a, c);
 
         let pub_bytes = hex!("ec172b93ad5e563bf4932c70e1245034c35467ef2efd4d64ebf819683467e2bf");
-        let mut decompressed = [0_u8; 64];
-        decompressed[32..].copy_from_slice(&pub_bytes);
+        let mut decompressed = [0_u64; 8];
+        as_bytes_le(&mut decompressed)[32..].copy_from_slice(&pub_bytes);
 
         println!("before: {:?}", decompressed);
 
@@ -52,7 +64,7 @@ pub fn main() {
             235, 248, 25, 104, 52, 103, 226, 63,
         ];
         println!("after: {:?}", decompressed);
-        assert_eq!(decompressed, expected);
+        assert_eq!(as_bytes_le(&mut decompressed), &expected);
     }
 
     println!("done");

@@ -4,7 +4,7 @@ sp1_zkvm::entrypoint!(main);
 use num_bigint::BigUint;
 use rand::Rng;
 use sp1_zkvm::lib::syscall_bn254_fp2_mulmod;
-use std::{mem::transmute, str::FromStr};
+use std::str::FromStr;
 
 const MODULUS: &str =
     "21888242871839275222246405745257275088696311157297823662689037894645226208583";

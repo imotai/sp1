@@ -14,9 +14,6 @@ tokio = { workspace = true }
 color-eyre = { workspace = true }
 substrate-bn = "0.6.0"
 
-[target.'cfg(tokio_unstable)'.dependencies]
-console-subscriber = { workspace = true }
-
 [features]
 prove = []
 gpu = ["sp1-sdk/cuda"]

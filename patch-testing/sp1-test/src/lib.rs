@@ -13,8 +13,6 @@ pub static BENCH_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
 pub static SERIAL_SEMAPHORE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
-pub static SUBSCRIBER_ONCE: std::sync::Once = std::sync::Once::new();
-
 #[derive(Serialize, Deserialize)]
 pub struct BenchEntry {
     pub name: String,
@@ -52,6 +50,16 @@ static CPU_PROVER: tokio::sync::OnceCell<sp1_sdk::cpu::CpuProver> = tokio::sync:
 
 pub async fn sp1_cpu_prover() -> &'static sp1_sdk::cpu::CpuProver {
     CPU_PROVER.get_or_init(sp1_sdk::cpu::CpuProver::new_unsound).await
+}
+
+static SETUP_ONCE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+
+pub async fn setup() {
+    #[allow(unexpected_cfgs)]
+    SETUP_ONCE.get_or_init(|| async {
+        #[cfg(tokio_unstable)]
+        console_subscriber::init();
+    }).await;
 }
 
 /// Append common edge cases to the corpus.

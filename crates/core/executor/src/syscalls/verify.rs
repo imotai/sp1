@@ -18,10 +18,11 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
         // pv_digest_ptr is a pointer to [u32; 8] which contains the public values digest.
         assert_eq!(pv_digest_ptr % 8, 0, "pv_digest_ptr must be word-aligned");
 
-        let vkey = (0..4).map(|i| rt.double_word::<E>(vkey_ptr + i * 8)).collect::<Vec<u64>>();
+        let vkey: [u64; 4] =
+            core::array::from_fn(|i| rt.double_word::<E>(vkey_ptr + (i as u64) * 8));
 
-        let pv_digest =
-            (0..4).map(|i| rt.double_word::<E>(pv_digest_ptr + i * 8)).collect::<Vec<u64>>();
+        let pv_digest: [u64; 4] =
+            core::array::from_fn(|i| rt.double_word::<E>(pv_digest_ptr + (i as u64) * 8));
 
         let proof_index = rt.state.proof_stream_ptr;
         if proof_index >= rt.state.proof_stream.len() {
@@ -29,17 +30,13 @@ pub(crate) fn verify_syscall<E: ExecutorConfig>(
         }
         let (proof, proof_vk) = &rt.state.proof_stream[proof_index].clone();
         rt.state.proof_stream_ptr += 1;
-        let vkey_bytes: [u64; 4] = vkey.try_into().unwrap();
-        let pv_digest_bytes: [u64; 4] = pv_digest.try_into().unwrap();
         if let Some(verifier) = rt.subproof_verifier.as_ref() {
-            verifier
-                .verify_deferred_proof(proof, proof_vk, vkey_bytes, pv_digest_bytes)
-                .unwrap_or_else(|_| {
-                    panic!(
-                        "Failed to verify proof {proof_index} with digest {}:",
-                        hex::encode(bytemuck::cast_slice(&pv_digest_bytes)),
-                    )
-                });
+            verifier.verify_deferred_proof(proof, proof_vk, vkey, pv_digest).unwrap_or_else(|_| {
+                panic!(
+                    "Failed to verify proof {proof_index} with digest {}:",
+                    hex::encode(bytemuck::cast_slice(&pv_digest)),
+                )
+            });
         } else if rt.state.proof_stream_ptr == 1 {
             tracing::info!("Not verifying sub proof during runtime");
         }

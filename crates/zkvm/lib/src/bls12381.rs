@@ -92,12 +92,22 @@ impl AffinePoint<N> for Bls12381Point {
 }
 
 /// Decompresses a compressed public key using bls12381_decompress precompile.
-pub fn decompress_pubkey(compressed_key: &[u8; 48]) -> Result<[u8; 96], ErrorKind> {
-    let mut decompressed_key = [0u8; 96];
-    decompressed_key[..48].copy_from_slice(compressed_key);
+pub fn decompress_pubkey(compressed_key: &[u64; 6]) -> Result<[u64; 12], ErrorKind> {
+    let mut decompressed_key = [0u64; 12];
+    decompressed_key[..6].copy_from_slice(compressed_key);
 
-    let sign_bit = ((decompressed_key[0] & 0b_0010_0000) >> 5) == 1;
-    decompressed_key[0] &= 0b_0001_1111;
+    // The sign bit is stored in the first byte, so we have to access it like this.
+    let mut decompressed_key = decompressed_key.map(u64::to_ne_bytes);
+
+    // The sign bit is the third most significant bit (beginning the count at "first").
+    const SIGN_OFFSET: u32 = 3;
+    const SIGN_MASK: u8 = 1u8 << (u8::BITS - SIGN_OFFSET);
+    let sign_bit = (decompressed_key[0][0] & SIGN_MASK) != 0;
+    decompressed_key[0][0] <<= SIGN_OFFSET;
+    decompressed_key[0][0] >>= SIGN_OFFSET;
+
+    let mut decompressed_key = decompressed_key.map(u64::from_ne_bytes);
+
     unsafe {
         syscall_bls12381_decompress(&mut decompressed_key, sign_bit);
     }
