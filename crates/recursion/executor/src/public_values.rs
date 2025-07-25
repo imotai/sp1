@@ -5,7 +5,7 @@ use slop_challenger::DuplexChallenger;
 use slop_symmetric::CryptographicPermutation;
 use sp1_core_machine::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, Word, PROOF_MAX_NUM_PVS};
+use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
 use static_assertions::const_assert_eq;
 use std::{
     borrow::BorrowMut,
@@ -84,10 +84,10 @@ pub struct RecursionPublicValues<T> {
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The start pc of shards being proven.
-    pub start_pc: T,
+    pub pc_start: [T; 3],
 
     /// The expected start pc for the next shard.
-    pub next_pc: T,
+    pub next_pc: [T; 3],
 
     /// First shard being proven.
     pub start_shard: T,
@@ -108,16 +108,16 @@ pub struct RecursionPublicValues<T> {
     pub last_timestamp: [T; 4],
 
     /// Previous MemoryInit address word.
-    pub previous_init_addr_word: Word<T>,
+    pub previous_init_addr_word: [T; 3],
 
     /// Last MemoryInit address word.
-    pub last_init_addr_word: Word<T>,
+    pub last_init_addr_word: [T; 3],
 
     /// Previous MemoryFinalize address word.
-    pub previous_finalize_addr_word: Word<T>,
+    pub previous_finalize_addr_word: [T; 3],
 
     /// Last MemoryFinalize address word.
-    pub last_finalize_addr_word: Word<T>,
+    pub last_finalize_addr_word: [T; 3],
 
     /// Start state of reconstruct_deferred_digest.
     pub start_reconstruct_deferred_digest: [T; POSEIDON_NUM_WORDS],

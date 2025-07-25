@@ -200,9 +200,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.27"
+version = "1.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d487aa071b5f64da6f19a3e848e3578944b726ee5a4854b82172f02aa876bfdc"
+checksum = "5c1599538de2394445747c8cf7935946e3cc27e9625f889d979bfb2aaf569362"
 dependencies = [
  "shlex",
 ]
@@ -227,9 +227,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.40"
+version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40b6887a1d8685cebccf115538db5c0efe625ccac9696ad45c409d96566e910f"
+checksum = "be92d32e80243a54711e5d7ce823c35c41c9d929dc4ab58e1276f625841aadf9"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -237,9 +237,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.40"
+version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0c66c08ce9f0c698cbce5c0279d0bb6ac936d8674174fe48f736533b964f59e"
+checksum = "707eab41e9622f9139419d573eca0900137718000c517d47da73045f54331c3d"
 dependencies = [
  "anstream",
  "anstyle",
@@ -249,9 +249,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.5.40"
+version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2c7947ae4cc3d851207c1adb5b5e260ff0cca11446b1d6d1423788e442257ce"
+checksum = "ef4f52386a59ca4c860f7393bcf8abd8dfd91ecccc0f774635ff68e92eeef491"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -428,7 +428,19 @@ checksum = "335ff9f135e4384c8150d6f27c6daed433577f86b4750418338c01a1a2528592"
 dependencies = [
  "cfg-if",
  "libc",
- "wasi",
+ "wasi 0.11.1+wasi-snapshot-preview1",
+]
+
+[[package]]
+name = "getrandom"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26145e563e54f2cadc477553f1ec5ee650b00862f0a58bcd12cbdc5f0ea2d2f4"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "r-efi",
+ "wasi 0.14.2+wasi-0.2.4",
 ]
 
 [[package]]
@@ -447,7 +459,7 @@ name = "guest-verify-programs"
 version = "0.1.0"
 dependencies = [
  "sp1-verifier",
- "sp1-zkvm",
+ "sp1-zkvm-64",
 ]
 
 [[package]]
@@ -882,6 +894,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-efi"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+
+[[package]]
 name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -908,7 +926,7 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.16",
 ]
 
 [[package]]
@@ -917,7 +935,7 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.16",
  "libredox",
  "thiserror 1.0.69",
 ]
@@ -1014,7 +1032,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
 dependencies = [
  "p3-field 0.1.0",
  "serde",
@@ -1023,7 +1041,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
 dependencies = [
  "p3-baby-bear 0.1.0",
 ]
@@ -1031,7 +1049,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
 dependencies = [
  "p3-poseidon2 0.1.0",
 ]
@@ -1039,67 +1057,49 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#3020c9ac42f7dea2c832e14d2e6d34113daaa5df"
+source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
 dependencies = [
  "p3-symmetric 0.1.0",
 ]
 
 [[package]]
 name = "sp1-build"
-version = "5.0.5"
+version = "6.0.0"
 dependencies = [
  "anyhow",
  "cargo_metadata",
  "chrono",
  "clap",
  "dirs",
- "sp1-primitives 5.0.5",
+ "sp1-primitives 6.0.0",
 ]
 
 [[package]]
 name = "sp1-lib"
-version = "5.0.5"
-dependencies = [
- "bincode",
- "serde",
- "sp1-primitives 5.0.5",
-]
-
-[[package]]
-name = "sp1-lib"
-version = "5.0.5"
+version = "5.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0fd8bc101e5603ccf2dc1836ea06410f25ce2298755b2dac626add9be2424b4"
+checksum = "7fbb6e3d8741c0fcdaa37e74d2dd9a2bdcbf958d192e438eec59e8071e08124c"
 dependencies = [
  "bincode",
  "elliptic-curve",
  "serde",
- "sp1-primitives 5.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp1-primitives 5.0.8",
 ]
 
 [[package]]
-name = "sp1-primitives"
-version = "5.0.5"
+name = "sp1-lib"
+version = "6.0.0"
 dependencies = [
  "bincode",
- "blake3",
- "hex",
- "itertools 0.13.0",
- "lazy_static",
- "num-bigint",
  "serde",
- "sha2",
- "slop-algebra",
- "slop-baby-bear",
- "slop-poseidon2",
- "slop-symmetric",
+ "sp1-primitives 6.0.0",
 ]
 
 [[package]]
 name = "sp1-primitives"
-version = "5.0.5"
+version = "5.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "699935774a5131c1a8b371108d0666c0c80c43611045fb77fae43f2f242676d5"
+checksum = "a4d2be9803acce74985f8861b6d5eb375ad1c5f176a68c2c735755937248f25e"
 dependencies = [
  "bincode",
  "blake3",
@@ -1116,8 +1116,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-primitives"
+version = "6.0.0"
+dependencies = [
+ "bincode",
+ "blake3",
+ "hex",
+ "itertools 0.13.0",
+ "lazy_static",
+ "num-bigint",
+ "serde",
+ "sha2",
+ "slop-algebra",
+ "slop-baby-bear",
+ "slop-poseidon2",
+ "slop-symmetric",
+]
+
+[[package]]
 name = "sp1-verifier"
-version = "5.0.5"
+version = "6.0.0"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -1130,18 +1148,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp1-zkvm"
-version = "5.0.5"
+name = "sp1-zkvm-64"
+version = "6.0.0"
 dependencies = [
  "blake3",
  "cfg-if",
- "getrandom",
+ "getrandom 0.2.16",
+ "getrandom 0.3.3",
  "lazy_static",
  "libm",
  "rand",
  "sha2",
- "sp1-lib 5.0.5",
- "sp1-primitives 5.0.5",
+ "sp1-lib 6.0.0",
+ "sp1-primitives 6.0.0",
 ]
 
 [[package]]
@@ -1170,7 +1189,7 @@ dependencies = [
  "num-bigint",
  "rand",
  "rustc-hex",
- "sp1-lib 5.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp1-lib 5.0.8",
 ]
 
 [[package]]
@@ -1290,6 +1309,15 @@ name = "wasi"
 version = "0.11.1+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
+
+[[package]]
+name = "wasi"
+version = "0.14.2+wasi-0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9683f9a5a998d873c0d21fcbe3c083009670149a8fab228644b8bd36b2c48cb3"
+dependencies = [
+ "wit-bindgen-rt",
+]
 
 [[package]]
 name = "wasm-bindgen"
@@ -1546,6 +1574,15 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "wit-bindgen-rt"
+version = "0.39.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f42320e61fe2cfd34354ecb597f86f413484a798ba44a8ca1165c58d42da6c1"
+dependencies = [
+ "bitflags",
+]
 
 [[package]]
 name = "zerocopy"

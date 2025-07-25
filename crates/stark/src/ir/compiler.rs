@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     air::{AirInteraction, InteractionScope, MachineAir, MessageBuilder},
-    ir::{Ast, ExprExtRef, ExprRef, Func, Shape, GLOBAL_AST},
+    ir::{Ast, Attribute, ExprExtRef, ExprRef, Func, Shape, GLOBAL_AST},
 };
 use slop_air::{AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder};
 use slop_matrix::dense::RowMajorMatrix;
@@ -71,7 +71,7 @@ impl ConstraintCompiler {
     pub fn register_module(
         &mut self,
         name: String,
-        params: Vec<(String, Shape<ExprRef<F>, ExprExtRef<EF>>)>,
+        params: Vec<(String, Attribute, Shape<ExprRef<F>, ExprExtRef<EF>>)>,
         body: impl FnOnce(&mut Self) -> Shape<ExprRef<F>, ExprExtRef<EF>>,
     ) {
         let mut body_builder = self.region();

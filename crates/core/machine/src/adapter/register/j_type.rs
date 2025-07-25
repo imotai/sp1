@@ -1,7 +1,7 @@
 use slop_algebra::{AbstractField, Field, PrimeField32};
 use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
-    Instruction, JTypeRecord,
+    JTypeRecord,
 };
 use sp1_derive::AlignedBorrow;
 
@@ -9,8 +9,8 @@ use sp1_stark::Word;
 
 use crate::{
     air::{SP1CoreAirBuilder, WordAirBuilder},
-    cpu::columns::InstructionCols,
     memory::MemoryAccessInShardCols,
+    program::instruction::InstructionCols,
 };
 
 /// A set of columns to read operations with op_a being a register and op_b and op_c being
@@ -26,17 +26,12 @@ pub struct JTypeReader<T> {
 }
 
 impl<F: PrimeField32> JTypeReader<F> {
-    pub fn populate(
-        &mut self,
-        blu_events: &mut impl ByteRecord,
-        instruction: &Instruction,
-        record: JTypeRecord,
-    ) {
-        self.op_a = F::from_canonical_u8(instruction.op_a);
+    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, record: JTypeRecord) {
+        self.op_a = F::from_canonical_u8(record.op_a);
         self.op_a_memory.populate(record.a, blu_events);
-        self.op_a_0 = F::from_bool(instruction.op_a == 0);
-        self.op_b_imm = Word::from(instruction.op_b);
-        self.op_c_imm = Word::from(instruction.op_c);
+        self.op_a_0 = F::from_bool(record.op_a == 0);
+        self.op_b_imm = Word::from(record.op_b);
+        self.op_c_imm = Word::from(record.op_c);
     }
 }
 
@@ -60,8 +55,9 @@ impl<F: Field> JTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
+        instr_field_consts: [AB::Expr; 3],
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: JTypeReader<AB::Var>,
         is_real: AB::Expr,
@@ -76,25 +72,27 @@ impl<F: Field> JTypeReader<F> {
             imm_b: AB::Expr::one(),
             imm_c: AB::Expr::one(),
         };
-        builder.send_program(pc, instruction, is_real.clone());
+        builder.send_program(pc, instruction, instr_field_consts, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real,
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn eval_op_a_immutable<AB: SP1CoreAirBuilder>(
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
+        instr_field_consts: [AB::Expr; 3],
         cols: JTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
@@ -104,6 +102,7 @@ impl<F: Field> JTypeReader<F> {
             clk_low,
             pc,
             opcode,
+            instr_field_consts,
             cols.op_a_memory.prev_value,
             cols,
             is_real,

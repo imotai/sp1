@@ -42,14 +42,14 @@ impl<F: Field> BitwiseU16Operation<F> {
     pub fn populate_bitwise(
         &mut self,
         record: &mut impl ByteRecord,
-        a_u32: u32,
-        b_u32: u32,
-        c_u32: u32,
+        a_u64: u64,
+        b_u64: u64,
+        c_u64: u64,
         opcode: Opcode,
     ) {
-        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u32);
-        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u32);
-        self.bitwise_operation.populate_bitwise(record, a_u32, b_u32, c_u32, opcode);
+        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
+        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
+        self.bitwise_operation.populate_bitwise(record, a_u64, b_u64, c_u64, opcode);
     }
 
     /// Evaluate the bitwise operation over two `Word`s of two u16 limbs.
@@ -95,7 +95,11 @@ impl<F: Field> BitwiseU16Operation<F> {
             + cols.bitwise_operation.result[1] * AB::F::from_canonical_u32(1 << 8);
         let result_limb1 = cols.bitwise_operation.result[2]
             + cols.bitwise_operation.result[3] * AB::F::from_canonical_u32(1 << 8);
-        Word([result_limb0, result_limb1])
+        let result_limb2 = cols.bitwise_operation.result[4]
+            + cols.bitwise_operation.result[5] * AB::F::from_canonical_u32(1 << 8);
+        let result_limb3 = cols.bitwise_operation.result[6]
+            + cols.bitwise_operation.result[7] * AB::F::from_canonical_u32(1 << 8);
+        Word([result_limb0, result_limb1, result_limb2, result_limb3])
     }
 }
 
@@ -106,18 +110,6 @@ pub struct BitwiseU16OperationInput<AB: SP1AirBuilder> {
     pub cols: BitwiseU16Operation<AB::Var>,
     pub opcode: AB::Expr,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> BitwiseU16OperationInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: BitwiseU16Operation<AB::Var>,
-        opcode: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, opcode, is_real }
-    }
 }
 
 impl<AB> SP1Operation<AB> for BitwiseU16Operation<AB::F>

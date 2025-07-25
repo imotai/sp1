@@ -1,7 +1,6 @@
 #![allow(clippy::print_stdout)] // okay to print to stdout: this is a build script
 
-use std::{borrow::Borrow, path::PathBuf};
-
+use itertools::Itertools;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
@@ -17,6 +16,7 @@ use sp1_recursion_compiler::{
     ir::Builder,
 };
 use sp1_recursion_executor::RecursionPublicValues;
+use std::{borrow::Borrow, path::PathBuf};
 // use sp1_recursion_core::air::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
 use sp1_stark::{MachineVerifyingKey, ShardProof};
@@ -159,7 +159,7 @@ pub async fn dummy_proof() -> (MachineVerifyingKey<OuterSC>, ShardProof<OuterSC>
     let elf = include_bytes!("../elf/riscv32im-succinct-zkvm-elf");
 
     tracing::info!("initializing prover");
-    let prover = SP1ProverBuilder::cpu().build().await;
+    let prover = SP1ProverBuilder::new().build().await;
     let local_prover = LocalProver::new(prover, LocalProverOpts::default());
     let prover = std::sync::Arc::new(local_prover);
 
@@ -205,17 +205,14 @@ fn build_outer_circuit(template_input: &SP1ShapedWitnessValues<OuterSC>) -> Vec<
     // Get the vk variable from the input.
     let vk = &input.vks_and_proofs.first().unwrap().0;
     // Get the expected commitment.
-    let expected_commitment: [_; 1] =
-        template_vk.preprocessed_commit.expect("expected preprocessed commitment").into();
+    let expected_commitment: [_; 1] = template_vk.preprocessed_commit.into();
     let expected_commitment = expected_commitment.map(|x| builder.eval(x));
     // Constrain `commit` to be the same as the template `vk`.
-    OuterSC::assert_digest_eq(
-        &mut builder,
-        expected_commitment,
-        vk.preprocessed_commit.expect("expected preprocessed commitment"),
-    );
+    OuterSC::assert_digest_eq(&mut builder, expected_commitment, vk.preprocessed_commit);
     // Constrain `pc_start` to be the same as the template `vk`.
-    builder.assert_felt_eq(vk.pc_start, template_vk.pc_start);
+    for (vk_pc, template_vk_pc) in vk.pc_start.iter().zip_eq(template_vk.pc_start.iter()) {
+        builder.assert_felt_eq(*vk_pc, *template_vk_pc);
+    }
 
     // Verify the proof.
     SP1WrapVerifier::verify(&mut builder, &recursive_wrap_verifier, input);

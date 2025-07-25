@@ -5,10 +5,10 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField32};
 
-use crate::{septic_curve::SepticCurve, septic_digest::SepticDigest, Word, PROOF_MAX_NUM_PVS};
+use crate::{septic_curve::SepticCurve, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
 
 /// The number of non padded elements in the SP1 proofs public values vec.
-pub const SP1_PROOF_NUM_PV_ELTS: usize = size_of::<PublicValues<[u8; 4], Word<u8>, [u8; 4], u8>>();
+pub const SP1_PROOF_NUM_PV_ELTS: usize = size_of::<PublicValues<[u8; 4], [u8; 3], [u8; 4], u8>>();
 
 /// The number of 32 bit words in the SP1 proof's committed value digest.
 pub const PV_DIGEST_NUM_WORDS: usize = 8;
@@ -29,10 +29,10 @@ pub struct PublicValues<W1, W2, W3, T> {
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The shard's start program counter.
-    pub start_pc: T,
+    pub pc_start: W2,
 
     /// The expected start program counter for the next shard.
-    pub next_pc: T,
+    pub next_pc: W2,
 
     /// The expected exit code of the program before this shard.
     pub prev_exit_code: T,
@@ -91,20 +91,17 @@ pub struct PublicValues<W1, W2, W3, T> {
 
     /// The global cumulative sum of the shard.
     pub global_cumulative_sum: SepticDigest<T>,
-
-    /// The empty values to ensure the size of the public values struct is a multiple of 8.
-    pub empty: [T; 4],
 }
 
-impl PublicValues<u32, u32, u64, u32> {
+impl PublicValues<u32, u64, u64, u32> {
     /// Convert the public values into a vector of field elements.  This function will pad the
     /// vector to the maximum number of public values.
     #[must_use]
     pub fn to_vec<F: AbstractField>(&self) -> Vec<F> {
         let mut ret = vec![F::zero(); PROOF_MAX_NUM_PVS];
 
-        let field_values = PublicValues::<[F; 4], Word<F>, [F; 4], F>::from(*self);
-        let ret_ref_mut: &mut PublicValues<[F; 4], Word<F>, [F; 4], F> =
+        let field_values = PublicValues::<[F; 4], [F; 3], [F; 4], F>::from(*self);
+        let ret_ref_mut: &mut PublicValues<[F; 4], [F; 3], [F; 4], F> =
             ret.as_mut_slice().borrow_mut();
         *ret_ref_mut = field_values;
         ret
@@ -116,7 +113,7 @@ impl PublicValues<u32, u32, u64, u32> {
         let mut copy = *self;
         copy.shard = 0;
         copy.execution_shard = 0;
-        copy.start_pc = 0;
+        copy.pc_start = 0;
         copy.next_pc = 0;
         copy.previous_init_addr_word = 0;
         copy.last_init_addr_word = 0;
@@ -126,7 +123,7 @@ impl PublicValues<u32, u32, u64, u32> {
     }
 }
 
-impl<F: PrimeField32> PublicValues<[F; 4], Word<F>, [F; 4], F> {
+impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
     /// Returns the commit digest as a vector of little-endian bytes.
     pub fn commit_digest_bytes(&self) -> Vec<u8> {
         self.committed_value_digest
@@ -136,40 +133,40 @@ impl<F: PrimeField32> PublicValues<[F; 4], Word<F>, [F; 4], F> {
     }
 }
 
-impl<T: Clone> Borrow<PublicValues<[T; 4], Word<T>, [T; 4], T>> for [T] {
-    fn borrow(&self) -> &PublicValues<[T; 4], Word<T>, [T; 4], T> {
-        let size = std::mem::size_of::<PublicValues<[u8; 4], Word<u8>, [u8; 4], u8>>();
+impl<T: Clone> Borrow<PublicValues<[T; 4], [T; 3], [T; 4], T>> for [T] {
+    fn borrow(&self) -> &PublicValues<[T; 4], [T; 3], [T; 4], T> {
+        let size = std::mem::size_of::<PublicValues<[u8; 4], [u8; 3], [u8; 4], u8>>();
         debug_assert!(self.len() >= size);
         let slice = &self[0..size];
         let (prefix, shorts, _suffix) =
-            unsafe { slice.align_to::<PublicValues<[T; 4], Word<T>, [T; 4], T>>() };
+            unsafe { slice.align_to::<PublicValues<[T; 4], [T; 3], [T; 4], T>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &shorts[0]
     }
 }
 
-impl<T: Clone> BorrowMut<PublicValues<[T; 4], Word<T>, [T; 4], T>> for [T] {
-    fn borrow_mut(&mut self) -> &mut PublicValues<[T; 4], Word<T>, [T; 4], T> {
-        let size = std::mem::size_of::<PublicValues<[u8; 4], Word<u8>, [u8; 4], u8>>();
+impl<T: Clone> BorrowMut<PublicValues<[T; 4], [T; 3], [T; 4], T>> for [T] {
+    fn borrow_mut(&mut self) -> &mut PublicValues<[T; 4], [T; 3], [T; 4], T> {
+        let size = std::mem::size_of::<PublicValues<[u8; 4], [u8; 3], [u8; 4], u8>>();
         debug_assert!(self.len() >= size);
         let slice = &mut self[0..size];
         let (prefix, shorts, _suffix) =
-            unsafe { slice.align_to_mut::<PublicValues<[T; 4], Word<T>, [T; 4], T>>() };
+            unsafe { slice.align_to_mut::<PublicValues<[T; 4], [T; 3], [T; 4], T>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &mut shorts[0]
     }
 }
 
-impl<F: AbstractField> From<PublicValues<u32, u32, u64, u32>>
-    for PublicValues<[F; 4], Word<F>, [F; 4], F>
+impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
+    for PublicValues<[F; 4], [F; 3], [F; 4], F>
 {
-    fn from(value: PublicValues<u32, u32, u64, u32>) -> Self {
+    fn from(value: PublicValues<u32, u64, u64, u32>) -> Self {
         let PublicValues {
             committed_value_digest,
             deferred_proofs_digest,
-            start_pc,
+            pc_start,
             next_pc,
             prev_exit_code,
             exit_code,
@@ -205,17 +202,41 @@ impl<F: AbstractField> From<PublicValues<u32, u32, u64, u32>>
         let deferred_proofs_digest: [_; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|i| F::from_canonical_u32(deferred_proofs_digest[i]));
 
-        let start_pc = F::from_canonical_u32(start_pc);
-        let next_pc = F::from_canonical_u32(next_pc);
-        let prev_exit_code = F::from_canonical_u32(prev_exit_code);
+        let pc_start = [
+            F::from_canonical_u16((pc_start & 0xFFFF) as u16),
+            F::from_canonical_u16(((pc_start >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((pc_start >> 32) & 0xFFFF) as u16),
+        ];
+        let next_pc = [
+            F::from_canonical_u16((next_pc & 0xFFFF) as u16),
+            F::from_canonical_u16(((next_pc >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((next_pc >> 32) & 0xFFFF) as u16),
+        ];
         let exit_code = F::from_canonical_u32(exit_code);
+        let prev_exit_code = F::from_canonical_u32(prev_exit_code);
         let shard = F::from_canonical_u32(shard);
         let execution_shard = F::from_canonical_u32(execution_shard);
         let next_execution_shard = F::from_canonical_u32(next_execution_shard);
-        let previous_init_addr_word = Word::from(previous_init_addr_word);
-        let last_init_addr_word = Word::from(last_init_addr_word);
-        let previous_finalize_addr_word = Word::from(previous_finalize_addr_word);
-        let last_finalize_addr_word = Word::from(last_finalize_addr_word);
+        let previous_init_addr_word = [
+            F::from_canonical_u16((previous_init_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_init_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_init_addr_word >> 32) & 0xFFFF) as u16),
+        ];
+        let last_init_addr_word = [
+            F::from_canonical_u16((last_init_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_init_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_init_addr_word >> 32) & 0xFFFF) as u16),
+        ];
+        let previous_finalize_addr_word = [
+            F::from_canonical_u16((previous_finalize_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_finalize_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_finalize_addr_word >> 32) & 0xFFFF) as u16),
+        ];
+        let last_finalize_addr_word = [
+            F::from_canonical_u16((last_finalize_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_finalize_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_finalize_addr_word >> 32) & 0xFFFF) as u16),
+        ];
         let initial_timestamp = [
             F::from_canonical_u16((initial_timestamp >> 32) as u16),
             F::from_canonical_u8(((initial_timestamp >> 24) & 0xFF) as u8),
@@ -243,7 +264,7 @@ impl<F: AbstractField> From<PublicValues<u32, u32, u64, u32>>
         Self {
             committed_value_digest,
             deferred_proofs_digest,
-            start_pc,
+            pc_start,
             next_pc,
             prev_exit_code,
             exit_code,
@@ -264,7 +285,7 @@ impl<F: AbstractField> From<PublicValues<u32, u32, u64, u32>>
             global_finalize_count,
             global_count,
             global_cumulative_sum,
-            empty: core::array::from_fn(|_| F::zero()),
+            // empty: core::array::from_fn(|_| F::zero()),
         }
     }
 }

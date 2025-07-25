@@ -13,5 +13,5 @@ name = "report"
 path = "bin/report.rs"
 
 [dependencies]
-sp1-zkvm = { path = "../../../crates/zkvm/entrypoint" }
+sp1-zkvm = { workspace = true }
 sp1-derive = { path = "../../../crates/derive" }

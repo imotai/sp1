@@ -57,9 +57,7 @@ impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
     ) -> RowMajorMatrix<F> {
         // Generate the rows for the trace.
         let chunk_size = std::cmp::max(input.addi_events.len() / num_cpus::get(), 1);
-        let merged_events = input.addi_events.iter().collect::<Vec<_>>();
-        // let padded_nb_rows = <MinimalAddChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(merged_events.len() * NUM_MINIMAL_ADD_COLS);
+        let mut values = zeroed_f_vec(input.addi_events.len() * NUM_MINIMAL_ADD_COLS);
 
         values.chunks_mut(chunk_size * NUM_MINIMAL_ADD_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
@@ -67,11 +65,11 @@ impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
                     let idx = i * chunk_size + j;
                     let cols: &mut MinimalAddCols<F> = row.borrow_mut();
 
-                    if idx < merged_events.len() {
-                        let event = merged_events[idx];
-                        cols.op_a = F::from_canonical_u32(event.0.a);
-                        cols.op_b = F::from_canonical_u32(event.0.b);
-                        cols.op_c = F::from_canonical_u32(event.0.c);
+                    if idx < input.addi_events.len() {
+                        let event = input.addi_events[idx];
+                        cols.op_a = F::from_canonical_u64(event.0.a);
+                        cols.op_b = F::from_canonical_u64(event.0.b);
+                        cols.op_c = F::from_canonical_u64(event.0.c);
                     }
                 });
             },

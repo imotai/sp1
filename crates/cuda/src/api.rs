@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sp1_prover::{InnerSC, OuterSC, SP1CoreProof, SP1VerifyingKey};
 
-use crate::client::CudaClientError;
+use crate::CudaClientError;
 use sp1_core_machine::{io::SP1Stdin, recursion::SP1RecursionProof};
 
 #[derive(Serialize, Deserialize)]

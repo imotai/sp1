@@ -1,6 +1,7 @@
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -10,7 +11,7 @@ use crate::{
     adapter::{register::i_type::ITypeReader, state::CPUState},
     air::SP1CoreAirBuilder,
     memory::MemoryAccessCols,
-    operations::AddressOperation,
+    operations::{AddressOperation, U16MSBOperation},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 use hashbrown::HashMap;
@@ -20,10 +21,10 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 
-use sp1_stark::air::MachineAir;
+use sp1_stark::{air::MachineAir, Word};
 
 #[derive(Default)]
 pub struct LoadWordChip;
@@ -46,8 +47,20 @@ pub struct LoadWordColumns<T> {
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
-    /// Whether this is a real load word instruction.
-    pub is_real: T,
+    /// Whether the offset is `0` or `4`.
+    pub offset_bit: T,
+
+    /// The selected word of the memory access.
+    pub selected_word: [T; 2],
+
+    /// The `MSB` of the word, if the opcode is `LW`.
+    pub msb: U16MSBOperation<T>,
+
+    /// Whether this is a load half instruction.
+    pub is_lw: T,
+
+    /// Whether this is a load half unsigned instruction.
+    pub is_lwu: T,
 }
 
 impl<F> BaseAir<F> for LoadWordChip {
@@ -94,10 +107,9 @@ impl<F: PrimeField32> MachineAir<F> for LoadWordChip {
 
                     if idx < input.memory_load_word_events.len() {
                         let event = &input.memory_load_word_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, instruction, event.1);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu
@@ -134,9 +146,20 @@ impl LoadWordChip {
         cols.memory_access.populate(event.mem_access, blu);
 
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        debug_assert!(memory_addr.is_multiple_of(4));
+        let bit_2 = ((memory_addr >> 2) & 1) as u16;
+        cols.offset_bit = F::from_canonical_u16(bit_2);
+        let limb_number = 2 * bit_2;
+        let limb_0 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize];
+        let limb_1 = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize + 1];
 
-        cols.is_real = F::one();
+        cols.selected_word = [F::from_canonical_u16(limb_0), F::from_canonical_u16(limb_1)];
+
+        if event.opcode == Opcode::LW {
+            cols.is_lw = F::one();
+            cols.msb.populate_msb(blu, limb_1);
+        } else {
+            cols.is_lwu = F::one();
+        }
     }
 }
 
@@ -154,9 +177,21 @@ where
         let clk_high = local.state.clk_high::<AB>();
         let clk_low = local.state.clk_low::<AB>();
 
-        let opcode = AB::Expr::from_canonical_u32(Opcode::LW as u32);
+        let opcode = local.is_lw.into() * AB::Expr::from_canonical_u32(Opcode::LW as u32)
+            + local.is_lwu.into() * AB::Expr::from_canonical_u32(Opcode::LWU as u32);
 
-        builder.assert_bool(local.is_real);
+        // Compute instruction field constants
+        let funct3 = local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct3().unwrap())
+            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct3().unwrap());
+        let funct7 = local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct7().unwrap_or(0))
+            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct7().unwrap_or(0));
+        let base_opcode = local.is_lw * AB::Expr::from_canonical_u32(Opcode::LW.base_opcode().0)
+            + local.is_lwu * AB::Expr::from_canonical_u32(Opcode::LWU.base_opcode().0);
+
+        let is_real = local.is_lw + local.is_lwu;
+        builder.assert_bool(local.is_lw);
+        builder.assert_bool(local.is_lwu);
+        builder.assert_bool(is_real.clone());
 
         // Step 1. Compute the address, and check offsets and address bounds.
         let aligned_addr = AddressOperation::<AB::F>::eval(
@@ -165,7 +200,8 @@ where
             local.adapter.c().map(Into::into),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            local.is_real.into(),
+            local.offset_bit.into(),
+            is_real.clone(),
             local.address_operation,
         );
 
@@ -173,21 +209,46 @@ where
         builder.eval_memory_access_read(
             clk_high.clone(),
             clk_low.clone(),
-            aligned_addr.clone(),
+            &aligned_addr.map(Into::into),
             local.memory_access,
-            local.is_real,
+            is_real.clone(),
         );
 
         // This chip requires `op_a != x0`.
         builder.assert_zero(local.adapter.op_a_0);
 
+        builder
+            .when_not(local.offset_bit)
+            .assert_eq(local.selected_word[0], local.memory_access.prev_value[0]);
+        builder
+            .when_not(local.offset_bit)
+            .assert_eq(local.selected_word[1], local.memory_access.prev_value[1]);
+        builder
+            .when(local.offset_bit)
+            .assert_eq(local.selected_word[0], local.memory_access.prev_value[2]);
+        builder
+            .when(local.offset_bit)
+            .assert_eq(local.selected_word[1], local.memory_access.prev_value[3]);
+
+        U16MSBOperation::<AB::F>::eval_msb(
+            builder,
+            local.selected_word[1].into(),
+            local.msb,
+            local.is_lw.into(),
+        );
+        builder.when_not(local.is_lw).assert_zero(local.msb.msb);
+
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-            local.is_real.into(),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
+            is_real.clone(),
         );
 
         // Constrain the program and register reads.
@@ -197,9 +258,15 @@ where
             clk_low.clone(),
             local.state.pc,
             opcode,
-            local.memory_access.prev_value,
+            [base_opcode, funct3, funct7],
+            Word([
+                local.selected_word[0].into(),
+                local.selected_word[1].into(),
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+            ]),
             local.adapter,
-            local.is_real.into(),
+            is_real.clone(),
         );
     }
 }

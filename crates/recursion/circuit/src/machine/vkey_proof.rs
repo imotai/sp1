@@ -118,7 +118,6 @@ where
         DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
     >,
     C: CircuitConfig<F = BabyBear, EF = <SC as JaggedConfig>::EF, Bit = Felt<BabyBear>>,
-    // <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
     A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     JC: RecursiveJaggedConfig<
         F = BabyBear,

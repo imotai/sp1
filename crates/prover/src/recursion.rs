@@ -12,7 +12,7 @@ use slop_jagged::JaggedConfig;
 use slop_merkle_tree::my_bb_16_perm;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_primitives::{consts::WORD_SIZE, hash_deferred_proof};
+use sp1_primitives::hash_deferred_proof;
 use sp1_recursion_circuit::{
     basefold::{
         merkle_tree::MerkleTree, stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
@@ -44,7 +44,7 @@ use sp1_recursion_executor::{
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     prover::{MachineProver, MachineProverComponents, MachineProverError, MachineProvingKey},
-    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier, Word,
+    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
 use crate::{
@@ -449,14 +449,6 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             SP1CircuitWitness::Shrink(_) => Some(self.get_shrink_keys()),
             SP1CircuitWitness::Wrap(_) => None,
         }
-    }
-
-    #[inline]
-    #[allow(clippy::type_complexity)]
-    pub fn wrap_keys(
-        &self,
-    ) -> (Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>) {
-        self.get_wrap_keys()
     }
 
     pub fn execute(
@@ -865,12 +857,12 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         sp1_vk_digest: [BabyBear::zero(); DIGEST_SIZE],
         committed_value_digest: [[BabyBear::zero(); 4]; PV_DIGEST_NUM_WORDS],
         deferred_proofs_digest: [BabyBear::zero(); POSEIDON_NUM_WORDS],
-        end_pc: BabyBear::zero(),
+        end_pc: [BabyBear::zero(); 3],
         end_shard: BabyBear::zero(),
         end_execution_shard: BabyBear::zero(),
         end_timestamp: [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()],
-        init_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
-        finalize_addr_word: Word([BabyBear::zero(); WORD_SIZE]),
+        init_addr_word: [BabyBear::zero(); 3],
+        finalize_addr_word: [BabyBear::zero(); 3],
         is_complete: false,
     }
 }

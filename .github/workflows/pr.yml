@@ -42,19 +42,10 @@ jobs:
         with:
           pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
 
-      # TODO: Replace with "Install SP1 toolchain from repo" once recursion crates are fixed for multilinear.
-      - name: Install SP1 toolchain
+      - name: Install SP1 toolchain from repo
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up 
-          ~/.sp1/bin/cargo-prove prove --version
-
-      # - name: Install SP1 toolchain from repo
-      #   run: |
-      #     cargo run -p sp1-cli -- prove install-toolchain
-      #     cd crates/cli
-      #     cargo install --force --locked --path .
-      #     cargo clean
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -93,19 +84,10 @@ jobs:
         with:
           pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
 
-      # TODO: Replace with "Install SP1 toolchain from repo" once recursion crates are fixed for multilinear.
-      - name: Install SP1 toolchain
+      - name: Install SP1 toolchain from repo
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up 
-          ~/.sp1/bin/cargo-prove prove --version
-
-      # - name: Install SP1 toolchain from repo
-      #   run: |
-      #     cargo run -p sp1-cli -- prove install-toolchain
-      #     cd crates/cli
-      #     cargo install --force --locked --path .
-      #     cargo clean
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -147,11 +129,9 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
-  #         cargo install --locked --force --path .
-  #         cargo clean
-
+  
   #     - name: Run cargo check
   #       uses: actions-rs/cargo@v1
   #       with:
@@ -181,19 +161,10 @@ jobs:
         with:
           pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
 
-      # TODO: Replace with "Install SP1 toolchain from repo" once recursion crates are fixed for multilinear.
-      - name: Install SP1 toolchain
+      - name: Install SP1 toolchain from repo
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up 
-          ~/.sp1/bin/cargo-prove prove --version
-
-      # - name: Install SP1 toolchain from repo
-      #   run: |
-      #     cargo run -p sp1-cli -- prove install-toolchain
-      #     cd crates/cli
-      #     cargo install --force --locked --path .
-      #     cargo clean          
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli          
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
@@ -201,24 +172,18 @@ jobs:
           command: fmt
           args: --all -- --check
           toolchain: nightly
-        env:
-          CARGO_INCREMENTAL: 1
 
       - name: Check test-artifacts
         uses: actions-rs/cargo@v1
         with:
           command: check
           args: -p test-artifacts
-        env:
-          CARGO_INCREMENTAL: 1
 
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: --all-features --all-targets -- -D warnings -A incomplete-features
-        env:
-          CARGO_INCREMENTAL: 1
 
   check:
     name: Cargo Check
@@ -234,19 +199,10 @@ jobs:
         with:
           pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
 
-      # TODO: Replace with "Install SP1 toolchain from repo" once recursion crates are fixed for multilinear.
-      - name: Install SP1 toolchain
+      - name: Install SP1 toolchain from repo
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up 
-          ~/.sp1/bin/cargo-prove prove --version
-
-      # - name: Install SP1 toolchain from repo
-      #   run: |
-      #     cargo run -p sp1-cli -- prove install-toolchain
-      #     cd crates/cli
-      #     cargo install --force --locked --path .
-      #     cargo clean
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli
 
       - name: Check workspace no features
         uses: actions-rs/cargo@v1
@@ -281,19 +237,10 @@ jobs:
           pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
           rustup_override: nightly
 
-      # TODO: Replace with "Install SP1 toolchain from repo" once recursion crates are fixed for multilinear.
-      - name: Install SP1 toolchain
+      - name: Install SP1 toolchain from repo
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up 
-          ~/.sp1/bin/cargo-prove prove --version
-
-      # - name: Install SP1 toolchain from repo
-      #   run: |
-      #     cargo run -p sp1-cli -- prove install-toolchain
-      #     cd crates/cli
-      #     cargo install --force --locked --path .
-      #     cargo clean  
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli  
 
       - name: Check workspace no features
         uses: actions-rs/cargo@v1
@@ -336,7 +283,7 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
   #         cargo install --force --locked --path .
   #         cargo clean  
@@ -358,27 +305,6 @@ jobs:
   #     - name: Run cargo clippy
   #       run: |
   #         cd ./examples/
-
-  typos:
-    name: Spell Check
-    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
-    steps:
-      - name: Checkout Actions Repository
-        uses: actions/checkout@v4
-
-      - name: Setup CI
-        uses: ./.github/actions/setup
-        with:
-          pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
-
-      - name: Check all typos
-        uses: crate-ci/typos@master
-        with:
-          write_changes: true
-
-      - uses: getsentry/action-git-diff-suggestions@main
-        with:
-          message: typos
 
   # check-verifier-no-std:
   #   name: Check Verifier `no_std`
@@ -432,7 +358,7 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
   #         cargo install --force --locked --path .
   #         cargo clean

@@ -1,3 +1,5 @@
+use bls12_381_patched as bls12_381;
+
 #[sp1_test::sp1_test("bls12_381_fp_test_sqrt", syscalls = [BLS12381_FP_MUL], gpu, prove)]
 pub fn test_sqrt_fp_100(stdin: &mut sp1_sdk::SP1Stdin) -> impl FnOnce(sp1_sdk::SP1PublicValues) {
     use bls12_381::fp::Fp;

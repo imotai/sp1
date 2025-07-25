@@ -33,11 +33,11 @@ pub struct ChipDimensions<T> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MachineVerifyingKey<C: MachineConfig> {
     /// The start pc of the program.
-    pub pc_start: C::F,
+    pub pc_start: [C::F; 3],
     /// The starting global digest of the program, after incorporating the initial memory.
     pub initial_global_cumulative_sum: SepticDigest<C::F>,
     /// The preprocessed commitments.
-    pub preprocessed_commit: Option<C::Commitment>,
+    pub preprocessed_commit: C::Commitment,
     /// The dimensions of the preprocessed polynomials.
     pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<C::F>>,
 }
@@ -45,10 +45,8 @@ pub struct MachineVerifyingKey<C: MachineConfig> {
 impl<C: MachineConfig> MachineVerifyingKey<C> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
-        if let Some(preprocessed_commit) = self.preprocessed_commit.as_ref() {
-            challenger.observe(preprocessed_commit.clone());
-        }
-        challenger.observe(self.pc_start);
+        challenger.observe(self.preprocessed_commit.clone());
+        challenger.observe_slice(&self.pc_start);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);
         // Observe the padding.

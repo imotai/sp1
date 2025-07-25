@@ -1,14 +1,17 @@
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::Word;
+use sp1_stark::{air::BaseAirBuilder, Word};
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
 
 use crate::{
-    adapter::{register::i_type::ITypeReader, state::CPUState},
+    adapter::{
+        register::i_type::ITypeReader,
+        state::{CPUState, CPUStateInput},
+    },
     air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
     operations::{AddressOperation, U16MSBOperation, U16MSBOperationInput},
@@ -21,9 +24,9 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_primitives::consts::u32_to_u16_limbs;
+use sp1_primitives::consts::u64_to_u16_limbs;
 use sp1_stark::air::MachineAir;
 
 #[derive(Default)]
@@ -47,11 +50,11 @@ pub struct LoadHalfColumns<T> {
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
-    /// Whether or not the offset is `0` or `2`.
-    pub offset_bit: T,
+    /// Whether or not the offset is `0` or `2` or `4` or `6`.
+    pub offset_bit: [T; 2],
 
     /// The selected limb value.
-    pub selected_limb: T,
+    pub selected_half: T,
 
     /// The `MSB` of the half, if the opcode is `LH`.
     pub msb: U16MSBOperation<T>,
@@ -107,10 +110,9 @@ impl<F: PrimeField32> MachineAir<F> for LoadHalfChip {
 
                     if idx < input.memory_load_half_events.len() {
                         let event = &input.memory_load_half_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, instruction, event.1);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu
@@ -149,10 +151,13 @@ impl LoadHalfChip {
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
         debug_assert!(memory_addr.is_multiple_of(2));
 
-        let bit = ((memory_addr >> 1) & 1) as u16;
-        cols.offset_bit = F::from_canonical_u16(bit);
-        let limb = u32_to_u16_limbs(event.mem_access.value())[bit as usize];
-        cols.selected_limb = F::from_canonical_u16(limb);
+        let bit_1 = ((memory_addr >> 1) & 1) as u16;
+        let bit_2 = ((memory_addr >> 2) & 1) as u16;
+        let limb_number = 2 * bit_2 + bit_1;
+        cols.offset_bit[0] = F::from_canonical_u16(bit_1);
+        cols.offset_bit[1] = F::from_canonical_u16(bit_2);
+        let limb = u64_to_u16_limbs(event.mem_access.value())[limb_number as usize];
+        cols.selected_half = F::from_canonical_u16(limb);
 
         if event.opcode == Opcode::LH {
             cols.is_lh = F::one();
@@ -182,6 +187,14 @@ where
         // selectors, is boolean. Therefore, the `opcode` matches the corresponding opcode.
         let opcode = AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
             + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu;
+
+        // Compute instruction field constants
+        let funct3 = local.is_lh * AB::Expr::from_canonical_u8(Opcode::LH.funct3().unwrap())
+            + local.is_lhu * AB::Expr::from_canonical_u8(Opcode::LHU.funct3().unwrap());
+        let funct7 = local.is_lh * AB::Expr::from_canonical_u8(Opcode::LH.funct7().unwrap_or(0))
+            + local.is_lhu * AB::Expr::from_canonical_u8(Opcode::LHU.funct7().unwrap_or(0));
+        let base_opcode = local.is_lh * AB::Expr::from_canonical_u32(Opcode::LH.base_opcode().0)
+            + local.is_lhu * AB::Expr::from_canonical_u32(Opcode::LHU.base_opcode().0);
         let is_real = local.is_lh + local.is_lhu;
         builder.assert_bool(local.is_lh);
         builder.assert_bool(local.is_lhu);
@@ -193,7 +206,8 @@ where
             local.adapter.b().map(Into::into),
             local.adapter.c().map(Into::into),
             AB::Expr::zero(),
-            local.offset_bit.into(),
+            local.offset_bit[0].into(),
+            local.offset_bit[1].into(),
             is_real.clone(),
             local.address_operation,
         );
@@ -202,7 +216,7 @@ where
         builder.eval_memory_access_read(
             clk_high.clone(),
             clk_low.clone(),
-            aligned_addr.clone(),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             is_real.clone(),
         );
@@ -212,30 +226,48 @@ where
 
         // Step 3. Use the memory value to compute the write value for `op_a`.
         // Select the u16 limb corresponding to the offset.
-        builder.assert_eq(
-            local.selected_limb,
-            local.offset_bit * local.memory_access.prev_value[1]
-                + (AB::Expr::one() - local.offset_bit) * local.memory_access.prev_value[0],
-        );
+        builder
+            .when_not(local.offset_bit[0])
+            .when_not(local.offset_bit[1])
+            .assert_eq(local.selected_half, local.memory_access.prev_value[0]);
+        builder
+            .when(local.offset_bit[0])
+            .when_not(local.offset_bit[1])
+            .assert_eq(local.selected_half, local.memory_access.prev_value[1]);
+        builder
+            .when_not(local.offset_bit[0])
+            .when(local.offset_bit[1])
+            .assert_eq(local.selected_half, local.memory_access.prev_value[2]);
+        builder
+            .when(local.offset_bit[0])
+            .when(local.offset_bit[1])
+            .assert_eq(local.selected_half, local.memory_access.prev_value[3]);
+
         // Get the MSB of the selected limb if the opcode is `LH`.
         // If the opcode is `LHU`, the MSB is constrained to be zero.
         builder.when(local.is_lhu).assert_zero(local.msb.msb);
         <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
             U16MSBOperationInput::<AB>::new(
-                local.selected_limb.into(),
+                local.selected_half.into(),
                 local.msb,
                 local.is_lh.into(),
             ),
         );
 
         // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-            is_real.clone(),
+            CPUStateInput {
+                cols: local.state,
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
+                is_real: is_real.clone(),
+            },
         );
 
         // Constrain the program and register reads.
@@ -245,8 +277,11 @@ where
             clk_low.clone(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             Word([
-                local.selected_limb.into(),
+                local.selected_half.into(),
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
                 AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
             ]),
             local.adapter,

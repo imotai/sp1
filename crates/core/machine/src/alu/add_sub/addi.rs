@@ -11,7 +11,7 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
@@ -69,7 +69,6 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
     ) -> RowMajorMatrix<F> {
         // Generate the rows for the trace.
         let chunk_size = std::cmp::max(input.addi_events.len() / num_cpus::get(), 1);
-        let merged_events = input.addi_events.iter().collect::<Vec<_>>();
         let padded_nb_rows = <AddiChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_ADDI_COLS);
 
@@ -79,13 +78,12 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
                     let idx = i * chunk_size + j;
                     let cols: &mut AddiCols<F> = row.borrow_mut();
 
-                    if idx < merged_events.len() {
+                    if idx < input.addi_events.len() {
                         let mut byte_lookup_events = Vec::new();
-                        let event = merged_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let event = input.addi_events[idx];
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                     }
                 });
             },
@@ -107,10 +105,9 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_ADDI_COLS];
                     let cols: &mut AddiCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, instruction, event.1);
+                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
@@ -163,6 +160,9 @@ where
         builder.assert_bool(local.is_real);
 
         let opcode = AB::Expr::from_f(Opcode::ADDI.as_field());
+        let funct3 = AB::Expr::from_canonical_u8(Opcode::ADDI.funct3().unwrap());
+        let funct7 = AB::Expr::from_canonical_u8(Opcode::ADDI.funct7().unwrap_or(0));
+        let base_opcode = AB::Expr::from_canonical_u32(Opcode::ADDI.base_opcode().0);
 
         // Constrain the add operation over `op_b` and `op_c`.
         AddOperation::<AB::F>::eval(
@@ -178,8 +178,12 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -190,6 +194,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.add_operation.value,
             local.adapter,
             local.is_real.into(),

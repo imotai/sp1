@@ -221,7 +221,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.ref }}
           path: sp1/
+
+      - name: Print ref
+        run: |
+          echo "ref: ${{ github.ref }}"
 
       # Install rust and go
       - name: Install rust
@@ -263,9 +268,9 @@ jobs:
         run: |
           git clone https://github.com/succinctlabs/cuslop.git
           cd cuslop/crates/cuslop
-          # TODO: Check out main when merged.
-          git checkout n/cuslop-server
+          git checkout min/rv64
           set -eo pipefail
+          cargo update
           cargo build --release --bin cuslop-server
 
       - name: Archive binaries

@@ -9,7 +9,7 @@ use slop_baby_bear::BabyBear;
 
 use crate::{
     air::{AirInteraction, InteractionScope},
-    ir::{BinOp, ExprExtRef, ExprRef, FuncDecl, IrVar, OpExpr, Shape},
+    ir::{Attribute, BinOp, ExprExtRef, ExprRef, FuncDecl, IrVar, OpExpr, Shape},
     InteractionKind,
 };
 
@@ -168,7 +168,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
     pub fn call_operation(
         &mut self,
         name: String,
-        inputs: Vec<(String, Shape<ExprRef<F>, ExprExtRef<EF>>)>,
+        inputs: Vec<(String, Attribute, Shape<ExprRef<F>, ExprExtRef<EF>>)>,
         output: Shape<ExprRef<F>, ExprExtRef<EF>>,
     ) {
         let func = FuncDecl::new(name, inputs, output);
@@ -256,7 +256,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
 
                     for input in &decl.input {
                         step.push(' ');
-                        step.push_str(&input.1.to_lean_constructor(mapping));
+                        step.push_str(&input.2.to_lean_constructor(mapping));
                     }
 
                     calls += 1;

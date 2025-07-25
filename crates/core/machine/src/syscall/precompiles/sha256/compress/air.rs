@@ -1,4 +1,5 @@
 use core::borrow::Borrow;
+use std::iter::once;
 
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::AbstractField;
@@ -16,9 +17,10 @@ use super::{
 use crate::{
     air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder},
     operations::{
-        Add5Operation, AddOperation, AndU16Operation, FixedRotateRightOperation, NotU16Operation,
-        XorU16Operation,
+        Add5Operation, AddU32Operation, AddrAddOperation, AndU32Operation,
+        FixedRotateRightOperation, NotU32Operation, XorU32Operation,
     },
+    utils::u32_to_half_word,
 };
 use sp1_stark::air::BaseAirBuilder;
 
@@ -90,41 +92,39 @@ impl ShaCompressChip {
         builder.assert_eq(local.is_finalize, local.octet_num[9] * local.is_real);
 
         // Receive state.
-        builder.receive(
-            AirInteraction::new(
-                vec![local.clk_high, local.clk_low, local.w_ptr, local.h_ptr, local.index]
+        let receive_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(local.w_ptr.map(Into::into))
+            .chain(local.h_ptr.map(Into::into))
+            .chain(once(local.index.into()))
+            .chain(
+                [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
                     .into_iter()
-                    .chain(
-                        [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
-                            .into_iter()
-                            .flat_map(|word| word.into_iter()),
-                    )
-                    .map(Into::into)
-                    .collect(),
-                local.is_real.into(),
-                InteractionKind::ShaCompress,
-            ),
+                    .flat_map(|word| word.into_iter())
+                    .map(Into::into),
+            )
+            .collect::<Vec<_>>();
+        builder.receive(
+            AirInteraction::new(receive_values, local.is_real.into(), InteractionKind::ShaCompress),
             InteractionScope::Local,
         );
 
         // Send state, for initialize and finalize.
+        let send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(local.w_ptr.map(Into::into))
+            .chain(local.h_ptr.map(Into::into))
+            .chain(once(local.index.into() + AB::Expr::one()))
+            .chain(
+                [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
+                    .into_iter()
+                    .flat_map(|word| word.into_iter())
+                    .map(Into::into),
+            )
+            .collect::<Vec<_>>();
         builder.send(
             AirInteraction::new(
-                vec![
-                    local.clk_high.into(),
-                    local.clk_low.into(),
-                    local.w_ptr.into(),
-                    local.h_ptr.into(),
-                    local.index.into() + AB::Expr::one(),
-                ]
-                .into_iter()
-                .chain(
-                    [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h]
-                        .into_iter()
-                        .flat_map(|word| word.into_iter())
-                        .map(Into::into),
-                )
-                .collect(),
+                send_values,
                 local.is_initialize + local.is_finalize,
                 InteractionKind::ShaCompress,
             ),
@@ -140,32 +140,31 @@ impl ShaCompressChip {
         // c := b
         // b := a
         // a := temp1 + temp2
-        builder.send(
-            AirInteraction::new(
-                vec![
-                    local.clk_high.into(),
-                    local.clk_low.into(),
-                    local.w_ptr.into(),
-                    local.h_ptr.into(),
-                    local.index.into() + AB::Expr::one(),
+        let compression_send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(local.w_ptr.map(Into::into))
+            .chain(local.h_ptr.map(Into::into))
+            .chain(once(local.index.into() + AB::Expr::one()))
+            .chain(
+                [
+                    local.temp1_add_temp2.value,
+                    local.a,
+                    local.b,
+                    local.c,
+                    local.d_add_temp1.value,
+                    local.e,
+                    local.f,
+                    local.g,
                 ]
                 .into_iter()
-                .chain(
-                    [
-                        local.temp1_add_temp2.value,
-                        local.a,
-                        local.b,
-                        local.c,
-                        local.d_add_temp1.value,
-                        local.e,
-                        local.f,
-                        local.g,
-                    ]
-                    .into_iter()
-                    .flat_map(|word| word.into_iter())
-                    .map(Into::into),
-                )
-                .collect(),
+                .flat_map(|word| word.into_iter())
+                .map(Into::into),
+            )
+            .collect::<Vec<_>>();
+
+        builder.send(
+            AirInteraction::new(
+                compression_send_values,
                 local.is_compression.into(),
                 InteractionKind::ShaCompress,
             ),
@@ -178,12 +177,18 @@ impl ShaCompressChip {
 
     /// Constrains that memory address is correct and that memory is correctly written/read.
     fn eval_memory<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &ShaCompressCols<AB::Var>) {
+        let mem_value_word = Word([
+            local.mem_value[0].into(),
+            local.mem_value[1].into(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+        ]);
         builder.eval_memory_access_write(
             local.clk_high,
             local.clk_low + local.is_finalize,
-            local.mem_addr,
+            &local.mem_addr.map(Into::into),
             local.mem,
-            local.mem_value,
+            mem_value_word,
             local.is_initialize + local.is_compression + local.is_finalize,
         );
 
@@ -206,45 +211,120 @@ impl ShaCompressChip {
         );
 
         // Verify correct mem address for initialize phase
-        builder.when(local.is_initialize).assert_eq(
-            local.mem_addr,
-            local.h_ptr + cycle_step.clone() * AB::Expr::from_canonical_u32(4),
+        for i in 0..3 {
+            builder
+                .when(local.is_initialize)
+                .assert_eq(local.mem_addr[i], local.mem_addr_init.value[i]);
+        }
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.h_ptr[0].into(),
+                local.h_ptr[1].into(),
+                local.h_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
+                cycle_step.clone() * AB::Expr::from_canonical_u32(8),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.mem_addr_init,
+            local.is_initialize.into(),
         );
 
         // Verify correct mem address for compression phase
-        builder.when(local.is_compression).assert_eq(
-            local.mem_addr,
-            local.w_ptr
-                + (((cycle_num - AB::Expr::one()) * AB::Expr::from_canonical_u32(8))
+        for i in 0..3 {
+            builder
+                .when(local.is_compression)
+                .assert_eq(local.mem_addr[i], local.mem_addr_compress.value[i]);
+        }
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.w_ptr[0].into(),
+                local.w_ptr[1].into(),
+                local.w_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
+                ((cycle_num - AB::Expr::one()) * AB::Expr::from_canonical_u32(8)
                     + cycle_step.clone())
-                    * AB::Expr::from_canonical_u32(4),
+                    * AB::Expr::from_canonical_u32(8),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.mem_addr_compress,
+            local.is_compression.into(),
         );
 
         // Verify correct mem address for finalize phase
-        builder.when(local.is_finalize).assert_eq(
-            local.mem_addr,
-            local.h_ptr + cycle_step.clone() * AB::Expr::from_canonical_u32(4),
+        for i in 0..3 {
+            builder
+                .when(local.is_finalize)
+                .assert_eq(local.mem_addr[i], local.mem_addr_finalize.value[i]);
+        }
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                local.h_ptr[0].into(),
+                local.h_ptr[1].into(),
+                local.h_ptr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([
+                cycle_step.clone() * AB::Expr::from_canonical_u32(8),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.mem_addr_finalize,
+            local.is_finalize.into(),
         );
 
         // In the initialize phase, verify that local.a, local.b, ... is correctly read from memory
         // and does not change
-        let vars = [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h];
+        let a_word =
+            Word([local.a[0].into(), local.a[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let b_word =
+            Word([local.b[0].into(), local.b[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let c_word =
+            Word([local.c[0].into(), local.c[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let d_word =
+            Word([local.d[0].into(), local.d[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let e_word =
+            Word([local.e[0].into(), local.e[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let f_word =
+            Word([local.f[0].into(), local.f[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let g_word =
+            Word([local.g[0].into(), local.g[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let h_word =
+            Word([local.h[0].into(), local.h[1].into(), AB::Expr::zero(), AB::Expr::zero()]);
+        let vars = [a_word, b_word, c_word, d_word, e_word, f_word, g_word, h_word];
+        let mem_value_word = Word([
+            local.mem_value[0].into(),
+            local.mem_value[1].into(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+        ]);
         for (i, var) in vars.iter().enumerate() {
             builder
                 .when(local.is_initialize * local.octet[i])
-                .assert_word_eq(*var, local.mem.prev_value);
+                .assert_word_eq(var.clone(), local.mem.prev_value);
             builder
                 .when(local.is_initialize * local.octet[i])
-                .assert_word_eq(*var, local.mem_value);
+                .assert_word_eq(var.clone(), mem_value_word.clone());
         }
 
         // During initialize and compression, verify that memory is read only and does not change.
         builder
             .when(local.is_initialize + local.is_compression)
-            .assert_word_eq(local.mem.prev_value, local.mem_value);
+            .assert_word_eq(local.mem.prev_value, mem_value_word.clone());
 
         // In the finalize phase, verify that the correct value is written to memory.
-        builder.when(local.is_finalize).assert_word_eq(local.mem_value, local.finalize_add.value);
+        builder.when(local.is_finalize).assert_all_eq(local.mem_value, local.finalize_add.value);
     }
 
     fn eval_compression_ops<AB: SP1CoreAirBuilder>(
@@ -256,9 +336,10 @@ impl ShaCompressChip {
         for i in 0..64 {
             let octet_num = i / 8;
             let inner_index = i % 8;
+            let k: [AB::F; 2] = u32_to_half_word(SHA_COMPRESS_K[i]);
             builder
                 .when(local.octet_num[octet_num + 1] * local.octet[inner_index])
-                .assert_all_eq(local.k, Word::<AB::F>::from(SHA_COMPRESS_K[i]));
+                .assert_all_eq(local.k, k);
         }
 
         // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25).
@@ -287,7 +368,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate (e rightrotate 6) xor (e rightrotate 11).
-        let s1_intermediate = XorU16Operation::<AB::F>::eval_xor_u16(
+        let s1_intermediate = XorU32Operation::<AB::F>::eval_xor_u32(
             builder,
             local.e_rr_6.value.map(|x| x.into()),
             local.e_rr_11.value.map(|x| x.into()),
@@ -295,7 +376,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate S1 := ((e rightrotate 6) xor (e rightrotate 11)) xor (e rightrotate 25).
-        let s1 = XorU16Operation::<AB::F>::eval_xor_u16(
+        let s1 = XorU32Operation::<AB::F>::eval_xor_u32(
             builder,
             s1_intermediate,
             local.e_rr_25.value.map(|x| x.into()),
@@ -305,7 +386,7 @@ impl ShaCompressChip {
 
         // Calculate ch := (e and f) xor ((not e) and g).
         // Calculate e and f.
-        let e_and_f = AndU16Operation::<AB::F>::eval_and_u16(
+        let e_and_f = AndU32Operation::<AB::F>::eval_and_u32(
             builder,
             local.e.map(|x| x.into()),
             local.f.map(|x| x.into()),
@@ -313,14 +394,14 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate not e.
-        NotU16Operation::<AB::F>::eval(
+        NotU32Operation::<AB::F>::eval(
             builder,
             local.e.map(|x| x.into()),
             local.e_not,
             local.is_compression,
         );
         // Calculate (not e) and g.
-        let e_not_and_g = AndU16Operation::<AB::F>::eval_and_u16(
+        let e_not_and_g = AndU32Operation::<AB::F>::eval_and_u32(
             builder,
             local.e_not.value.map(|x| x.into()),
             local.g.map(|x| x.into()),
@@ -328,7 +409,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate ch := (e and f) xor ((not e) and g).
-        let ch = XorU16Operation::<AB::F>::eval_xor_u16(
+        let ch = XorU32Operation::<AB::F>::eval_xor_u32(
             builder,
             e_and_f,
             e_not_and_g,
@@ -376,7 +457,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate (a rightrotate 2) xor (a rightrotate 13).
-        let s0_intermediate = XorU16Operation::<AB::F>::eval_xor_u16(
+        let s0_intermediate = XorU32Operation::<AB::F>::eval_xor_u32(
             builder,
             local.a_rr_2.value.map(|x| x.into()),
             local.a_rr_13.value.map(|x| x.into()),
@@ -384,7 +465,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate S0 := ((a rightrotate 2) xor (a rightrotate 13)) xor (a rightrotate 22).
-        let s0 = XorU16Operation::<AB::F>::eval_xor_u16(
+        let s0 = XorU32Operation::<AB::F>::eval_xor_u32(
             builder,
             s0_intermediate,
             local.a_rr_22.value.map(|x| x.into()),
@@ -394,7 +475,7 @@ impl ShaCompressChip {
 
         // Calculate maj := (a and b) xor (a and c) xor (b and c).
         // Calculate a and b.
-        let a_and_b = AndU16Operation::<AB::F>::eval_and_u16(
+        let a_and_b = AndU32Operation::<AB::F>::eval_and_u32(
             builder,
             local.a.map(|x| x.into()),
             local.b.map(|x| x.into()),
@@ -402,7 +483,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate a and c.
-        let a_and_c = AndU16Operation::<AB::F>::eval_and_u16(
+        let a_and_c = AndU32Operation::<AB::F>::eval_and_u32(
             builder,
             local.a.map(|x| x.into()),
             local.c.map(|x| x.into()),
@@ -410,7 +491,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate b and c.
-        let b_and_c = AndU16Operation::<AB::F>::eval_and_u16(
+        let b_and_c = AndU32Operation::<AB::F>::eval_and_u32(
             builder,
             local.b.map(|x| x.into()),
             local.c.map(|x| x.into()),
@@ -418,7 +499,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate (a and b) xor (a and c).
-        let maj_intermediate = XorU16Operation::<AB::F>::eval_xor_u16(
+        let maj_intermediate = XorU32Operation::<AB::F>::eval_xor_u32(
             builder,
             a_and_b,
             a_and_c,
@@ -426,7 +507,7 @@ impl ShaCompressChip {
             local.is_compression,
         );
         // Calculate maj := ((a and b) xor (a and c)) xor (b and c).
-        let maj = XorU16Operation::<AB::F>::eval_xor_u16(
+        let maj = XorU32Operation::<AB::F>::eval_xor_u32(
             builder,
             maj_intermediate,
             b_and_c,
@@ -435,10 +516,10 @@ impl ShaCompressChip {
         );
 
         // Calculate temp2 := s0 + maj.
-        AddOperation::<AB::F>::eval(builder, s0, maj, local.temp2, local.is_compression.into());
+        AddU32Operation::<AB::F>::eval(builder, s0, maj, local.temp2, local.is_compression.into());
 
         // Calculate d + temp1 for the new value of e.
-        AddOperation::<AB::F>::eval(
+        AddU32Operation::<AB::F>::eval(
             builder,
             local.d.map(|x| x.into()),
             local.temp1.value.map(|x| x.into()),
@@ -447,7 +528,7 @@ impl ShaCompressChip {
         );
 
         // Calculate temp1 + temp2 for the new value of a.
-        AddOperation::<AB::F>::eval(
+        AddU32Operation::<AB::F>::eval(
             builder,
             local.temp1.value.map(|x| x.into()),
             local.temp2.value.map(|x| x.into()),
@@ -467,21 +548,25 @@ impl ShaCompressChip {
         // [a,b,c,...,h] which will act as a selector.
         let add_operands = [local.a, local.b, local.c, local.d, local.e, local.f, local.g, local.h];
         let zero = AB::Expr::zero();
-        let mut filtered_operand = Word([zero.clone(), zero.clone()]);
+        let mut filtered_operand = [zero.clone(), zero.clone()];
         for (i, operand) in local.octet.iter().zip(add_operands.iter()) {
-            for j in 0..WORD_SIZE {
-                filtered_operand.0[j] = filtered_operand.0[j].clone() + *i * operand.0[j];
+            for j in 0..WORD_SIZE / 2 {
+                filtered_operand[j] = filtered_operand[j].clone() + *i * operand[j];
             }
         }
 
-        builder
-            .when(local.is_finalize)
-            .assert_word_eq(filtered_operand, local.finalized_operand.map(|x| x.into()));
+        for i in 0..WORD_SIZE / 2 {
+            builder
+                .when(local.is_finalize)
+                .assert_eq(filtered_operand[i].clone(), local.finalized_operand[i]);
+        }
 
         // finalize_add.result = h[i] + finalized_operand
-        AddOperation::<AB::F>::eval(
+        let mem_prev_value_half_word =
+            [local.mem.prev_value.0[0].into(), local.mem.prev_value.0[1].into()];
+        AddU32Operation::<AB::F>::eval(
             builder,
-            local.mem.prev_value.map(|x| x.into()),
+            mem_prev_value_half_word,
             local.finalized_operand.map(|x| x.into()),
             local.finalize_add,
             local.is_finalize.into(),

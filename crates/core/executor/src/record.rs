@@ -10,7 +10,7 @@ use sp1_stark::{
     },
     septic_digest::SepticDigest,
     shape::Shape,
-    InteractionKind, MachineRecord, Word,
+    InteractionKind, MachineRecord,
 };
 use std::{
     borrow::Borrow,
@@ -23,13 +23,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     events::{
-        AUIPCEvent, AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent,
-        JumpEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
-        MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SyscallEvent,
+        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent, JumpEvent,
+        MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryRecordEnum,
+        PrecompileEvent, PrecompileEvents, SyscallEvent, UTypeEvent,
     },
     program::Program,
     syscalls::SyscallCode,
-    ByteOpcode, RetainedEventsPreset, RiscvAirId, SplitOpts,
+    ByteOpcode, Instruction, RetainedEventsPreset, RiscvAirId, SplitOpts,
 };
 
 /// A record of the execution of a program.
@@ -43,12 +43,16 @@ pub struct ExecutionRecord {
     pub cpu_event_count: u32,
     /// A trace of the ADD, and ADDI events.
     pub add_events: Vec<(AluEvent, RTypeRecord)>,
+    /// A trace of the ADDW events.
+    pub addw_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the ADDI events.
     pub addi_events: Vec<(AluEvent, ITypeRecord)>,
     /// A trace of the MUL events.
     pub mul_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SUB events.
     pub sub_events: Vec<(AluEvent, RTypeRecord)>,
+    /// A trace of the SUBW events.
+    pub subw_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the XOR, XORI, OR, ORI, AND, and ANDI events.
     pub bitwise_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the SLL and SLLI events.
@@ -67,14 +71,18 @@ pub struct ExecutionRecord {
     pub memory_load_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of load instructions with `op_a = x0`.
     pub memory_load_x0_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of load double instructions.
+    pub memory_load_double_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store byte instructions.
     pub memory_store_byte_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store half instructions.
     pub memory_store_half_events: Vec<(MemInstrEvent, ITypeRecord)>,
     /// A trace of store word instructions.
     pub memory_store_word_events: Vec<(MemInstrEvent, ITypeRecord)>,
-    /// A trace of the AUIPC events.
-    pub auipc_events: Vec<(AUIPCEvent, JTypeRecord)>,
+    /// A trace of store double instructions.
+    pub memory_store_double_events: Vec<(MemInstrEvent, ITypeRecord)>,
+    /// A trace of the AUIPC and LUI events.
+    pub utype_events: Vec<(UTypeEvent, JTypeRecord)>,
     /// A trace of the branch events.
     pub branch_events: Vec<(BranchEvent, ITypeRecord)>,
     /// A trace of the JAL events.
@@ -100,11 +108,11 @@ pub struct ExecutionRecord {
     /// The global interaction event count.
     pub global_interaction_event_count: u32,
     /// Memory records with `prev_clk >> 24` different from `clk >> 24`.
-    pub bump_memory_events: Vec<(MemoryRecordEnum, u32)>,
-    /// Record where the `clk >> 24` has incremented.
-    pub bump_clk_high_events: Vec<(u64, u64, u32)>,
+    pub bump_memory_events: Vec<(MemoryRecordEnum, u64)>,
+    /// Record where the `clk >> 24` or `pc >> 16` has incremented.
+    pub bump_state_events: Vec<(u64, u64, bool, u64)>,
     /// The public values.
-    pub public_values: PublicValues<u32, u32, u64, u32>,
+    pub public_values: PublicValues<u32, u64, u64, u32>,
     /// The next nonce to use for a new lookup.
     pub next_nonce: u64,
     /// The shape of the proof.
@@ -118,9 +126,9 @@ pub struct ExecutionRecord {
     /// The final timestamp of the shard.
     pub last_timestamp: u64,
     /// The start program counter.
-    pub start_pc: Option<u32>,
+    pub pc_start: Option<u64>,
     /// The final program counter.
-    pub next_pc: u32,
+    pub next_pc: u64,
     /// The exit code.
     pub exit_code: u32,
 }
@@ -343,39 +351,56 @@ pub struct MemoryAccessRecord {
 /// Memory record where all three operands are registers.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RTypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
     /// The register `op_b` record.
     pub b: MemoryRecordEnum,
+    /// The c operand.
+    pub op_c: u64,
     /// The register `op_c` record.
     pub c: MemoryRecordEnum,
 }
 
-impl From<MemoryAccessRecord> for RTypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl RTypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         Self {
+            op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in RTypeRecord"),
+            op_b: instruction.op_b,
             b: value.b.expect("expected MemoryRecord for op_b in RTypeRecord"),
+            op_c: instruction.op_c,
             c: value.c.expect("expected MemoryRecord for op_c in RTypeRecord"),
         }
     }
 }
-
 /// Memory record where the first two operands are registers.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ITypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
     /// The register `op_b` record.
     pub b: MemoryRecordEnum,
+    /// The c operand.
+    pub op_c: u64,
 }
 
-impl From<MemoryAccessRecord> for ITypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl ITypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         debug_assert!(value.c.is_none());
         Self {
+            op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in ITypeRecord"),
+            op_b: instruction.op_b,
             b: value.b.expect("expected MemoryRecord for op_b in ITypeRecord"),
+            op_c: instruction.op_c,
         }
     }
 }
@@ -383,34 +408,54 @@ impl From<MemoryAccessRecord> for ITypeRecord {
 /// Memory record where only one operand is a register.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct JTypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
+    /// The c operand.
+    pub op_c: u64,
 }
 
-impl From<MemoryAccessRecord> for JTypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl JTypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         debug_assert!(value.b.is_none());
         debug_assert!(value.c.is_none());
-        Self { a: value.a.expect("expected MemoryRecord for op_a in JTypeRecord") }
+        Self {
+            op_a: instruction.op_a,
+            a: value.a.expect("expected MemoryRecord for op_a in JTypeRecord"),
+            op_b: instruction.op_b,
+            op_c: instruction.op_c,
+        }
     }
 }
 
 /// Memory record where only the first two operands are known to be registers, but the third isn't.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ALUTypeRecord {
+    /// The a operand.
+    pub op_a: u8,
     /// The register `op_a` record.
     pub a: MemoryRecordEnum,
+    /// The b operand.
+    pub op_b: u64,
     /// The register `op_b` record.
     pub b: MemoryRecordEnum,
+    /// The c operand.
+    pub op_c: u64,
     /// The register `op_c` record.
     pub c: Option<MemoryRecordEnum>,
 }
 
-impl From<MemoryAccessRecord> for ALUTypeRecord {
-    fn from(value: MemoryAccessRecord) -> Self {
+impl ALUTypeRecord {
+    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
         Self {
+            op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in ALUTypeRecord"),
+            op_b: instruction.op_b,
             b: value.b.expect("expected MemoryRecord for op_b in ALUTypeRecord"),
+            op_c: instruction.op_c,
             c: value.c,
         }
     }
@@ -438,7 +483,7 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("branch_events".to_string(), self.branch_events.len());
         stats.insert("jal_events".to_string(), self.jal_events.len());
         stats.insert("jalr_events".to_string(), self.jalr_events.len());
-        stats.insert("auipc_events".to_string(), self.auipc_events.len());
+        stats.insert("utype_events".to_string(), self.utype_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
             stats.insert(format!("syscall {syscall_code:?}"), events.len());
@@ -490,10 +535,10 @@ impl MachineRecord for ExecutionRecord {
         self.branch_events.append(&mut other.branch_events);
         self.jal_events.append(&mut other.jal_events);
         self.jalr_events.append(&mut other.jalr_events);
-        self.auipc_events.append(&mut other.auipc_events);
+        self.utype_events.append(&mut other.utype_events);
         self.syscall_events.append(&mut other.syscall_events);
         self.bump_memory_events.append(&mut other.bump_memory_events);
-        self.bump_clk_high_events.append(&mut other.bump_clk_high_events);
+        self.bump_state_events.append(&mut other.bump_state_events);
         self.precompile_events.append(&mut other.precompile_events);
 
         if self.byte_lookups.is_empty() {
@@ -522,7 +567,7 @@ impl MachineRecord for ExecutionRecord {
             core::array::from_fn(|i| builder.public_values()[i]);
         let public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         > = public_values_slice.as_slice().borrow();
@@ -557,7 +602,7 @@ impl ExecutionRecord {
     fn eval_state<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -616,11 +661,29 @@ impl ExecutionRecord {
             AB::Expr::one(),
         );
 
+        // Range check all the initial, final program counter limbs.
+        for i in 0..3 {
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.pc_start[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.next_pc[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+        }
+
         // Send and receive the initial and last state.
         builder.send_state(
             initial_timestamp_high.clone(),
             initial_timestamp_low.clone(),
-            public_values.start_pc,
+            public_values.pc_start,
             AB::Expr::one(),
         );
         builder.receive_state(
@@ -640,9 +703,11 @@ impl ExecutionRecord {
         builder
             .when_not(increment_execution_shard.clone())
             .assert_eq(initial_timestamp_high.clone(), last_timestamp_high.clone());
-        builder
-            .when_not(increment_execution_shard.clone())
-            .assert_eq(public_values.start_pc, public_values.next_pc);
+        for i in 0..3 {
+            builder
+                .when_not(increment_execution_shard.clone())
+                .assert_eq(public_values.pc_start[i], public_values.next_pc[i]);
+        }
 
         // IsZeroOperation on the high bits of the timestamp.
         builder.assert_bool(public_values.is_timestamp_high_eq);
@@ -679,7 +744,7 @@ impl ExecutionRecord {
     fn eval_global_sum<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -714,7 +779,7 @@ impl ExecutionRecord {
     fn eval_global_memory_init<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,
@@ -748,7 +813,7 @@ impl ExecutionRecord {
     fn eval_global_memory_finalize<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
-            Word<AB::PublicVar>,
+            [AB::PublicVar; 3],
             [AB::PublicVar; 4],
             AB::PublicVar,
         >,

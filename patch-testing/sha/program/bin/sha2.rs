@@ -10,6 +10,9 @@ extern crate sha2_v0_10_6 as sha2;
 #[cfg(feature = "v0-10-8")]
 extern crate sha2_v0_10_8 as sha2;
 
+#[cfg(feature = "v0-10-9")]
+extern crate sha2_v0_10_9 as sha2;
+
 use sha2::{Digest, Sha256};
 
 /// Emits SHA_COMPRESS and SHA_EXTEND syscalls.

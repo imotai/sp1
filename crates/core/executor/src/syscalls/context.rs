@@ -21,13 +21,13 @@ pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
     /// The clock cycle.
     pub clk: u64,
     /// The next program counter.
-    pub next_pc: u32,
+    pub next_pc: u64,
     /// The exit code.
     pub exit_code: u32,
     /// The runtime.
     pub rt: &'a mut Executor<'b>,
     /// The local memory access events for the syscall.
-    pub local_memory_access: Option<HashMap<u32, MemoryLocalEvent>>,
+    pub local_memory_access: Option<HashMap<u64, MemoryLocalEvent>>,
     /// Phantom data.
     pub _phantom: PhantomData<E>,
 }
@@ -81,7 +81,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Read a word from memory.
     ///
     /// `addr` must be a pointer to main memory, not a register.
-    pub fn mr(&mut self, addr: u32) -> (MemoryReadRecord, u32) {
+    pub fn mr(&mut self, addr: u64) -> (MemoryReadRecord, u64) {
         let record =
             self.rt.mr::<E>(addr, self.lshard(), self.clk, self.local_memory_access.as_mut());
         (record, record.value)
@@ -90,11 +90,11 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Read a slice of words from memory.
     ///
     /// `addr` must be a pointer to main memory, not a register.
-    pub fn mr_slice(&mut self, addr: u32, len: usize) -> (Vec<MemoryReadRecord>, Vec<u32>) {
+    pub fn mr_slice(&mut self, addr: u64, len: usize) -> (Vec<MemoryReadRecord>, Vec<u64>) {
         let mut records = Vec::with_capacity(len);
         let mut values = Vec::with_capacity(len);
         for i in 0..len {
-            let (record, value) = self.mr(addr + i as u32 * 4);
+            let (record, value) = self.mr(addr + i as u64 * 8);
             records.push(record);
             values.push(value);
         }
@@ -104,22 +104,22 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Write a word to memory.
     ///
     /// `addr` must be a pointer to main memory, not a register.
-    pub fn mw(&mut self, addr: u32, value: u32) -> MemoryWriteRecord {
+    pub fn mw(&mut self, addr: u64, value: u64) -> MemoryWriteRecord {
         self.rt.mw::<E>(addr, value, self.lshard(), self.clk, self.local_memory_access.as_mut())
     }
 
     /// Write a slice of words to memory.
-    pub fn mw_slice(&mut self, addr: u32, values: &[u32]) -> Vec<MemoryWriteRecord> {
+    pub fn mw_slice(&mut self, addr: u64, values: &[u64]) -> Vec<MemoryWriteRecord> {
         let mut records = Vec::with_capacity(values.len());
         for i in 0..values.len() {
-            let record = self.mw(addr + i as u32 * 4, values[i]);
+            let record = self.mw(addr + i as u64 * 8, values[i]);
             records.push(record);
         }
         records
     }
 
     /// Read a register and record the memory access.
-    pub fn rr_traced(&mut self, register: Register) -> (MemoryReadRecord, u32) {
+    pub fn rr_traced(&mut self, register: Register) -> (MemoryReadRecord, u64) {
         let record = self.rt.rr_traced::<E>(
             register,
             self.lshard(),
@@ -130,7 +130,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     }
 
     /// Write a register and record the memory access.
-    pub fn rw_traced(&mut self, register: Register, value: u32) -> (MemoryWriteRecord, u32) {
+    pub fn rw_traced(&mut self, register: Register, value: u64) -> (MemoryWriteRecord, u64) {
         let record = self.rt.rw_traced::<E>(
             register,
             value,
@@ -168,34 +168,34 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Get the current value of a register, but doesn't use a memory record.
     /// This is generally unconstrained, so you must be careful using it.
     #[must_use]
-    pub fn register_unsafe(&mut self, register: Register) -> u32 {
+    pub fn register_unsafe(&mut self, register: Register) -> u64 {
         self.rt.register::<E>(register)
     }
 
     /// Get the current value of a byte, but doesn't use a memory record.
     #[must_use]
-    pub fn byte_unsafe(&mut self, addr: u32) -> u8 {
+    pub fn byte_unsafe(&mut self, addr: u64) -> u8 {
         self.rt.byte::<E>(addr)
     }
 
-    /// Get the current value of a word, but doesn't use a memory record.
+    /// Get the current value of a double word, but doesn't use a memory record.
     #[must_use]
-    pub fn word_unsafe(&mut self, addr: u32) -> u32 {
-        self.rt.word::<E>(addr)
+    pub fn double_word_unsafe(&mut self, addr: u64) -> u64 {
+        self.rt.double_word::<E>(addr)
     }
 
-    /// Get a slice of words, but doesn't use a memory record.
+    /// Get a slice of double words, but doesn't use a memory record.
     #[must_use]
-    pub fn slice_unsafe(&mut self, addr: u32, len: usize) -> Vec<u32> {
+    pub fn slice_unsafe(&mut self, addr: u64, len: usize) -> Vec<u64> {
         let mut values = Vec::new();
         for i in 0..len {
-            values.push(self.rt.word::<E>(addr + i as u32 * 4));
+            values.push(self.rt.double_word::<E>(addr + i as u64 * 8));
         }
         values
     }
 
     /// Set the next program counter.
-    pub fn set_next_pc(&mut self, next_pc: u32) {
+    pub fn set_next_pc(&mut self, next_pc: u64) {
         self.next_pc = next_pc;
     }
 

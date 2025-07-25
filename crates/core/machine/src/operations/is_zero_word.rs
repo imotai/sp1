@@ -30,23 +30,30 @@ pub struct IsZeroWordOperation<T> {
     /// `IsZeroOperation` to check if each limb in the input word is zero.
     pub is_zero_limb: [IsZeroOperation<T>; WORD_SIZE],
 
+    /// is first half of the word zero
+    pub is_zero_first_half: T,
+    /// is second half of the word zero
+    pub is_zero_second_half: T,
+
     /// A boolean flag indicating whether the word is zero. This equals `is_zero_limb[0] * ... *
     /// is_zero_limb[WORD_SIZE - 1]`.
     pub result: T,
 }
 
 impl<F: Field> IsZeroWordOperation<F> {
-    pub fn populate(&mut self, a_u32: u32) -> u32 {
-        self.populate_from_field_element(Word::from(a_u32))
+    pub fn populate(&mut self, a_u64: u64) -> u64 {
+        self.populate_from_field_element(Word::from(a_u64))
     }
 
-    pub fn populate_from_field_element(&mut self, a: Word<F>) -> u32 {
+    pub fn populate_from_field_element(&mut self, a: Word<F>) -> u64 {
         let mut is_zero = true;
         for i in 0..WORD_SIZE {
             is_zero &= self.is_zero_limb[i].populate_from_field_element(a[i]) == 1;
         }
         self.result = F::from_bool(is_zero);
-        is_zero as u32
+        self.is_zero_first_half = self.is_zero_limb[0].result * self.is_zero_limb[1].result;
+        self.is_zero_second_half = self.is_zero_limb[2].result * self.is_zero_limb[3].result;
+        is_zero as u64
     }
 
     /// Evaluate the `IsZeroWordOperation` on the given inputs.
@@ -70,9 +77,18 @@ impl<F: Field> IsZeroWordOperation<F> {
 
         builder.assert_bool(is_real.clone());
         builder.assert_bool(cols.result);
+        builder.assert_eq(
+            cols.is_zero_first_half,
+            cols.is_zero_limb[0].result * cols.is_zero_limb[1].result,
+        );
+        builder.assert_eq(
+            cols.is_zero_second_half,
+            cols.is_zero_limb[2].result * cols.is_zero_limb[3].result,
+        );
+
         builder
             .when(is_real.clone())
-            .assert_eq(cols.result, cols.is_zero_limb[0].result * cols.is_zero_limb[1].result);
+            .assert_eq(cols.result, cols.is_zero_first_half * cols.is_zero_second_half);
     }
 }
 
@@ -81,16 +97,6 @@ pub struct IsZeroWordOperationInput<AB: SP1AirBuilder> {
     pub a: Word<AB::Expr>,
     pub cols: IsZeroWordOperation<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> IsZeroWordOperationInput<AB> {
-    pub fn new(
-        a: Word<AB::Expr>,
-        cols: IsZeroWordOperation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> IsZeroWordOperationInput<AB> {
-        Self { a, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>>

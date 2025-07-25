@@ -3,16 +3,16 @@ use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::events::ByteRecord;
 use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_stark::air::SP1AirBuilder;
 
-use crate::air::WordAirBuilder;
+use crate::{air::WordAirBuilder, utils::u32_to_half_word};
 
 /// A set of columns needed to compute the add of four words.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Add4Operation<T> {
     /// The result of `a + b + c + d`.
-    pub value: Word<T>,
+    pub value: [T; WORD_SIZE / 2],
 }
 
 impl<F: Field> Add4Operation<F> {
@@ -27,16 +27,16 @@ impl<F: Field> Add4Operation<F> {
     ) -> u32 {
         let expected = a_u32.wrapping_add(b_u32).wrapping_add(c_u32).wrapping_add(d_u32);
         let expected_limbs = u32_to_u16_limbs(expected);
-        self.value = Word::from(expected);
+        self.value = u32_to_half_word(expected);
         let a = u32_to_u16_limbs(a_u32);
         let b = u32_to_u16_limbs(b_u32);
         let c = u32_to_u16_limbs(c_u32);
         let d = u32_to_u16_limbs(d_u32);
 
         let base = 65536u32;
-        let mut carry_limbs = [0u8; WORD_SIZE];
+        let mut carry_limbs = [0u8; WORD_SIZE / 2];
         let mut carry = 0;
-        for i in 0..WORD_SIZE {
+        for i in 0..WORD_SIZE / 2 {
             carry = ((a[i] as u32) + (b[i] as u32) + (c[i] as u32) + (d[i] as u32) + carry
                 - expected_limbs[i] as u32)
                 / base;
@@ -57,10 +57,10 @@ impl<F: Field> Add4Operation<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
-        a: Word<AB::Expr>,
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        d: Word<AB::Expr>,
+        a: [AB::Expr; WORD_SIZE / 2],
+        b: [AB::Expr; WORD_SIZE / 2],
+        c: [AB::Expr; WORD_SIZE / 2],
+        d: [AB::Expr; WORD_SIZE / 2],
         is_real: AB::Var,
         cols: Add4Operation<AB::Var>,
     ) {
@@ -77,14 +77,14 @@ impl<F: Field> Add4Operation<F> {
         //  - 0 <= value[i] < 2^16
         // Since the carries are bounded by 2^8, no BabyBear overflows are possible.
         // The maximum carry possible is less than 2^8, so the circuit is complete.
-        for i in 0..WORD_SIZE {
+        for i in 0..WORD_SIZE / 2 {
             carry = (a[i].clone() + b[i].clone() + c[i].clone() + d[i].clone() - cols.value[i]
                 + carry)
                 * base.inverse();
             carry_limbs[i] = carry.clone();
         }
         // Range check each limb.
-        builder.slice_range_check_u16(&cols.value.0, is_real);
+        builder.slice_range_check_u16(&cols.value, is_real);
         builder.slice_range_check_u8(&carry_limbs, is_real);
     }
 }

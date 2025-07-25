@@ -20,7 +20,7 @@ use crate::{
 #[repr(C)]
 pub struct ExecutionState {
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
 
     /// The shard clock keeps track of how many shards have been executed.
     pub current_shard: Shard,
@@ -28,6 +28,10 @@ pub struct ExecutionState {
     /// The memory which instructions operate over. Values contain the memory value and last shard
     /// + timestamp that each memory address was accessed.
     pub memory: Memory<MemoryEntry>,
+
+    /// The page protection flags for each page in the memory.  The default values should be
+    /// `PROT_READ` | `PROT_WRITE`.
+    pub page_prots: HashMap<u64, u8>,
 
     /// The global clock keeps track of how many instructions have been executed through all
     /// shards.
@@ -39,7 +43,7 @@ pub struct ExecutionState {
 
     /// Uninitialized memory addresses that have a specific value they should be initialized with.
     /// `SyscallHintRead` uses this to write hint data into uninitialized memory.
-    pub uninitialized_memory: Memory<u32>,
+    pub uninitialized_memory: Memory<u64>,
 
     /// A stream of input values (global to the entire program).
     pub input_stream: VecDeque<Vec<u8>>,
@@ -65,7 +69,7 @@ pub struct ExecutionState {
 impl ExecutionState {
     #[must_use]
     /// Create a new [`ExecutionState`].
-    pub fn new(pc_start: u32) -> Self {
+    pub fn new(pc_start: u64) -> Self {
         Self {
             global_clk: 0,
             // Start at shard 1 since shard 0 is reserved for memory initialization.
@@ -73,6 +77,7 @@ impl ExecutionState {
             clk: 0,
             pc: pc_start,
             memory: Memory::new_preallocated(),
+            page_prots: HashMap::new(),
             uninitialized_memory: Memory::new_preallocated(),
             input_stream: VecDeque::new(),
             public_values_stream: Vec::new(),
@@ -93,7 +98,7 @@ pub struct ForkState {
     /// The original `clk` value at the fork point.
     pub clk: u64,
     /// The original `pc` value at the fork point.
-    pub pc: u32,
+    pub pc: u64,
     /// All memory changes since the fork point.
     pub memory_diff: Memory<Option<MemoryEntry>>,
 }

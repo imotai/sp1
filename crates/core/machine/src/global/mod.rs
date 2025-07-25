@@ -16,7 +16,7 @@ use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
     septic_curve::{SepticCurve, SepticCurveComplete},
     septic_digest::SepticDigest,
-    septic_extension::{SepticBlock, SepticExtension},
+    septic_extension::SepticExtension,
     InteractionKind,
 };
 use std::borrow::BorrowMut;
@@ -39,7 +39,7 @@ const GLOBAL_COL_MAP: GlobalCols<usize> = make_col_map();
 
 pub const GLOBAL_INITIAL_DIGEST_POS: usize = GLOBAL_COL_MAP.accumulation.initial_digest[0].0[0];
 
-pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 380;
+pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 381;
 
 #[repr(C)]
 pub struct Ghost {
@@ -52,7 +52,7 @@ pub struct GlobalChip;
 #[derive(AlignedBorrow)]
 #[repr(C)]
 pub struct GlobalCols<T: Copy> {
-    pub message: [T; 7],
+    pub message: [T; 8],
     pub kind: T,
     pub shard_16bit_limb: T,
     pub shard_8bit_limb: T,
@@ -88,6 +88,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     let message0_16bit_limb = (event.message[0] & 0xffff) as u16;
                     let message0_8bit_limb = ((event.message[0] >> 16) & 0xff) as u8;
                     blu.add_u16_range_check(message0_16bit_limb);
+                    blu.add_u16_range_check(event.message[7] as u16);
                     blu.add_u8_range_check(0, message0_8bit_limb);
                 });
                 blu
@@ -134,12 +135,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     cols.message = event.message.map(F::from_canonical_u32);
                     cols.kind = F::from_canonical_u8(event.kind);
                     cols.index = F::from_canonical_u32(idx as u32);
-                    cols.interaction.populate(
-                        SepticBlock(event.message),
-                        event.is_receive,
-                        true,
-                        event.kind,
-                    );
+                    cols.interaction.populate(event.message, event.is_receive, true, event.kind);
                     cols.is_real = F::one();
                     if event.is_receive {
                         cols.is_receive = F::one();
@@ -225,7 +221,7 @@ where
         let local = main.row_slice(0);
         let local: &GlobalCols<AB::Var> = (*local).borrow();
 
-        // Receive the arguments, which consists of 7 message columns, `is_send`, `is_receive`, and
+        // Receive the arguments, which consists of 8 message columns, `is_send`, `is_receive`, and
         // `kind`. In MemoryGlobal, MemoryLocal, Syscall chips, `is_send`, `is_receive`,
         // `kind` are sent with correct constant values. For a global send interaction,
         // `is_send = 1` and `is_receive = 0` are used. For a global receive interaction,
@@ -244,6 +240,7 @@ where
                     local.message[4].into(),
                     local.message[5].into(),
                     local.message[6].into(),
+                    local.message[7].into(),
                     local.is_send.into(),
                     local.is_receive.into(),
                     local.kind.into(),

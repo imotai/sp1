@@ -1,6 +1,8 @@
+use std::num::Wrapping;
+
 use crate::{
     air::{SP1Operation, SP1OperationBuilder, WordAirBuilder},
-    operations::{U16toU8OperationSafe, U16toU8OperationSafeInput},
+    operations::{U16MSBOperation, U16toU8OperationSafe, U16toU8OperationSafeInput},
 };
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
@@ -11,15 +13,17 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{BYTE_SIZE, LONG_WORD_BYTE_SIZE, WORD_BYTE_SIZE, WORD_SIZE};
+use sp1_primitives::consts::{
+    u64_to_u16_limbs, BYTE_SIZE, LONG_WORD_BYTE_SIZE, WORD_BYTE_SIZE, WORD_SIZE,
+};
 
 use super::U16toU8Operation;
 
 /// The mask for a byte.
 const BYTE_MASK: u8 = 0xff;
 
-pub const fn get_msb(a: [u8; 4]) -> u8 {
-    ((a[3] >> (BYTE_SIZE - 1)) & 1) as u8
+pub const fn get_msb(a: [u8; 8]) -> u8 {
+    ((a[7] >> (BYTE_SIZE - 1)) & 1) as u8
 }
 
 /// A set of columns needed for the MUL operations.
@@ -44,6 +48,9 @@ pub struct MulOperation<T> {
     /// The most significant bit of `c`.
     pub c_msb: T,
 
+    /// The most significant bit of the product.
+    pub product_msb: U16MSBOperation<T>,
+
     /// The sign extension of `b`.
     pub b_sign_extend: T,
 
@@ -56,19 +63,27 @@ impl<F: Field> MulOperation<F> {
     pub fn populate(
         &mut self,
         record: &mut impl ByteRecord,
-        b_u32: u32,
-        c_u32: u32,
+        b_u64: u64,
+        c_u64: u64,
         is_mulh: bool,
         is_mulhsu: bool,
+        is_mulw: bool,
     ) {
-        let b_word = b_u32.to_le_bytes();
-        let c_word = c_u32.to_le_bytes();
+        let b_word = b_u64.to_le_bytes();
+        let c_word = c_u64.to_le_bytes();
+
+        let mulw_value = (Wrapping(b_u64 as i32) * Wrapping(c_u64 as i32)).0 as i64 as u64;
+        let limbs = u64_to_u16_limbs(mulw_value);
+
+        if is_mulw {
+            self.product_msb.populate_msb(record, limbs[1]);
+        }
 
         let mut b = b_word.to_vec();
         let mut c = c_word.to_vec();
 
-        self.b_lower_byte.populate_u16_to_u8_safe(record, b_u32);
-        self.c_lower_byte.populate_u16_to_u8_safe(record, c_u32);
+        self.b_lower_byte.populate_u16_to_u8_safe(record, b_u64);
+        self.c_lower_byte.populate_u16_to_u8_safe(record, c_u64);
 
         // Handle b and c's signs.
         {
@@ -152,6 +167,7 @@ impl<F: Field> MulOperation<F> {
         is_real: AB::Expr,
         is_mul: AB::Expr,
         is_mulh: AB::Expr,
+        is_mulw: AB::Expr,
         is_mulhu: AB::Expr,
         is_mulhsu: AB::Expr,
     ) {
@@ -160,34 +176,42 @@ impl<F: Field> MulOperation<F> {
         let one: AB::Expr = AB::F::one().into();
         let byte_mask = AB::F::from_canonical_u8(BYTE_MASK);
 
-        // Uses the safe API to convert the words into four bytes.
+        // Uses the safe API to convert the words into eight bytes.
         let b_input = U16toU8OperationSafeInput::new(b_word.0, cols.b_lower_byte, is_real.clone());
         let b = U16toU8OperationSafe::eval(builder, b_input);
         let c_input = U16toU8OperationSafeInput::new(c_word.0, cols.c_lower_byte, is_real.clone());
         let c = U16toU8OperationSafe::eval(builder, c_input);
 
         // Calculate the MSBs.
+        let msb_opcode = AB::F::from_canonical_u32(ByteOpcode::MSB as u32);
         let (b_msb, c_msb) = {
             let msb_pairs = [
                 (cols.b_msb, b[WORD_BYTE_SIZE - 1].clone()),
                 (cols.c_msb, c[WORD_BYTE_SIZE - 1].clone()),
             ];
-            let opcode = AB::F::from_canonical_u32(ByteOpcode::MSB as u32);
+
             for msb_pair in msb_pairs.iter() {
                 let msb = msb_pair.0;
                 let byte = msb_pair.1.clone();
-                builder.send_byte(opcode, msb, byte, zero.clone(), is_real.clone());
+                builder.send_byte(msb_opcode, msb, byte, zero.clone(), is_real.clone());
             }
             (cols.b_msb, cols.c_msb)
         };
 
+        U16MSBOperation::<AB::F>::eval_msb(
+            builder,
+            a_word.0[1].clone(),
+            cols.product_msb,
+            is_mulw.clone(),
+        );
+
         // Calculate whether to extend b and c's sign.
         let (b_sign_extend, c_sign_extend) = {
-            let is_b_i32 = is_mulh.clone() + is_mulhsu.clone();
-            let is_c_i32 = is_mulh.clone();
+            let is_b_i64 = is_mulh.clone() + is_mulhsu.clone();
+            let is_c_i64 = is_mulh.clone();
 
-            builder.assert_eq(cols.b_sign_extend, is_b_i32 * b_msb);
-            builder.assert_eq(cols.c_sign_extend, is_c_i32 * c_msb);
+            builder.assert_eq(cols.b_sign_extend, is_b_i64 * b_msb);
+            builder.assert_eq(cols.c_sign_extend, is_c_i64 * c_msb);
             (cols.b_sign_extend, cols.c_sign_extend)
         };
 
@@ -221,9 +245,11 @@ impl<F: Field> MulOperation<F> {
         let product = {
             for i in 0..LONG_WORD_BYTE_SIZE {
                 if i == 0 {
-                    builder.assert_eq(cols.product[i], m[i].clone() - cols.carry[i] * base);
+                    builder
+                        .when(is_real.clone())
+                        .assert_eq(cols.product[i], m[i].clone() - cols.carry[i] * base);
                 } else {
-                    builder.assert_eq(
+                    builder.when(is_real.clone()).assert_eq(
                         cols.product[i],
                         m[i].clone() + cols.carry[i - 1] - cols.carry[i] * base,
                     );
@@ -236,7 +262,19 @@ impl<F: Field> MulOperation<F> {
         {
             let is_lower = is_mul.clone();
             let is_upper = is_mulh.clone() + is_mulhu.clone() + is_mulhsu.clone();
+            let is_word = is_mulw.clone();
+            let u16_max = AB::F::from_canonical_u32((1 << 16) - 1);
             for i in 0..WORD_SIZE {
+                if i < WORD_SIZE / 2 {
+                    builder.when(is_word.clone()).assert_eq(
+                        product[2 * i] + product[2 * i + 1] * AB::F::from_canonical_u16(1 << 8),
+                        a_word[i].clone(),
+                    );
+                } else {
+                    builder
+                        .when(is_word.clone())
+                        .assert_eq(cols.product_msb.msb * u16_max, a_word[i].clone());
+                }
                 builder.when(is_lower.clone()).assert_eq(
                     product[2 * i] + product[2 * i + 1] * AB::F::from_canonical_u16(1 << 8),
                     a_word[i].clone(),
@@ -260,7 +298,12 @@ impl<F: Field> MulOperation<F> {
                 is_mulh.clone(),
                 is_mulhu.clone(),
                 is_mulhsu.clone(),
-                is_mul.clone() + is_mulh.clone() + is_mulhu.clone() + is_mulhsu.clone(),
+                is_mulw.clone(),
+                is_mul.clone()
+                    + is_mulh.clone()
+                    + is_mulhu.clone()
+                    + is_mulhsu.clone()
+                    + is_mulw.clone(),
                 is_real.clone(),
             ];
             for boolean in booleans.iter() {

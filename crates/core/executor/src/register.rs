@@ -1,5 +1,8 @@
 //! Registers for the SP1 zkVM.
 
+/// The number of registers.
+pub const NUM_REGISTERS: usize = 32;
+
 /// A register stores a 32-bit value used by operations.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Register {

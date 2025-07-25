@@ -45,9 +45,20 @@ pub fn limbs_to_words<AB: SP1AirBuilder>(limbs: Vec<AB::Var>) -> Vec<Word<AB::Ex
     let base = AB::Expr::from_canonical_u32(1 << 8);
     let result_words: Vec<Word<AB::Expr>> = limbs
         .chunks(WORD_BYTE_SIZE)
-        .map(|l| Word([l[0] + l[1] * base.clone(), l[2] + l[3] * base.clone()]))
+        .map(|l| {
+            Word([
+                l[0] + l[1] * base.clone(),
+                l[2] + l[3] * base.clone(),
+                l[4] + l[5] * base.clone(),
+                l[6] + l[7] * base.clone(),
+            ])
+        })
         .collect();
     result_words
+}
+
+pub fn u32_to_half_word<F: Field>(value: u32) -> [F; 2] {
+    [F::from_canonical_u16((value & 0xFFFF) as u16), F::from_canonical_u16((value >> 16) as u16)]
 }
 
 /// Pad to a power of two, with an option to specify the power.

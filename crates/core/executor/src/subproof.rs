@@ -18,8 +18,8 @@ pub trait SubproofVerifier: Sync + Send {
         &self,
         proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
-        vk_hash: [u32; 8],
-        committed_value_digest: [u32; 8],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>>;
 }
 
@@ -31,8 +31,8 @@ impl SubproofVerifier for NoOpSubproofVerifier {
         &self,
         _proof: &SP1RecursionProof<BabyBearPoseidon2>,
         _vk: &MachineVerifyingKey<BabyBearPoseidon2>,
-        _vk_hash: [u32; 8],
-        _committed_value_digest: [u32; 8],
+        _vk_hash: [u64; 4],
+        _committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         Ok(())
     }
@@ -48,8 +48,8 @@ where
         &self,
         proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
-        vk_hash: [u32; 8],
-        committed_value_digest: [u32; 8],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         (*self).verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
@@ -63,8 +63,8 @@ where
         &self,
         proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
-        vk_hash: [u32; 8],
-        committed_value_digest: [u32; 8],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
@@ -78,8 +78,8 @@ where
         &self,
         proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
-        vk_hash: [u32; 8],
-        committed_value_digest: [u32; 8],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }

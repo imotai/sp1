@@ -6,7 +6,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 
 use crate::air::{SP1Operation, SP1OperationBuilder};
 
@@ -60,20 +60,19 @@ impl<F: Field> LtOperationSigned<F> {
     pub fn populate_signed(
         &mut self,
         record: &mut impl ByteRecord,
-        a_u32: u32,
-        b_u32: u32,
-        c_u32: u32,
+        a_u64: u64,
+        b_u64: u64,
+        c_u64: u64,
         is_signed: bool,
     ) {
-        let b_comp = u32_to_u16_limbs(b_u32);
-        let c_comp = u32_to_u16_limbs(c_u32);
+        let b_comp = u64_to_u16_limbs(b_u64);
+        let c_comp = u64_to_u16_limbs(c_u64);
         if is_signed {
-            self.b_msb.populate_msb(record, b_comp[1]);
-            self.c_msb.populate_msb(record, c_comp[1]);
-            // (a as i32) < (b as i32) if and only if (a ^ (1 << 31)) < (b ^ (1 << 31))
-            self.result.populate_unsigned(record, a_u32, b_u32 ^ (1 << 31), c_u32 ^ (1 << 31));
+            self.b_msb.populate_msb(record, b_comp[3]);
+            self.c_msb.populate_msb(record, c_comp[3]);
+            self.result.populate_unsigned(record, a_u64, b_u64 ^ (1 << 63), c_u64 ^ (1 << 63));
         } else {
-            self.result.populate_unsigned(record, a_u32, b_u32, c_u32);
+            self.result.populate_unsigned(record, a_u64, b_u64, c_u64);
         }
     }
 
@@ -128,7 +127,7 @@ impl<F: Field> LtOperationSigned<F> {
 
         let base = AB::Expr::from_canonical_u32(1 << 16);
 
-        // XOR `1 << 31` to `b` and `c` if `is_signed` is true.
+        // XOR `1 << 63` to `b` and `c` if `is_signed` is true.
         // If `is_signed` is false, the `msb` values are constrained to be zero.
         // If `is_signed` is true, the `msb` values are constrained by `U16MSBOperation`.
         // In both cases, `b_compare` and `c_compare` are correct.
@@ -151,13 +150,13 @@ impl<F: Field> LtOperationUnsigned<F> {
     pub fn populate_unsigned(
         &mut self,
         record: &mut impl ByteRecord,
-        a_u32: u32,
-        b_u32: u32,
-        c_u32: u32,
+        a_u64: u64,
+        b_u64: u64,
+        c_u64: u64,
     ) {
-        let a_limbs = u32_to_u16_limbs(a_u32);
-        let b_limbs = u32_to_u16_limbs(b_u32);
-        let c_limbs = u32_to_u16_limbs(c_u32);
+        let a_limbs = u64_to_u16_limbs(a_u64);
+        let b_limbs = u64_to_u16_limbs(b_u64);
+        let c_limbs = u64_to_u16_limbs(c_u64);
 
         let a_u16 = a_limbs[0] as u16;
 
@@ -201,9 +200,12 @@ impl<F: Field> LtOperationUnsigned<F> {
 
         // Verify that the limb equality flags are set correctly, i.e. all are boolean and only
         // at most a single byte flag is set.
-        let sum_flags = cols.u16_flags[0] + cols.u16_flags[1];
+        let sum_flags =
+            cols.u16_flags[0] + cols.u16_flags[1] + cols.u16_flags[2] + cols.u16_flags[3];
         builder.assert_bool(cols.u16_flags[0]);
         builder.assert_bool(cols.u16_flags[1]);
+        builder.assert_bool(cols.u16_flags[2]);
+        builder.assert_bool(cols.u16_flags[3]);
         builder.assert_bool(sum_flags.clone());
 
         let is_comp_eq = AB::Expr::one() - sum_flags;
@@ -265,17 +267,6 @@ pub struct LtOperationUnsignedInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> LtOperationUnsignedInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: LtOperationUnsigned<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, is_real }
-    }
-}
-
 impl<AB> SP1Operation<AB> for LtOperationUnsigned<AB::F>
 where
     AB: SP1AirBuilder + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>,
@@ -295,18 +286,6 @@ pub struct LtOperationSignedInput<AB: SP1AirBuilder> {
     pub cols: LtOperationSigned<AB::Var>,
     pub is_signed: AB::Expr,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> LtOperationSignedInput<AB> {
-    pub fn new(
-        b: Word<AB::Expr>,
-        c: Word<AB::Expr>,
-        cols: LtOperationSigned<AB::Var>,
-        is_signed: AB::Expr,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { b, c, cols, is_signed, is_real }
-    }
 }
 
 impl<AB> SP1Operation<AB> for LtOperationSigned<AB::F>

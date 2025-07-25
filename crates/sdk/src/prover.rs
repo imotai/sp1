@@ -18,7 +18,7 @@ use sp1_prover::{
     local::LocalProver,
     CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
-use sp1_stark::{air::PublicValues, MachineVerifierConfigError, Word};
+use sp1_stark::{air::PublicValues, MachineVerifierConfigError};
 use thiserror::Error;
 
 /// The module that exposes the [`ExecuteRequest`] type.
@@ -146,7 +146,7 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 
     match &bundle.proof {
         SP1Proof::Core(proof) => {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 proof.last().unwrap().public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.
@@ -171,7 +171,7 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 .map_err(SP1VerificationError::Core)
         }
         SP1Proof::Compressed(proof) => {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 proof.proof.public_values.as_slice().borrow();
 
             // Get the committed value digest bytes.

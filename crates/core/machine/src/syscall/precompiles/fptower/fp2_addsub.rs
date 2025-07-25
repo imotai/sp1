@@ -1,7 +1,7 @@
 use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
-    operations::SyscallAddrOperation,
+    operations::{AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
 };
 use generic_array::GenericArray;
@@ -21,7 +21,10 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::{InteractionScope, MachineAir};
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
 use std::{
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
@@ -48,6 +51,8 @@ pub struct Fp2AddSubAssignCols<T, P: FpOpField> {
     pub is_add: T,
     pub x_ptr: SyscallAddrOperation<T>,
     pub y_ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
     pub(crate) c0: FieldOpCols<T, P>,
@@ -143,8 +148,8 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
 
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u32 * 2);
-            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u32 * 2);
+            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u64 * 2);
+            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u64 * 2);
 
             Self::populate_field_ops(
                 &mut new_byte_lookup_events,
@@ -160,10 +165,12 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.y_ptr, i as u64 * 8);
             }
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.x_addrs[i].populate(&mut new_byte_lookup_events, event.x_ptr, i as u64 * 8);
             }
             rows.push(row);
         }
@@ -246,7 +253,7 @@ where
         // Constrain the `is_add` flag to be boolean.
         builder.assert_bool(local.is_add);
 
-        let num_words_field_element = <P as NumLimbs>::Limbs::USIZE / 4;
+        let num_words_field_element = <P as NumLimbs>::Limbs::USIZE / 8;
 
         let p_x_limbs = builder
             .generate_limbs(&local.x_access[0..num_words_field_element], local.is_real.into());
@@ -316,10 +323,61 @@ where
             local.is_real.into(),
         );
 
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // x_addrs[i] = x_addrs[i - 1] + 8.
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // y_addrs[0] = y_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.y_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.y_addrs[i - 1].value[0].into(),
+                    local.y_addrs[i - 1].value[1].into(),
+                    local.y_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low,
-            y_ptr.clone(),
+            &local.y_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
             &local.y_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -328,7 +386,7 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),
-            x_ptr.clone(),
+            &local.x_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
             &local.x_access.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -352,8 +410,8 @@ where
             local.clk_high,
             local.clk_low,
             syscall_id_felt,
-            x_ptr,
-            y_ptr,
+            x_ptr.map(Into::into),
+            y_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

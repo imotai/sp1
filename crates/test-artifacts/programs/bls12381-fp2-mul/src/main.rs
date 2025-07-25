@@ -4,7 +4,7 @@ sp1_zkvm::entrypoint!(main);
 use num_bigint::BigUint;
 use rand::Rng;
 use sp1_zkvm::syscalls::syscall_bls12381_fp2_mulmod;
-use std::{mem::transmute, str::FromStr};
+use std::str::FromStr;
 
 const MODULUS: &str = "4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787";
 
@@ -44,17 +44,13 @@ fn fp2_mul(
     let lhs = [*lhs_c0, *lhs_c1].concat();
     let rhs = [*rhs_c0, *rhs_c1].concat();
 
-    let mut lhs_transmuted: [u32; 24] =
-        unsafe { transmute::<[u64; 12], [u32; 24]>(lhs.try_into().unwrap()) };
-    let rhs_transmuted: [u32; 24] =
-        unsafe { transmute::<[u64; 12], [u32; 24]>(rhs.try_into().unwrap()) };
+    let mut lhs_transmuted: [u64; 12] = lhs.try_into().unwrap();
+    let rhs_transmuted: [u64; 12] = rhs.try_into().unwrap();
 
     syscall_bls12381_fp2_mulmod(lhs_transmuted.as_mut_ptr(), rhs_transmuted.as_ptr());
 
-    let result_c0: [u64; 6] =
-        unsafe { transmute::<[u32; 12], [u64; 6]>(lhs_transmuted[0..12].try_into().unwrap()) };
-    let result_c1: [u64; 6] =
-        unsafe { transmute::<[u32; 12], [u64; 6]>(lhs_transmuted[12..24].try_into().unwrap()) };
+    let result_c0: [u64; 6] = lhs_transmuted[0..6].try_into().unwrap();
+    let result_c1: [u64; 6] = lhs_transmuted[6..12].try_into().unwrap();
 
     (result_c0, result_c1)
 }

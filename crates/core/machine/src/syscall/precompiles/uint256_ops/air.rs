@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use crate::{
     air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::field::field_op::FieldOpCols,
+    operations::{field::field_op::FieldOpCols, AddrAddOperation},
     utils::limbs_to_words,
 };
 use itertools::Itertools;
@@ -17,7 +17,7 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::InteractionScope;
+use sp1_stark::{air::InteractionScope, Word};
 use typenum::Unsigned;
 
 use crate::operations::SyscallAddrOperation;
@@ -43,21 +43,26 @@ pub struct Uint256OpsCols<T> {
 
     /// The pointer to the a value.
     pub a_ptr: SyscallAddrOperation<T>,
+    pub a_addrs: [AddrAddOperation<T>; 4],
 
     /// The pointer to the b value.
     pub b_ptr: SyscallAddrOperation<T>,
+    pub b_addrs: [AddrAddOperation<T>; 4],
 
     /// The pointer to the c value.
     pub c_ptr: SyscallAddrOperation<T>,
     pub c_ptr_memory: MemoryAccessCols<T>,
+    pub c_addrs: [AddrAddOperation<T>; 4],
 
     /// The pointer to the d value (result low).
     pub d_ptr: SyscallAddrOperation<T>,
     pub d_ptr_memory: MemoryAccessCols<T>,
+    pub d_addrs: [AddrAddOperation<T>; 4],
 
     /// The pointer to the e value (result high).
     pub e_ptr: SyscallAddrOperation<T>,
     pub e_ptr_memory: MemoryAccessCols<T>,
+    pub e_addrs: [AddrAddOperation<T>; 4],
 
     pub a_memory: [MemoryAccessColsU8<T>; WORDS_FIELD_ELEMENT],
     pub b_memory: [MemoryAccessColsU8<T>; WORDS_FIELD_ELEMENT],
@@ -119,8 +124,8 @@ where
             local.clk_high,
             local.clk_low,
             syscall_id,
-            a_ptr.clone(),
-            b_ptr.clone(),
+            a_ptr.map(Into::into),
+            b_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );
@@ -128,48 +133,180 @@ where
         builder.eval_memory_access_read(
             local.clk_high,
             local.clk_low.into(),
-            AB::Expr::from_canonical_u32(12),
+            &[AB::Expr::from_canonical_u32(12), AB::Expr::zero(), AB::Expr::zero()],
             local.c_ptr_memory,
             local.is_real,
         );
-        builder.assert_word_eq(local.c_ptr_memory.prev_value, local.c_ptr.addr_word);
+        for i in 0..3 {
+            builder.assert_eq(local.c_ptr_memory.prev_value.0[i], local.c_ptr.addr[i]);
+        }
+        builder.assert_zero(local.c_ptr_memory.prev_value.0[3]);
 
         builder.eval_memory_access_read(
             local.clk_high,
             local.clk_low.into(),
-            AB::Expr::from_canonical_u32(13),
+            &[AB::Expr::from_canonical_u32(13), AB::Expr::zero(), AB::Expr::zero()],
             local.d_ptr_memory,
             local.is_real,
         );
-        builder.assert_word_eq(local.d_ptr_memory.prev_value, local.d_ptr.addr_word);
+        for i in 0..3 {
+            builder.assert_eq(local.d_ptr_memory.prev_value.0[i], local.d_ptr.addr[i]);
+        }
+        builder.assert_zero(local.d_ptr_memory.prev_value.0[3]);
 
         builder.eval_memory_access_read(
             local.clk_high,
             local.clk_low.into(),
-            AB::Expr::from_canonical_u32(14),
+            &[AB::Expr::from_canonical_u32(14), AB::Expr::zero(), AB::Expr::zero()],
             local.e_ptr_memory,
             local.is_real,
         );
-        builder.assert_word_eq(local.e_ptr_memory.prev_value, local.e_ptr.addr_word);
+        for i in 0..3 {
+            builder.assert_eq(local.e_ptr_memory.prev_value.0[i], local.e_ptr.addr[i]);
+        }
+        builder.assert_zero(local.e_ptr_memory.prev_value.0[3]);
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([a_ptr[0].into(), a_ptr[1].into(), a_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.a_addrs[0],
+            local.is_real.into(),
+        );
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([b_ptr[0].into(), b_ptr[1].into(), b_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.b_addrs[0],
+            local.is_real.into(),
+        );
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([c_ptr[0].into(), c_ptr[1].into(), c_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.c_addrs[0],
+            local.is_real.into(),
+        );
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([d_ptr[0].into(), d_ptr[1].into(), d_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.d_addrs[0],
+            local.is_real.into(),
+        );
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([e_ptr[0].into(), e_ptr[1].into(), e_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.e_addrs[0],
+            local.is_real.into(),
+        );
+        for i in 1..4 {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.a_addrs[i - 1].value[0].into(),
+                    local.a_addrs[i - 1].value[1].into(),
+                    local.a_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([
+                    AB::Expr::from_canonical_u32(8),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                ]),
+                local.a_addrs[i],
+                local.is_real.into(),
+            );
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.b_addrs[i - 1].value[0].into(),
+                    local.b_addrs[i - 1].value[1].into(),
+                    local.b_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([
+                    AB::Expr::from_canonical_u32(8),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                ]),
+                local.b_addrs[i],
+                local.is_real.into(),
+            );
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.c_addrs[i - 1].value[0].into(),
+                    local.c_addrs[i - 1].value[1].into(),
+                    local.c_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([
+                    AB::Expr::from_canonical_u32(8),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                ]),
+                local.c_addrs[i],
+                local.is_real.into(),
+            );
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.d_addrs[i - 1].value[0].into(),
+                    local.d_addrs[i - 1].value[1].into(),
+                    local.d_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([
+                    AB::Expr::from_canonical_u32(8),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                ]),
+                local.d_addrs[i],
+                local.is_real.into(),
+            );
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.e_addrs[i - 1].value[0].into(),
+                    local.e_addrs[i - 1].value[1].into(),
+                    local.e_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([
+                    AB::Expr::from_canonical_u32(8),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                ]),
+                local.e_addrs[i],
+                local.is_real.into(),
+            );
+        }
 
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low.into(),
-            a_ptr.clone(),
+            &local.a_addrs.map(|addr| addr.value.map(Into::into)),
             &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low.into() + AB::Expr::one(),
-            b_ptr.clone(),
+            &local.b_addrs.map(|addr| addr.value.map(Into::into)),
             &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low.into() + AB::Expr::from_canonical_u8(2),
-            c_ptr.clone(),
+            &local.c_addrs.map(|addr| addr.value.map(Into::into)),
             &local.c_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -204,7 +341,7 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::from_canonical_u8(3),
-            d_ptr.clone(),
+            &local.d_addrs.map(|addr| addr.value.map(Into::into)),
             &local.d_memory,
             d_result,
             local.is_real,
@@ -214,7 +351,7 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::from_canonical_u8(4),
-            e_ptr.clone(),
+            &local.e_addrs.map(|addr| addr.value.map(Into::into)),
             &local.e_memory,
             e_result,
             local.is_real,

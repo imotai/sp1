@@ -6,7 +6,7 @@ use slop_matrix::dense::RowMajorMatrix;
 use slop_uni_stark::{get_max_constraint_degree, get_symbolic_constraints, SymbolicAirBuilder};
 
 use crate::{
-    air::{MachineAir, MultiTableAirBuilder, SP1AirBuilder},
+    air::{MachineAir, SP1AirBuilder},
     log2_ceil_usize,
     lookup::{Interaction, InteractionBuilder, InteractionKind},
 };
@@ -116,6 +116,7 @@ where
             max_constraint_degree = std::cmp::max(max_constraint_degree, MAX_CONSTRAINT_DEGREE);
         }
         assert!(max_constraint_degree > 0);
+        let max_constraint_degree = 3;
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
         // Count the number of constraints.
@@ -250,11 +251,11 @@ where
 }
 
 // Implement AIR directly on Chip, evaluating both execution and permutation constraints.
-impl<'a, F, A, AB> Air<AB> for Chip<F, A>
+impl<F, A, AB> Air<AB> for Chip<F, A>
 where
     F: Field,
     A: Air<AB> + MachineAir<F>,
-    AB: SP1AirBuilder<F = F> + MultiTableAirBuilder<'a> + PairBuilder + 'a,
+    AB: SP1AirBuilder<F = F> + PairBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         // Evaluate the execution trace constraints.

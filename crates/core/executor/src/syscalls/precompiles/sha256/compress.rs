@@ -19,12 +19,14 @@ pub const SHA_COMPRESS_K: [u32; 64] = [
 pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let w_ptr = arg1;
     let h_ptr = arg2;
     assert_ne!(w_ptr, h_ptr);
+    assert!(arg1.is_multiple_of(8));
+    assert!(arg2.is_multiple_of(8));
 
     let start_clk = rt.clk;
     let mut h_read_records = Vec::new();
@@ -34,9 +36,9 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     // Execute the "initialize" phase where we read in the h values.
     let mut hx = [0u32; 8];
     for i in 0..8 {
-        let (record, value) = rt.mr(h_ptr + i as u32 * 4);
+        let (record, value) = rt.mr(h_ptr + i as u64 * 8);
         h_read_records.push(record);
-        hx[i] = value;
+        hx[i] = value as u32;
     }
 
     let mut original_w = Vec::new();
@@ -52,14 +54,14 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     for i in 0..64 {
         let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
         let ch = (e & f) ^ (!e & g);
-        let (record, w_i) = rt.mr(w_ptr + i * 4);
-        original_w.push(w_i);
+        let (record, w_i) = rt.mr(w_ptr + i as u64 * 8);
+        original_w.push(w_i as u32);
         w_i_read_records.push(record);
         let temp1 = h
             .wrapping_add(s1)
             .wrapping_add(ch)
             .wrapping_add(SHA_COMPRESS_K[i as usize])
-            .wrapping_add(w_i);
+            .wrapping_add(w_i as u32);
         let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
         let maj = (a & b) ^ (a & c) ^ (b & c);
         let temp2 = s0.wrapping_add(maj);
@@ -80,7 +82,7 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     // Execute the "finalize" phase.
     let v = [a, b, c, d, e, f, g, h];
     for i in 0..8 {
-        let record = rt.mw(h_ptr + i as u32 * 4, hx[i].wrapping_add(v[i]));
+        let record = rt.mw(h_ptr + i as u64 * 8, hx[i].wrapping_add(v[i]) as u64);
         h_write_records.push(record);
     }
 

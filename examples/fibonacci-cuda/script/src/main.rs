@@ -19,6 +19,17 @@ async fn main() {
 
     // Create a `ProverClient` method.
     let client = CudaProver::new().await.unwrap();
+    let client2 = CudaProver::new().await.unwrap();
+
+    let handle = tokio::spawn({
+        let stdin = stdin.clone();
+        async move {
+            let pk = client2.setup(ELF).await.unwrap();
+            let proof = client2.core(&pk, stdin.clone()).await.unwrap();
+            let _compressed = client2.compress(&pk.verifying_key(), proof, vec![]).await.unwrap();
+            // let shrink = client2.shrink(compressed).await.unwrap();
+        }
+    });
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     // let (_, report) = client.execute(ELF, stdin.clone()).await.unwrap();
@@ -29,7 +40,11 @@ async fn main() {
     let proof = client.core(&pk, stdin.clone()).await.unwrap();
     let _compressed = client.compress(&pk.verifying_key(), proof, vec![]).await.unwrap();
 
-    // println!("generated proof");
+    handle.await.unwrap();
+
+
+
+    println!("generated proof");
 
     // // Read and verify the output.
     // //

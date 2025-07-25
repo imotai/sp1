@@ -3,7 +3,7 @@ use std::sync::Arc;
 use slop_baby_bear::BabyBear;
 use slop_futures::handle::TaskHandle;
 use slop_jagged::JaggedConfig;
-use sp1_core_executor::{ExecutionRecord, Program};
+use sp1_core_executor::{ExecutionRecord, Program, HEIGHT_THRESHOLD};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_stark::{
     prover::{
@@ -12,6 +12,7 @@ use sp1_stark::{
     },
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
+use static_assertions::const_assert;
 
 use crate::{
     error::RecursionProgramError, shapes::SP1NormalizeInputShape, CoreSC, SP1VerifyingKey,
@@ -24,6 +25,8 @@ pub struct SP1CoreProver<C: CoreProverComponents> {
 pub const CORE_LOG_BLOWUP: usize = 1;
 pub const CORE_LOG_STACKING_HEIGHT: u32 = 21;
 pub const CORE_MAX_LOG_ROW_COUNT: usize = 22;
+
+const_assert!(HEIGHT_THRESHOLD <= (1 << CORE_MAX_LOG_ROW_COUNT));
 
 pub trait CoreProverComponents:
     MachineProverComponents<

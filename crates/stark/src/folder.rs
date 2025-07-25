@@ -1,17 +1,16 @@
+use crate::InteractionKind;
 use std::{
     marker::PhantomData,
     ops::{Add, Div, Mul, MulAssign, Sub},
 };
 
-use crate::air::{
-    AirInteraction, EmptyMessageBuilder, InteractionScope, MessageBuilder, MultiTableAirBuilder,
-};
+use crate::air::{AirInteraction, EmptyMessageBuilder, InteractionScope, MessageBuilder};
 use slop_air::{
     AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder, PermutationAirBuilder,
 };
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
 use slop_jagged::JaggedConfig;
-use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_matrix::dense::RowMajorMatrixView;
 
 /// A folder for verifier constraints.
 pub type VerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
@@ -26,21 +25,9 @@ pub type VerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
 /// A folder for verifier constraints.
 pub struct GenericVerifierConstraintFolder<'a, F, EF, PubVar, Var, Expr> {
     /// The preprocessed trace.
-    pub preprocessed: VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>,
+    pub preprocessed: RowMajorMatrixView<'a, Var>,
     /// The main trace.
-    pub main: VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>,
-    /// The permutation trace.
-    pub perm: VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>,
-    /// The challenges for the permutation.
-    pub perm_challenges: &'a [Var],
-    /// The local cumulative sum of the permutation.
-    pub local_cumulative_sum: &'a Var,
-    /// The selector for the first row.
-    pub is_first_row: Var,
-    /// The selector for the last row.
-    pub is_last_row: Var,
-    /// The selector for the transition.
-    pub is_transition: Var,
+    pub main: RowMajorMatrixView<'a, Var>,
     /// The constraint folding challenge.
     pub alpha: Var,
     /// The accumulator for the constraint folding.
@@ -83,26 +70,22 @@ where
     type F = F;
     type Expr = Expr;
     type Var = Var;
-    type M = VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>;
+    type M = RowMajorMatrixView<'a, Var>;
 
     fn main(&self) -> Self::M {
         self.main
     }
 
     fn is_first_row(&self) -> Self::Expr {
-        self.is_first_row.into()
+        unimplemented!()
     }
 
     fn is_last_row(&self) -> Self::Expr {
-        self.is_last_row.into()
+        unimplemented!()
     }
 
-    fn is_transition_window(&self, size: usize) -> Self::Expr {
-        if size == 2 {
-            self.is_transition.into()
-        } else {
-            panic!("uni-stark only supports a window size of 2")
-        }
+    fn is_transition_window(&self, _: usize) -> Self::Expr {
+        unimplemented!()
     }
 
     fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
@@ -182,51 +165,15 @@ where
         + Sync,
     PubVar: Into<Expr> + Copy,
 {
-    type MP = VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>;
+    type MP = RowMajorMatrixView<'a, Var>;
     type RandomVar = Var;
 
     fn permutation(&self) -> Self::MP {
-        self.perm
+        unimplemented!();
     }
 
     fn permutation_randomness(&self) -> &[Self::Var] {
-        self.perm_challenges
-    }
-}
-
-impl<'a, F, EF, PubVar, Var, Expr> MultiTableAirBuilder<'a>
-    for GenericVerifierConstraintFolder<'a, F, EF, PubVar, Var, Expr>
-where
-    F: Field,
-    EF: ExtensionField<F>,
-    Expr: AbstractField<F = EF>
-        + From<F>
-        + Add<Var, Output = Expr>
-        + Add<F, Output = Expr>
-        + Sub<Var, Output = Expr>
-        + Sub<F, Output = Expr>
-        + Mul<Var, Output = Expr>
-        + Mul<F, Output = Expr>
-        + MulAssign<EF>,
-    Var: Into<Expr>
-        + Copy
-        + Add<F, Output = Expr>
-        + Add<Var, Output = Expr>
-        + Add<Expr, Output = Expr>
-        + Sub<F, Output = Expr>
-        + Sub<Var, Output = Expr>
-        + Sub<Expr, Output = Expr>
-        + Mul<F, Output = Expr>
-        + Mul<Var, Output = Expr>
-        + Mul<Expr, Output = Expr>
-        + Send
-        + Sync,
-    PubVar: Into<Expr> + Copy,
-{
-    type LocalSum = Var;
-
-    fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
-        self.local_cumulative_sum
+        unimplemented!()
     }
 }
 
@@ -409,7 +356,7 @@ impl<
         EF: Field + Mul<K, Output = EF> + ExtensionField<F> + AbstractExtensionField<K>,
     > PermutationAirBuilder for ConstraintSumcheckFolder<'a, F, K, EF>
 {
-    type MP = VerticalPair<RowMajorMatrixView<'a, EF>, RowMajorMatrixView<'a, EF>>;
+    type MP = RowMajorMatrixView<'a, EF>;
 
     type RandomVar = EF;
 
@@ -418,20 +365,6 @@ impl<
     }
 
     fn permutation_randomness(&self) -> &[Self::RandomVar] {
-        unimplemented!()
-    }
-}
-
-impl<
-        'a,
-        F: Field,
-        K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
-        EF: Field + Mul<K, Output = EF> + ExtensionField<F> + AbstractExtensionField<K>,
-    > MultiTableAirBuilder<'a> for ConstraintSumcheckFolder<'a, F, K, EF>
-{
-    type LocalSum = EF;
-
-    fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
         unimplemented!()
     }
 }
@@ -472,22 +405,8 @@ pub type VerifierPublicValuesConstraintFolder<'a, C> = GenericVerifierPublicValu
 
 /// A folder for verifier constraints.
 pub struct GenericVerifierPublicValuesConstraintFolder<'a, F, EF, PubVar, Var, Expr> {
-    /// The preprocessed trace.
-    pub preprocessed: VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>,
-    /// The main trace.
-    pub main: VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>,
-    /// The permutation trace.
-    pub perm: VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>,
     /// The challenges for the permutation.
     pub perm_challenges: &'a [Var],
-    /// The local cumulative sum of the permutation.
-    pub local_cumulative_sum: &'a Var,
-    /// The selector for the first row.
-    pub is_first_row: Var,
-    /// The selector for the last row.
-    pub is_last_row: Var,
-    /// The selector for the transition.
-    pub is_transition: Var,
     /// The constraint folding challenge.
     pub alpha: Var,
     /// The accumulator for the constraint folding.
@@ -532,26 +451,22 @@ where
     type F = F;
     type Expr = Expr;
     type Var = Var;
-    type M = VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>;
+    type M = RowMajorMatrixView<'a, Var>;
 
     fn main(&self) -> Self::M {
-        self.main
+        unimplemented!()
     }
 
     fn is_first_row(&self) -> Self::Expr {
-        self.is_first_row.into()
+        unimplemented!()
     }
 
     fn is_last_row(&self) -> Self::Expr {
-        self.is_last_row.into()
+        unimplemented!()
     }
 
-    fn is_transition_window(&self, size: usize) -> Self::Expr {
-        if size == 2 {
-            self.is_transition.into()
-        } else {
-            panic!("uni-stark only supports a window size of 2")
-        }
+    fn is_transition_window(&self, _: usize) -> Self::Expr {
+        unimplemented!()
     }
 
     fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
@@ -631,51 +546,15 @@ where
         + Sync,
     PubVar: Into<Expr> + Copy,
 {
-    type MP = VerticalPair<RowMajorMatrixView<'a, Var>, RowMajorMatrixView<'a, Var>>;
+    type MP = RowMajorMatrixView<'a, Var>;
     type RandomVar = Var;
 
     fn permutation(&self) -> Self::MP {
-        self.perm
+        unimplemented!()
     }
 
     fn permutation_randomness(&self) -> &[Self::Var] {
         self.perm_challenges
-    }
-}
-
-impl<'a, F, EF, PubVar, Var, Expr> MultiTableAirBuilder<'a>
-    for GenericVerifierPublicValuesConstraintFolder<'a, F, EF, PubVar, Var, Expr>
-where
-    F: Field,
-    EF: ExtensionField<F>,
-    Expr: AbstractField<F = EF>
-        + From<F>
-        + Add<Var, Output = Expr>
-        + Add<F, Output = Expr>
-        + Sub<Var, Output = Expr>
-        + Sub<F, Output = Expr>
-        + Mul<Var, Output = Expr>
-        + Mul<F, Output = Expr>
-        + MulAssign<EF>,
-    Var: Into<Expr>
-        + Copy
-        + Add<F, Output = Expr>
-        + Add<Var, Output = Expr>
-        + Add<Expr, Output = Expr>
-        + Sub<F, Output = Expr>
-        + Sub<Var, Output = Expr>
-        + Sub<Expr, Output = Expr>
-        + Mul<F, Output = Expr>
-        + Mul<Var, Output = Expr>
-        + Mul<Expr, Output = Expr>
-        + Send
-        + Sync,
-    PubVar: Into<Expr> + Copy,
-{
-    type LocalSum = Var;
-
-    fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
-        self.local_cumulative_sum
     }
 }
 
@@ -709,7 +588,7 @@ where
     PubVar: Into<Expr> + Copy,
 {
     fn preprocessed(&self) -> Self::M {
-        self.preprocessed
+        unimplemented!()
     }
 }
 
@@ -772,6 +651,274 @@ where
 
 impl<F, EF, PubVar, Var, Expr> AirBuilderWithPublicValues
     for GenericVerifierPublicValuesConstraintFolder<'_, F, EF, PubVar, Var, Expr>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    Expr: AbstractField<F = EF>
+        + From<F>
+        + Add<Var, Output = Expr>
+        + Add<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<F, Output = Expr>
+        + MulAssign<EF>,
+    Var: Into<Expr>
+        + Copy
+        + Add<F, Output = Expr>
+        + Add<Var, Output = Expr>
+        + Add<Expr, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<Expr, Output = Expr>
+        + Mul<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<Expr, Output = Expr>
+        + Send
+        + Sync,
+    PubVar: Into<Expr> + Copy,
+{
+    type PublicVar = PubVar;
+
+    fn public_values(&self) -> &[Self::PublicVar] {
+        self.public_values
+    }
+}
+
+/// A folder for verifier constraints on public values.
+pub type DebugPublicValuesConstraintFolder<'a, F> =
+    GenericDebugPublicValuesConstraintFolder<'a, F, F, F, F, F>;
+
+/// A folder for verifier constraints.
+pub struct GenericDebugPublicValuesConstraintFolder<'a, F, EF, PubVar, Var, Expr> {
+    /// The challenges for the permutation.
+    pub perm_challenges: &'a [Var],
+    /// The constraint folding challenge.
+    pub alpha: Var,
+    /// The accumulator for the constraint folding.
+    pub accumulator: Expr,
+    /// The public values.
+    pub public_values: &'a [PubVar],
+    /// The interactions.
+    pub interactions: Vec<(InteractionKind, InteractionScope, Vec<Expr>, Expr)>,
+    /// The marker type.
+    pub _marker: PhantomData<(F, EF, Expr)>,
+}
+
+impl<'a, F, EF, PubVar, Var, Expr> AirBuilder
+    for GenericDebugPublicValuesConstraintFolder<'a, F, EF, PubVar, Var, Expr>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    Expr: AbstractField<F = EF>
+        + From<F>
+        + Add<Var, Output = Expr>
+        + Add<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<F, Output = Expr>
+        + MulAssign<EF>,
+    Var: Into<Expr>
+        + Copy
+        + Add<F, Output = Expr>
+        + Add<Var, Output = Expr>
+        + Add<Expr, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<Expr, Output = Expr>
+        + Mul<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<Expr, Output = Expr>
+        + Send
+        + Sync,
+    PubVar: Into<Expr> + Copy,
+{
+    type F = F;
+    type Expr = Expr;
+    type Var = Var;
+    type M = RowMajorMatrixView<'a, Var>;
+
+    fn main(&self) -> Self::M {
+        unimplemented!()
+    }
+
+    fn is_first_row(&self) -> Self::Expr {
+        unimplemented!()
+    }
+
+    fn is_last_row(&self) -> Self::Expr {
+        unimplemented!()
+    }
+
+    fn is_transition_window(&self, _: usize) -> Self::Expr {
+        unimplemented!()
+    }
+
+    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+        let x: Expr = x.into();
+        self.accumulator *= self.alpha.into();
+        self.accumulator += x;
+    }
+}
+
+impl<F, EF, PubVar, Var, Expr> ExtensionBuilder
+    for GenericDebugPublicValuesConstraintFolder<'_, F, EF, PubVar, Var, Expr>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    Expr: AbstractField<F = EF>
+        + From<F>
+        + Add<Var, Output = Expr>
+        + Add<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<F, Output = Expr>
+        + MulAssign<EF>,
+    Var: Into<Expr>
+        + Copy
+        + Add<F, Output = Expr>
+        + Add<Var, Output = Expr>
+        + Add<Expr, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<Expr, Output = Expr>
+        + Mul<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<Expr, Output = Expr>
+        + Send
+        + Sync,
+    PubVar: Into<Expr> + Copy,
+{
+    type EF = EF;
+    type ExprEF = Expr;
+    type VarEF = Var;
+
+    fn assert_zero_ext<I>(&mut self, x: I)
+    where
+        I: Into<Self::ExprEF>,
+    {
+        self.assert_zero(x);
+    }
+}
+
+impl<'a, F, EF, PubVar, Var, Expr> PermutationAirBuilder
+    for GenericDebugPublicValuesConstraintFolder<'a, F, EF, PubVar, Var, Expr>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    Expr: AbstractField<F = EF>
+        + From<F>
+        + Add<Var, Output = Expr>
+        + Add<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<F, Output = Expr>
+        + MulAssign<EF>,
+    Var: Into<Expr>
+        + Copy
+        + Add<F, Output = Expr>
+        + Add<Var, Output = Expr>
+        + Add<Expr, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<Expr, Output = Expr>
+        + Mul<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<Expr, Output = Expr>
+        + Send
+        + Sync,
+    PubVar: Into<Expr> + Copy,
+{
+    type MP = RowMajorMatrixView<'a, Var>;
+    type RandomVar = Var;
+
+    fn permutation(&self) -> Self::MP {
+        unimplemented!()
+    }
+
+    fn permutation_randomness(&self) -> &[Self::Var] {
+        self.perm_challenges
+    }
+}
+
+impl<F, EF, PubVar, Var, Expr> PairBuilder
+    for GenericDebugPublicValuesConstraintFolder<'_, F, EF, PubVar, Var, Expr>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    Expr: AbstractField<F = EF>
+        + From<F>
+        + Add<Var, Output = Expr>
+        + Add<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<F, Output = Expr>
+        + MulAssign<EF>,
+    Var: Into<Expr>
+        + Copy
+        + Add<F, Output = Expr>
+        + Add<Var, Output = Expr>
+        + Add<Expr, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<Expr, Output = Expr>
+        + Mul<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<Expr, Output = Expr>
+        + Send
+        + Sync,
+    PubVar: Into<Expr> + Copy,
+{
+    fn preprocessed(&self) -> Self::M {
+        unimplemented!()
+    }
+}
+
+impl<F, EF, PubVar, Var, Expr> MessageBuilder<AirInteraction<Expr>>
+    for GenericDebugPublicValuesConstraintFolder<'_, F, EF, PubVar, Var, Expr>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    Expr: AbstractField<F = EF>
+        + From<F>
+        + Add<Var, Output = Expr>
+        + Add<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<F, Output = Expr>
+        + MulAssign<EF>
+        + Div<Expr, Output = Expr>,
+    Var: Into<Expr>
+        + Copy
+        + Add<F, Output = Expr>
+        + Add<Var, Output = Expr>
+        + Add<Expr, Output = Expr>
+        + Sub<F, Output = Expr>
+        + Sub<Var, Output = Expr>
+        + Sub<Expr, Output = Expr>
+        + Mul<F, Output = Expr>
+        + Mul<Var, Output = Expr>
+        + Mul<Expr, Output = Expr>
+        + Send
+        + Sync,
+    PubVar: Into<Expr> + Copy,
+{
+    fn send(&mut self, message: AirInteraction<Expr>, scope: InteractionScope) {
+        self.interactions.push((message.kind, scope, message.values, message.multiplicity));
+    }
+
+    fn receive(&mut self, message: AirInteraction<Expr>, scope: InteractionScope) {
+        self.interactions.push((message.kind, scope, message.values, -message.multiplicity));
+    }
+}
+
+impl<F, EF, PubVar, Var, Expr> AirBuilderWithPublicValues
+    for GenericDebugPublicValuesConstraintFolder<'_, F, EF, PubVar, Var, Expr>
 where
     F: Field,
     EF: ExtensionField<F>,

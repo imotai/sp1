@@ -43,7 +43,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -83,7 +83,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -123,7 +123,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -163,7 +163,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -332,7 +332,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -359,7 +359,7 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
   #         cargo install --force --locked --path .
   #         cargo clean

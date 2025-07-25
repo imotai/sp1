@@ -13,7 +13,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
@@ -44,7 +44,7 @@ pub struct LoadX0Columns<T> {
     pub memory_access: MemoryAccessCols<T>,
 
     /// The bit decomposition of the offset.
-    pub offset_bit: [T; 2],
+    pub offset_bit: [T; 3],
 
     /// Whether this is a load byte instruction.
     pub is_lb: T,
@@ -60,6 +60,12 @@ pub struct LoadX0Columns<T> {
 
     /// Whether this is a load word instruction.
     pub is_lw: T,
+
+    /// Whether this is a load word unsigned instruction.
+    pub is_lwu: T,
+
+    /// Whether this is a load double word instruction.
+    pub is_ld: T,
 }
 
 impl<F> BaseAir<F> for LoadX0Chip {
@@ -106,10 +112,9 @@ impl<F: PrimeField32> MachineAir<F> for LoadX0Chip {
 
                     if idx < input.memory_load_x0_events.len() {
                         let event = &input.memory_load_x0_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, instruction, event.1);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu
@@ -148,14 +153,18 @@ impl LoadX0Chip {
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
         let bit0 = (memory_addr & 1) as u16;
         let bit1 = ((memory_addr >> 1) & 1) as u16;
+        let bit2 = ((memory_addr >> 2) & 1) as u16;
         cols.offset_bit[0] = F::from_canonical_u16(bit0);
         cols.offset_bit[1] = F::from_canonical_u16(bit1);
+        cols.offset_bit[2] = F::from_canonical_u16(bit2);
 
         cols.is_lb = F::from_bool(event.opcode == Opcode::LB);
         cols.is_lbu = F::from_bool(event.opcode == Opcode::LBU);
         cols.is_lh = F::from_bool(event.opcode == Opcode::LH);
         cols.is_lhu = F::from_bool(event.opcode == Opcode::LHU);
         cols.is_lw = F::from_bool(event.opcode == Opcode::LW);
+        cols.is_lwu = F::from_bool(event.opcode == Opcode::LWU);
+        cols.is_ld = F::from_bool(event.opcode == Opcode::LD);
     }
 }
 
@@ -173,21 +182,54 @@ where
         let clk_high = local.state.clk_high::<AB>();
         let clk_low = local.state.clk_low::<AB>();
 
-        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw` are checked to be
-        // boolean. Each "real" row has exactly one selector turned on, as `is_real`, the
-        // sum of the selectors, is boolean. Therefore, the `opcode` matches the
+        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw`, `is_lwu`, `is_ld`
+        // are checked to be boolean. Each "real" row has exactly one selector turned on, as
+        // `is_real`, the sum of the selectors, is boolean. Therefore, the `opcode` matches the
         // corresponding opcode.
         let opcode = AB::Expr::from_canonical_u32(Opcode::LB as u32) * local.is_lb
             + AB::Expr::from_canonical_u32(Opcode::LBU as u32) * local.is_lbu
             + AB::Expr::from_canonical_u32(Opcode::LH as u32) * local.is_lh
             + AB::Expr::from_canonical_u32(Opcode::LHU as u32) * local.is_lhu
-            + AB::Expr::from_canonical_u32(Opcode::LW as u32) * local.is_lw;
-        let is_real = local.is_lb + local.is_lbu + local.is_lh + local.is_lhu + local.is_lw;
+            + AB::Expr::from_canonical_u32(Opcode::LW as u32) * local.is_lw
+            + AB::Expr::from_canonical_u32(Opcode::LWU as u32) * local.is_lwu
+            + AB::Expr::from_canonical_u32(Opcode::LD as u32) * local.is_ld;
+
+        // Compute instruction field constants
+        let funct3 = local.is_lb * AB::Expr::from_canonical_u8(Opcode::LB.funct3().unwrap())
+            + local.is_lbu * AB::Expr::from_canonical_u8(Opcode::LBU.funct3().unwrap())
+            + local.is_lh * AB::Expr::from_canonical_u8(Opcode::LH.funct3().unwrap())
+            + local.is_lhu * AB::Expr::from_canonical_u8(Opcode::LHU.funct3().unwrap())
+            + local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct3().unwrap())
+            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct3().unwrap())
+            + local.is_ld * AB::Expr::from_canonical_u8(Opcode::LD.funct3().unwrap());
+        let funct7 = local.is_lb * AB::Expr::from_canonical_u8(Opcode::LB.funct7().unwrap_or(0))
+            + local.is_lbu * AB::Expr::from_canonical_u8(Opcode::LBU.funct7().unwrap_or(0))
+            + local.is_lh * AB::Expr::from_canonical_u8(Opcode::LH.funct7().unwrap_or(0))
+            + local.is_lhu * AB::Expr::from_canonical_u8(Opcode::LHU.funct7().unwrap_or(0))
+            + local.is_lw * AB::Expr::from_canonical_u8(Opcode::LW.funct7().unwrap_or(0))
+            + local.is_lwu * AB::Expr::from_canonical_u8(Opcode::LWU.funct7().unwrap_or(0))
+            + local.is_ld * AB::Expr::from_canonical_u8(Opcode::LD.funct7().unwrap_or(0));
+        let base_opcode = local.is_lb * AB::Expr::from_canonical_u32(Opcode::LB.base_opcode().0)
+            + local.is_lbu * AB::Expr::from_canonical_u32(Opcode::LBU.base_opcode().0)
+            + local.is_lh * AB::Expr::from_canonical_u32(Opcode::LH.base_opcode().0)
+            + local.is_lhu * AB::Expr::from_canonical_u32(Opcode::LHU.base_opcode().0)
+            + local.is_lw * AB::Expr::from_canonical_u32(Opcode::LW.base_opcode().0)
+            + local.is_lwu * AB::Expr::from_canonical_u32(Opcode::LWU.base_opcode().0)
+            + local.is_ld * AB::Expr::from_canonical_u32(Opcode::LD.base_opcode().0);
+        let is_real = local.is_lb
+            + local.is_lbu
+            + local.is_lh
+            + local.is_lhu
+            + local.is_lw
+            + local.is_lwu
+            + local.is_ld;
         builder.assert_bool(local.is_lb);
         builder.assert_bool(local.is_lbu);
         builder.assert_bool(local.is_lh);
         builder.assert_bool(local.is_lhu);
         builder.assert_bool(local.is_lw);
+        builder.assert_bool(local.is_lwu);
+        builder.assert_bool(local.is_ld);
         builder.assert_bool(is_real.clone());
 
         // Step 1. Compute the address, and check offsets and address bounds.
@@ -197,20 +239,23 @@ where
             local.adapter.c().map(Into::into),
             local.offset_bit[0].into(),
             local.offset_bit[1].into(),
+            local.offset_bit[2].into(),
             is_real.clone(),
             local.address_operation,
         );
 
         // Check the alignment of the address.
-        builder.when(local.is_lw).assert_zero(local.offset_bit[0]);
-        builder.when(local.is_lw).assert_zero(local.offset_bit[1]);
-        builder.when(local.is_lh + local.is_lhu).assert_zero(local.offset_bit[0]);
+        builder.when(local.is_ld).assert_zero(local.offset_bit[2]);
+        builder.when(local.is_lw + local.is_lwu + local.is_ld).assert_zero(local.offset_bit[1]);
+        builder
+            .when(local.is_lh + local.is_lhu + local.is_lw + local.is_lwu + local.is_ld)
+            .assert_zero(local.offset_bit[0]);
 
         // Step 2. Read the memory address.
         builder.eval_memory_access_read(
             clk_high.clone(),
             clk_low.clone(),
-            aligned_addr.clone(),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             is_real.clone(),
         );
@@ -222,8 +267,12 @@ where
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
             is_real.clone(),
         );
 
@@ -235,6 +284,7 @@ where
             clk_low,
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.adapter,
             is_real.clone(),
         );

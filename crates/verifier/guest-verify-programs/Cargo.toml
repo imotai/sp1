@@ -23,7 +23,7 @@ path = "src/plonk_verify.rs"
 required-features = ["blake3"]
 
 [dependencies]
-sp1-zkvm = { path = "../../zkvm/entrypoint" }
+sp1-zkvm = { package = "sp1-zkvm-64", path = "../../zkvm/entrypoint64" }
 sp1-verifier = { path = "../" }
 
 [features]

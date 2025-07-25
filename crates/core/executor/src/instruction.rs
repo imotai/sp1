@@ -1,11 +1,44 @@
 //! Instructions for the SP1 zkVM.
 
 use core::fmt::Debug;
+use rrs_lib::instruction_formats::{
+    OPCODE_AUIPC, OPCODE_BRANCH, OPCODE_JAL, OPCODE_JALR, OPCODE_LOAD, OPCODE_OP, OPCODE_OP_IMM,
+    OPCODE_STORE, OPCODE_SYSTEM,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::opcode::Opcode;
 
-/// RISC-V 32IM Instruction.
+/// Validates that a u64 is properly sign-extended for a given bit width.
+///
+/// This function checks that all bits above the specified bit width are properly sign-extended
+/// (either all 0s for positive values or all 1s for negative values).
+///
+/// Returns true if the value is properly sign-extended, false otherwise.
+#[must_use]
+#[inline]
+pub const fn validate_sign_extension(value: u64, bit_width: u32) -> bool {
+    if bit_width >= 64 {
+        return true; // No sign extension needed
+    }
+
+    let sign_bit_mask = 1u64 << (bit_width - 1);
+    let sign_bit = (value & sign_bit_mask) != 0;
+
+    // Create mask for bits above the immediate width
+    let upper_bits_mask = !((1u64 << bit_width) - 1);
+    let upper_bits = value & upper_bits_mask;
+
+    if sign_bit {
+        // Negative value: upper bits should all be 1s
+        upper_bits == upper_bits_mask
+    } else {
+        // Positive value: upper bits should all be 0s
+        upper_bits == 0
+    }
+}
+
+/// RISC-V 64IM Instruction.
 ///
 /// The structure of the instruction differs from the RISC-V ISA. We do not encode the instructions
 /// as 32-bit words, but instead use a custom encoding that is more friendly to decode in the
@@ -18,9 +51,9 @@ pub struct Instruction {
     /// The first operand.
     pub op_a: u8,
     /// The second operand.
-    pub op_b: u32,
+    pub op_b: u64,
     /// The third operand.
-    pub op_c: u32,
+    pub op_c: u64,
     /// Whether the second operand is an immediate value.
     pub imm_b: bool,
     /// Whether the third operand is an immediate value.
@@ -33,8 +66,8 @@ impl Instruction {
     pub const fn new(
         opcode: Opcode,
         op_a: u8,
-        op_b: u32,
-        op_c: u32,
+        op_b: u64,
+        op_c: u64,
         imm_b: bool,
         imm_c: bool,
     ) -> Self {
@@ -66,6 +99,17 @@ impl Instruction {
                 | Opcode::DIVU
                 | Opcode::REM
                 | Opcode::REMU
+                // RISCV-64
+                | Opcode::ADDW
+                | Opcode::SUBW
+                | Opcode::MULW
+                | Opcode::DIVW
+                | Opcode::DIVUW
+                | Opcode::REMW
+                | Opcode::REMUW
+                | Opcode::SLLW
+                | Opcode::SRLW
+                | Opcode::SRAW
         )
     }
 
@@ -80,14 +124,24 @@ impl Instruction {
     #[must_use]
     #[inline]
     pub const fn is_memory_load_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::LB | Opcode::LH | Opcode::LW | Opcode::LBU | Opcode::LHU)
+        matches!(
+            self.opcode,
+            Opcode::LB
+                | Opcode::LH
+                | Opcode::LW
+                | Opcode::LBU
+                | Opcode::LHU
+                // RISCV-64
+                | Opcode::LWU
+                | Opcode::LD
+        )
     }
 
     /// Returns if the instruction is a memory store instruction.
     #[must_use]
     #[inline]
     pub const fn is_memory_store_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::SB | Opcode::SH | Opcode::SW)
+        matches!(self.opcode, Opcode::SB | Opcode::SH | Opcode::SW | /* RISCV-64 */ Opcode::SD)
     }
 
     /// Returns if the instruction is a branch instruction.
@@ -121,11 +175,28 @@ impl Instruction {
         matches!(self.opcode, Opcode::JALR)
     }
 
-    /// Returns if the instruction is an auipc instruction.
+    /// Returns if the instruction is a utype instruction.
     #[must_use]
     #[inline]
-    pub const fn is_auipc_instruction(&self) -> bool {
-        matches!(self.opcode, Opcode::AUIPC)
+    pub const fn is_utype_instruction(&self) -> bool {
+        matches!(self.opcode, Opcode::AUIPC | Opcode::LUI)
+    }
+
+    /// Returns if the instruction guarantees that the `next_pc` are with correct limbs.
+    #[must_use]
+    #[inline]
+    pub const fn is_with_correct_next_pc(&self) -> bool {
+        matches!(
+            self.opcode,
+            Opcode::BEQ
+                | Opcode::BNE
+                | Opcode::BLT
+                | Opcode::BGE
+                | Opcode::BLTU
+                | Opcode::BGEU
+                | Opcode::JAL
+                | Opcode::JALR
+        )
     }
 
     /// Returns if the instruction is a divrem instruction.
@@ -147,6 +218,240 @@ impl Instruction {
     #[inline]
     pub const fn is_unimp_instruction(&self) -> bool {
         matches!(self.opcode, Opcode::UNIMP)
+    }
+
+    /// Returns the encoded RISC-V instruction.
+    #[must_use]
+    #[inline]
+    #[allow(clippy::too_many_lines)]
+    pub fn encode(&self) -> u32 {
+        if self.opcode == Opcode::ECALL {
+            0x00000073
+        } else {
+            let (mut base_opcode, imm_base_opcode) = self.opcode.base_opcode();
+
+            let is_imm = self.imm_c;
+            if is_imm {
+                base_opcode = imm_base_opcode.expect("Opcode should have imm base opcode");
+            }
+
+            let funct3 = self.opcode.funct3();
+            let funct7 = self.opcode.funct7();
+            let funct12 = self.opcode.funct12();
+
+            match base_opcode {
+                // R-type instructions
+                // Operands represent register indices, which must be 5 bits (0-31)
+                OPCODE_OP => {
+                    assert!(
+                        self.op_a <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_a
+                    );
+                    assert!(
+                        self.op_b <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_b
+                    );
+                    assert!(
+                        self.op_c <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_c
+                    );
+
+                    let (rd, rs1, rs2) = (self.op_a as u32, self.op_b as u32, self.op_c as u32);
+                    let funct3: u32 = funct3.expect("Opcode should have funct3").into();
+                    let funct7: u32 = funct7.expect("Opcode should have funct7").into();
+
+                    (funct7 << 25)
+                        | (rs2 << 20)
+                        | (rs1 << 15)
+                        | (funct3 << 12)
+                        | (rd << 7)
+                        | base_opcode
+                }
+                // I-type instructions
+                // Operands a and b represent register indices, which must be 5 bits (0-31)
+                // Operand c represents an immediate value, which must be 12 bits (signed)
+                OPCODE_OP_IMM | OPCODE_LOAD | OPCODE_JALR | OPCODE_SYSTEM => {
+                    assert!(
+                        self.op_a <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_a
+                    );
+                    assert!(
+                        self.op_b <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_b
+                    );
+                    assert!(
+                        validate_sign_extension(self.op_c, 12),
+                        "Immediate value {} is not properly sign-extended for 12 bits",
+                        self.op_c
+                    );
+
+                    let (rd, rs1, imm) = (
+                        self.op_a as u32,
+                        self.op_b as u32,
+                        // Extract original 12-bit immediate from sign-extended u64
+                        (self.op_c & 0xFFF) as u32,
+                    );
+                    let funct3: u32 = funct3.expect("Opcode should have funct3").into();
+
+                    // Check if it should be a I-type shamt instruction.
+                    if base_opcode == OPCODE_OP_IMM && matches!(funct3, 0b001 | 0b101) {
+                        let funct7: u32 = funct7.expect("Opcode should have funct7").into();
+                        (funct7 << 25)
+                            | (imm << 20)
+                            | (rs1 << 15)
+                            | (funct3 << 12)
+                            | (rd << 7)
+                            | base_opcode
+                    } else if base_opcode == OPCODE_SYSTEM && funct3 == 0 && rd == 0 && rs1 == 0 {
+                        let funct12: u32 = funct12.expect("Opcode should have funct12");
+                        (funct12 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | base_opcode
+                    } else {
+                        (imm << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | base_opcode
+                    }
+                }
+                // S-type instructions
+                // Operands a and b represent register indices, which must be 5 bits (0-31)
+                // Operand c represents an immediate value, which must be 12 bits (signed) (split
+                // b/w [31:25] + [11:7])
+                OPCODE_STORE => {
+                    assert!(
+                        self.op_a <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_a
+                    );
+                    assert!(
+                        self.op_b <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_b
+                    );
+                    assert!(
+                        validate_sign_extension(self.op_c, 12),
+                        "Immediate value {} is not properly sign-extended for 12 bits",
+                        self.op_c
+                    );
+
+                    let funct3: u32 = funct3.expect("Opcode should have funct3").into();
+                    let (rd, rs1, imm) = (
+                        self.op_a as u32,
+                        self.op_b as u32,
+                        // Extract original 12-bit immediate from sign-extended u64
+                        (self.op_c & 0xFFF) as u32,
+                    );
+                    let imm_11_5 = (imm >> 5) & 0b1111111;
+                    let imm_4_0 = imm & 0b11111;
+
+                    (imm_11_5 << 25)
+                        | (rd << 20)
+                        | (rs1 << 15)
+                        | (funct3 << 12)
+                        | (imm_4_0 << 7)
+                        | base_opcode
+                }
+
+                // B-type instructions
+                // Operands a and b represent register indices, which must be 5 bits (0-31)
+                // Signed 13 bits for B-type instructions (bits [31:25] + [11:8] + [7])
+                OPCODE_BRANCH => {
+                    assert!(
+                        self.op_a <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_a
+                    );
+                    assert!(
+                        self.op_b <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_b
+                    );
+                    assert!(
+                        validate_sign_extension(self.op_c, 13),
+                        "Immediate value {} is not properly sign-extended for 13 bits",
+                        self.op_c
+                    );
+
+                    let funct3: u32 = funct3.expect("Opcode should have funct3").into();
+                    let (rd, rs1, imm) = (
+                        self.op_a as u32,
+                        self.op_b as u32,
+                        // Extract original 13-bit immediate from sign-extended u64
+                        (self.op_c & 0x1FFF) as u32,
+                    );
+                    assert!(imm & 0b1 == 0, "B-type immediate must be aligned (multiple of 2)");
+
+                    let imm_12 = (imm >> 12) & 0b1;
+                    let imm_10_5 = (imm >> 5) & 0b111111;
+                    let imm_4_1 = (imm >> 1) & 0b1111;
+                    let imm_11 = (imm >> 11) & 0b1;
+
+                    (imm_12 << 31)
+                        | (imm_10_5 << 25)
+                        | (rs1 << 20)
+                        | (rd << 15)
+                        | (funct3 << 12)
+                        | (imm_4_1 << 8)
+                        | (imm_11 << 7)
+                        | (base_opcode & 0b1111111)
+                }
+                // U-type instructions
+                // 20 bits for U-type instructions (bits [31:12])
+                OPCODE_AUIPC => {
+                    assert!(
+                        self.op_a <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_a
+                    );
+                    assert!(
+                        validate_sign_extension(self.op_b, 20),
+                        "Immediate value {} is not properly sign-extended for 20 bits",
+                        self.op_b
+                    );
+                    let (rd, imm_upper) = (
+                        self.op_a as u32,
+                        // Extract original 20-bit immediate from sign-extended u64
+                        (self.op_b & 0xFFFFF) as u32,
+                    );
+                    imm_upper | (rd << 7) | base_opcode
+                }
+                // J-type instructions
+                // 21 bits for J-type instructions (bits [31:12] + [20] + [19:12] + [30:21])
+                OPCODE_JAL => {
+                    assert!(
+                        self.op_a <= 31,
+                        "Register index {} exceeds maximum value 31",
+                        self.op_a
+                    );
+                    assert!(
+                        validate_sign_extension(self.op_b, 21),
+                        "Immediate value {} is not properly sign-extended for 21 bits",
+                        self.op_b
+                    );
+                    assert!(self.op_b & 0b1 == 0, "J-type immediate must be 2-byte aligned");
+                    let (rd, imm) = (
+                        self.op_a as u32,
+                        // Extract original 21-bit immediate from sign-extended u64
+                        (self.op_b & 0x1FFFFF) as u32,
+                    );
+
+                    let imm_20 = (imm >> 20) & 0x1;
+                    let imm_10_1 = (imm >> 1) & 0x3FF;
+                    let imm_11 = (imm >> 11) & 0x1;
+                    let imm_19_12 = (imm >> 12) & 0xFF;
+
+                    (imm_20 << 31)
+                        | (imm_10_1 << 21)
+                        | (imm_11 << 20)
+                        | (imm_19_12 << 12)
+                        | (rd << 7)
+                        | base_opcode
+                }
+
+                _ => unreachable!(),
+            }
+        }
     }
 }
 

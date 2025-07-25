@@ -10,9 +10,9 @@ use crate::{
 pub(crate) fn weierstrass_decompress_syscall<E: EllipticCurve, Ex: ExecutorConfig>(
     ctx: &mut SyscallContext<Ex>,
     syscall_code: SyscallCode,
-    slice_ptr: u32,
-    sign_bit: u32,
-) -> Option<u32> {
+    slice_ptr: u64,
+    sign_bit: u64,
+) -> Option<u64> {
     let event = create_ec_decompress_event::<E, Ex>(ctx, slice_ptr, sign_bit);
     let syscall_event = ctx.rt.syscall_event(
         event.clk,

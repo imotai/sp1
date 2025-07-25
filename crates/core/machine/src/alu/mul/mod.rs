@@ -34,13 +34,13 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -78,9 +78,6 @@ pub struct MulCols<T> {
     /// Instance of `MulOperation` to handle multiplication logic in `MulChip`'s ALU operations.
     pub mul_operation: MulOperation<T>,
 
-    /// Selector to know whether this row is enabled.
-    pub is_real: T,
-
     /// Whether the operation is MUL.
     pub is_mul: T,
 
@@ -92,6 +89,12 @@ pub struct MulCols<T> {
 
     /// Whether the operation is MULHSU.
     pub is_mulhsu: T,
+
+    /// Whether the operation is MULW.
+    pub is_mulw: T,
+
+    /// The base opcode for the mul instruction.
+    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for MulChip {
@@ -129,10 +132,9 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.mul_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
             },
@@ -153,10 +155,9 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_MUL_COLS];
                     let cols: &mut MulCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
+                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
             })
@@ -192,15 +193,32 @@ impl MulChip {
             event.c,
             event.opcode == Opcode::MULH,
             event.opcode == Opcode::MULHSU,
+            event.opcode == Opcode::MULW,
         );
 
         cols.is_mul = F::from_bool(event.opcode == Opcode::MUL);
         cols.is_mulh = F::from_bool(event.opcode == Opcode::MULH);
         cols.is_mulhu = F::from_bool(event.opcode == Opcode::MULHU);
         cols.is_mulhsu = F::from_bool(event.opcode == Opcode::MULHSU);
-
+        cols.is_mulw = F::from_bool(event.opcode == Opcode::MULW);
         cols.a = Word::from(event.a);
-        cols.is_real = F::one();
+
+        let (mulw_base, mulw_imm) = Opcode::MULW.base_opcode();
+        let mulw_imm = mulw_imm.expect("MULW immediate opcode not found");
+
+        let is_imm_c = cols.adapter.imm_c.is_one();
+        let mulw_base_opcode = F::from_canonical_u32(if is_imm_c { mulw_imm } else { mulw_base });
+
+        let base_opcode = match event.opcode {
+            Opcode::MUL => F::from_canonical_u32(Opcode::MUL.base_opcode().0),
+            Opcode::MULH => F::from_canonical_u32(Opcode::MULH.base_opcode().0),
+            Opcode::MULHU => F::from_canonical_u32(Opcode::MULHU.base_opcode().0),
+            Opcode::MULHSU => F::from_canonical_u32(Opcode::MULHSU.base_opcode().0),
+            Opcode::MULW => mulw_base_opcode,
+            _ => unreachable!(),
+        };
+
+        cols.base_op_code = base_opcode;
     }
 }
 
@@ -219,6 +237,9 @@ where
         let local = main.row_slice(0);
         let local: &MulCols<AB::Var> = (*local).borrow();
 
+        let is_real =
+            local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu + local.is_mulw;
+
         // Constrain the multiplication operation over `op_b`, `op_c` and the selectors.
         MulOperation::<AB::F>::eval(
             builder,
@@ -226,44 +247,88 @@ where
             local.adapter.b().map(|x| x.into()),
             local.adapter.c().map(|x| x.into()),
             local.mul_operation,
-            local.is_real.into(),
+            is_real.clone(),
             local.is_mul.into(),
             local.is_mulh.into(),
+            local.is_mulw.into(),
             local.is_mulhu.into(),
             local.is_mulhsu.into(),
         );
 
         // Calculate the opcode.
         let opcode = {
-            // Exactly one of the opcodes must be on in a "real" row.
-            builder.assert_eq(
-                local.is_real,
-                local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu,
-            );
             builder.assert_bool(local.is_mul);
             builder.assert_bool(local.is_mulh);
             builder.assert_bool(local.is_mulhu);
+            builder.assert_bool(local.is_mulw);
             builder.assert_bool(local.is_mulhsu);
-            builder.assert_bool(local.is_real);
+            builder.assert_bool(is_real.clone());
 
             let mul: AB::Expr = AB::F::from_canonical_u32(Opcode::MUL as u32).into();
             let mulh: AB::Expr = AB::F::from_canonical_u32(Opcode::MULH as u32).into();
             let mulhu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHU as u32).into();
             let mulhsu: AB::Expr = AB::F::from_canonical_u32(Opcode::MULHSU as u32).into();
+            let mulw: AB::Expr = AB::F::from_canonical_u32(Opcode::MULW as u32).into();
             local.is_mul * mul
                 + local.is_mulh * mulh
                 + local.is_mulhu * mulhu
                 + local.is_mulhsu * mulhsu
+                + local.is_mulw * mulw
         };
+
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_mul * AB::Expr::from_canonical_u8(Opcode::MUL.funct3().unwrap())
+            + local.is_mulh * AB::Expr::from_canonical_u8(Opcode::MULH.funct3().unwrap())
+            + local.is_mulhu * AB::Expr::from_canonical_u8(Opcode::MULHU.funct3().unwrap())
+            + local.is_mulhsu * AB::Expr::from_canonical_u8(Opcode::MULHSU.funct3().unwrap())
+            + local.is_mulw * AB::Expr::from_canonical_u8(Opcode::MULW.funct3().unwrap());
+        let funct7 = local.is_mul * AB::Expr::from_canonical_u8(Opcode::MUL.funct7().unwrap())
+            + local.is_mulh * AB::Expr::from_canonical_u8(Opcode::MULH.funct7().unwrap())
+            + local.is_mulhu * AB::Expr::from_canonical_u8(Opcode::MULHU.funct7().unwrap())
+            + local.is_mulhsu * AB::Expr::from_canonical_u8(Opcode::MULHSU.funct7().unwrap())
+            + local.is_mulw * AB::Expr::from_canonical_u8(Opcode::MULW.funct7().unwrap());
+
+        let base_opcode = local.base_op_code.into();
+
+        let mul_base = Opcode::MUL.base_opcode().0;
+        let mulh_base = Opcode::MULH.base_opcode().0;
+        let mulhu_base = Opcode::MULHU.base_opcode().0;
+        let mulhsu_base = Opcode::MULHSU.base_opcode().0;
+
+        let (mulw_base, mulw_imm) = Opcode::MULW.base_opcode();
+        let mulw_imm = mulw_imm.expect("MULW immediate opcode not found");
+
+        let mul_base_expr = AB::Expr::from_canonical_u32(mul_base);
+        let mulh_base_expr = AB::Expr::from_canonical_u32(mulh_base);
+        let mulhu_base_expr = AB::Expr::from_canonical_u32(mulhu_base);
+        let mulhsu_base_expr = AB::Expr::from_canonical_u32(mulhsu_base);
+        let mulw_base_expr = AB::Expr::from_canonical_u32(mulw_base);
+        let mulw_imm_expr = AB::Expr::from_canonical_u32(mulw_imm);
+
+        let correct_imm_opcode = local.is_mulw * mulw_imm_expr;
+        let correct_reg_opcode = local.is_mul * mul_base_expr
+            + local.is_mulh * mulh_base_expr
+            + local.is_mulhu * mulhu_base_expr
+            + local.is_mulhsu * mulhsu_base_expr
+            + local.is_mulw * mulw_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-            local.is_real.into(),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
+            is_real.clone(),
         );
 
         // Constrain the program and register reads.
@@ -273,9 +338,10 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             a_expr,
             local.adapter,
-            local.is_real.into(),
+            is_real.clone(),
         );
         ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }

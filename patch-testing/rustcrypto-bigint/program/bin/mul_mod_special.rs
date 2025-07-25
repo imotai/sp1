@@ -7,12 +7,12 @@ pub fn main() {
     let times = sp1_lib::io::read::<u8>();
 
     for _ in 0..times {
-        let a: [u32; 8] = sp1_lib::io::read::<Vec<u32>>().try_into().unwrap();
-        let b: [u32; 8] = sp1_lib::io::read::<Vec<u32>>().try_into().unwrap();
-        let a = Uint::<8>::from_words(a);
-        let b = Uint::<8>::from_words(b);
+        let a: [u64; 4] = sp1_lib::io::read::<[u64; 4]>();
+        let b: [u64; 4] = sp1_lib::io::read::<[u64; 4]>();
+        let a = Uint::<4>::from_words(a);
+        let b = Uint::<4>::from_words(b);
 
-        let c: u32 = 356u32;
+        let c: u64 = 356u64;
         let c = Limb(c);
         let result = a.mul_mod_special(&b, c);
 

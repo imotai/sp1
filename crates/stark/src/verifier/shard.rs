@@ -7,7 +7,7 @@ use std::{
 
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_basefold::DefaultBasefoldConfig;
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::Rounds;
@@ -15,7 +15,7 @@ use slop_jagged::{
     JaggedBasefoldConfig, JaggedConfig, JaggedEvalConfig, JaggedPcsVerifier,
     JaggedPcsVerifierError, MachineJaggedPcsVerifier,
 };
-use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsVerifier};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
@@ -72,6 +72,24 @@ pub enum ShardVerifierError<EF, PcsError> {
     /// The public values verification failed.
     #[error("public values verification failed")]
     InvalidPublicValues,
+    /// The proof has entries with invalid shape.
+    #[error("invalid shape of proof")]
+    InvalidShape,
+    /// The provided chip opened values has incorrect order.
+    #[error("invalid chip opening order")]
+    InvalidChipOrder(String, String),
+    /// The height of the chip is not sent over correctly as bitwise decomposition.
+    #[error("invalid height bit decomposition")]
+    InvalidHeightBitDecomposition,
+    /// The height is larger than `1 << max_log_row_count`.
+    #[error("height is larger than maximum possible value")]
+    HeightTooLarge,
+    /// Invalid number of added columns.
+    #[error("invalid number of added columns")]
+    InvalidAddedColumns,
+    /// Invalid prefix sum.
+    #[error("invalid prefix sum")]
+    InvalidPrefixSum,
 }
 
 /// Derive the error type from the jagged config.
@@ -168,26 +186,9 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         let dummy_preprocessed_trace = vec![C::EF::zero(); chip.preprocessed_width()];
         let dummy_main_trace = vec![C::EF::zero(); chip.width()];
 
-        let default_challenge = C::EF::default();
-
         let mut folder = VerifierConstraintFolder::<C> {
-            preprocessed: VerticalPair::new(
-                RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
-                RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
-            ),
-            main: VerticalPair::new(
-                RowMajorMatrixView::new_row(&dummy_main_trace),
-                RowMajorMatrixView::new_row(&dummy_main_trace),
-            ),
-            perm: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
-            perm_challenges: &[],
-            local_cumulative_sum: &default_challenge,
-            is_first_row: default_challenge,
-            is_last_row: default_challenge,
-            is_transition: default_challenge,
+            preprocessed: RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
+            main: RowMajorMatrixView::new_row(&dummy_main_trace),
             alpha,
             accumulator: C::EF::zero(),
             public_values,
@@ -209,26 +210,9 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {
-        let default_challenge = C::EF::default();
-
         let mut folder = VerifierConstraintFolder::<C> {
-            preprocessed: VerticalPair::new(
-                RowMajorMatrixView::new_row(&opening.preprocessed.local),
-                RowMajorMatrixView::new_row(&opening.preprocessed.local),
-            ),
-            main: VerticalPair::new(
-                RowMajorMatrixView::new_row(&opening.main.local),
-                RowMajorMatrixView::new_row(&opening.main.local),
-            ),
-            perm: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
-            perm_challenges: &[],
-            local_cumulative_sum: &default_challenge,
-            is_first_row: default_challenge,
-            is_last_row: default_challenge,
-            is_transition: default_challenge,
+            preprocessed: RowMajorMatrixView::new_row(&opening.preprocessed.local),
+            main: RowMajorMatrixView::new_row(&opening.main.local),
             alpha,
             accumulator: C::EF::zero(),
             public_values,
@@ -262,7 +246,12 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
 
         Ok(())
     }
+}
 
+impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A>
+where
+    C::F: PrimeField32,
+{
     /// Verify the zerocheck proof.
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
@@ -281,6 +270,8 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, C>>,
     {
+        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+
         // Get the random challenge to merge the constraints.
         let alpha = challenger.sample_ext_element::<C::EF>();
 
@@ -288,6 +279,12 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
 
         // Get the random lambda to RLC the zerocheck polynomials.
         let lambda = challenger.sample_ext_element::<C::EF>();
+
+        if gkr_evaluations.point.dimension() != max_log_row_count
+            || proof.zerocheck_proof.point_and_eval.0.dimension() != max_log_row_count
+        {
+            return Err(ShardVerifierError::InvalidShape);
+        }
 
         // Get the value of eq(zeta, sumcheck's reduced point).
         let zerocheck_eq_val = Mle::full_lagrange_eval(
@@ -299,22 +296,22 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
         // proof is correct.
         let mut rlc_eval = C::EF::zero();
-        let max_log_row_count = self.pcs_verifier.max_log_row_count;
         for ((chip, (_, openings)), zerocheck_eq_val) in
             shard_chips.iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
         {
             // Verify the shape of the opening arguments matches the expected values.
             Self::verify_opening_shape(chip, openings)?;
 
-            let dimension = proof.zerocheck_proof.point_and_eval.0.dimension();
-
-            assert_eq!(dimension, max_log_row_count);
-
             let mut point_extended = proof.zerocheck_proof.point_and_eval.0.clone();
             point_extended.add_dimension(C::EF::zero());
-            openings.degree.iter().for_each(|x| {
-                assert_eq!(*x * (*x - C::F::one()), C::F::zero());
-            });
+            for &x in openings.degree.iter() {
+                if x * (x - C::F::one()) != C::F::zero() {
+                    return Err(ShardVerifierError::InvalidHeightBitDecomposition);
+                }
+                if x * *openings.degree.last().unwrap() != C::F::zero() {
+                    return Err(ShardVerifierError::HeightTooLarge);
+                }
+            }
 
             let geq_val = full_geq(&openings.degree, &point_extended);
 
@@ -383,7 +380,8 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         }
 
         // Verify the zerocheck proof.
-        partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger).map_err(|e| {
+        partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger, max_log_row_count, 4)
+            .map_err(|e| {
             ShardVerifierError::<
                 _,
                 <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
@@ -412,23 +410,7 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         public_values: &[C::F],
     ) -> Result<C::EF, ShardVerifierConfigError<C>> {
         let mut folder = VerifierPublicValuesConstraintFolder::<C> {
-            preprocessed: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
-            main: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
-            perm: VerticalPair::new(
-                RowMajorMatrixView::new_row(&[]),
-                RowMajorMatrixView::new_row(&[]),
-            ),
             perm_challenges: &[alpha, beta],
-            local_cumulative_sum: &C::EF::zero(),
-            is_first_row: C::EF::one(),
-            is_last_row: C::EF::one(),
-            is_transition: C::EF::one(),
             alpha: challenge,
             accumulator: C::EF::zero(),
             local_interaction_digest: C::EF::zero(),
@@ -469,6 +451,13 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             public_values,
             logup_gkr_proof,
         } = proof;
+
+        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+
+        if public_values.len() < self.machine.num_pv_elts() {
+            return Err(ShardVerifierError::InvalidPublicValues);
+        }
+
         // Observe the public values.
         challenger.observe_slice(&public_values[0..self.machine.num_pv_elts()]);
         // Observe the main commitment.
@@ -476,7 +465,9 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
 
         let mut heights: BTreeMap<String, C::F> = BTreeMap::new();
         for (name, chip_values) in opened_values.chips.iter() {
-            assert!(chip_values.degree.len() <= 29);
+            if chip_values.degree.len() != max_log_row_count + 1 || chip_values.degree.len() >= 30 {
+                return Err(ShardVerifierError::InvalidShape);
+            }
             let acc = chip_values.degree.iter().fold(C::F::zero(), |acc, &x| x + C::F::two() * acc);
             heights.insert(name.clone(), acc);
             challenger.observe(acc);
@@ -496,7 +487,6 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         let beta = challenger.sample_ext_element::<C::EF>();
         let pv_challenge = challenger.sample_ext_element::<C::EF>();
 
-        let max_log_row_count = self.pcs_verifier.max_log_row_count;
         let cumulative_sum =
             -self.verify_public_values(pv_challenge, alpha, beta, public_values)?;
 
@@ -513,6 +503,19 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             .iter()
             .map(|(name, x)| (name.clone(), x.degree.clone()))
             .collect::<BTreeMap<_, _>>();
+
+        if shard_chips.len() != opened_values.chips.len() || shard_chips.len() != degrees.len() {
+            return Err(ShardVerifierError::InvalidShape);
+        }
+
+        for (shard_chip, (chip_name, _)) in shard_chips.iter().zip_eq(opened_values.chips.iter()) {
+            if shard_chip.name() != *chip_name {
+                return Err(ShardVerifierError::InvalidChipOrder(
+                    shard_chip.name(),
+                    chip_name.to_string(),
+                ));
+            }
+        }
 
         // Verify the logup GKR proof.
         LogUpGkrVerifier::<_, _, A>::verify_logup_gkr(
@@ -538,6 +541,8 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
         )?;
 
         // Verify the opening proof.
+        // `preprocessed_openings_for_proof` is `Vec` of preprocessed `AirOpenedValues` of chips.
+        // `main_openings_for_proof` is `Vec` of main `AirOpenedValues` of chips.
         let (preprocessed_openings_for_proof, main_openings_for_proof): (Vec<_>, Vec<_>) = proof
             .opened_values
             .chips
@@ -545,37 +550,53 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             .map(|opening| (opening.preprocessed.clone(), opening.main.clone()))
             .unzip();
 
+        // `preprocessed_openings` is the `Vec` of preprocessed openings of all chips.
         let preprocessed_openings = preprocessed_openings_for_proof
             .iter()
             .map(|x| x.local.iter().as_slice())
             .collect::<Vec<_>>();
 
+        // `unfiltered_preprocessed_column_count` is the `Vec` of all preprocessed opening lengths.
         let unfiltered_preprocessed_column_count = preprocessed_openings
             .iter()
             .map(|table_openings| table_openings.len())
             .collect::<Vec<_>>();
 
+        // `main_openings` is the `Evaluations` derived by collecting all the main openings.
         let main_openings = main_openings_for_proof
             .iter()
             .map(|x| x.local.iter().copied().collect::<MleEval<_>>())
             .collect::<Evaluations<_>>();
 
+        // `filtered_preprocessed_openings` is the `Evaluations` derived by collecting all the
+        // non-empty preprocessed openings.
         let filtered_preprocessed_openings = preprocessed_openings
             .into_iter()
             .filter(|x| !x.is_empty())
             .map(|x| x.iter().copied().collect::<MleEval<_>>())
             .collect::<Evaluations<_>>();
 
+        // `preprocessed_column_count` is the `Vec` of all non-zero preprocessed opening lengths.
         let preprocessed_column_count = filtered_preprocessed_openings
             .iter()
             .map(|table_openings| table_openings.len())
             .collect::<Vec<_>>();
 
+        // `main_column_count` is the `Vec` of all (non-zero) main opening lengths.
         let main_column_count =
             main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
 
-        let only_has_main_commitment = vk.preprocessed_commit.is_none();
+        let max_added_column =
+            (1usize << self.log_stacking_height()).div_ceil(1 << max_log_row_count);
         let added_columns = &evaluation_proof.added_columns;
+        if added_columns.len() != 2 {
+            return Err(ShardVerifierError::InvalidShape);
+        }
+        for &added_column in added_columns {
+            if added_column == 0 || added_column > max_added_column {
+                return Err(ShardVerifierError::InvalidAddedColumns);
+            }
+        }
 
         let column_counts = heights
             .values()
@@ -600,13 +621,33 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             .collect::<Vec<C::F>>();
         let preprocessed_column_count_total =
             unfiltered_preprocessed_column_count.iter().sum::<usize>();
+        let main_column_count_total = main_column_count.iter().sum::<usize>();
 
         let col_prefix_sum = evaluation_proof
             .params
             .col_prefix_sums
             .iter()
-            .map(|x| x.iter().fold(C::F::zero(), |acc, &y| y + C::F::two() * acc))
-            .collect::<Vec<_>>();
+            .map(|x| {
+                if x.dimension() >= 31 {
+                    return Err(ShardVerifierError::InvalidPrefixSum);
+                }
+                x.iter().try_fold(C::F::zero(), |acc, &y| {
+                    if y != C::F::zero() && y != C::F::one() {
+                        return Err(ShardVerifierError::InvalidPrefixSum);
+                    }
+                    Ok(y + C::F::two() * acc)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if evaluation_proof.params.col_prefix_sums.len()
+            != 1 + preprocessed_column_count_total
+                + main_column_count_total
+                + added_columns[0]
+                + added_columns[1]
+        {
+            return Err(ShardVerifierError::InvalidPrefixSum);
+        }
 
         // Need to do special checks for the final columns of each commit, which are padding
         // columns of unknown height.
@@ -614,63 +655,77 @@ impl<C: MachineConfig, A: MachineAir<C::F>> ShardVerifier<C, A> {
             [preprocessed_column_count_total + added_columns[0] - 1, col_prefix_sum.len() - 2];
 
         let mut param_index = 0;
-        col_prefix_sum
-            .iter()
-            .zip(col_prefix_sum.iter().skip(1))
-            .enumerate()
-            .filter(|(i, _)| !skip_indices.contains(i))
-            .for_each(|(_, (x, y))| {
-                assert_eq!(*y, *x + column_counts[param_index]);
+        for (i, (x, y)) in col_prefix_sum.iter().zip(col_prefix_sum.iter().skip(1)).enumerate() {
+            if !skip_indices.contains(&i) {
+                if *y != *x + column_counts[param_index] {
+                    return Err(ShardVerifierError::InvalidPrefixSum);
+                }
                 param_index += 1;
-            });
+            }
+        }
 
-        assert_eq!(col_prefix_sum[0], C::F::zero());
+        if col_prefix_sum[0] != C::F::zero() {
+            return Err(ShardVerifierError::InvalidPrefixSum);
+        }
+
+        if proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds.len() != 2 {
+            return Err(ShardVerifierError::InvalidShape);
+        }
+
+        let preprocessed_round_num_poly =
+            (proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0]
+                .iter()
+                .map(slop_multilinear::MleEval::num_polynomials)
+                .sum::<usize>()) as u32;
+
+        let main_round_num_poly =
+            (proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[1]
+                .iter()
+                .map(slop_multilinear::MleEval::num_polynomials)
+                .sum::<usize>()) as u32;
 
         // Check that the prefix sum value at the first skip index is the correct multiple of the
         // stacking height.
-        assert_eq!(
-            col_prefix_sum[skip_indices[0] + 1],
-            C::F::from_canonical_u32(
-                (1 << self.log_stacking_height())
-                    * (proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0]
-                        .iter()
-                        .map(slop_multilinear::MleEval::num_polynomials)
-                        .sum::<usize>() as u32)
-            )
-        );
+        if col_prefix_sum[skip_indices[0] + 1]
+            != C::F::from_canonical_u32(1 << self.log_stacking_height())
+                * C::F::from_canonical_u32(preprocessed_round_num_poly)
+            || preprocessed_round_num_poly.saturating_mul(1 << self.log_stacking_height())
+                >= (1 << 30)
+            || (col_prefix_sum[skip_indices[0] + 1] - col_prefix_sum[skip_indices[0]])
+                .as_canonical_u32()
+                > (1u32 << max_log_row_count)
+        {
+            return Err(ShardVerifierError::InvalidPrefixSum);
+        }
 
         // Check that the prefix sum value at the second skip index is the correct multiple of the
         // stacking height (total padded trace area committed to).
-        assert_eq!(
-            col_prefix_sum[skip_indices[1] + 1],
-            C::F::from_canonical_u32(
-                (1 << self.log_stacking_height())
-                    * (proof
-                        .evaluation_proof
-                        .stacked_pcs_proof
-                        .batch_evaluations
-                        .rounds
-                        .iter()
-                        .flat_map(|evaluations| evaluations
-                            .iter()
-                            .map(slop_multilinear::MleEval::num_polynomials))
-                        .sum::<usize>() as u32)
-            )
+        if col_prefix_sum[skip_indices[1] + 1]
+            != C::F::from_canonical_u32(1 << self.log_stacking_height())
+                * C::F::from_canonical_u32(preprocessed_round_num_poly + main_round_num_poly)
+            || (preprocessed_round_num_poly.saturating_add(main_round_num_poly))
+                .saturating_mul(1 << self.log_stacking_height())
+                >= (1 << 30)
+            || (col_prefix_sum[skip_indices[1] + 1] - col_prefix_sum[skip_indices[1]])
+                .as_canonical_u32()
+                > (1u32 << max_log_row_count)
+        {
+            return Err(ShardVerifierError::InvalidPrefixSum);
+        }
+
+        for skip_index in skip_indices {
+            let padded_column_height = col_prefix_sum[skip_index + 1] - col_prefix_sum[skip_index];
+            if padded_column_height.as_canonical_u32() > (1u32 << max_log_row_count) {
+                return Err(ShardVerifierError::InvalidPrefixSum);
+            }
+        }
+
+        let (commitments, column_counts, openings) = (
+            vec![vk.preprocessed_commit.clone(), main_commitment.clone()],
+            vec![preprocessed_column_count, main_column_count],
+            Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
         );
 
-        let (commitments, column_counts, openings) = if only_has_main_commitment {
-            (
-                vec![main_commitment.clone()],
-                vec![main_column_count],
-                Rounds { rounds: vec![main_openings] },
-            )
-        } else {
-            (
-                vec![vk.preprocessed_commit.clone().unwrap(), main_commitment.clone()],
-                vec![preprocessed_column_count, main_column_count],
-                Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
-            )
-        };
         let machine_jagged_verifier =
             MachineJaggedPcsVerifier::new(&self.pcs_verifier, column_counts);
 
@@ -692,6 +747,7 @@ impl<BC, EC, A> ShardVerifier<JaggedBasefoldConfig<BC, EC>, A>
 where
     A: MachineAir<BC::F>,
     BC: DefaultBasefoldConfig,
+    BC::F: PrimeField32,
     BC::Commitment: std::fmt::Debug,
     EC: JaggedEvalConfig<BC::F, BC::EF, BC::Challenger> + std::fmt::Debug + Default,
 {

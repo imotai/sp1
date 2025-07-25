@@ -3,6 +3,10 @@
 use std::fmt::Display;
 
 use enum_map::Enum;
+use rrs_lib::instruction_formats::{
+    OPCODE_AUIPC, OPCODE_BRANCH, OPCODE_JAL, OPCODE_JALR, OPCODE_LOAD, OPCODE_LUI, OPCODE_OP,
+    OPCODE_OP_32, OPCODE_OP_IMM, OPCODE_OP_IMM_32, OPCODE_STORE, OPCODE_SYSTEM,
+};
 use serde::{Deserialize, Serialize};
 use slop_algebra::Field;
 
@@ -98,12 +102,41 @@ pub enum Opcode {
     JALR = 34,
     /// rd ← pc + imm, pc ← pc + 4
     AUIPC = 35,
+    /// rd ← imm, pc ← pc + 4
+    LUI = 36,
+    /// Transfer control to the ecall handler.
+    ECALL = 37,
     /// Transfer control to the debugger.
-    ECALL = 36,
-    /// Transfer control to the debugger.
-    EBREAK = 37,
+    EBREAK = 38,
+    // RISCV-64
+    /// rd ← rs1 + rs2, pc ← pc + 4
+    ADDW = 39,
+    /// rd ← rs1 - rs2, pc ← pc + 4
+    SUBW = 40,
+    /// rd ← rs1 << rs2, pc ← pc + 4
+    SLLW = 41,
+    /// rd ← rs1 >> rs2 (logical), pc ← pc + 4
+    SRLW = 42,
+    /// rd ← rs1 >> rs2 (arithmetic), pc ← pc + 4
+    SRAW = 43,
+    /// rd ← sx(m32(rs1 + imm)), pc ← pc + 4
+    LWU = 44,
+    /// rd ← sx(m8(rs1 + imm)), pc ← pc + 4
+    LD = 45,
+    /// m8(rs1 + imm) ← rs2[7:0], pc ← pc + 4
+    SD = 46,
+    /// rd ← rs1 + imm, pc ← pc + 4
+    MULW = 47,
+    /// rd ← rs1 / rs2 (signed), pc ← pc + 4
+    DIVW = 48,
+    /// rd ← rs1 / rs2 (unsigned), pc ← pc + 4
+    DIVUW = 49,
+    /// rd ← rs1 % rs2 (signed), pc ← pc + 4
+    REMW = 50,
+    /// rd ← rs1 % rs2 (unsigned), pc ← pc + 4
+    REMUW = 51,
     /// Unimplemented instruction.
-    UNIMP = 38,
+    UNIMP = 52,
 }
 /// Byte Opcode.
 ///
@@ -162,6 +195,7 @@ impl Opcode {
             Opcode::JAL => "jal",
             Opcode::JALR => "jalr",
             Opcode::AUIPC => "auipc",
+            Opcode::LUI => "lui",
             Opcode::ECALL => "ecall",
             Opcode::EBREAK => "ebreak",
             Opcode::MUL => "mul",
@@ -172,6 +206,19 @@ impl Opcode {
             Opcode::DIVU => "divu",
             Opcode::REM => "rem",
             Opcode::REMU => "remu",
+            Opcode::ADDW => "addw",
+            Opcode::SUBW => "subw",
+            Opcode::SLLW => "sllw",
+            Opcode::SRLW => "srlw",
+            Opcode::SRAW => "sraw",
+            Opcode::LWU => "lwu",
+            Opcode::LD => "ld",
+            Opcode::SD => "sd",
+            Opcode::MULW => "mulw",
+            Opcode::DIVW => "divw",
+            Opcode::DIVUW => "divuw",
+            Opcode::REMW => "remw",
+            Opcode::REMUW => "remuw",
             Opcode::UNIMP => "unimp",
         }
     }
@@ -180,6 +227,172 @@ impl Opcode {
     #[must_use]
     pub fn as_field<F: Field>(self) -> F {
         F::from_canonical_u32(self as u32)
+    }
+
+    /// Returns the funct3 field for the opcode.
+    #[must_use]
+    #[allow(clippy::match_same_arms)]
+    pub fn funct3(self: Opcode) -> Option<u8> {
+        Some(match self {
+            // R-type and I-type ALU
+            Opcode::ADD | Opcode::SUB | Opcode::ADDI => 0b000,
+            Opcode::SLL => 0b001,
+            Opcode::SLT => 0b010,
+            Opcode::SLTU => 0b011,
+            Opcode::XOR => 0b100,
+            Opcode::SRL | Opcode::SRA => 0b101,
+            Opcode::OR => 0b110,
+            Opcode::AND => 0b111,
+            Opcode::ADDW => 0b000,
+            Opcode::SUBW => 0b000,
+            Opcode::SLLW => 0b001,
+            Opcode::SRLW => 0b101,
+            Opcode::SRAW => 0b101,
+            Opcode::LWU => 0b110,
+            Opcode::LD => 0b011,
+            Opcode::SD => 0b011,
+            Opcode::MULW => 0b000,
+            Opcode::DIVW => 0b100,
+            Opcode::DIVUW => 0b101,
+            Opcode::REMW => 0b110,
+            Opcode::REMUW => 0b111,
+
+            // M-extension (same funct3 as ALU)
+            Opcode::MUL => 0b000,
+            Opcode::MULH => 0b001,
+            Opcode::MULHSU => 0b010,
+            Opcode::MULHU => 0b011,
+            Opcode::DIV => 0b100,
+            Opcode::DIVU => 0b101,
+            Opcode::REM => 0b110,
+            Opcode::REMU => 0b111,
+
+            // Loads
+            Opcode::LB => 0b000,
+            Opcode::LH => 0b001,
+            Opcode::LW => 0b010,
+            Opcode::LBU => 0b100,
+            Opcode::LHU => 0b101,
+
+            // Stores
+            Opcode::SB => 0b000,
+            Opcode::SH => 0b001,
+            Opcode::SW => 0b010,
+
+            // Branches
+            Opcode::BEQ => 0b000,
+            Opcode::BNE => 0b001,
+            Opcode::BLT => 0b100,
+            Opcode::BGE => 0b101,
+            Opcode::BLTU => 0b110,
+            Opcode::BGEU => 0b111,
+
+            // JAL/JALR
+            Opcode::JALR => 0b000, // JALR has funct3 = 000
+
+            // System instructions (ECALL, EBREAK, MRET): fixed encoding
+            Opcode::ECALL | Opcode::EBREAK => 0b000,
+
+            // Instructions without funct3 field
+            Opcode::JAL | Opcode::AUIPC | Opcode::LUI | Opcode::UNIMP => return None,
+        })
+    }
+
+    /// Returns the funct7 field for the opcode.
+    #[must_use]
+    #[allow(clippy::match_same_arms)]
+    pub fn funct7(self: Opcode) -> Option<u8> {
+        use Opcode::{
+            ADD, ADDI, ADDW, AND, AUIPC, BEQ, BGE, BGEU, BLT, BLTU, BNE, DIV, DIVU, DIVUW, DIVW,
+            EBREAK, ECALL, JAL, JALR, LB, LBU, LD, LH, LHU, LUI, LW, LWU, MUL, MULH, MULHSU, MULHU,
+            MULW, OR, REM, REMU, REMUW, REMW, SB, SD, SH, SLL, SLLW, SLT, SLTU, SRA, SRAW, SRL,
+            SRLW, SUB, SUBW, SW, UNIMP, XOR,
+        };
+        Some(match self {
+            ADD | SLL | SLT | SLTU | XOR | SRL | OR | AND | ADDW | SLLW | SRLW => 0b0000000,
+            SUB | SRA | SUBW | SRAW => 0b0100000,
+            MUL | MULH | MULHSU | MULHU | DIV | DIVU | REM | REMU | MULW | DIVW | DIVUW | REMW
+            | REMUW => 0b0000001,
+            ECALL | EBREAK => 0b0000000,
+            ADDI | LB | LH | LW | LBU | LHU | SB | SH | SW | BEQ | BNE | BLT | BGE | BLTU
+            | BGEU | JAL | JALR | AUIPC | LUI | UNIMP | LWU | LD | SD => return None,
+        })
+    }
+
+    /// Returns the funct12 field for the opcode.
+    #[must_use]
+    pub fn funct12(self: Opcode) -> Option<u32> {
+        use Opcode::ECALL;
+        Some(match self {
+            ECALL => 0x000,
+            _ => return None,
+        })
+    }
+
+    #[must_use]
+    /// Returns the base opcode for the opcode.
+    pub fn base_opcode(self: Opcode) -> (u32, Option<u32>) {
+        match self {
+            Opcode::SLL
+            | Opcode::SRL
+            | Opcode::SRA
+            | Opcode::XOR
+            | Opcode::OR
+            | Opcode::AND
+            | Opcode::SLT
+            | Opcode::SLTU => (OPCODE_OP, Some(OPCODE_OP_IMM)),
+
+            Opcode::ADD
+            | Opcode::SUB
+            | Opcode::MUL
+            | Opcode::MULH
+            | Opcode::MULHU
+            | Opcode::MULHSU
+            | Opcode::DIV
+            | Opcode::DIVU
+            | Opcode::REM
+            | Opcode::REMU => (OPCODE_OP, None),
+
+            Opcode::ADDI => (OPCODE_OP_IMM, None),
+
+            Opcode::ECALL => (OPCODE_SYSTEM, None),
+
+            Opcode::JALR => (OPCODE_JALR, None),
+
+            Opcode::LB
+            | Opcode::LH
+            | Opcode::LW
+            | Opcode::LBU
+            | Opcode::LHU
+            | Opcode::LWU
+            | Opcode::LD => (OPCODE_LOAD, None),
+
+            Opcode::SB | Opcode::SH | Opcode::SW | Opcode::SD => (OPCODE_STORE, None),
+
+            Opcode::BEQ | Opcode::BNE | Opcode::BLT | Opcode::BGE | Opcode::BLTU | Opcode::BGEU => {
+                (OPCODE_BRANCH, None)
+            }
+
+            Opcode::AUIPC => (OPCODE_AUIPC, None),
+
+            Opcode::LUI => (OPCODE_LUI, None),
+
+            Opcode::JAL => (OPCODE_JAL, None),
+
+            // RISC-V 64-bit operations
+            Opcode::ADDW
+            | Opcode::SUBW
+            | Opcode::SLLW
+            | Opcode::SRLW
+            | Opcode::SRAW
+            | Opcode::MULW
+            | Opcode::DIVW
+            | Opcode::DIVUW
+            | Opcode::REMW
+            | Opcode::REMUW => (OPCODE_OP_32, Some(OPCODE_OP_IMM_32)),
+
+            _ => unreachable!("Opcode {:?} has no base opcode", self),
+        }
     }
 }
 

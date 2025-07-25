@@ -11,7 +11,7 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::MachineAir;
@@ -72,7 +72,6 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
     ) -> RowMajorMatrix<F> {
         // Generate the rows for the trace.
         let chunk_size = std::cmp::max(input.sub_events.len() / num_cpus::get(), 1);
-        let merged_events = input.sub_events.iter().collect::<Vec<_>>();
         let padded_nb_rows = <SubChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_SUB_COLS);
 
@@ -82,13 +81,12 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
                     let idx = i * chunk_size + j;
                     let cols: &mut SubCols<F> = row.borrow_mut();
 
-                    if idx < merged_events.len() {
+                    if idx < input.sub_events.len() {
                         let mut byte_lookup_events = Vec::new();
-                        let event = merged_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        let event = input.sub_events[idx];
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                     }
                 });
             },
@@ -110,10 +108,9 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SUB_COLS];
                     let cols: &mut SubCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, instruction, event.1);
+                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
@@ -166,6 +163,9 @@ where
         builder.assert_bool(local.is_real);
 
         let opcode = AB::Expr::from_f(Opcode::SUB.as_field());
+        let funct3 = AB::Expr::from_canonical_u8(Opcode::SUB.funct3().unwrap());
+        let funct7 = AB::Expr::from_canonical_u8(Opcode::SUB.funct7().unwrap());
+        let base_opcode = AB::Expr::from_canonical_u32(Opcode::SUB.base_opcode().0);
 
         // Constrain the sub operation over `op_b` and `op_c`.
         let op_input = SubOperationInput::<AB>::new(
@@ -182,8 +182,12 @@ where
             builder,
             CPUStateInput {
                 cols: local.state,
-                next_pc: local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-                clk_increment: AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
                 is_real: local.is_real.into(),
             },
         );
@@ -197,6 +201,7 @@ where
                 pc: local.state.pc,
                 opcode,
                 op_a_write_value: local.sub_operation.value,
+                instr_field_consts: [base_opcode, funct3, funct7],
                 cols: local.adapter,
                 is_real: local.is_real.into(),
             },

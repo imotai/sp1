@@ -34,20 +34,22 @@ impl<F: Field> BabyBearWordRangeChecker<F> {
     /// If `is_real` is true, constrains that `value` is a valid BabyBear word.
     pub fn range_check<AB>(
         builder: &mut AB,
-        value: Word<AB::Var>,
+        value: Word<AB::Expr>,
         cols: BabyBearWordRangeChecker<AB::Var>,
         is_real: AB::Expr,
     ) where
         AB: SP1AirBuilder + SP1OperationBuilder<U16CompareOperation<<AB as AirBuilder>::F>>,
     {
         builder.assert_bool(is_real.clone());
+        builder.when(is_real.clone()).assert_zero(value[2].clone());
+        builder.when(is_real.clone()).assert_zero(value[3].clone());
 
         // Note that BabyBear modulus is 2^31 - 2^27 + 1 = 15 * 2^27 + 1.
         // First, check if the most significant limb is less than 15 * 2^11 = 30720.
         <U16CompareOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
             U16CompareOperationInput::<AB>::new(
-                value[1].into(),
+                value[1].clone(),
                 AB::Expr::from_canonical_u16(30720),
                 cols.most_sig_limb_lt_30720,
                 is_real.clone(),
@@ -59,12 +61,12 @@ impl<F: Field> BabyBearWordRangeChecker<F> {
         builder
             .when(is_real.clone())
             .when_not(cols.most_sig_limb_lt_30720.bit)
-            .assert_eq(value[1], AB::Expr::from_canonical_u16(30720));
+            .assert_eq(value[1].clone(), AB::Expr::from_canonical_u16(30720));
 
         // Moreover, if the most significant limb = 15 * 2^11, then the other limb must be zero.
         builder
             .when(is_real.clone())
             .when_not(cols.most_sig_limb_lt_30720.bit)
-            .assert_zero(value[0]);
+            .assert_zero(value[0].clone());
     }
 }

@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
-
+use crate::{
+    air::InteractionScope, prover::Traces, record::MachineRecord, Chip,
+    DebugPublicValuesConstraintFolder,
+};
 use slop_algebra::Field;
 use slop_alloc::CpuBackend;
-
-use crate::{air::InteractionScope, prover::Traces, Chip};
+use std::{collections::BTreeMap, marker::PhantomData};
 
 use super::InteractionKind;
 
@@ -41,9 +42,10 @@ pub fn vec_to_string<F: Field>(vec: Vec<F>) -> String {
     result
 }
 
-// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
-// This presentation is useful when debugging interactions as it makes it clear which
-// interactions are `send` and which are `receive`.
+// /// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
+// ///
+// /// This presentation is useful when debugging interactions as it makes it clear which
+// // interactions /// are `send` and which are `receive`.
 // fn field_to_int<F: PrimeField32>(x: F) -> i32 {
 //     let modulus = BabyBear::ORDER_U64;
 //     let val = x.as_canonical_u64();
@@ -142,6 +144,7 @@ pub fn debug_interactions_with_all_chips<F, A>(
     preprocessed_traces: &Traces<F, CpuBackend>,
     // shards: &[A::Record],
     traces: &Traces<F, CpuBackend>,
+    public_values: Vec<F>,
     interaction_kinds: Vec<InteractionKind>,
     scope: InteractionScope,
 ) -> bool
@@ -149,21 +152,12 @@ where
     F: Field,
     A: MachineAir<F>,
 {
-    // if scope == InteractionScope::Local {
-    //     assert!(shards.len() == 1);
-    // }
-
     let mut final_map = BTreeMap::new();
     let mut total = F::zero();
 
-    // let chips = machine.chips();
     for chip in chips.iter() {
         let mut total_events = 0;
-        // for shard in shards {
-        //     if !chip.included(shard) {
-        //         continue;
-        //     }
-        eprintln!("{}", chip.name());
+
         let (_, count) = debug_interactions::<F, A>(
             chip,
             preprocessed_traces,
@@ -178,8 +172,31 @@ where
             total += *value;
             *entry.1.entry(chip.name()).or_insert(F::zero()) += *value;
         }
-        // }
+
         tracing::info!("{} chip has {} distinct events", chip.name(), total_events);
+    }
+
+    let mut folder = DebugPublicValuesConstraintFolder::<F> {
+        perm_challenges: &[F::zero(), F::zero()],
+        alpha: F::zero(),
+        accumulator: F::zero(),
+        interactions: vec![],
+        public_values: &public_values,
+        _marker: PhantomData,
+    };
+    A::Record::eval_public_values(&mut folder);
+
+    for (kind, scope, values, multiplicity) in folder.interactions.iter() {
+        let key = format!(
+            "{} {} {}",
+            &scope.to_string(),
+            &kind.to_string(),
+            vec_to_string(values.clone())
+        );
+        let entry = final_map.entry(key.clone()).or_insert((F::zero(), BTreeMap::new()));
+        entry.0 += *multiplicity;
+        total += *multiplicity;
+        *entry.1.entry("EvalPublicValues".to_string()).or_insert(F::zero()) += *multiplicity;
     }
 
     tracing::info!("Final counts below.");
@@ -203,22 +220,6 @@ where
     tracing::info!("==================");
     if !any_nonzero {
         tracing::info!("All chips have the same number of sends and receives.");
-    } else {
-        // tracing::info!("Positive values mean sent more than received.");
-        // tracing::info!("Negative values mean received more than sent.");
-        // if total != F::zero() {
-        //     tracing::info!("Total send-receive discrepancy: {}", field_to_int(total));
-        //     if field_to_int(total) > 0 {
-        //         tracing::info!("you're sending more than you are receiving");
-        //     } else {
-        //         tracing::info!("you're receiving more than you are sending");
-        //     }
-        // } else {
-        //     tracing::info!(
-        //         "the total number of sends and receives match, but the keys don't match"
-        //     );
-        //     tracing::info!("check the arguments");
-        // }
     }
 
     !any_nonzero

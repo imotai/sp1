@@ -5,8 +5,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sp1-zkvm = { path = "../../../crates/zkvm/entrypoint" }
+sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [patch.crates-io]
-tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", tag = "patch-2.0.2-sp1-4.0.0" }
+tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", tag = "patch-2.0.2-sp1-6.0.0" }
+sp1-lib = { path = "../../../crates/zkvm/lib" }

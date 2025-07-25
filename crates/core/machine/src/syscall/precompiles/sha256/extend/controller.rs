@@ -14,7 +14,7 @@ use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind,
 };
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, iter::once};
 
 impl ShaExtendControlChip {
     pub const fn new() -> Self {
@@ -68,7 +68,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             let cols: &mut ShaExtendControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.w_ptr.populate(&mut blu_events, event.w_ptr, 256);
+            cols.w_ptr.populate(&mut blu_events, event.w_ptr, 512);
             cols.is_real = F::one();
             rows.push(row);
         }
@@ -118,46 +118,38 @@ where
         builder.assert_bool(local.is_real);
 
         let w_ptr =
-            SyscallAddrOperation::<AB::F>::eval(builder, 256, local.w_ptr, local.is_real.into());
+            SyscallAddrOperation::<AB::F>::eval(builder, 512, local.w_ptr, local.is_real.into());
 
         // Receive the syscall.
         builder.receive_syscall(
             local.clk_high,
             local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::SHA_EXTEND.syscall_id()),
-            w_ptr.clone(),
-            AB::Expr::zero(),
+            w_ptr.map(Into::into),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
             local.is_real,
             InteractionScope::Local,
         );
 
         // Send the initial state.
+        let send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(w_ptr.map(Into::into))
+            .chain(once(AB::Expr::from_canonical_u32(16)))
+            .collect::<Vec<_>>();
         builder.send(
-            AirInteraction::new(
-                vec![
-                    local.clk_high.into(),
-                    local.clk_low.into(),
-                    w_ptr.clone(),
-                    AB::Expr::from_canonical_u32(16),
-                ],
-                local.is_real.into(),
-                InteractionKind::ShaExtend,
-            ),
+            AirInteraction::new(send_values, local.is_real.into(), InteractionKind::ShaExtend),
             InteractionScope::Local,
         );
 
         // Receive the final state.
+        let receive_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(w_ptr.map(Into::into))
+            .chain(once(AB::Expr::from_canonical_u32(64)))
+            .collect::<Vec<_>>();
         builder.receive(
-            AirInteraction::new(
-                vec![
-                    local.clk_high.into(),
-                    local.clk_low.into(),
-                    w_ptr.clone(),
-                    AB::Expr::from_canonical_u32(64),
-                ],
-                local.is_real.into(),
-                InteractionKind::ShaExtend,
-            ),
+            AirInteraction::new(receive_values, local.is_real.into(), InteractionKind::ShaExtend),
             InteractionScope::Local,
         );
     }

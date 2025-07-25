@@ -69,7 +69,7 @@ pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
     pub mod tests {
-        use crate::{Instruction, Opcode, Program};
+        use crate::{utils::add_halt, Instruction, Opcode, Program};
 
         pub use test_artifacts::{
             FIBONACCI_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF, SSZ_WITHDRAWALS_ELF,
@@ -78,11 +78,12 @@ pub mod programs {
 
         #[must_use]
         pub fn simple_program() -> Program {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
                 Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
                 Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
 
@@ -149,7 +150,7 @@ pub mod programs {
         #[must_use]
         #[allow(clippy::unreadable_literal)]
         pub fn simple_memory_program() -> Program {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADD, 29, 0, 0x12348765, false, true),
                 // SW and LW
                 Instruction::new(Opcode::SW, 29, 0, 0x27654320, false, true),
@@ -165,7 +166,7 @@ pub mod programs {
                 // LHU
                 Instruction::new(Opcode::LHU, 21, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LHU, 20, 0, 0x27654322, false, true),
-                // LU
+                // LH
                 Instruction::new(Opcode::LH, 19, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LH, 18, 0, 0x27654322, false, true),
                 // SB
@@ -187,7 +188,20 @@ pub mod programs {
                 Instruction::new(Opcode::LW, 12, 0, 0x43627530, false, true),
                 Instruction::new(Opcode::SH, 17, 0, 0x43627532, false, true),
                 Instruction::new(Opcode::LW, 11, 0, 0x43627530, false, true),
+                // 64-bit operations for RISCV64 testing
+                // Create a 64-bit value to test with
+                Instruction::new(Opcode::ADD, 10, 0, 0xFEDCBA9876543210, false, true),
+                // SD (Store Double/64-bit) and LD (Load Double/64-bit)
+                Instruction::new(Opcode::SD, 10, 0, 0x54321000, false, true),
+                Instruction::new(Opcode::LD, 9, 0, 0x54321000, false, true),
+                // LWU (Load Word Unsigned) - loads 32-bit value and zero-extends to 64-bit
+                Instruction::new(Opcode::LWU, 8, 0, 0x27654320, false, true),
+                // Test that LWU zero-extends (upper 32 bits should be 0)
+                Instruction::new(Opcode::LWU, 7, 0, 0x54321000, false, true), /* Load lower 32
+                                                                               * bits of our
+                                                                               * 64-bit value */
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
     }

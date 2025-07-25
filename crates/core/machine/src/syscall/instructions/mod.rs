@@ -40,7 +40,7 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //     fn test_malicious_next_pc() {
 //         struct TestCase {
 //             program: Vec<Instruction>,
-//             incorrect_next_pc: u32,
+//             incorrect_next_pc: u64,
 //         }
 
 //         let test_cases = vec![
@@ -79,8 +79,8 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //                     // There can be multiple shards for programs with syscalls, so need to figure
 // out which                     // record is for a CPU shard.
 //                     if !malicious_record.cpu_events.is_empty() {
-//                         malicious_record.syscall_events[0].next_pc = test_case.incorrect_next_pc;
-//                     }
+//                         malicious_record.syscall_events[0].next_pc =
+// test_case.incorrect_next_pc;                     }
 
 //                     prover.generate_traces(&malicious_record)
 //                 };

@@ -1,22 +1,21 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-use std::collections::HashMap;
-
 use crate::{
     air::ProgramAirBuilder,
     utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
 };
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
+};
+pub mod instruction;
+use instruction::InstructionCols;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-use sp1_core_executor::{ExecutionRecord, Program};
+use sp1_core_executor::{ExecutionRecord, Opcode, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
-
-use crate::cpu::columns::InstructionCols;
+use std::collections::HashMap;
 
 /// The number of preprocessed program columns.
 pub const NUM_PROGRAM_PREPROCESSED_COLS: usize = size_of::<ProgramPreprocessedCols<u8>>();
@@ -28,8 +27,12 @@ pub const NUM_PROGRAM_MULT_COLS: usize = size_of::<ProgramMultiplicityCols<u8>>(
 #[derive(AlignedBorrow, Clone, Copy, Default)]
 #[repr(C)]
 pub struct ProgramPreprocessedCols<T> {
-    pub pc: T,
+    pub pc: [T; 3],
     pub instruction: InstructionCols<T>,
+    pub base_opcode: T,
+    pub funct3: T,
+    pub funct7: T,
+    // TODO: Do we need funct12? How do we handle ECALLs? Just for precompiles?
 }
 
 /// The column layout for the chip.
@@ -78,6 +81,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         let nb_rows = program.instructions.len();
         let size_log2 = program.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        assert!(matches!(
+            padded_nb_rows.checked_mul(4),
+            Some(last_idx) if last_idx < F::ORDER_U64 as usize,
+        ));
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_PROGRAM_PREPROCESSED_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
@@ -92,28 +99,36 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                         idx = 0;
                     }
                     let cols: &mut ProgramPreprocessedCols<F> = row.borrow_mut();
-                    let mut instruction = program.instructions[idx];
-                    let pc = program.pc_base + (idx as u32 * 4);
-                    cols.pc = F::from_canonical_u32(pc);
-                    if instruction.is_branch_instruction() {
-                        instruction.op_c = pc.wrapping_add(instruction.op_c);
-                        debug_assert!(instruction.op_c < (1 << 31) - (1 << 27) + 1);
-                    }
-                    if instruction.is_jal_instruction() {
-                        instruction.op_b = pc.wrapping_add(instruction.op_b);
-                        instruction.op_c = pc.wrapping_add(4);
-                        debug_assert!(instruction.op_b < (1 << 31) - (1 << 27) + 1);
-                        if instruction.op_a == 0 {
-                            instruction.op_c = 0;
-                        }
-                    }
-                    if instruction.is_auipc_instruction() {
-                        instruction.op_b = pc.wrapping_add(instruction.op_b);
-                        if instruction.op_a == 0 {
-                            instruction.op_b = 0;
-                        }
-                    }
+                    let pc = program.pc_base + idx as u64 * 4;
+                    assert!(pc < (1 << 48));
+                    cols.pc = [
+                        F::from_canonical_u16((pc & 0xFFFF) as u16),
+                        F::from_canonical_u16(((pc >> 16) & 0xFFFF) as u16),
+                        F::from_canonical_u16(((pc >> 32) & 0xFFFF) as u16),
+                    ];
+                    // let instruction =
+                    //     program.instructions[idx].preprocess::<F>(program.pc_base, pc);
+                    let instruction = program.instructions[idx];
                     cols.instruction.populate(&instruction);
+
+                    if instruction.opcode != Opcode::UNIMP {
+                        let (base_opcode, base_imm_opcode) = instruction.opcode.base_opcode();
+                        cols.base_opcode = if base_imm_opcode.is_some() && instruction.imm_c {
+                            F::from_canonical_u32(base_imm_opcode.unwrap())
+                        } else {
+                            F::from_canonical_u32(base_opcode)
+                        };
+                        cols.funct3 = if let Some(funct3) = instruction.opcode.funct3() {
+                            F::from_canonical_u8(funct3)
+                        } else {
+                            F::zero()
+                        };
+                        cols.funct7 = if let Some(funct7) = instruction.opcode.funct7() {
+                            F::from_canonical_u8(funct7)
+                        } else {
+                            F::zero()
+                        };
+                    }
                 });
             });
 
@@ -139,11 +154,19 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
+        input.addw_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
         input.addi_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
         input.sub_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.subw_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
@@ -191,6 +214,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
+        input.memory_load_double_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
         input.memory_store_byte_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
@@ -203,6 +230,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
+        input.memory_store_double_events.iter().for_each(|event| {
+            let pc = event.0.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
         input.jal_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
@@ -211,7 +242,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
-        input.auipc_events.iter().for_each(|event| {
+        input.utype_events.iter().for_each(|event| {
             let pc = event.0.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
@@ -227,7 +258,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             .into_iter()
             .enumerate()
             .map(|(i, _)| {
-                let pc = input.program.pc_base + (i as u32 * 4);
+                let pc = input.program.pc_base + i as u64 * 4;
                 let mut row = [F::zero(); NUM_PROGRAM_MULT_COLS];
                 let cols: &mut ProgramMultiplicityCols<F> = row.as_mut_slice().borrow_mut();
                 cols.multiplicity =
@@ -271,7 +302,12 @@ where
         let mult_local: &ProgramMultiplicityCols<AB::Var> = (*mult_local).borrow();
 
         // Constrain the interaction with CPU table
-        builder.receive_program(prep_local.pc, prep_local.instruction, mult_local.multiplicity);
+        builder.receive_program(
+            prep_local.pc,
+            prep_local.instruction,
+            [prep_local.base_opcode.into(), prep_local.funct3.into(), prep_local.funct7.into()],
+            mult_local.multiplicity,
+        );
     }
 }
 
@@ -304,7 +340,8 @@ mod tests {
         let shard = ExecutionRecord {
             program: Arc::new(Program {
                 instructions,
-                pc_start: 0,
+                instructions_encoded: None,
+                pc_start_abs: 0,
                 pc_base: 0,
                 memory_image: HashMap::new(),
                 preprocessed_shape: None,

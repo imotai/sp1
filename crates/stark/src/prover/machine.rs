@@ -4,7 +4,7 @@ use futures::{
 };
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
-use slop_algebra::{ExtensionField, Field};
+use slop_algebra::{ExtensionField, Field, PrimeField32};
 use slop_jagged::JaggedConfig;
 use thiserror::Error;
 use tracing::{Instrument, Span};
@@ -332,6 +332,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
     ) -> Result<(), MachineVerifierConfigError<C::Config>>
     where
         C::Air: for<'a> Air<VerifierConstraintFolder<'a, C::Config>>,
+        C::F: PrimeField32,
     {
         self.inner.verifier.verify(vk, proof)
     }

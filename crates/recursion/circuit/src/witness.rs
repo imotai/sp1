@@ -284,13 +284,11 @@ impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> W
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let local = self.local.read(builder);
-        let next = self.next.read(builder);
-        Self::WitnessVariable { local, next }
+        Self::WitnessVariable { local }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
         self.local.write(witness);
-        self.next.write(witness);
     }
 }
 
@@ -363,7 +361,7 @@ where
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let pc_start = self.pc_start.read(builder);
         let initial_global_cumulative_sum = self.initial_global_cumulative_sum.read(builder);
-        let preprocessed_commit = self.preprocessed_commit.as_ref().map(|x| x.read(builder));
+        let preprocessed_commit = self.preprocessed_commit.read(builder);
         let preprocessed_chip_information = self
             .preprocessed_chip_information
             .iter()
@@ -388,9 +386,7 @@ where
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
         self.pc_start.write(witness);
         self.initial_global_cumulative_sum.write(witness);
-        if let Some(x) = self.preprocessed_commit.as_ref() {
-            x.write(witness);
-        }
+        self.preprocessed_commit.write(witness);
         self.preprocessed_chip_information.values().for_each(|dims| {
             dims.height.write(witness);
             dims.num_polynomials.write(witness)

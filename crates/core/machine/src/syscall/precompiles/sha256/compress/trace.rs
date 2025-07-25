@@ -10,13 +10,13 @@ use sp1_core_executor::{
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
-use sp1_stark::{air::MachineAir, Word};
+use sp1_stark::air::MachineAir;
 
 use super::{
     columns::{ShaCompressCols, NUM_SHA_COMPRESS_COLS},
     ShaCompressChip, SHA_COMPRESS_K,
 };
-use crate::utils::{next_multiple_of_32, pad_rows_fixed};
+use crate::utils::{next_multiple_of_32, pad_rows_fixed, u32_to_half_word};
 
 impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
     type Record = ExecutionRecord;
@@ -73,15 +73,13 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
             if octet_num != 0 && octet_num != 9 {
                 let compression_idx = octet_num - 1;
                 let k_idx = compression_idx * 8 + octet;
-                cols.k = Word::from(SHA_COMPRESS_K[k_idx]);
+                cols.k = u32_to_half_word(SHA_COMPRESS_K[k_idx]);
             }
 
             octet = (octet + 1) % 8;
             if octet == 0 {
                 octet_num = (octet_num + 1) % 10;
             }
-
-            cols.is_last_row = cols.octet[7] * cols.octet_num[9];
         }
 
         // Convert the trace to a row major matrix.
@@ -143,25 +141,38 @@ impl ShaCompressChip {
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
 
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
-            cols.h_ptr = F::from_canonical_u32(event.h_ptr);
+            cols.w_ptr = [
+                F::from_canonical_u16((event.w_ptr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.w_ptr >> 16) as u16),
+                F::from_canonical_u16((event.w_ptr >> 32) as u16),
+            ];
+            cols.h_ptr = [
+                F::from_canonical_u16((event.h_ptr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.h_ptr >> 16) as u16),
+                F::from_canonical_u16((event.h_ptr >> 32) as u16),
+            ];
 
             cols.octet[j] = F::one();
             cols.octet_num[octet_num_idx] = F::one();
             cols.is_initialize = F::one();
+            cols.mem_addr_init.populate(blu, event.h_ptr, j as u64 * 8);
 
             cols.mem.populate(MemoryRecordEnum::Read(event.h_read_records[j]), blu);
-            cols.mem_value = Word::from(event.h_read_records[j].value);
-            cols.mem_addr = F::from_canonical_u32(event.h_ptr + (j * 4) as u32);
+            cols.mem_value = u32_to_half_word(event.h_read_records[j].value as u32);
+            cols.mem_addr = [
+                F::from_canonical_u16(((event.h_ptr + (j * 8) as u64) & 0xFFFF) as u16),
+                F::from_canonical_u16(((event.h_ptr + (j * 8) as u64) >> 16) as u16),
+                F::from_canonical_u16(((event.h_ptr + (j * 8) as u64) >> 32) as u16),
+            ];
 
-            cols.a = Word::from(event.h_read_records[0].value);
-            cols.b = Word::from(event.h_read_records[1].value);
-            cols.c = Word::from(event.h_read_records[2].value);
-            cols.d = Word::from(event.h_read_records[3].value);
-            cols.e = Word::from(event.h_read_records[4].value);
-            cols.f = Word::from(event.h_read_records[5].value);
-            cols.g = Word::from(event.h_read_records[6].value);
-            cols.h = Word::from(event.h_read_records[7].value);
+            cols.a = u32_to_half_word(event.h_read_records[0].value as u32);
+            cols.b = u32_to_half_word(event.h_read_records[1].value as u32);
+            cols.c = u32_to_half_word(event.h_read_records[2].value as u32);
+            cols.d = u32_to_half_word(event.h_read_records[3].value as u32);
+            cols.e = u32_to_half_word(event.h_read_records[4].value as u32);
+            cols.f = u32_to_half_word(event.h_read_records[5].value as u32);
+            cols.g = u32_to_half_word(event.h_read_records[6].value as u32);
+            cols.h = u32_to_half_word(event.h_read_records[7].value as u32);
             cols.index = F::from_canonical_u32(j as u32);
 
             cols.is_real = F::one();
@@ -172,26 +183,43 @@ impl ShaCompressChip {
 
         // Performs the compress operation.
         let mut h_array = event.h;
-        for j in 0..64 {
-            if (j as usize).is_multiple_of(8) {
+        for j in 0..64usize {
+            if j.is_multiple_of(8) {
                 octet_num_idx += 1;
             }
             let mut row = [F::zero(); NUM_SHA_COMPRESS_COLS];
             let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
 
-            cols.k = Word::from(SHA_COMPRESS_K[j]);
+            cols.k = u32_to_half_word(SHA_COMPRESS_K[j]);
             cols.is_compression = F::one();
             cols.octet[j % 8] = F::one();
             cols.octet_num[octet_num_idx] = F::one();
+            cols.mem_addr_compress.populate(
+                blu,
+                event.w_ptr,
+                ((octet_num_idx as u64 - 1) * 8 + (j % 8) as u64) * 8,
+            );
 
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
-            cols.h_ptr = F::from_canonical_u32(event.h_ptr);
+            cols.w_ptr = [
+                F::from_canonical_u16((event.w_ptr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.w_ptr >> 16) as u16),
+                F::from_canonical_u16((event.w_ptr >> 32) as u16),
+            ];
+            cols.h_ptr = [
+                F::from_canonical_u16((event.h_ptr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.h_ptr >> 16) as u16),
+                F::from_canonical_u16((event.h_ptr >> 32) as u16),
+            ];
 
             cols.mem.populate(MemoryRecordEnum::Read(event.w_i_read_records[j]), blu);
-            cols.mem_value = Word::from(event.w_i_read_records[j].value);
-            cols.mem_addr = F::from_canonical_u32(event.w_ptr + (j * 4) as u32);
+            cols.mem_value = u32_to_half_word(event.w_i_read_records[j].value as u32);
+            cols.mem_addr = [
+                F::from_canonical_u16(((event.w_ptr + (j * 8) as u64) & 0xFFFF) as u16),
+                F::from_canonical_u16(((event.w_ptr + (j * 8) as u64) >> 16) as u16),
+                F::from_canonical_u16(((event.w_ptr + (j * 8) as u64) >> 32) as u16),
+            ];
             cols.index = F::from_canonical_u32(j as u32 + 8);
 
             let a = h_array[0];
@@ -202,39 +230,39 @@ impl ShaCompressChip {
             let f = h_array[5];
             let g = h_array[6];
             let h = h_array[7];
-            cols.a = Word::from(a);
-            cols.b = Word::from(b);
-            cols.c = Word::from(c);
-            cols.d = Word::from(d);
-            cols.e = Word::from(e);
-            cols.f = Word::from(f);
-            cols.g = Word::from(g);
-            cols.h = Word::from(h);
+            cols.a = u32_to_half_word(a);
+            cols.b = u32_to_half_word(b);
+            cols.c = u32_to_half_word(c);
+            cols.d = u32_to_half_word(d);
+            cols.e = u32_to_half_word(e);
+            cols.f = u32_to_half_word(f);
+            cols.g = u32_to_half_word(g);
+            cols.h = u32_to_half_word(h);
 
             let e_rr_6 = cols.e_rr_6.populate(blu, e, 6);
             let e_rr_11 = cols.e_rr_11.populate(blu, e, 11);
             let e_rr_25 = cols.e_rr_25.populate(blu, e, 25);
-            let s1_intermediate = cols.s1_intermediate.populate_xor_u16(blu, e_rr_6, e_rr_11);
-            let s1 = cols.s1.populate_xor_u16(blu, s1_intermediate, e_rr_25);
+            let s1_intermediate = cols.s1_intermediate.populate_xor_u32(blu, e_rr_6, e_rr_11);
+            let s1 = cols.s1.populate_xor_u32(blu, s1_intermediate, e_rr_25);
 
-            let e_and_f = cols.e_and_f.populate_and_u16(blu, e, f);
+            let e_and_f = cols.e_and_f.populate_and_u32(blu, e, f);
             let e_not = cols.e_not.populate(e);
-            let e_not_and_g = cols.e_not_and_g.populate_and_u16(blu, e_not, g);
-            let ch = cols.ch.populate_xor_u16(blu, e_and_f, e_not_and_g);
+            let e_not_and_g = cols.e_not_and_g.populate_and_u32(blu, e_not as u32, g as u32);
+            let ch = cols.ch.populate_xor_u32(blu, e_and_f, e_not_and_g);
 
             let temp1 = cols.temp1.populate(blu, h, s1, ch, event.w[j], SHA_COMPRESS_K[j]);
 
             let a_rr_2 = cols.a_rr_2.populate(blu, a, 2);
             let a_rr_13 = cols.a_rr_13.populate(blu, a, 13);
             let a_rr_22 = cols.a_rr_22.populate(blu, a, 22);
-            let s0_intermediate = cols.s0_intermediate.populate_xor_u16(blu, a_rr_2, a_rr_13);
-            let s0 = cols.s0.populate_xor_u16(blu, s0_intermediate, a_rr_22);
+            let s0_intermediate = cols.s0_intermediate.populate_xor_u32(blu, a_rr_2, a_rr_13);
+            let s0 = cols.s0.populate_xor_u32(blu, s0_intermediate, a_rr_22);
 
-            let a_and_b = cols.a_and_b.populate_and_u16(blu, a, b);
-            let a_and_c = cols.a_and_c.populate_and_u16(blu, a, c);
-            let b_and_c = cols.b_and_c.populate_and_u16(blu, b, c);
-            let maj_intermediate = cols.maj_intermediate.populate_xor_u16(blu, a_and_b, a_and_c);
-            let maj = cols.maj.populate_xor_u16(blu, maj_intermediate, b_and_c);
+            let a_and_b = cols.a_and_b.populate_and_u32(blu, a, b);
+            let a_and_c = cols.a_and_c.populate_and_u32(blu, a, c);
+            let b_and_c = cols.b_and_c.populate_and_u32(blu, b, c);
+            let maj_intermediate = cols.maj_intermediate.populate_xor_u32(blu, a_and_b, a_and_c);
+            let maj = cols.maj.populate_xor_u32(blu, maj_intermediate, b_and_c);
 
             let temp2 = cols.temp2.populate(blu, s0, maj);
 
@@ -267,28 +295,41 @@ impl ShaCompressChip {
 
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.w_ptr = F::from_canonical_u32(event.w_ptr);
-            cols.h_ptr = F::from_canonical_u32(event.h_ptr);
+            cols.w_ptr = [
+                F::from_canonical_u16((event.w_ptr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.w_ptr >> 16) as u16),
+                F::from_canonical_u16((event.w_ptr >> 32) as u16),
+            ];
+            cols.h_ptr = [
+                F::from_canonical_u16((event.h_ptr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.h_ptr >> 16) as u16),
+                F::from_canonical_u16((event.h_ptr >> 32) as u16),
+            ];
 
             cols.octet[j] = F::one();
             cols.octet_num[octet_num_idx] = F::one();
             cols.is_finalize = F::one();
+            cols.mem_addr_finalize.populate(blu, event.h_ptr, j as u64 * 8);
 
             cols.finalize_add.populate(blu, og_h[j], h_array[j]);
             cols.mem.populate(MemoryRecordEnum::Write(event.h_write_records[j]), blu);
-            cols.mem_value = Word::from(event.h_write_records[j].value);
-            cols.mem_addr = F::from_canonical_u32(event.h_ptr + (j * 4) as u32);
+            cols.mem_value = u32_to_half_word(event.h_write_records[j].value as u32);
+            cols.mem_addr = [
+                F::from_canonical_u16(((event.h_ptr + (j * 8) as u64) & 0xFFFF) as u16),
+                F::from_canonical_u16(((event.h_ptr + (j * 8) as u64) >> 16) as u16),
+                F::from_canonical_u16(((event.h_ptr + (j * 8) as u64) >> 32) as u16),
+            ];
             cols.index = F::from_canonical_u32(j as u32 + 72);
 
             v[j] = h_array[j];
-            cols.a = Word::from(v[0]);
-            cols.b = Word::from(v[1]);
-            cols.c = Word::from(v[2]);
-            cols.d = Word::from(v[3]);
-            cols.e = Word::from(v[4]);
-            cols.f = Word::from(v[5]);
-            cols.g = Word::from(v[6]);
-            cols.h = Word::from(v[7]);
+            cols.a = u32_to_half_word(v[0]);
+            cols.b = u32_to_half_word(v[1]);
+            cols.c = u32_to_half_word(v[2]);
+            cols.d = u32_to_half_word(v[3]);
+            cols.e = u32_to_half_word(v[4]);
+            cols.f = u32_to_half_word(v[5]);
+            cols.g = u32_to_half_word(v[6]);
+            cols.h = u32_to_half_word(v[7]);
 
             match j {
                 0 => cols.finalized_operand = cols.a,
@@ -303,7 +344,6 @@ impl ShaCompressChip {
             };
 
             cols.is_real = F::one();
-            cols.is_last_row = cols.octet[7] * cols.octet_num[9];
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

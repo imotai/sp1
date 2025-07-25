@@ -33,8 +33,13 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
     // Assert that the `is_complete` flag is boolean.
     builder.assert_felt_eq(is_complete * (is_complete - C::F::one()), C::F::zero());
 
-    // Assert that `next_pc` is equal to zero (so program execution has completed)
-    builder.assert_felt_eq(is_complete * *next_pc, C::F::zero());
+    // Assert that `next_pc` is equal to one (so program execution has completed)
+    builder.assert_felt_eq(
+        is_complete * (next_pc[0] - C::F::from_canonical_u64(sp1_core_executor::HALT_PC)),
+        C::F::zero(),
+    );
+    builder.assert_felt_eq(is_complete * next_pc[1], C::F::zero());
+    builder.assert_felt_eq(is_complete * next_pc[2], C::F::zero());
 
     // Assert that start shard is equal to 1.
     builder.assert_felt_eq(is_complete * (*start_shard - C::F::one()), C::F::zero());

@@ -1,12 +1,11 @@
 use crate::{
-    air::SP1Operation, memory::MemoryAccessColsU8, operations::field::field_op::FieldOpCols,
+    memory::MemoryAccessColsU8,
+    operations::{field::field_op::FieldOpCols, AddrAddOperation},
 };
 
 use crate::{
     air::SP1CoreAirBuilder,
-    operations::{
-        field::range::FieldLtCols, IsZeroOperation, IsZeroOperationInput, SyscallAddrOperation,
-    },
+    operations::{field::range::FieldLtCols, IsZeroOperation, SyscallAddrOperation},
     utils::{
         limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
         words_to_bytes_le_vec,
@@ -31,7 +30,7 @@ use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
     air::{InteractionScope, MachineAir},
-    MachineRecord,
+    MachineRecord, Word,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -69,6 +68,9 @@ pub struct Uint256MulCols<T> {
 
     /// The pointer to the second input, which contains the y value and the modulus.
     pub y_ptr: SyscallAddrOperation<T>,
+
+    pub x_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+    pub y_and_modulus_addrs: [AddrAddOperation<T>; 2 * WORDS_FIELD_ELEMENT],
 
     // Memory columns.
     // x_memory is written to with the result, which is why it is of type MemoryWriteCols.
@@ -145,6 +147,8 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                         cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, 32);
                         cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, 64);
 
+                        let modulus_ptr = event.y_ptr + WORDS_FIELD_ELEMENT as u64 * 8;
+
                         // Populate memory columns.
                         for i in 0..WORDS_FIELD_ELEMENT {
                             let x_memory_record =
@@ -156,10 +160,28 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
                             cols.y_memory[i].populate(y_memory_record, &mut new_byte_lookup_events);
                             cols.modulus_memory[i]
                                 .populate(modulus_memory_record, &mut new_byte_lookup_events);
+
+                            cols.x_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.x_ptr,
+                                8 * i as u64,
+                            );
+
+                            cols.y_and_modulus_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.y_ptr,
+                                8 * i as u64,
+                            );
+
+                            cols.y_and_modulus_addrs[i + WORDS_FIELD_ELEMENT].populate(
+                                &mut new_byte_lookup_events,
+                                modulus_ptr,
+                                8 * i as u64,
+                            );
                         }
 
                         let modulus_bytes = words_to_bytes_le_vec(&event.modulus);
-                        let modulus_byte_sum = modulus_bytes.iter().map(|b| *b as u32).sum::<u32>();
+                        let modulus_byte_sum = modulus_bytes.iter().map(|b| *b as u64).sum::<u64>();
                         IsZeroOperation::populate(&mut cols.modulus_is_zero, modulus_byte_sum);
 
                         // Populate the output column.
@@ -258,19 +280,15 @@ where
         let modulus_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
             Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
 
-        // If the modulus is zero, then we don't perform the modulus operation.
-        // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
-        // not overflow because we are summing 32 bytes.
-        let modulus_byte_sum =
-            modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
-        IsZeroOperation::<AB::F>::eval(
-            builder,
-            IsZeroOperationInput::new(
-                modulus_byte_sum,
-                local.modulus_is_zero,
-                local.is_real.into(),
-            ),
-        );
+        // // If the modulus is zero, then we don't perform the modulus operation.
+        // // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum
+        // will // not overflow because we are summing 32 bytes.
+        // let modulus_byte_sum =
+        //     modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc +
+        // limb.clone()); IsZeroOperation::<AB::F>::eval(
+        //     builder,
+        //     (modulus_byte_sum, local.modulus_is_zero, local.is_real.into()),
+        // );
 
         // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.
         // Otherwise, we use the modulus passed in.
@@ -313,11 +331,62 @@ where
         let y_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
 
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // x_addrs[i] = x_addrs[i - 1] + 8.
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // y_addrs[0] = y_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.y_and_modulus_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_and_modulus_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.y_and_modulus_addrs[i - 1].value[0].into(),
+                    local.y_and_modulus_addrs[i - 1].value[1].into(),
+                    local.y_and_modulus_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.y_and_modulus_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         // Read and write x.
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),
-            x_ptr.clone(),
+            &local.x_addrs.map(|addr| addr.value.map(Into::into)),
             &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
             result_words,
             local.is_real,
@@ -328,7 +397,7 @@ where
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low.into(),
-            y_ptr.clone(),
+            &local.y_and_modulus_addrs.map(|addr| addr.value.map(Into::into)),
             &[local.y_memory, local.modulus_memory]
                 .concat()
                 .iter()
@@ -342,8 +411,8 @@ where
             local.clk_high,
             local.clk_low.into(),
             AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
-            x_ptr.clone(),
-            y_ptr.clone(),
+            x_ptr.map(Into::into),
+            y_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

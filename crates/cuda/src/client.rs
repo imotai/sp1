@@ -3,8 +3,7 @@ use sp1_primitives::Elf;
 use sp1_prover::{InnerSC, OuterSC, SP1CoreProof, SP1VerifyingKey};
 use std::{
     collections::HashMap,
-    io::Error as IoError,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, LazyLock, Weak},
     time::Duration,
 };
@@ -17,7 +16,7 @@ use tokio::{
 use crate::{
     api::{Request, Response},
     pk::CudaProvingKey,
-    MIN_CUDA_VERSION,
+    server, CudaClientError,
 };
 
 /// The global client to be shared, if other clients still exist (like in a proving key.)
@@ -31,52 +30,11 @@ pub(crate) struct CudaClient {
     inner: Arc<CudaClientInner>,
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum CudaClientError {
-    #[error("Failed to connect to the server: {0:?}")]
-    Connect(IoError),
-
-    #[error("Failed to serialize the request: {0:?}")]
-    Serialize(bincode::Error),
-
-    #[error("Failed to deserialize the response: {0:?}")]
-    Deserialize(bincode::Error),
-
-    #[error("Failed to write the request: {0:?}")]
-    Write(IoError),
-
-    #[error("Failed to read the response: {0:?}")]
-    Read(IoError),
-
-    #[error("The server returned an internal error \n {0}")]
-    ServerError(String),
-
-    #[error("The server returned an unexpected response: {0:?}")]
-    UnexpectedResponse(&'static str),
-
-    #[error("The server returned a prover error: {0:?}")]
-    ProverError(String),
-
-    #[error("Failed to download the server: {0:?}")]
-    Download(#[from] reqwest::Error),
-
-    #[error("Failed to download the server: {0:?}")]
-    DownloadIO(std::io::Error),
-
-    #[error("CUDA version is too old. Please upgrade to at least {}", MIN_CUDA_VERSION)]
-    CudaVersionTooOld,
-
-    #[error("Unexpected error: {0:?}")]
-    Unexpected(String),
-}
-
 impl CudaClient {
     /// Setup a new proving key.
     pub(crate) async fn setup(&self, elf: Elf) -> Result<CudaProvingKey, CudaClientError> {
         let request = Request::Setup { elf: elf.as_ref().into() };
-        self.send(request).await?;
-
-        let response = self.recv().await?.into_result()?;
+        let response = self.send_and_recv(request).await?.into_result()?;
 
         match response {
             Response::Setup { id, vk } => Ok(CudaProvingKey::new(id, elf, vk, self.clone())),
@@ -90,14 +48,9 @@ impl CudaClient {
         key: &CudaProvingKey,
         stdin: SP1Stdin,
     ) -> Result<SP1CoreProof, CudaClientError> {
-        // Send the core request.
         let request = Request::Core { key: key.id(), stdin };
-        self.send(request).await?;
+        let response = self.send_and_recv(request).await?.into_result()?;
 
-        // Receive the response.
-        let response = self.recv().await?.into_result()?;
-
-        // Return the proof.
         match response {
             Response::Core { proof } => Ok(proof),
             _ => Err(CudaClientError::UnexpectedResponse(response.type_of())),
@@ -112,9 +65,7 @@ impl CudaClient {
         deferred: Vec<SP1RecursionProof<InnerSC>>,
     ) -> Result<SP1RecursionProof<InnerSC>, CudaClientError> {
         let request = Request::Compress { vk: vk.clone(), proof, deferred };
-        self.send(request).await?;
-
-        let response = self.recv().await?.into_result()?;
+        let response = self.send_and_recv(request).await?.into_result()?;
 
         match response {
             Response::Compress { proof } => Ok(proof),
@@ -127,14 +78,9 @@ impl CudaClient {
         &self,
         proof: SP1RecursionProof<InnerSC>,
     ) -> Result<SP1RecursionProof<InnerSC>, CudaClientError> {
-        // Send the shrink request.
         let request = Request::Shrink { proof };
-        self.send(request).await?;
+        let response = self.send_and_recv(request).await?.into_result()?;
 
-        // Receive the response.
-        let response = self.recv().await?.into_result()?;
-
-        // Return the proof.
         match response {
             Response::Shrink { proof } => Ok(proof),
             _ => Err(CudaClientError::UnexpectedResponse(response.type_of())),
@@ -147,9 +93,7 @@ impl CudaClient {
         proof: SP1RecursionProof<InnerSC>,
     ) -> Result<SP1RecursionProof<OuterSC>, CudaClientError> {
         let request = Request::Wrap { proof };
-        self.send(request).await?;
-
-        let response = self.recv().await?.into_result()?;
+        let response = self.send_and_recv(request).await?.into_result()?;
 
         match response {
             Response::Wrap { proof } => Ok(proof),
@@ -160,15 +104,16 @@ impl CudaClient {
     /// Remove a proving key from the server side cache.
     pub(crate) async fn destroy(&self, key: [u8; 32]) -> Result<(), CudaClientError> {
         let request = Request::Destroy { key };
-        self.send(request).await?;
-
-        let response = self.recv().await?.into_result()?;
+        let response = self.send_and_recv(request).await?.into_result()?;
 
         match response {
             Response::Ok => Ok(()),
-            Response::InternalError(e) => Err(CudaClientError::ServerError(e)),
             _ => Err(CudaClientError::UnexpectedResponse(response.type_of())),
         }
+    }
+
+    async fn lock(&self) -> tokio::sync::MutexGuard<'_, UnixStream> {
+        self.inner.stream.as_ref().expect("expected a valid stream").lock().await
     }
 }
 
@@ -178,19 +123,47 @@ impl CudaClient {
         CudaClientInner::connect(cuda_id).await
     }
 
+    /// Sends a request and awaits a response, all while holding the lock on the stream.
+    ///
+    /// This implementation is requierd to support concurrent connections to the same device.
+    pub(crate) async fn send_and_recv(
+        &self,
+        request: Request,
+    ) -> Result<Response, CudaClientError> {
+        let mut stream = self.lock().await;
+        self.send(&mut stream, request).await?;
+        self.recv(&mut stream).await
+    }
+
     /// Sends a [`Request`] message to the server.
-    pub(crate) async fn send(&self, request: Request) -> Result<(), CudaClientError> {
-        self.inner.send(request).await
+    pub(crate) async fn send(
+        &self,
+        stream: &mut UnixStream,
+        request: Request,
+    ) -> Result<(), CudaClientError> {
+        self.inner.send(stream, request).await
     }
 
     /// Reads a [`Response`] message from the server.
-    pub(crate) async fn recv(&self) -> Result<Response, CudaClientError> {
-        self.inner.recv().await
+    pub(crate) async fn recv(&self, stream: &mut UnixStream) -> Result<Response, CudaClientError> {
+        self.inner.recv(stream).await
     }
 }
 
 struct CudaClientInner {
     stream: Option<Mutex<UnixStream>>,
+    id: u32,
+    child: Child,
+}
+
+#[allow(dead_code)] // todo: feature flag this properly in-line with the `native` flag.
+pub(crate) enum Child {
+    /// A server was started in a native process.
+    ///
+    /// Note: We need to keep the child around as we rely on `kill_on_drop`
+    Native(tokio::process::Child),
+    /// A server was started in a docker container.
+    Docker,
 }
 
 impl CudaClientInner {
@@ -200,49 +173,63 @@ impl CudaClientInner {
         // This may be in other instance of the client, or a proving key!
         let mut global = CLIENT.lock().await;
 
-        // If there is, return that client.
+        // If weve already connected to this device, return that client.
         if let Some(client) = global.get(&cuda_id).and_then(|weak| weak.upgrade()) {
             tracing::debug!("Found existing client for CUDA device {}", cuda_id);
             return Ok(CudaClient { inner: client });
         }
 
-        crate::check_cuda_version().await?;
+        // Print a warning if the CUDA version is not found,
+        // panic if the version is too old.
+        crate::check_cuda_version().await;
 
-        // There is no clients for this CUDA device, we need to start the server.
-        crate::server::start_server(cuda_id).await?;
+        // Actually start the server now that we know there isnt one running.
+        let child = crate::server::start_server(cuda_id).await?;
 
         // Connect to the server we just started.
-        let connection = Self::connect_once(cuda_id).await?;
-        let connection = Arc::new(connection);
-        let _ = global.insert(cuda_id, Arc::downgrade(&connection));
+        let connection = Self::connect_inner(cuda_id).await?;
+        let inner = CudaClientInner { stream: Some(Mutex::new(connection)), id: cuda_id, child };
 
-        Ok(CudaClient { inner: connection })
+        let inner = Arc::new(inner);
+        let _ = global.insert(cuda_id, Arc::downgrade(&inner));
+
+        Ok(CudaClient { inner })
     }
 
-    /// Connects to the server at [`CUDA_SOCKET`], without checking for a global client.
-    async fn connect_once(cuda_id: u32) -> Result<Self, CudaClientError> {
+    /// Connects to the server at [`CUDA_SOCKET`], retrying if the server is not running yet.
+    async fn connect_inner(cuda_id: u32) -> Result<UnixStream, CudaClientError> {
         let socket_path = socket_path(cuda_id);
 
-        // Retry a few times, wait for the server to start.
+        // Retry a few times, just in case the server hasnt started yet.
         for _ in 0..10 {
-            let Ok(stream) = UnixStream::connect(&socket_path).await else {
+            let Ok(this) = Self::connect_once(&socket_path).await else {
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;
             };
 
-            return Ok(Self { stream: Some(Mutex::new(stream)) });
+            return Ok(this);
         }
 
         // If we get here, the server is not running yet.
         // But we want to get the actual error, so try again.
-        let stream = UnixStream::connect(socket_path).await.map_err(CudaClientError::Connect)?;
+        Self::connect_once(&socket_path).await
+    }
 
-        Ok(Self { stream: Some(Mutex::new(stream)) })
+    /// Connects to the server at the given path.
+    async fn connect_once(path: &Path) -> Result<UnixStream, CudaClientError> {
+        let stream = UnixStream::connect(path).await.map_err(|e| {
+            CudaClientError::new_connect(e, "Could not connect to `cuslop-server` socket")
+        })?;
+
+        Ok(stream)
     }
 
     /// Sends a [`Request`] message to the server.
-    pub(crate) async fn send(&self, request: Request) -> Result<(), CudaClientError> {
-        let mut stream = self.stream.as_ref().expect("expected a valid stream").lock().await;
+    pub(crate) async fn send(
+        &self,
+        stream: &mut UnixStream,
+        request: Request,
+    ) -> Result<(), CudaClientError> {
         let request_bytes = bincode::serialize(&request).map_err(CudaClientError::Serialize)?;
 
         let len_le = (request_bytes.len() as u32).to_le_bytes();
@@ -253,9 +240,7 @@ impl CudaClientInner {
     }
 
     /// Reads a [`Response`] message from the server.
-    pub(crate) async fn recv(&self) -> Result<Response, CudaClientError> {
-        let mut stream = self.stream.as_ref().expect("expected a valid stream").lock().await;
-
+    pub(crate) async fn recv(&self, stream: &mut UnixStream) -> Result<Response, CudaClientError> {
         // Read the length of the response.
         let mut len_le = [0; 4];
         stream.read_exact(&mut len_le).await.map_err(CudaClientError::Read)?;
@@ -290,5 +275,19 @@ impl Drop for CudaClientInner {
                 tracing::error!("Failed to shutdown the stream: {}", e);
             }
         });
+
+        match &self.child {
+            Child::Native(_) => {
+                // Do nothing, we have kill on drop.
+            }
+            Child::Docker => {
+                let id = self.id;
+                tokio::spawn(async move {
+                    if let Err(e) = server::kill_server(id).await {
+                        tracing::error!("Failed to kill the server: {}", e);
+                    }
+                });
+            }
+        }
     }
 }

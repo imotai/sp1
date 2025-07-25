@@ -1,9 +1,3 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-use std::fmt::Debug;
-
 use crate::{
     air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
@@ -12,11 +6,15 @@ use crate::{
             field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
             field_sqrt::FieldSqrtCols, range::FieldLtCols,
         },
-        SyscallAddrOperation,
+        AddrAddOperation, SyscallAddrOperation,
     },
     utils::{
         bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
     },
+};
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
@@ -43,7 +41,7 @@ use sp1_stark::{
     air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 use typenum::Unsigned;
 
 pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() -> usize {
@@ -59,6 +57,8 @@ pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub clk_high: T,
     pub clk_low: T,
     pub ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
     pub sign_bit: T,
     pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub y_access: GenericArray<MemoryAccessCols<T>, P::WordsFieldElement>,
@@ -196,6 +196,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut rows = Vec::new();
         let weierstrass_width = num_weierstrass_decompress_cols::<E::BaseField>();
         let width = BaseAir::<F>::width(self);
+        let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
 
         let mut new_byte_lookup_events = Vec::new();
 
@@ -216,7 +217,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             cols.is_real = F::from_bool(true);
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u32 * 2);
+            cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u64 * 2);
             cols.sign_bit = F::from_bool(event.sign_bit);
 
             let x = BigUint::from_bytes_le(&event.x_bytes);
@@ -225,12 +226,18 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             for i in 0..cols.x_access.len() {
                 let record = MemoryRecordEnum::Read(event.x_memory_records[i]);
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.x_addrs[i].populate(
+                    &mut new_byte_lookup_events,
+                    event.ptr + num_limbs as u64,
+                    8 * i as u64,
+                );
             }
             for i in 0..cols.y_access.len() {
                 let record = MemoryRecordEnum::Write(event.y_memory_records[i]);
                 let current_record = record.current_record();
                 cols.y_access[i].populate(record, &mut new_byte_lookup_events);
                 cols.y_value[i] = Word::from(current_record.value);
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.ptr, 8 * i as u64);
             }
 
             if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
@@ -354,7 +361,7 @@ where
             (*local_slice)[0..weierstrass_cols].borrow();
 
         let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
-        let num_words_field_element = num_limbs / 4;
+        let num_words_field_element = num_limbs / 8;
 
         builder.assert_bool(local.sign_bit);
 
@@ -515,11 +522,61 @@ where
             local.is_real.into(),
         );
 
+        let num_limbs_as_f = AB::F::from_canonical_u32(num_limbs as u32);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([num_limbs_as_f.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        let eight = AB::F::from_canonical_u32(8u32);
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.y_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.y_addrs[i - 1].value[0].into(),
+                    local.y_addrs[i - 1].value[1].into(),
+                    local.y_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         for i in 0..num_words_field_element {
             builder.eval_memory_access_read(
                 local.clk_high,
                 local.clk_low,
-                ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
+                &local.x_addrs[i].value.map(Into::into),
                 local.x_access[i].memory_access,
                 local.is_real,
             );
@@ -528,7 +585,7 @@ where
             builder.eval_memory_access_write(
                 local.clk_high,
                 local.clk_low,
-                ptr.clone() + AB::F::from_canonical_u32((i as u32) * 4),
+                &local.y_addrs[i].value.map(Into::into),
                 local.y_access[i],
                 local.y_value[i],
                 local.is_real,
@@ -552,8 +609,8 @@ where
             local.clk_high,
             local.clk_low,
             syscall_id,
-            ptr,
-            local.sign_bit,
+            ptr.map(Into::into),
+            [local.sign_bit.into(), AB::Expr::zero(), AB::Expr::zero()].map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

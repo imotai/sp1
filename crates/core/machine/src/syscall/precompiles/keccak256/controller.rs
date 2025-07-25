@@ -1,5 +1,7 @@
 use crate::{
-    air::SP1CoreAirBuilder, memory::MemoryAccessCols, operations::SyscallAddrOperation,
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessCols,
+    operations::{AddrAddOperation, SyscallAddrOperation},
     utils::next_multiple_of_32,
 };
 
@@ -18,7 +20,7 @@ use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind, Word,
 };
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, iter::once};
 
 impl KeccakPermuteControlChip {
     pub const fn new() -> Self {
@@ -34,10 +36,11 @@ pub struct KeccakPermuteControlCols<T> {
     pub clk_high: T,
     pub clk_low: T,
     pub state_addr: SyscallAddrOperation<T>,
+    pub addrs: [AddrAddOperation<T>; 25],
     pub is_real: T,
-    pub initial_memory_access: [MemoryAccessCols<T>; 50],
-    pub final_memory_access: [MemoryAccessCols<T>; 50],
-    pub final_value: [Word<T>; 50],
+    pub initial_memory_access: [MemoryAccessCols<T>; 25],
+    pub final_memory_access: [MemoryAccessCols<T>; 25],
+    pub final_value: [Word<T>; 25],
 }
 
 impl<F> BaseAir<F> for KeccakPermuteControlChip {
@@ -68,6 +71,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             for (j, read_record) in event.state_read_records.iter().enumerate() {
                 cols.initial_memory_access[j]
                     .populate(MemoryRecordEnum::Read(*read_record), &mut blu_events);
+                cols.addrs[j].populate(&mut blu_events, event.state_addr, 8 * j as u64);
             }
             for (j, write_record) in event.state_write_records.iter().enumerate() {
                 cols.final_memory_access[j]
@@ -107,6 +111,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             for (j, read_record) in event.state_read_records.iter().enumerate() {
                 cols.initial_memory_access[j]
                     .populate(MemoryRecordEnum::Read(*read_record), &mut blu_events);
+                cols.addrs[j].populate(&mut blu_events, event.state_addr, 8 * j as u64);
             }
             for (j, write_record) in event.state_write_records.iter().enumerate() {
                 cols.final_memory_access[j]
@@ -171,69 +176,88 @@ where
             local.clk_high,
             local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::KECCAK_PERMUTE.syscall_id()),
-            state_addr.clone(),
-            AB::Expr::zero(),
+            state_addr.map(Into::into),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()],
             local.is_real,
             InteractionScope::Local,
         );
 
+        let send_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(state_addr.map(Into::into))
+            .chain(once(AB::Expr::zero()))
+            .chain(
+                local
+                    .initial_memory_access
+                    .into_iter()
+                    .flat_map(|access| access.prev_value.into_iter())
+                    .map(Into::into),
+            )
+            .collect::<Vec<_>>();
+
         // Send the initial state.
         builder.send(
-            AirInteraction::new(
-                vec![
-                    local.clk_high.into(),
-                    local.clk_low.into(),
-                    state_addr.clone(),
-                    AB::Expr::zero(),
-                ]
-                .into_iter()
-                .chain(
-                    local
-                        .initial_memory_access
-                        .into_iter()
-                        .flat_map(|access| access.prev_value.into_iter())
-                        .map(Into::into),
-                )
-                .collect(),
-                local.is_real.into(),
-                InteractionKind::Keccak,
-            ),
+            AirInteraction::new(send_values, local.is_real.into(), InteractionKind::Keccak),
             InteractionScope::Local,
         );
 
+        let receive_values = once(local.clk_high.into())
+            .chain(once(local.clk_low.into()))
+            .chain(state_addr.map(Into::into))
+            .chain(once(AB::Expr::from_canonical_u32(24)))
+            .chain(local.final_value.into_iter().flat_map(|word| word.into_iter()).map(Into::into))
+            .collect::<Vec<_>>();
+
         // Receive the final state.
         builder.receive(
-            AirInteraction::new(
-                vec![
-                    local.clk_high.into(),
-                    local.clk_low.into(),
-                    state_addr.clone(),
-                    AB::Expr::from_canonical_u32(24),
-                ]
-                .into_iter()
-                .chain(
-                    local.final_value.into_iter().flat_map(|word| word.into_iter()).map(Into::into),
-                )
-                .collect(),
-                local.is_real.into(),
-                InteractionKind::Keccak,
-            ),
+            AirInteraction::new(receive_values, local.is_real.into(), InteractionKind::Keccak),
             InteractionScope::Local,
         );
+
+        // addrs[0] = state_addr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([
+                state_addr[0].into(),
+                state_addr[1].into(),
+                state_addr[2].into(),
+                AB::Expr::zero(),
+            ]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // addrs[i] = addrs[i - 1] + 8.
+        for i in 1..local.addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.addrs[i - 1].value[0].into(),
+                    local.addrs[i - 1].value[1].into(),
+                    local.addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.addrs[i],
+                local.is_real.into(),
+            );
+        }
 
         // Evaluate the memory accesses.
         for i in 0..STATE_NUM_WORDS {
             builder.eval_memory_access_read(
                 local.clk_high,
                 local.clk_low,
-                state_addr.clone() + AB::Expr::from_canonical_u32(4 * i as u32),
+                &local.addrs[i].value.map(Into::into),
                 local.initial_memory_access[i],
                 local.is_real,
             );
             builder.eval_memory_access_write(
                 local.clk_high,
                 local.clk_low + AB::Expr::one(),
-                state_addr.clone() + AB::Expr::from_canonical_u32(4 * i as u32),
+                &local.addrs[i].value.map(Into::into),
                 local.final_memory_access[i],
                 local.final_value[i],
                 local.is_real,

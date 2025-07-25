@@ -19,11 +19,14 @@ sp1-stark = { workspace = true }
 slop-algebra = { workspace = true }
 slop-maybe-rayon = { workspace = true }
 slop-air = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-symmetric = { workspace = true }
 # misc
 serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
 elf = "0.7.4"
-rrs_lib = { package = "rrs-succinct", version = "0.1.0" }
+rrs_lib = { package = "rrs-lib", git = "https://github.com/succinctlabs/rrs-succinct.git", branch = "gautham/rv64executor-2" }
 eyre = "0.6.12"
 bincode = "1.3.3"
 hashbrown = { workspace = true, features = ["serde", "inline-more"] }
@@ -41,6 +44,8 @@ vec_map = { version = "0.8.2", features = ["serde"] }
 enum-map = { version = "2.7.3", features = ["serde"] }
 clap = { version = "4.5.9", features = ["derive"] }
 subenum = "1.1.2"
+range-set-blaze = "0.1.16"
+serde_arrays = "0.2"
 
 # profiling
 goblin = { version = "0.9", optional = true }

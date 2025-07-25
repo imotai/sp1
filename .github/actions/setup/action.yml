@@ -72,27 +72,31 @@ runs:
         aws --version
 
     - name: rust-cache
-      uses: actions/cache@v3
+      # actions/cache@v4.2.3
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
       with:
         path: |
           ~/.cargo/bin/
           ~/.cargo/registry/index/
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
-          target/
           ~/.rustup/
-        key: sp1-rust-
-        restore-keys: sp1-rust-
+        key: sp1-rust-${{ runner.arch }}-${{ runner.os }}
 
-    - name: Setup toolchain
-      id: rustc-toolchain
+    - name: Run sccache-cache only on non-release runs
+      if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+      uses: mozilla-actions/sccache-action@v0.0.9
+      with:
+        version: v0.10.0
+
+    - name: Set Rust caching env vars only on non-release runs
+      if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
       shell: bash
       run: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        . "$HOME/.cargo/env"
-        rustup show
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-    
+        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+        echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+
     - name: Override toolchain
       if: inputs.rustup_override != null
       shell: bash
@@ -100,6 +104,11 @@ runs:
         rustup override set ${{ inputs.rustup_override }}
         rustup show
 
+    - name: Ensure nightly is installed
+      shell: bash
+      run: |
+        rustup toolchain install nightly --component rustfmt,clippy
+        
     # install pkg-config and openssl
     - name: Install pkg-config and openssl
       shell: bash

@@ -7,7 +7,7 @@ use std::{
 use serde::{de::DeserializeOwned, Serialize};
 
 use sp1_primitives::polynomial::Polynomial;
-use typenum::{Unsigned, U2, U4};
+use typenum::{Unsigned, U4, U8};
 
 use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
 use num::BigUint;
@@ -99,15 +99,15 @@ pub trait NumWords: Clone + Debug {
 /// avoids needing the Div where clauses everywhere.
 impl<N: NumLimbs> NumWords for N
 where
+    N::Limbs: Div<U8>,
     N::Limbs: Div<U4>,
-    N::Limbs: Div<U2>,
+    <N::Limbs as Div<U8>>::Output: ArrayLength + Debug,
     <N::Limbs as Div<U4>>::Output: ArrayLength + Debug,
-    <N::Limbs as Div<U2>>::Output: ArrayLength + Debug,
 {
-    /// Each word has 4 limbs so we divide by 4.
-    type WordsFieldElement = <N::Limbs as Div<U4>>::Output;
-    /// Curve point has 2 field elements so we divide by 2.
-    type WordsCurvePoint = <N::Limbs as Div<U2>>::Output;
+    /// Each word has 8 limbs so we divide by 8.
+    type WordsFieldElement = <N::Limbs as Div<U8>>::Output;
+    /// Curve point has 2 field elements so we divide by 4.
+    type WordsCurvePoint = <N::Limbs as Div<U4>>::Output;
 }
 
 impl<T: Copy, N: ArrayLength> Copy for Limbs<T, N> where N::ArrayType<T>: Copy {}

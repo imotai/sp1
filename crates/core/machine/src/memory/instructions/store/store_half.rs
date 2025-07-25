@@ -21,7 +21,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_stark::air::MachineAir;
 
@@ -46,8 +46,8 @@ pub struct StoreHalfColumns<T> {
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryAccessCols<T>,
 
-    /// Whether or not the offset is `0` or `2`.
-    pub offset_bit: T,
+    /// Whether or not the offset is `0` or `2` or `4` or `6`.
+    pub offset_bit: [T; 2],
 
     /// The store value.
     pub store_value: Word<T>,
@@ -100,10 +100,9 @@ impl<F: PrimeField32> MachineAir<F> for StoreHalfChip {
 
                     if idx < input.memory_store_half_events.len() {
                         let event = &input.memory_store_half_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
                         self.event_to_row(&event.0, cols, &mut blu);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, instruction, event.1);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu
@@ -140,10 +139,11 @@ impl StoreHalfChip {
         cols.memory_access.populate(event.mem_access, blu);
 
         let memory_addr = cols.address_operation.populate(blu, event.b, event.c);
-        debug_assert!(memory_addr.is_multiple_of(2));
+        let bit1 = ((memory_addr >> 1) & 1) as u16;
+        let bit2 = ((memory_addr >> 2) & 1) as u16;
 
-        let bit = ((memory_addr >> 1) & 1) as u16;
-        cols.offset_bit = F::from_canonical_u16(bit);
+        cols.offset_bit[0] = F::from_canonical_u16(bit1);
+        cols.offset_bit[1] = F::from_canonical_u16(bit2);
         cols.store_value = Word::from(event.mem_access.value());
         cols.is_real = F::one();
     }
@@ -164,6 +164,9 @@ where
         let clk_low = local.state.clk_low::<AB>();
 
         let opcode = AB::Expr::from_canonical_u32(Opcode::SH as u32);
+        let funct3 = AB::Expr::from_canonical_u8(Opcode::SH.funct3().unwrap());
+        let funct7 = AB::Expr::from_canonical_u8(Opcode::SH.funct7().unwrap_or(0));
+        let base_opcode = AB::Expr::from_canonical_u32(Opcode::SH.base_opcode().0);
         builder.assert_bool(local.is_real);
 
         // Step 1. Compute the address, and check offsets and address bounds.
@@ -172,7 +175,8 @@ where
             local.adapter.b().map(Into::into),
             local.adapter.c().map(Into::into),
             AB::Expr::zero(),
-            local.offset_bit.into(),
+            local.offset_bit[0].into(),
+            local.offset_bit[1].into(),
             local.is_real.into(),
             local.address_operation,
         );
@@ -182,7 +186,7 @@ where
         builder.eval_memory_access_write(
             clk_high.clone(),
             clk_low.clone(),
-            aligned_addr.clone(),
+            &aligned_addr.map(Into::into),
             local.memory_access,
             local.store_value,
             local.is_real.into(),
@@ -192,21 +196,43 @@ where
         let store_limb = local.adapter.prev_a().0[0];
         builder.assert_eq(
             local.store_value.0[0],
-            local.memory_access.prev_value.0[0] * local.offset_bit
-                + store_limb * (AB::Expr::one() - local.offset_bit),
+            local.memory_access.prev_value.0[0]
+                + (store_limb - local.memory_access.prev_value.0[0])
+                    * (AB::Expr::one() - local.offset_bit[0])
+                    * (AB::Expr::one() - local.offset_bit[1]),
         );
         builder.assert_eq(
             local.store_value.0[1],
-            local.memory_access.prev_value.0[1] * (AB::Expr::one() - local.offset_bit)
-                + store_limb * local.offset_bit,
+            local.memory_access.prev_value.0[1]
+                + (store_limb - local.memory_access.prev_value.0[1])
+                    * local.offset_bit[0]
+                    * (AB::Expr::one() - local.offset_bit[1]),
+        );
+        builder.assert_eq(
+            local.store_value.0[2],
+            local.memory_access.prev_value.0[2]
+                + (store_limb - local.memory_access.prev_value.0[2])
+                    * (AB::Expr::one() - local.offset_bit[0])
+                    * local.offset_bit[1],
+        );
+        builder.assert_eq(
+            local.store_value.0[3],
+            local.memory_access.prev_value.0[3]
+                + (store_limb - local.memory_access.prev_value.0[3])
+                    * local.offset_bit[0]
+                    * local.offset_bit[1],
         );
 
         // Constrain the state of the CPU.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
             local.is_real.into(),
         );
 
@@ -217,6 +243,7 @@ where
             clk_low.clone(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             local.adapter,
             local.is_real.into(),
         );

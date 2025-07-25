@@ -91,6 +91,31 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                             let d_record = MemoryRecordEnum::Write(event.d_memory_records[i]);
                             let e_record = MemoryRecordEnum::Write(event.e_memory_records[i]);
 
+                            cols.a_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.a_ptr,
+                                8 * i as u64,
+                            );
+                            cols.b_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.b_ptr,
+                                8 * i as u64,
+                            );
+                            cols.c_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.c_ptr,
+                                8 * i as u64,
+                            );
+                            cols.d_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.d_ptr,
+                                8 * i as u64,
+                            );
+                            cols.e_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.e_ptr,
+                                8 * i as u64,
+                            );
                             cols.a_memory[i].populate(a_record, &mut new_byte_lookup_events);
                             cols.b_memory[i].populate(b_record, &mut new_byte_lookup_events);
                             cols.c_memory[i].populate(c_record, &mut new_byte_lookup_events);
@@ -111,9 +136,27 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                         }
 
                         // Convert values to BigUint for field operations
-                        let a = BigUint::from_slice(&event.a);
-                        let b = BigUint::from_slice(&event.b);
-                        let c = BigUint::from_slice(&event.c);
+                        let a = BigUint::from_slice(
+                            &event
+                                .a
+                                .iter()
+                                .flat_map(|&x| [x as u32, (x >> 32) as u32])
+                                .collect::<Vec<_>>(),
+                        );
+                        let b = BigUint::from_slice(
+                            &event
+                                .b
+                                .iter()
+                                .flat_map(|&x| [x as u32, (x >> 32) as u32])
+                                .collect::<Vec<_>>(),
+                        );
+                        let c = BigUint::from_slice(
+                            &event
+                                .c
+                                .iter()
+                                .flat_map(|&x| [x as u32, (x >> 32) as u32])
+                                .collect::<Vec<_>>(),
+                        );
 
                         // Populate field operation based on operation type
                         let is_add =

@@ -1,12 +1,12 @@
 use crate::{
     air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::{field::field_op::FieldOpCols, SyscallAddrOperation},
+    operations::{field::field_op::FieldOpCols, AddrAddOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le},
 };
 use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
@@ -22,7 +22,7 @@ use sp1_derive::AlignedBorrow;
 use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
     air::{InteractionScope, MachineAir},
-    MachineRecord,
+    MachineRecord, Word,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -43,8 +43,8 @@ impl U256x2048MulChip {
 }
 type WordsFieldElement = <U256Field as NumWords>::WordsFieldElement;
 const WORDS_FIELD_ELEMENT: usize = WordsFieldElement::USIZE;
-const LO_REGISTER: u32 = Register::X12 as u32;
-const HI_REGISTER: u32 = Register::X13 as u32;
+const LO_REGISTER: u64 = Register::X12 as u64;
+const HI_REGISTER: u64 = Register::X13 as u64;
 
 /// A set of columns for the U256x2048Mul operation.
 #[derive(Debug, Clone, AlignedBorrow)]
@@ -65,8 +65,15 @@ pub struct U256x2048MulCols<T> {
     pub lo_ptr: SyscallAddrOperation<T>,
     pub hi_ptr: SyscallAddrOperation<T>,
 
+    pub a_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+    pub b_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT * 8],
+    pub lo_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT * 8],
+    pub hi_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+
     pub lo_ptr_memory: MemoryAccessCols<T>,
+    pub lo_ptr_memory_value: [T; 3],
     pub hi_ptr_memory: MemoryAccessCols<T>,
+    pub hi_ptr_memory_value: [T; 3],
 
     // Memory columns.
     pub a_memory: [MemoryAccessColsU8<T>; WORDS_FIELD_ELEMENT],
@@ -152,27 +159,46 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                         for i in 0..WORDS_FIELD_ELEMENT {
                             let record = MemoryRecordEnum::Read(event.a_memory_records[i]);
                             cols.a_memory[i].populate(record, &mut new_byte_lookup_events);
+                            cols.a_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.a_ptr,
+                                (i * 8) as u64,
+                            );
                         }
-
                         for i in 0..WORDS_FIELD_ELEMENT * 8 {
                             let record = MemoryRecordEnum::Read(event.b_memory_records[i]);
                             cols.b_memory[i].populate(record, &mut new_byte_lookup_events);
+                            cols.b_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.b_ptr,
+                                (i * 8) as u64,
+                            );
                         }
 
                         for i in 0..WORDS_FIELD_ELEMENT * 8 {
                             let record = MemoryRecordEnum::Write(event.lo_memory_records[i]);
                             cols.lo_memory[i].populate(record, &mut new_byte_lookup_events);
+                            cols.lo_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.lo_ptr,
+                                8 * i as u64,
+                            );
                         }
 
                         for i in 0..WORDS_FIELD_ELEMENT {
                             let record = MemoryRecordEnum::Write(event.hi_memory_records[i]);
                             cols.hi_memory[i].populate(record, &mut new_byte_lookup_events);
+                            cols.hi_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.hi_ptr,
+                                8 * i as u64,
+                            );
                         }
 
                         let a = BigUint::from_bytes_le(&words_to_bytes_le::<32>(&event.a));
                         let b_array: [BigUint; 8] = event
                             .b
-                            .chunks(8)
+                            .chunks(4)
                             .map(|chunk| BigUint::from_bytes_le(&words_to_bytes_le::<32>(chunk)))
                             .collect::<Vec<_>>()
                             .try_into()
@@ -287,13 +313,114 @@ where
         let hi_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 32, local.hi_ptr, local.is_real.into());
 
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([a_ptr[0].into(), a_ptr[1].into(), a_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.a_addrs[0],
+            local.is_real.into(),
+        );
+
+        // a_addrs[i] = a_addrs[i - 1] + 8.
+        let eight = AB::F::from_canonical_u32(8u32);
+        for i in 1..local.a_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.a_addrs[i - 1].value[0].into(),
+                    local.a_addrs[i - 1].value[1].into(),
+                    local.a_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.a_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // b_addrs[0] = b_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([b_ptr[0].into(), b_ptr[1].into(), b_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.b_addrs[0],
+            local.is_real.into(),
+        );
+
+        // b_addrs[i] = b_addrs[i - 1] + 8.
+        for i in 1..local.b_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.b_addrs[i - 1].value[0].into(),
+                    local.b_addrs[i - 1].value[1].into(),
+                    local.b_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.b_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // lo_addrs[0] = lo_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([lo_ptr[0].into(), lo_ptr[1].into(), lo_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.lo_addrs[0],
+            local.is_real.into(),
+        );
+
+        // lo_addrs[i] = lo_addrs[i - 1] + 8.
+        for i in 1..local.lo_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.lo_addrs[i - 1].value[0].into(),
+                    local.lo_addrs[i - 1].value[1].into(),
+                    local.lo_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.lo_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // hi_addrs[0] = hi_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([hi_ptr[0].into(), hi_ptr[1].into(), hi_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.hi_addrs[0],
+            local.is_real.into(),
+        );
+
+        // hi_addrs[i] = hi_addrs[i - 1] + 8.
+        for i in 1..local.hi_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.hi_addrs[i - 1].value[0].into(),
+                    local.hi_addrs[i - 1].value[1].into(),
+                    local.hi_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.hi_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         // Receive the arguments.
         builder.receive_syscall(
             local.clk_high,
             local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::U256XU2048_MUL.syscall_id()),
-            a_ptr.clone(),
-            b_ptr.clone(),
+            a_ptr.map(Into::into),
+            b_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );
@@ -302,26 +429,24 @@ where
         builder.eval_memory_access_read(
             local.clk_high,
             local.clk_low.into(),
-            AB::Expr::from_canonical_u32(LO_REGISTER),
+            &[AB::Expr::from_canonical_u64(LO_REGISTER), AB::Expr::zero(), AB::Expr::zero()],
             local.lo_ptr_memory,
             local.is_real,
         );
-        builder.assert_word_eq(local.lo_ptr_memory.prev_value, local.lo_ptr.addr_word);
 
         builder.eval_memory_access_read(
             local.clk_high,
             local.clk_low.into(),
-            AB::Expr::from_canonical_u32(HI_REGISTER),
+            &[AB::Expr::from_canonical_u64(HI_REGISTER), AB::Expr::zero(), AB::Expr::zero()],
             local.hi_ptr_memory,
             local.is_real,
         );
-        builder.assert_word_eq(local.hi_ptr_memory.prev_value, local.hi_ptr.addr_word);
 
         // Evaluate the memory accesses for a_memory and b_memory.
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low.into(),
-            a_ptr.clone(),
+            &local.a_addrs.map(|addr| addr.value.map(Into::into)),
             &local.a_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -329,7 +454,7 @@ where
         builder.eval_memory_access_slice_read(
             local.clk_high,
             local.clk_low.into(),
-            b_ptr.clone(),
+            &local.b_addrs.map(|addr| addr.value.map(Into::into)),
             &local.b_memory.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
@@ -341,7 +466,7 @@ where
         // Iterate through chunks of 8 for b_memory and convert each chunk to its limbs.
         let b_limb_array: Vec<Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs>> = local
             .b_memory
-            .chunks(8)
+            .chunks(4)
             .map(|access| {
                 Limbs(
                     builder
@@ -400,7 +525,7 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),
-            lo_ptr.clone(),
+            &local.lo_addrs.map(|addr| addr.value.map(Into::into)),
             &local.lo_memory,
             result_words,
             local.is_real,
@@ -410,10 +535,22 @@ where
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),
-            hi_ptr.clone(),
+            &local.hi_addrs.map(|addr| addr.value.map(Into::into)),
             &local.hi_memory,
             output_carry_words,
             local.is_real,
         );
+
+        // Constrain that the lo_ptr is the value of lo_ptr_memory.
+        for i in 0..3 {
+            builder.when(local.is_real).assert_eq(lo_ptr[i], local.lo_ptr_memory.prev_value[i]);
+        }
+        builder.assert_eq(local.lo_ptr_memory.prev_value[3], AB::Expr::zero());
+
+        // Constrain that the hi_ptr is the value of hi_ptr_memory.
+        for i in 0..3 {
+            builder.when(local.is_real).assert_eq(hi_ptr[i], local.hi_ptr_memory.prev_value[i]);
+        }
+        builder.assert_eq(local.hi_ptr_memory.prev_value[3], AB::Expr::zero());
     }
 }

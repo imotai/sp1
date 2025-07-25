@@ -5,13 +5,13 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::*;
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -48,6 +48,9 @@ pub struct LtCols<T> {
 
     /// If the opcode is SLTU.
     pub is_sltu: T,
+
+    /// The base opcode for the LT instruction.
+    pub base_op_code: T,
 
     /// Instance of `LtOperationSigned` to handle comparison logic in `LtChip`'s ALU operations.
     pub lt_operation: LtOperationSigned<T>,
@@ -96,10 +99,9 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.lt_events[idx];
-                        let instruction = input.program.fetch(event.0.pc);
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
                         self.event_to_row(&event.0, cols, &mut byte_lookup_events);
                         cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut byte_lookup_events, instruction, event.1);
                     }
                 });
             },
@@ -121,10 +123,9 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_LT_COLS];
                     let cols: &mut LtCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
+                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
             })
@@ -164,6 +165,22 @@ impl LtChip {
 
         cols.is_slt = F::from_bool(event.opcode == Opcode::SLT);
         cols.is_sltu = F::from_bool(event.opcode == Opcode::SLTU);
+
+        let (slt_base, slt_imm) = Opcode::SLT.base_opcode();
+        let slt_imm = slt_imm.expect("SLT immediate opcode not found");
+        let (sltu_base, sltu_imm) = Opcode::SLTU.base_opcode();
+        let sltu_imm = sltu_imm.expect("SLTU immediate opcode not found");
+
+        let is_imm_c = cols.adapter.imm_c.is_one();
+
+        let slt_base_opcode = F::from_canonical_u32(if is_imm_c { slt_imm } else { slt_base });
+        let sltu_base_opcode = F::from_canonical_u32(if is_imm_c { sltu_imm } else { sltu_base });
+
+        cols.base_op_code = match event.opcode {
+            Opcode::SLT => slt_base_opcode,
+            Opcode::SLTU => sltu_base_opcode,
+            _ => unreachable!(),
+        };
     }
 }
 
@@ -206,17 +223,46 @@ where
         // The program counter and timestamp increment by `4` and `8`.
         <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            CPUStateInput::<AB>::new(
-                local.state,
-                local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-                AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-                is_real.clone(),
-            ),
+            CPUStateInput {
+                cols: local.state,
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
+                is_real: is_real.clone(),
+            },
         );
 
         // Get the opcode for the operation.
         let opcode = local.is_slt * AB::F::from_canonical_u32(Opcode::SLT as u32)
             + local.is_sltu * AB::F::from_canonical_u32(Opcode::SLTU as u32);
+
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_slt * AB::Expr::from_canonical_u8(Opcode::SLT.funct3().unwrap())
+            + local.is_sltu * AB::Expr::from_canonical_u8(Opcode::SLTU.funct3().unwrap());
+        let funct7 = local.is_slt * AB::Expr::from_canonical_u8(Opcode::SLT.funct7().unwrap_or(0))
+            + local.is_sltu * AB::Expr::from_canonical_u8(Opcode::SLTU.funct7().unwrap_or(0));
+        let base_opcode = local.base_op_code.into();
+
+        let (slt_base, slt_imm) = Opcode::SLT.base_opcode();
+        let slt_imm = slt_imm.expect("SLT immediate opcode not found");
+        let (sltu_base, sltu_imm) = Opcode::SLTU.base_opcode();
+        let sltu_imm = sltu_imm.expect("SLTU immediate opcode not found");
+
+        let slt_base_expr = AB::Expr::from_canonical_u32(slt_base);
+        let sltu_base_expr = AB::Expr::from_canonical_u32(sltu_base);
+        let slt_imm_expr = AB::Expr::from_canonical_u32(slt_imm);
+        let sltu_imm_expr = AB::Expr::from_canonical_u32(sltu_imm);
+
+        let correct_imm_opcode = local.is_slt * slt_imm_expr + local.is_sltu * sltu_imm_expr;
+        let correct_reg_opcode = local.is_slt * slt_base_expr + local.is_sltu * sltu_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
 
         // Constrain the program and register reads.
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
@@ -224,6 +270,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
+            [base_opcode, funct3, funct7],
             Word::extend_var::<AB>(local.lt_operation.result.u16_compare_operation.bit),
             local.adapter,
             is_real,

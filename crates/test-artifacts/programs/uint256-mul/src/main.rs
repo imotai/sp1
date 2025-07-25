@@ -7,16 +7,16 @@ use sp1_zkvm::syscalls::sys_bigint;
 
 fn uint256_mul(x: &[u8; 32], y: &[u8; 32], modulus: &[u8; 32]) -> [u8; 32] {
     println!("cycle-tracker-start: uint256_mul");
-    let mut result = [0u32; 8];
+    let mut result = [0u64; 4];
     sys_bigint(
-        result.as_mut_ptr() as *mut [u32; 8],
+        result.as_mut_ptr() as *mut [u64; 4],
         0,
-        x.as_ptr() as *const [u32; 8],
-        y.as_ptr() as *const [u32; 8],
-        modulus.as_ptr() as *const [u32; 8],
+        x.as_ptr() as *const [u64; 4],
+        y.as_ptr() as *const [u64; 4],
+        modulus.as_ptr() as *const [u64; 4],
     );
     println!("cycle-tracker-end: uint256_mul");
-    bytemuck::cast::<[u32; 8], [u8; 32]>(result)
+    bytemuck::cast::<[u64; 4], [u8; 32]>(result)
 }
 
 fn biguint_to_bytes_le(x: BigUint) -> [u8; 32] {

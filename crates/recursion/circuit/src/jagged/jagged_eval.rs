@@ -138,6 +138,9 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
             .zip(next_column_prefix_sums)
             .zip(z_col_partial_lagrange.iter())
             .map(|((current_column_prefix_sum, next_column_prefix_sum), z_col_eq_val)| {
+                assert!(current_column_prefix_sum.dimension() <= 30);
+                assert!(next_column_prefix_sum.dimension() <= 30);
+
                 let mut merged_prefix_sum = current_column_prefix_sum.clone();
                 merged_prefix_sum.extend(next_column_prefix_sum);
 

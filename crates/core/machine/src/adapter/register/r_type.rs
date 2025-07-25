@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field, PrimeField32};
 use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
-    Instruction, RTypeRecord,
+    RTypeRecord,
 };
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
@@ -10,8 +10,8 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},
-    cpu::columns::InstructionCols,
     memory::MemoryAccessInShardCols,
+    program::instruction::InstructionCols,
 };
 
 /// A set of columns to read operations with op_a, op_b, op_c being registers.
@@ -38,18 +38,13 @@ pub struct RTypeReader<T> {
 }
 
 impl<F: PrimeField32> RTypeReader<F> {
-    pub fn populate(
-        &mut self,
-        blu_events: &mut impl ByteRecord,
-        instruction: &Instruction,
-        record: RTypeRecord,
-    ) {
-        self.op_a = F::from_canonical_u8(instruction.op_a);
+    pub fn populate(&mut self, blu_events: &mut impl ByteRecord, record: RTypeRecord) {
+        self.op_a = F::from_canonical_u8(record.op_a);
         self.op_a_memory.populate(record.a, blu_events);
-        self.op_a_0 = F::from_bool(instruction.op_a == 0);
-        self.op_b = F::from_canonical_u32(instruction.op_b);
+        self.op_a_0 = F::from_bool(record.op_a == 0);
+        self.op_b = F::from_canonical_u64(record.op_b);
         self.op_b_memory.populate(record.b, blu_events);
-        self.op_c = F::from_canonical_u32(instruction.op_c);
+        self.op_c = F::from_canonical_u64(record.op_c);
         self.op_c_memory.populate(record.c, blu_events);
     }
 }
@@ -74,8 +69,9 @@ impl<F: Field> RTypeReader<F> {
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
+        instr_field_consts: [AB::Expr; 3],
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
@@ -90,39 +86,41 @@ impl<F: Field> RTypeReader<F> {
             imm_b: AB::Expr::zero(),
             imm_c: AB::Expr::zero(),
         };
-        builder.send_program(pc, instruction, is_real.clone());
+        builder.send_program(pc, instruction, instr_field_consts, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_memory_access_in_shard_write(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
-            cols.op_a,
+            [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_a_memory,
             op_a_write_value,
             is_real.clone(),
         );
         builder.eval_memory_access_in_shard_read(
             clk_high.clone(),
-            clk_low.clone() + AB::F::from_canonical_u32(MemoryAccessPosition::B as u32),
-            cols.op_b,
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
+            [cols.op_b.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_b_memory,
             is_real.clone(),
         );
         builder.eval_memory_access_in_shard_read(
             clk_high.clone(),
-            clk_low.clone() + AB::F::from_canonical_u32(MemoryAccessPosition::C as u32),
-            cols.op_c,
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::C as u32),
+            [cols.op_c.into(), AB::Expr::zero(), AB::Expr::zero()],
             cols.op_c_memory,
             is_real,
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn eval_op_a_immutable<AB: SP1AirBuilder + MemoryAirBuilder + ProgramAirBuilder>(
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
-        pc: AB::Var,
+        pc: [AB::Var; 3],
         opcode: impl Into<AB::Expr>,
+        instr_field_consts: [AB::Expr; 3],
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
@@ -132,6 +130,7 @@ impl<F: Field> RTypeReader<F> {
             clk_low,
             pc,
             opcode,
+            instr_field_consts,
             cols.op_a_memory.prev_value,
             cols,
             is_real,
@@ -143,25 +142,12 @@ impl<F: Field> RTypeReader<F> {
 pub struct RTypeReaderInput<AB: SP1AirBuilder> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
-    pub pc: AB::Var,
+    pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
     pub op_a_write_value: Word<AB::Var>,
+    pub instr_field_consts: [AB::Expr; 3],
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> RTypeReaderInput<AB> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: AB::Var,
-        opcode: AB::Expr,
-        op_a_write_value: Word<AB::Var>,
-        cols: RTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, op_a_write_value, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
@@ -175,6 +161,7 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
             input.clk_low,
             input.pc,
             input.opcode,
+            input.instr_field_consts,
             input.op_a_write_value,
             input.cols,
             input.is_real,
@@ -185,27 +172,16 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
 #[derive(Debug, Clone, SP1OperationBuilder)]
 pub struct RTypeReaderImmutable;
 
+#[allow(clippy::too_many_arguments)]
 #[derive(Debug, Clone, InputParams, InputExpr)]
 pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
-    pub pc: AB::Var,
+    pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
+    pub instr_field_consts: [AB::Expr; 3],
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> RTypeReaderImmutableInput<AB> {
-    pub fn new(
-        clk_high: AB::Expr,
-        clk_low: AB::Expr,
-        pc: AB::Var,
-        opcode: AB::Expr,
-        cols: RTypeReader<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { clk_high, clk_low, pc, opcode, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
@@ -219,6 +195,7 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
             input.clk_low,
             input.pc,
             input.opcode,
+            input.instr_field_consts,
             input.cols,
             input.is_real,
         )

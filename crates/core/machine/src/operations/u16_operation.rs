@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;
 
 use crate::air::{SP1Operation, WordAirBuilder};
@@ -15,8 +15,8 @@ pub struct U16toU8Operation<T> {
 }
 
 impl<F: Field> U16toU8Operation<F> {
-    pub fn populate_u16_to_u8_unsafe(&mut self, _: &mut impl ByteRecord, a_u32: u32) {
-        let a_limbs = u32_to_u16_limbs(a_u32);
+    pub fn populate_u16_to_u8_unsafe(&mut self, _: &mut impl ByteRecord, a_u64: u64) {
+        let a_limbs = u64_to_u16_limbs(a_u64);
         let mut ret = [0u8; WORD_SIZE];
         for i in 0..WORD_SIZE {
             ret[i] = (a_limbs[i] % 256) as u8;
@@ -24,8 +24,8 @@ impl<F: Field> U16toU8Operation<F> {
         self.low_bytes = ret.map(|x| F::from_canonical_u8(x));
     }
 
-    pub fn populate_u16_to_u8_safe(&mut self, record: &mut impl ByteRecord, a_u32: u32) {
-        let a_limbs = u32_to_u16_limbs(a_u32);
+    pub fn populate_u16_to_u8_safe(&mut self, record: &mut impl ByteRecord, a_u64: u64) {
+        let a_limbs = u64_to_u16_limbs(a_u64);
         let mut ret = [0u8; WORD_SIZE];
         for i in 0..WORD_SIZE {
             ret[i] = (a_limbs[i] % 256) as u8;
@@ -37,12 +37,22 @@ impl<F: Field> U16toU8Operation<F> {
 
     /// Converts two u16 limbs into four u8 limbs.
     /// This function assumes that the u8 limbs will be range checked.
-    fn eval_u16_to_u8_unsafe<AB: SP1AirBuilder>(
+    // TODO reconsider visibility.
+    pub fn eval_u16_to_u8_unsafe<AB: SP1AirBuilder>(
         _: &mut AB,
         u16_values: [AB::Expr; WORD_SIZE],
         cols: U16toU8Operation<AB::Var>,
     ) -> [AB::Expr; WORD_BYTE_SIZE] {
-        let mut ret = [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()];
+        let mut ret = [
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+        ];
         let divisor = AB::F::from_canonical_u32(1 << 8).inverse();
 
         for i in 0..WORD_SIZE {
@@ -62,7 +72,7 @@ impl<F: Field> U16toU8Operation<F> {
         is_real: AB::Expr,
     ) -> [AB::Expr; WORD_BYTE_SIZE] {
         let ret = U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, u16_values, cols);
-        builder.slice_range_check_u8(&ret, is_real);
+        builder.slice_range_check_u8(&ret, is_real); // TODO u64: Uncomment this
         ret
     }
 }
@@ -75,16 +85,6 @@ pub struct U16toU8OperationSafeInput<AB: SP1AirBuilder> {
     pub u16_values: [AB::Expr; WORD_SIZE],
     pub cols: U16toU8Operation<AB::Var>,
     pub is_real: AB::Expr,
-}
-
-impl<AB: SP1AirBuilder> U16toU8OperationSafeInput<AB> {
-    pub fn new(
-        u16_values: [AB::Expr; WORD_SIZE],
-        cols: U16toU8Operation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { u16_values, cols, is_real }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationSafe {
@@ -108,12 +108,6 @@ pub struct U16toU8OperationUnsafe;
 pub struct U16toU8OperationUnsafeInput<AB: SP1AirBuilder> {
     pub u16_values: [AB::Expr; WORD_SIZE],
     pub cols: U16toU8Operation<AB::Var>,
-}
-
-impl<AB: SP1AirBuilder> U16toU8OperationUnsafeInput<AB> {
-    pub fn new(u16_values: [AB::Expr; WORD_SIZE], cols: U16toU8Operation<AB::Var>) -> Self {
-        Self { u16_values, cols }
-    }
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for U16toU8OperationUnsafe {

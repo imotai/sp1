@@ -6,7 +6,7 @@ use cargo_metadata::camino::Utf8PathBuf;
 use crate::{
     command::{docker::create_docker_command, local::create_local_command, utils::execute_command},
     utils::{cargo_rerun_if_changed, current_datetime},
-    BuildArgs, WarningLevel, BUILD_TARGET, HELPER_TARGET_SUBDIR,
+    BuildArgs, WarningLevel, DEFAULT_TARGET, HELPER_TARGET_SUBDIR,
 };
 
 /// Build a program with the specified [`BuildArgs`]. The `program_dir` is specified as an argument
@@ -196,7 +196,7 @@ pub fn generate_elf_paths(
                 Some(args) if args.docker => elf_path.join("docker"),
                 _ => elf_path,
             };
-            let elf_path = elf_path.join(BUILD_TARGET).join("release").join(&bin_target.name);
+            let elf_path = elf_path.join(DEFAULT_TARGET).join("release").join(&bin_target.name);
 
             target_elf_paths.push((bin_target.name.to_owned(), elf_path));
         }
@@ -209,6 +209,25 @@ pub fn generate_elf_paths(
 /// Prints cargo directives setting relevant `SP1_ELF_` environment variables.
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) {
     for (target_name, elf_path) in target_elf_paths.iter() {
-        println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path);
+        // println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path);
+        let elf_path_str = elf_path.to_string();
+
+        #[cfg(feature = "64bit")]
+        let elf_path_str = {
+            if elf_path_str.contains(crate::DEFAULT_TARGET_64) {
+                elf_path_str
+            } else if elf_path_str.contains(DEFAULT_TARGET) {
+                elf_path_str.replace(DEFAULT_TARGET, crate::DEFAULT_TARGET_64)
+            } else {
+                panic!(
+                    "Expected ELF path to contain '{}' or '{}', got '{}'",
+                    DEFAULT_TARGET,
+                    crate::DEFAULT_TARGET_64,
+                    elf_path_str
+                );
+            }
+        };
+
+        println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path_str);
     }
 }

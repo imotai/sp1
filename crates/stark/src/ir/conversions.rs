@@ -27,8 +27,8 @@ impl<F: Field, EF: ExtensionField<F>, T: Into<ExprRef<F>>> From<Word<T>>
     for Shape<ExprRef<F>, ExprExtRef<EF>>
 {
     fn from(val: Word<T>) -> Self {
-        let [a, b] = val.0;
-        Shape::Word([a.into(), b.into()])
+        let [a, b, c, d] = val.0;
+        Shape::Word([a.into(), b.into(), c.into(), d.into()])
     }
 }
 

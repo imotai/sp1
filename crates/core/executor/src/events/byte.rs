@@ -7,7 +7,7 @@ use slop_algebra::{Field, PrimeField32};
 use crate::{ByteOpcode, Opcode};
 
 /// The number of different byte operations.
-pub const NUM_BYTE_OPS: usize = 7;
+pub const NUM_BYTE_OPS: usize = 6;
 
 /// Byte Lookup Event.
 ///

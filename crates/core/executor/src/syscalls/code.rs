@@ -162,6 +162,13 @@ pub enum SyscallCode {
 
     /// Executes the `UINT256_MUL_CARRY` precompile.
     UINT256_MUL_CARRY = 0x00_01_01_31,
+
+    /// Executes the `MPROTECT` syscall.
+    #[allow(clippy::mistyped_literal_suffixes)]
+    MPROTECT = 0x00_00_01_32,
+
+    /// Executes the `POSEIDON2` syscall.
+    POSEIDON2 = 0x00_00_01_33,
 }
 
 impl SyscallCode {
@@ -210,6 +217,9 @@ impl SyscallCode {
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
             0x00_01_01_30 => SyscallCode::UINT256_ADD_CARRY,
             0x00_01_01_31 => SyscallCode::UINT256_MUL_CARRY,
+            #[allow(clippy::mistyped_literal_suffixes)]
+            0x00_00_01_32 => SyscallCode::MPROTECT,
+            0x00_00_01_33 => SyscallCode::POSEIDON2,
             _ => panic!("invalid syscall number: {value}"),
         }
     }
@@ -224,12 +234,6 @@ impl SyscallCode {
     #[must_use]
     pub fn should_send(self) -> u32 {
         (self as u32).to_le_bytes()[1].into()
-    }
-
-    /// Get the number of additional cycles the syscall uses.
-    #[must_use]
-    pub fn num_cycles(self) -> u32 {
-        (self as u32).to_le_bytes()[2].into()
     }
 
     /// Map a syscall to another one in order to coalesce their counts.
@@ -316,6 +320,8 @@ impl SyscallCode {
             SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => {
                 RiscvAirId::Uint256Ops
             }
+            SyscallCode::MPROTECT => RiscvAirId::Mprotect,
+            SyscallCode::POSEIDON2 => RiscvAirId::Poseidon2,
             SyscallCode::HALT
             | SyscallCode::WRITE
             | SyscallCode::ENTER_UNCONSTRAINED

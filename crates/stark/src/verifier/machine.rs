@@ -1,4 +1,5 @@
 use derive_where::derive_where;
+use slop_algebra::PrimeField32;
 use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
 use slop_jagged::{BabyBearPoseidon2, JaggedConfig};
@@ -20,6 +21,12 @@ use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, Shard
 pub struct MachineProof<C: MachineConfig> {
     /// The shard proofs.
     pub shard_proofs: Vec<ShardProof<C>>,
+}
+
+impl<C: MachineConfig> From<Vec<ShardProof<C>>> for MachineProof<C> {
+    fn from(shard_proofs: Vec<ShardProof<C>>) -> Self {
+        Self { shard_proofs }
+    }
 }
 
 /// An error that occurs during the verification of a machine proof.
@@ -94,7 +101,12 @@ impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A> {
     pub fn shard_verifier(&self) -> &ShardVerifier<C, A> {
         &self.shard_verifier
     }
+}
 
+impl<C: MachineConfig, A: MachineAir<C::F>> MachineVerifier<C, A>
+where
+    C::F: PrimeField32,
+{
     /// Verify the machine proof.
     pub fn verify(
         &self,

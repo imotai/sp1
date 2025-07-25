@@ -76,17 +76,6 @@ pub struct U16CompareOperationInput<AB: SP1AirBuilder> {
     pub is_real: AB::Expr,
 }
 
-impl<AB: SP1AirBuilder> U16CompareOperationInput<AB> {
-    pub fn new(
-        a: AB::Expr,
-        b: AB::Expr,
-        cols: U16CompareOperation<AB::Var>,
-        is_real: AB::Expr,
-    ) -> Self {
-        Self { a, b, cols, is_real }
-    }
-}
-
 impl<AB: SP1AirBuilder> SP1Operation<AB> for U16CompareOperation<AB::F> {
     type Input = U16CompareOperationInput<AB>;
     type Output = ();

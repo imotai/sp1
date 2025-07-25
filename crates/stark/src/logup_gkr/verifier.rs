@@ -48,6 +48,9 @@ pub enum LogupGkrVerificationError<EF> {
     /// The denominator evaluation does not match the expected one.
     #[error("denominator evaluation mismatch: {0} != {1}")]
     DenominatorEvaluationMismatch(EF, EF),
+    /// The denominator guts had zero in it.
+    #[error("denominator evaluation has zero value")]
+    ZeroDenominator,
 }
 
 /// Verifier for `LogUp` GKR.
@@ -77,9 +80,20 @@ where
     ) -> Result<(), LogupGkrVerificationError<EF>> {
         let LogupGkrProof { circuit_output, round_proofs, logup_evaluations } = proof;
 
-        //  TODO: compare the number of variables to total number of itneractions as read from
-        // chips.
         let LogUpGkrOutput { numerator, denominator } = circuit_output;
+
+        // Calculate the interaction number.
+        let num_of_interactions =
+            shard_chips.iter().map(|c| c.sends().len() + c.receives().len()).sum::<usize>();
+        let number_of_interaction_variables = num_of_interactions.next_power_of_two().ilog2();
+
+        let expected_size = 1 << (number_of_interaction_variables + 1);
+
+        if numerator.guts().dimensions.sizes() != [expected_size, 1]
+            || denominator.guts().dimensions.sizes() != [expected_size, 1]
+        {
+            return Err(LogupGkrVerificationError::InvalidShape);
+        }
 
         // Observe the output claims.
         for (n, d) in
@@ -87,6 +101,10 @@ where
         {
             challenger.observe_ext_element(*n);
             challenger.observe_ext_element(*d);
+        }
+
+        if denominator.guts().as_slice().iter().any(slop_algebra::Field::is_zero) {
+            return Err(LogupGkrVerificationError::ZeroDenominator);
         }
 
         // Verify that the cumulative sum matches the claimed one.
@@ -104,10 +122,6 @@ where
             ));
         }
 
-        // Calculate the interaction number.
-        let num_of_interactions =
-            shard_chips.iter().map(|c| c.sends().len() + c.receives().len()).sum::<usize>();
-        let number_of_interaction_variables = num_of_interactions.next_power_of_two().ilog2();
         // Assert that the size of the first layer matches the expected one.
         let initial_number_of_variables = numerator.num_variables();
         if initial_number_of_variables != number_of_interaction_variables + 1 {
@@ -123,6 +137,11 @@ where
         let mut numerator_eval = numerator.blocking_eval_at(&first_eval_point)[0];
         let mut denominator_eval = denominator.blocking_eval_at(&first_eval_point)[0];
         let mut eval_point = first_eval_point;
+
+        if round_proofs.len() + 1 != max_log_row_count {
+            return Err(LogupGkrVerificationError::InvalidShape);
+        }
+
         for (i, round_proof) in round_proofs.iter().enumerate() {
             // Get the batching challenge for combining the claims.
             let lambda = challenger.sample_ext_element::<EF>();
@@ -132,7 +151,12 @@ where
                 return Err(LogupGkrVerificationError::InconsistentSumcheckClaim(i));
             }
             // Verify the sumcheck proof.
-            partially_verify_sumcheck_proof(&round_proof.sumcheck_proof, challenger)?;
+            partially_verify_sumcheck_proof(
+                &round_proof.sumcheck_proof,
+                challenger,
+                i + number_of_interaction_variables as usize + 1,
+                3,
+            )?;
             // Verify that the evaluation claim is consistent with the prover messages.
             let (point, final_eval) = round_proof.sumcheck_proof.point_and_eval.clone();
             let eq_eval = Mle::full_lagrange_eval(&point, &eval_point);
@@ -195,9 +219,21 @@ where
                 for eval in prep_eval.deref().iter() {
                     challenger.observe_ext_element(*eval);
                 }
+                if prep_eval.evaluations().sizes() != [chip.air.preprocessed_width()] {
+                    return Err(LogupGkrVerificationError::InvalidShape);
+                }
+            } else if chip.air.preprocessed_width() != 0 {
+                return Err(LogupGkrVerificationError::InvalidShape);
             }
             for eval in openings.main_trace_evaluations.deref().iter() {
                 challenger.observe_ext_element(*eval);
+            }
+            if openings.main_trace_evaluations.evaluations().sizes() != [chip.air.width()] {
+                return Err(LogupGkrVerificationError::InvalidShape);
+            }
+
+            if threshold.dimension() != point_extended.dimension() {
+                return Err(LogupGkrVerificationError::InvalidShape);
             }
 
             let geq_eval = full_geq(threshold, &point_extended);

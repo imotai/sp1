@@ -5,16 +5,16 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use slop_air::{Air, BaseAir};
+use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, Field, PrimeField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_CLK_INC, DEFAULT_PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_SIZE};
 use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
@@ -23,6 +23,7 @@ use crate::{
         state::CPUState,
     },
     air::{SP1CoreAirBuilder, SP1Operation},
+    operations::U16MSBOperation,
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
 
@@ -49,29 +50,41 @@ pub struct ShiftLeftCols<T> {
     /// The output operand.
     pub a: Word<T>,
 
+    /// The lowerst byte of `c`.
+    pub c_bits: [T; 6],
+
+    /// v01 = (c0 + 1) * (3c1 + 1)
+    pub v_01: T,
+
+    /// v012 = (c0 + 1) * (3c1 + 1) * (15c2 + 1)
+    pub v_012: T,
+
+    /// v012 * c3
+    pub v_0123: T,
+
+    /// Flags representing c4 + 2c5.
+    pub shift_u16: [T; 4],
+
     /// The lower bits of each limb.
     pub lower_limb: Word<T>,
 
     /// The higher bits of each limb.
     pub higher_limb: Word<T>,
 
-    /// Auxiliary column to help compute `pow_2`, equal to `2^(c & 0x3)`.
-    pub pow_2_01: T,
+    /// The limb results.
+    pub limb_result: Word<T>,
 
-    /// Auxiliary column to help compute `pow_2`, equal to `2^(c & 0x12)`.
-    pub pow_2_23: T,
+    /// The most significant byte of the result of SLLW.
+    pub sllw_msb: U16MSBOperation<T>,
 
-    /// The power of two corresponding to the bit shift, equal to `2^(c & 0x15)`.
-    pub pow_2: T,
+    /// If the opcode is SLL.
+    pub is_sll: T,
 
-    /// A column to reduce AIR degree, equal to `pow_2 * c_bit[4]`.
-    pub pow_2_bit: T,
+    /// If the opcode is SLLW.
+    pub is_sllw: T,
 
-    /// The bottom 5 bits of `c`.
-    pub c_bits: [T; 5],
-
-    /// Boolean to indicate whether the row is not a padding row.
-    pub is_real: T,
+    /// The base opcode for the SLL instruction.
+    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
@@ -101,10 +114,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
             let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
             let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
             let mut blu = Vec::new();
-            let instruction = input.program.fetch(event.0.pc);
+            cols.adapter.populate(&mut blu, event.1);
             self.event_to_row(&event.0, cols, &mut blu);
             cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-            cols.adapter.populate(&mut blu, instruction, event.1);
             rows.push(row);
         }
 
@@ -128,9 +140,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
         let padded_row_template = {
             let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
             let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
-            cols.pow_2_01 = F::one();
-            cols.pow_2_23 = F::one();
-            cols.pow_2 = F::one();
+            cols.v_01 = F::one();
+            cols.v_012 = F::one();
+            cols.v_0123 = F::one();
             row
         };
         debug_assert!(padded_row_template.len() == NUM_SHIFT_LEFT_COLS);
@@ -152,10 +164,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
                     let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
-                    let instruction = input.program.fetch(event.0.pc);
+                    cols.adapter.populate(&mut blu, event.1);
                     self.event_to_row(&event.0, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                    cols.adapter.populate(&mut blu, instruction, event.1);
                 });
                 blu
             })
@@ -185,30 +196,72 @@ impl ShiftLeft {
         cols: &mut ShiftLeftCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        let b = u32_to_u16_limbs(event.b);
-        let c = u32_to_u16_limbs(event.c)[0];
+        let c = u64_to_u16_limbs(event.c)[0];
+
+        if event.opcode == Opcode::SLLW {
+            let sllw_val = ((event.b as i64) << (c & 0x1f)) as u32;
+            let sllw_limbs = u32_to_u16_limbs(sllw_val);
+            cols.sllw_msb.populate_msb(blu, sllw_limbs[1]);
+        }
+
         cols.a = Word::from(event.a);
-        for i in 0..5 {
+        let is_sll = event.opcode == Opcode::SLL;
+        cols.is_sll = F::from_bool(is_sll);
+
+        cols.is_sllw = F::from_bool(event.opcode == Opcode::SLLW);
+
+        let (sll_base, sll_imm) = Opcode::SLL.base_opcode();
+        let sll_imm = sll_imm.expect("SLL immediate opcode not found");
+        let (sllw_base, sllw_imm) = Opcode::SLLW.base_opcode();
+        let sllw_imm = sllw_imm.expect("SLLW immediate opcode not found");
+
+        let is_imm_c = cols.adapter.imm_c.is_one();
+        let sll_base_opcode = F::from_canonical_u32(if is_imm_c { sll_imm } else { sll_base });
+        let sllw_base_opcode = F::from_canonical_u32(if is_imm_c { sllw_imm } else { sllw_base });
+        cols.base_op_code = match event.opcode {
+            Opcode::SLL => sll_base_opcode,
+            Opcode::SLLW => sllw_base_opcode,
+            _ => unreachable!(),
+        };
+
+        for i in 0..6 {
             cols.c_bits[i] = F::from_canonical_u16((c >> i) & 1);
         }
-        cols.is_real = F::one();
-        cols.pow_2_01 = F::from_canonical_u32(1 << (c & 3));
-        cols.pow_2_23 = F::from_canonical_u32(1 << (c & 12));
-        cols.pow_2 = F::from_canonical_u32(1 << (c & 15));
-        if ((c >> 4) & 1) == 1 {
-            cols.pow_2_bit = cols.pow_2;
+        blu.add_bit_range_check(c >> 6, 10);
+
+        cols.v_01 = F::from_canonical_u16(1 << (c & 3));
+        cols.v_012 = F::from_canonical_u16(1 << (c & 7));
+        cols.v_0123 = F::from_canonical_u16(1 << (c & 15));
+
+        let shift_amount = ((c >> 4) & 1) + 2 * ((c >> 5) & 1) * (is_sll as u16);
+
+        let mut shift = [0u16; 4];
+        for i in 0..4 {
+            if i == shift_amount as usize {
+                shift[i] = 1;
+            }
         }
+
+        let b = u64_to_u16_limbs(event.b);
         let bit_shift = (c & 0xF) as u8;
-        blu.add_bit_range_check(c >> 5, 11);
         for i in 0..WORD_SIZE {
             let limb = b[i] as u32;
             let lower_limb = (limb & ((1 << (16 - bit_shift)) - 1)) as u16;
             let higher_limb = (limb >> (16 - bit_shift)) as u16;
-            cols.lower_limb.0[i] = F::from_canonical_u16(lower_limb);
-            cols.higher_limb.0[i] = F::from_canonical_u16(higher_limb);
+            cols.lower_limb[i] = F::from_canonical_u16(lower_limb);
+            cols.higher_limb[i] = F::from_canonical_u16(higher_limb);
             blu.add_bit_range_check(lower_limb, 16 - bit_shift);
             blu.add_bit_range_check(higher_limb, bit_shift);
         }
+
+        for i in 0..WORD_SIZE {
+            cols.limb_result[i] = cols.lower_limb[i] * F::from_canonical_u32(1u32 << bit_shift);
+            if i != 0 {
+                cols.limb_result[i] += cols.higher_limb[i - 1];
+            }
+        }
+
+        cols.shift_u16 = shift.map(|x| F::from_canonical_u16(x));
     }
 }
 
@@ -227,44 +280,58 @@ where
         let local = main.row_slice(0);
         let local: &ShiftLeftCols<AB::Var> = (*local).borrow();
 
-        // Step 1: Compute the bottom 5 bits of `c`.
-        // `c_lower_bits` is equal to the bit sum of the bottom 5 bits of `c`.
-        // `bit_shift` is equal to the bit sum of the bottom 4 bits of `c`.
+        // SAFETY: All selectors `is_sll`, `is_sllw` are checked to be boolean.
+        // Each "real" row has exactly one selector turned on, as `is_real = is_sll + is_sllw` is
+        // boolean. All interactions are done with multiplicity `is_real`.
+        // Therefore, the `opcode` matches the corresponding opcode.
+        let is_real = local.is_sll + local.is_sllw;
+        builder.assert_bool(is_real.clone());
+        builder.assert_bool(local.is_sll);
+        builder.assert_bool(local.is_sllw);
+
+        // Check that `local.c_bits` are the 6 lowest bits of `c`.
+        for i in 0..6 {
+            builder.assert_bool(local.c_bits[i]);
+        }
         let mut c_lower_bits = AB::Expr::zero();
         let mut bit_shift = AB::Expr::zero();
-        for i in 0..5 {
-            builder.assert_bool(local.c_bits[i]);
-            c_lower_bits =
-                c_lower_bits.clone() + local.c_bits[i] * AB::Expr::from_canonical_u32(1 << i);
+        for i in 0..6 {
+            c_lower_bits = c_lower_bits + local.c_bits[i] * AB::F::from_canonical_u32(1 << i);
             if i == 3 {
                 bit_shift = c_lower_bits.clone();
             }
         }
-        let inverse_32 = AB::F::from_canonical_u32(32).inverse();
-        // Check `0 <= (c - c_lower_bits) / 32 < 2^11`, which shows `c - c_lower_bits` is a u16 and
-        // a multiple of 32.
+        let inverse_64 = AB::F::from_canonical_u32(64).inverse();
         builder.send_byte(
             AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-            (local.adapter.c()[0] - c_lower_bits) * inverse_32,
-            AB::Expr::from_canonical_u32(11),
+            (local.adapter.c()[0] - c_lower_bits) * inverse_64,
+            AB::Expr::from_canonical_u32(10),
             AB::Expr::zero(),
-            local.is_real,
+            is_real.clone(),
         );
 
-        // Step 2: Compute `pow(2, lower 4 bits of c)`.
-        builder.assert_eq(
-            local.pow_2_01,
-            (AB::Expr::one() + local.c_bits[0])
-                * (AB::Expr::one() + AB::Expr::from_canonical_u32(3) * local.c_bits[1]),
-        );
-        builder.assert_eq(
-            local.pow_2_23,
-            (AB::Expr::one() + AB::Expr::from_canonical_u32(15) * local.c_bits[2])
-                * (AB::Expr::one() + AB::Expr::from_canonical_u32(255) * local.c_bits[3]),
-        );
-        builder.assert_eq(local.pow_2, local.pow_2_01 * local.pow_2_23);
+        // Check that `shift_u16` represents the boolean flag for the u16 limb shifts.
+        for i in 0..WORD_SIZE {
+            builder.when(local.shift_u16[i]).assert_eq(
+                local.c_bits[4] + local.c_bits[5] * AB::F::from_canonical_u32(2) * local.is_sll,
+                AB::Expr::from_canonical_u32(i as u32),
+            );
+            builder.assert_bool(local.shift_u16[i]);
+        }
 
-        // Step 3: Split the `b` word into lower and higher parts.
+        builder.when(is_real.clone()).assert_eq(
+            local.shift_u16[0] + local.shift_u16[1] + local.shift_u16[2] + local.shift_u16[3],
+            AB::Expr::from_canonical_u32(1),
+        );
+
+        let one = AB::F::from_canonical_u32(1);
+        let three = AB::F::from_canonical_u32(3);
+        let fifteen = AB::F::from_canonical_u32(15);
+        let two_fifty_five = AB::F::from_canonical_u32(255);
+        builder.assert_eq(local.v_01, (local.c_bits[0] + one) * (local.c_bits[1] * three + one));
+        builder.assert_eq(local.v_012, local.v_01 * (local.c_bits[2] * fifteen + one));
+        builder.assert_eq(local.v_0123, local.v_012 * (local.c_bits[3] * two_fifty_five + one));
+
         for i in 0..WORD_SIZE {
             let limb = local.adapter.b()[i];
             // Check that `lower_limb < 2^(16 - bit_shift)`
@@ -273,7 +340,7 @@ where
                 local.lower_limb[i],
                 AB::Expr::from_canonical_u32(16) - bit_shift.clone(),
                 AB::Expr::zero(),
-                local.is_real,
+                is_real.clone(),
             );
             // Check that `higher_limb < 2^(bit_shift)`
             builder.send_byte(
@@ -281,42 +348,107 @@ where
                 local.higher_limb[i],
                 bit_shift.clone(),
                 AB::Expr::zero(),
-                local.is_real,
+                is_real.clone(),
             );
             // Check that `limb == higher_limb * 2^(16 - bit_shift) + lower_limb`
             // Multiply `2^(bit_shift)` to the equation to avoid populating `2^(16 - bit_shift)`.
             // This is possible, since `2^(bit_shift)` is not zero.
             builder.assert_eq(
-                limb * local.pow_2,
+                limb * local.v_0123,
                 local.higher_limb[i] * AB::Expr::from_canonical_u32(1 << 16)
-                    + local.lower_limb[i] * local.pow_2,
+                    + local.lower_limb[i] * local.v_0123,
             );
         }
 
-        // Step 4. Compute the final result `a`.
-        builder.assert_eq(local.pow_2_bit, local.pow_2 * local.c_bits[4]);
+        // Compute the limb result based on the lower limbs and higher limbs.
+        for i in 0..WORD_SIZE {
+            let mut limb_result = local.lower_limb[i] * local.v_0123;
+            if i != 0 {
+                limb_result = limb_result.clone() + local.higher_limb[i - 1];
+            }
+            builder.assert_eq(local.limb_result[i], limb_result);
+        }
 
-        let limb_0 = local.lower_limb[0] * (local.pow_2 - local.pow_2_bit);
-        let limb_1 = local.lower_limb[0] * local.pow_2_bit
-            + local.higher_limb[0] * (AB::Expr::one() - local.c_bits[4])
-            + local.lower_limb[1] * (local.pow_2 - local.pow_2_bit);
+        // Perform the limb shifts based on `shift_u16` boolean flags.
+        for i in 0..WORD_SIZE {
+            for j in 0..WORD_SIZE {
+                if j < i {
+                    builder.when(local.is_sll).when(local.shift_u16[i]).assert_zero(local.a[j]);
+                } else {
+                    builder
+                        .when(local.is_sll)
+                        .when(local.shift_u16[i])
+                        .assert_eq(local.a[j], local.limb_result[j - i]);
+                }
+            }
+        }
 
-        builder.assert_word_eq(local.a, Word([limb_0, limb_1]));
+        for i in 0..WORD_SIZE / 2 {
+            for j in 0..WORD_SIZE / 2 {
+                if j < i {
+                    builder.when(local.is_sllw).when(local.shift_u16[i]).assert_zero(local.a[j]);
+                } else {
+                    builder
+                        .when(local.is_sllw)
+                        .when(local.shift_u16[i])
+                        .assert_eq(local.a[j], local.limb_result[j - i]);
+                }
+            }
+        }
+        let u16_max = AB::F::from_canonical_u16(u16::MAX);
+        for i in WORD_SIZE / 2..WORD_SIZE {
+            builder.when(local.is_sllw).assert_eq(local.sllw_msb.msb * u16_max, local.a[i]);
+        }
 
-        // SAFETY: `is_real` is checked to be boolean.
-        // All interactions are done with multiplicity `is_real`, so padding rows lead to no
-        // interactions. This chip only deals with the `SLL` opcode, so the opcode matches
-        // the instruction.
-        builder.assert_bool(local.is_real);
+        U16MSBOperation::<AB::F>::eval_msb(
+            builder,
+            local.a[1].into(),
+            local.sllw_msb,
+            local.is_sllw.into(),
+        );
+
+        let opcode = local.is_sll * AB::F::from_canonical_u32(Opcode::SLL as u32)
+            + local.is_sllw * AB::F::from_canonical_u32(Opcode::SLLW as u32);
+
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_sll * AB::Expr::from_canonical_u8(Opcode::SLL.funct3().unwrap())
+            + local.is_sllw * AB::Expr::from_canonical_u8(Opcode::SLLW.funct3().unwrap());
+        let funct7 = local.is_sll * AB::Expr::from_canonical_u8(Opcode::SLL.funct7().unwrap_or(0))
+            + local.is_sllw * AB::Expr::from_canonical_u8(Opcode::SLLW.funct7().unwrap_or(0));
+
+        // Combine the opcodes based on which instruction is active
+        let base_opcode = local.base_op_code.into();
+
+        let (sll_base, sll_imm) = Opcode::SLL.base_opcode();
+        let sll_imm = sll_imm.expect("SLL immediate opcode not found");
+        let (sllw_base, sllw_imm) = Opcode::SLLW.base_opcode();
+        let sllw_imm = sllw_imm.expect("SLLW immediate opcode not found");
+
+        let sll_base_expr = AB::Expr::from_canonical_u32(sll_base);
+        let sllw_base_expr = AB::Expr::from_canonical_u32(sllw_base);
+        let sll_imm_expr = AB::Expr::from_canonical_u32(sll_imm);
+        let sllw_imm_expr = AB::Expr::from_canonical_u32(sllw_imm);
+
+        let correct_imm_opcode = local.is_sll * sll_imm_expr + local.is_sllw * sllw_imm_expr;
+        let correct_reg_opcode = local.is_sll * sll_base_expr + local.is_sllw * sllw_base_expr;
+
+        // Constrain base_op_code to be correct based on imm_c and is_* columns.
+        let correct_opcode =
+            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
 
         // Constrain the CPU state.
-        // The program counter and timestamp increment by `4`.
+        // The program counter and timestamp increment by `4` and `8`.
         CPUState::<AB::F>::eval(
             builder,
             local.state,
-            local.state.pc + AB::F::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::from_canonical_u32(DEFAULT_CLK_INC),
-            local.is_real.into(),
+            [
+                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                local.state.pc[1].into(),
+                local.state.pc[2].into(),
+            ],
+            AB::Expr::from_canonical_u32(CLK_INC),
+            is_real.clone(),
         );
 
         // Constrain the program and register reads.
@@ -324,10 +456,11 @@ where
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
-            AB::F::from_canonical_u32(Opcode::SLL as u32).into(),
+            opcode,
+            [base_opcode, funct3, funct7],
             local.a.map(|x| x.into()),
             local.adapter,
-            local.is_real.into(),
+            is_real.clone(),
         );
         ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }

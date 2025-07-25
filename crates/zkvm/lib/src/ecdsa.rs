@@ -28,7 +28,7 @@ pub use projective::ProjectivePoint;
 
 /// NOTE: The only supported ECDSA curves are secp256k1 and secp256r1, which both
 /// have 8 limbs in their field elements.
-const POINT_LIMBS: usize = 8 * 2;
+const POINT_LIMBS: usize = 4 * 2;
 
 /// The number of bytes in a field element as an [`usize`].
 const FIELD_BYTES_SIZE_USIZE: usize = 32;

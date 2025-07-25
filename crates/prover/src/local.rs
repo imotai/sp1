@@ -28,7 +28,7 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey, ShardProof, Word,
+    BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey, ShardProof,
 };
 use std::{
     borrow::Borrow,
@@ -151,7 +151,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         runtime.record.public_values.committed_value_digest.iter().enumerate().for_each(
             |(i, word)| {
                 let bytes = word.to_le_bytes();
-                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes);
+                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes[0..4]);
             },
         );
 
@@ -657,8 +657,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     BabyBear::zero(),
                     BabyBear::one(),
                 ],
-                init_addr_word: Word([BabyBear::zero(); 2]),
-                finalize_addr_word: Word([BabyBear::zero(); 2]),
+                init_addr_word: [BabyBear::zero(); 3],
+                finalize_addr_word: [BabyBear::zero(); 3],
                 committed_value_digest: [[BabyBear::zero(); 4]; 8],
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });
@@ -700,8 +700,8 @@ impl<C: SP1ProverComponents> SubproofVerifier for LocalProver<C> {
         &self,
         proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &MachineVerifyingKey<BabyBearPoseidon2>,
-        vk_hash: [u32; 8],
-        committed_value_digest: [u32; 8],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
         self.prover.verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
@@ -1034,7 +1034,7 @@ pub mod tests {
         let elf = test_artifacts::FIBONACCI_ELF;
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu()
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new()
             .without_vk_verification()
             .build()
             .await;
@@ -1056,7 +1056,7 @@ pub mod tests {
     async fn test_deferred_compress() -> Result<()> {
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::cpu()
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new()
             .without_vk_verification()
             .build()
             .await;

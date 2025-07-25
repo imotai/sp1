@@ -6,7 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slop_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder, PermutationAirBuilder};
+use slop_air::{AirBuilder, AirBuilderWithPublicValues, FilteredAirBuilder};
 use slop_algebra::{AbstractField, Field};
 use slop_uni_stark::{
     ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, VerifierConstraintFolder,
@@ -14,9 +14,7 @@ use slop_uni_stark::{
 use strum_macros::{Display, EnumIter};
 
 use super::{interaction::AirInteraction, BinomialExtension};
-use crate::{
-    lookup::InteractionKind, septic_extension::SepticExtension, ConstraintSumcheckFolder, Word,
-};
+use crate::{lookup::InteractionKind, septic_extension::SepticExtension, ConstraintSumcheckFolder};
 
 /// The scope of an interaction.
 #[derive(
@@ -160,12 +158,15 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.send(
             AirInteraction::new(
-                vec![clk_high.into(), clk_low.into(), pc.into()],
+                once(clk_high.into())
+                    .chain(once(clk_low.into()))
+                    .chain(pc.map(Into::into))
+                    .collect::<Vec<_>>(),
                 multiplicity.into(),
                 InteractionKind::State,
             ),
@@ -178,99 +179,18 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
-        pc: impl Into<Self::Expr>,
+        pc: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
     ) {
         self.receive(
             AirInteraction::new(
-                vec![clk_high.into(), clk_low.into(), pc.into()],
+                once(clk_high.into())
+                    .chain(once(clk_low.into()))
+                    .chain(pc.map(Into::into))
+                    .collect::<Vec<_>>(),
                 multiplicity.into(),
                 InteractionKind::State,
             ),
-            InteractionScope::Local,
-        );
-    }
-
-    /// Sends a RISC-V instruction to be processed.
-    #[allow(clippy::too_many_arguments)]
-    fn send_instruction(
-        &mut self,
-        clk_high: impl Into<Self::Expr> + Clone,
-        clk_low: impl Into<Self::Expr> + Clone,
-        pc: impl Into<Self::Expr>,
-        next_pc: impl Into<Self::Expr>,
-        num_extra_cycles: impl Into<Self::Expr>,
-        opcode: impl Into<Self::Expr>,
-        a: Word<impl Into<Self::Expr>>,
-        b: Word<impl Into<Self::Expr>>,
-        c: Word<impl Into<Self::Expr>>,
-        op_a_0: impl Into<Self::Expr>,
-        op_a_immutable: impl Into<Self::Expr>,
-        is_memory: impl Into<Self::Expr>,
-        is_syscall: impl Into<Self::Expr>,
-        is_halt: impl Into<Self::Expr>,
-        multiplicity: impl Into<Self::Expr>,
-    ) {
-        let values = once(clk_high.into())
-            .chain(once(clk_low.into()))
-            .chain(once(pc.into()))
-            .chain(once(next_pc.into()))
-            .chain(once(num_extra_cycles.into()))
-            .chain(once(opcode.into()))
-            .chain(a.0.into_iter().map(Into::into))
-            .chain(b.0.into_iter().map(Into::into))
-            .chain(c.0.into_iter().map(Into::into))
-            .chain(once(op_a_0.into()))
-            .chain(once(op_a_immutable.into()))
-            .chain(once(is_memory.into()))
-            .chain(once(is_syscall.into()))
-            .chain(once(is_halt.into()))
-            .collect();
-
-        self.send(
-            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
-            InteractionScope::Local,
-        );
-    }
-
-    /// Receives an ALU operation to be processed.
-    #[allow(clippy::too_many_arguments)]
-    fn receive_instruction(
-        &mut self,
-        clk_high: impl Into<Self::Expr> + Clone,
-        clk_low: impl Into<Self::Expr> + Clone,
-        pc: impl Into<Self::Expr>,
-        next_pc: impl Into<Self::Expr>,
-        num_extra_cycles: impl Into<Self::Expr>,
-        opcode: impl Into<Self::Expr>,
-        a: Word<impl Into<Self::Expr>>,
-        b: Word<impl Into<Self::Expr>>,
-        c: Word<impl Into<Self::Expr>>,
-        op_a_0: impl Into<Self::Expr>,
-        op_a_immutable: impl Into<Self::Expr>,
-        is_memory: impl Into<Self::Expr>,
-        is_syscall: impl Into<Self::Expr>,
-        is_halt: impl Into<Self::Expr>,
-        multiplicity: impl Into<Self::Expr>,
-    ) {
-        let values = once(clk_high.into())
-            .chain(once(clk_low.into()))
-            .chain(once(pc.into()))
-            .chain(once(next_pc.into()))
-            .chain(once(num_extra_cycles.into()))
-            .chain(once(opcode.into()))
-            .chain(a.0.into_iter().map(Into::into))
-            .chain(b.0.into_iter().map(Into::into))
-            .chain(c.0.into_iter().map(Into::into))
-            .chain(once(op_a_0.into()))
-            .chain(once(op_a_immutable.into()))
-            .chain(once(is_memory.into()))
-            .chain(once(is_syscall.into()))
-            .chain(once(is_halt.into()))
-            .collect();
-
-        self.receive(
-            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
             InteractionScope::Local,
         );
     }
@@ -282,23 +202,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [impl Into<Self::Expr>; 3],
+        arg2: [impl Into<Self::Expr>; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1.map(Into::into))
+            .chain(arg2.map(Into::into))
+            .collect::<Vec<_>>();
+
         self.send(
-            AirInteraction::new(
-                vec![
-                    clk_high.clone().into(),
-                    clk_low.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }
@@ -310,23 +227,20 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         clk_high: impl Into<Self::Expr> + Clone,
         clk_low: impl Into<Self::Expr> + Clone,
         syscall_id: impl Into<Self::Expr> + Clone,
-        arg1: impl Into<Self::Expr> + Clone,
-        arg2: impl Into<Self::Expr> + Clone,
+        arg1: [Self::Expr; 3],
+        arg2: [Self::Expr; 3],
         multiplicity: impl Into<Self::Expr>,
         scope: InteractionScope,
     ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(once(syscall_id.into()))
+            .chain(arg1)
+            .chain(arg2)
+            .collect::<Vec<_>>();
+
         self.receive(
-            AirInteraction::new(
-                vec![
-                    clk_high.clone().into(),
-                    clk_low.clone().into(),
-                    syscall_id.clone().into(),
-                    arg1.clone().into(),
-                    arg2.clone().into(),
-                ],
-                multiplicity.into(),
-                InteractionKind::Syscall,
-            ),
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Syscall),
             scope,
         );
     }
@@ -382,15 +296,6 @@ pub trait SepticExtensionAirBuilder: BaseAirBuilder {
             self.assert_eq(left, right);
         }
     }
-}
-
-/// A builder that implements a permutation argument.
-pub trait MultiTableAirBuilder<'a>: PermutationAirBuilder {
-    /// The type of the local cumulative sum.
-    type LocalSum: Into<Self::ExprEF> + Copy;
-
-    /// Returns the local cumulative sum of the permutation.
-    fn local_cumulative_sum(&self) -> &'a Self::LocalSum;
 }
 
 /// A trait that contains the common helper methods for building `SP1 recursion` and SP1 machine

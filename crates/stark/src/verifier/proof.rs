@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use slop_jagged::JaggedPcsProof;
-use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::Point;
 use slop_sumcheck::PartialSumcheckProof;
 
@@ -13,7 +13,7 @@ use super::MachineConfig;
 /// The maximum number of elements that can be stored in the public values vec.  Both SP1 and
 /// recursive proofs need to pad their public values vec to this length.  This is required since the
 /// recursion verification program expects the public values vec to be fixed length.
-pub const PROOF_MAX_NUM_PVS: usize = 119;
+pub const PROOF_MAX_NUM_PVS: usize = 127;
 
 /// Data required for testing.
 #[derive(Clone, Serialize, Deserialize)]
@@ -82,19 +82,15 @@ pub struct ChipOpenedValues<F, EF> {
 pub struct AirOpenedValues<T> {
     /// The opening of the local trace
     pub local: Vec<T>,
-    /// The opening of the next trace.
-    pub next: Vec<T>,
 }
 
 impl<T> AirOpenedValues<T> {
     /// Organize the opening values into a vertical pair.
     #[must_use]
-    pub fn view(&self) -> VerticalPair<RowMajorMatrixView<'_, T>, RowMajorMatrixView<'_, T>>
+    pub fn view(&self) -> RowMajorMatrixView<'_, T>
     where
         T: Clone + Send + Sync,
     {
-        let a = RowMajorMatrixView::new_row(&self.local);
-        let b = RowMajorMatrixView::new_row(&self.next);
-        VerticalPair::new(a, b)
+        RowMajorMatrixView::new_row(&self.local)
     }
 }

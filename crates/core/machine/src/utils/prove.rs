@@ -14,7 +14,7 @@ use slop_algebra::PrimeField32;
 use sp1_stark::{
     air::PublicValues,
     prover::{MachineProverBuilder, MachineProverComponents, MachineProvingKey, ProverSemaphore},
-    Machine, MachineProof, MachineRecord, ShardProof, ShardVerifier, Word,
+    Machine, MachineProof, MachineRecord, ShardProof, ShardVerifier,
 };
 
 use crate::{io::SP1Stdin, utils::concurrency::TurnBasedSync};
@@ -65,7 +65,7 @@ pub fn generate_records<F: PrimeField32>(
     record_gen_sync: Arc<TurnBasedSync>,
     checkpoints_rx: Arc<Mutex<Receiver<(usize, File, bool, u64)>>>,
     records_tx: Sender<ExecutionRecord>,
-    state: Arc<Mutex<PublicValues<u32, u32, u64, u32>>>,
+    state: Arc<Mutex<PublicValues<u32, u64, u64, u32>>>,
     deferred: Arc<Mutex<ExecutionRecord>>,
     report_aggregate: Arc<Mutex<ExecutionReport>>,
     opts: SP1CoreOpts,
@@ -90,8 +90,7 @@ pub fn generate_records<F: PrimeField32>(
                 state.shard += 1;
                 state.execution_shard = record.public_values.execution_shard;
                 state.next_execution_shard = record.public_values.execution_shard + 1;
-                state.exit_code = record.public_values.exit_code;
-                state.start_pc = record.public_values.start_pc;
+                state.pc_start = record.public_values.pc_start;
                 state.next_pc = record.public_values.next_pc;
                 state.initial_timestamp = record.public_values.initial_timestamp;
                 state.last_timestamp = record.public_values.last_timestamp;
@@ -117,8 +116,12 @@ pub fn generate_records<F: PrimeField32>(
                     .inverse()
                     .as_canonical_u32();
                 }
-                state.committed_value_digest = record.public_values.committed_value_digest;
-                state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
+                if state.committed_value_digest == [0u32; 8] {
+                    state.committed_value_digest = record.public_values.committed_value_digest;
+                }
+                if state.deferred_proofs_digest == [0u32; 8] {
+                    state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
+                }
                 record.public_values = *state;
                 state.prev_exit_code = record.public_values.exit_code;
                 state.initial_timestamp = record.public_values.last_timestamp;
@@ -144,7 +147,7 @@ pub fn generate_records<F: PrimeField32>(
                 state.previous_finalize_addr_word =
                     record.public_values.previous_finalize_addr_word;
                 state.last_finalize_addr_word = record.public_values.last_finalize_addr_word;
-                state.start_pc = state.next_pc;
+                state.pc_start = state.next_pc;
                 state.prev_exit_code = state.exit_code;
                 state.last_timestamp = state.initial_timestamp;
                 state.is_timestamp_high_eq = 1;
@@ -192,7 +195,7 @@ where
 
     let mut shard_proofs = BTreeMap::new();
     while let Some(proof) = proof_rx.recv().await {
-        let public_values: &PublicValues<[F; 4], Word<F>, [F; 4], F> =
+        let public_values: &PublicValues<[F; 4], [F; 3], [F; 4], F> =
             proof.public_values.as_slice().borrow();
         shard_proofs.insert(public_values.shard, proof);
     }

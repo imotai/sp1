@@ -52,10 +52,8 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
                     if idx < input.branch_events.len() {
                         let event = &input.branch_events[idx];
                         self.event_to_row(&event.0, cols, &mut blu);
-                        let mut instruction = *input.program.fetch(event.0.pc);
-                        instruction.op_c = event.0.pc.wrapping_add(instruction.op_c);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, &instruction, event.1);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu
@@ -101,7 +99,7 @@ impl BranchChip {
         let use_signed_comparison = matches!(event.opcode, Opcode::BLT | Opcode::BGE);
 
         let a_lt_b = if use_signed_comparison {
-            (event.a as i32) < (event.b as i32)
+            (event.a as i64) < (event.b as i64)
         } else {
             event.a < event.b
         };
@@ -116,13 +114,18 @@ impl BranchChip {
 
         cols.compare_operation.populate_signed(
             blu,
-            a_lt_b as u32,
+            a_lt_b as u64,
             event.a,
             event.b,
             use_signed_comparison,
         );
 
-        cols.next_pc = F::from_canonical_u32(event.next_pc);
+        cols.next_pc = [
+            F::from_canonical_u16((event.next_pc & 0xFFFF) as u16),
+            F::from_canonical_u16(((event.next_pc >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((event.next_pc >> 32) & 0xFFFF) as u16),
+        ];
+        blu.add_u16_range_checks_field(&cols.next_pc);
 
         if branching {
             cols.is_branching = F::one();

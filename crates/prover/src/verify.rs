@@ -6,13 +6,10 @@ use crate::{
 };
 use anyhow::Result;
 use num_bigint::BigUint;
-use slop_algebra::{AbstractField, PrimeField};
+use slop_algebra::{AbstractField, PrimeField, PrimeField64};
 use slop_baby_bear::BabyBear;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
-use sp1_primitives::{
-    consts::WORD_SIZE,
-    io::{blake3_hash, SP1PublicValues},
-};
+use sp1_primitives::io::{blake3_hash, SP1PublicValues};
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
@@ -20,22 +17,9 @@ use sp1_recursion_gnark_ffi::{
 };
 use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierConfigError, MachineVerifierError, Word,
+    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierConfigError, MachineVerifierError,
 };
-// // use sp1_recursion_circuit::machine::RootPublicValues;
-// // use sp1_recursion_core::{air::RecursionPublicValues, stark::BabyBearPoseidon2Outer};
-// // use sp1_recursion_gnark_ffi::{
-// //     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
-// // };
-// use sp1_stark::{
-//     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-//     MachineProof, MachineVerifierError, Word,
-// };
 use thiserror::Error;
-
-// use crate::{
-//     components::SP1ProverComponents, CoreSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
-// };
 
 #[derive(Error, Debug)]
 pub enum PlonkVerificationError {
@@ -82,7 +66,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //
         // Assert that the first shard has a "CPU".
         let first_shard = proof.0.first().unwrap();
-        let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+        let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
             first_shard.public_values.as_slice().borrow();
         if public_values.execution_shard != BabyBear::one()
             || public_values.next_execution_shard != BabyBear::two()
@@ -101,7 +85,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - Shard should increment by one for each shard.
         let mut current_shard = BabyBear::zero();
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             current_shard += BabyBear::one();
             if public_values.shard != current_shard {
@@ -116,7 +100,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let mut prev_timestamp =
             [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()];
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if public_values.execution_shard != prev_next_execution_shard {
                 return Err(MachineVerifierError::InvalidPublicValues("invalid execution shard"));
@@ -145,36 +129,41 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Program counter constraints.
         //
         // Initialization:
-        // - `start_pc` should start as `vk.start_pc`.
+        // - `pc_start` should start as `vk.pc_start`.
         //
         // Transition:
-        // - `next_pc` of the previous shard should equal `start_pc`.
-        // - If it's not a shard with "CPU", then `start_pc` equals `next_pc`.
-        // - If it's a shard with "CPU", then `start_pc` should never equal zero.
+        // - `next_pc` of the previous shard should equal `pc_start`.
+        // - If it's not a shard with "CPU", then `pc_start` equals `next_pc`.
+        // - If it's a shard with "CPU", then `pc_start` should never equal zero.
         //
         // Finalization:
-        // - `next_pc` should equal zero.
-        let mut prev_next_pc = BabyBear::zero();
+        // - `next_pc` should equal HALT_PC.
+        let mut prev_next_pc = [BabyBear::zero(); 3];
+        let halt_pc = [
+            BabyBear::from_canonical_u64(sp1_core_executor::HALT_PC),
+            BabyBear::zero(),
+            BabyBear::zero(),
+        ];
         for (i, shard_proof) in proof.0.iter().enumerate() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if i == 0 && public_values.start_pc != vk.pc_start {
+            if i == 0 && public_values.pc_start != vk.pc_start {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != vk.start_pc: program counter should start at vk.start_pc",
+                    "pc_start != vk.pc_start: program counter should start at vk.pc_start",
                 ));
-            } else if i != 0 && public_values.start_pc != prev_next_pc {
+            } else if i != 0 && public_values.pc_start != prev_next_pc {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != next_pc_prev: start_pc should equal next_pc_prev for all shards",
+                    "pc_start != next_pc_prev: pc_start should equal next_pc_prev for all shards",
                 ));
-            } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
+            } else if i == proof.0.len() - 1 && public_values.next_pc != halt_pc {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "next_pc != 0: execution should have halted",
+                    "next_pc != HALT_PC: execution should have halted",
                 ));
             } else if public_values.execution_shard == public_values.next_execution_shard
-                && public_values.start_pc != public_values.next_pc
+                && public_values.pc_start != public_values.next_pc
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
+                    "pc_start != next_pc: pc_start should equal next_pc for non-cpu shards",
                 ));
             }
             prev_next_pc = public_values.next_pc;
@@ -184,7 +173,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //
         // - In every shard, the exit code should be zero.
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if public_values.shard == BabyBear::one()
                 && public_values.prev_exit_code != BabyBear::zero()
@@ -224,10 +213,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //   `last_init_addr_bits`.
         // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
         //   `last_finalize_addr_bits`.
-        let mut last_init_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
-        let mut last_finalize_addr_word_prev = Word([BabyBear::zero(); WORD_SIZE]);
+        let mut last_init_addr_word_prev = [BabyBear::zero(); 3];
+        let mut last_finalize_addr_word_prev = [BabyBear::zero(); 3];
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if public_values.previous_init_addr_word != last_init_addr_word_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -260,7 +249,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let mut committed_value_digest_prev = zero_committed_value_digest;
         let mut deferred_proofs_digest_prev = zero_deferred_proofs_digest;
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             if committed_value_digest_prev != zero_committed_value_digest
                 && public_values.committed_value_digest != committed_value_digest_prev
@@ -300,7 +289,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
         let mut cumulative_sum = initial_global_cumulative_sum;
         for shard_proof in proof.0.iter() {
-            let public_values: &PublicValues<[_; 4], Word<_>, [_; 4], _> =
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
             cumulative_sum = cumulative_sum + public_values.global_cumulative_sum;
         }
@@ -379,12 +368,13 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         proof: &SP1RecursionProof<BabyBearPoseidon2>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
-        let SP1RecursionProof { vk: compress_vk, proof } = proof;
+        let SP1RecursionProof { vk: _, proof } = proof;
+        let shrink_vk = self.recursion_prover.get_shrink_keys().1;
         let mut challenger = self.recursion_prover.shrink_verifier().challenger();
-        compress_vk.observe_into(&mut challenger);
+        shrink_vk.observe_into(&mut challenger);
         self.recursion_prover
             .shrink_verifier()
-            .verify_shard(compress_vk, proof, &mut challenger)
+            .verify_shard(&shrink_vk, proof, &mut challenger)
             .map_err(MachineVerifierError::InvalidShardProof)?;
 
         // Validate public values
@@ -401,7 +391,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         if self.recursion_prover.vk_verification()
-            && !self.recursion_prover.recursion_vk_map.contains_key(&compress_vk.hash_babybear())
+            && !self.recursion_prover.recursion_vk_map.contains_key(&shrink_vk.hash_babybear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
@@ -428,7 +418,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<OuterSC>> {
         let SP1RecursionProof { vk: _, proof } = proof;
-        let wrap_vk = self.recursion_prover.wrap_keys().1;
+        let wrap_vk = self.recursion_prover.get_wrap_keys().1;
         let mut challenger = self.recursion_prover.wrap_verifier().challenger();
         wrap_vk.observe_into(&mut challenger);
         self.recursion_prover
@@ -590,37 +580,42 @@ fn verify_public_values(
 use crate::{
     components::SP1ProverComponents, CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
 };
-// use sp1_stark::DIGEST_SIZE;
 
 impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
     fn verify_deferred_proof(
         &self,
         proof: &sp1_core_machine::recursion::SP1RecursionProof<InnerSC>,
         vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
-        _vk_hash: [u32; 8],
-        _committed_value_digest: [u32; 8],
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         // Check that the vk hash matches the vk hash from the input.
-        // if vk.hash_u32() != vk_hash {
-        //     return Err(MachineVerifierError::InvalidPublicValues(
-        //         "vk hash from syscall does not match vkey from input",
-        //     ));
-        // }
+        if vk.hash_u64() != vk_hash {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "vk hash from syscall does not match vkey from input",
+            ));
+        }
         // Check that proof is valid.
         self.verify_compressed(
             &SP1RecursionProof { vk: proof.vk.clone(), proof: proof.proof.clone() },
             &SP1VerifyingKey { vk: vk.clone() },
         )?;
-        // // Check that the committed value digest matches the one from syscall
-        // let public_values: &RecursionPublicValues<_> =
-        //     proof.proof.public_values.as_slice().borrow();
-        // for (i, word) in public_values.committed_value_digest.iter().enumerate() {
-        //     if *word != committed_value_digest[i].into() {
-        //         return Err(MachineVerifierError::InvalidPublicValues(
-        //             "committed_value_digest does not match",
-        //         ));
-        //     }
-        // }
+        // Check that the committed value digest matches the one from syscall
+        let public_values: &RecursionPublicValues<_> =
+            proof.proof.public_values.as_slice().borrow();
+        let pv_committed_value_digest: [u64; 4] = std::array::from_fn(|i| {
+            public_values.committed_value_digest[2 * i]
+                .iter()
+                .chain(public_values.committed_value_digest[2 * i + 1].iter())
+                .enumerate()
+                .fold(0u64, |acc, (j, &val)| acc | (val.as_canonical_u64() << (8 * j)))
+        });
+        if committed_value_digest != pv_committed_value_digest {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "committed_value_digest does not match",
+            ));
+        }
+
         Ok(())
     }
 }

@@ -22,9 +22,9 @@ pub fn dummy_vk(
     preprocessed_chip_information: BTreeMap<String, ChipDimensions<F>>,
 ) -> MachineVerifyingKey<BabyBearPoseidon2> {
     MachineVerifyingKey {
-        pc_start: BabyBear::zero(),
+        pc_start: [BabyBear::zero(); 3],
         initial_global_cumulative_sum: SepticDigest::zero(),
-        preprocessed_commit: Some([BabyBear::zero(); 8]),
+        preprocessed_commit: [BabyBear::zero(); 8],
         preprocessed_chip_information,
     }
 }
@@ -75,12 +75,8 @@ pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
                         ChipOpenedValues {
                             preprocessed: AirOpenedValues {
                                 local: vec![EF::zero(); chip.preprocessed_width()],
-                                next: vec![],
                             },
-                            main: AirOpenedValues {
-                                local: vec![EF::zero(); chip.air.width()],
-                                next: vec![],
-                            },
+                            main: AirOpenedValues { local: vec![EF::zero(); chip.air.width()] },
                             local_cumulative_sum: EF::zero(),
                             degree: Point::from_usize(0, max_log_row_count + 1),
                         },

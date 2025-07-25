@@ -29,9 +29,9 @@ use super::{SyscallCode, SyscallContext};
 pub fn write_syscall<E: ExecutorConfig>(
     ctx: &mut SyscallContext<E>,
     _: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let a2 = Register::X12;
     let rt = &mut ctx.rt;
     let fd = arg1;
@@ -46,7 +46,7 @@ pub fn write_syscall<E: ExecutorConfig>(
             Some(command) => handle_cycle_tracker_command(rt, command),
             None => {
                 // If the string does not match any known command, print it to stdout.
-                let flush_s = update_io_buf(rt, fd, s);
+                let flush_s = update_io_buf(rt, fd as u32, s);
 
                 if !flush_s.is_empty() {
                     match rt.io_options.stdout {
@@ -68,7 +68,7 @@ pub fn write_syscall<E: ExecutorConfig>(
         }
     } else if fd == 2 {
         let s = core::str::from_utf8(slice).unwrap();
-        let flush_s = update_io_buf(rt, fd, s);
+        let flush_s = update_io_buf(rt, fd as u32, s);
         if !flush_s.is_empty() {
             match rt.io_options.stderr {
                 Some(ref mut writer) => {
@@ -85,7 +85,7 @@ pub fn write_syscall<E: ExecutorConfig>(
                 }
             }
         }
-    } else if fd <= LOWEST_ALLOWED_FD {
+    } else if fd as u32 <= LOWEST_ALLOWED_FD {
         if std::env::var("SP1_ALLOW_DEPRECATED_HOOKS")
             .map(|r| r.parse::<bool>().expect("failed to parse SP1_ALLOW_DEPRECATED_HOOKS as bool"))
             .unwrap_or(false)
@@ -97,18 +97,18 @@ pub fn write_syscall<E: ExecutorConfig>(
             const ECRECOVER_V2: u32 = 7;
             const ED_DECOMPRESS: u32 = 8;
 
-            let res = if fd == ECRECOVER_V1 {
+            let res = if fd as u32 == ECRECOVER_V1 {
                 crate::hook::deprecated_hooks::hook_ecrecover(rt.hook_env(), slice)
-            } else if fd == ECRECOVER_R1 {
+            } else if fd as u32 == ECRECOVER_R1 {
                 crate::hook::deprecated_hooks::hook_r1_ecrecover(rt.hook_env(), slice)
-            } else if fd == ECRECOVER_V2 {
+            } else if fd as u32 == ECRECOVER_V2 {
                 crate::hook::deprecated_hooks::hook_ecrecover_v2(rt.hook_env(), slice)
-            } else if fd == ED_DECOMPRESS {
+            } else if fd as u32 == ED_DECOMPRESS {
                 crate::hook::deprecated_hooks::hook_ed_decompress(rt.hook_env(), slice)
-            } else if fd == PUBLIC_VALUES {
+            } else if fd as u32 == PUBLIC_VALUES {
                 rt.state.public_values_stream.extend_from_slice(slice);
                 vec![]
-            } else if fd == INPUT {
+            } else if fd as u32 == INPUT {
                 rt.state.input_stream.push_front(slice.to_vec());
                 vec![]
             } else {
@@ -127,11 +127,11 @@ pub fn write_syscall<E: ExecutorConfig>(
                     See `https://docs.succinct.xyz/docs/sp1/optimizing-programs/precompiles` for more information"
                 );
         }
-    } else if fd == FD_PUBLIC_VALUES {
+    } else if fd as u32 == FD_PUBLIC_VALUES {
         rt.state.public_values_stream.extend_from_slice(slice);
-    } else if fd == FD_HINT {
+    } else if fd as u32 == FD_HINT {
         rt.state.input_stream.push_front(slice.to_vec());
-    } else if let Some(mut hook) = rt.hook_registry.get(fd) {
+    } else if let Some(mut hook) = rt.hook_registry.get(fd as u32) {
         let res = hook.invoke_hook(rt.hook_env(), slice);
 
         // Write the result back to the input stream.

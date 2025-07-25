@@ -7,8 +7,8 @@ mod trace;
 pub const STATE_SIZE: usize = 25;
 pub const BITS_PER_LIMB: usize = 16;
 
-// The permutation state is 25 u64's.  Our word size is 32 bits, so it is 50 words.
-pub const STATE_NUM_WORDS: usize = STATE_SIZE * 2;
+// The permutation state is 25 u64's.  Our word size is 64 bits, so it is 25 words.
+pub const STATE_NUM_WORDS: usize = STATE_SIZE;
 
 pub struct KeccakPermuteChip;
 

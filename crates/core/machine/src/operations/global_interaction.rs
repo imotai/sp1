@@ -28,26 +28,22 @@ pub struct GlobalInteractionOperation<T: Copy> {
 
 impl<F: PrimeField32> GlobalInteractionOperation<F> {
     pub fn get_digest(
-        values: SepticBlock<u32>,
+        values: [u32; 8],
         is_receive: bool,
         kind: u8,
     ) -> (SepticCurve<F>, u8, [F; 16], [F; 16]) {
-        let x_start = SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values.0[i]))
-            + SepticExtension::from_base(F::from_canonical_u32((kind as u32) << 24));
-        let (point, offset, m_trial, m_hash) = SepticCurve::<F>::lift_x(x_start);
+        // let x_start = SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values[i]))
+        //     + SepticExtension::from_base(F::from_canonical_u32((kind as u32) << 24));
+        let mut new_values = values.map(|x| F::from_canonical_u32(x));
+        new_values[0] = new_values[0] + F::from_canonical_u32((kind as u32) << 24);
+        let (point, offset, m_trial, m_hash) = SepticCurve::<F>::lift_x(new_values);
         if !is_receive {
             return (point.neg(), offset, m_trial, m_hash);
         }
         (point, offset, m_trial, m_hash)
     }
 
-    pub fn populate(
-        &mut self,
-        values: SepticBlock<u32>,
-        is_receive: bool,
-        is_real: bool,
-        kind: u8,
-    ) {
+    pub fn populate(&mut self, values: [u32; 8], is_receive: bool, is_real: bool, kind: u8) {
         if is_real {
             let (point, offset, m_trial, m_hash) = Self::get_digest(values, is_receive, kind);
             for i in 0..8 {
@@ -101,7 +97,7 @@ impl<F: Field> GlobalInteractionOperation<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn eval_single_digest<AB: SP1AirBuilder + slop_air::PairBuilder>(
         builder: &mut AB,
-        values: [AB::Expr; 7],
+        values: [AB::Expr; 8],
         cols: GlobalInteractionOperation<AB::Var>,
         is_receive: AB::Expr,
         is_send: AB::Expr,
@@ -125,7 +121,7 @@ impl<F: Field> GlobalInteractionOperation<F> {
             values[0].clone(),
             shard_limbs[0] + shard_limbs[1] * AB::F::from_canonical_u32(1 << 16),
         );
-        builder.slice_range_check_u16(&[shard_limbs[0]], is_real);
+        builder.slice_range_check_u16(&[shard_limbs[0].into(), values[7].clone()], is_real);
         builder.slice_range_check_u8(&[shard_limbs[1]], is_real);
 
         // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate
@@ -139,7 +135,7 @@ impl<F: Field> GlobalInteractionOperation<F> {
             values[4].clone(),
             values[5].clone(),
             values[6].clone(),
-            offset.clone(),
+            values[7].clone() + AB::Expr::from_canonical_u32(1 << 16) * offset,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
