@@ -1,11 +1,10 @@
-use p3_baby_bear::BabyBear;
-use p3_bn254_fr::Bn254Fr;
-use p3_field::extension::BinomialExtensionField;
-use sp1_stark::{InnerChallenge, InnerVal};
+use slop_algebra::extension::BinomialExtensionField;
+use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
 
 use crate::{circuit::AsmConfig, prelude::Config};
 
-pub type InnerConfig = AsmConfig<InnerVal, InnerChallenge>;
+pub type InnerConfig = AsmConfig<BabyBear, BinomialExtensionField<BabyBear, 4>>;
 
 #[derive(Clone, Default, Debug)]
 pub struct OuterConfig;

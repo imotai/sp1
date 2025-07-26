@@ -2,13 +2,13 @@ use core::{fmt::Debug, mem::size_of};
 use std::borrow::{Borrow, BorrowMut};
 
 use itertools::Itertools;
-use p3_field::{AbstractField, PrimeField32};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractField, PrimeField32};
 
-use crate::{Word, PROOF_MAX_NUM_PVS};
+use crate::{septic_curve::SepticCurve, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
 
 /// The number of non padded elements in the SP1 proofs public values vec.
-pub const SP1_PROOF_NUM_PV_ELTS: usize = size_of::<PublicValues<Word<u8>, u8>>();
+pub const SP1_PROOF_NUM_PV_ELTS: usize = size_of::<PublicValues<[u8; 4], [u8; 3], [u8; 4], u8>>();
 
 /// The number of 32 bit words in the SP1 proof's committed value digest.
 pub const PV_DIGEST_NUM_WORDS: usize = 8;
@@ -19,9 +19,9 @@ pub const POSEIDON_NUM_WORDS: usize = 8;
 /// Stores all of a shard proof's public values.
 #[derive(Serialize, Deserialize, Clone, Copy, Default, Debug)]
 #[repr(C)]
-pub struct PublicValues<W, T> {
+pub struct PublicValues<W1, W2, W3, T> {
     /// The hash of all the bytes that the guest program has written to public values.
-    pub committed_value_digest: [W; PV_DIGEST_NUM_WORDS],
+    pub committed_value_digest: [W1; PV_DIGEST_NUM_WORDS],
 
     /// The hash of all deferred proofs that have been witnessed in the VM. It will be rebuilt in
     /// recursive verification as the proofs get verified. The hash itself is a rolling poseidon2
@@ -29,12 +29,16 @@ pub struct PublicValues<W, T> {
     pub deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The shard's start program counter.
-    pub start_pc: T,
+    pub pc_start: W2,
 
     /// The expected start program counter for the next shard.
-    pub next_pc: T,
+    pub next_pc: W2,
 
-    /// The exit code of the program.  Only valid if halt has been executed.
+    /// The expected exit code of the program before this shard.
+    pub prev_exit_code: T,
+
+    /// The expected exit code code of the program up to this shard.
+    /// This value is only valid if halt has been executed.
     pub exit_code: T,
 
     /// The shard number.
@@ -43,31 +47,62 @@ pub struct PublicValues<W, T> {
     /// The execution shard number.
     pub execution_shard: T,
 
-    /// The bits of the largest address that is witnessed for initialization in the previous shard.
-    pub previous_init_addr_bits: [T; 32],
+    /// The next execution shard number.
+    pub next_execution_shard: T,
+
+    /// The largest address that is witnessed for initialization in the previous shard.
+    pub previous_init_addr_word: W2,
 
     /// The largest address that is witnessed for initialization in the current shard.
-    pub last_init_addr_bits: [T; 32],
+    pub last_init_addr_word: W2,
 
-    /// The bits of the largest address that is witnessed for finalization in the previous shard.
-    pub previous_finalize_addr_bits: [T; 32],
+    /// The largest address that is witnessed for finalization in the previous shard.
+    pub previous_finalize_addr_word: W2,
 
-    /// The bits of the largest address that is witnessed for finalization in the current shard.
-    pub last_finalize_addr_bits: [T; 32],
+    /// The largest address that is witnessed for finalization in the current shard.
+    pub last_finalize_addr_word: W2,
 
-    /// This field is here to ensure that the size of the public values struct is a multiple of 8.
-    pub empty: [T; 3],
+    /// The initial timestamp of the shard.
+    pub initial_timestamp: W3,
+
+    /// The last timestamp of the shard.
+    pub last_timestamp: W3,
+
+    /// If the high bits of timestamp is equal in this shard.
+    pub is_timestamp_high_eq: T,
+
+    /// The inverse of the difference of the high bits of timestamp.
+    pub inv_timestamp_high: T,
+
+    /// If the low bits of timestamp is equal in this shard.
+    pub is_timestamp_low_eq: T,
+
+    /// The inverse of the difference of the low bits of timestamp.
+    pub inv_timestamp_low: T,
+
+    /// The number of global memory initializations in the shard.
+    pub global_init_count: T,
+
+    /// The number of global memory finalizations in the shard.
+    pub global_finalize_count: T,
+
+    /// The number of global interactions in the shard.
+    pub global_count: T,
+
+    /// The global cumulative sum of the shard.
+    pub global_cumulative_sum: SepticDigest<T>,
 }
 
-impl PublicValues<u32, u32> {
+impl PublicValues<u32, u64, u64, u32> {
     /// Convert the public values into a vector of field elements.  This function will pad the
     /// vector to the maximum number of public values.
     #[must_use]
     pub fn to_vec<F: AbstractField>(&self) -> Vec<F> {
         let mut ret = vec![F::zero(); PROOF_MAX_NUM_PVS];
 
-        let field_values = PublicValues::<Word<F>, F>::from(*self);
-        let ret_ref_mut: &mut PublicValues<Word<F>, F> = ret.as_mut_slice().borrow_mut();
+        let field_values = PublicValues::<[F; 4], [F; 3], [F; 4], F>::from(*self);
+        let ret_ref_mut: &mut PublicValues<[F; 4], [F; 3], [F; 4], F> =
+            ret.as_mut_slice().borrow_mut();
         *ret_ref_mut = field_values;
         ret
     }
@@ -78,96 +113,179 @@ impl PublicValues<u32, u32> {
         let mut copy = *self;
         copy.shard = 0;
         copy.execution_shard = 0;
-        copy.start_pc = 0;
+        copy.pc_start = 0;
         copy.next_pc = 0;
-        copy.previous_init_addr_bits = [0; 32];
-        copy.last_init_addr_bits = [0; 32];
-        copy.previous_finalize_addr_bits = [0; 32];
-        copy.last_finalize_addr_bits = [0; 32];
+        copy.previous_init_addr_word = 0;
+        copy.last_init_addr_word = 0;
+        copy.previous_finalize_addr_word = 0;
+        copy.last_finalize_addr_word = 0;
         copy
     }
 }
 
-impl<F: PrimeField32> PublicValues<Word<F>, F> {
+impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
     /// Returns the commit digest as a vector of little-endian bytes.
     pub fn commit_digest_bytes(&self) -> Vec<u8> {
         self.committed_value_digest
             .iter()
-            .flat_map(|w| w.into_iter().map(|f| f.as_canonical_u32() as u8))
+            .flat_map(|w| w.iter().map(|f| f.as_canonical_u32() as u8))
             .collect_vec()
     }
 }
 
-impl<T: Clone> Borrow<PublicValues<Word<T>, T>> for [T] {
-    fn borrow(&self) -> &PublicValues<Word<T>, T> {
-        let size = std::mem::size_of::<PublicValues<Word<u8>, u8>>();
+impl<T: Clone> Borrow<PublicValues<[T; 4], [T; 3], [T; 4], T>> for [T] {
+    fn borrow(&self) -> &PublicValues<[T; 4], [T; 3], [T; 4], T> {
+        let size = std::mem::size_of::<PublicValues<[u8; 4], [u8; 3], [u8; 4], u8>>();
         debug_assert!(self.len() >= size);
         let slice = &self[0..size];
-        let (prefix, shorts, _suffix) = unsafe { slice.align_to::<PublicValues<Word<T>, T>>() };
+        let (prefix, shorts, _suffix) =
+            unsafe { slice.align_to::<PublicValues<[T; 4], [T; 3], [T; 4], T>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &shorts[0]
     }
 }
 
-impl<T: Clone> BorrowMut<PublicValues<Word<T>, T>> for [T] {
-    fn borrow_mut(&mut self) -> &mut PublicValues<Word<T>, T> {
-        let size = std::mem::size_of::<PublicValues<Word<u8>, u8>>();
+impl<T: Clone> BorrowMut<PublicValues<[T; 4], [T; 3], [T; 4], T>> for [T] {
+    fn borrow_mut(&mut self) -> &mut PublicValues<[T; 4], [T; 3], [T; 4], T> {
+        let size = std::mem::size_of::<PublicValues<[u8; 4], [u8; 3], [u8; 4], u8>>();
         debug_assert!(self.len() >= size);
         let slice = &mut self[0..size];
-        let (prefix, shorts, _suffix) = unsafe { slice.align_to_mut::<PublicValues<Word<T>, T>>() };
+        let (prefix, shorts, _suffix) =
+            unsafe { slice.align_to_mut::<PublicValues<[T; 4], [T; 3], [T; 4], T>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &mut shorts[0]
     }
 }
 
-impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F> {
-    fn from(value: PublicValues<u32, u32>) -> Self {
+impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
+    for PublicValues<[F; 4], [F; 3], [F; 4], F>
+{
+    fn from(value: PublicValues<u32, u64, u64, u32>) -> Self {
         let PublicValues {
             committed_value_digest,
             deferred_proofs_digest,
-            start_pc,
+            pc_start,
             next_pc,
+            prev_exit_code,
             exit_code,
             shard,
             execution_shard,
-            previous_init_addr_bits,
-            last_init_addr_bits,
-            previous_finalize_addr_bits,
-            last_finalize_addr_bits,
+            next_execution_shard,
+            previous_init_addr_word,
+            last_init_addr_word,
+            previous_finalize_addr_word,
+            last_finalize_addr_word,
+            initial_timestamp,
+            last_timestamp,
+            is_timestamp_high_eq,
+            inv_timestamp_high,
+            is_timestamp_low_eq,
+            inv_timestamp_low,
+            global_init_count,
+            global_finalize_count,
+            global_count,
+            global_cumulative_sum,
             ..
         } = value;
 
-        let committed_value_digest: [_; PV_DIGEST_NUM_WORDS] =
-            core::array::from_fn(|i| Word::from(committed_value_digest[i]));
+        let committed_value_digest: [_; PV_DIGEST_NUM_WORDS] = core::array::from_fn(|i| {
+            [
+                F::from_canonical_u32(committed_value_digest[i] & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 8) & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 16) & 0xFF),
+                F::from_canonical_u32((committed_value_digest[i] >> 24) & 0xFF),
+            ]
+        });
 
         let deferred_proofs_digest: [_; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|i| F::from_canonical_u32(deferred_proofs_digest[i]));
 
-        let start_pc = F::from_canonical_u32(start_pc);
-        let next_pc = F::from_canonical_u32(next_pc);
+        let pc_start = [
+            F::from_canonical_u16((pc_start & 0xFFFF) as u16),
+            F::from_canonical_u16(((pc_start >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((pc_start >> 32) & 0xFFFF) as u16),
+        ];
+        let next_pc = [
+            F::from_canonical_u16((next_pc & 0xFFFF) as u16),
+            F::from_canonical_u16(((next_pc >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((next_pc >> 32) & 0xFFFF) as u16),
+        ];
         let exit_code = F::from_canonical_u32(exit_code);
+        let prev_exit_code = F::from_canonical_u32(prev_exit_code);
         let shard = F::from_canonical_u32(shard);
         let execution_shard = F::from_canonical_u32(execution_shard);
-        let previous_init_addr_bits = previous_init_addr_bits.map(F::from_canonical_u32);
-        let last_init_addr_bits = last_init_addr_bits.map(F::from_canonical_u32);
-        let previous_finalize_addr_bits = previous_finalize_addr_bits.map(F::from_canonical_u32);
-        let last_finalize_addr_bits = last_finalize_addr_bits.map(F::from_canonical_u32);
+        let next_execution_shard = F::from_canonical_u32(next_execution_shard);
+        let previous_init_addr_word = [
+            F::from_canonical_u16((previous_init_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_init_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_init_addr_word >> 32) & 0xFFFF) as u16),
+        ];
+        let last_init_addr_word = [
+            F::from_canonical_u16((last_init_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_init_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_init_addr_word >> 32) & 0xFFFF) as u16),
+        ];
+        let previous_finalize_addr_word = [
+            F::from_canonical_u16((previous_finalize_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_finalize_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_finalize_addr_word >> 32) & 0xFFFF) as u16),
+        ];
+        let last_finalize_addr_word = [
+            F::from_canonical_u16((last_finalize_addr_word & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_finalize_addr_word >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_finalize_addr_word >> 32) & 0xFFFF) as u16),
+        ];
+        let initial_timestamp = [
+            F::from_canonical_u16((initial_timestamp >> 32) as u16),
+            F::from_canonical_u8(((initial_timestamp >> 24) & 0xFF) as u8),
+            F::from_canonical_u8(((initial_timestamp >> 16) & 0xFF) as u8),
+            F::from_canonical_u16((initial_timestamp & 0xFFFF) as u16),
+        ];
+        let last_timestamp = [
+            F::from_canonical_u16((last_timestamp >> 32) as u16),
+            F::from_canonical_u8(((last_timestamp >> 24) & 0xFF) as u8),
+            F::from_canonical_u8(((last_timestamp >> 16) & 0xFF) as u8),
+            F::from_canonical_u16((last_timestamp & 0xFFFF) as u16),
+        ];
+
+        let is_timestamp_high_eq = F::from_canonical_u32(is_timestamp_high_eq);
+        let inv_timestamp_high = F::from_canonical_u32(inv_timestamp_high);
+        let is_timestamp_low_eq = F::from_canonical_u32(is_timestamp_low_eq);
+        let inv_timestamp_low = F::from_canonical_u32(inv_timestamp_low);
+
+        let global_init_count = F::from_canonical_u32(global_init_count);
+        let global_finalize_count = F::from_canonical_u32(global_finalize_count);
+        let global_count = F::from_canonical_u32(global_count);
+        let global_cumulative_sum =
+            SepticDigest(SepticCurve::convert(global_cumulative_sum.0, F::from_canonical_u32));
 
         Self {
             committed_value_digest,
             deferred_proofs_digest,
-            start_pc,
+            pc_start,
             next_pc,
+            prev_exit_code,
             exit_code,
             shard,
             execution_shard,
-            previous_init_addr_bits,
-            last_init_addr_bits,
-            previous_finalize_addr_bits,
-            last_finalize_addr_bits,
-            empty: [F::zero(), F::zero(), F::zero()],
+            next_execution_shard,
+            previous_init_addr_word,
+            last_init_addr_word,
+            previous_finalize_addr_word,
+            last_finalize_addr_word,
+            initial_timestamp,
+            last_timestamp,
+            is_timestamp_high_eq,
+            inv_timestamp_high,
+            is_timestamp_low_eq,
+            inv_timestamp_low,
+            global_init_count,
+            global_finalize_count,
+            global_count,
+            global_cumulative_sum,
+            // empty: core::array::from_fn(|_| F::zero()),
         }
     }
 }

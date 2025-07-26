@@ -1,11 +1,13 @@
 use sp1_sdk::{
-    include_elf, network::Error, utils, ProverClient, SP1ProofWithPublicValues, SP1Stdin,
+    include_elf, network::Error, utils, Elf, ProveRequest, Prover, ProverClient, ProvingKey,
+    SP1ProofWithPublicValues, SP1Stdin,
 };
 
 /// The ELF we want to execute inside the zkVM.
-const ELF: &[u8] = include_elf!("fibonacci-program");
+const ELF: Elf = include_elf!("fibonacci-program");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Setup logging.
     utils::setup_logger();
 
@@ -18,11 +20,11 @@ fn main() {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::from_env();
+    let client = ProverClient::builder().network().build().await;
 
     // Generate the proof for the given program and input.
-    let (pk, vk) = client.setup(ELF);
-    let proof_result = client.prove(&pk, &stdin).compressed().run();
+    let pk = client.setup(ELF).await.unwrap();
+    let proof_result = client.prove(&pk, stdin).compressed().await;
 
     // Handle possible prover network errors.
     let mut proof = match proof_result {
@@ -64,7 +66,7 @@ fn main() {
     println!("b: {}", b);
 
     // Verify proof and public values
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key()).expect("verification failed");
 
     // Test a round trip of proof serialization and deserialization.
     proof.save("proof-with-pis.bin").expect("saving proof failed");
@@ -72,7 +74,7 @@ fn main() {
         SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
+    client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

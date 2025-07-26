@@ -6,15 +6,14 @@ use std::{
     thread,
 };
 
-use crate::{BuildArgs, BUILD_TARGET};
-
+use crate::BuildArgs;
 /// Get the arguments to build the program with the arguments from the [`BuildArgs`] struct.
 pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
     let mut build_args = vec![
         "build".to_string(),
         "--release".to_string(),
         "--target".to_string(),
-        BUILD_TARGET.to_string(),
+        args.build_target.clone(),
     ];
 
     if args.ignore_rust_version {
@@ -50,6 +49,7 @@ pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
 }
 
 /// Rust flags for compilation of C libraries.
+#[allow(clippy::uninlined_format_args)]
 pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Version) -> String {
     // Note: as of 1.81.0, the `-C passes=loweratomic` flag is deprecated, because of a change to
     // llvm.
@@ -59,13 +59,13 @@ pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Versio
         "passes=loweratomic"
     };
 
+    // Start the section at the top of the stack for semantic purposes.
+    // The stack will grow down to 0, never colliding with the start of the heap or static data.
     let rust_flags = [
         "-C",
         atomic_lower_pass,
         "-C",
-        "link-arg=-Ttext=0x00201000",
-        "-C",
-        "link-arg=--image-base=0x00200800",
+        &format!("link-arg=--image-base={}", sp1_primitives::consts::STACK_TOP),
         "-C",
         "panic=abort",
         "--cfg",

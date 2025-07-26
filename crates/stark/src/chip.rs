@@ -1,53 +1,82 @@
-use std::hash::Hash;
+use std::{fmt::Display, hash::Hash, sync::Arc};
 
-use p3_air::{Air, BaseAir, PairBuilder};
-use p3_field::{ExtensionField, Field, PrimeField, PrimeField32};
-use p3_matrix::dense::RowMajorMatrix;
-use p3_uni_stark::{get_max_constraint_degree, SymbolicAirBuilder};
-use p3_util::log2_ceil_usize;
+use slop_air::{Air, BaseAir, PairBuilder};
+use slop_algebra::{Field, PrimeField32};
+use slop_matrix::dense::RowMajorMatrix;
+use slop_uni_stark::{get_max_constraint_degree, get_symbolic_constraints, SymbolicAirBuilder};
 
 use crate::{
-    air::{InteractionScope, MachineAir, MultiTableAirBuilder, SP1AirBuilder},
-    local_permutation_trace_width,
+    air::{MachineAir, SP1AirBuilder},
+    log2_ceil_usize,
     lookup::{Interaction, InteractionBuilder, InteractionKind},
 };
 
-use super::{
-    eval_permutation_constraints, generate_permutation_trace, scoped_interactions,
-    PROOF_MAX_NUM_PVS,
-};
+use super::PROOF_MAX_NUM_PVS;
+
+/// The maximum constraint degree for a chip.
+pub const MAX_CONSTRAINT_DEGREE: usize = 3;
 
 /// An Air that encodes lookups based on interactions.
 pub struct Chip<F: Field, A> {
     /// The underlying AIR of the chip for constraint evaluation.
-    pub air: A,
+    pub air: Arc<A>,
     /// The interactions that the chip sends.
-    pub sends: Vec<Interaction<F>>,
+    pub sends: Arc<Vec<Interaction<F>>>,
     /// The interactions that the chip receives.
-    pub receives: Vec<Interaction<F>>,
+    pub receives: Arc<Vec<Interaction<F>>>,
     /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
     pub log_quotient_degree: usize,
+    /// The total number of constraints in the chip.
+    pub num_constraints: usize,
+}
+
+impl<F: Field, A: MachineAir<F>> std::fmt::Debug for Chip<F, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Chip")
+            .field("air", &self.air.name())
+            .field("sends", &self.sends.len())
+            .field("receives", &self.receives.len())
+            .field("log_quotient_degree", &self.log_quotient_degree)
+            .field("num_constraints", &self.num_constraints)
+            .finish()
+    }
+}
+
+impl<F: Field, A> Clone for Chip<F, A> {
+    fn clone(&self) -> Self {
+        Self {
+            air: self.air.clone(),
+            sends: self.sends.clone(),
+            receives: self.receives.clone(),
+            log_quotient_degree: self.log_quotient_degree,
+            num_constraints: self.num_constraints,
+        }
+    }
 }
 
 impl<F: Field, A> Chip<F, A> {
     /// The send interactions of the chip.
+    #[must_use]
     pub fn sends(&self) -> &[Interaction<F>] {
         &self.sends
     }
 
     /// The receive interactions of the chip.
+    #[must_use]
     pub fn receives(&self) -> &[Interaction<F>] {
         &self.receives
     }
 
     /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
+    #[must_use]
     pub const fn log_quotient_degree(&self) -> usize {
         self.log_quotient_degree
     }
 
     /// Consumes the chip and returns the underlying air.
-    pub fn into_inner(self) -> A {
-        self.air
+    #[must_use]
+    pub fn into_inner(self) -> Option<A> {
+        Arc::into_inner(self.air)
     }
 }
 
@@ -84,95 +113,74 @@ where
             get_max_constraint_degree(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS);
 
         if !sends.is_empty() || !receives.is_empty() {
-            max_constraint_degree = max_constraint_degree.max(3);
+            max_constraint_degree = std::cmp::max(max_constraint_degree, MAX_CONSTRAINT_DEGREE);
         }
         assert!(max_constraint_degree > 0);
+        let max_constraint_degree = 3;
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
-        Self { air, sends, receives, log_quotient_degree }
+        // Count the number of constraints.
+        // TODO: unify this with the constraint degree calculation.
+        let num_constraints =
+            get_symbolic_constraints(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS).len();
+
+        let sends = Arc::new(sends);
+        let receives = Arc::new(receives);
+
+        let air = Arc::new(air);
+        Self { air, sends, receives, log_quotient_degree, num_constraints }
     }
 
     /// Returns the number of interactions in the chip.
     #[inline]
+    #[must_use]
     pub fn num_interactions(&self) -> usize {
         self.sends.len() + self.receives.len()
     }
 
     /// Returns the number of sent byte lookups in the chip.
     #[inline]
+    #[must_use]
     pub fn num_sent_byte_lookups(&self) -> usize {
         self.sends.iter().filter(|i| i.kind == InteractionKind::Byte).count()
     }
 
     /// Returns the number of sends of the given kind.
     #[inline]
+    #[must_use]
     pub fn num_sends_by_kind(&self, kind: InteractionKind) -> usize {
         self.sends.iter().filter(|i| i.kind == kind).count()
     }
 
     /// Returns the number of receives of the given kind.
     #[inline]
+    #[must_use]
     pub fn num_receives_by_kind(&self, kind: InteractionKind) -> usize {
         self.receives.iter().filter(|i| i.kind == kind).count()
     }
 
-    /// Generates a permutation trace for the given matrix.
-    pub fn generate_permutation_trace<EF: ExtensionField<F>>(
-        &self,
-        preprocessed: Option<&RowMajorMatrix<F>>,
-        main: &RowMajorMatrix<F>,
-        random_elements: &[EF],
-    ) -> (RowMajorMatrix<EF>, EF)
-    where
-        F: PrimeField,
-        A: MachineAir<F>,
-    {
-        let batch_size = self.logup_batch_size();
-        generate_permutation_trace::<F, EF>(
-            &self.sends,
-            &self.receives,
-            preprocessed,
-            main,
-            random_elements,
-            batch_size,
-        )
-    }
-
-    /// Returns the width of the permutation trace.
-    #[inline]
-    pub fn permutation_width(&self) -> usize {
-        let (scoped_sends, scoped_receives) = scoped_interactions(self.sends(), self.receives());
-        let empty = Vec::new();
-        let local_sends = scoped_sends.get(&InteractionScope::Local).unwrap_or(&empty);
-        let local_receives = scoped_receives.get(&InteractionScope::Local).unwrap_or(&empty);
-
-        local_permutation_trace_width(
-            local_sends.len() + local_receives.len(),
-            self.logup_batch_size(),
-        )
-    }
-
     /// Returns the cost of a row in the chip.
     #[inline]
+    #[must_use]
     pub fn cost(&self) -> u64
     where
         A: MachineAir<F>,
     {
         let preprocessed_cols = self.preprocessed_width();
         let main_cols = self.width();
-        let permutation_cols = self.permutation_width() * 4;
-        let quotient_cols = self.quotient_width() * 4;
-        (preprocessed_cols + main_cols + permutation_cols + quotient_cols) as u64
+        (preprocessed_cols + main_cols) as u64
     }
 
     /// Returns the width of the quotient polynomial.
     #[inline]
+    #[must_use]
     pub const fn quotient_width(&self) -> usize {
         1 << self.log_quotient_degree
     }
 
     /// Returns the log2 of the batch size.
     #[inline]
+    #[must_use]
     pub const fn logup_batch_size(&self) -> usize {
         1 << self.log_quotient_degree
     }
@@ -181,7 +189,7 @@ where
 impl<F, A> BaseAir<F> for Chip<F, A>
 where
     F: Field,
-    A: BaseAir<F>,
+    A: BaseAir<F> + Send,
 {
     fn width(&self) -> usize {
         self.air.width()
@@ -243,45 +251,120 @@ where
 }
 
 // Implement AIR directly on Chip, evaluating both execution and permutation constraints.
-impl<'a, F, A, AB> Air<AB> for Chip<F, A>
+impl<F, A, AB> Air<AB> for Chip<F, A>
 where
     F: Field,
     A: Air<AB> + MachineAir<F>,
-    AB: SP1AirBuilder<F = F> + MultiTableAirBuilder<'a> + PairBuilder + 'a,
+    AB: SP1AirBuilder<F = F> + PairBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         // Evaluate the execution trace constraints.
         self.air.eval(builder);
-        // Evaluate permutation constraints.
-        let batch_size = self.logup_batch_size();
-        eval_permutation_constraints(
-            &self.sends,
-            &self.receives,
-            batch_size,
-            self.air.commit_scope(),
-            builder,
-        );
     }
 }
 
 impl<F, A> PartialEq for Chip<F, A>
 where
     F: Field,
-    A: PartialEq,
+    A: MachineAir<F>,
 {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.air == other.air
+        self.air.name() == other.air.name()
     }
 }
 
-impl<F: Field, A: Eq> Eq for Chip<F, A> where F: Field + Eq {}
+impl<F: Field, A: MachineAir<F>> Eq for Chip<F, A> where F: Field + Eq {}
 
 impl<F, A> Hash for Chip<F, A>
 where
     F: Field,
-    A: Hash,
+    A: MachineAir<F>,
 {
+    #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.air.hash(state);
+        self.air.name().hash(state);
+    }
+}
+
+impl<F: Field, A: MachineAir<F>> PartialOrd for Chip<F, A>
+where
+    F: Field,
+    A: MachineAir<F>,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<F: Field, A: MachineAir<F>> Ord for Chip<F, A>
+where
+    F: Field,
+    A: MachineAir<F>,
+{
+    #[inline]
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name().cmp(&other.name())
+    }
+}
+
+/// Statistics about a chip.
+#[derive(Debug, Clone)]
+pub struct ChipStatistics<F> {
+    /// The name of the chip.
+    name: String,
+    /// The height of the chip.
+    height: usize,
+    /// The number of preprocessed columns.
+    preprocessed_cols: usize,
+    /// The number of main columns.
+    main_cols: usize,
+    _marker: std::marker::PhantomData<F>,
+}
+
+impl<F: Field> ChipStatistics<F> {
+    /// Creates a new chip statistics from a chip and height.
+    #[must_use]
+    pub fn new<A: MachineAir<F>>(chip: &Chip<F, A>, height: usize) -> Self {
+        let name = chip.name();
+        let preprocessed_cols = chip.preprocessed_width();
+        let main_cols = chip.width();
+        Self { name, height, preprocessed_cols, main_cols, _marker: std::marker::PhantomData }
+    }
+
+    /// Returns the total width of the chip.
+    #[must_use]
+    #[inline]
+    pub const fn total_width(&self) -> usize {
+        self.preprocessed_cols + self.main_cols
+    }
+
+    /// Returns the total number of cells in the chip.
+    #[must_use]
+    #[inline]
+    pub const fn total_number_of_cells(&self) -> usize {
+        self.total_width() * self.height
+    }
+
+    /// Returns the total memory size of the chip in bytes.
+    #[must_use]
+    #[inline]
+    pub const fn total_memory_size(&self) -> usize {
+        self.total_number_of_cells() * std::mem::size_of::<F>()
+    }
+}
+
+impl<F: Field> Display for ChipStatistics<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:<15} | Prep Cols = {:<5} | Main Cols = {:<5} | Rows = {:<5} | Cells = {:<10}",
+            self.name,
+            self.preprocessed_cols,
+            self.main_cols,
+            self.height,
+            self.total_number_of_cells()
+        )
     }
 }

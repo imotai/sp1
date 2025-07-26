@@ -7,6 +7,7 @@ use std::{env, path::PathBuf, process::Command};
 use bindgen::CargoCallbacks;
 
 /// Build the go library, generate Rust bindings for the exposed functions, and link the library.
+#[allow(clippy::uninlined_format_args)]
 fn main() {
     cfg_if! {
         if #[cfg(feature = "native")] {

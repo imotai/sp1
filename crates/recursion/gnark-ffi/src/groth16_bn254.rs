@@ -110,6 +110,8 @@ impl Groth16Bn254Prover {
         proof: &Groth16Bn254Proof,
         vkey_hash: &BigUint,
         committed_values_digest: &BigUint,
+        exit_code: &BigUint,
+        vk_root: &BigUint,
         build_dir: &Path,
     ) -> Result<()> {
         if proof.groth16_vkey_hash != Self::get_vkey_hash(build_dir) {
@@ -124,6 +126,8 @@ impl Groth16Bn254Prover {
             &proof.raw_proof,
             &vkey_hash.to_string(),
             &committed_values_digest.to_string(),
+            &exit_code.to_string(),
+            &vk_root.to_string(),
         )
         .map_err(|e| anyhow::anyhow!("failed to verify proof: {}", e))
     }

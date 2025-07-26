@@ -1,17 +1,41 @@
 /// The maximum size of the memory in bytes.
-pub const MAXIMUM_MEMORY_SIZE: u32 = u32::MAX;
+pub const MAXIMUM_MEMORY_SIZE: u64 = (1u64 << 48) - 1;
 
 /// The number of bits in a byte.
 pub const BYTE_SIZE: usize = 8;
 
-/// The size of a word in bytes.
+/// The number of bits in a limb.
+pub const LIMB_SIZE: usize = 16;
+
+/// The size of a word in limbs.
 pub const WORD_SIZE: usize = 4;
 
-/// The number of bytes necessary to represent a 64-bit integer.
-pub const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;
+/// The size of a word in bytes.
+pub const WORD_BYTE_SIZE: usize = 2 * WORD_SIZE;
+
+/// The size of an instruction in bytes.
+pub const INSTRUCTION_WORD_SIZE: usize = 4;
+
+/// The number of bytes necessary to represent a 128-bit integer.
+pub const LONG_WORD_BYTE_SIZE: usize = 2 * WORD_BYTE_SIZE;
 
 /// The Baby Bear prime.
 pub const BABYBEAR_PRIME: u32 = 0x78000001;
+
+/// The log2 page size (in bytes).
+pub const LOG_PAGE_SIZE: usize = 12;
+
+/// The size of a page in bytes.
+pub const PAGE_SIZE: usize = 1 << LOG_PAGE_SIZE;
+
+/// MProtect flags.
+pub const PROT_NONE: u8 = 0b000;
+pub const PROT_READ: u8 = 0b001;
+pub const PROT_WRITE: u8 = 0b010;
+pub const PROT_EXEC: u8 = 0b100;
+
+/// The stack top for the 64-bit zkvm.
+pub const STACK_TOP: u64 = 0x78000000;
 
 pub mod fd {
     /// The minimum file descriptor.
@@ -65,29 +89,29 @@ pub mod fd {
 }
 
 /// Converts a slice of words to a byte vector in little endian.
-pub fn words_to_bytes_le_vec(words: &[u32]) -> Vec<u8> {
+pub fn words_to_bytes_le_vec(words: &[u64]) -> Vec<u8> {
     words.iter().flat_map(|word| word.to_le_bytes().into_iter()).collect::<Vec<_>>()
 }
 
 /// Converts a slice of words to a slice of bytes in little endian.
-pub fn words_to_bytes_le<const B: usize>(words: &[u32]) -> [u8; B] {
-    debug_assert_eq!(words.len() * 4, B);
+pub fn words_to_bytes_le<const B: usize>(words: &[u64]) -> [u8; B] {
+    debug_assert_eq!(words.len() * 8, B);
     let mut iter = words.iter().flat_map(|word| word.to_le_bytes().into_iter());
     core::array::from_fn(|_| iter.next().unwrap())
 }
 
 /// Converts a byte array in little endian to a slice of words.
-pub fn bytes_to_words_le<const W: usize>(bytes: &[u8]) -> [u32; W] {
-    debug_assert_eq!(bytes.len(), W * 4);
-    let mut iter = bytes.chunks_exact(4).map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()));
+pub fn bytes_to_words_le<const W: usize>(bytes: &[u8]) -> [u64; W] {
+    debug_assert_eq!(bytes.len(), W * 8);
+    let mut iter = bytes.chunks_exact(8).map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()));
     core::array::from_fn(|_| iter.next().unwrap())
 }
 
 /// Converts a byte array in little endian to a vector of words.
-pub fn bytes_to_words_le_vec(bytes: &[u8]) -> Vec<u32> {
+pub fn bytes_to_words_le_vec(bytes: &[u8]) -> Vec<u64> {
     bytes
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .chunks_exact(8)
+        .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()))
         .collect::<Vec<_>>()
 }
 
@@ -105,4 +129,32 @@ pub fn num_to_comma_separated<T: ToString>(value: T) -> String {
         .chars()
         .rev()
         .collect()
+}
+
+/// Converts a little endian u32 array into u64 array.
+pub fn u32_to_u64(limbs: &[u32]) -> Vec<u64> {
+    debug_assert!(limbs.len().is_multiple_of(2), "need an even number of u32s");
+    limbs.chunks_exact(2).map(|pair| (pair[0] as u64) | ((pair[1] as u64) << 32)).collect()
+}
+
+/// Converts a little endian u64 array into u32 array.
+pub fn u64_to_u32(limbs: &[u64]) -> Vec<u32> {
+    limbs
+        .iter()
+        .flat_map(|&x| {
+            let lo = x as u32;
+            let hi = (x >> 32) as u32;
+            [lo, hi]
+        })
+        .collect()
+}
+
+/// Converts a 32-bit integer to a pair of 16-bit integers.
+pub fn u32_to_u16_limbs(value: u32) -> [u16; 2] {
+    [(value & 0xFFFF) as u16, (value >> 16) as u16]
+}
+
+/// Converts a 64-bit integer to four 16-bit integers.
+pub fn u64_to_u16_limbs(value: u64) -> [u16; 4] {
+    [(value & 0xFFFF) as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
 }

@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::lookup::InteractionKind;
 
 /// An interaction is a cross-table lookup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AirInteraction<E> {
     /// The values of the interaction.
     pub values: Vec<E>,

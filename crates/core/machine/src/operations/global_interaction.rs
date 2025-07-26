@@ -4,9 +4,9 @@ use super::poseidon2::{
     trace::populate_perm_deg3,
     Poseidon2Operation, NUM_EXTERNAL_ROUNDS,
 };
-use p3_air::AirBuilder;
-use p3_field::{AbstractExtensionField, AbstractField, Field, PrimeField32};
-use sp1_core_executor::ByteOpcode;
+use crate::air::WordAirBuilder;
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::SP1AirBuilder,
@@ -28,26 +28,22 @@ pub struct GlobalInteractionOperation<T: Copy> {
 
 impl<F: PrimeField32> GlobalInteractionOperation<F> {
     pub fn get_digest(
-        values: SepticBlock<u32>,
+        values: [u32; 8],
         is_receive: bool,
         kind: u8,
     ) -> (SepticCurve<F>, u8, [F; 16], [F; 16]) {
-        let x_start = SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values.0[i])) +
-            SepticExtension::from_base(F::from_canonical_u32((kind as u32) << 16));
-        let (point, offset, m_trial, m_hash) = SepticCurve::<F>::lift_x(x_start);
+        // let x_start = SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values[i]))
+        //     + SepticExtension::from_base(F::from_canonical_u32((kind as u32) << 24));
+        let mut new_values = values.map(|x| F::from_canonical_u32(x));
+        new_values[0] = new_values[0] + F::from_canonical_u32((kind as u32) << 24);
+        let (point, offset, m_trial, m_hash) = SepticCurve::<F>::lift_x(new_values);
         if !is_receive {
             return (point.neg(), offset, m_trial, m_hash);
         }
         (point, offset, m_trial, m_hash)
     }
 
-    pub fn populate(
-        &mut self,
-        values: SepticBlock<u32>,
-        is_receive: bool,
-        is_real: bool,
-        kind: u8,
-    ) {
+    pub fn populate(&mut self, values: [u32; 8], is_receive: bool, is_real: bool, kind: u8) {
         if is_real {
             let (point, offset, m_trial, m_hash) = Self::get_digest(values, is_receive, kind);
             for i in 0..8 {
@@ -98,14 +94,16 @@ impl<F: PrimeField32> GlobalInteractionOperation<F> {
 
 impl<F: Field> GlobalInteractionOperation<F> {
     /// Constrain that the elliptic curve point for the global interaction is correctly derived.
-    pub fn eval_single_digest<AB: SP1AirBuilder + p3_air::PairBuilder>(
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_single_digest<AB: SP1AirBuilder + slop_air::PairBuilder>(
         builder: &mut AB,
-        values: [AB::Expr; 7],
+        values: [AB::Expr; 8],
         cols: GlobalInteractionOperation<AB::Var>,
         is_receive: AB::Expr,
         is_send: AB::Expr,
         is_real: AB::Var,
         kind: AB::Var,
+        shard_limbs: [AB::Var; 2],
     ) {
         // Constrain that the `is_real` is boolean.
         builder.assert_bool(is_real);
@@ -117,28 +115,27 @@ impl<F: Field> GlobalInteractionOperation<F> {
             offset = offset.clone() + cols.offset_bits[i] * AB::F::from_canonical_u32(1 << i);
         }
 
-        // Range check the first element in the message to be a u16 so that we can encode the
-        // interaction kind in the upper 8 bits.
-        builder.send_byte(
-            AB::Expr::from_canonical_u8(ByteOpcode::U16Range as u8),
+        // Range check the first element in the message to be 24 bits so that we can encode the
+        // interaction kind in the upper bits.
+        builder.when(is_real).assert_eq(
             values[0].clone(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            is_real,
+            shard_limbs[0] + shard_limbs[1] * AB::F::from_canonical_u32(1 << 16),
         );
+        builder.slice_range_check_u16(&[shard_limbs[0].into(), values[7].clone()], is_real);
+        builder.slice_range_check_u8(&[shard_limbs[1]], is_real);
 
         // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate
         // of the Poseidon2 hash is 8. Combining `values[0]` with `kind` is safe, as
-        // `values[0]` is range checked to be u16, and `kind` is known to be u8.
+        // `values[0]` is range checked to be 24 bits, and `kind` is known to be small.
         let m_trial = [
-            values[0].clone() + AB::Expr::from_canonical_u32(1 << 16) * kind,
+            values[0].clone() + AB::Expr::from_canonical_u32(1 << 24) * kind,
             values[1].clone(),
             values[2].clone(),
             values[3].clone(),
             values[4].clone(),
             values[5].clone(),
             values[6].clone(),
-            offset.clone(),
+            values[7].clone() + AB::Expr::from_canonical_u32(1 << 16) * offset,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),

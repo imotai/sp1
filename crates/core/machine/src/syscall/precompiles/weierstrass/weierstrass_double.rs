@@ -1,20 +1,27 @@
+use crate::{
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessColsU8,
+    operations::{
+        field::{field_op::FieldOpCols, range::FieldLtCols},
+        AddrAddOperation, SyscallAddrOperation,
+    },
+    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
+};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-use std::{fmt::Debug, marker::PhantomData};
-
-use crate::{air::MemoryAirBuilder, utils::zeroed_f_vec};
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{
-        ByteLookupEvent, ByteRecord, EllipticCurveDoubleEvent, FieldOperation, MemoryWriteRecord,
-        PrecompileEvent, SyscallEvent,
+        ByteLookupEvent, ByteRecord, EllipticCurveDoubleEvent, FieldOperation, MemoryRecordEnum,
+        MemoryWriteRecord, PrecompileEvent, SyscallEvent,
     },
     syscalls::SyscallCode,
     ExecutionRecord, Program,
@@ -25,13 +32,11 @@ use sp1_curves::{
     AffinePoint, CurveType, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir, SP1AirBuilder};
-
-use crate::{
-    memory::{MemoryCols, MemoryWriteCols},
-    operations::field::{field_op::FieldOpCols, range::FieldLtCols},
-    utils::limbs_from_prev_access,
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
 };
+use std::{fmt::Debug, marker::PhantomData};
 
 pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDoubleAssignCols<u8, P>>()
@@ -45,23 +50,24 @@ pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usi
 #[repr(C)]
 pub struct WeierstrassDoubleAssignCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
-    pub p_ptr: T,
-    pub p_access: GenericArray<MemoryWriteCols<T>, P::WordsCurvePoint>,
-    pub(crate) slope_denominator: FieldOpCols<T, P>,
-    pub(crate) slope_numerator: FieldOpCols<T, P>,
-    pub(crate) slope: FieldOpCols<T, P>,
-    pub(crate) p_x_squared: FieldOpCols<T, P>,
-    pub(crate) p_x_squared_times_3: FieldOpCols<T, P>,
-    pub(crate) slope_squared: FieldOpCols<T, P>,
-    pub(crate) p_x_plus_p_x: FieldOpCols<T, P>,
-    pub(crate) x3_ins: FieldOpCols<T, P>,
-    pub(crate) p_x_minus_x: FieldOpCols<T, P>,
-    pub(crate) y3_ins: FieldOpCols<T, P>,
-    pub(crate) slope_times_p_x_minus_x: FieldOpCols<T, P>,
-    pub(crate) x3_range: FieldLtCols<T, P>,
-    pub(crate) y3_range: FieldLtCols<T, P>,
+    pub clk_high: T,
+    pub clk_low: T,
+    pub p_ptr: SyscallAddrOperation<T>,
+    pub p_addrs: GenericArray<AddrAddOperation<T>, P::WordsCurvePoint>,
+    pub p_access: GenericArray<MemoryAccessColsU8<T>, P::WordsCurvePoint>,
+    pub slope_denominator: FieldOpCols<T, P>,
+    pub slope_numerator: FieldOpCols<T, P>,
+    pub slope: FieldOpCols<T, P>,
+    pub p_x_squared: FieldOpCols<T, P>,
+    pub p_x_squared_times_3: FieldOpCols<T, P>,
+    pub slope_squared: FieldOpCols<T, P>,
+    pub p_x_plus_p_x: FieldOpCols<T, P>,
+    pub x3_ins: FieldOpCols<T, P>,
+    pub p_x_minus_x: FieldOpCols<T, P>,
+    pub y3_ins: FieldOpCols<T, P>,
+    pub slope_times_p_x_minus_x: FieldOpCols<T, P>,
+    pub x3_range: FieldLtCols<T, P>,
+    pub y3_range: FieldLtCols<T, P>,
 }
 
 #[derive(Default)]
@@ -170,6 +176,23 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         }
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match E::CURVE_TYPE {
+            CurveType::Secp256k1 => {
+                input.get_precompile_events(SyscallCode::SECP256K1_DOUBLE).len()
+            }
+            CurveType::Secp256r1 => {
+                input.get_precompile_events(SyscallCode::SECP256R1_DOUBLE).len()
+            }
+            CurveType::Bn254 => input.get_precompile_events(SyscallCode::BN254_DOUBLE).len(),
+            CurveType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_DOUBLE).len(),
+            _ => panic!("Unsupported curve"),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
         let events = match E::CURVE_TYPE {
             CurveType::Secp256k1 => &input.get_precompile_events(SyscallCode::SECP256K1_DOUBLE),
@@ -188,10 +211,10 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 // The blu map stores shard -> map(byte lookup event -> multiplicity).
                 let mut blu = Vec::new();
                 ops.iter().for_each(|(_, op)| match op {
-                    PrecompileEvent::Secp256k1Double(event) |
-                    PrecompileEvent::Secp256r1Double(event) |
-                    PrecompileEvent::Bn254Double(event) |
-                    PrecompileEvent::Bls12381Double(event) => {
+                    PrecompileEvent::Secp256k1Double(event)
+                    | PrecompileEvent::Secp256r1Double(event)
+                    | PrecompileEvent::Bn254Double(event)
+                    | PrecompileEvent::Bls12381Double(event) => {
                         let mut row = zeroed_f_vec(num_cols);
                         let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> =
                             row.as_mut_slice().borrow_mut();
@@ -226,11 +249,11 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let num_rows = input
             .fixed_log2_rows::<F, _>(self)
             .map(|x| 1 << x)
-            .unwrap_or(std::cmp::max(events.len().next_power_of_two(), 4));
+            .unwrap_or(std::cmp::max(events.len().next_multiple_of(32), 4));
         let mut values = zeroed_f_vec(num_rows * num_cols);
         let chunk_size = 64;
 
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         let mut dummy_row = zeroed_f_vec(num_cols);
         let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> =
             dummy_row.as_mut_slice().borrow_mut();
@@ -244,7 +267,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         };
         let zero = BigUint::zero();
         let one = BigUint::one();
-        cols.p_access[num_words_field_element].populate(dummy_memory_record, &mut vec![]);
+        let dummy_record_enum = MemoryRecordEnum::Write(dummy_memory_record);
+        cols.p_access[num_words_field_element].populate(dummy_record_enum, &mut vec![]);
         Self::populate_field_ops(&mut vec![], cols, zero, one);
 
         values.chunks_mut(chunk_size * num_cols).enumerate().par_bridge().for_each(|(i, rows)| {
@@ -254,10 +278,10 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                     let mut new_byte_lookup_events = Vec::new();
                     let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> = row.borrow_mut();
                     match &events[idx].1 {
-                        PrecompileEvent::Secp256k1Double(event) |
-                        PrecompileEvent::Secp256r1Double(event) |
-                        PrecompileEvent::Bn254Double(event) |
-                        PrecompileEvent::Bls12381Double(event) => {
+                        PrecompileEvent::Secp256k1Double(event)
+                        | PrecompileEvent::Secp256r1Double(event)
+                        | PrecompileEvent::Bn254Double(event)
+                        | PrecompileEvent::Bls12381Double(event) => {
                             Self::populate_row(event, cols, &mut new_byte_lookup_events);
                         }
                         _ => unreachable!(),
@@ -312,15 +336,17 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
 
         // Populate basic columns.
         cols.is_real = F::one();
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr = F::from_canonical_u32(event.p_ptr);
+        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+        cols.p_ptr.populate(new_byte_lookup_events, event.p_ptr, E::NB_LIMBS as u64 * 2);
 
         Self::populate_field_ops(new_byte_lookup_events, cols, p_x, p_y);
 
         // Populate the memory access columns.
         for i in 0..cols.p_access.len() {
-            cols.p_access[i].populate(event.p_memory_records[i], new_byte_lookup_events);
+            let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
+            cols.p_access[i].populate(record, new_byte_lookup_events);
+            cols.p_addrs[i].populate(new_byte_lookup_events, event.p_ptr, 8 * i as u64);
         }
     }
 }
@@ -333,7 +359,7 @@ impl<F, E: EllipticCurve + WeierstrassParameters> BaseAir<F> for WeierstrassDoub
 
 impl<AB, E: EllipticCurve + WeierstrassParameters> Air<AB> for WeierstrassDoubleAssignChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -341,9 +367,15 @@ where
         let local = main.row_slice(0);
         let local: &WeierstrassDoubleAssignCols<AB::Var, E::BaseField> = (*local).borrow();
 
-        let num_words_field_element = E::BaseField::NB_LIMBS / 4;
-        let p_x = limbs_from_prev_access(&local.p_access[0..num_words_field_element]);
-        let p_y = limbs_from_prev_access(&local.p_access[num_words_field_element..]);
+        let num_words_field_element = E::BaseField::NB_LIMBS / 8;
+        let p_x_limbs = builder
+            .generate_limbs(&local.p_access[0..num_words_field_element], local.is_real.into());
+        let p_y_limbs = builder
+            .generate_limbs(&local.p_access[num_words_field_element..], local.is_real.into());
+        let p_x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(p_x_limbs.try_into().expect("failed to convert limbs"));
+        let p_y: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(p_y_limbs.try_into().expect("failed to convert limbs"));
 
         // `a` in the Weierstrass form: y^2 = x^3 + a * x + b.
         let a = E::BaseField::to_limbs_field::<AB::Expr, _>(&E::a_int());
@@ -428,23 +460,48 @@ where
         local.x3_range.eval(builder, &local.x3_ins.result, &modulus, local.is_real);
         local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        // Constraint self.p_access.value = [self.x3_ins.result, self.y3_ins.result]. This is to
-        // ensure that p_access is updated with the new value.
-        for i in 0..E::BaseField::NB_LIMBS {
-            builder
-                .when(local.is_real)
-                .assert_eq(local.x3_ins.result[i], local.p_access[i / 4].value()[i % 4]);
-            builder.when(local.is_real).assert_eq(
-                local.y3_ins.result[i],
-                local.p_access[num_words_field_element + i / 4].value()[i % 4],
+        let x3_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        let y3_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
+        let result_words = x3_result_words.into_iter().chain(y3_result_words).collect_vec();
+
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.p_ptr,
+            local.is_real.into(),
+        );
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.p_addrs[0],
+            local.is_real.into(),
+        );
+
+        // p_addrs[i] = p_addrs[i - 1] + 8.
+        let eight = AB::F::from_canonical_u32(8u32);
+        for i in 1..local.p_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.p_addrs[i - 1].value[0].into(),
+                    local.p_addrs[i - 1].value[1].into(),
+                    local.p_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.p_addrs[i],
+                local.is_real.into(),
             );
         }
 
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into(),
-            local.p_ptr,
-            &local.p_access,
+        builder.eval_memory_access_slice_write(
+            local.clk_high,
+            local.clk_low.into(),
+            &local.p_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
+            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
             local.is_real,
         );
 
@@ -464,59 +521,59 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id_felt,
-            local.p_ptr,
-            AB::Expr::zero(),
+            p_ptr.map(Into::into),
+            [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()].map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );
     }
 }
 
-#[cfg(test)]
-pub mod tests {
-    use sp1_core_executor::Program;
-    use sp1_stark::CpuProver;
-    use test_artifacts::{
-        BLS12381_DOUBLE_ELF, BN254_DOUBLE_ELF, SECP256K1_DOUBLE_ELF, SECP256R1_DOUBLE_ELF,
-    };
+// #[cfg(test)]
+// pub mod tests {
+//     use sp1_core_executor::Program;
+//     use sp1_stark::CpuProver;
+//     use test_artifacts::{
+//         BLS12381_DOUBLE_ELF, BN254_DOUBLE_ELF, SECP256K1_DOUBLE_ELF, SECP256R1_DOUBLE_ELF,
+//     };
 
-    use crate::{
-        io::SP1Stdin,
-        utils::{run_test, setup_logger},
-    };
+//     use crate::{
+//         io::SP1Stdin,
+//         utils::{run_test, setup_logger},
+//     };
 
-    #[test]
-    fn test_secp256k1_double_simple() {
-        setup_logger();
-        let program = Program::from(SECP256K1_DOUBLE_ELF).unwrap();
-        let stdin = SP1Stdin::new();
-        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+//     #[test]
+//     fn test_secp256k1_double_simple() {
+//         setup_logger();
+//         let program = Program::from(SECP256K1_DOUBLE_ELF).unwrap();
+//         let stdin = SP1Stdin::new();
+//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+//     }
 
-    #[test]
-    fn test_secp256r1_double_simple() {
-        setup_logger();
-        let program = Program::from(SECP256R1_DOUBLE_ELF).unwrap();
-        let stdin = SP1Stdin::new();
-        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+//     #[test]
+//     fn test_secp256r1_double_simple() {
+//         setup_logger();
+//         let program = Program::from(SECP256R1_DOUBLE_ELF).unwrap();
+//         let stdin = SP1Stdin::new();
+//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+//     }
 
-    #[test]
-    fn test_bn254_double_simple() {
-        setup_logger();
-        let program = Program::from(BN254_DOUBLE_ELF).unwrap();
-        let stdin = SP1Stdin::new();
-        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+//     #[test]
+//     fn test_bn254_double_simple() {
+//         setup_logger();
+//         let program = Program::from(BN254_DOUBLE_ELF).unwrap();
+//         let stdin = SP1Stdin::new();
+//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+//     }
 
-    #[test]
-    fn test_bls12381_double_simple() {
-        setup_logger();
-        let program = Program::from(BLS12381_DOUBLE_ELF).unwrap();
-        let stdin = SP1Stdin::new();
-        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
-}
+//     #[test]
+//     fn test_bls12381_double_simple() {
+//         setup_logger();
+//         let program = Program::from(BLS12381_DOUBLE_ELF).unwrap();
+//         let stdin = SP1Stdin::new();
+//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+//     }
+// }

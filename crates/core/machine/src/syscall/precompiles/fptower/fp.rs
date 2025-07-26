@@ -4,15 +4,20 @@ use std::{
     mem::size_of,
 };
 
-use crate::{air::MemoryAirBuilder, operations::field::range::FieldLtCols, utils::zeroed_f_vec};
+use crate::{
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessColsU8,
+    operations::{field::range::FieldLtCols, AddrAddOperation, SyscallAddrOperation},
+    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
+};
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, Zero};
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, FieldOperation, PrecompileEvent},
+    events::{ByteLookupEvent, ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -21,12 +26,15 @@ use sp1_curves::{
     weierstrass::{FieldType, FpOpField},
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder};
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
 
 use crate::{
-    memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
     operations::field::field_op::FieldOpCols,
-    utils::{limbs_from_prev_access, pad_rows_fixed, words_to_bytes_le_vec},
+    utils::{pad_rows_fixed, words_to_bytes_le_vec},
 };
 
 pub const fn num_fp_cols<P: FpOpField>() -> usize {
@@ -42,15 +50,17 @@ pub struct FpOpChip<P> {
 #[repr(C)]
 pub struct FpOpCols<T, P: FpOpField> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub is_add: T,
     pub is_sub: T,
     pub is_mul: T,
-    pub x_ptr: T,
-    pub y_ptr: T,
-    pub x_access: GenericArray<MemoryWriteCols<T>, P::WordsFieldElement>,
-    pub y_access: GenericArray<MemoryReadCols<T>, P::WordsFieldElement>,
+    pub x_ptr: SyscallAddrOperation<T>,
+    pub y_ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
+    pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub(crate) output: FieldOpCols<T, P>,
     pub(crate) output_range: FieldLtCols<T, P>,
 }
@@ -87,6 +97,16 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         }
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match P::FIELD_TYPE {
+            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP_ADD).len(),
+            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP_ADD).len(),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
     fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
         // All the fp events for a given curve are coalesce to the curve's Add operation.  Only
         // retrieve precompile events for that operation.
@@ -117,19 +137,24 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
             cols.is_sub = F::from_canonical_u8((event.op == FieldOperation::Sub) as u8);
             cols.is_mul = F::from_canonical_u8((event.op == FieldOperation::Mul) as u8);
             cols.is_real = F::one();
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
-            cols.x_ptr = F::from_canonical_u32(event.x_ptr);
-            cols.y_ptr = F::from_canonical_u32(event.y_ptr);
+
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u64);
+            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u64);
 
             Self::populate_field_ops(&mut new_byte_lookup_events, cols, p, q, event.op);
 
             // Populate the memory access columns.
             for i in 0..cols.y_access.len() {
-                cols.y_access[i].populate(event.y_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
+                cols.y_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.y_ptr, i as u64 * 8);
             }
             for i in 0..cols.x_access.len() {
-                cols.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
+                cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.x_addrs[i].populate(&mut new_byte_lookup_events, event.x_ptr, i as u64 * 8);
             }
             rows.push(row);
         }
@@ -164,10 +189,10 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         // check for that operation.
 
         assert!(
-            shard.get_precompile_events(SyscallCode::BN254_FP_SUB).is_empty() &&
-                shard.get_precompile_events(SyscallCode::BN254_FP_MUL).is_empty() &&
-                shard.get_precompile_events(SyscallCode::BLS12381_FP_SUB).is_empty() &&
-                shard.get_precompile_events(SyscallCode::BLS12381_FP_MUL).is_empty()
+            shard.get_precompile_events(SyscallCode::BN254_FP_SUB).is_empty()
+                && shard.get_precompile_events(SyscallCode::BN254_FP_MUL).is_empty()
+                && shard.get_precompile_events(SyscallCode::BLS12381_FP_SUB).is_empty()
+                && shard.get_precompile_events(SyscallCode::BLS12381_FP_MUL).is_empty()
         );
 
         if let Some(shape) = shard.shape.as_ref() {
@@ -197,7 +222,7 @@ impl<F, P: FpOpField> BaseAir<F> for FpOpChip<P> {
 
 impl<AB, P: FpOpField> Air<AB> for FpOpChip<P>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -213,8 +238,12 @@ where
         // Check that only one of them is set.
         builder.assert_eq(local.is_add + local.is_sub + local.is_mul, AB::Expr::one());
 
-        let p = limbs_from_prev_access(&local.x_access);
-        let q = limbs_from_prev_access(&local.y_access);
+        let p_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
+        let p: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(p_limbs.try_into().expect("failed to convert limbs"));
+        let q_limbs = builder.generate_limbs(&local.y_access, local.is_real.into());
+        let q: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(q_limbs.try_into().expect("failed to convert limbs"));
 
         let modulus_coeffs =
             P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
@@ -232,24 +261,89 @@ where
             local.is_real,
         );
 
-        builder
-            .when(local.is_real)
-            .assert_all_eq(local.output.result, value_as_limbs(&local.x_access));
         local.output_range.eval(builder, &local.output.result, &p_modulus, local.is_real);
 
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into(),
+        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
+
+        let x_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32,
+            local.x_ptr,
+            local.is_real.into(),
+        );
+        let y_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32,
             local.y_ptr,
-            &local.y_access,
+            local.is_real.into(),
+        );
+
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // x_addrs[i] = x_addrs[i - 1] + 8.
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // y_addrs[0] = y_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.y_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.y_addrs[i - 1].value[0].into(),
+                    local.y_addrs[i - 1].value[1].into(),
+                    local.y_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        builder.eval_memory_access_slice_read(
+            local.clk_high,
+            local.clk_low,
+            &local.y_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
+            &local.y_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
             local.is_real,
         );
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1), /* We read p at +1 since p, q could be the
-                                                       * same. */
-            local.x_ptr,
-            &local.x_access,
+
+        // We read p at +1 since p, q could be the same.
+        builder.eval_memory_access_slice_write(
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
+            &local.x_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
+            &local.x_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
+            result_words,
             local.is_real,
         );
 
@@ -268,16 +362,16 @@ where
                 AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_MUL.syscall_id()),
             ),
         };
-        let syscall_id_felt = local.is_add * add_syscall_id +
-            local.is_sub * sub_syscall_id +
-            local.is_mul * mul_syscall_id;
+        let syscall_id_felt = local.is_add * add_syscall_id
+            + local.is_sub * sub_syscall_id
+            + local.is_mul * mul_syscall_id;
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id_felt,
-            local.x_ptr,
-            local.y_ptr,
+            x_ptr.map(Into::into),
+            y_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

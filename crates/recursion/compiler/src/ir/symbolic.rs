@@ -9,7 +9,7 @@ use std::{
     ops::{AddAssign, DivAssign, MulAssign, SubAssign},
 };
 
-use p3_field::{AbstractField, ExtensionField, Field};
+use slop_algebra::{AbstractField, ExtensionField, Field};
 
 use crate::ir::ExtHandle;
 
@@ -270,6 +270,12 @@ impl<N: Field> From<Var<N>> for SymbolicVar<N> {
 impl<F: Field> From<Felt<F>> for SymbolicFelt<F> {
     fn from(f: Felt<F>) -> Self {
         SymbolicFelt::Val(f)
+    }
+}
+
+impl<F: Field> From<&Felt<F>> for SymbolicFelt<F> {
+    fn from(f: &Felt<F>) -> Self {
+        SymbolicFelt::Val(*f)
     }
 }
 

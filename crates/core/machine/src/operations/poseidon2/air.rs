@@ -1,9 +1,9 @@
 use std::array;
 
-use p3_air::PairBuilder;
-use p3_baby_bear::{MONTY_INVERSE, POSEIDON2_INTERNAL_MATRIX_DIAG_16_BABYBEAR_MONTY};
-use p3_field::{AbstractField, PrimeField32};
-use p3_poseidon2::matmul_internal;
+use slop_air::PairBuilder;
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_baby_bear::{MONTY_INVERSE, POSEIDON2_INTERNAL_MATRIX_DIAG_16_BABYBEAR_MONTY};
+use slop_poseidon2::matmul_internal;
 use sp1_primitives::RC_16_30_U32;
 use sp1_stark::air::MachineAirBuilder;
 
@@ -119,8 +119,8 @@ where
     for r in 0..NUM_INTERNAL_ROUNDS {
         // Add the round constant.
         let round = r + NUM_EXTERNAL_ROUNDS / 2;
-        let add_rc = if r == 0 { state[0].clone() } else { s0[r - 1].into() } +
-            AB::Expr::from_wrapped_u32(RC_16_30_U32[round][0]);
+        let add_rc = if r == 0 { state[0].clone() } else { s0[r - 1].into() }
+            + AB::Expr::from_wrapped_u32(RC_16_30_U32[round][0]);
 
         let mut sbox_deg_3 = add_rc.clone() * add_rc.clone() * add_rc.clone();
         if let Some(internal_sbox) = local_row.internal_rounds_sbox() {

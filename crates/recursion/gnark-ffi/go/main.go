@@ -5,13 +5,13 @@ package main
 #include <stdlib.h>
 
 typedef struct {
-	char *PublicInputs[2];
+	char *PublicInputs[4];
 	char *EncodedProof;
 	char *RawProof;
 } C_PlonkBn254Proof;
 
 typedef struct {
-	char *PublicInputs[2];
+	char *PublicInputs[4];
 	char *EncodedProof;
 	char *RawProof;
 } C_Groth16Bn254Proof;
@@ -53,6 +53,8 @@ func ProvePlonkBn254(dataDir *C.char, witnessPath *C.char) *C.C_PlonkBn254Proof 
 	structPtr := (*C.C_PlonkBn254Proof)(ms)
 	structPtr.PublicInputs[0] = C.CString(sp1PlonkBn254Proof.PublicInputs[0])
 	structPtr.PublicInputs[1] = C.CString(sp1PlonkBn254Proof.PublicInputs[1])
+	structPtr.PublicInputs[2] = C.CString(sp1PlonkBn254Proof.PublicInputs[2])
+	structPtr.PublicInputs[3] = C.CString(sp1PlonkBn254Proof.PublicInputs[3])
 	structPtr.EncodedProof = C.CString(sp1PlonkBn254Proof.EncodedProof)
 	structPtr.RawProof = C.CString(sp1PlonkBn254Proof.RawProof)
 	return structPtr
@@ -64,6 +66,8 @@ func FreePlonkBn254Proof(proof *C.C_PlonkBn254Proof) {
 	C.free(unsafe.Pointer(proof.RawProof))
 	C.free(unsafe.Pointer(proof.PublicInputs[0]))
 	C.free(unsafe.Pointer(proof.PublicInputs[1]))
+	C.free(unsafe.Pointer(proof.PublicInputs[2]))
+	C.free(unsafe.Pointer(proof.PublicInputs[3]))
 	C.free(unsafe.Pointer(proof))
 }
 
@@ -76,13 +80,14 @@ func BuildPlonkBn254(dataDir *C.char) {
 }
 
 //export VerifyPlonkBn254
-func VerifyPlonkBn254(dataDir *C.char, proof *C.char, vkeyHash *C.char, committedValuesDigest *C.char) *C.char {
+func VerifyPlonkBn254(dataDir *C.char, proof *C.char, vkeyHash *C.char, committedValuesDigest *C.char, exitCode *C.char, vkRoot *C.char) *C.char {
 	dataDirString := C.GoString(dataDir)
 	proofString := C.GoString(proof)
 	vkeyHashString := C.GoString(vkeyHash)
 	committedValuesDigestString := C.GoString(committedValuesDigest)
-
-	err := sp1.VerifyPlonk(dataDirString, proofString, vkeyHashString, committedValuesDigestString)
+	exitCodeString := C.GoString(exitCode)
+	vkRootString := C.GoString(vkRoot)
+	err := sp1.VerifyPlonk(dataDirString, proofString, vkeyHashString, committedValuesDigestString, exitCodeString, vkRootString)
 	if err != nil {
 		return C.CString(err.Error())
 	}
@@ -122,6 +127,8 @@ func ProveGroth16Bn254(dataDir *C.char, witnessPath *C.char) *C.C_Groth16Bn254Pr
 	structPtr := (*C.C_Groth16Bn254Proof)(ms)
 	structPtr.PublicInputs[0] = C.CString(sp1Groth16Bn254Proof.PublicInputs[0])
 	structPtr.PublicInputs[1] = C.CString(sp1Groth16Bn254Proof.PublicInputs[1])
+	structPtr.PublicInputs[2] = C.CString(sp1Groth16Bn254Proof.PublicInputs[2])
+	structPtr.PublicInputs[3] = C.CString(sp1Groth16Bn254Proof.PublicInputs[3])
 	structPtr.EncodedProof = C.CString(sp1Groth16Bn254Proof.EncodedProof)
 	structPtr.RawProof = C.CString(sp1Groth16Bn254Proof.RawProof)
 	return structPtr
@@ -133,6 +140,8 @@ func FreeGroth16Bn254Proof(proof *C.C_Groth16Bn254Proof) {
 	C.free(unsafe.Pointer(proof.RawProof))
 	C.free(unsafe.Pointer(proof.PublicInputs[0]))
 	C.free(unsafe.Pointer(proof.PublicInputs[1]))
+	C.free(unsafe.Pointer(proof.PublicInputs[2]))
+	C.free(unsafe.Pointer(proof.PublicInputs[3]))
 	C.free(unsafe.Pointer(proof))
 }
 
@@ -145,13 +154,14 @@ func BuildGroth16Bn254(dataDir *C.char) {
 }
 
 //export VerifyGroth16Bn254
-func VerifyGroth16Bn254(dataDir *C.char, proof *C.char, vkeyHash *C.char, committedValuesDigest *C.char) *C.char {
+func VerifyGroth16Bn254(dataDir *C.char, proof *C.char, vkeyHash *C.char, committedValuesDigest *C.char, exitCode *C.char, vkRoot *C.char) *C.char {
 	dataDirString := C.GoString(dataDir)
 	proofString := C.GoString(proof)
 	vkeyHashString := C.GoString(vkeyHash)
 	committedValuesDigestString := C.GoString(committedValuesDigest)
-
-	err := sp1.VerifyGroth16(dataDirString, proofString, vkeyHashString, committedValuesDigestString)
+	exitCodeString := C.GoString(exitCode)
+	vkRootString := C.GoString(vkRoot)
+	err := sp1.VerifyGroth16(dataDirString, proofString, vkeyHashString, committedValuesDigestString, exitCodeString, vkRootString)
 	if err != nil {
 		return C.CString(err.Error())
 	}
@@ -234,41 +244,41 @@ func TestMain() error {
 //export TestPoseidonBabyBear2
 func TestPoseidonBabyBear2() *C.char {
 	input := [poseidon2.BABYBEAR_WIDTH]babybear.Variable{
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
-		babybear.NewF("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
+		babybear.NewFConst("0"),
 	}
 
 	expectedOutput := [poseidon2.BABYBEAR_WIDTH]babybear.Variable{
-		babybear.NewF("348670919"),
-		babybear.NewF("1568590631"),
-		babybear.NewF("1535107508"),
-		babybear.NewF("186917780"),
-		babybear.NewF("587749971"),
-		babybear.NewF("1827585060"),
-		babybear.NewF("1218809104"),
-		babybear.NewF("691692291"),
-		babybear.NewF("1480664293"),
-		babybear.NewF("1491566329"),
-		babybear.NewF("366224457"),
-		babybear.NewF("490018300"),
-		babybear.NewF("732772134"),
-		babybear.NewF("560796067"),
-		babybear.NewF("484676252"),
-		babybear.NewF("405025962"),
+		babybear.NewFConst("348670919"),
+		babybear.NewFConst("1568590631"),
+		babybear.NewFConst("1535107508"),
+		babybear.NewFConst("186917780"),
+		babybear.NewFConst("587749971"),
+		babybear.NewFConst("1827585060"),
+		babybear.NewFConst("1218809104"),
+		babybear.NewFConst("691692291"),
+		babybear.NewFConst("1480664293"),
+		babybear.NewFConst("1491566329"),
+		babybear.NewFConst("366224457"),
+		babybear.NewFConst("490018300"),
+		babybear.NewFConst("732772134"),
+		babybear.NewFConst("560796067"),
+		babybear.NewFConst("484676252"),
+		babybear.NewFConst("405025962"),
 	}
 
 	circuit := sp1.TestPoseidon2BabyBearCircuit{Input: input, ExpectedOutput: expectedOutput}

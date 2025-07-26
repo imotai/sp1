@@ -10,12 +10,19 @@ use crate::{
 pub(crate) fn weierstrass_add_assign_syscall<E: EllipticCurve, Ex: ExecutorConfig>(
     ctx: &mut SyscallContext<Ex>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let event = create_ec_add_event::<E, Ex>(ctx, arg1, arg2);
-    let syscall_event =
-        ctx.rt.syscall_event(event.clk, None, None, syscall_code, arg1, arg2, ctx.next_pc);
+    let syscall_event = ctx.rt.syscall_event(
+        event.clk,
+        syscall_code,
+        arg1,
+        arg2,
+        false,
+        ctx.next_pc,
+        ctx.exit_code,
+    );
     match E::CURVE_TYPE {
         CurveType::Secp256k1 => ctx.add_precompile_event(
             syscall_code,

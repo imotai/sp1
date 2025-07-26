@@ -1,7 +1,7 @@
 use num::{BigUint, One, Zero};
 
 use sp1_curves::edwards::WORDS_FIELD_ELEMENT;
-use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le_vec, WORD_SIZE};
+use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le_vec, WORD_BYTE_SIZE};
 
 use crate::{
     events::{PrecompileEvent, Uint256MulEvent},
@@ -12,19 +12,15 @@ use crate::{
 pub(crate) fn uint256_mul<E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let clk = rt.clk;
 
     let x_ptr = arg1;
-    if x_ptr % 4 != 0 {
-        panic!();
-    }
+    assert!(x_ptr.is_multiple_of(8), "x_ptr must be 8-byte aligned");
     let y_ptr = arg2;
-    if y_ptr % 4 != 0 {
-        panic!();
-    }
+    assert!(y_ptr.is_multiple_of(8), "y_ptr must be 8-byte aligned");
 
     // First read the words for the x value. We can read a slice_unsafe here because we write
     // the computed result to x later.
@@ -34,7 +30,7 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
     let (y_memory_records, y) = rt.mr_slice(y_ptr, WORDS_FIELD_ELEMENT);
 
     // The modulus is stored after the y value. We increment the pointer by the number of words.
-    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u32 * WORD_SIZE as u32;
+    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u64 * WORD_BYTE_SIZE as u64;
     let (modulus_memory_records, modulus) = rt.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT);
 
     // Get the BigUint values for x, y, and the modulus.
@@ -53,15 +49,15 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
     let mut result_bytes = result.to_bytes_le();
     result_bytes.resize(32, 0u8); // Pad the result to 32 bytes.
 
-    // Convert the result to little endian u32 words.
-    let result = bytes_to_words_le::<8>(&result_bytes);
+    // Convert the result to little endian u64 words.
+    let result = bytes_to_words_le::<4>(&result_bytes);
 
     // Increment clk so that the write is not at the same cycle as the read.
     rt.clk += 1;
     // Write the result to x and keep track of the memory records.
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = PrecompileEvent::Uint256Mul(Uint256MulEvent {
         shard,
         clk,
@@ -75,7 +71,8 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
         modulus_memory_records,
         local_mem_access: rt.postprocess(),
     });
-    let syscall_event = rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+    let syscall_event =
+        rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, event);
 
     None

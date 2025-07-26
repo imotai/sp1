@@ -1,197 +1,116 @@
 //! # SP1 Environment Prover
 //!
 //! A prover that can execute programs and generate proofs with a different implementation based on
-//! the value of certain environment variables.
+//! the value of the `SP1_PROVER` environment variable.
 
-pub mod prove;
-
-use std::env;
-
-use anyhow::Result;
-use prove::EnvProveBuilder;
-use sp1_core_executor::SP1ContextBuilder;
-use sp1_core_machine::io::SP1Stdin;
-use sp1_cuda::MoongateServer;
-use sp1_prover::{components::CpuProverComponents, SP1Prover, SP1ProvingKey, SP1VerifyingKey};
-
-use super::{Prover, SP1VerificationError};
-#[cfg(feature = "network")]
-use crate::network::builder::NetworkProverBuilder;
 use crate::{
-    cpu::{execute::CpuExecuteBuilder, CpuProver},
-    cuda::CudaProver,
-    utils::check_release_build,
-    SP1ProofMode, SP1ProofWithPublicValues,
+    cuda::builder::CudaProverBuilder,
+    prover::{BaseProveRequest, SendFutureResult},
+    CpuProver, CudaProver, MockProver, Prover,
 };
 
+#[cfg(feature = "network")]
+use crate::NetworkProver;
+
+pub mod pk;
+/// The module that defines the prove request for the [`EnvProver`].
+pub mod prove;
+pub use pk::EnvProvingKey;
+use prove::EnvProveRequest;
+use sp1_core_machine::io::SP1Stdin;
+use sp1_primitives::Elf;
+use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver};
+use std::sync::Arc;
+
 /// A prover that can execute programs and generate proofs with a different implementation based on
-/// the value of certain environment variables.
-///
-/// The environment variables are described in [`EnvProver::new`].
-pub struct EnvProver {
-    pub(crate) prover: Box<dyn Prover<CpuProverComponents>>,
+/// the value of the `SP1_PROVER` environment variable.
+#[derive(Clone)]
+pub enum EnvProver {
+    /// A mock prover that does not prove anything.
+    Mock(MockProver),
+    /// A CPU prover.
+    Cpu(CpuProver),
+    /// A CUDA prover.
+    Cuda(CudaProver),
+    /// A network prover.
+    #[cfg(feature = "network")]
+    Network(NetworkProver),
 }
 
 impl EnvProver {
-    /// Creates a new [`EnvProver`] with the given configuration.
+    /// Creates a new [`EnvProver`] from the environment.
     ///
-    /// The following environment variables are used to configure the prover:
-    /// - `SP1_PROVER`: The type of prover to use. Must be one of `mock`, `local`, `cuda`, or
-    ///   `network`.
-    /// - `NETWORK_PRIVATE_KEY`: The private key to use for the network prover.
-    /// - `NETWORK_RPC_URL`: The RPC URL to use for the network prover.
-    #[must_use]
-    pub fn new() -> Self {
-        let mode = if let Ok(mode) = env::var("SP1_PROVER") {
-            mode
-        } else {
-            tracing::warn!("SP1_PROVER environment variable not set, defaulting to 'cpu'");
-            "cpu".to_string()
+    /// This method will read from the `SP1_PROVER` environment variable to determine which prover
+    /// to use. If the variable is not set, it will default to the CPU prover.
+    ///
+    /// If the prover is a network prover, the `NETWORK_PRIVATE_KEY` variable must be set.
+    pub async fn new() -> Self {
+        let prover = match std::env::var("SP1_PROVER") {
+            Ok(prover) => prover,
+            Err(_) => "cpu".to_string(),
         };
 
-        let prover: Box<dyn Prover<CpuProverComponents>> = match mode.as_str() {
-            "mock" => Box::new(CpuProver::mock()),
-            "cpu" => {
-                check_release_build();
-                Box::new(CpuProver::new())
-            },
-            "cuda" => {
-                check_release_build();
-                Box::new(CudaProver::new(SP1Prover::new(), MoongateServer::default()))
-            }
+        match prover.as_str() {
+            "cpu" => Self::Cpu(CpuProver::new().await),
+            "cuda" => Self::Cuda(CudaProverBuilder::default().build().await),
+            "mock" => Self::Mock(MockProver::new().await),
+            #[cfg(feature = "network")]
             "network" => {
-                #[cfg(not(feature = "network"))]
-                panic!(
-                    r#"The network prover requires the 'network' feature to be enabled.
-                    Please enable it in your Cargo.toml with:
-                    sp1-sdk = {{ version = "...", features = ["network"] }}"#
-                );
+                let private_key =
+                    std::env::var("NETWORK_PRIVATE_KEY").ok().filter(|k| !k.is_empty()).expect(
+                        "NETWORK_PRIVATE_KEY environment variable is not set. \
+                Please set it to your private key or use the .private_key() method.",
+                    );
 
+                let network_builder =
+                    crate::network::builder::NetworkProverBuilder::new().private_key(&private_key);
+
+                Self::Network(network_builder.build().await)
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Prover for EnvProver {
+    type Error = anyhow::Error;
+    type ProvingKey = EnvProvingKey;
+    type ProveRequest<'a> = prove::EnvProveRequest<'a>;
+
+    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+        match self {
+            Self::Cpu(prover) => prover.inner(),
+            Self::Cuda(prover) => prover.inner(),
+            Self::Mock(prover) => prover.inner(),
+            #[cfg(feature = "network")]
+            Self::Network(prover) => prover.inner(),
+        }
+    }
+    fn setup(&self, elf: Elf) -> impl SendFutureResult<Self::ProvingKey, Self::Error> {
+        async move {
+            match self {
+                Self::Cpu(prover) => {
+                    let pk = prover.setup(elf).await?;
+                    Ok(EnvProvingKey::cpu(pk))
+                }
+                Self::Cuda(prover) => {
+                    let pk = prover.setup(elf).await?;
+                    Ok(EnvProvingKey::cuda(pk))
+                }
+                Self::Mock(prover) => {
+                    let pk = prover.setup(elf).await?;
+                    Ok(EnvProvingKey::mock(pk))
+                }
                 #[cfg(feature = "network")]
-                {
-                    Box::new(NetworkProverBuilder::default().build())
+                Self::Network(prover) => {
+                    let pk = prover.setup(elf).await?;
+                    Ok(EnvProvingKey::network(pk))
                 }
             }
-            _ => panic!(
-                "Invalid SP1_PROVER value. Expected one of: mock, cpu, cuda, or network. Got: '{mode}'.\n\
-                Please set the SP1_PROVER environment variable to one of the supported values."
-            ),
-        };
-        EnvProver { prover }
-    }
-
-    /// Creates a new [`CpuExecuteBuilder`] for simulating the execution of a program on the CPU.
-    ///
-    /// # Details
-    /// The builder is used for both the [`crate::cpu::CpuProver`] and [`crate::CudaProver`] client
-    /// types.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::from_env();
-    /// let (public_values, execution_report) = client.execute(elf, &stdin).run().unwrap();
-    /// ```
-    #[must_use]
-    pub fn execute<'a>(&'a self, elf: &'a [u8], stdin: &SP1Stdin) -> CpuExecuteBuilder<'a> {
-        CpuExecuteBuilder {
-            prover: self.prover.inner(),
-            elf,
-            stdin: stdin.clone(),
-            context_builder: SP1ContextBuilder::default(),
         }
     }
 
-    /// Creates a new [`EnvProveBuilder`] for proving a program on the CPU.
-    ///
-    /// # Details
-    /// The builder is used for only the [`crate::cpu::CpuProver`] client type.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::from_env();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).core().run();
-    /// ```
-    #[must_use]
-    pub fn prove<'a>(&'a self, pk: &'a SP1ProvingKey, stdin: &'a SP1Stdin) -> EnvProveBuilder<'a> {
-        EnvProveBuilder {
-            prover: self.prover.as_ref(),
-            mode: SP1ProofMode::Core,
-            pk,
-            stdin: stdin.clone(),
-        }
-    }
-
-    /// Verifies that the given proof is valid and matches the given verification key produced by
-    /// [`Self::setup`].
-    ///
-    /// ### Examples
-    /// ```no_run
-    /// use sp1_sdk::{ProverClient, SP1Stdin};
-    ///
-    /// let elf = test_artifacts::FIBONACCI_ELF;
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::from_env();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run().unwrap();
-    /// client.verify(&proof, &vk).unwrap();
-    /// ```
-    pub fn verify(
-        &self,
-        proof: &SP1ProofWithPublicValues,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), SP1VerificationError> {
-        self.prover.verify(proof, vk)
-    }
-
-    /// Setup a program to be proven and verified by the SP1 RISC-V zkVM by computing the proving
-    /// and verifying keys.
-    #[must_use]
-    pub fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
-        self.prover.setup(elf)
-    }
-}
-
-impl Default for EnvProver {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Prover<CpuProverComponents> for EnvProver {
-    fn inner(&self) -> &SP1Prover<CpuProverComponents> {
-        self.prover.inner()
-    }
-
-    fn setup(&self, elf: &[u8]) -> (SP1ProvingKey, SP1VerifyingKey) {
-        self.prover.setup(elf)
-    }
-
-    fn prove(
-        &self,
-        pk: &SP1ProvingKey,
-        stdin: &SP1Stdin,
-        mode: SP1ProofMode,
-    ) -> Result<SP1ProofWithPublicValues> {
-        self.prover.prove(pk, stdin, mode)
-    }
-
-    fn verify(
-        &self,
-        bundle: &SP1ProofWithPublicValues,
-        vkey: &SP1VerifyingKey,
-    ) -> Result<(), SP1VerificationError> {
-        self.prover.verify(bundle, vkey)
+    fn prove<'a>(&'a self, pk: &'a Self::ProvingKey, stdin: SP1Stdin) -> Self::ProveRequest<'a> {
+        EnvProveRequest { base: BaseProveRequest::new(self, pk, stdin) }
     }
 }

@@ -11,21 +11,19 @@ use crate::{
     ExecutorConfig,
 };
 
+use sp1_primitives::consts::u64_to_u32;
+
 pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    arg2: u32,
-) -> Option<u32> {
+    arg1: u64,
+    arg2: u64,
+) -> Option<u64> {
     let clk = rt.clk;
     let x_ptr = arg1;
-    if x_ptr % 4 != 0 {
-        panic!();
-    }
+    assert!(x_ptr.is_multiple_of(8), "x_ptr must be 8-byte aligned");
     let y_ptr = arg2;
-    if y_ptr % 4 != 0 {
-        panic!();
-    }
+    assert!(y_ptr.is_multiple_of(8), "y_ptr must be 8-byte aligned");
 
     let num_words = <P as NumWords>::WordsCurvePoint::USIZE;
     let op = syscall_code.fp_op_map();
@@ -34,8 +32,10 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
     let (y_memory_records, y) = rt.mr_slice(y_ptr, num_words);
     rt.clk += 1;
 
-    let (ac0, ac1) = x.split_at(x.len() / 2);
-    let (bc0, bc1) = y.split_at(y.len() / 2);
+    let x_32 = u64_to_u32(&x);
+    let y_32 = u64_to_u32(&y);
+    let (ac0, ac1) = x_32.split_at(x_32.len() / 2);
+    let (bc0, bc1) = y_32.split_at(y_32.len() / 2);
 
     let ac0 = &BigUint::from_slice(ac0);
     let ac1 = &BigUint::from_slice(ac1);
@@ -51,13 +51,13 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
 
     // Each of c0 and c1 should use the same number of words.
     // This is regardless of how many u32 digits are required to express them.
-    let mut result = c0.to_u32_digits();
+    let mut result = c0.to_u64_digits();
     result.resize(num_words / 2, 0);
-    result.append(&mut c1.to_u32_digits());
+    result.append(&mut c1.to_u64_digits());
     result.resize(num_words, 0);
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let op = syscall_code.fp_op_map();
     let event = Fp2AddSubEvent {
         shard,
@@ -84,7 +84,7 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,
@@ -100,7 +100,7 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
             };
 
             let syscall_event =
-                rt.rt.syscall_event(clk, None, None, syscall_code, arg1, arg2, rt.next_pc);
+                rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);
             rt.add_precompile_event(
                 syscall_code_key,
                 syscall_event,

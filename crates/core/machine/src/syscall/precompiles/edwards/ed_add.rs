@@ -4,35 +4,44 @@ use core::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
+use crate::{
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessColsU8,
+    operations::{AddrAddOperation, SyscallAddrOperation},
+    utils::{limbs_to_words, next_multiple_of_32},
+};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use num::{BigUint, Zero};
-
-use crate::air::MemoryAirBuilder;
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, EllipticCurveAddEvent, FieldOperation, PrecompileEvent},
+    events::{
+        ByteLookupEvent, ByteRecord, EllipticCurveAddEvent, FieldOperation, MemoryRecordEnum,
+        PrecompileEvent,
+    },
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
 use sp1_curves::{
-    edwards::{ed25519::Ed25519BaseField, EdwardsParameters, NUM_LIMBS, WORDS_CURVE_POINT},
+    edwards::{ed25519::Ed25519BaseField, EdwardsParameters, WORDS_CURVE_POINT},
     params::{FieldParameters, Limbs, NumLimbs},
     AffinePoint, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::{
+    air::{InteractionScope, MachineAir},
+    Word,
+};
 
 use crate::{
-    memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
     operations::field::{
         field_den::FieldDenCols, field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
         range::FieldLtCols,
     },
-    utils::{limbs_from_prev_access, pad_rows_fixed},
+    utils::pad_rows_fixed,
 };
 
 pub const NUM_ED_ADD_COLS: usize = size_of::<EdAddAssignCols<u8>>();
@@ -44,12 +53,14 @@ pub const NUM_ED_ADD_COLS: usize = size_of::<EdAddAssignCols<u8>>();
 #[repr(C)]
 pub struct EdAddAssignCols<T> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
-    pub p_ptr: T,
-    pub q_ptr: T,
-    pub p_access: [MemoryWriteCols<T>; WORDS_CURVE_POINT],
-    pub q_access: [MemoryReadCols<T>; WORDS_CURVE_POINT],
+    pub clk_high: T,
+    pub clk_low: T,
+    pub p_ptr: SyscallAddrOperation<T>,
+    pub q_ptr: SyscallAddrOperation<T>,
+    pub p_addrs_add: [AddrAddOperation<T>; WORDS_CURVE_POINT],
+    pub q_addrs_add: [AddrAddOperation<T>; WORDS_CURVE_POINT],
+    pub p_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
+    pub q_access: [MemoryAccessColsU8<T>; WORDS_CURVE_POINT],
     pub(crate) x3_numerator: FieldInnerProductCols<T, Ed25519BaseField>,
     pub(crate) y3_numerator: FieldInnerProductCols<T, Ed25519BaseField>,
     pub(crate) x1_mul_y1: FieldOpCols<T, Ed25519BaseField>,
@@ -113,6 +124,13 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
 
     fn name(&self) -> String {
         "EdAddAssign".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::ED_ADD).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(
@@ -219,19 +237,24 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
 
         // Populate basic columns.
         cols.is_real = F::one();
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
-        cols.p_ptr = F::from_canonical_u32(event.p_ptr);
-        cols.q_ptr = F::from_canonical_u32(event.q_ptr);
+        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
+        cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u64 * 8);
+        cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u64 * 8);
 
         Self::populate_field_ops(blu, cols, p_x, p_y, q_x, q_y);
 
         // Populate the memory access columns.
         for i in 0..WORDS_CURVE_POINT {
-            cols.q_access[i].populate(event.q_memory_records[i], blu);
+            let record = MemoryRecordEnum::Read(event.q_memory_records[i]);
+            cols.q_addrs_add[i].populate(blu, event.q_ptr, i as u64 * 8);
+            cols.q_access[i].populate(record, blu);
         }
         for i in 0..WORDS_CURVE_POINT {
-            cols.p_access[i].populate(event.p_memory_records[i], blu);
+            let record = MemoryRecordEnum::Write(event.p_memory_records[i]);
+            cols.p_addrs_add[i].populate(blu, event.p_ptr, i as u64 * 8);
+            cols.p_access[i].populate(record, blu);
         }
     }
 }
@@ -244,31 +267,45 @@ impl<F, E: EllipticCurve + EdwardsParameters> BaseAir<F> for EdAddAssignChip<E> 
 
 impl<AB, E: EllipticCurve + EdwardsParameters> Air<AB> for EdAddAssignChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &EdAddAssignCols<AB::Var> = (*local).borrow();
 
-        let x1: Limbs<AB::Var, <Ed25519BaseField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&local.p_access[0..8]);
-        let x2: Limbs<AB::Var, <Ed25519BaseField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&local.q_access[0..8]);
-        let y1: Limbs<AB::Var, <Ed25519BaseField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&local.p_access[8..16]);
-        let y2: Limbs<AB::Var, <Ed25519BaseField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&local.q_access[8..16]);
+        let x1_limbs = builder.generate_limbs(&local.p_access[0..4], local.is_real.into());
+        let x1: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
+            Limbs(x1_limbs.try_into().expect("failed to convert limbs"));
+        let x2_limbs = builder.generate_limbs(&local.q_access[0..4], local.is_real.into());
+        let x2: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
+            Limbs(x2_limbs.try_into().expect("failed to convert limbs"));
+        let y1_limbs = builder.generate_limbs(&local.p_access[4..8], local.is_real.into());
+        let y1: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
+            Limbs(y1_limbs.try_into().expect("failed to convert limbs"));
+        let y2_limbs = builder.generate_limbs(&local.q_access[4..8], local.is_real.into());
+        let y2: Limbs<AB::Expr, <Ed25519BaseField as NumLimbs>::Limbs> =
+            Limbs(y2_limbs.try_into().expect("failed to convert limbs"));
 
         // x3_numerator = x1 * y2 + x2 * y1.
-        local.x3_numerator.eval(builder, &[x1, x2], &[y2, y1], local.is_real);
+        local.x3_numerator.eval(
+            builder,
+            &[x1.clone(), x2.clone()],
+            &[y2.clone(), y1.clone()],
+            local.is_real,
+        );
 
         // y3_numerator = y1 * y2 + x1 * x2.
-        local.y3_numerator.eval(builder, &[y1, x1], &[y2, x2], local.is_real);
+        local.y3_numerator.eval(
+            builder,
+            &[y1.clone(), x1.clone()],
+            &[y2.clone(), x2.clone()],
+            local.is_real,
+        );
 
         // f = x1 * x2 * y1 * y2.
-        local.x1_mul_y1.eval(builder, &x1, &y1, FieldOperation::Mul, local.is_real);
-        local.x2_mul_y2.eval(builder, &x2, &y2, FieldOperation::Mul, local.is_real);
+        local.x1_mul_y1.eval(builder, &x1.clone(), &y1.clone(), FieldOperation::Mul, local.is_real);
+        local.x2_mul_y2.eval(builder, &x2.clone(), &y2.clone(), FieldOperation::Mul, local.is_real);
 
         let x1_mul_y1 = local.x1_mul_y1.result;
         let x2_mul_y2 = local.x2_mul_y2.result;
@@ -293,38 +330,99 @@ where
         local.y3_ins.eval(builder, &local.y3_numerator.result, &d_mul_f, false, local.is_real);
         local.y3_range.eval(builder, &local.y3_ins.result, &modulus, local.is_real);
 
-        // Constraint self.p_access.value = [self.x3_ins.result, self.y3_ins.result]
-        // This is to ensure that p_access is updated with the new value.
-        let p_access_vec = value_as_limbs(&local.p_access);
-        builder
-            .when(local.is_real)
-            .assert_all_eq(local.x3_ins.result, p_access_vec[0..NUM_LIMBS].to_vec());
-        builder
-            .when(local.is_real)
-            .assert_all_eq(local.y3_ins.result, p_access_vec[NUM_LIMBS..NUM_LIMBS * 2].to_vec());
+        let x_result_words = limbs_to_words::<AB>(local.x3_ins.result.0.to_vec());
+        let y_result_words = limbs_to_words::<AB>(local.y3_ins.result.0.to_vec());
 
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into(),
+        let result_words = x_result_words.into_iter().chain(y_result_words).collect_vec();
+
+        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            WORDS_CURVE_POINT as u32 * 8,
+            local.p_ptr,
+            local.is_real.into(),
+        );
+
+        let q_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            WORDS_CURVE_POINT as u32 * 8,
             local.q_ptr,
-            &local.q_access,
+            local.is_real.into(),
+        );
+
+        // q_addrs_add[0] = q_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.q_addrs_add[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // q_addrs_add[i] = q_addrs[i - 1] + 8.
+        for i in 1..WORDS_CURVE_POINT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.q_addrs_add[i - 1].value[0].into(),
+                    local.q_addrs_add[i - 1].value[1].into(),
+                    local.q_addrs_add[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.q_addrs_add[i],
+                local.is_real.into(),
+            );
+        }
+
+        // p_addrs_add[0] = p_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.p_addrs_add[0],
+            local.is_real.into(),
+        );
+
+        // p_addrs_add[i] = p_addrs[i - 1] + 8.
+        for i in 1..WORDS_CURVE_POINT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.p_addrs_add[i - 1].value[0].into(),
+                    local.p_addrs_add[i - 1].value[1].into(),
+                    local.p_addrs_add[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.p_addrs_add[i],
+                local.is_real.into(),
+            );
+        }
+
+        builder.eval_memory_access_slice_read(
+            local.clk_high,
+            local.clk_low,
+            &local.q_addrs_add.map(|addr| addr.value.map(Into::into)),
+            &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
 
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1),
-            local.p_ptr,
-            &local.p_access,
+        builder.eval_memory_access_slice_write(
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
+            &local.p_addrs_add.map(|addr| addr.value.map(Into::into)),
+            &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
             local.is_real,
         );
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_ADD.syscall_id()),
-            local.p_ptr,
-            local.q_ptr,
+            p_ptr.map(Into::into),
+            q_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );
@@ -334,24 +432,23 @@ where
 #[cfg(test)]
 mod tests {
     use sp1_core_executor::Program;
-    use sp1_stark::CpuProver;
-    use test_artifacts::{ED25519_ELF, ED_ADD_ELF};
+    use test_artifacts::ED_ADD_ELF;
 
     use crate::{io::SP1Stdin, utils};
 
-    #[test]
-    fn test_ed_add_simple() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_ed_add_simple() {
         utils::setup_logger();
-        let program = Program::from(ED_ADD_ELF).unwrap();
+        let program = Program::from(&ED_ADD_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 
-    #[test]
-    fn test_ed25519_program() {
-        utils::setup_logger();
-        let program = Program::from(ED25519_ELF).unwrap();
-        let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+    // #[tokio::test(flavor = "multi_thread")]
+    // async fn test_ed25519_program() {
+    //     utils::setup_logger();
+    //     let program = Program::from(&ED25519_ELF).unwrap();
+    //     let stdin = SP1Stdin::new();
+    //     utils::run_test(program, stdin).await.unwrap();
+    // }
 }

@@ -1,9 +1,9 @@
 use crate::{
-    alu::{AddSubCols, BitwiseCols, LtCols, MulCols, ShiftLeftCols, ShiftRightCols},
+    alu::{BitwiseCols, LtCols, MulCols, ShiftLeftCols, ShiftRightCols},
     memory::{MemoryInitCols, SingleMemoryLocal},
     syscall::chip::SyscallCols,
 };
-use p3_baby_bear::BabyBear;
+use slop_baby_bear::BabyBear;
 
 use sp1_core_executor::events::{
     AluEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryReadRecord, MemoryRecordEnum,
@@ -12,7 +12,6 @@ use sp1_core_executor::events::{
 
 #[link(name = "sp1-core-machine-sys", kind = "static")]
 extern "C-unwind" {
-    pub fn add_sub_event_to_row_babybear(event: &AluEvent, cols: &mut AddSubCols<BabyBear>);
     pub fn mul_event_to_row_babybear(event: &AluEvent, cols: &mut MulCols<BabyBear>);
     pub fn bitwise_event_to_row_babybear(event: &AluEvent, cols: &mut BitwiseCols<BabyBear>);
     pub fn lt_event_to_row_babybear(event: &AluEvent, cols: &mut LtCols<BabyBear>);

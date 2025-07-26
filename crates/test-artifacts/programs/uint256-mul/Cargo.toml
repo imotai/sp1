@@ -7,6 +7,6 @@ publish = false
 [dependencies]
 rand = "0.8"
 num = { version = "0.4.1" }
-sp1-zkvm = { path = "../../../../crates/zkvm/entrypoint" }
+sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../../crates/zkvm/entrypoint64" }
 sp1-derive = { path = "../../../../crates/derive" }
 bytemuck = "1.15.0"

@@ -30,11 +30,13 @@ fn assert_docker() {
     }
 }
 
+#[allow(clippy::uninlined_format_args)]
 fn get_docker_image() -> String {
     std::env::var("SP1_GNARK_IMAGE")
         .unwrap_or_else(|_| format!("ghcr.io/succinctlabs/sp1-gnark:{SP1_CIRCUIT_VERSION}"))
 }
 
+#[allow(clippy::uninlined_format_args)]
 /// Calls `docker run` with the given arguments and bind mounts.
 ///
 /// Note: files created here by `call_docker` are read-only for after the process exits.
@@ -58,7 +60,11 @@ fn call_docker(args: &[&str], mounts: &[(&str, &str)]) -> Result<()> {
         tracing::error!("status: {:?}", result.status);
         tracing::error!("stderr: {:?}", stderr);
 
-        return Err(anyhow!("Docker command failed \n stdout: {:?}\n stderr: {:?}", stdout, stderr));
+        return Err(anyhow!(
+            "Docker command failed \n stdout: {:?}\n stderr: {:?}",
+            stdout,
+            stderr
+        ));
     }
     Ok(())
 }
@@ -121,6 +127,8 @@ fn verify(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
+    vk_root: &str,
 ) -> Result<()> {
     let mut proof_file = tempfile::NamedTempFile::new()?;
     proof_file.write_all(proof.as_bytes())?;
@@ -140,6 +148,8 @@ fn verify(
             "/proof",
             vkey_hash,
             committed_values_digest,
+            exit_code,
+            vk_root,
             "/output",
         ],
         &mounts,
@@ -157,8 +167,18 @@ pub fn verify_plonk_bn254(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
+    vk_root: &str,
 ) -> Result<()> {
-    verify(ProofSystem::Plonk, data_dir, proof, vkey_hash, committed_values_digest)
+    verify(
+        ProofSystem::Plonk,
+        data_dir,
+        proof,
+        vkey_hash,
+        committed_values_digest,
+        exit_code,
+        vk_root,
+    )
 }
 
 pub fn verify_groth16_bn254(
@@ -166,8 +186,18 @@ pub fn verify_groth16_bn254(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
+    vk_root: &str,
 ) -> Result<()> {
-    verify(ProofSystem::Groth16, data_dir, proof, vkey_hash, committed_values_digest)
+    verify(
+        ProofSystem::Groth16,
+        data_dir,
+        proof,
+        vkey_hash,
+        committed_values_digest,
+        exit_code,
+        vk_root,
+    )
 }
 
 fn test(system: ProofSystem, witness_json: &str, constraints_json: &str) -> Result<()> {

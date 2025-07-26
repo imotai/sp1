@@ -1,7 +1,7 @@
-use p3_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder, PairCol, VirtualPairCol};
-use p3_field::Field;
-use p3_matrix::dense::RowMajorMatrix;
-use p3_uni_stark::{Entry, SymbolicExpression, SymbolicVariable};
+use slop_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder, PairCol, VirtualPairCol};
+use slop_algebra::Field;
+use slop_matrix::dense::RowMajorMatrix;
+use slop_uni_stark::{Entry, SymbolicExpression, SymbolicVariable};
 
 use crate::{
     air::{AirInteraction, InteractionScope, MessageBuilder},
@@ -191,10 +191,10 @@ mod tests {
 
     use std::borrow::Borrow;
 
-    use p3_air::{Air, BaseAir};
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_matrix::Matrix;
+    use slop_air::{Air, BaseAir};
+    use slop_algebra::AbstractField;
+    use slop_baby_bear::BabyBear;
+    use slop_matrix::Matrix;
 
     use super::*;
     use crate::{air::SP1AirBuilder, lookup::InteractionKind};

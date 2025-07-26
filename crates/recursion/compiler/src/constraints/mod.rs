@@ -1,8 +1,8 @@
 pub mod opcodes;
 
 use core::fmt::Debug;
-use p3_field::{AbstractExtensionField, PrimeField};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, PrimeField};
 use std::marker::PhantomData;
 
 use self::opcodes::ConstraintOpcode;
@@ -23,6 +23,7 @@ pub struct ConstraintCompiler<C: Config> {
 }
 
 impl<C: Config + Debug> ConstraintCompiler<C> {
+    #[allow(clippy::uninlined_format_args)]
     /// Allocate a new variable name in the constraint system.
     pub fn alloc_id(&mut self) -> String {
         let id = self.allocator;
@@ -67,6 +68,7 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
         tmp_id
     }
 
+    #[allow(clippy::uninlined_format_args)]
     fn emit_inner(&mut self, constraints: &mut Vec<Constraint>, operations: Vec<DslIr<C>>) {
         for instruction in operations {
             match instruction {
@@ -376,6 +378,14 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
                     opcode: ConstraintOpcode::CommitCommitedValuesDigest,
                     args: vec![vec![a.id()]],
                 }),
+                DslIr::CircuitCommitExitCode(a) => constraints.push(Constraint {
+                    opcode: ConstraintOpcode::CommitExitCode,
+                    args: vec![vec![a.id()]],
+                }),
+                DslIr::CircuitCommitVkRoot(a) => constraints.push(Constraint {
+                    opcode: ConstraintOpcode::CommitVkRoot,
+                    args: vec![vec![a.id()]],
+                }),
                 DslIr::CircuitFelts2Ext(a, b) => constraints.push(Constraint {
                     opcode: ConstraintOpcode::CircuitFelts2Ext,
                     args: vec![
@@ -386,6 +396,11 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
                         vec![a[3].id()],
                     ],
                 }),
+                DslIr::EqEval(a, b, c) => constraints.push(Constraint {
+                    opcode: ConstraintOpcode::EqEval,
+                    args: vec![vec![c.id()], vec![a.id()], vec![b.id()]],
+                }),
+
                 // Ignore cycle tracker instruction.
                 // It currently serves as a marker for calculation at compile time.
                 DslIr::CycleTracker(_) => (),

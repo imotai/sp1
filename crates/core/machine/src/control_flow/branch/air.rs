@@ -1,15 +1,15 @@
 use std::borrow::Borrow;
 
-use p3_air::{Air, AirBuilder};
-use p3_field::AbstractField;
-use p3_matrix::Matrix;
-use sp1_core_executor::{Opcode, DEFAULT_PC_INC, UNUSED_PC};
-use sp1_stark::{
-    air::{BaseAirBuilder, SP1AirBuilder},
-    Word,
-};
+use slop_air::{Air, AirBuilder};
+use slop_algebra::{AbstractField, Field};
+use slop_matrix::Matrix;
 
-use crate::{air::WordAirBuilder, operations::BabyBearWordRangeChecker};
+use crate::{
+    adapter::{register::i_type::ITypeReader, state::CPUState},
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::{LtOperationSigned, LtOperationSignedInput},
+};
+use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
 
 use super::{BranchChip, BranchColumns};
 
@@ -18,12 +18,10 @@ use super::{BranchChip, BranchColumns};
 /// It does this in few parts:
 /// 1. It verifies that the next pc is correct based on the branching column.  That column is a
 ///    boolean that indicates whether the branch condition is true.
-/// 2. It verifies the correct value of branching based on the helper bool columns (a_eq_b, a_gt_b,
-///    a_lt_b).
-/// 3. It verifier the correct values of the helper bool columns based on op_a and op_b.
+/// 2. It verifies the correct value of branching based on the opcode and the comparison operation.
 impl<AB> Air<AB> for BranchChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     AB::Var: Sized,
 {
     #[inline(never)]
@@ -42,198 +40,118 @@ where
         builder.assert_bool(local.is_bge);
         builder.assert_bool(local.is_bltu);
         builder.assert_bool(local.is_bgeu);
-        let is_real = local.is_beq +
-            local.is_bne +
-            local.is_blt +
-            local.is_bge +
-            local.is_bltu +
-            local.is_bgeu;
+        let is_real = local.is_beq
+            + local.is_bne
+            + local.is_blt
+            + local.is_bge
+            + local.is_bltu
+            + local.is_bgeu;
         builder.assert_bool(is_real.clone());
 
-        let opcode = local.is_beq * Opcode::BEQ.as_field::<AB::F>() +
-            local.is_bne * Opcode::BNE.as_field::<AB::F>() +
-            local.is_blt * Opcode::BLT.as_field::<AB::F>() +
-            local.is_bge * Opcode::BGE.as_field::<AB::F>() +
-            local.is_bltu * Opcode::BLTU.as_field::<AB::F>() +
-            local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
+        let opcode = local.is_beq * Opcode::BEQ.as_field::<AB::F>()
+            + local.is_bne * Opcode::BNE.as_field::<AB::F>()
+            + local.is_blt * Opcode::BLT.as_field::<AB::F>()
+            + local.is_bge * Opcode::BGE.as_field::<AB::F>()
+            + local.is_bltu * Opcode::BLTU.as_field::<AB::F>()
+            + local.is_bgeu * Opcode::BGEU.as_field::<AB::F>();
 
-        // SAFETY: This checks the following.
-        // - `num_extra_cycles = 0`
-        // - `op_a_val` will be constrained in the CpuChip as `op_a_immutable = 1`
-        // - `op_a_immutable = 1`, as this is a branch instruction
-        // - `is_memory = 0`
-        // - `is_syscall = 0`
-        // - `is_halt = 0`
-        // `next_pc` still has to be constrained, and this is done below.
-        builder.receive_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.pc.reduce::<AB>(),
-            local.next_pc.reduce::<AB>(),
-            AB::Expr::zero(),
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_beq * AB::Expr::from_canonical_u8(Opcode::BEQ.funct3().unwrap())
+            + local.is_bne * AB::Expr::from_canonical_u8(Opcode::BNE.funct3().unwrap())
+            + local.is_blt * AB::Expr::from_canonical_u8(Opcode::BLT.funct3().unwrap())
+            + local.is_bge * AB::Expr::from_canonical_u8(Opcode::BGE.funct3().unwrap())
+            + local.is_bltu * AB::Expr::from_canonical_u8(Opcode::BLTU.funct3().unwrap())
+            + local.is_bgeu * AB::Expr::from_canonical_u8(Opcode::BGEU.funct3().unwrap());
+        let funct7 = local.is_beq * AB::Expr::from_canonical_u8(Opcode::BEQ.funct7().unwrap_or(0))
+            + local.is_bne * AB::Expr::from_canonical_u8(Opcode::BNE.funct7().unwrap_or(0))
+            + local.is_blt * AB::Expr::from_canonical_u8(Opcode::BLT.funct7().unwrap_or(0))
+            + local.is_bge * AB::Expr::from_canonical_u8(Opcode::BGE.funct7().unwrap_or(0))
+            + local.is_bltu * AB::Expr::from_canonical_u8(Opcode::BLTU.funct7().unwrap_or(0))
+            + local.is_bgeu * AB::Expr::from_canonical_u8(Opcode::BGEU.funct7().unwrap_or(0));
+        let base_opcode = local.is_beq * AB::Expr::from_canonical_u32(Opcode::BEQ.base_opcode().0)
+            + local.is_bne * AB::Expr::from_canonical_u32(Opcode::BNE.base_opcode().0)
+            + local.is_blt * AB::Expr::from_canonical_u32(Opcode::BLT.base_opcode().0)
+            + local.is_bge * AB::Expr::from_canonical_u32(Opcode::BGE.base_opcode().0)
+            + local.is_bltu * AB::Expr::from_canonical_u32(Opcode::BLTU.base_opcode().0)
+            + local.is_bgeu * AB::Expr::from_canonical_u32(Opcode::BGEU.base_opcode().0);
+
+        // Constrain the state of the CPU.
+        // The `next_pc` is constrained by the AIR.
+        // The clock is incremented by `8`.
+        CPUState::<AB::F>::eval(
+            builder,
+            local.state,
+            local.next_pc.map(Into::into),
+            AB::Expr::from_canonical_u32(CLK_INC),
+            is_real.clone(),
+        );
+
+        // Constrain the program and register reads.
+        ITypeReader::<AB::F>::eval_op_a_immutable(
+            builder,
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
+            local.state.pc,
             opcode,
-            local.op_a_value,
-            local.op_b_value,
-            local.op_c_value,
-            local.op_a_0,
-            AB::Expr::one(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
+            [base_opcode, funct3, funct7],
+            local.adapter,
             is_real.clone(),
         );
 
-        // Evaluate program counter constraints.
-        {
-            // Range check branch_cols.pc and branch_cols.next_pc.
-            // SAFETY: `is_real` is already checked to be boolean.
-            // The `BabyBearWordRangeChecker` assumes that the value is checked to be a valid word.
-            // This is done when the word form is relevant, i.e. when `pc` and `next_pc` are sent to
-            // the ADD ALU table. The ADD ALU table checks the inputs are valid words,
-            // when it invokes `AddOperation`.
-            BabyBearWordRangeChecker::<AB::F>::range_check(
-                builder,
-                local.pc,
-                local.pc_range_checker,
-                is_real.clone(),
-            );
-            BabyBearWordRangeChecker::<AB::F>::range_check(
-                builder,
-                local.next_pc,
-                local.next_pc_range_checker,
-                is_real.clone(),
-            );
-
-            // When we are branching, assert that local.next_pc <==> local.pc + c.
-            builder.send_instruction(
-                AB::Expr::zero(),
-                AB::Expr::zero(),
-                AB::Expr::from_canonical_u32(UNUSED_PC),
-                AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-                AB::Expr::zero(),
-                Opcode::ADD.as_field::<AB::F>(),
-                local.next_pc,
-                local.pc,
-                local.op_c_value,
-                AB::Expr::zero(),
-                AB::Expr::zero(),
-                AB::Expr::zero(),
-                AB::Expr::zero(),
-                AB::Expr::zero(),
-                local.is_branching,
-            );
-
-            // When we are not branching, assert that local.pc + 4 <==> next.pc.
-            builder.when(is_real.clone()).when(local.not_branching).assert_eq(
-                local.pc.reduce::<AB>() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-                local.next_pc.reduce::<AB>(),
-            );
-
-            // When local.not_branching is true, assert that local.is_real is true.
-            builder.when(local.not_branching).assert_one(is_real.clone());
-
-            // To prevent the ALU send above to be non-zero when the row is a padding row.
-            builder.when_not(is_real.clone()).assert_zero(local.is_branching);
-
-            // Assert that either we are branching or not branching when the instruction is a
-            // branch.
-            // The `next_pc` is constrained in both branching and not branching cases, so it is
-            // fully constrained.
-            builder.when(is_real.clone()).assert_one(local.is_branching + local.not_branching);
-            builder.when(is_real.clone()).assert_bool(local.is_branching);
-            builder.when(is_real.clone()).assert_bool(local.not_branching);
-        }
-
-        // Evaluate branching value constraints.
-        {
-            // When the opcode is BEQ and we are branching, assert that a_eq_b is true.
-            builder.when(local.is_beq * local.is_branching).assert_one(local.a_eq_b);
-
-            // When the opcode is BEQ and we are not branching, assert that either a_gt_b or a_lt_b
-            // is true.
-            builder
-                .when(local.is_beq)
-                .when_not(local.is_branching)
-                .assert_one(local.a_gt_b + local.a_lt_b);
-
-            // When the opcode is BNE and we are branching, assert that either a_gt_b or a_lt_b is
-            // true.
-            builder.when(local.is_bne * local.is_branching).assert_one(local.a_gt_b + local.a_lt_b);
-
-            // When the opcode is BNE and we are not branching, assert that a_eq_b is true.
-            builder.when(local.is_bne).when_not(local.is_branching).assert_one(local.a_eq_b);
-
-            // When the opcode is BLT or BLTU and we are branching, assert that a_lt_b is true.
-            builder
-                .when((local.is_blt + local.is_bltu) * local.is_branching)
-                .assert_one(local.a_lt_b);
-
-            // When the opcode is BLT or BLTU and we are not branching, assert that either a_eq_b
-            // or a_gt_b is true.
-            builder
-                .when(local.is_blt + local.is_bltu)
-                .when_not(local.is_branching)
-                .assert_one(local.a_eq_b + local.a_gt_b);
-
-            // When the opcode is BGE or BGEU and we are branching, assert that a_gt_b is true.
-            builder
-                .when((local.is_bge + local.is_bgeu) * local.is_branching)
-                .assert_one(local.a_gt_b + local.a_eq_b);
-
-            // When the opcode is BGE or BGEU and we are not branching, assert that either a_eq_b
-            // or a_lt_b is true.
-            builder
-                .when(local.is_bge + local.is_bgeu)
-                .when_not(local.is_branching)
-                .assert_one(local.a_lt_b);
-        }
-
-        // When it's a branch instruction and a_eq_b, assert that a == b.
-        builder
-            .when(is_real.clone() * local.a_eq_b)
-            .assert_word_eq(local.op_a_value, local.op_b_value);
-
-        // Calculate a_lt_b <==> a < b (using appropriate signedness).
-        // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
+        // // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
         let use_signed_comparison = local.is_blt + local.is_bge;
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            use_signed_comparison.clone() * Opcode::SLT.as_field::<AB::F>() +
-                (AB::Expr::one() - use_signed_comparison.clone()) *
-                    Opcode::SLTU.as_field::<AB::F>(),
-            Word::extend_var::<AB>(local.a_lt_b),
-            local.op_a_value,
-            local.op_b_value,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            is_real.clone(),
+        <LtOperationSigned<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            LtOperationSignedInput::<AB>::new(
+                local.adapter.prev_a().map(Into::into),
+                local.adapter.b().map(Into::into),
+                local.compare_operation,
+                use_signed_comparison.clone(),
+                is_real.clone(),
+            ),
         );
 
-        // Calculate a_gt_b <==> a > b (using appropriate signedness).
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            use_signed_comparison.clone() * Opcode::SLT.as_field::<AB::F>() +
-                (AB::Expr::one() - use_signed_comparison) * Opcode::SLTU.as_field::<AB::F>(),
-            Word::extend_var::<AB>(local.a_gt_b),
-            local.op_b_value,
-            local.op_a_value,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            is_real.clone(),
-        );
+        // From the `LtOperationSigned`, derive whether `a == b`, `a < b`, or `a > b`.
+        let is_eq = AB::Expr::one()
+            - (local.compare_operation.result.u16_flags[0]
+                + local.compare_operation.result.u16_flags[1]
+                + local.compare_operation.result.u16_flags[2]
+                + local.compare_operation.result.u16_flags[3]);
+        let is_less_than = local.compare_operation.result.u16_compare_operation.bit;
+
+        // Constrain the branching column with the comparison results and opcode flags.
+        let mut branching: AB::Expr = AB::Expr::zero();
+        branching = branching.clone() + local.is_beq * is_eq.clone();
+        branching = branching.clone() + local.is_bne * (AB::Expr::one() - is_eq);
+        branching =
+            branching.clone() + (local.is_bge + local.is_bgeu) * (AB::Expr::one() - is_less_than);
+        branching = branching.clone() + (local.is_blt + local.is_bltu) * is_less_than;
+
+        builder.assert_bool(local.is_branching);
+        builder.when(is_real.clone()).assert_eq(local.is_branching, branching.clone());
+
+        // Constrain the next_pc using the branching column.
+        // Show that if `is_branching` is true, then next_pc == pc + op_c
+        // Show that if `is_branching` is false, then next_pc == pc + 4
+        let base_inverse = AB::F::from_canonical_u32(1 << 16).inverse();
+        let mut carry = AB::Expr::zero();
+        for i in 0..4 {
+            let pc = if i < 3 { local.state.pc[i].into() } else { AB::Expr::zero() };
+            let next_pc = if i < 3 { local.next_pc[i].into() } else { AB::Expr::zero() };
+            carry = (carry.clone() + pc + local.adapter.c()[i] - next_pc) * base_inverse;
+            builder.when(local.is_branching).assert_bool(carry.clone());
+        }
+
+        let mut carry = AB::Expr::zero();
+        for i in 0..4 {
+            let pc = if i < 3 { local.state.pc[i].into() } else { AB::Expr::zero() };
+            let next_pc = if i < 3 { local.next_pc[i].into() } else { AB::Expr::zero() };
+            let increment =
+                if i == 0 { AB::Expr::from_canonical_u32(PC_INC) } else { AB::Expr::zero() };
+            carry = (carry.clone() + pc + increment - next_pc) * base_inverse;
+            builder.when(is_real.clone() - local.is_branching).assert_bool(carry.clone());
+        }
+
+        builder.slice_range_check_u16(&local.next_pc, is_real);
     }
 }

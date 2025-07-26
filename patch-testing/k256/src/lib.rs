@@ -1,3 +1,4 @@
+#[cfg(test)]
 use ecdsa_core::signature::SignerMut;
 
 #[sp1_test::sp1_test("k256_verify", gpu, prove)]

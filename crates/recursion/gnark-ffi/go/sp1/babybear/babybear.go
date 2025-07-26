@@ -62,6 +62,41 @@ func One() Variable {
 	}
 }
 
+func (p *Chip) CheckBool(a Variable) Variable {
+	p.api.AssertIsEqual(p.api.Mul(a.Value, a.Value), a.Value)
+	return Variable {
+		Value: a.Value, 
+		UpperBound: new(big.Int).SetUint64(1),
+	}
+}
+
+func (p *Chip) BabyBearRangeCheck(value frontend.Variable) {
+	new_result, new_err := p.api.Compiler().NewHint(SplitLimbsHint, 2, value)
+	if new_err != nil {
+		panic(new_err)
+	}
+
+	lowLimb := new_result[0]
+	highLimb := new_result[1]
+
+	if os.Getenv("GROTH16") != "1" {
+		p.RangeChecker.Check(highLimb, 4)
+		p.RangeChecker.Check(lowLimb, 27)
+	} else {
+		p.api.ToBinary(highLimb, 4)
+		p.api.ToBinary(lowLimb, 27)
+	}
+
+	shouldCheck := p.api.IsZero(p.api.Sub(highLimb, uint64(math.Pow(2, 4))-1))
+	p.api.AssertIsEqual(
+		p.api.Mul(
+			shouldCheck,
+			lowLimb,
+		),
+		frontend.Variable(0),
+	)
+}
+
 func NewFConst(value string) Variable {
 	int_value, success := new(big.Int).SetString(value, 10)
 	if !success {
@@ -76,7 +111,7 @@ func NewFConst(value string) Variable {
 func NewF(value string) Variable {
 	return Variable{
 		Value:      frontend.Variable(value),
-		UpperBound: new(big.Int).SetUint64(uint64(math.Pow(2, 32))),
+		UpperBound: modulus_sub_1,
 	}
 }
 
@@ -175,10 +210,11 @@ func (c *Chip) DivF(a, b Variable) Variable {
 	return c.MulF(a, bInv)
 }
 
-func (c *Chip) AssertIsEqualF(a, b Variable) {
+func (c *Chip) AssertIsEqualF(a, b Variable) (Variable, Variable) {
 	a2 := c.ReduceSlow(a)
 	b2 := c.ReduceSlow(b)
 	c.api.AssertIsEqual(a2.Value, b2.Value)
+	return a2, b2
 }
 
 func (c *Chip) AssertNotEqualF(a, b Variable) {
@@ -187,11 +223,12 @@ func (c *Chip) AssertNotEqualF(a, b Variable) {
 	c.api.AssertIsDifferent(a2.Value, b2.Value)
 }
 
-func (c *Chip) AssertIsEqualE(a, b ExtensionVariable) {
-	c.AssertIsEqualF(a.Value[0], b.Value[0])
-	c.AssertIsEqualF(a.Value[1], b.Value[1])
-	c.AssertIsEqualF(a.Value[2], b.Value[2])
-	c.AssertIsEqualF(a.Value[3], b.Value[3])
+func (c *Chip) AssertIsEqualE(a, b ExtensionVariable) (ExtensionVariable, ExtensionVariable) {
+	a0, b0 := c.AssertIsEqualF(a.Value[0], b.Value[0])
+	a1, b1 := c.AssertIsEqualF(a.Value[1], b.Value[1])
+	a2, b2 := c.AssertIsEqualF(a.Value[2], b.Value[2])
+	a3, b3 := c.AssertIsEqualF(a.Value[3], b.Value[3])
+	return ExtensionVariable{Value: [4]Variable{a0, a1, a2, a3}}, ExtensionVariable{Value: [4]Variable{b0, b1, b2, b3}}
 }
 
 func (c *Chip) SelectF(cond frontend.Variable, a, b Variable) Variable {

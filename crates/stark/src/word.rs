@@ -1,11 +1,14 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    fmt::Display,
+    ops::{Index, IndexMut},
+};
 
 use crate::air::SP1AirBuilder;
 use arrayref::array_ref;
 use itertools::Itertools;
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field};
 use serde::{Deserialize, Serialize};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
 use std::array::IntoIter;
@@ -51,14 +54,25 @@ impl<T: AbstractField> Word<T> {
 impl<F: Field> Word<F> {
     /// Converts a word to a u32.
     pub fn to_u32(&self) -> u32 {
-        u32::from_le_bytes(self.0.map(|x| x.to_string().parse::<u8>().unwrap()))
+        let low = self.0[0].to_string().parse::<u16>().unwrap();
+        let high = self.0[1].to_string().parse::<u16>().unwrap();
+        ((high as u32) << 16) | (low as u32)
+    }
+
+    /// Converts a word to a u64.
+    pub fn to_u64(&self) -> u64 {
+        let low = self.0[0].to_string().parse::<u16>().unwrap();
+        let mid_low = self.0[1].to_string().parse::<u16>().unwrap();
+        let mid_high = self.0[2].to_string().parse::<u16>().unwrap();
+        let high = self.0[3].to_string().parse::<u16>().unwrap();
+        ((high as u64) << 48) | ((mid_high as u64) << 32) | ((mid_low as u64) << 16) | (low as u64)
     }
 }
 
 impl<V: Copy> Word<V> {
     /// Reduces a word to a single variable.
     pub fn reduce<AB: AirBuilder<Var = V>>(&self) -> AB::Expr {
-        let base = [1, 1 << 8, 1 << 16, 1 << 24].map(AB::Expr::from_canonical_u32);
+        let base = [1, 1 << 16, 1 << 32, 1 << 48].map(AB::Expr::from_wrapped_u64);
         self.0.iter().enumerate().map(|(i, x)| base[i].clone() * *x).sum()
     }
 }
@@ -79,7 +93,23 @@ impl<T> IndexMut<usize> for Word<T> {
 
 impl<F: AbstractField> From<u32> for Word<F> {
     fn from(value: u32) -> Self {
-        Word(value.to_le_bytes().map(F::from_canonical_u8))
+        Word([
+            F::from_canonical_u16((value & 0xFFFF) as u16),
+            F::from_canonical_u16((value >> 16) as u16),
+            F::zero(),
+            F::zero(),
+        ])
+    }
+}
+
+impl<F: AbstractField> From<u64> for Word<F> {
+    fn from(value: u64) -> Self {
+        Word([
+            F::from_canonical_u16((value & 0xFFFF) as u16),
+            F::from_canonical_u16((value >> 16) as u16),
+            F::from_canonical_u16((value >> 32) as u16),
+            F::from_canonical_u16((value >> 48) as u16),
+        ])
     }
 }
 
@@ -97,5 +127,19 @@ impl<T: Clone> FromIterator<T> for Word<T> {
         let elements = iter.into_iter().take(WORD_SIZE).collect_vec();
 
         Word(array_ref![elements, 0, WORD_SIZE].clone())
+    }
+}
+
+impl<T: Display> Display for Word<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Word(")?;
+        for (i, value) in self.0.iter().enumerate() {
+            write!(f, "{value}")?;
+            if i < self.0.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, ")")?;
+        Ok(())
     }
 }

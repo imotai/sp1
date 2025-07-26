@@ -13,9 +13,9 @@ pub struct ShaExtendEvent {
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The pointer to the word.
-    pub w_ptr: u32,
+    pub w_ptr: u64,
     /// The memory reads of w[i-15].
     pub w_i_minus_15_reads: Vec<MemoryReadRecord>,
     /// The memory reads of w[i-2].

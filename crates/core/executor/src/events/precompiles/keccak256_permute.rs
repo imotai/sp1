@@ -15,7 +15,7 @@ pub struct KeccakPermuteEvent {
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The pre-state as a list of u64 words.
     pub pre_state: [u64; STATE_SIZE],
     /// The post-state as a list of u64 words.
@@ -25,7 +25,7 @@ pub struct KeccakPermuteEvent {
     /// The memory records for the post-state.
     pub state_write_records: Vec<MemoryWriteRecord>,
     /// The address of the state.
-    pub state_addr: u32,
+    pub state_addr: u64,
     /// The local memory access records.
     pub local_mem_access: Vec<MemoryLocalEvent>,
 }

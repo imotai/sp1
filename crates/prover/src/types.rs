@@ -1,42 +1,31 @@
-use std::{fs::File, path::Path};
-
+use crate::utils::words_to_bytes_be;
 use anyhow::Result;
 use clap::ValueEnum;
-use p3_baby_bear::BabyBear;
-use p3_bn254_fr::Bn254Fr;
-use p3_commit::{Pcs, TwoAdicMultiplicativeCoset};
-use p3_field::{AbstractField, PrimeField, PrimeField32, TwoAdicField};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sp1_core_machine::{io::SP1Stdin, reduce::SP1ReduceProof};
+use slop_algebra::{AbstractField, PrimeField, PrimeField32};
+use slop_baby_bear::BabyBear;
+use slop_bn254::Bn254Fr;
+use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::{io::SP1PublicValues, poseidon2_hash};
-
-use sp1_recursion_circuit::machine::{
-    SP1CompressWitnessValues, SP1DeferredWitnessValues, SP1RecursionWitnessValues,
+use sp1_recursion_circuit::{
+    machine::{
+        SP1CompressWithVKeyWitnessValues, SP1DeferredWitnessValues, SP1NormalizeWitnessValues,
+        SP1ShapedWitnessValues,
+    },
+    utils::babybears_to_bn254,
+    InnerSC,
 };
-
-use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
-
-use sp1_stark::{ShardProof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey, DIGEST_SIZE};
+pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
+use sp1_stark::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
+use std::{borrow::Borrow, fs::File, path::Path};
 use thiserror::Error;
 
-use crate::{
-    utils::{babybears_to_bn254, words_to_bytes_be},
-    CoreSC, InnerSC,
-};
-
-/// The information necessary to generate a proof for a given RISC-V program.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SP1ProvingKey {
-    pub pk: StarkProvingKey<CoreSC>,
-    pub elf: Vec<u8>,
-    /// Verifying key is also included as we need it for recursion
-    pub vk: SP1VerifyingKey,
-}
+use crate::CoreSC;
 
 /// The information necessary to verify a proof for a given RISC-V program.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SP1VerifyingKey {
-    pub vk: StarkVerifyingKey<CoreSC>,
+    pub vk: MachineVerifyingKey<CoreSC>,
 }
 
 /// A trait for keys that can be hashed into a digest.
@@ -75,6 +64,16 @@ pub trait HashableKey {
     fn hash_bytes(&self) -> [u8; DIGEST_SIZE * 4] {
         words_to_bytes_be(&self.hash_u32())
     }
+
+    /// Hash the key into a digest of u64 elements.
+    fn hash_u64(&self) -> [u64; DIGEST_SIZE / 2] {
+        self.hash_u32()
+            .chunks_exact(2)
+            .map(|chunk| chunk[0] as u64 | ((chunk[1] as u64) << 32))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
 }
 
 impl HashableKey for SP1VerifyingKey {
@@ -87,30 +86,21 @@ impl HashableKey for SP1VerifyingKey {
     }
 }
 
-impl<SC: StarkGenericConfig<Val = BabyBear, Domain = TwoAdicMultiplicativeCoset<BabyBear>>>
-    HashableKey for StarkVerifyingKey<SC>
+impl<C: MachineConfig<F = BabyBear>> HashableKey for MachineVerifyingKey<C>
 where
-    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: AsRef<[BabyBear; DIGEST_SIZE]>,
+    C::Commitment: Borrow<[BabyBear; DIGEST_SIZE]>,
 {
     fn hash_babybear(&self) -> [BabyBear; DIGEST_SIZE] {
-        let mut num_inputs = DIGEST_SIZE + 1 + 14 + (7 * self.chip_information.len());
-        for (name, _, _) in self.chip_information.iter() {
-            num_inputs += name.len();
-        }
+        let num_inputs = DIGEST_SIZE + 1 + 14;
         let mut inputs = Vec::with_capacity(num_inputs);
-        inputs.extend(self.commit.as_ref());
-        inputs.push(self.pc_start);
+        inputs.extend(self.preprocessed_commit.borrow());
+        inputs.extend(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
-        for (name, domain, dimension) in self.chip_information.iter() {
-            inputs.push(BabyBear::from_canonical_usize(domain.log_n));
-            let size = 1 << domain.log_n;
-            inputs.push(BabyBear::from_canonical_usize(size));
-            let g = BabyBear::two_adic_generator(domain.log_n);
-            inputs.push(domain.shift);
-            inputs.push(g);
-            inputs.push(BabyBear::from_canonical_usize(dimension.width));
-            inputs.push(BabyBear::from_canonical_usize(dimension.height));
+        for (name, ChipDimensions { height, num_polynomials: _ }) in
+            self.preprocessed_chip_information.iter()
+        {
+            inputs.push(*height);
             inputs.push(BabyBear::from_canonical_usize(name.len()));
             for byte in name.as_bytes() {
                 inputs.push(BabyBear::from_canonical_u8(*byte));
@@ -162,8 +152,8 @@ impl<P: std::fmt::Debug + Clone> std::fmt::Debug for SP1ProofWithMetadata<P> {
 /// A proof of an SP1 program without any wrapping.
 pub type SP1CoreProof = SP1ProofWithMetadata<SP1CoreProofData>;
 
-/// An SP1 proof that has been recursively reduced into a single proof. This proof can be verified
-/// within SP1 programs.
+/// An SP1 proof that has been recursively reduced into a single proof. This proof can be
+/// verified within SP1 programs.
 pub type SP1ReducedProof = SP1ProofWithMetadata<SP1ReducedProofData>;
 
 /// An SP1 proof that has been wrapped into a single PLONK proof and can be verified onchain.
@@ -193,21 +183,21 @@ pub enum SP1Bn254ProofData {
     Groth16(Groth16Bn254Proof),
 }
 
-impl SP1Bn254ProofData {
-    pub fn get_proof_system(&self) -> ProofSystem {
-        match self {
-            SP1Bn254ProofData::Plonk(_) => ProofSystem::Plonk,
-            SP1Bn254ProofData::Groth16(_) => ProofSystem::Groth16,
-        }
-    }
+// impl SP1Bn254ProofData {
+//     pub fn get_proof_system(&self) -> ProofSystem {
+//         match self {
+//             SP1Bn254ProofData::Plonk(_) => ProofSystem::Plonk,
+//             SP1Bn254ProofData::Groth16(_) => ProofSystem::Groth16,
+//         }
+//     }
 
-    pub fn get_raw_proof(&self) -> &str {
-        match self {
-            SP1Bn254ProofData::Plonk(proof) => &proof.raw_proof,
-            SP1Bn254ProofData::Groth16(proof) => &proof.raw_proof,
-        }
-    }
-}
+//     pub fn get_raw_proof(&self) -> &str {
+//         match self {
+//             SP1Bn254ProofData::Plonk(proof) => &proof.raw_proof,
+//             SP1Bn254ProofData::Groth16(proof) => &proof.raw_proof,
+//         }
+//     }
+// }
 
 /// The mode of the prover.
 #[derive(Debug, Default, Clone, ValueEnum, PartialEq, Eq)]
@@ -234,12 +224,12 @@ impl ProofSystem {
     }
 }
 
-/// A proof that can be reduced along with other proofs into one proof.
-#[derive(Serialize, Deserialize, Clone)]
-pub enum SP1ReduceProofWrapper {
-    Core(SP1ReduceProof<CoreSC>),
-    Recursive(SP1ReduceProof<InnerSC>),
-}
+// /// A proof that can be reduced along with other proofs into one proof.
+// #[derive(Serialize, Deserialize, Clone)]
+// pub enum SP1ReduceProofWrapper {
+//     Core(SP1ReduceProof<CoreSC>),
+//     Recursive(SP1ReduceProof<InnerSC>),
+// }
 
 #[derive(Error, Debug)]
 pub enum SP1RecursionProverError {
@@ -249,7 +239,9 @@ pub enum SP1RecursionProverError {
 
 #[allow(clippy::large_enum_variant)]
 pub enum SP1CircuitWitness {
-    Core(SP1RecursionWitnessValues<CoreSC>),
+    Core(SP1NormalizeWitnessValues<CoreSC>),
     Deferred(SP1DeferredWitnessValues<InnerSC>),
-    Compress(SP1CompressWitnessValues<InnerSC>),
+    Compress(SP1ShapedWitnessValues<InnerSC>),
+    Shrink(SP1CompressWithVKeyWitnessValues<InnerSC>),
+    Wrap(SP1CompressWithVKeyWitnessValues<InnerSC>),
 }

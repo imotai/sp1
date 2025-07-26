@@ -11,6 +11,16 @@ cd core
 cargo test
 ```
 
+### Code Formatting
+
+Before submitting any changes, ensure your code is properly formatted by running:
+
+```bash
+cargo +nightly fmt --all
+```
+
+This is enforced by CI and your PR will fail if the code is not properly formatted.
+
 ### Tips
 
 We recommend you install the [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension.

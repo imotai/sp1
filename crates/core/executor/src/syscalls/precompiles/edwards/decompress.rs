@@ -14,17 +14,18 @@ use crate::{
 pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
     rt: &mut SyscallContext<Ex>,
     syscall_code: SyscallCode,
-    arg1: u32,
-    sign: u32,
-) -> Option<u32> {
+    arg1: u64,
+    sign: u64,
+) -> Option<u64> {
     let start_clk = rt.clk;
     let slice_ptr = arg1;
-    assert!(slice_ptr % 4 == 0, "Pointer must be 4-byte aligned.");
+    assert!(slice_ptr.is_multiple_of(8), "slice_ptr must be 8-byte aligned.");
     assert!(sign <= 1, "Sign bit must be 0 or 1.");
 
     let (y_memory_records_vec, y_vec) =
-        rt.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u32), WORDS_FIELD_ELEMENT);
-    let y_memory_records: [MemoryReadRecord; 8] = y_memory_records_vec.try_into().unwrap();
+        rt.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u64), WORDS_FIELD_ELEMENT);
+    let y_memory_records: [MemoryReadRecord; WORDS_FIELD_ELEMENT] =
+        y_memory_records_vec.try_into().unwrap();
 
     let sign_bool = sign != 0;
 
@@ -43,13 +44,14 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
 
     let mut decompressed_x_bytes = decompressed.x.to_bytes_le();
     decompressed_x_bytes.resize(32, 0u8);
-    let decompressed_x_words: [u32; WORDS_FIELD_ELEMENT] = bytes_to_words_le(&decompressed_x_bytes);
+    let decompressed_x_words: [u64; WORDS_FIELD_ELEMENT] = bytes_to_words_le(&decompressed_x_bytes);
 
     // Write decompressed X into slice
     let x_memory_records_vec = rt.mw_slice(slice_ptr, &decompressed_x_words);
-    let x_memory_records: [MemoryWriteRecord; 8] = x_memory_records_vec.try_into().unwrap();
+    let x_memory_records: [MemoryWriteRecord; WORDS_FIELD_ELEMENT] =
+        x_memory_records_vec.try_into().unwrap();
 
-    let shard = rt.current_shard();
+    let shard = rt.shard().get();
     let event = EdDecompressEvent {
         shard,
         clk: start_clk,
@@ -62,7 +64,7 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
         local_mem_access: rt.postprocess(),
     };
     let syscall_event =
-        rt.rt.syscall_event(start_clk, None, None, syscall_code, arg1, sign, rt.next_pc);
+        rt.rt.syscall_event(start_clk, syscall_code, arg1, sign, false, rt.next_pc, rt.exit_code);
     rt.add_precompile_event(syscall_code, syscall_event, PrecompileEvent::EdDecompress(event));
     None
 }

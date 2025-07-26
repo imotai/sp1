@@ -1,32 +1,37 @@
+use crate::{
+    basefold::merkle_tree::MerkleProof,
+    hash::FieldHasher,
+    machine::{
+        MerkleProofVariable, SP1CompressWithVKeyWitnessValues, SP1CompressWithVKeyWitnessVariable,
+        SP1MerkleProofWitnessValues, SP1MerkleProofWitnessVariable, SP1ShapedWitnessVariable,
+    },
+};
+use slop_algebra::AbstractField;
+use slop_baby_bear::BabyBear;
+use slop_challenger::DuplexChallenger;
+use slop_jagged::JaggedConfig;
+use slop_merkle_tree::Perm;
+use slop_symmetric::Hash;
 use std::borrow::Borrow;
 
-use p3_baby_bear::BabyBear;
-use p3_challenger::DuplexChallenger;
-use p3_symmetric::Hash;
-
-use p3_field::AbstractField;
-use sp1_recursion_compiler::ir::Builder;
-use sp1_stark::{
-    baby_bear_poseidon2::BabyBearPoseidon2, Com, InnerChallenge, InnerPerm, InnerVal, OpeningProof,
-    StarkVerifyingKey, Word,
-};
-
-use sp1_recursion_compiler::ir::Felt;
-
-use crate::{
-    challenger::DuplexChallengerVariable,
-    hash::{FieldHasher, FieldHasherVariable},
-    merkle_tree::MerkleProof,
-    stark::MerkleProofVariable,
-    witness::{WitnessWriter, Witnessable},
-    BabyBearFriConfigVariable, CircuitConfig, TwoAdicPcsProofVariable, VerifyingKeyVariable,
-};
-
 use super::{
-    SP1CompressWitnessValues, SP1CompressWitnessVariable, SP1DeferredWitnessValues,
-    SP1DeferredWitnessVariable, SP1MerkleProofWitnessValues, SP1MerkleProofWitnessVariable,
-    SP1RecursionWitnessValues, SP1RecursionWitnessVariable,
+    InnerChallenge, InnerVal, SP1DeferredWitnessValues, SP1DeferredWitnessVariable,
+    SP1NormalizeWitnessValues, SP1RecursionWitnessVariable, SP1ShapedWitnessValues,
 };
+use crate::{
+    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
+    challenger::DuplexChallengerVariable,
+    hash::FieldHasherVariable,
+    jagged::RecursiveJaggedConfigImpl,
+    shard::{MachineVerifyingKeyVariable, ShardProofVariable},
+    witness::{WitnessWriter, Witnessable},
+    BabyBearFriConfigVariable, CircuitConfig, InnerSC,
+};
+use sp1_recursion_compiler::{
+    config::InnerConfig,
+    ir::{Builder, Felt},
+};
+use sp1_stark::{BabyBearPoseidon2, MachineVerifyingKey, ShardProof, Word};
 
 impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Word<T> {
     type WitnessVariable = Word<T::WitnessVariable>;
@@ -40,9 +45,9 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Word<T> {
     }
 }
 
-impl<C> Witnessable<C> for DuplexChallenger<InnerVal, InnerPerm, 16, 8>
+impl<C> Witnessable<C> for DuplexChallenger<<InnerSC as JaggedConfig>::F, Perm, 16, 8>
 where
-    C: CircuitConfig<F = InnerVal, EF = InnerChallenge>,
+    C: CircuitConfig<F = <InnerSC as JaggedConfig>::F, EF = <InnerSC as JaggedConfig>::EF>,
 {
     type WitnessVariable = DuplexChallengerVariable<C>;
 
@@ -62,7 +67,7 @@ where
 
 impl<C, F, W, const DIGEST_ELEMENTS: usize> Witnessable<C> for Hash<F, W, DIGEST_ELEMENTS>
 where
-    C: CircuitConfig<F = InnerVal, EF = InnerChallenge>,
+    C: CircuitConfig<F: Witnessable<C>, EF: Witnessable<C>>,
     W: Witnessable<C>,
 {
     type WitnessVariable = [W::WitnessVariable; DIGEST_ELEMENTS];
@@ -78,43 +83,20 @@ where
     }
 }
 
-impl<C: CircuitConfig<F = InnerVal, EF = InnerChallenge>, SC: BabyBearFriConfigVariable<C>>
-    Witnessable<C> for StarkVerifyingKey<SC>
-where
-    Com<SC>: Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
-    OpeningProof<SC>: Witnessable<C, WitnessVariable = TwoAdicPcsProofVariable<C, SC>>,
+pub type JC<C, SC> =
+    RecursiveJaggedConfigImpl<C, SC, RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>>;
+
+impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<BabyBearPoseidon2>
+//where
+// C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<InnerVal>>,
 {
-    type WitnessVariable = VerifyingKeyVariable<C, SC>;
+    type WitnessVariable = SP1RecursionWitnessVariable<
+        InnerConfig,
+        BabyBearPoseidon2,
+        JC<InnerConfig, BabyBearPoseidon2>,
+    >;
 
-    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let commitment = self.commit.read(builder);
-        let pc_start = self.pc_start.read(builder);
-        let initial_global_cumulative_sum = self.initial_global_cumulative_sum.read(builder);
-        let chip_information = self.chip_information.clone();
-        let chip_ordering = self.chip_ordering.clone();
-        VerifyingKeyVariable {
-            commitment,
-            pc_start,
-            initial_global_cumulative_sum,
-            chip_information,
-            chip_ordering,
-        }
-    }
-
-    fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        self.commit.write(witness);
-        self.pc_start.write(witness);
-        self.initial_global_cumulative_sum.write(witness);
-    }
-}
-
-impl<C> Witnessable<C> for SP1RecursionWitnessValues<BabyBearPoseidon2>
-where
-    C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<InnerVal>>,
-{
-    type WitnessVariable = SP1RecursionWitnessVariable<C, BabyBearPoseidon2>;
-
-    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+    fn read(&self, builder: &mut Builder<InnerConfig>) -> Self::WitnessVariable {
         let vk = self.vk.read(builder);
         let shard_proofs = self.shard_proofs.read(builder);
         let reconstruct_deferred_digest = self.reconstruct_deferred_digest.read(builder);
@@ -131,7 +113,7 @@ where
         }
     }
 
-    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+    fn write(&self, witness: &mut impl WitnessWriter<InnerConfig>) {
         self.vk.write(witness);
         self.shard_proofs.write(witness);
         self.reconstruct_deferred_digest.write(witness);
@@ -141,19 +123,23 @@ where
     }
 }
 
-impl<C: CircuitConfig<F = InnerVal, EF = InnerChallenge>, SC: BabyBearFriConfigVariable<C>>
-    Witnessable<C> for SP1CompressWitnessValues<SC>
+impl<
+        C: CircuitConfig<F = InnerVal, EF = InnerChallenge>,
+        SC: BabyBearFriConfigVariable<C> + Send + Sync,
+    > Witnessable<C> for SP1ShapedWitnessValues<SC>
 where
-    Com<SC>: Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
-    OpeningProof<SC>: Witnessable<C, WitnessVariable = TwoAdicPcsProofVariable<C, SC>>,
+    SC::Commitment:
+        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    MachineVerifyingKey<SC>: Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SC>>,
+    ShardProof<SC>: Witnessable<C, WitnessVariable = ShardProofVariable<C, SC, JC<C, SC>>>,
 {
-    type WitnessVariable = SP1CompressWitnessVariable<C, SC>;
+    type WitnessVariable = SP1ShapedWitnessVariable<C, SC, JC<C, SC>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let vks_and_proofs = self.vks_and_proofs.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
 
-        SP1CompressWitnessVariable { vks_and_proofs, is_complete }
+        SP1ShapedWitnessVariable { vks_and_proofs, is_complete }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
@@ -166,7 +152,8 @@ impl<C> Witnessable<C> for SP1DeferredWitnessValues<BabyBearPoseidon2>
 where
     C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<InnerVal>>,
 {
-    type WitnessVariable = SP1DeferredWitnessVariable<C, BabyBearPoseidon2>;
+    type WitnessVariable =
+        SP1DeferredWitnessVariable<C, BabyBearPoseidon2, JC<C, BabyBearPoseidon2>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let vks_and_proofs = self.vks_and_proofs.read(builder);
@@ -179,8 +166,9 @@ where
         let end_pc = self.end_pc.read(builder);
         let end_shard = self.end_shard.read(builder);
         let end_execution_shard = self.end_execution_shard.read(builder);
-        let init_addr_bits = self.init_addr_bits.read(builder);
-        let finalize_addr_bits = self.finalize_addr_bits.read(builder);
+        let end_timestamp = self.end_timestamp.read(builder);
+        let init_addr_word = self.init_addr_word.read(builder);
+        let finalize_addr_word = self.finalize_addr_word.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
 
         SP1DeferredWitnessVariable {
@@ -193,8 +181,9 @@ where
             end_pc,
             end_shard,
             end_execution_shard,
-            init_addr_bits,
-            finalize_addr_bits,
+            end_timestamp,
+            init_addr_word,
+            finalize_addr_word,
             is_complete,
         }
     }
@@ -209,8 +198,9 @@ where
         self.end_pc.write(witness);
         self.end_shard.write(witness);
         self.end_execution_shard.write(witness);
-        self.init_addr_bits.write(witness);
-        self.finalize_addr_bits.write(witness);
+        self.end_timestamp.write(witness);
+        self.init_addr_word.write(witness);
+        self.finalize_addr_word.write(witness);
         self.is_complete.write(witness);
     }
 }
@@ -228,6 +218,7 @@ where
             bits.push(index % 2 == 1);
             index >>= 1;
         }
+        bits.reverse();
         let index_bits = bits.read(builder);
         let path = self.path.read(builder);
 
@@ -236,9 +227,14 @@ where
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
         let mut index = self.index;
+        let mut bits: Vec<bool> = vec![];
         for _ in 0..self.path.len() {
-            (index % 2 == 1).write(witness);
+            bits.push(index % 2 == 1);
             index >>= 1;
+        }
+        bits.reverse();
+        for bit in bits.iter() {
+            bit.write(witness);
         }
         self.path.write(witness);
     }
@@ -265,5 +261,31 @@ where
         self.vk_merkle_proofs.write(witness);
         self.values.write(witness);
         self.root.write(witness);
+    }
+}
+
+impl<C: CircuitConfig<F = BabyBear, EF = InnerChallenge>, SC: BabyBearFriConfigVariable<C>>
+    Witnessable<C> for SP1CompressWithVKeyWitnessValues<SC>
+where
+    // This trait bound is redundant, but Rust-Analyzer is not able to infer it.
+    SC: FieldHasher<BabyBear>,
+    <SC as FieldHasher<BabyBear>>::Digest: Witnessable<C, WitnessVariable = SC::DigestVariable>,
+    SC::Commitment:
+        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    MachineVerifyingKey<SC>: Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SC>>,
+    ShardProof<SC>: Witnessable<C, WitnessVariable = ShardProofVariable<C, SC, JC<C, SC>>>,
+{
+    type WitnessVariable = SP1CompressWithVKeyWitnessVariable<C, SC, JC<C, SC>>;
+
+    fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
+        SP1CompressWithVKeyWitnessVariable {
+            compress_var: self.compress_val.read(builder),
+            merkle_var: self.merkle_val.read(builder),
+        }
+    }
+
+    fn write(&self, witness: &mut impl WitnessWriter<C>) {
+        self.compress_val.write(witness);
+        self.merkle_val.write(witness);
     }
 }

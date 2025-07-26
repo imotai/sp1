@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 use enum_map::EnumMap;
 use hashbrown::HashMap;
-use p3_field::PrimeField32;
+use slop_algebra::PrimeField32;
 
 use sp1_core_executor::{estimator::RecordEstimator, RiscvAirId};
 use sp1_core_machine::shape::{CoreShapeConfig, CoreShapeError, Shapeable, ShardKind};

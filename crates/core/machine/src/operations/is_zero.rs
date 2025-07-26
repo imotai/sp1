@@ -4,14 +4,27 @@
 //!
 //! The idea is that 1 - input * inverse is exactly the boolean value indicating whether the input
 //! is 0.
-use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use serde::{Deserialize, Serialize};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
 use sp1_stark::air::SP1AirBuilder;
 
-/// A set of columns needed to compute whether the given word is 0.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+use crate::air::SP1Operation;
+
+/// A set of columns needed to compute whether the given input is 0.
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct IsZeroOperation<T> {
     /// The inverse of the input.
@@ -22,11 +35,12 @@ pub struct IsZeroOperation<T> {
 }
 
 impl<F: Field> IsZeroOperation<F> {
-    pub fn populate(&mut self, a: u32) -> u32 {
-        self.populate_from_field_element(F::from_canonical_u32(a))
+    pub fn populate(&mut self, a: u64) -> u64 {
+        // TODO UNSOUND due to wrapping.
+        self.populate_from_field_element(F::from_wrapped_u64(a))
     }
 
-    pub fn populate_from_field_element(&mut self, a: F) -> u32 {
+    pub fn populate_from_field_element(&mut self, a: F) -> u64 {
         if a == F::zero() {
             self.inverse = F::zero();
             self.result = F::one();
@@ -36,16 +50,18 @@ impl<F: Field> IsZeroOperation<F> {
         }
         let prod = self.inverse * a;
         debug_assert!(prod == F::one() || prod == F::zero());
-        (a == F::zero()) as u32
+        (a == F::zero()) as u64
     }
 
-    pub fn eval<AB: SP1AirBuilder>(
+    /// Evaluate the `IsZeroOperation` on the given inputs.
+    /// If `is_real` is non-zero, it constrains that the result is `a == 0`.
+    fn eval_is_zero<AB: SP1AirBuilder>(
         builder: &mut AB,
         a: AB::Expr,
         cols: IsZeroOperation<AB::Var>,
         is_real: AB::Expr,
     ) {
-        let one: AB::Expr = AB::F::one().into();
+        let one: AB::Expr = AB::Expr::one();
 
         // 1. Input == 0 => is_zero = 1 regardless of the inverse.
         // 2. Input != 0
@@ -63,5 +79,21 @@ impl<F: Field> IsZeroOperation<F> {
 
         // If the result is 1, then the input is 0.
         builder.when(is_real.clone()).when(cols.result).assert_zero(a.clone());
+    }
+}
+
+#[derive(Clone, InputParams, InputExpr)]
+pub struct IsZeroOperationInput<AB: SP1AirBuilder> {
+    pub a: AB::Expr,
+    pub cols: IsZeroOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for IsZeroOperation<AB::F> {
+    type Input = IsZeroOperationInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) {
+        Self::eval_is_zero(builder, input.a, input.cols, input.is_real);
     }
 }

@@ -10,16 +10,18 @@ use super::MemoryRecordEnum;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AluEvent {
+    /// The clock cycle.
+    pub clk: u64,
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
-    pub a: u32,
+    pub a: u64,
     /// The second operand value.
-    pub b: u32,
+    pub b: u64,
     /// The third operand value.
-    pub c: u32,
+    pub c: u64,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
 }
@@ -27,8 +29,9 @@ pub struct AluEvent {
 impl AluEvent {
     /// Create a new [`AluEvent`].
     #[must_use]
-    pub fn new(pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
-        Self { pc, opcode, a, b, c, op_a_0 }
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(clk: u64, pc: u64, opcode: Opcode, a: u64, b: u64, c: u64, op_a_0: bool) -> Self {
+        Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }
 
@@ -41,17 +44,17 @@ pub struct MemInstrEvent {
     /// The shard.
     pub shard: u32,
     /// The clk.
-    pub clk: u32,
+    pub clk: u64,
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
-    pub a: u32,
+    pub a: u64,
     /// The second operand value.
-    pub b: u32,
+    pub b: u64,
     /// The third operand value.
-    pub c: u32,
+    pub c: u64,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
     /// The memory access record for memory operations.
@@ -64,12 +67,12 @@ impl MemInstrEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         shard: u32,
-        clk: u32,
-        pc: u32,
+        clk: u64,
+        pc: u64,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         op_a_0: bool,
         mem_access: MemoryRecordEnum,
     ) -> Self {
@@ -83,18 +86,20 @@ impl MemInstrEvent {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BranchEvent {
+    /// The clock cycle.
+    pub clk: u64,
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
     /// The next program counter.
-    pub next_pc: u32,
+    pub next_pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
-    pub a: u32,
+    pub a: u64,
     /// The second operand value.
-    pub b: u32,
+    pub b: u64,
     /// The third operand value.
-    pub c: u32,
+    pub c: u64,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
 }
@@ -104,15 +109,16 @@ impl BranchEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pc: u32,
-        next_pc: u32,
+        clk: u64,
+        pc: u64,
+        next_pc: u64,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         op_a_0: bool,
     ) -> Self {
-        Self { pc, next_pc, opcode, a, b, c, op_a_0 }
+        Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
 
@@ -122,18 +128,20 @@ impl BranchEvent {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct JumpEvent {
+    /// The clock cycle.
+    pub clk: u64,
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
     /// The next program counter.
-    pub next_pc: u32,
+    pub next_pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
-    pub a: u32,
+    pub a: u64,
     /// The second operand value.
-    pub b: u32,
+    pub b: u64,
     /// The third operand value.
-    pub c: u32,
+    pub c: u64,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
 }
@@ -143,41 +151,45 @@ impl JumpEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pc: u32,
-        next_pc: u32,
+        clk: u64,
+        pc: u64,
+        next_pc: u64,
         opcode: Opcode,
-        a: u32,
-        b: u32,
-        c: u32,
+        a: u64,
+        b: u64,
+        c: u64,
         op_a_0: bool,
     ) -> Self {
-        Self { pc, next_pc, opcode, a, b, c, op_a_0 }
+        Self { clk, pc, next_pc, opcode, a, b, c, op_a_0 }
     }
 }
-/// AUIPC Instruction Event.
+/// `UType` Instruction Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V AUIPC operation.
+/// This object encapsulated the information needed to prove a RISC-V AUIPC and LUI operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
-pub struct AUIPCEvent {
+pub struct UTypeEvent {
+    /// The clock cycle.
+    pub clk: u64,
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
     /// The opcode.
     pub opcode: Opcode,
     /// The first operand value.
-    pub a: u32,
+    pub a: u64,
     /// The second operand value.
-    pub b: u32,
+    pub b: u64,
     /// The third operand value.
-    pub c: u32,
+    pub c: u64,
     /// Whether the first operand is register 0.
     pub op_a_0: bool,
 }
 
-impl AUIPCEvent {
-    /// Create a new [`AUIPCEvent`].
+impl UTypeEvent {
+    /// Create a new [`UTypeEvent`].
     #[must_use]
-    pub fn new(pc: u32, opcode: Opcode, a: u32, b: u32, c: u32, op_a_0: bool) -> Self {
-        Self { pc, opcode, a, b, c, op_a_0 }
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(clk: u64, pc: u64, opcode: Opcode, a: u64, b: u64, c: u64, op_a_0: bool) -> Self {
+        Self { clk, pc, opcode, a, b, c, op_a_0 }
     }
 }

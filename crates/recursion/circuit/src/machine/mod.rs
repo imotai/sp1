@@ -19,3 +19,9 @@ pub use wrap::*;
 
 #[allow(unused_imports)]
 pub use witness::*;
+
+use crate::InnerSC;
+use slop_jagged::JaggedConfig;
+
+pub type InnerVal = <InnerSC as JaggedConfig>::F;
+pub type InnerChallenge = <InnerSC as JaggedConfig>::EF;

@@ -1,24 +1,24 @@
 use crate::{
-    memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::FieldOpCols,
+    memory::MemoryAccessColsU8,
+    operations::{field::field_op::FieldOpCols, AddrAddOperation},
 };
 
 use crate::{
-    air::MemoryAirBuilder,
-    operations::{field::range::FieldLtCols, IsZeroOperation},
+    air::SP1CoreAirBuilder,
+    operations::{field::range::FieldLtCols, IsZeroOperation, SyscallAddrOperation},
     utils::{
-        limbs_from_access, limbs_from_prev_access, pad_rows_fixed, words_to_bytes_le,
+        limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le,
         words_to_bytes_le_vec,
     },
 };
-
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteRecord, FieldOperation, PrecompileEvent},
+    events::{ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -27,9 +27,10 @@ use sp1_curves::{
     uint256::U256Field,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_primitives::polynomial::Polynomial;
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder},
-    MachineRecord,
+    air::{InteractionScope, MachineAir},
+    MachineRecord, Word,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -56,23 +57,26 @@ const WORDS_FIELD_ELEMENT: usize = WordsFieldElement::USIZE;
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct Uint256MulCols<T> {
-    /// The shard number of the syscall.
-    pub shard: T,
+    /// The high bits of the clk of the syscall.
+    pub clk_high: T,
 
-    /// The clock cycle of the syscall.
-    pub clk: T,
+    /// The low bits of the clk of the syscall.
+    pub clk_low: T,
 
     /// The pointer to the first input.
-    pub x_ptr: T,
+    pub x_ptr: SyscallAddrOperation<T>,
 
     /// The pointer to the second input, which contains the y value and the modulus.
-    pub y_ptr: T,
+    pub y_ptr: SyscallAddrOperation<T>,
+
+    pub x_addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+    pub y_and_modulus_addrs: [AddrAddOperation<T>; 2 * WORDS_FIELD_ELEMENT],
 
     // Memory columns.
     // x_memory is written to with the result, which is why it is of type MemoryWriteCols.
-    pub x_memory: GenericArray<MemoryWriteCols<T>, WordsFieldElement>,
-    pub y_memory: GenericArray<MemoryReadCols<T>, WordsFieldElement>,
-    pub modulus_memory: GenericArray<MemoryReadCols<T>, WordsFieldElement>,
+    pub x_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
+    pub y_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
+    pub modulus_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
 
     /// Columns for checking if modulus is zero. If it's zero, then use 2^256 as the effective
     /// modulus.
@@ -95,6 +99,13 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
 
     fn name(&self) -> String {
         "Uint256MulMod".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::UINT256_MUL).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(
@@ -129,25 +140,48 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
 
                         // Assign basic values to the columns.
                         cols.is_real = F::one();
-                        cols.shard = F::from_canonical_u32(event.shard);
-                        cols.clk = F::from_canonical_u32(event.clk);
-                        cols.x_ptr = F::from_canonical_u32(event.x_ptr);
-                        cols.y_ptr = F::from_canonical_u32(event.y_ptr);
+
+                        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+                        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+
+                        cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, 32);
+                        cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, 64);
+
+                        let modulus_ptr = event.y_ptr + WORDS_FIELD_ELEMENT as u64 * 8;
 
                         // Populate memory columns.
                         for i in 0..WORDS_FIELD_ELEMENT {
-                            cols.x_memory[i]
-                                .populate(event.x_memory_records[i], &mut new_byte_lookup_events);
-                            cols.y_memory[i]
-                                .populate(event.y_memory_records[i], &mut new_byte_lookup_events);
-                            cols.modulus_memory[i].populate(
-                                event.modulus_memory_records[i],
+                            let x_memory_record =
+                                MemoryRecordEnum::Write(event.x_memory_records[i]);
+                            let y_memory_record = MemoryRecordEnum::Read(event.y_memory_records[i]);
+                            let modulus_memory_record =
+                                MemoryRecordEnum::Read(event.modulus_memory_records[i]);
+                            cols.x_memory[i].populate(x_memory_record, &mut new_byte_lookup_events);
+                            cols.y_memory[i].populate(y_memory_record, &mut new_byte_lookup_events);
+                            cols.modulus_memory[i]
+                                .populate(modulus_memory_record, &mut new_byte_lookup_events);
+
+                            cols.x_addrs[i].populate(
                                 &mut new_byte_lookup_events,
+                                event.x_ptr,
+                                8 * i as u64,
+                            );
+
+                            cols.y_and_modulus_addrs[i].populate(
+                                &mut new_byte_lookup_events,
+                                event.y_ptr,
+                                8 * i as u64,
+                            );
+
+                            cols.y_and_modulus_addrs[i + WORDS_FIELD_ELEMENT].populate(
+                                &mut new_byte_lookup_events,
+                                modulus_ptr,
+                                8 * i as u64,
                             );
                         }
 
                         let modulus_bytes = words_to_bytes_le_vec(&event.modulus);
-                        let modulus_byte_sum = modulus_bytes.iter().map(|b| *b as u32).sum::<u32>();
+                        let modulus_byte_sum = modulus_bytes.iter().map(|b| *b as u64).sum::<u64>();
                         IsZeroOperation::populate(&mut cols.modulus_is_zero, modulus_byte_sum);
 
                         // Populate the output column.
@@ -226,7 +260,7 @@ impl<F> BaseAir<F> for Uint256MulChip {
 
 impl<AB> Air<AB> for Uint256MulChip
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <U256Field as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -236,21 +270,25 @@ where
 
         // We are computing (x * y) % modulus. The value of x is stored in the "prev_value" of
         // the x_memory, since we write to it later.
-        let x_limbs = limbs_from_prev_access(&local.x_memory);
-        let y_limbs = limbs_from_access(&local.y_memory);
-        let modulus_limbs = limbs_from_access(&local.modulus_memory);
+        let x_limb_vec = builder.generate_limbs(&local.x_memory, local.is_real.into());
+        let x_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(x_limb_vec.try_into().expect("failed to convert limbs"));
+        let y_limb_vec = builder.generate_limbs(&local.y_memory, local.is_real.into());
+        let y_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(y_limb_vec.try_into().expect("failed to convert limbs"));
+        let modulus_limb_vec = builder.generate_limbs(&local.modulus_memory, local.is_real.into());
+        let modulus_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
+            Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
 
-        // If the modulus is zero, then we don't perform the modulus operation.
-        // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum will
-        // not overflow because we are summing 32 bytes.
-        let modulus_byte_sum =
-            modulus_limbs.0.iter().fold(AB::Expr::zero(), |acc, &limb| acc + limb);
-        IsZeroOperation::<AB::F>::eval(
-            builder,
-            modulus_byte_sum,
-            local.modulus_is_zero,
-            local.is_real.into(),
-        );
+        // // If the modulus is zero, then we don't perform the modulus operation.
+        // // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum
+        // will // not overflow because we are summing 32 bytes.
+        // let modulus_byte_sum =
+        //     modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc +
+        // limb.clone()); IsZeroOperation::<AB::F>::eval(
+        //     builder,
+        //     (modulus_byte_sum, local.modulus_is_zero, local.is_real.into()),
+        // );
 
         // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.
         // Otherwise, we use the modulus passed in.
@@ -258,10 +296,10 @@ where
         let mut coeff_2_256 = Vec::new();
         coeff_2_256.resize(32, AB::Expr::zero());
         coeff_2_256.push(AB::Expr::one());
-        let modulus_polynomial: Polynomial<AB::Expr> = modulus_limbs.into();
-        let p_modulus: Polynomial<AB::Expr> = modulus_polynomial *
-            (AB::Expr::one() - modulus_is_zero.into()) +
-            Polynomial::from_coefficients(&coeff_2_256) * modulus_is_zero.into();
+        let modulus_polynomial: Polynomial<AB::Expr> = modulus_limbs.clone().into();
+        let p_modulus: Polynomial<AB::Expr> = modulus_polynomial
+            * (AB::Expr::one() - modulus_is_zero.into())
+            + Polynomial::from_coefficients(&coeff_2_256) * modulus_is_zero.into();
 
         // Evaluate the uint256 multiplication
         local.output.eval_with_modulus(
@@ -278,7 +316,7 @@ where
         local.output_range_check.eval(
             builder,
             &local.output.result,
-            &modulus_limbs,
+            &modulus_limbs.clone(),
             local.modulus_is_not_zero,
         );
         builder.assert_eq(
@@ -286,37 +324,95 @@ where
             local.is_real * (AB::Expr::one() - modulus_is_zero.into()),
         );
 
-        // Assert that the correct result is being written to x_memory.
-        builder
-            .when(local.is_real)
-            .assert_all_eq(local.output.result, value_as_limbs(&local.x_memory));
+        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
+
+        let x_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 32, local.x_ptr, local.is_real.into());
+        let y_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
+
+        // x_addrs[0] = x_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        let eight = AB::F::from_canonical_u32(8u32);
+        // x_addrs[i] = x_addrs[i - 1] + 8.
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // y_addrs[0] = y_ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.y_and_modulus_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_and_modulus_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.y_and_modulus_addrs[i - 1].value[0].into(),
+                    local.y_and_modulus_addrs[i - 1].value[1].into(),
+                    local.y_and_modulus_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.y_and_modulus_addrs[i],
+                local.is_real.into(),
+            );
+        }
 
         // Read and write x.
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into() + AB::Expr::one(),
-            local.x_ptr,
-            &local.x_memory,
+        builder.eval_memory_access_slice_write(
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
+            &local.x_addrs.map(|addr| addr.value.map(Into::into)),
+            &local.x_memory.iter().map(|access| access.memory_access).collect_vec(),
+            result_words,
             local.is_real,
         );
 
         // Evaluate the y_ptr memory access. We concatenate y and modulus into a single array since
         // we read it contiguously from the y_ptr memory location.
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into(),
-            local.y_ptr,
-            &[local.y_memory, local.modulus_memory].concat(),
+        builder.eval_memory_access_slice_read(
+            local.clk_high,
+            local.clk_low.into(),
+            &local.y_and_modulus_addrs.map(|addr| addr.value.map(Into::into)),
+            &[local.y_memory, local.modulus_memory]
+                .concat()
+                .iter()
+                .map(|access| access.memory_access)
+                .collect_vec(),
             local.is_real,
         );
 
         // Receive the arguments.
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low.into(),
             AB::F::from_canonical_u32(SyscallCode::UINT256_MUL.syscall_id()),
-            local.x_ptr,
-            local.y_ptr,
+            x_ptr.map(Into::into),
+            y_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

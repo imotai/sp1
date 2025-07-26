@@ -21,39 +21,28 @@
 #![warn(missing_docs)]
 
 pub mod air;
-mod bb31_poseidon2;
 mod chip;
-mod config;
 mod debug;
 mod folder;
+pub mod ir;
+mod logup_gkr;
 mod lookup;
 mod machine;
-mod opts;
-mod permutation;
-mod prover;
-mod quotient;
+pub mod prover;
 mod record;
 pub mod septic_curve;
 pub mod septic_digest;
 pub mod septic_extension;
 pub mod shape;
-mod types;
 mod util;
 mod verifier;
 mod word;
-
-pub use bb31_poseidon2::*;
 pub use chip::*;
-pub use config::*;
-pub use debug::*;
 pub use folder::*;
+pub use logup_gkr::*;
 pub use lookup::*;
 pub use machine::*;
-pub use opts::*;
-pub use permutation::*;
-pub use prover::*;
-pub use quotient::*;
 pub use record::*;
-pub use types::*;
+pub use util::*;
 pub use verifier::*;
 pub use word::*;

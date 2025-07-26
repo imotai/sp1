@@ -156,6 +156,19 @@ pub enum SyscallCode {
 
     /// Executes the `SECP256R1_DECOMPRESS` precompile.
     SECP256R1_DECOMPRESS = 0x00_00_01_2E,
+
+    /// Executes the `UINT256_ADD_CARRY` precompile.
+    UINT256_ADD_CARRY = 0x00_01_01_30,
+
+    /// Executes the `UINT256_MUL_CARRY` precompile.
+    UINT256_MUL_CARRY = 0x00_01_01_31,
+
+    /// Executes the `MPROTECT` syscall.
+    #[allow(clippy::mistyped_literal_suffixes)]
+    MPROTECT = 0x00_00_01_32,
+
+    /// Executes the `POSEIDON2` syscall.
+    POSEIDON2 = 0x00_00_01_33,
 }
 
 impl SyscallCode {
@@ -202,6 +215,11 @@ impl SyscallCode {
             0x00_01_01_2C => SyscallCode::SECP256R1_ADD,
             0x00_00_01_2D => SyscallCode::SECP256R1_DOUBLE,
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
+            0x00_01_01_30 => SyscallCode::UINT256_ADD_CARRY,
+            0x00_01_01_31 => SyscallCode::UINT256_MUL_CARRY,
+            #[allow(clippy::mistyped_literal_suffixes)]
+            0x00_00_01_32 => SyscallCode::MPROTECT,
+            0x00_00_01_33 => SyscallCode::POSEIDON2,
             _ => panic!("invalid syscall number: {value}"),
         }
     }
@@ -216,12 +234,6 @@ impl SyscallCode {
     #[must_use]
     pub fn should_send(self) -> u32 {
         (self as u32).to_le_bytes()[1].into()
-    }
-
-    /// Get the number of additional cycles the syscall uses.
-    #[must_use]
-    pub fn num_cycles(self) -> u32 {
-        (self as u32).to_le_bytes()[2].into()
     }
 
     /// Map a syscall to another one in order to coalesce their counts.
@@ -243,18 +255,28 @@ impl SyscallCode {
     #[must_use]
     pub fn fp_op_map(&self) -> FieldOperation {
         match self {
-            SyscallCode::BLS12381_FP_ADD |
-            SyscallCode::BLS12381_FP2_ADD |
-            SyscallCode::BN254_FP_ADD |
-            SyscallCode::BN254_FP2_ADD => FieldOperation::Add,
-            SyscallCode::BLS12381_FP_SUB |
-            SyscallCode::BLS12381_FP2_SUB |
-            SyscallCode::BN254_FP_SUB |
-            SyscallCode::BN254_FP2_SUB => FieldOperation::Sub,
-            SyscallCode::BLS12381_FP_MUL |
-            SyscallCode::BLS12381_FP2_MUL |
-            SyscallCode::BN254_FP_MUL |
-            SyscallCode::BN254_FP2_MUL => FieldOperation::Mul,
+            SyscallCode::BLS12381_FP_ADD
+            | SyscallCode::BLS12381_FP2_ADD
+            | SyscallCode::BN254_FP_ADD
+            | SyscallCode::BN254_FP2_ADD => FieldOperation::Add,
+            SyscallCode::BLS12381_FP_SUB
+            | SyscallCode::BLS12381_FP2_SUB
+            | SyscallCode::BN254_FP_SUB
+            | SyscallCode::BN254_FP2_SUB => FieldOperation::Sub,
+            SyscallCode::BLS12381_FP_MUL
+            | SyscallCode::BLS12381_FP2_MUL
+            | SyscallCode::BN254_FP_MUL
+            | SyscallCode::BN254_FP2_MUL => FieldOperation::Mul,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Map a syscall to a uint256 operation.
+    #[must_use]
+    pub fn uint256_op_map(&self) -> crate::events::Uint256Operation {
+        match self {
+            SyscallCode::UINT256_ADD_CARRY => crate::events::Uint256Operation::Add,
+            SyscallCode::UINT256_MUL_CARRY => crate::events::Uint256Operation::Mul,
             _ => unreachable!(),
         }
     }
@@ -278,9 +300,9 @@ impl SyscallCode {
             SyscallCode::U256XU2048_MUL => RiscvAirId::U256XU2048Mul,
             SyscallCode::BLS12381_ADD => RiscvAirId::Bls12381AddAssign,
             SyscallCode::BLS12381_DOUBLE => RiscvAirId::Bls12381DoubleAssign,
-            SyscallCode::BLS12381_FP_ADD |
-            SyscallCode::BLS12381_FP_SUB |
-            SyscallCode::BLS12381_FP_MUL => RiscvAirId::Bls12381FpOpAssign,
+            SyscallCode::BLS12381_FP_ADD
+            | SyscallCode::BLS12381_FP_SUB
+            | SyscallCode::BLS12381_FP_MUL => RiscvAirId::Bls12381FpOpAssign,
             SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
                 RiscvAirId::Bls12381Fp2AddSubAssign
             }
@@ -295,15 +317,20 @@ impl SyscallCode {
             SyscallCode::SECP256R1_ADD => RiscvAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RiscvAirId::Secp256r1DoubleAssign,
             SyscallCode::SECP256R1_DECOMPRESS => RiscvAirId::Secp256r1Decompress,
-            SyscallCode::HALT |
-            SyscallCode::WRITE |
-            SyscallCode::ENTER_UNCONSTRAINED |
-            SyscallCode::EXIT_UNCONSTRAINED |
-            SyscallCode::COMMIT |
-            SyscallCode::COMMIT_DEFERRED_PROOFS |
-            SyscallCode::VERIFY_SP1_PROOF |
-            SyscallCode::HINT_LEN |
-            SyscallCode::HINT_READ => return None,
+            SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => {
+                RiscvAirId::Uint256Ops
+            }
+            SyscallCode::MPROTECT => RiscvAirId::Mprotect,
+            SyscallCode::POSEIDON2 => RiscvAirId::Poseidon2,
+            SyscallCode::HALT
+            | SyscallCode::WRITE
+            | SyscallCode::ENTER_UNCONSTRAINED
+            | SyscallCode::EXIT_UNCONSTRAINED
+            | SyscallCode::COMMIT
+            | SyscallCode::COMMIT_DEFERRED_PROOFS
+            | SyscallCode::VERIFY_SP1_PROOF
+            | SyscallCode::HINT_LEN
+            | SyscallCode::HINT_READ => return None,
         })
     }
 }

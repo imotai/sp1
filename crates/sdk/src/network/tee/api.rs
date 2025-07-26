@@ -1,6 +1,7 @@
 use crate::{network::utils::sign_raw, SP1Stdin};
 use alloy_primitives::{Address, Signature as AlloySignature};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use k256::ecdsa::Signature;
 
@@ -10,7 +11,7 @@ pub struct TEERequest {
     /// The network request id.
     pub id: [u8; 32],
     /// The program to execute.
-    pub program: Vec<u8>,
+    pub program: Arc<Vec<u8>>,
     /// The cycle limit for the program.
     pub cycle_limit: u64,
     /// The stdin for the program.
@@ -24,7 +25,7 @@ impl TEERequest {
     pub(crate) fn new(
         signer: &k256::ecdsa::SigningKey,
         id: [u8; 32],
-        program: Vec<u8>,
+        program: Arc<Vec<u8>>,
         stdin: SP1Stdin,
         cycle_limit: u64,
     ) -> Self {

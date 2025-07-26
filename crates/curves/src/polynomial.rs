@@ -2,7 +2,7 @@ use core::fmt::Debug;
 use core::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 use itertools::Itertools;
-use p3_field::{AbstractExtensionField, AbstractField, Field};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 
 /// A polynomial represented as a vector of coefficients.
 #[derive(Debug, Clone)]

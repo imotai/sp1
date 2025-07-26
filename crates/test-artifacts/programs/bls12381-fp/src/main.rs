@@ -10,7 +10,7 @@ use sp1_zkvm::lib::{
 use num_bigint::BigUint;
 use rand::Rng;
 
-fn add(lhs: &[u32; 12], rhs: &[u32; 12]) -> [u32; 12] {
+fn add(lhs: &[u64; 6], rhs: &[u64; 6]) -> [u64; 6] {
     unsafe {
         let mut lhs_copy = *lhs;
         syscall_bls12381_fp_addmod(lhs_copy.as_mut_ptr(), rhs.as_ptr());
@@ -18,7 +18,7 @@ fn add(lhs: &[u32; 12], rhs: &[u32; 12]) -> [u32; 12] {
     }
 }
 
-fn sub(lhs: &[u32; 12], rhs: &[u32; 12]) -> [u32; 12] {
+fn sub(lhs: &[u64; 6], rhs: &[u64; 6]) -> [u64; 6] {
     unsafe {
         let mut lhs_copy = *lhs;
         syscall_bls12381_fp_submod(lhs_copy.as_mut_ptr(), rhs.as_ptr());
@@ -26,7 +26,7 @@ fn sub(lhs: &[u32; 12], rhs: &[u32; 12]) -> [u32; 12] {
     }
 }
 
-fn mul(lhs: &[u32; 12], rhs: &[u32; 12]) -> [u32; 12] {
+fn mul(lhs: &[u64; 6], rhs: &[u64; 6]) -> [u64; 6] {
     unsafe {
         let mut lhs_copy = *lhs;
         syscall_bls12381_fp_mulmod(lhs_copy.as_mut_ptr(), rhs.as_ptr());
@@ -34,33 +34,33 @@ fn mul(lhs: &[u32; 12], rhs: &[u32; 12]) -> [u32; 12] {
     }
 }
 
-fn random_u32_12() -> [u32; 12] {
+fn random_u32_12() -> [u64; 6] {
     let mut rng = rand::thread_rng();
-    let mut arr = [0u32; 12];
+    let mut arr = [0u64; 6];
     for item in arr.iter_mut() {
         *item = rng.gen();
     }
     arr
 }
 
-fn u32_12_to_biguint(arr: &[u32; 12]) -> BigUint {
+fn u32_12_to_biguint(arr: &[u64; 6]) -> BigUint {
     let mut bytes = [0u8; 48];
-    for i in 0..12 {
-        bytes[i * 4..(i + 1) * 4].copy_from_slice(&arr[i].to_le_bytes());
+    for i in 0..6 {
+        bytes[i * 8..(i + 1) * 8].copy_from_slice(&arr[i].to_le_bytes());
     }
     BigUint::from_bytes_le(&bytes)
 }
 
-fn reduce_modulo(arr: &[u32; 12], modulus: &BigUint) -> [u32; 12] {
+fn reduce_modulo(arr: &[u64; 6], modulus: &BigUint) -> [u64; 6] {
     let bigint = u32_12_to_biguint(arr);
     let reduced = bigint % modulus;
     let bytes = reduced.to_bytes_le();
-    let mut result = [0u32; 12];
-    for i in 0..12 {
-        if i * 4 < bytes.len() {
-            let mut slice = [0u8; 4];
-            slice.copy_from_slice(&bytes[i * 4..(i * 4 + 4).min(bytes.len())]);
-            result[i] = u32::from_le_bytes(slice);
+    let mut result = [0u64; 6];
+    for i in 0..6 {
+        if i * 8 < bytes.len() {
+            let mut slice = [0u8; 8];
+            slice.copy_from_slice(&bytes[i * 8..(i * 8 + 8).min(bytes.len())]);
+            result[i] = u64::from_le_bytes(slice);
         }
     }
     result
@@ -68,9 +68,9 @@ fn reduce_modulo(arr: &[u32; 12], modulus: &BigUint) -> [u32; 12] {
 
 pub fn main() {
     let modulus = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787").unwrap();
-    let zero: [u32; 12] = [0; 12];
+    let zero: [u64; 6] = [0; 6];
     let zero_bigint = BigUint::ZERO;
-    let one: [u32; 12] = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let one: [u64; 6] = [1, 0, 0, 0, 0, 0];
     let one_bigint = BigUint::from(1u32);
 
     for _ in 0..10 {

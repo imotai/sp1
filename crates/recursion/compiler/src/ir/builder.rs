@@ -1,6 +1,6 @@
 use std::{cell::UnsafeCell, ptr};
 
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 use sp1_primitives::types::RecursionProgramType;
 
 use super::{
@@ -31,12 +31,15 @@ pub struct Builder<C: Config> {
     pub(crate) p2_hash_num: Var<C::N>,
     pub(crate) debug: bool,
     pub(crate) is_sub_builder: bool,
+    pub poseidon2_constants: Vec<Ext<C::F, C::EF>>,
     pub program_type: RecursionProgramType,
 }
 
 impl<C: Config> Default for Builder<C> {
     fn default() -> Self {
-        Self::new(RecursionProgramType::Core)
+        let mut builder = Self::new(RecursionProgramType::Core);
+        C::initialize(&mut builder);
+        builder
     }
 }
 
@@ -69,6 +72,7 @@ impl<C: Config> Builder<C> {
             p2_hash_num: placeholder_p2_hash_num,
             debug: false,
             is_sub_builder: false,
+            poseidon2_constants: vec![],
             program_type,
         };
 
@@ -285,7 +289,7 @@ impl<C: Config> Builder<C> {
         &mut self,
         lhs: LhsExpr,
         rhs: RhsExpr,
-    ) -> IfBuilder<C> {
+    ) -> IfBuilder<'_, C> {
         IfBuilder { lhs: lhs.into(), rhs: rhs.into(), is_eq: true, builder: self }
     }
 
@@ -294,7 +298,7 @@ impl<C: Config> Builder<C> {
         &mut self,
         lhs: LhsExpr,
         rhs: RhsExpr,
-    ) -> IfBuilder<C> {
+    ) -> IfBuilder<'_, C> {
         IfBuilder { lhs: lhs.into(), rhs: rhs.into(), is_eq: false, builder: self }
     }
 
@@ -303,7 +307,7 @@ impl<C: Config> Builder<C> {
         &mut self,
         start: impl Into<Usize<C::N>>,
         end: impl Into<Usize<C::N>>,
-    ) -> RangeBuilder<C> {
+    ) -> RangeBuilder<'_, C> {
         RangeBuilder { start: start.into(), end: end.into(), builder: self, step_size: 1 }
     }
 
@@ -457,6 +461,14 @@ impl<C: Config> Builder<C> {
 
     pub fn commit_committed_values_digest_circuit(&mut self, var: Var<C::N>) {
         self.push_op(DslIr::CircuitCommitCommittedValuesDigest(var));
+    }
+
+    pub fn commit_exit_code_circuit(&mut self, var: Var<C::N>) {
+        self.push_op(DslIr::CircuitCommitExitCode(var));
+    }
+
+    pub fn commit_vk_root_circuit(&mut self, var: Var<C::N>) {
+        self.push_op(DslIr::CircuitCommitVkRoot(var));
     }
 
     pub fn reduce_e(&mut self, ext: Ext<C::F, C::EF>) {

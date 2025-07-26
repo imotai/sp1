@@ -13,11 +13,11 @@ pub struct ShaCompressEvent {
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The pointer to the word.
-    pub w_ptr: u32,
+    pub w_ptr: u64,
     /// The word as a list of words.
-    pub h_ptr: u32,
+    pub h_ptr: u64,
     /// The word as a list of words.
     pub w: Vec<u32>,
     /// The word as a list of words.

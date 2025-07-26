@@ -12,6 +12,7 @@ use tracing_subscriber::{
 
 static INIT: Once = Once::new();
 
+#[allow(clippy::uninlined_format_args)]
 /// A simple logger.
 ///
 /// Set the `RUST_LOG` environment variable to be set to `info` or `debug`.
@@ -20,11 +21,10 @@ pub fn setup_logger() {
         let env_filter = EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new("off"))
             .add_directive("hyper=off".parse().unwrap())
-            .add_directive("p3_keccak_air=off".parse().unwrap())
+            .add_directive("slop_keccak_air=off".parse().unwrap())
             .add_directive("p3_fri=off".parse().unwrap())
             .add_directive("p3_dft=off".parse().unwrap())
-            .add_directive("p3_challenger=off".parse().unwrap())
-            .add_directive("sp1_cuda=off".parse().unwrap());
+            .add_directive("p3_challenger=off".parse().unwrap());
 
         // if the RUST_LOGGER environment variable is set, use it to determine which logger to
         // configure (tracing_forest or tracing_subscriber)

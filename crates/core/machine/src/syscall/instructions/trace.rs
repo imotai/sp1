@@ -2,17 +2,18 @@ use std::borrow::BorrowMut;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_field::PrimeField32;
-use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
+use slop_algebra::PrimeField32;
+use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, SyscallEvent},
+    events::{ByteLookupEvent, ByteRecord, SyscallEvent},
     syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, RTypeRecord, HALT_PC,
 };
-use sp1_stark::air::MachineAir;
+use sp1_primitives::consts::u64_to_u16_limbs;
+use sp1_stark::{air::MachineAir, Word};
 
-use crate::utils::{next_power_of_two, zeroed_f_vec};
+use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
 use super::{
     columns::{SyscallInstrColumns, NUM_SYSCALL_INSTR_COLS},
@@ -28,15 +29,20 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
         "SyscallInstrs".to_string()
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.syscall_events.len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
         let chunk_size = std::cmp::max((input.syscall_events.len()) / num_cpus::get(), 1);
-        let nb_rows = input.syscall_events.len();
-        let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+        let padded_nb_rows = <SyscallInstrsChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_SYSCALL_INSTR_COLS);
 
         let blu_events = values
@@ -51,7 +57,9 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
 
                     if idx < input.syscall_events.len() {
                         let event = &input.syscall_events[idx];
-                        self.event_to_row(event, cols, &mut blu);
+                        self.event_to_row(&event.0, &event.1, cols, &mut blu);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu
@@ -77,25 +85,31 @@ impl SyscallInstrsChip {
     fn event_to_row<F: PrimeField32>(
         &self,
         event: &SyscallEvent,
+        record: &RTypeRecord,
         cols: &mut SyscallInstrColumns<F>,
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.pc = F::from_canonical_u32(event.pc);
-        cols.next_pc = F::from_canonical_u32(event.next_pc);
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
 
-        cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
-        cols.op_b_value = event.arg1.into();
-        cols.op_c_value = event.arg2.into();
+        cols.op_a_value = Word::from(record.a.value());
+        cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
+        blu.add_u16_range_checks(&u64_to_u16_limbs(record.a.value()));
+        let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
 
-        let syscall_id = cols.op_a_access.prev_value[0];
-        let num_cycles = cols.op_a_access.prev_value[2];
+        let syscall_id = a_prev_value[0];
 
-        cols.num_extra_cycles = num_cycles;
         cols.is_halt =
             F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
+
+        if cols.is_halt == F::one() {
+            cols.next_pc = [F::from_canonical_u64(HALT_PC), F::zero(), F::zero()];
+        } else {
+            cols.next_pc = [
+                F::from_canonical_u32(((event.pc & 0xFFFF) as u32) + 4),
+                F::from_canonical_u32(((event.pc >> 16) & 0xFFFF) as u32),
+                F::from_canonical_u32(((event.pc >> 32) & 0xFFFF) as u32),
+            ];
+        }
 
         // Populate `is_enter_unconstrained`.
         cols.is_enter_unconstrained.populate_from_field_element(
@@ -122,27 +136,28 @@ impl SyscallInstrsChip {
             syscall_id - F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()),
         );
 
-        // If the syscall is `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and
-        // digest word.
-        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) ||
-            syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
+        // For `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and digest word.
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
+            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
         {
-            let digest_idx = cols.op_b_value.to_u32() as usize;
+            let digest_idx = record.b.value() as usize;
             cols.index_bitmap[digest_idx] = F::one();
         }
 
-        // For halt and commit deferred proofs syscalls, we need to baby bear range check one of
-        // it's operands.
+        // If the syscall is `COMMIT`, set the expected public values digest and range check.
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) {
+            let digest_bytes = (record.c.value() as u32).to_le_bytes();
+            cols.expected_public_values_digest = digest_bytes.map(F::from_canonical_u8);
+            blu.add_u8_range_checks(&digest_bytes);
+        }
+
+        // Add the BabyBear range check of the operands.
         if cols.is_halt == F::one() {
-            cols.operand_to_check = event.arg1.into();
-            cols.operand_range_check_cols.populate(cols.operand_to_check, blu);
-            cols.ecall_range_check_operand = F::one();
+            cols.op_b_range_check.populate(Word::from(event.arg1), blu);
         }
 
         if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()) {
-            cols.operand_to_check = event.arg2.into();
-            cols.operand_range_check_cols.populate(cols.operand_to_check, blu);
-            cols.ecall_range_check_operand = F::one();
+            cols.op_c_range_check.populate(Word::from(event.arg2), blu);
         }
     }
 }

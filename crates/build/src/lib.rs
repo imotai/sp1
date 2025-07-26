@@ -1,17 +1,20 @@
 mod build;
 mod command;
 mod utils;
-use std::{collections::HashMap, fs::File, io::Read};
+
+use std::env;
 
 use build::build_program_internal;
 pub use build::{execute_build_program, generate_elf_paths};
 pub use command::TOOLCHAIN_NAME;
 
+pub use sp1_primitives::types::Elf;
+
 use clap::{Parser, ValueEnum};
-use sp1_prover::{components::CpuProverComponents, HashableKey, SP1Prover};
 
 const DEFAULT_DOCKER_TAG: &str = concat!("v", env!("CARGO_PKG_VERSION"));
-const BUILD_TARGET: &str = "riscv32im-succinct-zkvm-elf";
+pub const DEFAULT_TARGET: &str = "riscv32im-succinct-zkvm-elf";
+pub const DEFAULT_TARGET_64: &str = "riscv64im-succinct-zkvm-elf";
 const HELPER_TARGET_SUBDIR: &str = "elf-compilation";
 
 /// Controls the warning message verbosity in the build process.
@@ -83,6 +86,8 @@ pub struct BuildArgs {
     pub elf_name: Option<String>,
     #[arg(alias = "out-dir", long, action, help = "Copy the compiled ELF to this directory")]
     pub output_directory: Option<String>,
+    #[arg(long, help = "The target to build for", default_value = DEFAULT_TARGET)]
+    pub build_target: String,
 
     #[arg(
         alias = "workspace-dir",
@@ -98,7 +103,19 @@ pub struct BuildArgs {
 
 // Implement default args to match clap defaults.
 impl Default for BuildArgs {
+    #[allow(clippy::uninlined_format_args)]
     fn default() -> Self {
+        let build_target = match env::var("SP1_BUILD_TARGET") {
+            Ok(target) if target == DEFAULT_TARGET || target == DEFAULT_TARGET_64 => target,
+            Ok(target) => panic!(
+                "SP1_BUILD_TARGET must be either '{}' or '{}', got '{}'",
+                DEFAULT_TARGET, DEFAULT_TARGET_64, target
+            ),
+            #[cfg(feature = "64bit")]
+            _ => DEFAULT_TARGET_64.to_string(),
+            #[cfg(not(feature = "64bit"))]
+            _ => DEFAULT_TARGET.to_string(),
+        };
         Self {
             docker: false,
             tag: DEFAULT_DOCKER_TAG.to_string(),
@@ -112,6 +129,7 @@ impl Default for BuildArgs {
             locked: false,
             no_default_features: false,
             workspace_directory: None,
+            build_target,
             warning_level: WarningLevel::All,
         }
     }
@@ -147,66 +165,66 @@ pub fn build_program_with_args(path: &str, args: BuildArgs) {
     build_program_internal(path, Some(args))
 }
 
-/// Returns the verification key for the provided program.
-///
-/// # Arguments
-///
-/// * `path` - A string slice that holds the path to the program directory.
-/// * `target_name` - A string slice that holds the binary target.
-///
-/// Note: If used in a script `build.rs`, this function should be called *after* [`build_program`]
-/// to returns the vkey corresponding to the latest program version which has just been compiled.
-pub fn vkey(path: &str, target_name: &str) -> String {
-    let program_dir = std::path::Path::new(path);
-    let metadata_file = program_dir.join("Cargo.toml");
-    let mut metadata_cmd = cargo_metadata::MetadataCommand::new();
-    let metadata = metadata_cmd.manifest_path(metadata_file).exec().unwrap();
-    let target_elf_paths =
-        generate_elf_paths(&metadata, None).expect("failed to collect target ELF paths");
-    let (_, path) =
-        target_elf_paths.iter().find(|(t, _)| t == target_name).expect("failed to find the target");
-    let prover = SP1Prover::<CpuProverComponents>::new();
-    let mut file = File::open(path).unwrap();
-    let mut elf = Vec::new();
+// /// Returns the verification key for the provided program.
+// ///
+// /// # Arguments
+// ///
+// /// * `path` - A string slice that holds the path to the program directory.
+// /// * `target_name` - A string slice that holds the binary target.
+// ///
+// /// Note: If used in a script `build.rs`, this function should be called *after*
+// [`build_program`] /// to returns the vkey corresponding to the latest program version which has
+// just been compiled. pub async fn vkey(path: &str, target_name: &str) -> String {
+//     let program_dir = std::path::Path::new(path);
+//     let metadata_file = program_dir.join("Cargo.toml");
+//     let mut metadata_cmd = cargo_metadata::MetadataCommand::new();
+//     let metadata = metadata_cmd.manifest_path(metadata_file).exec().unwrap();
+//     let target_elf_paths =
+//         generate_elf_paths(&metadata, None).expect("failed to collect target ELF paths");
+//     let (_, path) =
+//         target_elf_paths.iter().find(|(t, _)| t == target_name).expect("failed to find the
+// target");     let prover = Local
+//     let mut file = File::open(path).unwrap();
+//     let mut elf = Vec::new();
 
-    file.read_to_end(&mut elf).unwrap();
-    let (_, _, _, vk) = prover.setup(&elf);
-    vk.bytes32()
-}
+//     file.read_to_end(&mut elf).unwrap();
+//     let (_, _, vk) = prover.core().setup(&elf).await;
+//     vk.bytes32()
+// }
 
-/// Returns the verification keys for the provided programs in a [`HashMap`] with the target names
-/// as keys and vkeys as values.
-///
-/// # Arguments
-///
-/// * `path` - A string slice that holds the path to the program directory.
-/// * `args` - A [`BuildArgs`] struct that contains various build configuration options.
-///
-/// Note: If used in a script `build.rs`, this function should be called *after* [`build_program`]
-/// to returns the vkey corresponding to the latest program version which has just been compiled.
-pub fn vkeys(path: &str, args: BuildArgs) -> HashMap<String, String> {
-    let program_dir = std::path::Path::new(path);
-    let metadata_file = program_dir.join("Cargo.toml");
-    let mut metadata_cmd = cargo_metadata::MetadataCommand::new();
-    let metadata = metadata_cmd.manifest_path(metadata_file).exec().unwrap();
-    let target_elf_paths =
-        generate_elf_paths(&metadata, Some(&args)).expect("failed to collect target ELF paths");
-    let prover = SP1Prover::<CpuProverComponents>::new();
+// /// Returns the verification keys for the provided programs in a [`HashMap`] with the target
+// names /// as keys and vkeys as values.
+// ///
+// /// # Arguments
+// ///
+// /// * `path` - A string slice that holds the path to the program directory.
+// /// * `args` - A [`BuildArgs`] struct that contains various build configuration options.
+// ///
+// /// Note: If used in a script `build.rs`, this function should be called *after*
+// [`build_program`] /// to returns the vkey corresponding to the latest program version which has
+// just been compiled. pub fn vkeys(path: &str, args: BuildArgs) -> HashMap<String, String> {
+//     let program_dir = std::path::Path::new(path);
+//     let metadata_file = program_dir.join("Cargo.toml");
+//     let mut metadata_cmd = cargo_metadata::MetadataCommand::new();
+//     let metadata = metadata_cmd.manifest_path(metadata_file).exec().unwrap();
+//     let target_elf_paths =
+//         generate_elf_paths(&metadata, Some(&args)).expect("failed to collect target ELF paths");
+//     let prover = SP1Prover::<CpuProverComponents>::new();
 
-    target_elf_paths
-        .into_iter()
-        .map(|(target_name, elf_path)| {
-            let mut file = File::open(elf_path).unwrap();
-            let mut elf = Vec::new();
-            file.read_to_end(&mut elf).unwrap();
+//     target_elf_paths
+//         .into_iter()
+//         .map(|(target_name, elf_path)| {
+//             let mut file = File::open(elf_path).unwrap();
+//             let mut elf = Vec::new();
+//             file.read_to_end(&mut elf).unwrap();
 
-            let (_, _, _, vk) = prover.setup(&elf);
-            let vk = vk.bytes32();
+//             let (_, _, _, vk) = prover.setup(&elf);
+//             let vk = vk.bytes32();
 
-            (target_name, vk)
-        })
-        .collect()
-}
+//             (target_name, vk)
+//         })
+//         .collect()
+// }
 
 /// Returns the raw ELF bytes by the zkVM program target name.
 ///
@@ -218,8 +236,17 @@ pub fn vkeys(path: &str, args: BuildArgs) -> HashMap<String, String> {
 /// file at `src/bin/my_entry.rs` would result in the program target being named `my_entry`, in
 /// which case the invocation should be `include_elf!("my_entry")` instead.
 #[macro_export]
+#[cfg(feature = "64bit")]
 macro_rules! include_elf {
     ($arg:tt) => {{
-        include_bytes!(env!(concat!("SP1_ELF_", $arg)))
+        // TODO: --all-features forces this branch. feature flags may not be the right solution here
+        $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
+    }};
+}
+#[macro_export]
+#[cfg(not(feature = "64bit"))]
+macro_rules! include_elf {
+    ($arg:tt) => {{
+        $crate::Elf::Static(include_bytes!(env!(concat!("SP1_ELF_", $arg))))
     }};
 }

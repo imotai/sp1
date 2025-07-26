@@ -1,0 +1,50 @@
+[package]
+name = "sp1-recursion-machine"
+description = "SP1 is a performant, 100% open-source, contributor-friendly zkVM."
+readme = "../../../README.md"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+sp1-core-machine = { workspace = true }
+sp1-derive = { workspace = true }
+sp1-primitives = { workspace = true }
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
+sp1-stark = { workspace = true }
+
+
+slop-air = { workspace = true }
+slop-matrix = { workspace = true }
+slop-algebra = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-jagged = { workspace = true }
+slop-maybe-rayon = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-poseidon2 = { workspace = true }
+slop-symmetric = { workspace = true }
+itertools = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+rand = "0.8.5"
+zkhash = "0.2.0"
+
+
+[build-dependencies]
+rand = "0.8.5"
+sp1-stark = { workspace = true }
+sp1-primitives = { workspace = true }
+slop-baby-bear = { workspace = true }
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
+
+
+[dev-dependencies]
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
+
+[lints]
+workspace = true

@@ -2,10 +2,12 @@ mod ec;
 mod edwards;
 mod fptower;
 mod keccak256_permute;
+mod poseidon2;
 mod sha256_compress;
 mod sha256_extend;
 mod u256x2048_mul;
 mod uint256;
+mod uint256_ops;
 
 use super::{MemoryLocalEvent, SyscallEvent};
 use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, syscalls::SyscallCode};
@@ -14,13 +16,17 @@ pub use edwards::*;
 pub use fptower::*;
 use hashbrown::HashMap;
 pub use keccak256_permute::*;
+pub use poseidon2::*;
 use serde::{Deserialize, Serialize};
 pub use sha256_compress::*;
 pub use sha256_extend::*;
 use strum::{EnumIter, IntoEnumIterator};
 pub use u256x2048_mul::*;
 pub use uint256::*;
+pub use uint256_ops::*;
 
+// TODO: maybe Box one of the events?
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]
 /// Precompile event.  There should be one variant for every precompile syscall.
 pub enum PrecompileEvent {
@@ -72,8 +78,12 @@ pub enum PrecompileEvent {
     Bls12381Fp2Mul(Fp2MulEvent),
     /// Uint256 mul precompile event.
     Uint256Mul(Uint256MulEvent),
+    /// Uint256 ops precompile event.
+    Uint256Ops(Uint256OpsEvent),
     /// U256XU2048 mul precompile event.
     U256xU2048Mul(U256xU2048MulEvent),
+    /// POSEIDON2 precompile event.
+    POSEIDON2(Poseidon2PrecompileEvent),
 }
 
 /// Trait to retrieve all the local memory events from a vec of precompile events.
@@ -100,26 +110,29 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                 PrecompileEvent::EdDecompress(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::Secp256k1Add(e) |
-                PrecompileEvent::Secp256r1Add(e) |
-                PrecompileEvent::EdAdd(e) |
-                PrecompileEvent::Bn254Add(e) |
-                PrecompileEvent::Bls12381Add(e) => {
+                PrecompileEvent::Secp256k1Add(e)
+                | PrecompileEvent::Secp256r1Add(e)
+                | PrecompileEvent::EdAdd(e)
+                | PrecompileEvent::Bn254Add(e)
+                | PrecompileEvent::Bls12381Add(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::Secp256k1Double(e) |
-                PrecompileEvent::Secp256r1Double(e) |
-                PrecompileEvent::Bn254Double(e) |
-                PrecompileEvent::Bls12381Double(e) => {
+                PrecompileEvent::Secp256k1Double(e)
+                | PrecompileEvent::Secp256r1Double(e)
+                | PrecompileEvent::Bn254Double(e)
+                | PrecompileEvent::Bls12381Double(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::Secp256k1Decompress(e) |
-                PrecompileEvent::Secp256r1Decompress(e) |
-                PrecompileEvent::K256Decompress(e) |
-                PrecompileEvent::Bls12381Decompress(e) => {
+                PrecompileEvent::Secp256k1Decompress(e)
+                | PrecompileEvent::Secp256r1Decompress(e)
+                | PrecompileEvent::K256Decompress(e)
+                | PrecompileEvent::Bls12381Decompress(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Uint256Mul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::Uint256Ops(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::U256xU2048Mul(e) => {
@@ -132,6 +145,9 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Bls12381Fp2Mul(e) | PrecompileEvent::Bn254Fp2Mul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::POSEIDON2(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
             }

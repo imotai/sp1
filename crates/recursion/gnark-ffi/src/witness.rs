@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write};
 
-use p3_field::{AbstractExtensionField, AbstractField, PrimeField};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{AbstractExtensionField, AbstractField, PrimeField};
 use sp1_recursion_compiler::ir::{Config, Witness};
 
 /// A witness that can be used to initialize values for witness generation inside Gnark.
@@ -12,6 +12,8 @@ pub struct GnarkWitness {
     pub exts: Vec<Vec<String>>,
     pub vkey_hash: String,
     pub committed_values_digest: String,
+    pub exit_code: String,
+    pub vk_root: String,
 }
 
 impl GnarkWitness {
@@ -39,6 +41,8 @@ impl GnarkWitness {
                 .committed_values_digest
                 .as_canonical_biguint()
                 .to_string(),
+            exit_code: witness.exit_code.as_canonical_biguint().to_string(),
+            vk_root: witness.vk_root.as_canonical_biguint().to_string(),
         }
     }
 

@@ -41,7 +41,7 @@ contract SP1Verifier is Groth16Verifier, ISP1VerifierWithHash {
     function verifyProof(
         bytes32 programVKey,
         bytes calldata publicValues,
-        bytes calldata proofBytes
+        bytes calldata proofBytes,
     ) external view {
         bytes4 receivedSelector = bytes4(proofBytes[:4]);
         bytes4 expectedSelector = bytes4(VERIFIER_HASH());
@@ -50,10 +50,17 @@ contract SP1Verifier is Groth16Verifier, ISP1VerifierWithHash {
         }
 
         bytes32 publicValuesDigest = hashPublicValues(publicValues);
-        uint256[2] memory inputs;
+        (uint256 exitCode, uint256 vkRoot, uint256[8] memory proof) = abi.decode(proofBytes[4:], (uint256, uint256, uint256[8]));
+        
+        uint256[4] memory inputs;
         inputs[0] = uint256(programVKey);
         inputs[1] = uint256(publicValuesDigest);
-        uint256[8] memory proof = abi.decode(proofBytes[4:], (uint256[8]));
+        inputs[2] = exitCode;
+        inputs[3] = vkRoot;
+        if (exitCode != 0) {
+            revert InvalidProof();
+        }
+        // TODO: add the vkRoot check here.
         this.Verify(proof, inputs);
     }
 }

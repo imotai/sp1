@@ -14,29 +14,29 @@
 )]
 #![warn(unused_extern_crates)]
 
+pub mod adapter;
 pub mod air;
 pub mod alu;
 pub mod bytes;
 pub mod control_flow;
-pub mod cpu;
+pub mod executor;
 pub mod global;
 pub mod io;
 pub mod memory;
 pub mod operations;
 pub mod program;
+pub mod range;
 pub mod riscv;
-pub mod shape;
-#[cfg(feature = "sys")]
-pub mod sys;
 pub mod syscall;
 pub mod utils;
+pub mod utype;
 
-// Re-export the `SP1ReduceProof` struct from sp1_core_machine.
+// Re-export the `SP1RecursionProof` struct from sp1_core_machine.
 //
 // This is done to avoid a circular dependency between sp1_core_machine and sp1_core_executor, and
-// enable crates that depend on sp1_core_machine to import the `SP1ReduceProof` type directly.
-pub mod reduce {
-    pub use sp1_core_executor::SP1ReduceProof;
+// enable crates that depend on sp1_core_machine to import the `SP1RecursionProof` type directly.
+pub mod recursion {
+    pub use sp1_core_executor::SP1RecursionProof;
 }
 
 #[cfg(test)]
@@ -44,20 +44,21 @@ pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
     pub mod tests {
-        use sp1_core_executor::{Instruction, Opcode, Program};
+        use sp1_core_executor::{add_halt, Instruction, Opcode, Program};
 
         pub use test_artifacts::{
-            FIBONACCI_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF, SSZ_WITHDRAWALS_ELF,
-            U256XU2048_MUL_ELF,
+            FIBONACCI_ELF, KECCAK_PERMUTE_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF,
+            SSZ_WITHDRAWALS_ELF, U256XU2048_MUL_ELF,
         };
 
         #[must_use]
         pub fn simple_program() -> Program {
-            let instructions = vec![
-                Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-                Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
+            let mut instructions = vec![
+                Instruction::new(Opcode::ADDI, 29, 0, 5, false, true),
+                Instruction::new(Opcode::ADDI, 30, 0, 37, false, true),
                 Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
 
@@ -68,7 +69,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn fibonacci_program() -> Program {
-            Program::from(FIBONACCI_ELF).unwrap()
+            Program::from(&FIBONACCI_ELF).unwrap()
         }
 
         /// Get the secp256r1 add program.
@@ -78,7 +79,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn secp256r1_add_program() -> Program {
-            Program::from(SECP256R1_ADD_ELF).unwrap()
+            Program::from(&SECP256R1_ADD_ELF).unwrap()
         }
 
         /// Get the secp256r1 double program.
@@ -88,7 +89,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn secp256r1_double_program() -> Program {
-            Program::from(SECP256R1_DOUBLE_ELF).unwrap()
+            Program::from(&SECP256R1_DOUBLE_ELF).unwrap()
         }
 
         /// Get the u256x2048 mul program.
@@ -98,7 +99,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn u256xu2048_mul_program() -> Program {
-            Program::from(U256XU2048_MUL_ELF).unwrap()
+            Program::from(&U256XU2048_MUL_ELF).unwrap()
         }
 
         /// Get the SSZ withdrawals program.
@@ -108,7 +109,17 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn ssz_withdrawals_program() -> Program {
-            Program::from(SSZ_WITHDRAWALS_ELF).unwrap()
+            Program::from(&SSZ_WITHDRAWALS_ELF).unwrap()
+        }
+
+        /// Get the keccak permute program.
+        ///
+        /// # Panics
+        ///
+        /// This function will panic if the program fails to load.
+        #[must_use]
+        pub fn keccak_permute_program() -> Program {
+            Program::from(&KECCAK_PERMUTE_ELF).unwrap()
         }
 
         /// Get the panic program.
@@ -118,14 +129,14 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn panic_program() -> Program {
-            Program::from(PANIC_ELF).unwrap()
+            Program::from(&PANIC_ELF).unwrap()
         }
 
         #[must_use]
         #[allow(clippy::unreadable_literal)]
         pub fn simple_memory_program() -> Program {
             let instructions = vec![
-                Instruction::new(Opcode::ADD, 29, 0, 0x12348765, false, true),
+                Instruction::new(Opcode::ADDI, 29, 0, 0x12348765, false, true),
                 // SW and LW
                 Instruction::new(Opcode::SW, 29, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LW, 28, 0, 0x27654320, false, true),
@@ -144,7 +155,7 @@ pub mod programs {
                 Instruction::new(Opcode::LH, 19, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LH, 18, 0, 0x27654322, false, true),
                 // SB
-                Instruction::new(Opcode::ADD, 17, 0, 0x38276525, false, true),
+                Instruction::new(Opcode::ADDI, 17, 0, 0x38276525, false, true),
                 // Save the value 0x12348765 into address 0x43627530
                 Instruction::new(Opcode::SW, 29, 0, 0x43627530, false, true),
                 Instruction::new(Opcode::SB, 17, 0, 0x43627530, false, true),

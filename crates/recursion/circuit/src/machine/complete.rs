@@ -1,11 +1,11 @@
 use itertools::Itertools;
-use p3_baby_bear::BabyBear;
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
+use slop_baby_bear::BabyBear;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Config, Felt},
 };
-use sp1_recursion_core::air::RecursionPublicValues;
+use sp1_recursion_executor::RecursionPublicValues;
 
 /// Assertions on recursion public values which represent a complete proof.
 ///
@@ -18,22 +18,28 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
 ) {
     let RecursionPublicValues {
         deferred_proofs_digest,
+        prev_exit_code,
         next_pc,
         start_shard,
         next_shard,
+        initial_timestamp,
         start_execution_shard,
         start_reconstruct_deferred_digest,
         end_reconstruct_deferred_digest,
         global_cumulative_sum,
-        contains_execution_shard,
         ..
     } = public_values;
 
     // Assert that the `is_complete` flag is boolean.
     builder.assert_felt_eq(is_complete * (is_complete - C::F::one()), C::F::zero());
 
-    // Assert that `next_pc` is equal to zero (so program execution has completed)
-    builder.assert_felt_eq(is_complete * *next_pc, C::F::zero());
+    // Assert that `next_pc` is equal to one (so program execution has completed)
+    builder.assert_felt_eq(
+        is_complete * (next_pc[0] - C::F::from_canonical_u64(sp1_core_executor::HALT_PC)),
+        C::F::zero(),
+    );
+    builder.assert_felt_eq(is_complete * next_pc[1], C::F::zero());
+    builder.assert_felt_eq(is_complete * next_pc[2], C::F::zero());
 
     // Assert that start shard is equal to 1.
     builder.assert_felt_eq(is_complete * (*start_shard - C::F::one()), C::F::zero());
@@ -42,10 +48,18 @@ pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
     // shard that contains CPU.
     builder.assert_felt_ne(is_complete * *next_shard, C::F::one());
 
-    // Assert that that an execution shard is present.
-    builder.assert_felt_eq(is_complete * (*contains_execution_shard - C::F::one()), C::F::zero());
     // Assert that the start execution shard is equal to 1.
     builder.assert_felt_eq(is_complete * (*start_execution_shard - C::F::one()), C::F::zero());
+
+    // Assert that the initial timestamp is equal to 1.
+    for limb in initial_timestamp.iter().take(3) {
+        builder.assert_felt_eq(is_complete * *limb, C::F::zero());
+    }
+
+    builder.assert_felt_eq(is_complete * (initial_timestamp[3] - C::F::one()), C::F::zero());
+
+    // Assert that the starting prev_exit_code is equal to 0.
+    builder.assert_felt_eq(is_complete * *prev_exit_code, C::F::zero());
 
     // The start reconstruct deferred digest should be zero.
     for start_digest_word in start_reconstruct_deferred_digest {

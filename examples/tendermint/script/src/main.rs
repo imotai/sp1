@@ -1,7 +1,7 @@
-use sp1_sdk::{include_elf, SP1ProofWithPublicValues};
-use std::time::Duration;
+use sp1_sdk::prelude::*;
+use sp1_sdk::ProverClient;
 
-use sp1_sdk::{utils, ProverClient, SP1Stdin};
+use std::time::Duration;
 
 use tendermint_light_client_verifier::{
     options::Options, types::LightBlock, ProdVerifier, Verdict, Verifier,
@@ -9,7 +9,7 @@ use tendermint_light_client_verifier::{
 
 use crate::util::load_light_block;
 
-const TENDERMINT_ELF: &[u8] = include_elf!("tendermint-program");
+const TENDERMINT_ELF: Elf = include_elf!("tendermint-program");
 
 mod util;
 
@@ -19,9 +19,10 @@ fn get_light_blocks() -> (LightBlock, LightBlock) {
     (light_block_1, light_block_2)
 }
 
-pub fn main() {
+#[tokio::main]
+async fn main() {
     // Generate proof.
-    utils::setup_logger();
+    sp1_sdk::utils::setup_logger();
 
     // Load light blocks from the `files` subdirectory
     let (light_block_1, light_block_2) = get_light_blocks();
@@ -41,15 +42,15 @@ pub fn main() {
     // let encoded: Vec<u8> = bincode::serialize(&light_block_1).unwrap();
     // let decoded: LightBlock = bincode::deserialize(&encoded[..]).unwrap();
 
-    let client = ProverClient::from_env();
-    let (pk, vk) = client.setup(TENDERMINT_ELF);
+    let client = ProverClient::from_env().await;
+    let pk = client.setup(TENDERMINT_ELF).await.expect("setup failed");
 
-    client.execute(TENDERMINT_ELF, &stdin).run().expect("proving failed");
+    client.execute(TENDERMINT_ELF, stdin.clone()).await.expect("proving failed");
 
-    let proof = client.prove(&pk, &stdin).run().expect("proving failed");
+    let proof = client.prove(&pk, stdin).compressed().await.expect("proving failed");
 
     // Verify proof.
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key()).expect("verification failed");
 
     // Verify the public values
     let mut expected_public_values: Vec<u8> = Vec::new();
@@ -65,7 +66,7 @@ pub fn main() {
         SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
+    client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

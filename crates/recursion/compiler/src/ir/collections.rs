@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 
 use super::{Builder, Config, FromConstant, MemIndex, MemVariable, Ptr, Usize, Var, Variable};
 

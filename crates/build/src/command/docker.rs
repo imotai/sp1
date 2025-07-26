@@ -10,6 +10,7 @@ use crate::{BuildArgs, WarningLevel};
 
 use super::utils::{get_program_build_args, get_rust_compiler_flags};
 
+#[allow(clippy::uninlined_format_args)]
 /// Uses SP1_DOCKER_IMAGE environment variable if set, otherwise constructs the image to use based
 /// on the provided tag.
 fn get_docker_image(tag: &str) -> String {
@@ -19,6 +20,7 @@ fn get_docker_image(tag: &str) -> String {
     })
 }
 
+#[allow(clippy::uninlined_format_args)]
 /// Creates a Docker command to build the program.
 pub(crate) fn create_docker_command(
     args: &BuildArgs,

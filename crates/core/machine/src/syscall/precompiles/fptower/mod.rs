@@ -8,7 +8,6 @@ pub use fp2_mul::*;
 
 #[cfg(test)]
 mod tests {
-    use sp1_stark::CpuProver;
 
     use sp1_core_executor::Program;
     use test_artifacts::{
@@ -18,51 +17,51 @@ mod tests {
 
     use crate::{io::SP1Stdin, utils};
 
-    #[test]
-    fn test_bls12381_fp_ops() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bls12381_fp_ops() {
         utils::setup_logger();
-        let program = Program::from(BLS12381_FP_ELF).unwrap();
+        let program = Program::from(&BLS12381_FP_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 
-    #[test]
-    fn test_bls12381_fp2_addsub() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bls12381_fp2_addsub() {
         utils::setup_logger();
-        let program = Program::from(BLS12381_FP2_ADDSUB_ELF).unwrap();
+        let program = Program::from(&BLS12381_FP2_ADDSUB_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 
-    #[test]
-    fn test_bls12381_fp2_mul() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bls12381_fp2_mul() {
         utils::setup_logger();
-        let program = Program::from(BLS12381_FP2_MUL_ELF).unwrap();
+        let program = Program::from(&BLS12381_FP2_MUL_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 
-    #[test]
-    fn test_bn254_fp_ops() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bn254_fp_ops() {
         utils::setup_logger();
-        let program = Program::from(BN254_FP_ELF).unwrap();
+        let program = Program::from(&BN254_FP_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 
-    #[test]
-    fn test_bn254_fp2_addsub() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bn254_fp2_addsub() {
         utils::setup_logger();
-        let program = Program::from(BN254_FP2_ADDSUB_ELF).unwrap();
+        let program = Program::from(&BN254_FP2_ADDSUB_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 
-    #[test]
-    fn test_bn254_fp2_mul() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bn254_fp2_mul() {
         utils::setup_logger();
-        let program = Program::from(BN254_FP2_MUL_ELF).unwrap();
+        let program = Program::from(&BN254_FP2_MUL_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 }

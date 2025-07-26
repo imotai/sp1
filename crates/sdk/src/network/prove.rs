@@ -4,15 +4,12 @@
 
 use std::time::Duration;
 
-use alloy_primitives::{Address, B256};
+use alloy_primitives::Address;
 use anyhow::Result;
-use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::SP1ProvingKey;
 
-use crate::{
-    utils::{block_on, sp1_dump},
-    NetworkProver, SP1ProofMode, SP1ProofWithPublicValues,
-};
+use crate::prover::BaseProveRequest;
+
+use crate::{prover::ProveRequest, utils::sp1_dump, NetworkProver, SP1ProofWithPublicValues};
 
 use super::proto::types::FulfillmentStrategy;
 
@@ -23,10 +20,7 @@ use std::{
 
 /// A builder for creating a proof request to the network.
 pub struct NetworkProveBuilder<'a> {
-    pub(crate) prover: &'a NetworkProver,
-    pub(crate) mode: SP1ProofMode,
-    pub(crate) pk: &'a SP1ProvingKey,
-    pub(crate) stdin: SP1Stdin,
+    pub(crate) base: BaseProveRequest<'a, NetworkProver>,
     pub(crate) timeout: Option<Duration>,
     pub(crate) strategy: FulfillmentStrategy,
     pub(crate) skip_simulation: bool,
@@ -43,123 +37,6 @@ pub struct NetworkProveBuilder<'a> {
 }
 
 impl NetworkProveBuilder<'_> {
-    /// Set the proof kind to [`SP1ProofMode::Core`] mode.
-    ///
-    /// # Details
-    /// This is the default mode for the prover. The proofs grow linearly in size with the number
-    /// of cycles.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).core().run();
-    /// ```
-    #[must_use]
-    pub fn core(mut self) -> Self {
-        self.mode = SP1ProofMode::Core;
-        self
-    }
-
-    /// Set the proof kind to [`SP1ProofMode::Compressed`] mode.
-    ///
-    /// # Details
-    /// This mode produces a proof that is of constant size, regardless of the number of cycles. It
-    /// takes longer to prove than [`SP1ProofMode::Core`] due to the need to recursively aggregate
-    /// proofs into a single proof.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).compressed().run();
-    /// ```
-    #[must_use]
-    pub fn compressed(mut self) -> Self {
-        self.mode = SP1ProofMode::Compressed;
-        self
-    }
-
-    /// Set the proof mode to [`SP1ProofMode::Plonk`] mode.
-    ///
-    /// # Details
-    /// This mode produces a const size PLONK proof that can be verified on chain for roughly ~300k
-    /// gas. This mode is useful for producing a maximally small proof that can be verified on
-    /// chain. For more efficient SNARK wrapping, you can use the [`SP1ProofMode::Groth16`] mode but
-    /// this mode is more .
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).plonk().run();
-    /// ```
-    #[must_use]
-    pub fn plonk(mut self) -> Self {
-        self.mode = SP1ProofMode::Plonk;
-        self
-    }
-
-    /// Set the proof mode to [`SP1ProofMode::Groth16`] mode.
-    ///
-    /// # Details
-    /// This mode produces a Groth16 proof that can be verified on chain for roughly ~100k gas. This
-    /// mode is useful for producing a proof that can be verified on chain with minimal gas.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).groth16().run();
-    /// ```
-    #[must_use]
-    pub fn groth16(mut self) -> Self {
-        self.mode = SP1ProofMode::Groth16;
-        self
-    }
-
-    /// Set the proof mode to the given [`SP1ProofMode`].
-    ///
-    /// # Details
-    /// This method is useful for setting the proof mode to a custom mode.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1ProofMode, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).mode(SP1ProofMode::Groth16).run();
-    /// ```
-    #[must_use]
-    pub fn mode(mut self, mode: SP1ProofMode) -> Self {
-        self.mode = mode;
-        self
-    }
-
     /// Set the timeout for the proof's generation.
     ///
     /// # Details
@@ -175,8 +52,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).timeout(Duration::from_secs(60)).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).timeout(Duration::from_secs(60)).run().await;
     /// ```
     #[must_use]
     pub fn timeout(mut self, timeout: Duration) -> Self {
@@ -200,8 +77,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).skip_simulation(true).run();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let builder = client.prove(pk, stdin).skip_simulation(true).run();
     /// ```
     #[must_use]
     pub fn skip_simulation(mut self, skip_simulation: bool) -> Self {
@@ -222,8 +99,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).strategy(FulfillmentStrategy::Hosted).run().unwrap();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).strategy(FulfillmentStrategy::Hosted).run().unwrap();
     /// ```
     #[must_use]
     pub fn strategy(mut self, strategy: FulfillmentStrategy) -> Self {
@@ -250,9 +127,9 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
+    /// let (pk, vk) = client.setup(elf).await;
     /// let proof = client
-    ///     .prove(&pk, &stdin)
+    ///     .prove(pk, stdin)
     ///     .cycle_limit(1_000_000) // Set 1M cycle limit.
     ///     .skip_simulation(true) // Skip simulation since the limit is set manually.
     ///     .run()
@@ -375,216 +252,6 @@ impl NetworkProveBuilder<'_> {
         self
     }
 
-    /// Set the auctioneer for the proof request.
-    ///
-    /// # Details
-    /// Only the specified auctioneer will be able to manage the auction for this request. Only
-    /// relevant if the strategy is set to [`FulfillmentStrategy::Auction`].
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use alloy_primitives::Address;
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    /// use std::str::FromStr;
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let auctioneer = Address::from_str("0x0000000000000000000000000000000000000000").unwrap();
-    /// let builder = client.prove(&pk, &stdin).auctioneer(auctioneer).run();
-    /// ```
-    #[must_use]
-    pub fn auctioneer(mut self, auctioneer: Address) -> Self {
-        self.auctioneer = Some(auctioneer);
-        self
-    }
-
-    /// Set the executor for the proof request.
-    ///
-    /// # Details
-    /// Only the specified executor will be able to fulfill this request. This is useful for
-    /// whitelisting specific provers for private or prioritized jobs.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use alloy_primitives::Address;
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    /// use std::str::FromStr;
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let executor = Address::from_str("0x0000000000000000000000000000000000000000").unwrap();
-    /// let builder = client.prove(&pk, &stdin).executor(executor).run();
-    /// ```
-    #[must_use]
-    pub fn executor(mut self, executor: Address) -> Self {
-        self.executor = Some(executor);
-        self
-    }
-
-    /// Set the verifier for the proof request.
-    ///
-    /// # Details
-    /// Only the specified verifier will be able to verify the proof. Only relevant if the mode is
-    /// not [`SP1ProofMode::Compressed`], as this mode will be verified within the `VApp`.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use alloy_primitives::Address;
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    /// use std::str::FromStr;
-    /// ```
-    #[must_use]
-    pub fn verifier(mut self, verifier: Address) -> Self {
-        self.verifier = Some(verifier);
-        self
-    }
-
-    /// Sets the max price per PGU for the proof request.
-    ///
-    /// # Details
-    /// The max price per PGU (prover gas unit) creates a hard ceiling on variable costs, protecting
-    /// requesters from unexpected price escalation due to complex execution paths or resource
-    /// consumption. If the base fee is not provided, a default value will be used.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client
-    ///     .prove(&pk, &stdin)
-    ///     .max_price_per_pgu(1_000_000_000_000_000_000u64) // Set 1 PROVE (18 decimals).
-    ///     .run()
-    ///     .unwrap();
-    /// ```
-    #[must_use]
-    pub fn max_price_per_pgu(mut self, max_price_per_pgu: u64) -> Self {
-        self.max_price_per_pgu = Some(max_price_per_pgu);
-        self
-    }
-
-    /// Sets the auction timeout for the proof request.
-    ///
-    /// # Details
-    /// The auction timeout determines how long to wait for a prover to pick up the request when
-    /// it's in "requested" status. If no prover picks up the request within this timeout, the
-    /// request will be considered failed. Default is 30 seconds.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    /// use std::time::Duration;
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client
-    ///     .prove(&pk, &stdin)
-    ///     .auction_timeout(Duration::from_secs(60)) // Wait 60 seconds for a prover to pick up the request.
-    ///     .run()
-    ///     .unwrap();
-    /// ```
-    #[must_use]
-    pub fn auction_timeout(mut self, auction_timeout: Duration) -> Self {
-        self.auction_timeout = Some(auction_timeout);
-        self
-    }
-
-    /// Request a proof from the prover network.
-    ///
-    /// # Details
-    /// This method will request a proof from the prover network. If the prover fails to request
-    /// a proof, the method will return an error. It will not wait for the proof to be generated.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let request_id = client.prove(&pk, &stdin).request().unwrap();
-    /// ```
-    pub fn request(self) -> Result<B256> {
-        block_on(self.request_async())
-    }
-
-    /// Request a proof from the prover network asynchronously.
-    ///
-    /// # Details
-    /// This method will request a proof from the prover network asynchronously. If the prover fails
-    /// to request a proof, the method will return an error. It will not wait for the proof to be
-    /// generated.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// tokio_test::block_on(async {
-    ///     let elf = &[1, 2, 3];
-    ///     let stdin = SP1Stdin::new();
-    ///
-    ///     let client = ProverClient::builder().network().build();
-    ///     let (pk, vk) = client.setup(elf);
-    ///     let request_id = client.prove(&pk, &stdin).request_async().await.unwrap();
-    /// })
-    /// ```
-    pub async fn request_async(self) -> Result<B256> {
-        self.prover
-            .request_proof_impl(
-                self.pk,
-                &self.stdin,
-                self.mode,
-                self.strategy,
-                self.timeout,
-                self.skip_simulation,
-                self.cycle_limit,
-                self.gas_limit,
-                self.min_auction_period,
-                self.whitelist,
-                self.auctioneer,
-                self.executor,
-                self.verifier,
-                self.max_price_per_pgu,
-            )
-            .await
-    }
-
-    /// Run the prover with the built arguments.
-    ///
-    /// # Details
-    /// This method will run the prover with the built arguments. If the prover fails to run, the
-    /// method will return an error.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
-    ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
-    ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run().unwrap();
-    /// ```
-    pub fn run(self) -> Result<SP1ProofWithPublicValues> {
-        block_on(self.run_async())
-    }
-
     /// Run the prover with the built arguments asynchronously.
     ///
     /// # Details
@@ -598,8 +265,8 @@ impl NetworkProveBuilder<'_> {
     /// let stdin = SP1Stdin::new();
     ///
     /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client.prove(&pk, &stdin).run_async();
+    /// let (pk, vk) = client.setup(elf).await;
+    /// let proof = client.prove(pk, stdin).run_async();
     /// ```
     pub async fn run_async(mut self) -> Result<SP1ProofWithPublicValues> {
         // Check for deprecated environment variable
@@ -610,13 +277,14 @@ impl NetworkProveBuilder<'_> {
             self.skip_simulation = matches!(val.to_lowercase().as_str(), "true" | "1");
         }
 
-        sp1_dump(&self.pk.elf, &self.stdin);
+        sp1_dump(&self.base.pk.elf, &self.base.stdin);
 
-        self.prover
+        self.base
+            .prover
             .prove_impl(
-                self.pk,
-                &self.stdin,
-                self.mode,
+                self.base.pk,
+                self.base.stdin,
+                self.base.mode,
                 self.strategy,
                 self.timeout,
                 self.skip_simulation,
@@ -632,6 +300,17 @@ impl NetworkProveBuilder<'_> {
                 self.auction_timeout,
             )
             .await
+    }
+}
+
+impl<'a> ProveRequest<'a, NetworkProver> for NetworkProveBuilder<'a> {
+    fn base(&mut self) -> &mut BaseProveRequest<'a, NetworkProver> {
+        &mut self.base
+    }
+
+    fn cycle_limit(mut self, cycle_limit: u64) -> Self {
+        self.cycle_limit = Some(cycle_limit);
+        self
     }
 }
 

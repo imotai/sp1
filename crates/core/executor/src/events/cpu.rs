@@ -9,11 +9,11 @@ use super::memory::MemoryRecordEnum;
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct CpuEvent {
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
     /// The next program counter.
-    pub next_pc: u32,
+    pub next_pc: u64,
     /// The first operand.
     pub a: u32,
     /// The first operand memory record.

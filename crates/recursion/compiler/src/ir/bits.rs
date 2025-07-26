@@ -1,5 +1,5 @@
-use p3_field::{AbstractField, Field};
-use sp1_recursion_core::runtime::NUM_BITS;
+use slop_algebra::{AbstractField, Field};
+use sp1_recursion_executor::NUM_BITS;
 
 use super::{Array, Builder, Config, DslIr, Felt, Usize, Var};
 

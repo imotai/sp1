@@ -23,7 +23,7 @@ pub fn main() {
 
         // scalar.
         // 3
-        let scalar: [u32; 12] = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let scalar: [u64; 6] = [3, 0, 0, 0, 0, 0];
 
         println!("cycle-tracker-start: bn254_mul");
         a_point.mul_assign(&scalar);

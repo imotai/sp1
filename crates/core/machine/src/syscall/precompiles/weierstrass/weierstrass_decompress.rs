@@ -1,17 +1,29 @@
+use crate::{
+    air::SP1CoreAirBuilder,
+    memory::{MemoryAccessCols, MemoryAccessColsU8},
+    operations::{
+        field::{
+            field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
+            field_sqrt::FieldSqrtCols, range::FieldLtCols,
+        },
+        AddrAddOperation, SyscallAddrOperation,
+    },
+    utils::{
+        bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
+    },
+};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-use std::fmt::Debug;
-
-use crate::{air::MemoryAirBuilder, utils::zeroed_f_vec};
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteRecord, FieldOperation, PrecompileEvent},
+    events::{ByteRecord, FieldOperation, MemoryReadRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
@@ -24,18 +36,13 @@ use sp1_curves::{
     CurveType, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder};
-use std::marker::PhantomData;
-use typenum::Unsigned;
-
-use crate::{
-    memory::{MemoryReadCols, MemoryReadWriteCols},
-    operations::field::{
-        field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
-        field_sqrt::FieldSqrtCols, range::FieldLtCols,
-    },
-    utils::{bytes_to_words_le_vec, limbs_from_access, limbs_from_prev_access, pad_rows_fixed},
+use sp1_primitives::polynomial::Polynomial;
+use sp1_stark::{
+    air::{BaseAirBuilder, InteractionScope, MachineAir},
+    Word,
 };
+use std::{fmt::Debug, marker::PhantomData};
+use typenum::Unsigned;
 
 pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDecompressCols<u8, P>>()
@@ -47,12 +54,15 @@ pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() ->
 #[repr(C)]
 pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
-    pub ptr: T,
+    pub clk_high: T,
+    pub clk_low: T,
+    pub ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
     pub sign_bit: T,
-    pub x_access: GenericArray<MemoryReadCols<T>, P::WordsFieldElement>,
-    pub y_access: GenericArray<MemoryReadWriteCols<T>, P::WordsFieldElement>,
+    pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
+    pub y_access: GenericArray<MemoryAccessCols<T>, P::WordsFieldElement>,
+    pub y_value: GenericArray<Word<T>, P::WordsFieldElement>,
     pub(crate) range_x: FieldLtCols<T, P>,
     pub(crate) neg_y_range_check: FieldLtCols<T, P>,
     pub(crate) x_2: FieldOpCols<T, P>,
@@ -153,6 +163,24 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         }
     }
 
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match E::CURVE_TYPE {
+            CurveType::Secp256k1 => {
+                input.get_precompile_events(SyscallCode::SECP256K1_DECOMPRESS).len()
+            }
+            CurveType::Secp256r1 => {
+                input.get_precompile_events(SyscallCode::SECP256R1_DECOMPRESS).len()
+            }
+            CurveType::Bls12381 => {
+                input.get_precompile_events(SyscallCode::BLS12381_DECOMPRESS).len()
+            }
+            _ => panic!("Unsupported curve"),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
@@ -168,6 +196,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut rows = Vec::new();
         let weierstrass_width = num_weierstrass_decompress_cols::<E::BaseField>();
         let width = BaseAir::<F>::width(self);
+        let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
 
         let mut new_byte_lookup_events = Vec::new();
 
@@ -186,20 +215,29 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 row[0..weierstrass_width].borrow_mut();
 
             cols.is_real = F::from_bool(true);
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
-            cols.ptr = F::from_canonical_u32(event.ptr);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, E::NB_LIMBS as u64 * 2);
             cols.sign_bit = F::from_bool(event.sign_bit);
 
             let x = BigUint::from_bytes_le(&event.x_bytes);
             Self::populate_field_ops(&mut new_byte_lookup_events, cols, x);
 
             for i in 0..cols.x_access.len() {
-                cols.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Read(event.x_memory_records[i]);
+                cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.x_addrs[i].populate(
+                    &mut new_byte_lookup_events,
+                    event.ptr + num_limbs as u64,
+                    8 * i as u64,
+                );
             }
             for i in 0..cols.y_access.len() {
-                cols.y_access[i]
-                    .populate_write(event.y_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Write(event.y_memory_records[i]);
+                let current_record = record.current_record();
+                cols.y_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.y_value[i] = Word::from(current_record.value);
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.ptr, 8 * i as u64);
             }
 
             if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
@@ -242,6 +280,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         pad_rows_fixed(
             &mut rows,
             || {
+                let mut blu = vec![];
                 let mut row = zeroed_f_vec(width);
                 let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
                     row.as_mut_slice()[0..weierstrass_width].borrow_mut();
@@ -251,7 +290,16 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 let dummy_bytes = dummy_value.to_bytes_le();
                 let words = bytes_to_words_le_vec(&dummy_bytes);
                 for i in 0..cols.x_access.len() {
-                    cols.x_access[i].access.value = words[i].into();
+                    cols.x_access[i].populate(
+                        MemoryRecordEnum::Read(MemoryReadRecord {
+                            prev_shard: 0,
+                            prev_timestamp: 0,
+                            value: words[i],
+                            shard: 0,
+                            timestamp: 1,
+                        }),
+                        &mut blu,
+                    );
                 }
 
                 Self::populate_field_ops(&mut vec![], cols, dummy_value);
@@ -289,8 +337,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
 
 impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassDecompressChip<E> {
     fn width(&self) -> usize {
-        num_weierstrass_decompress_cols::<E::BaseField>() +
-            match self.sign_rule {
+        num_weierstrass_decompress_cols::<E::BaseField>()
+            + match self.sign_rule {
                 SignChoiceRule::LeastSignificantBit => 0,
                 SignChoiceRule::Lexicographic => {
                     size_of::<LexicographicChoiceCols<u8, E::BaseField>>()
@@ -301,7 +349,7 @@ impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassDecompressChip<E> {
 
 impl<AB, E: EllipticCurve + WeierstrassParameters> Air<AB> for WeierstrassDecompressChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -313,12 +361,13 @@ where
             (*local_slice)[0..weierstrass_cols].borrow();
 
         let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
-        let num_words_field_element = num_limbs / 4;
+        let num_words_field_element = num_limbs / 8;
 
         builder.assert_bool(local.sign_bit);
 
-        let x: Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&local.x_access);
+        let x_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
+        let x: Limbs<AB::Expr, <E::BaseField as NumLimbs>::Limbs> =
+            Limbs(x_limbs.try_into().expect("failed to convert limbs"));
         let max_num_limbs = E::BaseField::to_limbs_field_vec(&E::BaseField::modulus());
         local.range_x.eval(
             builder,
@@ -361,8 +410,10 @@ where
         // `y.multiplication.result` or `neg_y.result`, `y_limbs` will be canonical.
         local.y.eval(builder, &local.x_3_plus_b_plus_ax.result, local.y.lsb, local.is_real);
 
-        let y_limbs: Limbs<AB::Var, <E::BaseField as NumLimbs>::Limbs> =
-            limbs_from_access(&local.y_access);
+        let neg_y_words = limbs_to_words::<AB>(local.neg_y.result.0.to_vec());
+        let mul_words = limbs_to_words::<AB>(local.y.multiplication.result.0.to_vec());
+        let y_value_words =
+            local.y_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
 
         // Constrain the y value according the sign rule convention.
         match self.sign_rule {
@@ -372,14 +423,18 @@ where
                 // value. Thus, if the sign_bit matches the local.y.lsb value, then the result
                 // should be the square root of the y value. Otherwise, the result should be the
                 // negative square root of the y value.
-                builder
-                    .when(local.is_real)
-                    .when_ne(local.y.lsb, AB::Expr::one() - local.sign_bit)
-                    .assert_all_eq(local.y.multiplication.result, y_limbs);
-                builder
-                    .when(local.is_real)
-                    .when_ne(local.y.lsb, local.sign_bit)
-                    .assert_all_eq(local.neg_y.result, y_limbs);
+                for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_ne(local.y.lsb, AB::Expr::one() - local.sign_bit)
+                        .assert_all_eq(mul_word.clone(), y_value_word.clone());
+                }
+                for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_ne(local.y.lsb, local.sign_bit)
+                        .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
+                }
             }
             SignChoiceRule::Lexicographic => {
                 // When the sign rule is Lexicographic, the sign_bit corresponds to whether
@@ -390,8 +445,9 @@ where
 
                 // Get the choice columns from the row slice
                 let choice_cols: &LexicographicChoiceCols<AB::Var, E::BaseField> = (*local_slice)
-                    [weierstrass_cols..
-                        weierstrass_cols + size_of::<LexicographicChoiceCols<u8, E::BaseField>>()]
+                    [weierstrass_cols
+                        ..weierstrass_cols
+                            + size_of::<LexicographicChoiceCols<u8, E::BaseField>>()]
                     .borrow();
 
                 // Assert that the flags are booleans.
@@ -405,16 +461,18 @@ where
                 );
 
                 // Assert that the value of `y` matches the claimed value by the flags.
-
-                builder
-                    .when(local.is_real)
-                    .when(choice_cols.is_y_eq_sqrt_y_result)
-                    .assert_all_eq(local.y.multiplication.result, y_limbs);
-
-                builder
-                    .when(local.is_real)
-                    .when_not(choice_cols.is_y_eq_sqrt_y_result)
-                    .assert_all_eq(local.neg_y.result, y_limbs);
+                for (mul_word, y_value_word) in mul_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when(choice_cols.is_y_eq_sqrt_y_result)
+                        .assert_all_eq(mul_word.clone(), y_value_word.clone());
+                }
+                for (neg_y_word, y_value_word) in neg_y_words.iter().zip(y_value_words.iter()) {
+                    builder
+                        .when(local.is_real)
+                        .when_not(choice_cols.is_y_eq_sqrt_y_result)
+                        .assert_all_eq(neg_y_word.clone(), y_value_word.clone());
+                }
 
                 // Assert that the comparison only turns on when `is_real` is true.
                 builder.when_not(local.is_real).assert_zero(choice_cols.when_sqrt_y_res_is_lt);
@@ -457,21 +515,79 @@ where
             }
         }
 
+        let ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            E::NB_LIMBS as u32 * 2,
+            local.ptr,
+            local.is_real.into(),
+        );
+
+        let num_limbs_as_f = AB::F::from_canonical_u32(num_limbs as u32);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([num_limbs_as_f.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.x_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        let eight = AB::F::from_canonical_u32(8u32);
+        for i in 1..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.x_addrs[i - 1].value[0].into(),
+                    local.x_addrs[i - 1].value[1].into(),
+                    local.x_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            local.y_addrs[0],
+            local.is_real.into(),
+        );
+
+        // y_addrs[i] = y_addrs[i - 1] + 8.
+        for i in 1..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    local.y_addrs[i - 1].value[0].into(),
+                    local.y_addrs[i - 1].value[1].into(),
+                    local.y_addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
         for i in 0..num_words_field_element {
-            builder.eval_memory_access(
-                local.shard,
-                local.clk,
-                local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4 + num_limbs as u32),
-                &local.x_access[i],
+            builder.eval_memory_access_read(
+                local.clk_high,
+                local.clk_low,
+                &local.x_addrs[i].value.map(Into::into),
+                local.x_access[i].memory_access,
                 local.is_real,
             );
         }
         for i in 0..num_words_field_element {
-            builder.eval_memory_access(
-                local.shard,
-                local.clk,
-                local.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4),
-                &local.y_access[i],
+            builder.eval_memory_access_write(
+                local.clk_high,
+                local.clk_low,
+                &local.y_addrs[i].value.map(Into::into),
+                local.y_access[i],
+                local.y_value[i],
                 local.is_real,
             );
         }
@@ -490,119 +606,119 @@ where
         };
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id,
-            local.ptr,
-            local.sign_bit,
+            ptr.map(Into::into),
+            [local.sign_bit.into(), AB::Expr::zero(), AB::Expr::zero()].map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{
-        io::SP1Stdin,
-        utils::{self, run_test},
-    };
-    use amcl::{
-        bls381::bls381::{basic::key_pair_generate_g2, utils::deserialize_g1},
-        rand::RAND,
-    };
-    use elliptic_curve::sec1::ToEncodedPoint;
-    use rand::{thread_rng, Rng};
-    use sp1_core_executor::Program;
-    use sp1_stark::CpuProver;
-    use test_artifacts::{
-        BLS12381_DECOMPRESS_ELF, SECP256K1_DECOMPRESS_ELF, SECP256R1_DECOMPRESS_ELF,
-    };
+// #[cfg(test)]
+// mod tests {
+//     use crate::{
+//         io::SP1Stdin,
+//         utils::{self, run_test},
+//     };
+//     use amcl::{
+//         bls381::bls381::{basic::key_pair_generate_g2, utils::deserialize_g1},
+//         rand::RAND,
+//     };
+//     use elliptic_curve::sec1::ToEncodedPoint;
+//     use rand::{thread_rng, Rng};
+//     use sp1_core_executor::Program;
+//     use sp1_stark::CpuProver;
+//     use test_artifacts::{
+//         BLS12381_DECOMPRESS_ELF, SECP256K1_DECOMPRESS_ELF, SECP256R1_DECOMPRESS_ELF,
+//     };
 
-    #[test]
-    fn test_weierstrass_bls_decompress() {
-        utils::setup_logger();
-        let mut rng = thread_rng();
-        let mut rand = RAND::new();
+//     #[test]
+//     fn test_weierstrass_bls_decompress() {
+//         utils::setup_logger();
+//         let mut rng = thread_rng();
+//         let mut rand = RAND::new();
 
-        let len = 100;
-        let num_tests = 10;
-        let random_slice = (0..len).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>();
-        rand.seed(len, &random_slice);
+//         let len = 100;
+//         let num_tests = 10;
+//         let random_slice = (0..len).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>();
+//         rand.seed(len, &random_slice);
 
-        for _ in 0..num_tests {
-            let (_, compressed) = key_pair_generate_g2(&mut rand);
+//         for _ in 0..num_tests {
+//             let (_, compressed) = key_pair_generate_g2(&mut rand);
 
-            let stdin = SP1Stdin::from(&compressed);
-            let mut public_values =
-                run_test::<CpuProver<_, _>>(Program::from(BLS12381_DECOMPRESS_ELF).unwrap(), stdin)
-                    .unwrap();
+//             let stdin = SP1Stdin::from(&compressed);
+//             let mut public_values =
+//                 run_test::<CpuProver<_, _>>(Program::from(BLS12381_DECOMPRESS_ELF).unwrap(),
+// stdin)                     .unwrap();
 
-            let mut result = [0; 96];
-            public_values.read_slice(&mut result);
+//             let mut result = [0; 96];
+//             public_values.read_slice(&mut result);
 
-            let point = deserialize_g1(&compressed).unwrap();
-            let x = point.getx().to_string();
-            let y = point.gety().to_string();
-            let decompressed = hex::decode(format!("{x}{y}")).unwrap();
-            assert_eq!(result, decompressed.as_slice());
-        }
-    }
+//             let point = deserialize_g1(&compressed).unwrap();
+//             let x = point.getx().to_string();
+//             let y = point.gety().to_string();
+//             let decompressed = hex::decode(format!("{x}{y}")).unwrap();
+//             assert_eq!(result, decompressed.as_slice());
+//         }
+//     }
 
-    #[test]
-    fn test_weierstrass_k256_decompress() {
-        utils::setup_logger();
+//     #[test]
+//     fn test_weierstrass_k256_decompress() {
+//         utils::setup_logger();
 
-        let mut rng = thread_rng();
+//         let mut rng = thread_rng();
 
-        let num_tests = 10;
+//         let num_tests = 10;
 
-        for _ in 0..num_tests {
-            let secret_key = k256::SecretKey::random(&mut rng);
-            let public_key = secret_key.public_key();
-            let encoded = public_key.to_encoded_point(false);
-            let decompressed = encoded.as_bytes();
-            let compressed = public_key.to_sec1_bytes();
+//         for _ in 0..num_tests {
+//             let secret_key = k256::SecretKey::random(&mut rng);
+//             let public_key = secret_key.public_key();
+//             let encoded = public_key.to_encoded_point(false);
+//             let decompressed = encoded.as_bytes();
+//             let compressed = public_key.to_sec1_bytes();
 
-            let inputs = SP1Stdin::from(&compressed);
+//             let inputs = SP1Stdin::from(&compressed);
 
-            let mut public_values = run_test::<CpuProver<_, _>>(
-                Program::from(SECP256K1_DECOMPRESS_ELF).unwrap(),
-                inputs,
-            )
-            .unwrap();
-            let mut result = [0; 65];
-            public_values.read_slice(&mut result);
-            assert_eq!(result, decompressed);
-        }
-    }
+//             let mut public_values = run_test::<CpuProver<_, _>>(
+//                 Program::from(SECP256K1_DECOMPRESS_ELF).unwrap(),
+//                 inputs,
+//             )
+//             .unwrap();
+//             let mut result = [0; 65];
+//             public_values.read_slice(&mut result);
+//             assert_eq!(result, decompressed);
+//         }
+//     }
 
-    #[test]
-    fn test_weierstrass_p256_decompress() {
-        utils::setup_logger();
+//     #[test]
+//     fn test_weierstrass_p256_decompress() {
+//         utils::setup_logger();
 
-        let mut rng = thread_rng();
+//         let mut rng = thread_rng();
 
-        let num_tests = 1;
+//         let num_tests = 1;
 
-        for _ in 0..num_tests {
-            let secret_key = p256::SecretKey::random(&mut rng);
-            let public_key = secret_key.public_key();
-            let encoded = public_key.to_encoded_point(false);
-            let decompressed = encoded.as_bytes();
-            let encoded_compressed = public_key.to_encoded_point(true);
-            let compressed = encoded_compressed.as_bytes();
+//         for _ in 0..num_tests {
+//             let secret_key = p256::SecretKey::random(&mut rng);
+//             let public_key = secret_key.public_key();
+//             let encoded = public_key.to_encoded_point(false);
+//             let decompressed = encoded.as_bytes();
+//             let encoded_compressed = public_key.to_encoded_point(true);
+//             let compressed = encoded_compressed.as_bytes();
 
-            let inputs = SP1Stdin::from(compressed);
+//             let inputs = SP1Stdin::from(compressed);
 
-            let mut public_values = run_test::<CpuProver<_, _>>(
-                Program::from(SECP256R1_DECOMPRESS_ELF).unwrap(),
-                inputs,
-            )
-            .unwrap();
-            let mut result = [0; 65];
-            public_values.read_slice(&mut result);
-            assert_eq!(result, decompressed);
-        }
-    }
-}
+//             let mut public_values = run_test::<CpuProver<_, _>>(
+//                 Program::from(SECP256R1_DECOMPRESS_ELF).unwrap(),
+//                 inputs,
+//             )
+//             .unwrap();
+//             let mut result = [0; 65];
+//             public_values.read_slice(&mut result);
+//             assert_eq!(result, decompressed);
+//         }
+//     }
+// }

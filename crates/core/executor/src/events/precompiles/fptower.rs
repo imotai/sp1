@@ -24,15 +24,15 @@ pub struct FpOpEvent {
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The pointer to the x operand.
-    pub x_ptr: u32,
+    pub x_ptr: u64,
     /// The x operand.
-    pub x: Vec<u32>,
+    pub x: Vec<u64>,
     /// The pointer to the y operand.
-    pub y_ptr: u32,
+    pub y_ptr: u64,
     /// The y operand.
-    pub y: Vec<u32>,
+    pub y: Vec<u64>,
     /// The operation to perform.
     pub op: FieldOperation,
     /// The memory records for the x operand.
@@ -51,17 +51,17 @@ pub struct Fp2AddSubEvent {
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The operation to perform.
     pub op: FieldOperation,
     /// The pointer to the x operand.
-    pub x_ptr: u32,
+    pub x_ptr: u64,
     /// The x operand.
-    pub x: Vec<u32>,
+    pub x: Vec<u64>,
     /// The pointer to the y operand.
-    pub y_ptr: u32,
+    pub y_ptr: u64,
     /// The y operand.
-    pub y: Vec<u32>,
+    pub y: Vec<u64>,
     /// The memory records for the x operand.
     pub x_memory_records: Vec<MemoryWriteRecord>,
     /// The memory records for the y operand.
@@ -76,15 +76,15 @@ pub struct Fp2MulEvent {
     /// The shard number.
     pub shard: u32,
     /// The clock cycle.
-    pub clk: u32,
+    pub clk: u64,
     /// The pointer to the x operand.
-    pub x_ptr: u32,
+    pub x_ptr: u64,
     /// The x operand.
-    pub x: Vec<u32>,
+    pub x: Vec<u64>,
     /// The pointer to the y operand.
-    pub y_ptr: u32,
+    pub y_ptr: u64,
     /// The y operand.
-    pub y: Vec<u32>,
+    pub y: Vec<u64>,
     /// The memory records for the x operand.
     pub x_memory_records: Vec<MemoryWriteRecord>,
     /// The memory records for the y operand.

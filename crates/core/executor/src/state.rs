@@ -6,23 +6,32 @@ use std::{
 
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
-use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkVerifyingKey};
+use sp1_stark::{BabyBearPoseidon2, MachineVerifyingKey};
 
-use crate::{events::MemoryRecord, memory::Memory, syscalls::SyscallCode, SP1ReduceProof};
+use crate::{
+    events::{MemoryEntry, Shard},
+    memory::Memory,
+    syscalls::SyscallCode,
+    SP1RecursionProof,
+};
 
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ExecutionState {
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
 
     /// The shard clock keeps track of how many shards have been executed.
-    pub current_shard: u32,
+    pub current_shard: Shard,
 
     /// The memory which instructions operate over. Values contain the memory value and last shard
     /// + timestamp that each memory address was accessed.
-    pub memory: Memory<MemoryRecord>,
+    pub memory: Memory<MemoryEntry>,
+
+    /// The page protection flags for each page in the memory.  The default values should be
+    /// `PROT_READ` | `PROT_WRITE`.
+    pub page_prots: HashMap<u64, u8>,
 
     /// The global clock keeps track of how many instructions have been executed through all
     /// shards.
@@ -30,18 +39,18 @@ pub struct ExecutionState {
 
     /// The clock increments by 4 (possibly more in syscalls) for each instruction that has been
     /// executed in this shard.
-    pub clk: u32,
+    pub clk: u64,
 
     /// Uninitialized memory addresses that have a specific value they should be initialized with.
     /// `SyscallHintRead` uses this to write hint data into uninitialized memory.
-    pub uninitialized_memory: Memory<u32>,
+    pub uninitialized_memory: Memory<u64>,
 
     /// A stream of input values (global to the entire program).
     pub input_stream: VecDeque<Vec<u8>>,
 
     /// A stream of proofs (reduce vk, proof, verifying key) inputted to the program.
     pub proof_stream:
-        Vec<(SP1ReduceProof<BabyBearPoseidon2>, StarkVerifyingKey<BabyBearPoseidon2>)>,
+        Vec<(SP1RecursionProof<BabyBearPoseidon2>, MachineVerifyingKey<BabyBearPoseidon2>)>,
 
     /// A ptr to the current position in the proof stream, incremented after verifying a proof.
     pub proof_stream_ptr: usize,
@@ -60,14 +69,15 @@ pub struct ExecutionState {
 impl ExecutionState {
     #[must_use]
     /// Create a new [`ExecutionState`].
-    pub fn new(pc_start: u32) -> Self {
+    pub fn new(pc_start: u64) -> Self {
         Self {
             global_clk: 0,
             // Start at shard 1 since shard 0 is reserved for memory initialization.
-            current_shard: 1,
+            current_shard: Shard::new(1).unwrap(),
             clk: 0,
             pc: pc_start,
             memory: Memory::new_preallocated(),
+            page_prots: HashMap::new(),
             uninitialized_memory: Memory::new_preallocated(),
             input_stream: VecDeque::new(),
             public_values_stream: Vec::new(),
@@ -86,11 +96,11 @@ pub struct ForkState {
     /// The `global_clk` value at the fork point.
     pub global_clk: u64,
     /// The original `clk` value at the fork point.
-    pub clk: u32,
+    pub clk: u64,
     /// The original `pc` value at the fork point.
-    pub pc: u32,
+    pub pc: u64,
     /// All memory changes since the fork point.
-    pub memory_diff: Memory<Option<MemoryRecord>>,
+    pub memory_diff: Memory<Option<MemoryEntry>>,
 }
 
 impl ExecutionState {

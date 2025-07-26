@@ -1,35 +1,45 @@
+use crate::{
+    air::SP1CoreAirBuilder,
+    memory::{MemoryAccessCols, MemoryAccessColsU8},
+    operations::{AddrAddOperation, SyscallAddrOperation},
+    utils::{limbs_to_words, next_multiple_of_32},
+};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-use std::marker::PhantomData;
-
-use crate::air::MemoryAirBuilder;
 use generic_array::GenericArray;
+use itertools::Itertools;
 use num::{BigUint, One, Zero};
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, EdDecompressEvent, FieldOperation, PrecompileEvent},
+    events::{
+        ByteLookupEvent, ByteRecord, EdDecompressEvent, FieldOperation, MemoryRecordEnum,
+        PrecompileEvent,
+    },
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
 use sp1_curves::{
     edwards::{
         ed25519::{ed25519_sqrt, Ed25519BaseField},
-        EdwardsParameters, WordsFieldElement,
+        EdwardsParameters, WordsFieldElement, WORDS_FIELD_ELEMENT,
     },
     params::{FieldParameters, Limbs},
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, SP1AirBuilder};
+use sp1_stark::{
+    air::{BaseAirBuilder, InteractionScope, MachineAir},
+    Word,
+};
+use std::marker::PhantomData;
 use typenum::U32;
 
 use crate::{
-    memory::{MemoryReadCols, MemoryWriteCols},
     operations::field::{field_op::FieldOpCols, field_sqrt::FieldSqrtCols, range::FieldLtCols},
-    utils::{limbs_from_access, limbs_from_prev_access, pad_rows_fixed},
+    utils::pad_rows_fixed,
 };
 
 pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
@@ -43,12 +53,15 @@ pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
 #[repr(C)]
 pub struct EdDecompressCols<T> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
-    pub ptr: T,
+    pub clk_high: T,
+    pub clk_low: T,
+    pub ptr: SyscallAddrOperation<T>,
+    pub read_ptrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
+    pub addrs: [AddrAddOperation<T>; WORDS_FIELD_ELEMENT],
     pub sign: T,
-    pub x_access: GenericArray<MemoryWriteCols<T>, WordsFieldElement>,
-    pub y_access: GenericArray<MemoryReadCols<T>, WordsFieldElement>,
+    pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
+    pub x_value: GenericArray<Word<T>, WordsFieldElement>,
+    pub y_access: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
     pub(crate) neg_x_range: FieldLtCols<T, Ed25519BaseField>,
     pub(crate) y_range: FieldLtCols<T, Ed25519BaseField>,
     pub(crate) yy: FieldOpCols<T, Ed25519BaseField>,
@@ -68,13 +81,23 @@ impl<F: PrimeField32> EdDecompressCols<F> {
     ) {
         let mut new_byte_lookup_events = Vec::new();
         self.is_real = F::from_bool(true);
-        self.shard = F::from_canonical_u32(event.shard);
-        self.clk = F::from_canonical_u32(event.clk);
-        self.ptr = F::from_canonical_u32(event.ptr);
+        self.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+        self.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+        self.ptr.populate(record, event.ptr, 64);
+
+        // WORDS_FIELD_ELEMENT * 8 = 32
+        let read_ptr = event.ptr + 32;
+
         self.sign = F::from_bool(event.sign);
-        for i in 0..8 {
-            self.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
-            self.y_access[i].populate(event.y_memory_records[i], &mut new_byte_lookup_events);
+        for i in 0..WORDS_FIELD_ELEMENT {
+            let x_record = MemoryRecordEnum::Write(event.x_memory_records[i]);
+            self.x_access[i].populate(x_record, &mut new_byte_lookup_events);
+            let current_x_record = x_record.current_record();
+            self.x_value[i] = Word::from(current_x_record.value);
+            let y_record = MemoryRecordEnum::Read(event.y_memory_records[i]);
+            self.y_access[i].populate(y_record, &mut new_byte_lookup_events);
+            self.addrs[i].populate(record, event.ptr, i as u64 * 8);
+            self.read_ptrs[i].populate(record, read_ptr, i as u64 * 8);
         }
 
         let y = &BigUint::from_bytes_le(&event.y_bytes);
@@ -105,7 +128,7 @@ impl<F: PrimeField32> EdDecompressCols<F> {
 }
 
 impl<V: Copy> EdDecompressCols<V> {
-    pub fn eval<AB: SP1AirBuilder<Var = V>, P: FieldParameters, E: EdwardsParameters>(
+    pub fn eval<AB: SP1CoreAirBuilder<Var = V>, P: FieldParameters, E: EdwardsParameters>(
         &self,
         builder: &mut AB,
     ) where
@@ -113,7 +136,8 @@ impl<V: Copy> EdDecompressCols<V> {
     {
         builder.assert_bool(self.sign);
 
-        let y: Limbs<V, U32> = limbs_from_prev_access(&self.y_access);
+        let y_limbs = builder.generate_limbs(&self.y_access, self.is_real.into());
+        let y: Limbs<AB::Expr, U32> = Limbs(y_limbs.try_into().expect("failed to convert limbs"));
         let max_num_limbs =
             Ed25519BaseField::to_limbs_field::<AB::Expr, AB::F>(&Ed25519BaseField::modulus());
         self.y_range.eval(builder, &y, &max_num_limbs, self.is_real);
@@ -156,37 +180,101 @@ impl<V: Copy> EdDecompressCols<V> {
         // Constrain that `neg_x.result` is also canonical.
         self.neg_x_range.eval(builder, &self.neg_x.result, &max_num_limbs, self.is_real);
 
-        builder.eval_memory_access_slice(
-            self.shard,
-            self.clk,
-            self.ptr,
-            &self.x_access,
-            self.is_real,
+        let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
+
+        // addrs[0] = ptr.
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            self.addrs[0],
+            self.is_real.into(),
         );
-        builder.eval_memory_access_slice(
-            self.shard,
-            self.clk,
-            self.ptr.into() + AB::F::from_canonical_u32(32),
-            &self.y_access,
+        let eight = AB::F::from_canonical_u32(8u32);
+        // addrs[i] = addrs[i - 1] + 8.
+        for i in 1..WORDS_FIELD_ELEMENT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    self.addrs[i - 1].value[0].into(),
+                    self.addrs[i - 1].value[1].into(),
+                    self.addrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                self.addrs[i],
+                self.is_real.into(),
+            );
+        }
+
+        // read_ptrs[0] = ptr + 32.
+        let thirty_two = AB::F::from_canonical_u32(32u32);
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+            Word([thirty_two.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+            self.read_ptrs[0],
+            self.is_real.into(),
+        );
+
+        // read_ptrs[i] = read_ptrs[i - 1] + 8.
+        for i in 1..WORDS_FIELD_ELEMENT {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([
+                    self.read_ptrs[i - 1].value[0].into(),
+                    self.read_ptrs[i - 1].value[1].into(),
+                    self.read_ptrs[i - 1].value[2].into(),
+                    AB::Expr::zero(),
+                ]),
+                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                self.read_ptrs[i],
+                self.is_real.into(),
+            );
+        }
+
+        builder.eval_memory_access_slice_write(
+            self.clk_high,
+            self.clk_low,
+            &self.addrs.map(|addr| addr.value.map(Into::into)),
+            &self.x_access,
+            self.x_value.to_vec(),
             self.is_real,
         );
 
-        // Constrain that the correct result is written into x.
+        builder.eval_memory_access_slice_read(
+            self.clk_high,
+            self.clk_low,
+            &self.read_ptrs.map(|ptr| ptr.value.map(Into::into)),
+            &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
+            self.is_real,
+        );
+
+        // Constrain that x_value is correct.
         // Since the result is either `neg_x.result` or `x.multiplication.result`, the written value
         // is canonical.
-        let x_limbs: Limbs<V, U32> = limbs_from_access(&self.x_access);
-        builder.when(self.is_real).when(self.sign).assert_all_eq(self.neg_x.result, x_limbs);
-        builder
-            .when(self.is_real)
-            .when_not(self.sign)
-            .assert_all_eq(self.x.multiplication.result, x_limbs);
+        let neg_x_words = limbs_to_words::<AB>(self.neg_x.result.0.to_vec());
+        let mul_x_words = limbs_to_words::<AB>(self.x.multiplication.result.0.to_vec());
+        let x_value_words = self.x_value.to_vec().iter().map(|w| w.map(|x| x.into())).collect_vec();
+        for (neg_x_word, x_value_word) in neg_x_words.iter().zip(x_value_words.iter()) {
+            builder
+                .when(self.is_real)
+                .when(self.sign)
+                .assert_all_eq(neg_x_word.clone(), x_value_word.clone());
+        }
+        for (mul_x_word, x_value_word) in mul_x_words.iter().zip(x_value_words.iter()) {
+            builder
+                .when(self.is_real)
+                .when_not(self.sign)
+                .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
+        }
 
         builder.receive_syscall(
-            self.shard,
-            self.clk,
+            self.clk_high,
+            self.clk_low,
             AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
-            self.ptr,
-            self.sign,
+            ptr.map(Into::into),
+            [self.sign.into(), AB::Expr::zero(), AB::Expr::zero()],
             self.is_real,
             InteractionScope::Local,
         );
@@ -211,6 +299,13 @@ impl<F: PrimeField32, E: EdwardsParameters> MachineAir<F> for EdDecompressChip<E
 
     fn name(&self) -> String {
         "EdDecompress".to_string()
+    }
+
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::ED_DECOMPRESS).len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
     }
 
     fn generate_trace(
@@ -270,7 +365,7 @@ impl<F, E: EdwardsParameters> BaseAir<F> for EdDecompressChip<E> {
 
 impl<AB, E: EdwardsParameters> Air<AB> for EdDecompressChip<E>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -284,16 +379,15 @@ where
 #[cfg(test)]
 pub mod tests {
     use sp1_core_executor::Program;
-    use sp1_stark::CpuProver;
     use test_artifacts::ED_DECOMPRESS_ELF;
 
     use crate::{io::SP1Stdin, utils};
 
-    #[test]
-    fn test_ed_decompress() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_ed_decompress() {
         utils::setup_logger();
-        let program = Program::from(ED_DECOMPRESS_ELF).unwrap();
+        let program = Program::from(&ED_DECOMPRESS_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        utils::run_test(program, stdin).await.unwrap();
     }
 }
