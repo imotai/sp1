@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{ExtensionField, Field, PrimeField32};
 use slop_futures::queue::WorkerQueue;
@@ -124,12 +125,18 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
 
     /// Build the machine prover.
     pub fn build(&mut self) -> MachineProver<C> {
-        let worker_queue = WorkerQueue::new((0..self.base_workers.len()).collect());
+        // For each base worker, repeat it the number of times specified by the number of workers.
+        let mut worker_queue: Vec<usize> = Vec::new();
+        for ((idx, _), num_workers) in
+            self.base_workers.iter().enumerate().zip_eq(self.num_workers.iter())
+        {
+            worker_queue.extend(std::iter::repeat_n(idx, *num_workers));
+        }
 
         MachineProver {
             base_workers: self.base_workers.clone(),
             worker_permits: self.worker_permits.clone(),
-            worker_queue: Arc::new(worker_queue),
+            worker_queue: Arc::new(WorkerQueue::new(worker_queue)),
             verifier: self.verifier.clone(),
         }
     }
