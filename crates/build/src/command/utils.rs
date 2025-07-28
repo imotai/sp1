@@ -68,6 +68,12 @@ pub(crate) fn get_rust_compiler_flags(args: &BuildArgs, version: &semver::Versio
         "link-arg=--image-base=0x00200800",
         "-C",
         "panic=abort",
+        "--cfg",
+        "getrandom_backend=\"custom\"",
+        "-C",
+        "llvm-args=-misched-prera-direction=bottomup",
+        "-C",
+        "llvm-args=-misched-postra-direction=bottomup",
     ];
     let rust_flags: Vec<_> =
         rust_flags.into_iter().chain(args.rustflags.iter().map(String::as_str)).collect();
