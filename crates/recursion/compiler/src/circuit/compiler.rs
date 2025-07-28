@@ -68,13 +68,13 @@ where
     pub fn read_vaddr_internal(&mut self, vaddr: usize, increment_mult: bool) -> Address<C::F> {
         use vec_map::Entry;
         match self.virtual_to_physical.entry(vaddr) {
-            Entry::Vacant(_) => panic!("expected entry: virtual_physical[{:?}]", vaddr),
+            Entry::Vacant(_) => panic!("expected entry: virtual_physical[{vaddr:?}]"),
             Entry::Occupied(entry) => {
                 if increment_mult {
                     // This is a read, so we increment the mult.
                     match self.addr_to_mult.get_mut(entry.get().as_usize()) {
                         Some(mult) => *mult += C::F::one(),
-                        None => panic!("expected entry: virtual_physical[{:?}]", vaddr),
+                        None => panic!("expected entry: virtual_physical[{vaddr:?}]"),
                     }
                 }
                 *entry.into_mut()
@@ -1368,8 +1368,8 @@ mod tests {
             runtime.record
         });
 
-        let input_str_fs = input_fs.into_iter().map(|elt| format!("{}", elt));
-        let input_str_efs = input_efs.into_iter().map(|elt| format!("{:?}", elt));
+        let input_str_fs = input_fs.into_iter().map(|elt| format!("{elt}"));
+        let input_str_efs = input_efs.into_iter().map(|elt| format!("{elt:?}"));
         let input_strs = input_str_fs.chain(input_str_efs);
 
         for (input_str, line) in zip(input_strs, buf.lines()) {

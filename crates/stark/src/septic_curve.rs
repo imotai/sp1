@@ -288,7 +288,7 @@ mod tests {
     // }
 
     // #[test]
-    // #[ignore]
+    // #[ignore = "TODO"]
     // #[allow(clippy::print_stdout)]
     // fn test_simple_bench() {
     //     const D: u32 = 1 << 16;
@@ -329,7 +329,7 @@ mod tests {
     // }
 
     // #[test]
-    // #[ignore]
+    // #[ignore = "TODO"]
     // #[allow(clippy::print_stdout)]
     // fn test_parallel_bench() {
     //     const D: u32 = 1 << 20;

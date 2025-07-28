@@ -239,8 +239,13 @@ pub mod subw;
 
 //                 let result =
 //                     run_malicious_test::<P>(program, stdin,
-// Box::new(malicious_trace_pv_generator));                 assert!(result.is_err() &&
-// result.unwrap_err().is_constraints_failing());             }
+// Box::new(malicious_trace_pv_generator));                 println!("Result for {opcode:?}:
+// {result:?}");                 let add_sub_chip_name = chip_name!(AddSubChip, BabyBear);
+//                 assert!(
+//                     result.is_err() &&
+//                         result.unwrap_err().is_constraints_failing(&add_sub_chip_name)
+//                 );
+//             }
 //         }
 //     }
 // }

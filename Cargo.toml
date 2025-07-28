@@ -31,7 +31,7 @@ members = [
   "crates/cuda",
   "crates/cli",
   "crates/core/compiler",
-  "crates/perf"
+  "crates/perf",
   # "crates/verifier",
 ]
 exclude = [
@@ -81,7 +81,7 @@ sp1-zkvm-64 = { path = "crates/zkvm/entrypoint64", version = "6.0.0", default-fe
 
 # slop
 slop-algebra = { git = "https://github.com/succinctlabs/slop" }
-slop-alloc = { git = "https://github.com/succinctlabs/slop"  }
+slop-alloc = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
 slop-commit = { git = "https://github.com/succinctlabs/slop" }

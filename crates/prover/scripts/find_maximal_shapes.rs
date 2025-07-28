@@ -135,7 +135,7 @@ fn main() {
             .args([
                 "s3",
                 "cp",
-                &format!("s3://sp1-testing-suite/{}/program.bin", s3_path),
+                &format!("s3://sp1-testing-suite/{s3_path}/program.bin"),
                 "program.bin",
             ])
             .status()
@@ -146,12 +146,7 @@ fn main() {
 
         // Download stdin.bin.
         let status = std::process::Command::new("aws")
-            .args([
-                "s3",
-                "cp",
-                &format!("s3://sp1-testing-suite/{}/stdin.bin", s3_path),
-                "stdin.bin",
-            ])
+            .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
             .status()
             .expect("Failed to execute aws s3 cp command for stdin.bin");
         if !status.success() {

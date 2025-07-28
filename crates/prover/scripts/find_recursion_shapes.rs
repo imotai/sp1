@@ -156,7 +156,7 @@
 //         }
 //     }
 
-//     println!("Final compress shape: {:?}", answer);
-//     println!("Final compress shape with no precompiles: {:?}", no_precompile_answer);
-//     println!("Final shrink shape: {:?}", shrink_shape);
+//     println!("Final compress shape: {answer:?}");
+//     println!("Final compress shape with no precompiles: {no_precompile_answer:?}");
+//     println!("Final shrink shape: {shrink_shape:?}");
 // }

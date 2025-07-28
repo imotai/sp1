@@ -959,8 +959,7 @@ pub mod tests {
         assert_eq!(costs, machine_costs);
     }
     #[test]
-    #[ignore]
-    #[allow(clippy::ignore_without_reason)]
+    #[ignore = "should only be used to generate the artifact"]
     fn write_core_air_costs() {
         let costs = RiscvAir::<BabyBear>::costs();
         // write to file

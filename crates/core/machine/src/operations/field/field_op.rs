@@ -657,7 +657,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //     #[test]
 //     fn generate_trace() {
 //         for op in [FieldOperation::Add, FieldOperation::Mul, FieldOperation::Sub].iter() {
-//             println!("op: {:?}", op);
+//             println!("op: {op:?}");
 //             let chip: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
 //             let shard = ExecutionRecord::default();
 //             let _: RowMajorMatrix<BabyBear> =
@@ -672,7 +672,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //             [FieldOperation::Add, FieldOperation::Sub, FieldOperation::Mul, FieldOperation::Div]
 //                 .iter()
 //         {
-//             println!("op: {:?}", op);
+//             println!("op: {op:?}");
 
 //             let air: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);
 //             let shard = ExecutionRecord::default();

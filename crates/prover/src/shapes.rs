@@ -653,8 +653,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[ignore]
-    #[allow(clippy::ignore_without_reason)]
+    #[ignore = "should be invoked specifically"]
     async fn test_max_arity() {
         setup_logger();
         let prover = SP1ProverBuilder::new().build().await;

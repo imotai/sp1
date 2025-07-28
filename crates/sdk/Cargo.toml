@@ -44,7 +44,7 @@ sp1-stark = { workspace = true }
 sp1-primitives = { workspace = true }
 itertools = { workspace = true }
 tonic = { version = "0.12", features = ["tls", "tls-roots"], optional = true }
-alloy-sol-types = { version = "1.0", default-features = false, optional = true }
+alloy-sol-types = { version = "1.0", default-features = false }
 alloy-primitives = { version = "1.0", default-features = false, optional = true, features = [
   "k256",
   "serde",
@@ -58,7 +58,7 @@ eventsource-stream = { version = "0.2.0" }          # SSE Extenstion for reqwest
 [dev-dependencies]
 
 [features]
-default = ["network"]
+default = ["network", "reserved-capacity"]
 native-gnark = ["sp1-prover/native-gnark"]
 # TODO: Once alloy has a 1.* release, we can likely remove this feature flag, as there will be less 
 # dependency resolution issues.
@@ -72,7 +72,8 @@ network = [
   "dep:backoff",
 ]
 native-cuda = ["sp1-cuda/native"]
-sepolia = ["network", "dep:alloy-sol-types"]
+tee-2fa = []
+reserved-capacity = ["network"]
 cuda = []
 bigint-rug = ["sp1-core-machine/bigint-rug"]
 unsound = ["sp1-prover/unsound"]

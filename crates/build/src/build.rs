@@ -138,7 +138,7 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
         execute_build_program(&BuildArgs::default(), Some(program_dir.to_path_buf()))
     };
     if let Err(err) = path_output {
-        panic!("Failed to build SP1 program: {}.", err);
+        panic!("Failed to build SP1 program: {err}.");
     }
 
     if args.map(|args| matches!(args.warning_level, WarningLevel::All)).unwrap_or(true) {
@@ -209,7 +209,6 @@ pub fn generate_elf_paths(
 /// Prints cargo directives setting relevant `SP1_ELF_` environment variables.
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) {
     for (target_name, elf_path) in target_elf_paths.iter() {
-        // println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path);
         let elf_path_str = elf_path.to_string();
 
         #[cfg(feature = "64bit")]
@@ -228,6 +227,6 @@ fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) 
             }
         };
 
-        println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path_str);
+        println!("cargo:rustc-env=SP1_ELF_{target_name}={elf_path_str}");
     }
 }
