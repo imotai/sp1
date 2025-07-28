@@ -82,6 +82,7 @@ pub struct SP1Prover<C: SP1ProverComponents> {
     core_prover: SP1CoreProver<C::CoreComponents>,
     recursion_prover: SP1RecursionProver<C>,
 }
+
 pub struct SP1ProverBuilder<C: SP1ProverComponents> {
     core_prover_builder: MachineProverBuilder<C::CoreComponents>,
     compress_prover_builder: MachineProverBuilder<C::RecursionComponents>,

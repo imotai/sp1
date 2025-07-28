@@ -1,22 +1,11 @@
-use futures::{
-    prelude::*,
-    stream::{AbortHandle, AbortRegistration, Abortable},
-};
-use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{ExtensionField, Field, PrimeField32};
+use slop_futures::queue::WorkerQueue;
 use slop_jagged::JaggedConfig;
-use thiserror::Error;
-use tracing::{Instrument, Span};
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
-
-use slop_futures::{handle::TaskHandle, queue::WorkerQueue};
-
-use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     air::MachineAir,
@@ -71,76 +60,12 @@ pub struct MachineProverBuilder<C: MachineProverComponents> {
     num_workers: Vec<usize>,
 }
 
-struct MachineProverInner<C: MachineProverComponents> {
-    /// The task channel.
-    task_tx: mpsc::UnboundedSender<Task<C>>,
-    /// The verifier.
-    verifier: MachineVerifier<C::Config, C::Air>,
-    /// The number of workers.
-    num_workers: usize,
-}
-
 /// A machine prover.
 pub struct MachineProver<C: MachineProverComponents> {
-    /// The task channel.
-    inner: Arc<MachineProverInner<C>>,
-}
-
-/// An error for a machine prover request.
-#[derive(Debug, Clone, Error)]
-pub enum MachineProverError {
-    /// The task failed.
-    #[error("Machine prover failed")]
-    TaskFailed,
-    /// The prover is already closed.
-    #[error("Machine prover is already closed")]
-    ProverClosed,
-    /// The task was aborted.
-    #[error("Task was aborted")]
-    TaskAborted,
-    /// The prover panicked.
-    #[error("Prover panicked")]
-    ProverPanicked(#[from] oneshot::error::RecvError),
-}
-
-enum Task<C: MachineProverComponents> {
-    Setup(SetupTask<C>),
-    Prove(ProveTask<C>),
-    SetupAndProve(SetupAndProveTask<C>),
-}
-
-#[allow(clippy::type_complexity)]
-struct SetupTask<C: MachineProverComponents> {
-    program: Arc<Program<C>>,
-    vk: Option<MachineVerifyingKey<C::Config>>,
-    output_tx: oneshot::Sender<
-        Result<
-            (PreprocessedData<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>),
-            MachineProverError,
-        >,
-    >,
-    abort_registration: AbortRegistration,
-    span: Span,
-}
-
-struct ProveTask<C: MachineProverComponents> {
-    pk: Arc<MachineProvingKey<C>>,
-    record: Record<C>,
-    proof_tx: oneshot::Sender<Result<ShardProof<C::Config>, MachineProverError>>,
-    abort_registration: AbortRegistration,
-    span: Span,
-}
-
-#[allow(clippy::type_complexity)]
-struct SetupAndProveTask<C: MachineProverComponents> {
-    program: Arc<Program<C>>,
-    vk: Option<MachineVerifyingKey<C::Config>>,
-    record: Record<C>,
-    proof_tx: oneshot::Sender<
-        Result<(MachineVerifyingKey<C::Config>, ShardProof<C::Config>), MachineProverError>,
-    >,
-    abort_registration: AbortRegistration,
-    span: Span,
+    base_workers: Vec<Arc<C::Prover>>,
+    worker_permits: Vec<ProverSemaphore>,
+    worker_queue: Arc<WorkerQueue<usize>>,
+    verifier: MachineVerifier<C::Config, C::Air>,
 }
 
 impl<C: MachineProverComponents> MachineProverBuilder<C> {
@@ -199,127 +124,14 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
 
     /// Build the machine prover.
     pub fn build(&mut self) -> MachineProver<C> {
-        // Initialize the task channel.
-        let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+        let worker_queue = WorkerQueue::new((0..self.base_workers.len()).collect());
 
-        // Spawn the workers tasks and initialize the worker channel.
-        let total_num_workers = self.num_workers.iter().sum();
-        let mut prover_worker_channels = Vec::with_capacity(total_num_workers);
-        for ((base_worker, &num_workers), permits) in self
-            .base_workers
-            .iter()
-            .zip_eq(self.num_workers.iter())
-            .zip_eq(self.worker_permits.iter())
-        {
-            for _ in 0..num_workers {
-                // Initialize a channel for sending shard data to this trace worker.
-                let (tx, mut rx) = mpsc::unbounded_channel::<Task<C>>();
-                prover_worker_channels.push(tx);
-                let worker = base_worker.clone();
-                let prover_permits = permits.clone();
-                let verifier = self.verifier.clone();
-                tokio::spawn(async move {
-                    while let Some(task) = rx.recv().await {
-                        match task {
-                            Task::Setup(task) => {
-                                let SetupTask { program, vk, output_tx, abort_registration, span } =
-                                    task;
-                                let setup_result = Abortable::new(
-                                    worker.setup_from_vk(program, vk, prover_permits.clone()),
-                                    abort_registration,
-                                )
-                                .map_err(|_| MachineProverError::TaskAborted)
-                                .instrument(span)
-                                .await;
-                                // Send the output to the channel if it's still open, otherwise drop
-                                // it.
-                                output_tx.send(setup_result).ok();
-                            }
-                            Task::Prove(task) => {
-                                let ProveTask { pk, record, proof_tx, abort_registration, span } =
-                                    task;
-                                let shard_proof_result = Abortable::new(
-                                    async {
-                                        // Create a challenger.
-                                        let mut challenger = verifier.challenger();
-                                        // Observe the preprocessed information.
-                                        pk.vk.observe_into(&mut challenger);
-                                        // Prove the shard.
-                                        let (proof, permit) = worker
-                                            .prove_shard_with_pk(
-                                                pk,
-                                                record,
-                                                prover_permits.clone(),
-                                                &mut challenger,
-                                            )
-                                            .await;
-                                        drop(permit);
-                                        proof
-                                    },
-                                    abort_registration,
-                                )
-                                .map_err(|_| MachineProverError::TaskAborted)
-                                .instrument(span)
-                                .await;
-                                proof_tx.send(shard_proof_result).ok();
-                            }
-                            Task::SetupAndProve(task) => {
-                                let SetupAndProveTask {
-                                    program,
-                                    vk,
-                                    record,
-                                    proof_tx,
-                                    abort_registration,
-                                    span,
-                                } = task;
-                                let result = Abortable::new(
-                                    async {
-                                        // Create a challenger.
-                                        let mut challenger = verifier.challenger();
-                                        // Setup and prove the shard.
-                                        let (vk, shard_proof, permit) = worker
-                                            .setup_and_prove_shard(
-                                                program,
-                                                record,
-                                                vk,
-                                                prover_permits.clone(),
-                                                &mut challenger,
-                                            )
-                                            .await;
-                                        drop(permit);
-                                        (vk, shard_proof)
-                                    },
-                                    abort_registration,
-                                )
-                                .map_err(|_| MachineProverError::TaskAborted)
-                                .instrument(span)
-                                .await;
-                                proof_tx.send(result).ok();
-                            }
-                        }
-                    }
-                });
-            }
-        }
-
-        // Spawn the entrypoint task.
-        tokio::spawn(async move {
-            let prover_worker_channels = Arc::new(WorkerQueue::new(prover_worker_channels));
-            while let Some(task) = task_rx.recv().await {
-                // Get a prover worker from the queue.
-                let prover_worker = prover_worker_channels.clone().pop().await.unwrap();
-                // Send the task to the prover worker.
-                prover_worker.send(task).unwrap();
-            }
-        });
-
-        let inner = Arc::new(MachineProverInner {
-            task_tx,
+        MachineProver {
+            base_workers: self.base_workers.clone(),
+            worker_permits: self.worker_permits.clone(),
+            worker_queue: Arc::new(worker_queue),
             verifier: self.verifier.clone(),
-            num_workers: total_num_workers,
-        });
-
-        MachineProver { inner }
+        }
     }
 }
 
@@ -334,53 +146,53 @@ impl<C: MachineProverComponents> MachineProver<C> {
         C::Air: for<'a> Air<VerifierConstraintFolder<'a, C::Config>>,
         C::F: PrimeField32,
     {
-        self.inner.verifier.verify(vk, proof)
+        self.verifier.verify(vk, proof)
     }
 
     /// Get the number of workers.
     #[must_use]
     #[inline]
     pub fn num_workers(&self) -> usize {
-        self.inner.num_workers
+        self.base_workers.len()
     }
 
     /// Get the verifier.
     #[must_use]
     #[inline]
     pub fn verifier(&self) -> &MachineVerifier<C::Config, C::Air> {
-        &self.inner.verifier
+        &self.verifier
     }
 
     /// Get a new challenger.
     #[must_use]
     #[inline]
     pub fn challenger(&self) -> <C::Config as JaggedConfig>::Challenger {
-        self.inner.verifier.challenger()
+        self.verifier.challenger()
     }
 
     /// Get the machine.
     #[must_use]
     #[inline]
     pub fn machine(&self) -> &Machine<C::F, C::Air> {
-        self.inner.verifier.machine()
+        self.verifier.machine()
     }
 
     /// Get the maximum log row count.
     #[must_use]
     pub fn max_log_row_count(&self) -> usize {
-        self.inner.verifier.max_log_row_count()
+        self.verifier.max_log_row_count()
     }
 
     /// Get the log stacking height.
     #[must_use]
     pub fn log_stacking_height(&self) -> u32 {
-        self.inner.verifier.log_stacking_height()
+        self.verifier.log_stacking_height()
     }
 
     /// Given a record, compute the shape of the resulting shard proof.
     pub fn shape_from_record(&self, record: &Record<C>) -> Option<CoreProofShape<C::F, C::Air>> {
-        let log_stacking_height = self.inner.verifier.log_stacking_height() as usize;
-        let max_log_row_count = self.inner.verifier.max_log_row_count();
+        let log_stacking_height = self.verifier.log_stacking_height() as usize;
+        let max_log_row_count = self.verifier.max_log_row_count();
         let airs = self.machine().chips();
         let shard_chips: BTreeSet<_> =
             airs.iter().filter(|air| air.included(record)).cloned().collect();
@@ -440,81 +252,84 @@ impl<C: MachineProverComponents> MachineProver<C> {
     //     CoreProofShape { shard_chips, preprocessed_multiple, main_multiple }
     // }
 
-    /// Send a setup task to the machine prover.
+    /// Call setup on an available worker.
     #[inline]
     #[must_use]
     #[allow(clippy::type_complexity)]
-    pub fn setup(
+    #[tracing::instrument(skip_all, name = "machine_setup")]
+    pub async fn setup(
         &self,
         program: Arc<Program<C>>,
         vk: Option<MachineVerifyingKey<C::Config>>,
-    ) -> TaskHandle<
-        (PreprocessedData<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>),
-        MachineProverError,
-    > {
-        // Create a span for this task.
-        let span = tracing::Span::current();
-        // Create a channel for the output.
-        let (output_tx, output_rx) = oneshot::channel();
-        // Crate an abort handle for this task.
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let task = Task::Setup(SetupTask { program, vk, output_tx, abort_registration, span });
-        self.inner.task_tx.send(task).unwrap();
+    ) -> (PreprocessedData<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>) {
+        // Get a worker from the queue.
+        let worker =
+            self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
 
-        TaskHandle::new(output_rx, abort_handle)
+        // Copy the worker index.
+        let idx = *worker;
+
+        self.base_workers[idx].setup_from_vk(program, vk, self.worker_permits[idx].clone()).await
     }
 
-    /// Send a prove task to the machine prover.
+    /// Call prove_shard on an available worker.
     #[inline]
     #[must_use]
-    pub fn prove_shard(
+    #[tracing::instrument(skip_all, name = "machine_prove_shard")]
+    pub async fn prove_shard(
         &self,
         pk: Arc<MachineProvingKey<C>>,
         record: Record<C>,
-    ) -> TaskHandle<ShardProof<C::Config>, MachineProverError> {
-        // Create a span for this task.
-        let span = tracing::Span::current();
-        // Create a channel for the output.
-        let (output_tx, output_rx) = oneshot::channel();
-        // Create an abortable task.
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let task =
-            Task::Prove(ProveTask { pk, record, proof_tx: output_tx, abort_registration, span });
-        // Since the prover is in scope, the channel should be open so we can unwrap the send error.
-        self.inner.task_tx.send(task).unwrap();
-        // Crate an abort handle for this task.
-        TaskHandle::new(output_rx, abort_handle)
+    ) -> ShardProof<C::Config> {
+        // Get a worker from the queue.
+        let worker =
+            self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
+
+        // Copy the worker index.
+        let idx = *worker;
+
+        let mut challenger = self.challenger();
+        pk.vk.observe_into(&mut challenger);
+
+        let (proof, _) = self.base_workers[idx]
+            .prove_shard_with_pk(pk, record, self.worker_permits[idx].clone(), &mut challenger)
+            .await;
+
+        // Return the proof.
+        proof
     }
 
-    /// Setup and prove a shard.
+    /// Call setup_and_prove_shard on an available worker.
     #[inline]
     #[must_use]
     #[allow(clippy::type_complexity)]
-    pub fn setup_and_prove_shard(
+    #[tracing::instrument(skip_all, name = "machine_setup_and_prove_shard")]
+    pub async fn setup_and_prove_shard(
         &self,
         program: Arc<Program<C>>,
         vk: Option<MachineVerifyingKey<C::Config>>,
         record: Record<C>,
-    ) -> TaskHandle<(MachineVerifyingKey<C::Config>, ShardProof<C::Config>), MachineProverError>
-    {
-        // Create a span for this task.
-        let span = tracing::Span::current();
-        // Create a channel for the output.
-        let (output_tx, output_rx) = oneshot::channel();
-        // Create an abortable task.
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let task = Task::SetupAndProve(SetupAndProveTask {
-            program,
-            vk,
-            record,
-            proof_tx: output_tx,
-            abort_registration,
-            span,
-        });
-        // Since the prover is in scope, the channel should be open so we can unwrap the send error.
-        self.inner.task_tx.send(task).unwrap();
-        // Crate an abort handle for this task.
-        TaskHandle::new(output_rx, abort_handle)
+    ) -> (MachineVerifyingKey<C::Config>, ShardProof<C::Config>) {
+        // Get a worker from the queue.
+        let worker =
+            self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
+
+        // Copy the worker index.
+        let idx = *worker;
+
+        let mut challenger = self.challenger();
+
+        let (vk, proof, _) = self.base_workers[idx]
+            .setup_and_prove_shard(
+                program,
+                record,
+                vk,
+                self.worker_permits[idx].clone(),
+                &mut challenger,
+            )
+            .await;
+
+        (vk, proof)
     }
 
     /// A function to extract preprocessed table heights from the pk.

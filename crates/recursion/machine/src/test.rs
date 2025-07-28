@@ -64,12 +64,12 @@ pub async fn run_test_recursion<const DEGREE: usize, const VAR_EVENTS_PER_ROW: u
     let (pk, vk) = prover
         .setup(Arc::new(program), None)
         .instrument(tracing::debug_span!("setup").or_current())
-        .await
-        .unwrap();
+        .await;
+
     let pk = unsafe { pk.into_inner() };
     let mut shard_proofs = Vec::with_capacity(records.len());
     for record in records {
-        let proof = prover.prove_shard(pk.clone(), record).await.unwrap();
+        let proof = prover.prove_shard(pk.clone(), record).await;
         shard_proofs.push(proof);
     }
 

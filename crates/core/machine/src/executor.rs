@@ -5,155 +5,43 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use futures::stream::{AbortHandle, AbortRegistration};
 use slop_algebra::PrimeField32;
-use slop_futures::{handle::TaskHandle, queue::WorkerQueue};
+use slop_futures::queue::WorkerQueue;
 use sp1_core_executor::{
     subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport,
     ExecutionState, Executor, Program, SP1Context, SP1CoreOpts,
 };
 use sp1_stark::{air::PublicValues, Machine, MachineRecord};
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tracing::Span;
 
 use crate::{io::SP1Stdin, riscv::RiscvAir, utils::concurrency::TurnBasedSync};
 
 pub struct MachineExecutor<F: PrimeField32> {
-    task_tx: mpsc::UnboundedSender<ExecuteTask>,
+    num_record_workers: usize,
+    opts: SP1CoreOpts,
+    machine: Machine<F, RiscvAir<F>>,
     _marker: std::marker::PhantomData<F>,
 }
 
 impl<F: PrimeField32> MachineExecutor<F> {
-    pub fn execute(
+    pub fn new(num_record_workers: usize, opts: SP1CoreOpts) -> Self {
+        let machine = RiscvAir::<F>::machine();
+
+        Self { num_record_workers, opts, machine, _marker: PhantomData }
+    }
+
+    pub async fn execute(
         &self,
         program: Arc<Program>,
         stdin: SP1Stdin,
         context: SP1Context<'static>,
         record_tx: mpsc::Sender<ExecutionRecord>,
-    ) -> TaskHandle<ExecutionOutput, MachineExecutorError> {
-        // Create a span for this task.
-        let span = tracing::Span::current();
-        // Create a channel for the output.
-        let (output_tx, output_rx) = oneshot::channel();
-        // Create an abortable task.
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let task =
-            ExecuteTask { program, stdin, context, output_tx, record_tx, abort_registration, span };
-        self.task_tx.send(task).unwrap();
-        TaskHandle::new(output_rx, abort_handle)
-    }
-}
-
-pub struct MachineExecutorBuilder<F: PrimeField32> {
-    machine: Machine<F, RiscvAir<F>>,
-    num_record_workers: usize,
-    opts: SP1CoreOpts,
-}
-
-#[derive(Error, Debug)]
-pub enum MachineExecutorError {
-    #[error("failed to execute program: {0}")]
-    ExecutionError(ExecutionError),
-    #[error("io error: {0}")]
-    IoError(io::Error),
-    #[error("serialization error: {0}")]
-    SerializationError(bincode::Error),
-    // The task was aborted.
-    #[error("task was aborted")]
-    TaskAborted,
-    #[error("executor is already closed")]
-    ExecutorClosed,
-    // Task failed.
-    #[error("task failed: {0}")]
-    ExecutorPanicked(#[from] oneshot::error::RecvError),
-}
-
-#[allow(dead_code)]
-struct ExecuteTask {
-    program: Arc<Program>,
-    stdin: SP1Stdin,
-    context: SP1Context<'static>,
-    record_tx: mpsc::Sender<ExecutionRecord>,
-    output_tx: oneshot::Sender<Result<ExecutionOutput, MachineExecutorError>>,
-    abort_registration: AbortRegistration,
-    span: Span,
-}
-
-pub struct ExecutionOutput {
-    pub public_value_stream: Vec<u8>,
-    pub cycles: u64,
-}
-
-#[allow(dead_code)]
-struct RecordTask {
-    index: usize,
-    checkpoint_file: File,
-    done: bool,
-    program: Arc<Program>,
-    record_gen_sync: Arc<TurnBasedSync>,
-    state: Arc<Mutex<PublicValues<u32, u64, u64, u32>>>,
-    deferred: Arc<Mutex<ExecutionRecord>>,
-    record_tx: mpsc::Sender<ExecutionRecord>,
-    abort_handle: AbortHandle,
-    span: Span,
-}
-
-pub fn trace_checkpoint(
-    program: Arc<Program>,
-    file: &File,
-    opts: SP1CoreOpts,
-) -> (Vec<ExecutionRecord>, ExecutionReport) {
-    let noop = NoOpSubproofVerifier;
-
-    let mut reader = std::io::BufReader::new(file);
-    let state: ExecutionState =
-        bincode::deserialize_from(&mut reader).expect("failed to deserialize state");
-    let mut runtime = Executor::recover(program, state, opts);
-
-    // We already passed the deferred proof verifier when creating checkpoints, so the proofs were
-    // already verified. So here we use a noop verifier to not print any warnings.
-    runtime.subproof_verifier = Some(Arc::new(noop));
-
-    // Execute from the checkpoint.
-    let (records, done) = runtime.execute_record(true).unwrap();
-
-    let mut records = records.into_iter().map(|r| *r).collect::<Vec<_>>();
-    let pv = records.last().unwrap().public_values;
-
-    // Handle the case where the COMMIT happens across the last two shards.
-    if !done
-        && (pv.committed_value_digest.iter().any(|v| *v != 0)
-            || pv.deferred_proofs_digest.iter().any(|v| *v != 0))
-    {
-        // We turn off the `print_report` flag to avoid modifying the report.
-        runtime.print_report = false;
-        let (_, next_pv, _) = runtime.execute_state(true).unwrap();
-        for record in records.iter_mut() {
-            record.public_values.committed_value_digest = next_pv.committed_value_digest;
-            record.public_values.deferred_proofs_digest = next_pv.deferred_proofs_digest;
-        }
-    }
-
-    (records, runtime.report)
-}
-
-impl<F: PrimeField32> MachineExecutorBuilder<F> {
-    pub fn new(opts: SP1CoreOpts, num_record_workers: usize) -> Self {
-        let machine = RiscvAir::machine();
-
-        Self { machine, num_record_workers, opts }
-    }
-
-    pub fn num_workers(&mut self, num_record_workers: usize) -> &mut Self {
-        self.num_record_workers = num_record_workers;
-        self
-    }
-
-    pub fn build(&mut self) -> MachineExecutor<F> {
-        let (task_tx, mut task_rx) = mpsc::unbounded_channel::<ExecuteTask>();
-
-        // Spawn the record generation tasks and initialize the channels for them.
+    ) -> Result<ExecutionOutput, MachineExecutorError> {
+        // Spawn the record generation tasks.
+        //
+        // todo: memory permit this as we know the opcode counts up front.
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
         for _ in 0..self.num_record_workers {
             let (tx, mut rx) = mpsc::unbounded_channel::<RecordTask>();
@@ -171,13 +59,9 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
                         state,
                         deferred,
                         record_tx,
-                        abort_handle,
                         // TODO: Use the span.
                         span: _,
                     } = task;
-                    if abort_handle.is_aborted() {
-                        continue;
-                    }
 
                     let (mut records, _) =
                         tracing::debug_span!("trace checkpoint").in_scope(|| {
@@ -292,112 +176,166 @@ impl<F: PrimeField32> MachineExecutorBuilder<F> {
 
                     // Send the records to the output channel.
                     for record in records {
-                        record_tx.blocking_send(record).unwrap();
+                        if let Err(e) = record_tx.blocking_send(record) {
+                            tracing::error!("failed to send record to prover channel: {}", e);
+                            break;
+                        }
                     }
                 }
             });
         }
 
-        // Spawn the checkpoint generation task.
-        let opts = self.opts.clone();
-        tokio::task::spawn(async move {
-            let record_worker_channels = Arc::new(WorkerQueue::new(record_worker_channels));
-            'task_loop: while let Some(task) = task_rx.recv().await {
-                let ExecuteTask {
-                    program,
-                    stdin,
-                    context,
-                    record_tx,
-                    output_tx,
-                    abort_registration,
-                    // TODO: Use the span.
-                    span: _,
-                } = task;
+        // Initialize the record generation state.
+        let record_gen_sync = Arc::new(TurnBasedSync::new());
+        let state = Arc::new(Mutex::new(PublicValues::<u32, u64, u64, u32>::default().reset()));
+        let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
+        let record_worker_channels = Arc::new(WorkerQueue::new(record_worker_channels));
 
-                if abort_registration.handle().is_aborted() {
-                    // If the task was aborted, send an error to the output channel and continue, if
-                    //  the channel is closed, just drop the message.
-                    output_tx.send(Err(MachineExecutorError::TaskAborted)).ok();
-                    continue;
+        // Setup the runtime.
+        let mut runtime =
+            Box::new(Executor::with_context(program.clone(), self.opts.clone(), context));
+        runtime.write_vecs(&stdin.buffer);
+        for proof in stdin.proofs.iter() {
+            let (proof, vk) = proof.clone();
+            runtime.write_proof(proof, vk);
+        }
+
+        // Generate checkpoints until the execution is done.
+        let mut index = 0;
+        let mut done = false;
+        while !done {
+            // Send and receive ownership of `runtime: Box<Executor<'_>>`.
+            // The `.unwrap()` propagates panics from `generate_checkpoint`.
+            let checkpoint_result;
+            (runtime, checkpoint_result) = tokio::task::spawn_blocking(move || {
+                let res = generate_checkpoint(&mut runtime);
+                (runtime, res)
+            })
+            .await
+            .map_err(MachineExecutorError::ExecutorPanicked)?;
+
+            match checkpoint_result {
+                Ok((checkpoint_file, is_done)) => {
+                    // Update the finished flag.
+                    done = is_done;
+                    // Create a new record generation task.
+                    let record_task = RecordTask {
+                        index,
+                        checkpoint_file,
+                        done,
+                        program: program.clone(),
+                        record_gen_sync: record_gen_sync.clone(),
+                        state: state.clone(),
+                        deferred: deferred.clone(),
+                        record_tx: record_tx.clone(),
+                        span: tracing::debug_span!("execute record"),
+                    };
+
+                    // Send the checkpoint to the record generation worker.
+                    let record_worker = record_worker_channels
+                        .clone()
+                        .pop()
+                        .await
+                        .expect("failed to pop record worker from channel");
+
+                    // Send the task to the worker.
+                    record_worker
+                        .send(record_task)
+                        .map_err(|_| MachineExecutorError::ExecutorClosed)?;
+
+                    // Increment the index.
+                    index += 1;
                 }
-
-                // Initialize the record generation state.
-                let record_gen_sync = Arc::new(TurnBasedSync::new());
-                let state =
-                    Arc::new(Mutex::new(PublicValues::<u32, u64, u64, u32>::default().reset()));
-                let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
-
-                // Check if the task was aborted again.
-                if abort_registration.handle().is_aborted() {
-                    output_tx.send(Err(MachineExecutorError::TaskAborted)).ok();
-                    continue;
+                Err(e) => {
+                    return Err(e);
                 }
-
-                // Setup the runtime.
-                let mut runtime =
-                    Box::new(Executor::with_context(program.clone(), opts.clone(), context));
-                runtime.write_vecs(&stdin.buffer);
-                for proof in stdin.proofs.iter() {
-                    let (proof, vk) = proof.clone();
-                    runtime.write_proof(proof, vk);
-                }
-
-                // Generate checkpoints until the execution is done.
-                let mut index = 0;
-                let abort_handle = abort_registration.handle();
-                let mut done = false;
-                while !done && !abort_handle.is_aborted() {
-                    // Send and receive ownership of `runtime: Box<Executor<'_>>`.
-                    // The `.unwrap()` propagates panics from `generate_checkpoint`.
-                    let checkpoint_result;
-                    (runtime, checkpoint_result) = tokio::task::spawn_blocking(move || {
-                        let res = generate_checkpoint(&mut runtime);
-                        (runtime, res)
-                    })
-                    .await
-                    .unwrap();
-                    match checkpoint_result {
-                        Ok((checkpoint_file, is_done)) => {
-                            // Update the finished flag.
-                            done = is_done;
-                            // Create a new record generation task.
-                            let record_task = RecordTask {
-                                index,
-                                checkpoint_file,
-                                done,
-                                program: program.clone(),
-                                record_gen_sync: record_gen_sync.clone(),
-                                state: state.clone(),
-                                deferred: deferred.clone(),
-                                record_tx: record_tx.clone(),
-                                abort_handle: abort_registration.handle(),
-                                span: tracing::debug_span!("execute record"),
-                            };
-                            // Send the checkpoint to the record generation worker.
-                            let record_worker = record_worker_channels.clone().pop().await.unwrap();
-                            // Send the task to the worker.
-                            record_worker.send(record_task).unwrap();
-                            // Increment the index.
-                            index += 1;
-                        }
-                        Err(e) => {
-                            output_tx.send(Err(e)).ok();
-                            continue 'task_loop;
-                        }
-                    }
-                }
-                // Execution is done, send the output to the sender.
-                let public_value_stream = runtime.state.public_values_stream;
-                let cycles = runtime.state.global_clk;
-                output_tx.send(Ok(ExecutionOutput { public_value_stream, cycles })).ok();
             }
-        });
+        }
 
-        MachineExecutor { task_tx, _marker: PhantomData }
+        // Execution is done, send the output to the sender.
+        let public_value_stream = runtime.state.public_values_stream;
+        let cycles = runtime.state.global_clk;
+
+        Ok(ExecutionOutput { public_value_stream, cycles })
     }
 }
 
-pub fn generate_checkpoint(runtime: &mut Executor) -> Result<(File, bool), MachineExecutorError> {
+#[derive(Error, Debug)]
+pub enum MachineExecutorError {
+    #[error("Failed to execute program: {0}")]
+    ExecutionError(ExecutionError),
+    #[error("IO error: {0}")]
+    IoError(io::Error),
+    #[error("Serialization error: {0}")]
+    SerializationError(bincode::Error),
+    #[error("Executor is already closed")]
+    ExecutorClosed,
+    #[error("Task failed: {0:?}")]
+    ExecutorPanicked(#[from] tokio::task::JoinError),
+    #[error("Failed to send record to prover channel")]
+    ProverChannelClosed,
+}
+
+/// The output of the machine executor.
+pub struct ExecutionOutput {
+    pub public_value_stream: Vec<u8>,
+    pub cycles: u64,
+}
+
+struct RecordTask {
+    index: usize,
+    checkpoint_file: File,
+    done: bool,
+    program: Arc<Program>,
+    record_gen_sync: Arc<TurnBasedSync>,
+    state: Arc<Mutex<PublicValues<u32, u64, u64, u32>>>,
+    deferred: Arc<Mutex<ExecutionRecord>>,
+    record_tx: mpsc::Sender<ExecutionRecord>,
+    #[allow(unused)]
+    span: Span,
+}
+
+/// Trace a checkpoint.
+fn trace_checkpoint(
+    program: Arc<Program>,
+    file: &File,
+    opts: SP1CoreOpts,
+) -> (Vec<ExecutionRecord>, ExecutionReport) {
+    let noop = NoOpSubproofVerifier;
+
+    let mut reader = std::io::BufReader::new(file);
+    let state: ExecutionState =
+        bincode::deserialize_from(&mut reader).expect("failed to deserialize state");
+    let mut runtime = Executor::recover(program, state, opts);
+
+    // We already passed the deferred proof verifier when creating checkpoints, so the proofs were
+    // already verified. So here we use a noop verifier to not print any warnings.
+    runtime.subproof_verifier = Some(Arc::new(noop));
+
+    // Execute from the checkpoint.
+    let (records, done) = runtime.execute_record(true).unwrap();
+
+    let mut records = records.into_iter().map(|r| *r).collect::<Vec<_>>();
+    let pv = records.last().unwrap().public_values;
+
+    // Handle the case where the COMMIT happens across the last two shards.
+    if !done
+        && (pv.committed_value_digest.iter().any(|v| *v != 0)
+            || pv.deferred_proofs_digest.iter().any(|v| *v != 0))
+    {
+        // We turn off the `print_report` flag to avoid modifying the report.
+        runtime.print_report = false;
+        let (_, next_pv, _) = runtime.execute_state(true).unwrap();
+        for record in records.iter_mut() {
+            record.public_values.committed_value_digest = next_pv.committed_value_digest;
+            record.public_values.deferred_proofs_digest = next_pv.deferred_proofs_digest;
+        }
+    }
+
+    (records, runtime.report)
+}
+
+fn generate_checkpoint(runtime: &mut Executor) -> Result<(File, bool), MachineExecutorError> {
     // Execute the runtime until we reach a checkpoint.
     let (checkpoint, _, done) =
         runtime.execute_state(false).map_err(MachineExecutorError::ExecutionError)?;

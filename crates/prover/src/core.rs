@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use slop_baby_bear::BabyBear;
-use slop_futures::handle::TaskHandle;
 use slop_jagged::JaggedConfig;
 use sp1_core_executor::{ExecutionRecord, Program, HEIGHT_THRESHOLD};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_stark::{
     prover::{
-        CoreProofShape, MachineProver, MachineProverComponents, MachineProverError,
-        MachineProvingKey, PreprocessedData,
+        CoreProofShape, MachineProver, MachineProverComponents, MachineProvingKey, PreprocessedData,
     },
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
@@ -68,7 +66,7 @@ impl<C> CoreProverComponents for C where
 impl<C: CoreProverComponents> SP1CoreProver<C> {
     #[inline]
     #[must_use]
-    pub fn new(prover: MachineProver<C>) -> Self {
+    pub const fn new(prover: MachineProver<C>) -> Self {
         Self { prover }
     }
 
@@ -90,7 +88,7 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
         elf: &[u8],
     ) -> (PreprocessedData<MachineProvingKey<C>>, Arc<Program>, SP1VerifyingKey) {
         let program = Program::from(elf).unwrap();
-        let (pk, vk) = self.prover.setup(Arc::new(program.clone()), None).await.unwrap();
+        let (pk, vk) = self.prover.setup(Arc::new(program.clone()), None).await;
         (pk, Arc::new(program), SP1VerifyingKey { vk })
     }
 
@@ -101,7 +99,7 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
         program: Arc<Program>,
         vk: SP1VerifyingKey,
     ) -> PreprocessedData<MachineProvingKey<C>> {
-        let (pk, _) = self.prover.setup(program, Some(vk.vk)).await.unwrap();
+        let (pk, _) = self.prover.setup(program, Some(vk.vk)).await;
 
         pk
     }
@@ -109,12 +107,13 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
     /// Prove a core shard
     #[inline]
     #[must_use]
-    pub fn prove_shard(
+    #[tracing::instrument(skip_all, name = "prove_core_shard")]
+    pub async fn prove_shard(
         &self,
         pk: Arc<MachineProvingKey<C>>,
         record: ExecutionRecord,
-    ) -> TaskHandle<ShardProof<CoreSC>, MachineProverError> {
-        self.prover.prove_shard(pk.clone(), record)
+    ) -> ShardProof<CoreSC> {
+        self.prover.prove_shard(pk.clone(), record).await
     }
 
     pub fn verifier(&self) -> &MachineVerifier<C::Config, RiscvAir<C::F>> {
@@ -127,13 +126,13 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
     /// prove the shard in one step.
     #[inline]
     #[must_use]
-    pub fn setup_and_prove_shard(
+    pub async fn setup_and_prove_shard(
         &self,
         program: Arc<Program>,
         vk: Option<SP1VerifyingKey>,
         record: ExecutionRecord,
-    ) -> TaskHandle<(MachineVerifyingKey<CoreSC>, ShardProof<CoreSC>), MachineProverError> {
-        self.prover.setup_and_prove_shard(program, vk.map(|vk| vk.vk), record)
+    ) -> (MachineVerifyingKey<CoreSC>, ShardProof<CoreSC>) {
+        self.prover.setup_and_prove_shard(program, vk.map(|vk| vk.vk), record).await
     }
 
     /// Get the shape of the core shard

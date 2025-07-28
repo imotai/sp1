@@ -457,7 +457,6 @@ pub async fn build_vk_map<C: SP1ProverComponents + 'static>(
         let vk_tx = vk_tx.clone();
         let program_rx = program_rx.clone();
         let prover = prover.clone();
-        let panic_tx = panic_tx.clone();
         set.spawn(async move {
             let mut done = 0;
             while let Some((i, program, is_shrink)) = program_rx.lock().await.recv().await {
@@ -471,13 +470,6 @@ pub async fn build_vk_map<C: SP1ProverComponents + 'static>(
                 });
                 let vk = vk_thread.await.unwrap();
                 done += 1;
-
-                if let Err(e) = vk {
-                    tracing::error!("failed to setup program {}: {:?}", i, e);
-                    panic_tx.send(i).unwrap();
-                    continue;
-                }
-                let vk = vk.unwrap();
 
                 let vk_digest = vk.1.hash_babybear();
 

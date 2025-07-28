@@ -7,7 +7,6 @@ use std::{
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, PrimeField32};
 use slop_baby_bear::BabyBear;
-use slop_futures::handle::TaskHandle;
 use slop_jagged::JaggedConfig;
 use slop_merkle_tree::my_bb_16_perm;
 use sp1_core_executor::SP1RecursionProof;
@@ -43,7 +42,7 @@ use sp1_recursion_executor::{
 };
 use sp1_stark::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    prover::{MachineProver, MachineProverComponents, MachineProverError, MachineProvingKey},
+    prover::{MachineProver, MachineProverComponents, MachineProvingKey},
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
@@ -182,7 +181,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             let program = Arc::new(program);
 
             // Make the reduce keys.
-            let (pk, vk) = prover.setup(program.clone(), None).await.unwrap();
+            let (pk, vk) = prover.setup(program.clone(), None).await;
             let pk = unsafe { pk.into_inner() };
             compose_keys.insert(arity, (pk, vk));
             compose_programs.insert(arity, program);
@@ -193,7 +192,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             shrink_program_from_input(&recursive_compress_verifier, vk_verification, &shrink_input);
         let shrink_program = Arc::new(shrink_program);
 
-        let (pk, _) = shrink_prover.setup(shrink_program.clone(), None).await.unwrap();
+        let (pk, _) = shrink_prover.setup(shrink_program.clone(), None).await;
 
         let pk: Arc<MachineProvingKey<C::RecursionComponents>> = unsafe { pk.into_inner() };
 
@@ -224,7 +223,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         let wrap_keys = Mutex::new(None);
 
         // Make the deferred keys.
-        let (pk, vk) = prover.setup(program.clone(), None).await.unwrap();
+        let (pk, vk) = prover.setup(program.clone(), None).await;
         let pk = unsafe { pk.into_inner() };
         let deferred_keys = Some((pk, vk));
         let deferred_program = Some(program);
@@ -330,43 +329,37 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
 
     #[inline]
     #[must_use]
-    pub fn prove_shard(
+    pub async fn prove_shard(
         &self,
         pk: Arc<MachineProvingKey<C::RecursionComponents>>,
         record: ExecutionRecord<BabyBear>,
-    ) -> TaskHandle<ShardProof<InnerSC>, MachineProverError> {
-        self.prover.prove_shard(pk, record)
+    ) -> ShardProof<InnerSC> {
+        self.prover.prove_shard(pk, record).await
     }
 
     #[inline]
     #[must_use]
-    pub fn prove_shrink(
-        &self,
-        record: ExecutionRecord<BabyBear>,
-    ) -> TaskHandle<ShardProof<InnerSC>, MachineProverError> {
+    pub async fn prove_shrink(&self, record: ExecutionRecord<BabyBear>) -> ShardProof<InnerSC> {
         let shrink_keys = self.get_shrink_keys();
-        self.shrink_prover.prove_shard(shrink_keys.0, record)
+        self.shrink_prover.prove_shard(shrink_keys.0, record).await
     }
 
     #[inline]
     #[must_use]
-    pub fn prove_wrap(
-        &self,
-        record: ExecutionRecord<BabyBear>,
-    ) -> TaskHandle<ShardProof<OuterSC>, MachineProverError> {
+    pub async fn prove_wrap(&self, record: ExecutionRecord<BabyBear>) -> ShardProof<OuterSC> {
         let wrap_keys = self.get_wrap_keys();
-        self.wrap_prover.prove_shard(wrap_keys.0, record)
+        self.wrap_prover.prove_shard(wrap_keys.0, record).await
     }
 
     #[inline]
     #[must_use]
-    pub fn setup_and_prove_shard(
+    pub async fn setup_and_prove_shard(
         &self,
         program: Arc<RecursionProgram<BabyBear>>,
         vk: Option<MachineVerifyingKey<InnerSC>>,
         record: ExecutionRecord<BabyBear>,
-    ) -> TaskHandle<(MachineVerifyingKey<InnerSC>, ShardProof<InnerSC>), MachineProverError> {
-        self.prover.setup_and_prove_shard(program, vk, record)
+    ) -> (MachineVerifyingKey<InnerSC>, ShardProof<InnerSC>) {
+        self.prover.setup_and_prove_shard(program, vk, record).await
     }
 
     #[inline]
@@ -519,7 +512,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
 
         // Initialize keys asynchronously
         let (shrink_pk, shrink_vk) =
-            self.shrink_prover.setup(self.shrink_program.clone(), None).await.unwrap();
+            self.shrink_prover.setup(self.shrink_program.clone(), None).await;
         let keys = (unsafe { shrink_pk.into_inner() }, shrink_vk);
 
         {
@@ -554,8 +547,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         }
 
         // Initialize keys asynchronously
-        let (wrap_pk, wrap_vk) =
-            self.wrap_prover.setup(self.wrap_program.clone(), None).await.unwrap();
+        let (wrap_pk, wrap_vk) = self.wrap_prover.setup(self.wrap_program.clone(), None).await;
         let keys = (unsafe { wrap_pk.into_inner() }, wrap_vk);
 
         {

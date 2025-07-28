@@ -11,10 +11,7 @@ use sp1_core_executor::{
     subproof::SubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Executor,
     Program, SP1Context, SP1CoreOpts, SP1RecursionProof,
 };
-use sp1_core_machine::{
-    executor::{MachineExecutor, MachineExecutorBuilder},
-    io::SP1Stdin,
-};
+use sp1_core_machine::{executor::MachineExecutor, io::SP1Stdin};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_recursion_circuit::{
     machine::{SP1DeferredWitnessValues, SP1NormalizeWitnessValues, SP1ShapedWitnessValues},
@@ -27,8 +24,8 @@ use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
 };
 use sp1_stark::{
-    prover::{MachineProverError, MachineProvingKey},
-    BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey, ShardProof,
+    prover::MachineProvingKey, BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey,
+    ShardProof,
 };
 use std::{
     borrow::Borrow,
@@ -113,7 +110,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             prover.core().num_prover_workers() * opts.records_capacity_buffer;
         let prover_task_capacity =
             prover.core().num_prover_workers() * opts.prover_task_capacity_buffer;
-        let executor = MachineExecutorBuilder::new(opts.core_opts, opts.num_record_workers).build();
+        let executor = MachineExecutor::new(opts.num_record_workers, opts.core_opts);
 
         let compose_batch_size = prover.recursion().max_compose_arity();
         let normalize_batch_size = prover.recursion().normalize_batch_size();
@@ -198,23 +195,23 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let shard_proofs = tokio::spawn(async move {
             let mut shape_count = 0;
             let mut shard_proofs = Vec::new();
-            let mut tasks = FuturesOrdered::new();
-            let prover_spawn_permits = Semaphore::new(prover_task_capacity);
-            let mut permits = Vec::with_capacity(prover_task_capacity);
+            let mut permits = Vec::new();
+            let mut prove_shard_task = FuturesOrdered::new();
+            let prover_spawn_permits = Arc::new(Semaphore::new(prover_task_capacity));
             loop {
                 tokio::select! {
-                    Ok((permit, Some(record))) = prover_spawn_permits.acquire()
+                    // Accquire a permit and start the exeuction.
+                    Ok((permit, Some(record))) = prover_spawn_permits.clone().acquire_owned()
                         .and_then(|permit|
                             records_rx.recv().map(|record| Ok((permit, record)))) => {
-                        let span = tracing::debug_span!("prove core shard").entered();
                         let shape = prover.prover.core().core_shape_from_record(&record).unwrap();
 
-                        let handle = prover
+                        let proof = prover
                             .prover
                             .core()
                             .prove_shard(pk.clone(), record);
-                        span.exit();
-                        tasks.push_back(handle);
+
+                        prove_shard_task.push_back(proof);
                         permits.push(permit);
 
                         if shape_count < 3 {
@@ -233,8 +230,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                             shape_count += 1;
                         }
                     }
-                    Some(result) = tasks.next() => {
-                        let proof = result.map_err(SP1ProverError::CoreProverError)?;
+                    Some(proof) = prove_shard_task.next() => {
                         shard_proofs.push(proof);
                         permits.pop();
                     }
@@ -349,32 +345,31 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                         let ProveTask { keys, range, record } = task;
                         if let Some((pk, vk)) = keys {
                             let span = tracing::debug_span!("prove compress shard").entered();
-                            let handle = prover.prover().recursion().prove_shard(pk, record)
-                            .map_ok(move |proof|{
+                            let handle = async {
+                                let proof = prover.prover().recursion().prove_shard(pk, record).await;
                                 let proof = SP1RecursionProof { vk, proof };
                                 RecursionProof { shard_range: range, proof }
-                            });
+                            };
+
                             prove_tasks.push(handle);
                             span.exit();
                         }
                         else {
-                        let span = tracing::debug_span!("prove compress shard").entered();
-                        let handle = prover.prover().recursion().setup_and_prove_shard(record.program.clone(), None, record)
-                            .map_ok(move |(vk, proof)|  {
-                            let proof = SP1RecursionProof { vk, proof };
+                            let span = tracing::debug_span!("prove compress shard").entered();
+                            let handle = async {
+                                let (vk, proof) = prover.prover().recursion().setup_and_prove_shard(record.program.clone(), None, record).await;
+                                let proof = SP1RecursionProof { vk, proof };
+                                RecursionProof { shard_range: range, proof }
+                            };
 
-                            RecursionProof { shard_range: range, proof }
-                          });
-                          span.exit();
-                          setup_and_prove_tasks.push(handle);
+                            setup_and_prove_tasks.push(handle);
+                            span.exit();
                         }
                     }
-                    Some(result) = setup_and_prove_tasks.next() => {
-                        let proof = result.unwrap();
+                    Some(proof) = setup_and_prove_tasks.next() => {
                         tree_tx.send(proof).unwrap();
                     }
-                    Some(result) = prove_tasks.next() => {
-                        let proof = result.unwrap();
+                    Some(proof) = prove_tasks.next() => {
                         tree_tx.send(proof).unwrap();
                     }
                     else => {
@@ -414,7 +409,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         }
         drop(compress_tree_tx);
 
-        Err(SP1ProverError::RecursionProverError(MachineProverError::ProverClosed))
+        unreachable!("todo explain this")
     }
 
     #[tracing::instrument(name = "prove shrink", skip_all)]
@@ -447,12 +442,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let (vk, record) = tokio::try_join!(key_task, execute_task)?;
 
-        let proof = self
-            .prover
-            .recursion()
-            .prove_shrink(record)
-            .await
-            .map_err(SP1ProverError::RecursionProverError)?;
+        let proof = self.prover.recursion().prove_shrink(record).await;
 
         Ok(SP1RecursionProof { vk, proof })
     }
@@ -484,12 +474,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let (vk, record) = tokio::try_join!(key_task, execute_task)?;
 
-        let proof = self
-            .prover
-            .recursion()
-            .prove_wrap(record)
-            .await
-            .map_err(SP1ProverError::RecursionProverError)?;
+        let proof = self.prover.recursion().prove_wrap(record).await;
 
         Ok(SP1RecursionProof { vk, proof })
     }
@@ -875,7 +860,8 @@ impl CompressTree {
                 self.insert(proofs);
             }
         }
-        Err(SP1ProverError::RecursionProverError(MachineProverError::ProverClosed))
+
+        unreachable!("todo explain this")
     }
 }
 

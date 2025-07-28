@@ -10,9 +10,9 @@ use crate::{
     BabyBearFriConfig, CircuitConfig, TwoAdicPcsMatsVariable, TwoAdicPcsProofVariable,
 };
 use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, ExtensionField, Field, TwoAdicField};
 use slop_baby_bear::BabyBear;
 use slop_commit::{Mmcs, Pcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
-use slop_algebra::{AbstractField, ExtensionField, Field, TwoAdicField};
 use slop_matrix::{dense::RowMajorMatrix, Dimensions};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -265,8 +265,8 @@ where
                 chips.iter().zip(opened_values.chips.iter()).for_each(|(chip, val)| {
                     max_lookup_mult = max_lookup_mult
                         .checked_add(
-                            (chip.num_sends_by_kind(kind) as u64 +
-                                chip.num_receives_by_kind(kind) as u64)
+                            (chip.num_sends_by_kind(kind) as u64
+                                + chip.num_receives_by_kind(kind) as u64)
                                 .checked_mul(1u64.checked_shl(val.log_degree as u32).unwrap())
                                 .unwrap(),
                         )
@@ -516,7 +516,7 @@ pub mod tests {
     use sp1_core_machine::{
         io::SP1Stdin,
         riscv::RiscvAir,
-        utils::{prove_core, prove_core_stream, setup_logger},
+        utils::{prove_core, setup_logger},
     };
     use sp1_recursion_compiler::{
         config::{InnerConfig, OuterConfig},

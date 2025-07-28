@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedSender};
 
-use crate::{executor::MachineExecutorBuilder, riscv::RiscvAir};
+use crate::{executor::MachineExecutor, riscv::RiscvAir};
 use thiserror::Error;
 
 use slop_algebra::PrimeField32;
@@ -226,8 +226,7 @@ where
     let num_trace_gen_workers = 4;
     let (records_tx, mut records_rx) = mpsc::channel::<ExecutionRecord>(num_record_workers);
 
-    let machine_executor =
-        MachineExecutorBuilder::<F>::new(opts.clone(), num_record_workers).build();
+    let machine_executor = MachineExecutor::<F>::new(num_record_workers, opts.clone());
 
     let prover_permits = ProverSemaphore::new(opts.shard_batch_size);
     let prover = MachineProverBuilder::<PC>::new(verifier, vec![prover_permits], vec![prover])
@@ -241,7 +240,7 @@ where
             handles.push(handle);
         }
         for handle in handles {
-            let proof = handle.await.unwrap();
+            let proof = handle.await;
             proof_tx.send(proof).unwrap();
         }
     });
