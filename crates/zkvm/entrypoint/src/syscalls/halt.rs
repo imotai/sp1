@@ -22,10 +22,9 @@ pub extern "C" fn syscall_halt(exit_code: u8) -> ! {
     unsafe {
         // When we halt, we retrieve the public values finalized digest.  This is the hash of all
         // the bytes written to the public values fd.
-        let pv_digest_bytes =
-            core::mem::take(&mut *core::ptr::addr_of_mut!(zkvm::PUBLIC_VALUES_HASHER))
-                .unwrap()
-                .finalize();
+        //
+        // Taking the value from the static is safe because the zkvm is single threaded.
+        let pv_digest_bytes = core::mem::take(&mut zkvm::PUBLIC_VALUES_HASHER).unwrap().finalize();
 
         #[cfg(feature = "blake3")]
         let pv_digest_bytes = pv_digest_bytes.as_bytes();
