@@ -18,7 +18,10 @@ use std::{
 };
 
 use crate::{
-    adapter::{register::j_type::JTypeReader, state::CPUState},
+    adapter::{
+        register::j_type::{JTypeReader, JTypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{AddOperation, AddOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
@@ -89,16 +92,18 @@ where
         let base_opcode = local.is_auipc * base_opcode_auipc + is_lui * base_opcode_lui;
 
         // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            [
-                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
-                local.state.pc[1].into(),
-                local.state.pc[2].into(),
-            ],
-            AB::Expr::from_canonical_u32(CLK_INC),
-            local.is_real.into(),
+            CPUStateInput::new(
+                local.state,
+                [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                AB::Expr::from_canonical_u32(CLK_INC),
+                local.is_real.into(),
+            ),
         );
 
         let addend: Word<AB::Expr> = Word([
@@ -131,16 +136,18 @@ where
         <AddOperation<AB::F> as SP1Operation<AB>>::eval(builder, op_input);
 
         // Constrain the program and register reads.
-        JTypeReader::<AB::F>::eval(
+        <JTypeReader<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state.clk_high::<AB>(),
-            local.state.clk_low::<AB>(),
-            local.state.pc,
-            opcode,
-            [base_opcode, funct3, funct7],
-            local.add_operation.value,
-            local.adapter,
-            local.is_real.into(),
+            JTypeReaderInput::new(
+                local.state.clk_high::<AB>(),
+                local.state.clk_low::<AB>(),
+                local.state.pc,
+                opcode,
+                [base_opcode, funct3, funct7],
+                local.add_operation.value.map(|x| x.into()),
+                local.adapter,
+                local.is_real.into(),
+            ),
         );
     }
 }

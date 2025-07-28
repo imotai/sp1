@@ -200,7 +200,7 @@ where
                 clk_low: local.state.clk_low::<AB>(),
                 pc: local.state.pc,
                 opcode,
-                op_a_write_value: local.sub_operation.value,
+                op_a_write_value: local.sub_operation.value.map(|x| x.into()),
                 instr_field_consts: [base_opcode, funct3, funct7],
                 cols: local.adapter,
                 is_real: local.is_real.into(),

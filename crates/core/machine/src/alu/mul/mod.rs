@@ -48,10 +48,10 @@ use sp1_stark::{air::MachineAir, Word};
 use crate::{
     adapter::{
         register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
-        state::CPUState,
+        state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation},
-    operations::MulOperation,
+    operations::{MulOperation, MulOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 
@@ -241,18 +241,20 @@ where
             local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu + local.is_mulw;
 
         // Constrain the multiplication operation over `op_b`, `op_c` and the selectors.
-        MulOperation::<AB::F>::eval(
+        <MulOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.a.map(|x| x.into()),
-            local.adapter.b().map(|x| x.into()),
-            local.adapter.c().map(|x| x.into()),
-            local.mul_operation,
-            is_real.clone(),
-            local.is_mul.into(),
-            local.is_mulh.into(),
-            local.is_mulw.into(),
-            local.is_mulhu.into(),
-            local.is_mulhsu.into(),
+            MulOperationInput::new(
+                local.a.map(|x| x.into()),
+                local.adapter.b().map(|x| x.into()),
+                local.adapter.c().map(|x| x.into()),
+                local.mul_operation,
+                is_real.clone(),
+                local.is_mul.into(),
+                local.is_mulh.into(),
+                local.is_mulw.into(),
+                local.is_mulhu.into(),
+                local.is_mulhsu.into(),
+            ),
         );
 
         // Calculate the opcode.
@@ -319,16 +321,18 @@ where
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            [
-                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
-                local.state.pc[1].into(),
-                local.state.pc[2].into(),
-            ],
-            AB::Expr::from_canonical_u32(CLK_INC),
-            is_real.clone(),
+            CPUStateInput::new(
+                local.state,
+                [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                AB::Expr::from_canonical_u32(CLK_INC),
+                is_real.clone(),
+            ),
         );
 
         // Constrain the program and register reads.
@@ -343,7 +347,7 @@ where
             local.adapter,
             is_real.clone(),
         );
-        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
+        <ALUTypeReader<AB::F> as SP1Operation<AB>>::eval(builder, alu_reader_input);
     }
 }
 

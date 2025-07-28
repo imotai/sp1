@@ -3,19 +3,19 @@ use sp1_core_executor::{
     events::{ByteRecord, MemoryAccessPosition},
     JTypeRecord,
 };
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
-use sp1_stark::Word;
+use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
-    air::{SP1CoreAirBuilder, WordAirBuilder},
+    air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},
     memory::MemoryAccessInShardCols,
     program::instruction::InstructionCols,
 };
 
 /// A set of columns to read operations with op_a being a register and op_b and op_c being
 /// immediates.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, IntoShape, SP1OperationBuilder)]
 #[repr(C)]
 pub struct JTypeReader<T> {
     pub op_a: T,
@@ -51,7 +51,7 @@ impl<T> JTypeReader<T> {
 
 impl<F: Field> JTypeReader<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn eval<AB: SP1CoreAirBuilder>(
+    pub fn eval<AB: SP1AirBuilder + MemoryAirBuilder + ProgramAirBuilder>(
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
@@ -86,7 +86,7 @@ impl<F: Field> JTypeReader<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn eval_op_a_immutable<AB: SP1CoreAirBuilder>(
+    pub fn eval_op_a_immutable<AB: SP1AirBuilder + MemoryAirBuilder + ProgramAirBuilder>(
         builder: &mut AB,
         clk_high: AB::Expr,
         clk_low: AB::Expr,
@@ -107,5 +107,37 @@ impl<F: Field> JTypeReader<F> {
             cols,
             is_real,
         );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone, InputParams, InputExpr)]
+pub struct JTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
+    clk_high: AB::Expr,
+    clk_low: AB::Expr,
+    pc: [AB::Var; 3],
+    opcode: AB::Expr,
+    instr_field_consts: [AB::Expr; 3],
+    op_a_write_value: Word<T>,
+    cols: JTypeReader<AB::Var>,
+    is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for JTypeReader<AB::F> {
+    type Input = JTypeReaderInput<AB, AB::Expr>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval(
+            builder,
+            input.clk_high,
+            input.clk_low,
+            input.pc,
+            input.opcode,
+            input.instr_field_consts,
+            input.op_a_write_value,
+            input.cols,
+            input.is_real,
+        )
     }
 }

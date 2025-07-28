@@ -139,19 +139,19 @@ impl<F: Field> RTypeReader<F> {
 }
 
 #[derive(Clone, InputParams, InputExpr)]
-pub struct RTypeReaderInput<AB: SP1AirBuilder> {
+pub struct RTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub clk_high: AB::Expr,
     pub clk_low: AB::Expr,
     pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
-    pub op_a_write_value: Word<AB::Var>,
     pub instr_field_consts: [AB::Expr; 3],
+    pub op_a_write_value: Word<T>,
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
 }
 
 impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReader<AB::F> {
-    type Input = RTypeReaderInput<AB>;
+    type Input = RTypeReaderInput<AB, AB::Expr>;
     type Output = ();
 
     fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {

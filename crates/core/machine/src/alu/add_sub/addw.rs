@@ -1,4 +1,8 @@
-use crate::air::{SP1CoreAirBuilder, SP1Operation};
+use crate::{
+    adapter::state::CPUStateInput,
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::AddwOperationInput,
+};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -200,26 +204,30 @@ where
         let base_opcode = local.base_op_code.into();
 
         // Constrain the add operation over `op_b` and `op_c`.
-        AddwOperation::<AB::F>::eval(
+        <AddwOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.adapter.b().map(|x| x.into()),
-            local.adapter.c().map(|x| x.into()),
-            local.addw_operation,
-            local.is_real.into(),
+            AddwOperationInput::new(
+                local.adapter.b().map(|x| x.into()),
+                local.adapter.c().map(|x| x.into()),
+                local.addw_operation,
+                local.is_real.into(),
+            ),
         );
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            [
-                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
-                local.state.pc[1].into(),
-                local.state.pc[2].into(),
-            ],
-            AB::Expr::from_canonical_u32(CLK_INC),
-            local.is_real.into(),
+            CPUStateInput::new(
+                local.state,
+                [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                AB::Expr::from_canonical_u32(CLK_INC),
+                local.is_real.into(),
+            ),
         );
 
         let u16_max = AB::F::from_canonical_u32((1 << 16) - 1);

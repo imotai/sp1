@@ -95,12 +95,13 @@ fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
             let (steps, constraints, num_calls) = builder.ast().to_lean_components(&input_mapping);
             // println!("{:#?}", lean_components);
 
+            println!();
             println!("-- Generated Lean code for chip {}Chip", chip_name);
-            println!("import SP1Foundations");
-            println!();
-
-            println!("namespace {}Chip", chip_name);
-            println!();
+            // println!("import SP1Foundations");
+            // println!();
+            //
+            // println!("namespace {}Chip", chip_name);
+            // println!();
 
             println!(
                 "def constraints (Main : Vector (Fin BB) {}) : SP1ConstraintList :=",
@@ -111,15 +112,15 @@ fn compile_chip(chip_name: &str, output_format: &OutputFormat) {
                 println!("  {}", step)
             }
 
-            let calls_constraints: String = (0..num_calls).map(|i| format!(" ++ CS{i}")).collect();
-            println!("  [");
+            let calls_constraints: String = (0..num_calls).map(|i| format!("CS{i} ++ ")).collect();
+            println!("  {calls_constraints}[");
             for constraint in constraints {
                 println!("    {},", constraint);
             }
-            println!("  ]{calls_constraints}");
+            println!("  ]");
 
             println!();
-            println!("end {}Chip", chip_name);
+            // println!("end {}Chip", chip_name);
         }
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&builder.ast()).unwrap());
@@ -174,19 +175,24 @@ fn compile_operation(chip_name: &str, operation_name: &str, output_format: &Outp
             let (steps, constraints, num_calls) = operation.body.to_lean_components(&input_mapping);
             // println!("{:#?}", lean_components);
 
-            println!(
-                "-- Generated Lean code for operation {} (from chip {})",
-                operation_name, chip_name
-            );
-            println!("import SP1Foundations");
-            println!();
+            // println!(
+            //     "-- Generated Lean code for operation {} (from chip {})",
+            //     operation_name, chip_name
+            // );
+            // println!("import SP1Foundations");
+            // println!();
 
-            println!("namespace {}", operation_name);
+            // println!("namespace {}", operation_name);
             println!();
 
             println!("def constraints");
             for (param_name, _, param) in &operation.decl.input {
-                println!("  ({param_name} : {})", param.to_lean_type());
+                println!(
+                    "  ({} : {})",
+                    // In Mathlib, c[i] is pre-defined...
+                    if param_name == "c" { "cc" } else { param_name },
+                    param.to_lean_type()
+                );
             }
 
             println!("  : {} :=", operation.decl.to_output_lean_type());
@@ -195,26 +201,29 @@ fn compile_operation(chip_name: &str, operation_name: &str, output_format: &Outp
                 println!("  {}", step)
             }
 
-            let calls_constraints: String = (0..num_calls).map(|i| format!(" ++ CS{i}")).collect();
+            let calls_constraints: String = (0..num_calls).map(|i| format!("CS{i} ++ ")).collect();
             match operation.decl.output {
                 Shape::Unit => {
-                    println!("  [");
+                    println!("  {calls_constraints}[");
                     for constraint in constraints {
                         println!("    {},", constraint);
                     }
-                    println!("  ]{calls_constraints}");
+                    println!("  ]");
                 }
                 _ => {
-                    println!("  ⟨{}, [", operation.decl.output.to_lean_constructor(&input_mapping));
+                    println!(
+                        "  ⟨{}, {calls_constraints}[",
+                        operation.decl.output.to_lean_constructor(&input_mapping)
+                    );
                     for constraint in constraints {
                         println!("    {},", constraint);
                     }
-                    println!("  ]{calls_constraints}⟩");
+                    println!("  ]⟩");
                 }
             }
 
             println!();
-            println!("end {}", operation_name);
+            // println!("end {}", operation_name);
         }
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(operation).unwrap());

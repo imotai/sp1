@@ -12,14 +12,17 @@ use crate::{
     adapter::{
         register::{
             alu_type::ALUTypeReader,
+            i_type::{ITypeReader, ITypeReaderImmutable},
+            j_type::JTypeReader,
             r_type::{RTypeReader, RTypeReaderImmutable},
         },
         state::CPUState,
     },
     operations::{
-        AddOperation, BitwiseOperation, BitwiseU16Operation, IsEqualWordOperation, IsZeroOperation,
-        IsZeroWordOperation, LtOperationSigned, LtOperationUnsigned, SubOperation,
-        U16CompareOperation, U16MSBOperation, U16toU8OperationSafe, U16toU8OperationUnsafe,
+        AddOperation, AddwOperation, BitwiseOperation, BitwiseU16Operation, IsEqualWordOperation,
+        IsZeroOperation, IsZeroWordOperation, LtOperationSigned, LtOperationUnsigned, MulOperation,
+        SubOperation, SubwOperation, U16CompareOperation, U16MSBOperation, U16toU8OperationSafe,
+        U16toU8OperationUnsafe,
     },
 };
 
@@ -46,6 +49,12 @@ pub trait SP1CoreOperationBuilder:
     + SP1OperationBuilder<LtOperationUnsigned<F<Self>>>
     + SP1OperationBuilder<LtOperationSigned<F<Self>>>
     + SP1OperationBuilder<CPUState<F<Self>>>
+    + SP1OperationBuilder<MulOperation<F<Self>>>
+    + SP1OperationBuilder<ITypeReader<F<Self>>>
+    + SP1OperationBuilder<AddwOperation<F<Self>>>
+    + SP1OperationBuilder<SubwOperation<F<Self>>>
+    + SP1OperationBuilder<JTypeReader<F<Self>>>
+    + SP1OperationBuilder<ITypeReaderImmutable>
 {
 }
 
@@ -68,6 +77,12 @@ impl<AB> SP1CoreOperationBuilder for AB where
         + SP1OperationBuilder<U16MSBOperation<F<Self>>>
         + SP1OperationBuilder<LtOperationUnsigned<F<Self>>>
         + SP1OperationBuilder<LtOperationSigned<F<Self>>>
+        + SP1OperationBuilder<MulOperation<F<Self>>>
+        + SP1OperationBuilder<ITypeReader<F<Self>>>
+        + SP1OperationBuilder<AddwOperation<F<Self>>>
+        + SP1OperationBuilder<SubwOperation<F<Self>>>
+        + SP1OperationBuilder<JTypeReader<F<Self>>>
+        + SP1OperationBuilder<ITypeReaderImmutable>
 {
 }
 

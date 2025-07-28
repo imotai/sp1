@@ -218,7 +218,10 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                     }
                 }
                 OpExpr::Send(interaction, _) => match interaction.kind {
-                    InteractionKind::Byte | InteractionKind::State | InteractionKind::Memory => {
+                    InteractionKind::Byte
+                    | InteractionKind::State
+                    | InteractionKind::Memory
+                    | InteractionKind::Program => {
                         constraints.push(format!(
                             "(.send {} {})",
                             interaction.to_lean_string(mapping),
@@ -228,7 +231,10 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
                     _ => {}
                 },
                 OpExpr::Receive(interaction, _) => match interaction.kind {
-                    InteractionKind::Byte | InteractionKind::State | InteractionKind::Memory => {
+                    InteractionKind::Byte
+                    | InteractionKind::State
+                    | InteractionKind::Memory
+                    | InteractionKind::Program => {
                         constraints.push(format!(
                             "(.receive {} {})",
                             interaction.to_lean_string(mapping),

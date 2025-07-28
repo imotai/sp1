@@ -1,5 +1,8 @@
 use crate::{
-    adapter::{register::i_type::ITypeReader, state::CPUState},
+    adapter::{
+        register::i_type::{ITypeReader, ITypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::AddOperationInput,
 };
@@ -47,25 +50,29 @@ where
         // Constrain the state of the CPU.
         // The `next_pc` is constrained by the AIR.
         // The clock is incremented by `8`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            [next_pc[0].into(), next_pc[1].into(), next_pc[2].into()],
-            AB::Expr::from_canonical_u32(CLK_INC),
-            local.is_real.into(),
+            CPUStateInput::new(
+                local.state,
+                [next_pc[0].into(), next_pc[1].into(), next_pc[2].into()],
+                AB::Expr::from_canonical_u32(CLK_INC),
+                local.is_real.into(),
+            ),
         );
 
         // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval(
+        <ITypeReader<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state.clk_high::<AB>(),
-            local.state.clk_low::<AB>(),
-            local.state.pc,
-            opcode,
-            [base_opcode, funct3, funct7],
-            local.op_a_operation.value,
-            local.adapter,
-            local.is_real.into(),
+            ITypeReaderInput::new(
+                local.state.clk_high::<AB>(),
+                local.state.clk_low::<AB>(),
+                local.state.pc,
+                opcode.into(),
+                [base_opcode, funct3, funct7],
+                local.op_a_operation.value.map(|x| x.into()),
+                local.adapter,
+                local.is_real.into(),
+            ),
         );
 
         builder.when_not(local.is_real).assert_zero(local.adapter.op_a_0);

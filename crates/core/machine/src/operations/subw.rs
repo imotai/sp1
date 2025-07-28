@@ -6,12 +6,15 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
-use crate::{air::WordAirBuilder, operations::U16MSBOperation};
+use crate::{
+    air::{SP1Operation, SP1OperationBuilder, WordAirBuilder},
+    operations::{U16MSBOperation, U16MSBOperationInput},
+};
 
 /// A set of columns needed to compute the sub of two words.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy, IntoShape, SP1OperationBuilder)]
 #[repr(C)]
 pub struct SubwOperation<T> {
     /// The result of `a - b`.
@@ -35,13 +38,15 @@ impl<F: Field> SubwOperation<F> {
     /// Assumes that `a`, `b` are valid `Word`s of two u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a - b`.
-    pub fn eval<AB: SP1AirBuilder>(
+    pub fn eval<AB>(
         builder: &mut AB,
         a: Word<AB::Var>,
         b: Word<AB::Var>,
         cols: SubwOperation<AB::Var>,
         is_real: AB::Expr,
-    ) {
+    ) where
+        AB: SP1AirBuilder + SP1OperationBuilder<U16MSBOperation<<AB as AirBuilder>::F>>,
+    {
         builder.assert_bool(is_real.clone());
 
         let base = AB::F::from_canonical_u32(1 << 16);
@@ -59,11 +64,29 @@ impl<F: Field> SubwOperation<F> {
         // Range check each limb.
         builder.slice_range_check_u16(&cols.value, is_real.clone());
 
-        U16MSBOperation::<AB::F>::eval_msb(
+        U16MSBOperation::<AB::F>::eval(
             builder,
-            cols.value[1].into(),
-            cols.msb,
-            is_real.clone(),
+            U16MSBOperationInput::new(cols.value[1].into(), cols.msb, is_real.clone()),
         );
+    }
+}
+
+#[derive(Debug, Clone, InputExpr, InputParams)]
+pub struct SubwOperationInput<AB: SP1AirBuilder> {
+    pub a: Word<AB::Var>,
+    pub b: Word<AB::Var>,
+    pub cols: SubwOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB> SP1Operation<AB> for SubwOperation<<AB as AirBuilder>::F>
+where
+    AB: SP1AirBuilder + SP1OperationBuilder<U16MSBOperation<<AB as AirBuilder>::F>>,
+{
+    type Input = SubwOperationInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval(builder, input.a, input.b, input.cols, input.is_real);
     }
 }

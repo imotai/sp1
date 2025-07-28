@@ -495,6 +495,8 @@ where
             builder.assert_eq(local.limb_result[i], limb_result);
         }
 
+        // TODO(gzgz): they don't need casts because `U16MSBOperation` doesn't have a `eval`
+        // function.
         <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
             U16MSBOperationInput::<AB>::new(

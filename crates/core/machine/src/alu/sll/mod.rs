@@ -20,10 +20,10 @@ use sp1_stark::{air::MachineAir, Word};
 use crate::{
     adapter::{
         register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
-        state::CPUState,
+        state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation},
-    operations::U16MSBOperation,
+    operations::{U16MSBOperation, U16MSBOperationInput},
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
 
@@ -400,11 +400,9 @@ where
             builder.when(local.is_sllw).assert_eq(local.sllw_msb.msb * u16_max, local.a[i]);
         }
 
-        U16MSBOperation::<AB::F>::eval_msb(
+        U16MSBOperation::<AB::F>::eval(
             builder,
-            local.a[1].into(),
-            local.sllw_msb,
-            local.is_sllw.into(),
+            U16MSBOperationInput::new(local.a[1].into(), local.sllw_msb, local.is_sllw.into()),
         );
 
         let opcode = local.is_sll * AB::F::from_canonical_u32(Opcode::SLL as u32)
@@ -439,16 +437,18 @@ where
 
         // Constrain the CPU state.
         // The program counter and timestamp increment by `4` and `8`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            [
-                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
-                local.state.pc[1].into(),
-                local.state.pc[2].into(),
-            ],
-            AB::Expr::from_canonical_u32(CLK_INC),
-            is_real.clone(),
+            CPUStateInput::new(
+                local.state,
+                [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                AB::Expr::from_canonical_u32(CLK_INC),
+                is_real.clone(),
+            ),
         );
 
         // Constrain the program and register reads.

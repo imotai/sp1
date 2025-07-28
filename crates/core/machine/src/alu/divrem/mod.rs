@@ -85,9 +85,10 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        AddOperation, IsEqualWordOperation, IsEqualWordOperationInput, IsZeroWordOperation,
-        IsZeroWordOperationInput, LtOperationUnsigned, LtOperationUnsignedInput, MulOperation,
-        U16MSBOperation, U16MSBOperationInput,
+        AddOperation, AddOperationInput, IsEqualWordOperation, IsEqualWordOperationInput,
+        IsZeroWordOperation, IsZeroWordOperationInput, LtOperationUnsigned,
+        LtOperationUnsignedInput, MulOperation, MulOperationInput, U16MSBOperation,
+        U16MSBOperationInput,
     },
     utils::{next_multiple_of_32, pad_rows_fixed},
 };
@@ -741,18 +742,20 @@ where
             ];
 
             // The lower 8 bytes of c_times_quotient must match the lower 8 bytes of (c * quotient).
-            MulOperation::<AB::F>::eval(
+            <MulOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                Word(lower_half),
-                local.quotient_comp.map(|x| x.into()),
-                local.c.map(|x| x.into()),
-                local.c_times_quotient_lower,
-                local.is_real.into(),
-                local.is_real.into() - is_signed_word_operation.clone(),
-                AB::Expr::zero(),
-                is_signed_word_operation.clone(),
-                AB::Expr::zero(),
-                AB::Expr::zero(),
+                MulOperationInput::new(
+                    Word(lower_half),
+                    local.quotient_comp.map(|x| x.into()),
+                    local.c.map(|x| x.into()),
+                    local.c_times_quotient_lower,
+                    local.is_real.into(),
+                    local.is_real.into() - is_signed_word_operation.clone(),
+                    AB::Expr::zero(),
+                    is_signed_word_operation.clone(),
+                    AB::Expr::zero(),
+                    AB::Expr::zero(),
+                ),
             );
 
             for i in 0..WORD_SIZE / 2 {
@@ -785,18 +788,20 @@ where
 
             // The upper 8 bytes of c_times_quotient must match the upper 8 bytes of (c * quotient).
             // Only required for non-word operations.
-            MulOperation::<AB::F>::eval(
+            <MulOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                Word(upper_half),
-                local.quotient.map(|x| x.into()),
-                local.c.map(|x| x.into()),
-                local.c_times_quotient_upper,
-                local.is_real_not_word.into(),
-                AB::Expr::zero(),
-                is_mulh,
-                AB::Expr::zero(),
-                is_mulhu,
-                AB::Expr::zero(),
+                MulOperationInput::new(
+                    Word(upper_half),
+                    local.quotient.map(|x| x.into()),
+                    local.c.map(|x| x.into()),
+                    local.c_times_quotient_upper,
+                    local.is_real_not_word.into(),
+                    AB::Expr::zero(),
+                    is_mulh,
+                    AB::Expr::zero(),
+                    is_mulhu,
+                    AB::Expr::zero(),
+                ),
             );
         }
 
@@ -1044,24 +1049,28 @@ where
                     .assert_eq(local.remainder_comp[i], local.abs_remainder[i]);
             }
             // In the case that `c` or `rem` is negative, instead check that their sum is zero.
-            AddOperation::<AB::F>::eval(
+            <AddOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.c.map(|x| x.into()),
-                local.abs_c.map(|x| x.into()),
-                local.c_neg_operation,
-                local.abs_c_alu_event.into(),
+                AddOperationInput::new(
+                    local.c.map(|x| x.into()),
+                    local.abs_c.map(|x| x.into()),
+                    local.c_neg_operation,
+                    local.abs_c_alu_event.into(),
+                ),
             );
             builder.when(local.abs_c_alu_event).assert_word_eq(
                 Word([zero.clone(), zero.clone(), zero.clone(), zero.clone()]),
                 local.c_neg_operation.value,
             );
 
-            AddOperation::<AB::F>::eval(
+            <AddOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
-                local.remainder.map(|x| x.into()),
-                local.abs_remainder.map(|x| x.into()),
-                local.rem_neg_operation,
-                local.abs_rem_alu_event.into(),
+                AddOperationInput::new(
+                    local.remainder.map(|x| x.into()),
+                    local.abs_remainder.map(|x| x.into()),
+                    local.rem_neg_operation,
+                    local.abs_rem_alu_event.into(),
+                ),
             );
             builder.when(local.abs_rem_alu_event).assert_word_eq(
                 Word([zero.clone(), zero.clone(), zero.clone(), zero.clone()]),

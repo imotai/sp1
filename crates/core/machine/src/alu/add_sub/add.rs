@@ -191,13 +191,13 @@ where
         <CPUState<AB::F> as SP1Operation<AB>>::eval(builder, cpu_state_input);
 
         // Constrain the program and register reads.
-        let reader_input = RTypeReaderInput::<AB>::new(
+        let reader_input = RTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
-            local.add_operation.value,
             [base_opcode, funct3, funct7],
+            local.add_operation.value.map(|x| x.into()),
             local.adapter,
             local.is_real.into(),
         );

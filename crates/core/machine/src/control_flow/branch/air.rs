@@ -5,7 +5,10 @@ use slop_algebra::{AbstractField, Field};
 use slop_matrix::Matrix;
 
 use crate::{
-    adapter::{register::i_type::ITypeReader, state::CPUState},
+    adapter::{
+        register::i_type::{ITypeReaderImmutable, ITypeReaderImmutableInput},
+        state::{CPUState, CPUStateInput},
+    },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{LtOperationSigned, LtOperationSignedInput},
 };
@@ -78,24 +81,28 @@ where
         // Constrain the state of the CPU.
         // The `next_pc` is constrained by the AIR.
         // The clock is incremented by `8`.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            local.next_pc.map(Into::into),
-            AB::Expr::from_canonical_u32(CLK_INC),
-            is_real.clone(),
+            CPUStateInput::new(
+                local.state,
+                local.next_pc.map(Into::into),
+                AB::Expr::from_canonical_u32(CLK_INC),
+                is_real.clone(),
+            ),
         );
 
         // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval_op_a_immutable(
+        <ITypeReaderImmutable as SP1Operation<AB>>::eval(
             builder,
-            local.state.clk_high::<AB>(),
-            local.state.clk_low::<AB>(),
-            local.state.pc,
-            opcode,
-            [base_opcode, funct3, funct7],
-            local.adapter,
-            is_real.clone(),
+            ITypeReaderImmutableInput::new(
+                local.state.clk_high::<AB>(),
+                local.state.clk_low::<AB>(),
+                local.state.pc,
+                opcode,
+                [base_opcode, funct3, funct7],
+                local.adapter,
+                is_real.clone(),
+            ),
         );
 
         // // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.

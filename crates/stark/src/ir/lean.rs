@@ -82,7 +82,12 @@ impl<F: Field, EF: ExtensionField<F>> Shape<ExprRef<F>, ExprExtRef<EF>> {
                 for (i, val) in vals.iter().enumerate() {
                     match val {
                         ExprRef::IrVar(IrVar::InputArg(idx)) => {
-                            input_mapping.insert(*idx, format!("{prefix}[{i}]"));
+                            // In Mathlib, c[i] means some permutation stuff...
+                            if prefix == "c" {
+                                input_mapping.insert(*idx, format!("cc[{i}]"));
+                            } else {
+                                input_mapping.insert(*idx, format!("{prefix}[{i}]"));
+                            }
                         }
                         _ => unimplemented!("map_input must be backed by Input(x)"),
                     }
@@ -119,18 +124,48 @@ impl<F: Field> AirInteraction<ExprRef<F>> {
 
         match self.kind {
             InteractionKind::Byte => {
-                res.push_str(&format!(
-                    " (ByteOpcode.ofNat {})",
-                    self.values.first().unwrap().to_lean_string(input_mapping)
-                ));
-                for val in self.values.iter().skip(1) {
-                    res.push_str(&format!(" {}", val.to_lean_string(input_mapping)));
+                assert_eq!(self.values.len(), 4);
+                for (idx, val) in self.values.iter().enumerate() {
+                    if idx == 0 {
+                        // ByteOpcode
+                        res.push_str(&format!(
+                            " (ByteOpcode.ofNat {})",
+                            val.to_lean_string(input_mapping)
+                        ));
+                    } else {
+                        res.push_str(&format!(" {}", val.to_lean_string(input_mapping)));
+                    }
                 }
             }
-            _ => {
+            InteractionKind::Memory => {
+                assert_eq!(self.values.len(), 9);
                 for val in &self.values {
                     res.push_str(&format!(" {}", val.to_lean_string(input_mapping)));
                 }
+            }
+            InteractionKind::State => {
+                assert_eq!(self.values.len(), 5);
+                for val in &self.values {
+                    res.push_str(&format!(" {}", val.to_lean_string(input_mapping)));
+                }
+            }
+            InteractionKind::Program => {
+                assert_eq!(self.values.len(), 19);
+
+                for (idx, val) in self.values.iter().enumerate() {
+                    if idx == 3 {
+                        // Opcode
+                        res.push_str(&format!(
+                            " (Opcode.ofNat {})",
+                            val.to_lean_string(input_mapping)
+                        ));
+                    } else {
+                        res.push_str(&format!(" {}", val.to_lean_string(input_mapping)));
+                    }
+                }
+            }
+            _ => {
+                todo!();
             }
         }
 
