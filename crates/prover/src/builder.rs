@@ -117,5 +117,12 @@ pub fn local_gpu_opts() -> LocalProverOpts {
     opts.records_capacity_buffer = 1;
     opts.num_record_workers = 4;
 
+    let gb = 1024.0 * 1024.0 * 1024.0;
+    let cpu_memory_gb: usize =
+        ((sysinfo::System::new_all().total_memory() as f64) / gb).ceil() as usize;
+    if cpu_memory_gb <= 32 {
+        opts.prover_task_capacity_buffer = 1;
+    }
+
     opts
 }

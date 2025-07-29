@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::iter::once;
 
 use crate::{
     symbolic_expr_f::SymbolicExprF, symbolic_var_f::SymbolicVarF, SymbolicProverFolder, F,
@@ -14,7 +15,9 @@ use sp1_core_machine::air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder}
 use sp1_core_machine::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
 use sp1_core_machine::operations::poseidon2::permutation::Poseidon2Cols;
 use sp1_core_machine::operations::poseidon2::WIDTH;
-use sp1_core_machine::operations::{GlobalAccumulationOperation, SyscallAddrOperation};
+use sp1_core_machine::operations::{
+    AddrAddOperation, GlobalAccumulationOperation, SyscallAddrOperation,
+};
 use sp1_core_machine::riscv::{WeierstrassAddAssignChip, WeierstrassDoubleAssignChip};
 use sp1_core_machine::syscall::precompiles::weierstrass::{
     WeierstrassAddAssignCols, WeierstrassDoubleAssignCols,
@@ -38,6 +41,7 @@ use sp1_recursion_machine::RecursionAir;
 use sp1_stark::air::{InstructionAirBuilder, SepticExtensionAirBuilder};
 use sp1_stark::septic_curve::SepticCurve;
 use sp1_stark::septic_extension::SepticExtension;
+use sp1_stark::Word;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, MessageBuilder},
     InteractionKind,
@@ -258,41 +262,37 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for KeccakPermuteChip {
                     );
                 }
                 // Receive state.
+                let receive_values =
+                    once(local.clk_high)
+                        .chain(once(local.clk_low))
+                        .chain(local.state_addr)
+                        .chain(once(local.index))
+                        .chain(local.keccak.a.into_iter().flat_map(|two_d| {
+                            two_d.into_iter().flat_map(|one_d| one_d.into_iter())
+                        }))
+                        .collect::<Vec<_>>();
+
                 builder.receive(
-                    AirInteraction::new(
-                        vec![local.clk_high, local.clk_low, local.state_addr, local.index]
-                            .into_iter()
-                            .chain(local.keccak.a.into_iter().flat_map(|two_d| {
-                                two_d.into_iter().flat_map(|one_d| one_d.into_iter())
-                            }))
-                            .collect(),
-                        local.is_real,
-                        InteractionKind::Keccak,
-                    ),
+                    AirInteraction::new(receive_values, local.is_real, InteractionKind::Keccak),
                     InteractionScope::Local,
                 );
 
                 // Send state.
-                builder.send(
-                    AirInteraction::new(
-                        vec![
-                            local.clk_high.into(),
-                            local.clk_low.into(),
-                            local.state_addr.into(),
-                            local.index + SymbolicExprF::one(),
-                        ]
-                        .into_iter()
-                        .chain((0..5).flat_map(|y| {
-                            (0..5).flat_map(move |x| {
-                                (0..4).map(move |limb| {
-                                    local.keccak.a_prime_prime_prime(y, x, limb).into()
-                                })
+                let send_values = once(local.clk_high.into())
+                    .chain(once(local.clk_low.into()))
+                    .chain(local.state_addr.map(Into::into))
+                    .chain(once(local.index + SymbolicExprF::one()))
+                    .chain((0..5).flat_map(|y| {
+                        (0..5).flat_map(move |x| {
+                            (0..4).map(move |limb| {
+                                local.keccak.a_prime_prime_prime(y, x, limb).into()
                             })
-                        }))
-                        .collect(),
-                        local.is_real.into(),
-                        InteractionKind::Keccak,
-                    ),
+                        })
+                    }))
+                    .collect::<Vec<_>>();
+
+                builder.send(
+                    AirInteraction::new(send_values, local.is_real.into(), InteractionKind::Keccak),
                     InteractionScope::Local,
                 );
             }
@@ -353,7 +353,10 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
                     local.shard_16bit_limb
                         + local.shard_8bit_limb * SymbolicExprF::from_canonical_u32(1 << 16),
                 );
-                builder.slice_range_check_u16(&[local.shard_16bit_limb], local.is_real);
+                builder.slice_range_check_u16(
+                    &[local.shard_16bit_limb, local.message[7]],
+                    local.is_real,
+                );
                 builder.slice_range_check_u8(&[local.shard_8bit_limb], local.is_real);
 
                 // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate
@@ -367,7 +370,7 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
                     local.message[4].into(),
                     local.message[5].into(),
                     local.message[6].into(),
-                    offset,
+                    local.message[7] + SymbolicExprF::from_canonical_u32(1 << 16) * offset,
                     SymbolicExprF::zero(),
                     SymbolicExprF::zero(),
                     SymbolicExprF::zero(),
@@ -473,7 +476,7 @@ where
         let local = main.row_slice(0);
         let local: &WeierstrassAddAssignCols<SymbolicVarF, E::BaseField> = (*local).borrow();
 
-        let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 4;
+        let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 8;
 
         // It's very important that the `generate_limbs` function do not call `assert_zero`.
         let p_x_limbs = builder
@@ -602,10 +605,90 @@ where
                     local.is_real.into(),
                 );
 
+                // x_addrs[0] = x_ptr.
+                AddrAddOperation::<F>::eval(
+                    builder,
+                    Word([
+                        p_ptr[0].into(),
+                        p_ptr[1].into(),
+                        p_ptr[2].into(),
+                        SymbolicExprF::zero(),
+                    ]),
+                    Word([
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                    ]),
+                    local.p_addrs[0],
+                    local.is_real.into(),
+                );
+
+                let eight = F::from_canonical_u32(8u32);
+                // p_addrs[i] = p_addrs[i - 1] + 8.
+                for i in 1..local.p_addrs.len() {
+                    AddrAddOperation::<F>::eval(
+                        builder,
+                        Word([
+                            local.p_addrs[i - 1].value[0].into(),
+                            local.p_addrs[i - 1].value[1].into(),
+                            local.p_addrs[i - 1].value[2].into(),
+                            SymbolicExprF::zero(),
+                        ]),
+                        Word([
+                            eight.into(),
+                            SymbolicExprF::zero(),
+                            SymbolicExprF::zero(),
+                            SymbolicExprF::zero(),
+                        ]),
+                        local.p_addrs[i],
+                        local.is_real.into(),
+                    );
+                }
+
+                AddrAddOperation::<F>::eval(
+                    builder,
+                    Word([
+                        q_ptr[0].into(),
+                        q_ptr[1].into(),
+                        q_ptr[2].into(),
+                        SymbolicExprF::zero(),
+                    ]),
+                    Word([
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                    ]),
+                    local.q_addrs[0],
+                    local.is_real.into(),
+                );
+
+                // q_addrs[i] = q_addrs[i - 1] + 8.
+                for i in 1..local.q_addrs.len() {
+                    AddrAddOperation::<F>::eval(
+                        builder,
+                        Word([
+                            local.q_addrs[i - 1].value[0].into(),
+                            local.q_addrs[i - 1].value[1].into(),
+                            local.q_addrs[i - 1].value[2].into(),
+                            SymbolicExprF::zero(),
+                        ]),
+                        Word([
+                            eight.into(),
+                            SymbolicExprF::zero(),
+                            SymbolicExprF::zero(),
+                            SymbolicExprF::zero(),
+                        ]),
+                        local.q_addrs[i],
+                        local.is_real.into(),
+                    );
+                }
+
                 builder.eval_memory_access_slice_read(
                     local.clk_high,
                     local.clk_low,
-                    q_ptr,
+                    &local.q_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
                     &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
                     local.is_real,
                 );
@@ -613,7 +696,7 @@ where
                 builder.eval_memory_access_slice_write(
                     local.clk_high,
                     local.clk_low + F::from_canonical_u32(1),
-                    p_ptr,
+                    &local.p_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
                     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
                     result_words,
                     local.is_real,
@@ -638,8 +721,8 @@ where
                     local.clk_high,
                     local.clk_low,
                     syscall_id_felt,
-                    p_ptr,
-                    q_ptr,
+                    p_ptr.map(Into::into),
+                    q_ptr.map(Into::into),
                     local.is_real,
                     InteractionScope::Local,
                 );
@@ -664,7 +747,7 @@ where
         let local = main.row_slice(0);
         let local: &WeierstrassDoubleAssignCols<SymbolicVarF, E::BaseField> = (*local).borrow();
 
-        let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 4;
+        let num_words_field_element = <E::BaseField as NumLimbs>::Limbs::USIZE / 8;
 
         // It's very important that the `generate_limbs` function do not call `assert_zero`.
         let p_x_limbs = builder
@@ -785,10 +868,50 @@ where
                     local.is_real.into(),
                 );
 
+                AddrAddOperation::<F>::eval(
+                    builder,
+                    Word([
+                        p_ptr[0].into(),
+                        p_ptr[1].into(),
+                        p_ptr[2].into(),
+                        SymbolicExprF::zero(),
+                    ]),
+                    Word([
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                        SymbolicExprF::zero(),
+                    ]),
+                    local.p_addrs[0],
+                    local.is_real.into(),
+                );
+
+                // p_addrs[i] = p_addrs[i - 1] + 8.
+                let eight = F::from_canonical_u32(8u32);
+                for i in 1..local.p_addrs.len() {
+                    AddrAddOperation::<F>::eval(
+                        builder,
+                        Word([
+                            local.p_addrs[i - 1].value[0].into(),
+                            local.p_addrs[i - 1].value[1].into(),
+                            local.p_addrs[i - 1].value[2].into(),
+                            SymbolicExprF::zero(),
+                        ]),
+                        Word([
+                            eight.into(),
+                            SymbolicExprF::zero(),
+                            SymbolicExprF::zero(),
+                            SymbolicExprF::zero(),
+                        ]),
+                        local.p_addrs[i],
+                        local.is_real.into(),
+                    );
+                }
+
                 builder.eval_memory_access_slice_write(
                     local.clk_high,
                     local.clk_low,
-                    p_ptr,
+                    &local.p_addrs.iter().map(|addr| addr.value.map(Into::into)).collect_vec(),
                     &local.p_access.iter().map(|access| access.memory_access).collect_vec(),
                     result_words,
                     local.is_real,
@@ -815,8 +938,8 @@ where
                     local.clk_high,
                     local.clk_low,
                     syscall_id_felt,
-                    p_ptr,
-                    SymbolicExprF::zero(),
+                    p_ptr.map(Into::into),
+                    [SymbolicExprF::zero(), SymbolicExprF::zero(), SymbolicExprF::zero()],
                     local.is_real,
                     InteractionScope::Local,
                 );

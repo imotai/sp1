@@ -384,7 +384,8 @@ mod tests {
     async fn test_merkle_proof_baby_bear() {
         let mut rng = thread_rng();
 
-        let height = 1 << 12;
+        let merkle_height = 12;
+        let height = 1 << merkle_height;
 
         let num_indices = 50;
         let widths = [10, 20, 30, 5, 140];
@@ -415,7 +416,7 @@ mod tests {
 
             let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
             let opening = TensorCsOpening { values: openings, proof };
-            tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
+            tcs.verify_tensor_openings(&root, &indices, &opening, merkle_height).unwrap();
         })
         .await
         .unwrap();
@@ -425,7 +426,8 @@ mod tests {
     async fn test_merkle_proof_bn254() {
         let mut rng = thread_rng();
 
-        let height = 1 << 12;
+        let merkle_height = 12;
+        let height = 1 << merkle_height;
 
         let num_indices = 50;
         let widths = [10, 20, 30, 5, 140];
@@ -456,7 +458,7 @@ mod tests {
 
             let tcs = MerkleTreeTcs::<Poseidon2Bn254Config>::default();
             let opening = TensorCsOpening { values: openings, proof };
-            tcs.verify_tensor_openings(&root, &indices, &opening).unwrap();
+            tcs.verify_tensor_openings(&root, &indices, &opening, merkle_height).unwrap();
         })
         .await
         .unwrap();

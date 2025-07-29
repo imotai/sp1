@@ -14,8 +14,17 @@ pub use report::{write_measurements_to_csv, Measurement};
 mod report;
 pub mod telemetry;
 
-pub const FIBONACCI_LONG_ELF: &[u8] =
-    include_bytes!("../../prover/programs/fibonacci/riscv32im-succinct-zkvm-elf");
+pub const FIBONACCI_ELF: &[u8] =
+    include_bytes!("../../prover/programs/fibonacci/riscv64im-succinct-zkvm-elf");
+pub const KECCAK_ELF: &[u8] =
+    include_bytes!("../../prover/programs/keccak/riscv64im-succinct-zkvm-elf");
+pub const SHA2_ELF: &[u8] =
+    include_bytes!("../../prover/programs/sha2/riscv64im-succinct-zkvm-elf");
+pub const LOOP_ELF: &[u8] =
+    include_bytes!("../../prover/programs/loop/riscv64im-succinct-zkvm-elf");
+pub const POSEIDON2_ELF: &[u8] =
+    include_bytes!("../../prover/programs/poseidon2/riscv64im-succinct-zkvm-elf");
+pub const RSP_ELF: &[u8] = include_bytes!("../../prover/programs/rsp/riscv64im-succinct-zkvm-elf");
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Stage {
@@ -39,15 +48,7 @@ pub async fn make_measurement(
         .without_vk_verification()
         .build()
         .await;
-    let mut opts = local_gpu_opts();
-    opts.core_opts
-        .retained_events_presets
-        .insert(sp1_core_executor::RetainedEventsPreset::Bls12381Field);
-    opts.core_opts
-        .retained_events_presets
-        .insert(sp1_core_executor::RetainedEventsPreset::Bn254Field);
-    opts.core_opts.retained_events_presets.insert(sp1_core_executor::RetainedEventsPreset::Sha256);
-    opts.core_opts.retained_events_presets.insert(sp1_core_executor::RetainedEventsPreset::U256);
+    let opts = local_gpu_opts();
 
     let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 

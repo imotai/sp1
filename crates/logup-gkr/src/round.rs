@@ -1172,7 +1172,13 @@ mod tests {
             .await;
 
             let mut challenger = get_challenger();
-            partially_verify_sumcheck_proof(&proof, &mut challenger).unwrap();
+            partially_verify_sumcheck_proof(
+                &proof,
+                &mut challenger,
+                (num_row_variables + num_interaction_variables) as usize,
+                3,
+            )
+            .unwrap();
 
             let (point, expected_final_eval) = proof.point_and_eval;
 
@@ -1429,8 +1435,13 @@ mod tests {
                 let expected_claim = numerator_eval * lambda + denominator_eval;
                 assert_eq!(round_proof.sumcheck_proof.claimed_sum, expected_claim);
                 // Verify the sumcheck proof.
-                partially_verify_sumcheck_proof(&round_proof.sumcheck_proof, &mut challenger)
-                    .unwrap();
+                partially_verify_sumcheck_proof(
+                    &round_proof.sumcheck_proof,
+                    &mut challenger,
+                    i + num_interaction_variables as usize + 1,
+                    3,
+                )
+                .unwrap();
                 // Verify that the evaluation claim is consistent with the prover messages.
                 let (point, final_eval) = round_proof.sumcheck_proof.point_and_eval.clone();
                 let eq_eval = Mle::full_lagrange_eval(&point, &eval_point);

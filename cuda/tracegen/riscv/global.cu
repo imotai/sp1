@@ -27,7 +27,7 @@ __device__ void populate_global_interaction(csl_sys::GlobalInteractionOperation<
             m_trial[4] = bb31_t::from_canonical_u32(event->message[4]);
             m_trial[5] = bb31_t::from_canonical_u32(event->message[5]);
             m_trial[6] = bb31_t::from_canonical_u32(event->message[6]);
-            m_trial[7] = bb31_t::from_canonical_u32(offset);
+            m_trial[7] = bb31_t::from_canonical_u32(event->message[7]) + bb31_t::from_canonical_u32(offset << 16);
             m_trial[8] = bb31_t::zero();
             m_trial[9] = bb31_t::zero();
             m_trial[10] = bb31_t::zero();
@@ -158,7 +158,7 @@ __global__ void riscv_global_generate_trace_decompress_kernel(
 
         if (i < nb_events)
         {
-            for (int k = 0; k < 7; k++)
+            for (int k = 0; k < 8; k++)
             {
                 cols.message[k] = bb31_t::from_canonical_u32(events[i].message[k]);
             }

@@ -23,6 +23,9 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = { workspace = true }
 clap = { version = "4.5.38", features = ["derive"] }
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { version = "0.6", features = ["profiling", "stats"] }
+
 
 [lints]
 workspace = true

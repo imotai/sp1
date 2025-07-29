@@ -117,7 +117,7 @@ sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "mult
 # slop-jagged = { path = "../slop/crates/jagged" }
 
 # for local development
-# sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
+# sp1-core-executor = { path = "../sp1-wip/crates/core/executor", features = ["bigint-rug"] }
 # sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
 # sp1-stark = { path = "../sp1-wip/crates/stark" }
 # sp1-primitives = { path = "../sp1-wip/crates/primitives" }

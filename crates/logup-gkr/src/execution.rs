@@ -415,6 +415,7 @@ where
         chips: &BTreeSet<Chip<F, A>>,
         preprocessed_traces: Traces<F, TaskScope>,
         traces: Traces<F, TaskScope>,
+        _public_values: Vec<F>,
         alpha: EF,
         beta: EF,
     ) -> (LogUpGkrOutput<EF, TaskScope>, Self::Circuit) {

@@ -45,6 +45,9 @@ tracing-opentelemetry = "^0.24"
 opentelemetry-appender-tracing = "0.4.0"
 tracing-subscriber = "0.3.19"
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { version = "0.6", features = ["profiling", "stats"] }
+
 [features]
 bigint-rug = [
     "sp1-core-executor/bigint-rug",

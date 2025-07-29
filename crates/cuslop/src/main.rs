@@ -1,8 +1,13 @@
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 use clap::Parser;
 use csl_cuda::run_in_place;
 use server::Server;
-
-use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod server;
 
@@ -14,11 +19,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::Registry::default()
-        .with(fmt::layer())
-        .with(EnvFilter::builder().parse("cuslop=debug").unwrap())
-        .try_init()
-        .unwrap();
+    tracing_subscriber::fmt::init();
 
     let args = Args::parse();
 

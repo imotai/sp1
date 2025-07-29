@@ -1,9 +1,19 @@
 use clap::{arg, Parser, ValueEnum};
-use csl_perf::{make_measurement, telemetry, Stage, FIBONACCI_LONG_ELF};
+use csl_perf::{
+    make_measurement, telemetry, Stage, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF, POSEIDON2_ELF,
+    RSP_ELF, SHA2_ELF,
+};
 use csl_tracing::init_tracer;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_machine::io::SP1Stdin;
+
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -14,6 +24,8 @@ struct Args {
     pub skip_verify: bool,
     #[arg(long, default_value = "core")]
     pub stage: Stage,
+    #[arg(long, default_value = "1000")]
+    pub param: u32,
     #[arg(long, default_value = "nvtx")]
     pub trace: Trace,
 }
@@ -24,14 +36,51 @@ enum Trace {
     Telemetry,
 }
 
-fn get_program_and_input(program: String) -> (Vec<u8>, SP1Stdin) {
+fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin) {
     // If the program elf is local, load it.
     if let Some(program_path) = program.strip_prefix("local-") {
-        assert!(program_path == "fibonacci");
-        let stdin = SP1Stdin::new();
-        return (FIBONACCI_LONG_ELF.to_vec(), stdin);
+        if program_path == "fibonacci" {
+            let mut stdin = SP1Stdin::new();
+            let n = param;
+            stdin.write(&n);
+            return (FIBONACCI_ELF.to_vec(), stdin);
+        } else if program_path == "loop" {
+            let mut stdin = SP1Stdin::new();
+            let n = param as usize;
+            stdin.write(&n);
+            return (LOOP_ELF.to_vec(), stdin);
+        } else if program_path == "sha2" {
+            let mut stdin = SP1Stdin::new();
+            stdin.write_vec(vec![0u8; param as usize]);
+            return (SHA2_ELF.to_vec(), stdin);
+        } else if program_path == "keccak" {
+            let mut stdin = SP1Stdin::new();
+            stdin.write_vec(vec![0u8; param as usize]);
+            return (KECCAK_ELF.to_vec(), stdin);
+        } else if program_path == "poseidon2" {
+            let mut stdin = SP1Stdin::new();
+            let n = param as usize;
+            stdin.write(&n);
+            return (POSEIDON2_ELF.to_vec(), stdin);
+        } else if program_path == "rsp" {
+            std::process::Command::new("aws")
+                .args([
+                    "s3",
+                    "cp",
+                    &format!("s3://sp1-testing-suite/rsp-{param}/stdin.bin"),
+                    "stdin.bin",
+                ])
+                .output()
+                .unwrap();
+            let stdin_path = "stdin.bin";
+            let stdin = std::fs::read(stdin_path).unwrap();
+            let stdin: SP1Stdin = bincode::deserialize(&stdin).unwrap();
+            return (RSP_ELF.to_vec(), stdin);
+        } else {
+            panic!("invalid program path provided: {program}");
+        }
     }
-    // Otherwise, assume it's a progra from the s3 bucket.
+    // Otherwise, assume it's a program from the s3 bucket.
     // Download files from S3
     let s3_path = program;
     std::process::Command::new("aws")
@@ -71,7 +120,7 @@ async fn main() {
 
     let name = args.program.clone();
     let stage = args.stage;
-    let (elf, stdin) = get_program_and_input(args.program);
+    let (elf, stdin) = get_program_and_input(args.program, args.param);
 
     let measurement =
         csl_cuda::spawn(

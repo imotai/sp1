@@ -17,14 +17,9 @@ use slop_air::{
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
-use slop_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use slop_matrix::dense::RowMajorMatrixView;
 use sp1_core_machine::air::TrivialOperationBuilder;
-use sp1_stark::septic_curve::SepticCurve;
-use sp1_stark::septic_extension::SepticExtension;
-use sp1_stark::{
-    air::{EmptyMessageBuilder, MultiTableAirBuilder},
-    septic_digest::SepticDigest,
-};
+use sp1_stark::air::EmptyMessageBuilder;
 use sp1_stark::{AirOpenedValues, PROOF_MAX_NUM_PVS};
 use symbolic_expr_ef::SymbolicExprEF;
 use symbolic_expr_f::SymbolicExprF;
@@ -44,18 +39,8 @@ lazy_static! {
 }
 
 pub struct SymbolicProverFolder<'a> {
-    pub preprocessed:
-        VerticalPair<RowMajorMatrixView<'a, SymbolicVarF>, RowMajorMatrixView<'a, SymbolicVarF>>,
-    pub main:
-        VerticalPair<RowMajorMatrixView<'a, SymbolicVarF>, RowMajorMatrixView<'a, SymbolicVarF>>,
-    pub perm:
-        VerticalPair<RowMajorMatrixView<'a, SymbolicVarEF>, RowMajorMatrixView<'a, SymbolicVarEF>>,
-    pub perm_challenges: &'a [SymbolicVarEF],
-    pub local_cumulative_sum: &'a SymbolicVarEF,
-    pub global_cumulative_sum: &'a SepticDigest<SymbolicVarF>,
-    pub is_first_row: SymbolicVarF,
-    pub is_last_row: SymbolicVarF,
-    pub is_transition: SymbolicVarF,
+    pub preprocessed: RowMajorMatrixView<'a, SymbolicVarF>,
+    pub main: RowMajorMatrixView<'a, SymbolicVarF>,
     pub public_values: &'a [SymbolicVarF],
     pub num_constraints: u32,
 }
@@ -64,27 +49,22 @@ impl<'a> AirBuilder for SymbolicProverFolder<'a> {
     type F = F;
     type Var = SymbolicVarF;
     type Expr = SymbolicExprF;
-    type M =
-        VerticalPair<RowMajorMatrixView<'a, SymbolicVarF>, RowMajorMatrixView<'a, SymbolicVarF>>;
+    type M = RowMajorMatrixView<'a, SymbolicVarF>;
 
     fn main(&self) -> Self::M {
         self.main
     }
 
     fn is_first_row(&self) -> Self::Expr {
-        self.is_first_row.into()
+        unimplemented!();
     }
 
     fn is_last_row(&self) -> Self::Expr {
-        self.is_last_row.into()
+        unimplemented!();
     }
 
-    fn is_transition_window(&self, size: usize) -> Self::Expr {
-        if size == 2 {
-            self.is_transition.into()
-        } else {
-            panic!("uni-stark only supports a window size of 2")
-        }
+    fn is_transition_window(&self, _: usize) -> Self::Expr {
+        unimplemented!();
     }
 
     fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
@@ -114,22 +94,14 @@ impl ExtensionBuilder for SymbolicProverFolder<'_> {
 }
 
 impl<'a> PermutationAirBuilder for SymbolicProverFolder<'a> {
-    type MP =
-        VerticalPair<RowMajorMatrixView<'a, SymbolicVarEF>, RowMajorMatrixView<'a, SymbolicVarEF>>;
+    type MP = RowMajorMatrixView<'a, SymbolicVarEF>;
     type RandomVar = SymbolicVarEF;
 
     fn permutation(&self) -> Self::MP {
-        self.perm
+        unimplemented!();
     }
     fn permutation_randomness(&self) -> &[Self::RandomVar] {
-        self.perm_challenges
-    }
-}
-impl<'a> MultiTableAirBuilder<'a> for SymbolicProverFolder<'a> {
-    type LocalSum = SymbolicVarEF;
-
-    fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
-        self.local_cumulative_sum
+        unimplemented!();
     }
 }
 
@@ -161,41 +133,17 @@ where
 {
     let preprocessed_width = air.preprocessed_width() as u32;
     let width = air.width() as u32;
-    let permutation_width = 0;
     let preprocessed = AirOpenedValues {
         local: (0..preprocessed_width).map(SymbolicVarF::preprocessed_local).collect(),
-        next: (0..preprocessed_width).map(SymbolicVarF::preprocessed_next).collect(),
     };
-    let main = AirOpenedValues {
-        local: (0..width).map(SymbolicVarF::main_local).collect(),
-        next: (0..width).map(SymbolicVarF::main_next).collect(),
-    };
-    let perm = AirOpenedValues {
-        local: (0..permutation_width).map(SymbolicVarEF::permutation_local).collect(),
-        next: (0..permutation_width).map(SymbolicVarEF::permutation_next).collect(),
-    };
+    let main = AirOpenedValues { local: (0..width).map(SymbolicVarF::main_local).collect() };
     let public_values =
         (0..PROOF_MAX_NUM_PVS as u32).map(SymbolicVarF::public_value).collect::<Vec<_>>();
-    let perm_challenges = (0..2).map(SymbolicVarEF::permutation_challenge).collect::<Vec<_>>();
 
     let mut folder = SymbolicProverFolder {
         preprocessed: preprocessed.view(),
         main: main.view(),
-        perm: perm.view(),
-        perm_challenges: &perm_challenges,
-        local_cumulative_sum: &SymbolicVarEF::cumulative_sum(0),
-        global_cumulative_sum: &SepticDigest(SepticCurve {
-            x: SepticExtension(core::array::from_fn(|i| {
-                SymbolicVarF::global_cumulative_sum(i as u32)
-            })),
-            y: SepticExtension(core::array::from_fn(|i| {
-                SymbolicVarF::global_cumulative_sum((i + 7) as u32)
-            })),
-        }),
         public_values: &public_values,
-        is_first_row: SymbolicVarF::is_first_row(),
-        is_last_row: SymbolicVarF::is_last_row(),
-        is_transition: SymbolicVarF::is_transition(),
         num_constraints: 0,
     };
 
