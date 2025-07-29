@@ -43,6 +43,8 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     MonotonicityCheckFailed,
     #[error("proof has incorrect shape")]
     IncorrectShape,
+    #[error("invalid prefix sums")]
+    InvalidPrefixSums,
 }
 
 impl<C: JaggedConfig> JaggedPcsVerifier<C> {
@@ -50,7 +52,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         self.stacked_pcs_verifier.challenger()
     }
 
-    pub fn verify_trusted_evaluations(
+    fn verify_trusted_evaluations(
         &self,
         commitments: &[C::Commitment],
         point: Point<C::EF>,
@@ -73,7 +75,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             added_columns,
         } = proof;
 
-        if params.col_prefix_sums.is_empty() {
+        if params.col_prefix_sums.is_empty() || params.max_log_row_count != self.max_log_row_count {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
 
@@ -84,11 +86,19 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         let z_row = point;
 
+        if z_row.dimension() != self.max_log_row_count {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
+
         // Collect the claims for the different polynomials.
         let mut column_claims =
             evaluation_claims.iter().flatten().flatten().copied().collect::<Vec<_>>();
 
-        if insertion_points.len() != added_columns.len() {
+        if insertion_points.len() != added_columns.len()
+            || insertion_points.len() != commitments.len()
+            || insertion_points.len() != evaluation_claims.len()
+            || insertion_points.len() != proof.stacked_pcs_proof.batch_evaluations.len()
+        {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
 
@@ -105,6 +115,50 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         }
 
         if params.col_prefix_sums.len() != column_claims.len() + 1 {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
+
+        let prefix_sums: Vec<u32> = params
+            .col_prefix_sums
+            .iter()
+            .map(|bits| {
+                bits.iter()
+                    .fold(0u32, |acc, &bit| (acc << 1) | if bit == C::F::one() { 1 } else { 0 })
+            })
+            .collect();
+
+        // Validate monotonicity and bounds
+        for window in prefix_sums.windows(2) {
+            let (sum, next_sum) = (window[0], window[1]);
+            let max_increment = 1u32 << self.max_log_row_count;
+
+            if sum > next_sum || next_sum > sum.saturating_add(max_increment) {
+                return Err(JaggedPcsVerifierError::InvalidPrefixSums);
+            }
+        }
+
+        // Validate stacked columns alignment
+        let mut prefix_sum_index = 0;
+        let mut num_stacked_columns = 0;
+
+        for i in 0..evaluation_claims.len() {
+            let count_polys = |evals: &[slop_multilinear::MleEval<_>]| {
+                evals.iter().map(slop_multilinear::MleEval::num_polynomials).sum::<usize>()
+            };
+
+            prefix_sum_index += count_polys(&evaluation_claims[i].round_evaluations);
+            prefix_sum_index += added_columns[i];
+            num_stacked_columns +=
+                count_polys(&stacked_pcs_proof.batch_evaluations[i].round_evaluations);
+
+            let expected = (num_stacked_columns as u32)
+                .saturating_mul(1u32 << self.stacked_pcs_verifier.log_stacking_height);
+
+            if prefix_sums[prefix_sum_index] != expected {
+                return Err(JaggedPcsVerifierError::InvalidPrefixSums);
+            }
+        }
+        if prefix_sum_index != params.col_prefix_sums.len() - 1 {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
 
@@ -145,6 +199,9 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         for (t_col, next_t_col) in
             params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))
         {
+            // We bound the prefix sums to be < 2^30. While this function is implemented with
+            // `C::F` being any field, this function is intended for use with primes larger than
+            // `2^30`. We recommend using this function for Mersenne31, BabyBear, KoalaBear.
             if t_col.len() != next_t_col.len() || t_col.len() >= 31 {
                 return Err(JaggedPcsVerifierError::IncorrectShape);
             }
@@ -210,6 +267,24 @@ impl<'a, C: JaggedConfig> MachineJaggedPcsVerifier<'a, C> {
             <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
         >,
     > {
+        if evaluation_claims.len() != self.column_counts_by_round.len() {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
+        for (claims, expected_counts) in
+            evaluation_claims.iter().zip_eq(&self.column_counts_by_round)
+        {
+            let claim_count: usize = claims
+                .round_evaluations
+                .iter()
+                .map(slop_multilinear::MleEval::num_polynomials)
+                .sum();
+
+            let expected_count: usize = expected_counts.iter().sum();
+
+            if claim_count != expected_count {
+                return Err(JaggedPcsVerifierError::IncorrectShape);
+            }
+        }
         let insertion_points = self
             .column_counts_by_round
             .iter()

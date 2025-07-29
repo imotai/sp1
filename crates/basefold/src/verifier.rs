@@ -133,6 +133,12 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             .map(|(eval, batch_power)| *eval * batch_power)
             .sum::<B::EF>();
 
+        if evaluation_claims.len() != commitments.len()
+            || commitments.len() != proof.component_polynomials_query_openings.len()
+        {
+            return Err(BaseFoldVerifierError::IncorrectShape);
+        }
+
         // Assert correctness of shape.
         if proof.fri_commitments.len() != proof.univariate_messages.len()
             || proof.fri_commitments.len() != point.len()
@@ -203,9 +209,20 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         // Compute the batch evaluations from the openings of the component polynomials.
         let mut batch_evals = vec![B::EF::zero(); query_indices.len()];
         let mut batch_challenge_power = B::EF::one();
-        for opening in proof.component_polynomials_query_openings.iter() {
+        for (round_idx, opening) in proof.component_polynomials_query_openings.iter().enumerate() {
             let values = &opening.values;
+            let total_columns = evaluation_claims[round_idx]
+                .round_evaluations
+                .iter()
+                .map(|y| y.num_polynomials())
+                .sum::<usize>();
+            if values.dimensions.sizes().len() != 2 {
+                return Err(BaseFoldVerifierError::IncorrectShape);
+            }
             if values.dimensions.sizes()[0] != query_indices.len() {
+                return Err(BaseFoldVerifierError::IncorrectShape);
+            }
+            if values.dimensions.sizes()[1] != total_columns {
                 return Err(BaseFoldVerifierError::IncorrectShape);
             }
             for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
@@ -218,10 +235,6 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
                 values.get(0).ok_or(BaseFoldVerifierError::IncorrectShape)?.as_slice().len();
             batch_challenge_power =
                 batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
-        }
-
-        if commitments.len() != proof.component_polynomials_query_openings.len() {
-            return Err(BaseFoldVerifierError::IncorrectShape);
         }
 
         // Verify the proof of the claimed values.

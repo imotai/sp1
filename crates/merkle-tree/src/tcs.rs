@@ -71,16 +71,27 @@ impl<M: MerkleTreeConfig> TensorCs for MerkleTreeTcs<M> {
         opening: &TensorCsOpening<Self>,
         expected_path_len: usize,
     ) -> Result<(), Self::VerifierError> {
+        if opening.proof.paths.dimensions.sizes().len() != 2
+            || opening.values.dimensions.sizes().len() != 2
+        {
+            return Err(Self::VerifierError::IncorrectShape);
+        }
         if indices.len() != opening.proof.paths.dimensions.sizes()[0] {
             return Err(Self::VerifierError::IncorrectShape);
         }
         if indices.len() != opening.values.dimensions.sizes()[0] {
             return Err(Self::VerifierError::IncorrectShape);
         }
+        if indices.is_empty() {
+            return Ok(());
+        }
+        let expected_value_len = opening.values.get(0).unwrap().as_slice().len();
         for (i, (index, path)) in indices.iter().zip_eq(opening.proof.paths.split()).enumerate() {
             // Collect the lead slices of the claimed values.
-            let claimed_values_slices =
-                opening.values.get(i).ok_or(Self::VerifierError::IncorrectShape)?.as_slice();
+            let claimed_values_slices = opening.values.get(i).unwrap().as_slice();
+            if claimed_values_slices.len() != expected_value_len {
+                return Err(Self::VerifierError::IncorrectShape);
+            }
 
             let path = path.as_slice();
 
