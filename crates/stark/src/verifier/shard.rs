@@ -308,7 +308,9 @@ where
                 if x * (x - C::F::one()) != C::F::zero() {
                     return Err(ShardVerifierError::InvalidHeightBitDecomposition);
                 }
-                if x * *openings.degree.last().unwrap() != C::F::zero() {
+            }
+            for &x in openings.degree.iter().skip(1) {
+                if x * *openings.degree.first().unwrap() != C::F::zero() {
                     return Err(ShardVerifierError::HeightTooLarge);
                 }
             }

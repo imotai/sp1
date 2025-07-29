@@ -175,11 +175,10 @@ where
             proof_point_extended.add_dimension(zero.into());
             let degree_symbolic_ext: Point<SymbolicExt<C::F, C::EF>> =
                 openings.degree.iter().map(|x| SymbolicExt::from(*x)).collect::<Point<_>>();
-            let point_len = degree_symbolic_ext.dimension();
             degree_symbolic_ext.iter().enumerate().for_each(|(i, x)| {
                 builder.assert_ext_eq(*x * (*x - one), zero);
-                if i < point_len - 1 {
-                    builder.assert_ext_eq(*x * *degree_symbolic_ext.last().unwrap(), zero);
+                if i >= 1 {
+                    builder.assert_ext_eq(*x * *degree_symbolic_ext.first().unwrap(), zero);
                 }
             });
             let geq_val = full_geq(&degree_symbolic_ext, &proof_point_extended);
