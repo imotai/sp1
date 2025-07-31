@@ -129,13 +129,6 @@ pub trait CircuitConfig: Config {
         two_adic_powers_of_x: &[Felt<Self::F>],
     ) -> Felt<Self::F>;
 
-    fn batch_fri(
-        builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<Self::F, Self::EF>>,
-        p_at_zs: Vec<Ext<Self::F, Self::EF>>,
-        p_at_xs: Vec<Felt<Self::F>>,
-    ) -> Ext<Self::F, Self::EF>;
-
     #[allow(clippy::type_complexity)]
     fn prefix_sum_checks(
         builder: &mut Builder<Self>,
@@ -256,15 +249,6 @@ impl CircuitConfig for InnerConfig {
             power_f = builder.eval(power_f * power_f);
         }
         result
-    }
-
-    fn batch_fri(
-        builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_xs: Vec<Felt<<Self as Config>::F>>,
-    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        builder.batch_fri_v2(alpha_pows, p_at_zs, p_at_xs)
     }
 
     fn prefix_sum_checks(
@@ -429,30 +413,6 @@ impl CircuitConfig for WrapConfig {
             power_f = builder.eval(power_f * power_f);
         }
         result
-    }
-
-    fn batch_fri(
-        builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_xs: Vec<Felt<<Self as Config>::F>>,
-    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        // Initialize the `acc` to zero.
-        let mut acc: Ext<_, _> = builder.uninit();
-        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::zero()));
-        for (alpha_pow, p_at_z, p_at_x) in izip!(alpha_pows, p_at_zs, p_at_xs) {
-            // Set `temp_1 = p_at_z - p_at_x`
-            let temp_1: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::SubEF(temp_1, p_at_z, p_at_x));
-            // Set `temp_2 = alpha_pow * temp_1 = alpha_pow * (p_at_z - p_at_x)`
-            let temp_2: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::MulE(temp_2, alpha_pow, temp_1));
-            // Set `acc += temp_2`, so that `acc` becomes the sum of `alpha_pow * (p_at_z - p_at_x)`
-            let temp_3: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::AddE(temp_3, acc, temp_2));
-            acc = temp_3;
-        }
-        acc
     }
 
     fn prefix_sum_checks(
@@ -731,30 +691,6 @@ impl CircuitConfig for OuterConfig {
             builder.assign(power_f, power_f * power_f);
         }
         result
-    }
-
-    fn batch_fri(
-        builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_xs: Vec<Felt<<Self as Config>::F>>,
-    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        // Initialize the `acc` to zero.
-        let mut acc: Ext<_, _> = builder.uninit();
-        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::zero()));
-        for (alpha_pow, p_at_z, p_at_x) in izip!(alpha_pows, p_at_zs, p_at_xs) {
-            // Set `temp_1 = p_at_z - p_at_x`
-            let temp_1: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::SubEF(temp_1, p_at_z, p_at_x));
-            // Set `temp_2 = alpha_pow * temp_1 = alpha_pow * (p_at_z - p_at_x)`
-            let temp_2: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::MulE(temp_2, alpha_pow, temp_1));
-            // Set `acc += temp_2`, so that `acc` becomes the sum of `alpha_pow * (p_at_z - p_at_x)`
-            let temp_3: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::AddE(temp_3, acc, temp_2));
-            acc = temp_3;
-        }
-        acc
     }
 
     fn prefix_sum_checks(

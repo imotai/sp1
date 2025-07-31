@@ -19,7 +19,6 @@ use crate::chips::{
         linear::{Poseidon2LinearLayerChip, NUM_LINEAR_ENTRIES_PER_ROW},
         sbox::{Poseidon2SBoxChip, NUM_SBOX_ENTRIES_PER_ROW},
     },
-    poseidon2_skinny::Poseidon2SkinnyChip,
     poseidon2_wide::Poseidon2WideChip,
     prefix_sum_checks::PrefixSumChecksChip,
     public_values::{PublicValuesChip, PUB_VALUES_LOG_HEIGHT},
@@ -43,7 +42,6 @@ pub enum RecursionAir<
     MemoryVar(MemoryVarChip<F, VAR_EVENTS_PER_ROW>),
     BaseAlu(BaseAluChip),
     ExtAlu(ExtAluChip),
-    Poseidon2Skinny(Poseidon2SkinnyChip<DEGREE>),
     Poseidon2Wide(Poseidon2WideChip<DEGREE>),
     Poseidon2LinearLayer(Poseidon2LinearLayerChip),
     Poseidon2SBox(Poseidon2SBoxChip),
@@ -94,28 +92,7 @@ impl<
         Machine::new(chips, PROOF_MAX_NUM_PVS, shape)
     }
 
-    /// Get a machine with all chips, except the dummy chip.
-    pub fn machine_skinny_with_all_chips() -> Machine<F, Self> {
-        panic!("Not implemented");
-        // let chips = [
-        //     RecursionAir::MemoryConst(MemoryConstChip::default()),
-        //     RecursionAir::MemoryVar(MemoryVarChip::default()),
-        //     RecursionAir::BaseAlu(BaseAluChip),
-        //     RecursionAir::ExtAlu(ExtAluChip),
-        //     RecursionAir::Poseidon2Skinny(Poseidon2SkinnyChip::<DEGREE>::default()),
-        //     // RecursionAir::BatchFRI(BatchFRIChip::<DEGREE>),
-        //     RecursionAir::PrefixSumChecks(PrefixSumChecksChip),
-        //     RecursionAir::Select(SelectChip),
-        //     RecursionAir::PublicValues(PublicValuesChip),
-        // ]
-        // .map(Chip::new)
-        // .into_iter()
-        // .collect::<Vec<_>>();
-        // let shape = MachineShape::all(&chips);
-        // Machine::new(chips, PROOF_MAX_NUM_PVS, shape)
-    }
-
-    /// A machine with dyunamic chip sizes that includes the wide variant of the Poseidon2 chip.
+    /// A machine with dyunamic chip sizes.
     pub fn compress_machine() -> Machine<F, Self> {
         let chips = [
             RecursionAir::MemoryConst(MemoryConstChip::default()),
@@ -138,7 +115,7 @@ impl<
         Self::compress_machine()
     }
 
-    /// A machine with dynamic chip sizes that includes the skinny variant of the Poseidon2 chip.
+    /// A machine with dynamic chip sizes.
     ///
     /// This machine assumes that the `shrink` stage has a fixed shape, so there is no need to
     /// fix the trace sizes.

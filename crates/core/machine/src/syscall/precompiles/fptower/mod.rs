@@ -8,6 +8,7 @@ pub use fp2_mul::*;
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
 
     use sp1_core_executor::Program;
     use test_artifacts::{
@@ -22,7 +23,7 @@ mod tests {
         utils::setup_logger();
         let program = Program::from(&BLS12381_FP_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -30,7 +31,7 @@ mod tests {
         utils::setup_logger();
         let program = Program::from(&BLS12381_FP2_ADDSUB_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -38,7 +39,7 @@ mod tests {
         utils::setup_logger();
         let program = Program::from(&BLS12381_FP2_MUL_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -46,7 +47,7 @@ mod tests {
         utils::setup_logger();
         let program = Program::from(&BN254_FP_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -54,7 +55,7 @@ mod tests {
         utils::setup_logger();
         let program = Program::from(&BN254_FP2_ADDSUB_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -62,6 +63,6 @@ mod tests {
         utils::setup_logger();
         let program = Program::from(&BN254_FP2_MUL_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 }

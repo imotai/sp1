@@ -18,11 +18,8 @@ pub enum Instruction<F> {
     Poseidon2SBox(Poseidon2SBoxInstr<F>),
     ExtFelt(ExtFeltInstr<F>),
     Select(SelectInstr<F>),
-    ExpReverseBitsLen(ExpReverseBitsInstr<F>),
     HintBits(HintBitsInstr<F>),
     HintAddCurve(Box<HintAddCurveInstr<F>>),
-    FriFold(Box<FriFoldInstr<F>>),
-    BatchFRI(Box<BatchFRIInstr<F>>),
     PrefixSumChecks(Box<PrefixSumChecksInstr<F>>),
     Print(PrintInstr<F>),
     HintExt2Felts(HintExt2FeltsInstr<F>),
@@ -37,7 +34,6 @@ impl<F: Copy> Instruction<F> {
     #[must_use]
     pub(crate) fn io_addrs(&self) -> (SmallVec<[Address<F>; 4]>, SmallVec<[Address<F>; 4]>) {
         use smallvec::{smallvec as svec, *};
-        use std::iter;
 
         match *self {
             Instruction::BaseAlu(BaseAluInstr { addrs: BaseAluIo { out, in1, in2 }, .. }) => {
@@ -55,8 +51,7 @@ impl<F: Copy> Instruction<F> {
                 }
             }
             Instruction::Poseidon2(ref instr) => {
-                let Poseidon2SkinnyInstr { addrs: Poseidon2Io { input, output }, .. } =
-                    instr.as_ref();
+                let Poseidon2Instr { addrs: Poseidon2Io { input, output }, .. } = instr.as_ref();
                 (SmallVec::from_slice(input), SmallVec::from_slice(output))
             }
             Instruction::Poseidon2LinearLayer(ref instr) => {
@@ -74,10 +69,6 @@ impl<F: Copy> Instruction<F> {
                 addrs: SelectIo { bit, out1, out2, in1, in2 },
                 ..
             }) => (svec![bit, in1, in2], svec![out1, out2]),
-            Instruction::ExpReverseBitsLen(ExpReverseBitsInstr {
-                addrs: ExpReverseBitsIo { base, ref exp, result },
-                ..
-            }) => (exp.iter().copied().chain(iter::once(base)).collect(), svec![result]),
             Instruction::HintBits(HintBitsInstr { ref output_addrs_mults, input_addr }) => {
                 (svec![input_addr], output_addrs_mults.iter().map(|(a, _)| *a).collect())
             }
@@ -101,46 +92,6 @@ impl<F: Copy> Instruction<F> {
                         .flatten()
                         .map(|&(addr, _)| addr)
                         .collect(),
-                )
-            }
-            Instruction::FriFold(ref instr) => {
-                let FriFoldInstr {
-                    base_single_addrs: FriFoldBaseIo { x },
-                    ext_single_addrs: FriFoldExtSingleIo { z, alpha },
-                    ext_vec_addrs:
-                        FriFoldExtVecIo {
-                            ref mat_opening,
-                            ref ps_at_z,
-                            ref alpha_pow_input,
-                            ref ro_input,
-                            ref alpha_pow_output,
-                            ref ro_output,
-                        },
-                    ..
-                } = *instr.as_ref();
-                (
-                    [mat_opening, ps_at_z, alpha_pow_input, ro_input]
-                        .into_iter()
-                        .flatten()
-                        .copied()
-                        .chain([x, z, alpha])
-                        .collect(),
-                    [alpha_pow_output, ro_output].into_iter().flatten().copied().collect(),
-                )
-            }
-            Instruction::BatchFRI(ref instr) => {
-                let BatchFRIInstr { base_vec_addrs, ext_single_addrs, ext_vec_addrs, .. } =
-                    instr.as_ref();
-                (
-                    [
-                        base_vec_addrs.p_at_x.as_slice(),
-                        ext_vec_addrs.p_at_z.as_slice(),
-                        ext_vec_addrs.alpha_pow.as_slice(),
-                    ]
-                    .concat()
-                    .to_vec()
-                    .into(),
-                    svec![ext_single_addrs.acc],
                 )
             }
             Instruction::PrefixSumChecks(ref instr) => {
@@ -325,22 +276,6 @@ pub fn select<F: AbstractField>(
     })
 }
 
-pub fn exp_reverse_bits_len<F: AbstractField>(
-    mult: u32,
-    base: F,
-    exp: Vec<F>,
-    result: F,
-) -> Instruction<F> {
-    Instruction::ExpReverseBitsLen(ExpReverseBitsInstr {
-        mult: F::from_canonical_u32(mult),
-        addrs: ExpReverseBitsIo {
-            base: Address(base),
-            exp: exp.into_iter().map(Address).collect(),
-            result: Address(result),
-        },
-    })
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn prefix_sum_checks<F: AbstractField>(
     mults: Vec<u32>,
@@ -363,69 +298,6 @@ pub fn prefix_sum_checks<F: AbstractField>(
             accs: accs.into_iter().map(Address).collect(),
             field_accs: field_accs.into_iter().map(Address).collect(),
         },
-    }))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn fri_fold<F: AbstractField>(
-    z: u32,
-    alpha: u32,
-    x: u32,
-    mat_opening: Vec<u32>,
-    ps_at_z: Vec<u32>,
-    alpha_pow_input: Vec<u32>,
-    ro_input: Vec<u32>,
-    alpha_pow_output: Vec<u32>,
-    ro_output: Vec<u32>,
-    alpha_mults: Vec<u32>,
-    ro_mults: Vec<u32>,
-) -> Instruction<F> {
-    Instruction::FriFold(Box::new(FriFoldInstr {
-        base_single_addrs: FriFoldBaseIo { x: Address(F::from_canonical_u32(x)) },
-        ext_single_addrs: FriFoldExtSingleIo {
-            z: Address(F::from_canonical_u32(z)),
-            alpha: Address(F::from_canonical_u32(alpha)),
-        },
-        ext_vec_addrs: FriFoldExtVecIo {
-            mat_opening: mat_opening
-                .iter()
-                .map(|elm| Address(F::from_canonical_u32(*elm)))
-                .collect(),
-            ps_at_z: ps_at_z.iter().map(|elm| Address(F::from_canonical_u32(*elm))).collect(),
-            alpha_pow_input: alpha_pow_input
-                .iter()
-                .map(|elm| Address(F::from_canonical_u32(*elm)))
-                .collect(),
-            ro_input: ro_input.iter().map(|elm| Address(F::from_canonical_u32(*elm))).collect(),
-            alpha_pow_output: alpha_pow_output
-                .iter()
-                .map(|elm| Address(F::from_canonical_u32(*elm)))
-                .collect(),
-            ro_output: ro_output.iter().map(|elm| Address(F::from_canonical_u32(*elm))).collect(),
-        },
-        alpha_pow_mults: alpha_mults.iter().map(|mult| F::from_canonical_u32(*mult)).collect(),
-        ro_mults: ro_mults.iter().map(|mult| F::from_canonical_u32(*mult)).collect(),
-    }))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn batch_fri<F: AbstractField>(
-    acc: u32,
-    alpha_pows: Vec<u32>,
-    p_at_zs: Vec<u32>,
-    p_at_xs: Vec<u32>,
-    acc_mult: u32,
-) -> Instruction<F> {
-    Instruction::BatchFRI(Box::new(BatchFRIInstr {
-        base_vec_addrs: BatchFRIBaseVecIo {
-            p_at_x: p_at_xs.iter().map(|elm| Address(F::from_canonical_u32(*elm))).collect(),
-        },
-        ext_single_addrs: BatchFRIExtSingleIo { acc: Address(F::from_canonical_u32(acc)) },
-        ext_vec_addrs: BatchFRIExtVecIo {
-            p_at_z: p_at_zs.iter().map(|elm| Address(F::from_canonical_u32(*elm))).collect(),
-            alpha_pow: alpha_pows.iter().map(|elm| Address(F::from_canonical_u32(*elm))).collect(),
-        },
-        acc_mult: F::from_canonical_u32(acc_mult),
     }))
 }
 

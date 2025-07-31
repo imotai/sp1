@@ -231,3 +231,28 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use slop_matrix::Matrix;
+    use sp1_recursion_executor::ExecutionRecord;
+    use sp1_stark::air::MachineAir;
+
+    use super::Poseidon2SBoxChip;
+
+    use crate::chips::test_fixtures;
+
+    #[tokio::test]
+    async fn generate_trace() {
+        let shard = test_fixtures::shard().await;
+        let trace = Poseidon2SBoxChip.generate_trace(shard, &mut ExecutionRecord::default());
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
+
+    #[tokio::test]
+    async fn generate_preprocessed_trace() {
+        let program = &test_fixtures::program_with_input().await.0;
+        let trace = Poseidon2SBoxChip.generate_preprocessed_trace(program).unwrap();
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
+}

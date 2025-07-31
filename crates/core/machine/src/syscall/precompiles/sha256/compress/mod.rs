@@ -34,56 +34,25 @@ impl ShaCompressChip {
 /// the chip.
 #[derive(Default)]
 pub struct ShaCompressControlChip;
-// #[cfg(test)]
-// pub mod compress_tests {
 
-//     use sp1_core_executor::{syscalls::SyscallCode, Instruction, Opcode, Program};
-//     use sp1_stark::CpuProver;
-//     use test_artifacts::SHA_COMPRESS_ELF;
+#[cfg(test)]
+pub mod compress_tests {
 
-//     use crate::{
-//         io::SP1Stdin,
-//         utils::{run_test, setup_logger},
-//     };
+    use std::sync::Arc;
 
-//     pub fn sha_compress_program() -> Program {
-//         let w_ptr = 100;
-//         let h_ptr = 1000;
-//         let mut instructions = vec![Instruction::new(Opcode::ADDI, 29, 0, 5, false, true)];
-//         for i in 0..64 {
-//             instructions.extend(vec![
-//                 Instruction::new(Opcode::ADDI, 30, 0, w_ptr + i * 4, false, true),
-//                 Instruction::new(Opcode::SW, 29, 30, 0, false, true),
-//             ]);
-//         }
-//         for i in 0..8 {
-//             instructions.extend(vec![
-//                 Instruction::new(Opcode::ADDI, 30, 0, h_ptr + i * 4, false, true),
-//                 Instruction::new(Opcode::SW, 29, 30, 0, false, true),
-//             ]);
-//         }
-//         instructions.extend(vec![
-//             Instruction::new(Opcode::ADDI, 5, 0, SyscallCode::SHA_COMPRESS as u32, false, true),
-//             Instruction::new(Opcode::ADDI, 10, 0, w_ptr, false, true),
-//             Instruction::new(Opcode::ADDI, 11, 0, h_ptr, false, true),
-//             Instruction::new(Opcode::ECALL, 5, 10, 11, false, false),
-//         ]);
-//         Program::new(instructions, 0, 0)
-//     }
+    use sp1_core_executor::Program;
+    use test_artifacts::SHA_COMPRESS_ELF;
 
-//     #[test]
-//     fn prove_babybear() {
-//         setup_logger();
-//         let program = sha_compress_program();
-//         let stdin = SP1Stdin::new();
-//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-//     }
+    use crate::{
+        io::SP1Stdin,
+        utils::{run_test, setup_logger},
+    };
 
-//     #[test]
-//     fn test_sha_compress_program() {
-//         setup_logger();
-//         let program = Program::from(SHA_COMPRESS_ELF).unwrap();
-//         let stdin = SP1Stdin::new();
-//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-//     }
-// }
+    #[tokio::test]
+    async fn test_sha_compress_program() {
+        setup_logger();
+        let program = Arc::new(Program::from(&SHA_COMPRESS_ELF).unwrap());
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
+}

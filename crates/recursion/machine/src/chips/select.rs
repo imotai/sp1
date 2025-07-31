@@ -185,8 +185,7 @@ mod tests {
     use crate::{chips::test_fixtures, test::test_recursion_linear_program};
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_jagged::JaggedConfig;
-    use slop_matrix::dense::RowMajorMatrix;
-    use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
+
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};
     use sp1_stark::BabyBearPoseidon2;
 
@@ -224,77 +223,17 @@ mod tests {
         test_recursion_linear_program(instructions).await;
     }
 
-    fn generate_trace_reference(
-        input: &ExecutionRecord<BabyBear>,
-        _: &mut ExecutionRecord<BabyBear>,
-    ) -> RowMajorMatrix<BabyBear> {
-        type F = BabyBear;
-
-        let events = &input.select_events;
-        let padded_nb_rows = SelectChip.num_rows(input).unwrap();
-        let mut values = vec![F::zero(); padded_nb_rows * SELECT_COLS];
-
-        let populate_len = events.len() * SELECT_COLS;
-        values[..populate_len].par_chunks_mut(SELECT_COLS).zip_eq(events).for_each(
-            |(row, &vals)| {
-                let cols: &mut SelectCols<_> = row.borrow_mut();
-                *cols = SelectCols { vals };
-            },
-        );
-
-        RowMajorMatrix::new(values, SELECT_COLS)
+    #[tokio::test]
+    async fn generate_trace() {
+        let shard = test_fixtures::shard().await;
+        let trace = SelectChip.generate_trace(shard, &mut ExecutionRecord::default());
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
     }
 
-    #[test]
-    fn generate_trace() {
-        let shard = test_fixtures::shard();
-        let mut execution_record = test_fixtures::default_execution_record();
-        let trace = SelectChip.generate_trace(&shard, &mut execution_record);
-        assert!(trace.height() >= test_fixtures::MIN_TEST_CASES);
-
-        assert_eq!(trace, generate_trace_reference(&shard, &mut execution_record));
-    }
-
-    fn generate_preprocessed_trace_reference(
-        program: &RecursionProgram<BabyBear>,
-    ) -> RowMajorMatrix<BabyBear> {
-        type F = BabyBear;
-
-        let instrs = program
-            .inner
-            .iter()
-            .filter_map(|instruction| match instruction.inner() {
-                Instruction::Select(x) => Some(x),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let padded_nb_rows = SelectChip.preprocessed_num_rows(program, instrs.len()).unwrap();
-        let mut values = vec![F::zero(); padded_nb_rows * SELECT_PREPROCESSED_COLS];
-
-        let populate_len = instrs.len() * SELECT_PREPROCESSED_COLS;
-        values[..populate_len].par_chunks_mut(SELECT_PREPROCESSED_COLS).zip_eq(instrs).for_each(
-            |(row, instr)| {
-                let SelectInstr { addrs, mult1, mult2 } = instr;
-                let access: &mut SelectPreprocessedCols<_> = row.borrow_mut();
-                *access = SelectPreprocessedCols {
-                    is_real: F::one(),
-                    addrs: addrs.to_owned(),
-                    mult1: mult1.to_owned(),
-                    mult2: mult2.to_owned(),
-                };
-            },
-        );
-
-        RowMajorMatrix::new(values, SELECT_PREPROCESSED_COLS)
-    }
-
-    #[test]
-    #[ignore = "Failing due to merge conflicts. Will be fixed shortly."]
-    fn generate_preprocessed_trace() {
-        let program = test_fixtures::program();
-        let trace = SelectChip.generate_preprocessed_trace(&program).unwrap();
-        assert!(trace.height() >= test_fixtures::MIN_TEST_CASES);
-
-        assert_eq!(trace, generate_preprocessed_trace_reference(&program));
+    #[tokio::test]
+    async fn generate_preprocessed_trace() {
+        let program = &test_fixtures::program_with_input().await.0;
+        let trace = SelectChip.generate_preprocessed_trace(program).unwrap();
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
     }
 }

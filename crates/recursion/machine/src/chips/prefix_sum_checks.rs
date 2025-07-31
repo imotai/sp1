@@ -265,10 +265,31 @@ where
 mod tests {
     use crate::test::test_recursion_linear_program;
     use rand::{rngs::StdRng, Rng, SeedableRng};
-    use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField};
-    use sp1_recursion_executor::{instruction as instr, MemAccessKind};
+    use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
+    use slop_baby_bear::BabyBear;
+    use sp1_recursion_executor::{instruction as instr, Instruction, MemAccessKind};
 
-    use super::*;
+    use slop_matrix::Matrix;
+    use sp1_recursion_executor::ExecutionRecord;
+    use sp1_stark::air::MachineAir;
+
+    use super::PrefixSumChecksChip;
+
+    use crate::chips::test_fixtures;
+
+    #[tokio::test]
+    async fn generate_trace() {
+        let shard = test_fixtures::shard().await;
+        let trace = PrefixSumChecksChip.generate_trace(shard, &mut ExecutionRecord::default());
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
+
+    #[tokio::test]
+    async fn generate_preprocessed_trace() {
+        let program = &test_fixtures::program_with_input().await.0;
+        let trace = PrefixSumChecksChip.generate_preprocessed_trace(program).unwrap();
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
 
     #[tokio::test]
     async fn test_prefix_sum_checks() {

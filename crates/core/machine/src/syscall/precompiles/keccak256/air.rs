@@ -198,83 +198,49 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use crate::{
-//         io::SP1Stdin,
-//         riscv::RiscvAir,
-//         utils::{prove_core, setup_logger},
-//     };
-//     use sp1_primitives::io::SP1PublicValues;
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
 
-//     use rand::{Rng, SeedableRng};
-//     use sp1_core_executor::{Program, SP1Context};
-//     use sp1_stark::{
-//         baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
-//         StarkGenericConfig,
-//     };
-//     use test_artifacts::KECCAK256_ELF;
-//     use tiny_keccak::Hasher;
+    use crate::{io::SP1Stdin, utils};
 
-//     const NUM_TEST_CASES: usize = 45;
+    use rand::{Rng, SeedableRng};
+    use sp1_core_executor::Program;
+    use test_artifacts::KECCAK256_ELF;
+    use tiny_keccak::Hasher;
 
-//     #[test]
-//     #[ignore]
-//     fn test_keccak_random() {
-//         setup_logger();
-//         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-//         let mut inputs = Vec::<Vec<u8>>::new();
-//         let mut outputs = Vec::<[u8; 32]>::new();
-//         for len in 0..NUM_TEST_CASES {
-//             let bytes = (0..len * 71).map(|_| rng.gen::<u8>()).collect::<Vec<_>>();
-//             inputs.push(bytes.clone());
+    const NUM_TEST_CASES: usize = 45;
 
-//             let mut keccak = tiny_keccak::Keccak::v256();
-//             keccak.update(&bytes);
-//             let mut hash = [0u8; 32];
-//             keccak.finalize(&mut hash);
-//             outputs.push(hash);
-//         }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_keccak_random() {
+        utils::setup_logger();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut inputs = Vec::<Vec<u8>>::new();
+        let mut outputs = Vec::<[u8; 32]>::new();
+        for len in 0..NUM_TEST_CASES {
+            let bytes = (0..len * 71).map(|_| rng.gen::<u8>()).collect::<Vec<_>>();
+            inputs.push(bytes.clone());
 
-//         let mut stdin = SP1Stdin::new();
-//         stdin.write(&NUM_TEST_CASES);
-//         for input in inputs.iter() {
-//             stdin.write(&input);
-//         }
+            let mut keccak = tiny_keccak::Keccak::v256();
+            keccak.update(&bytes);
+            let mut hash = [0u8; 32];
+            keccak.finalize(&mut hash);
+            outputs.push(hash);
+        }
 
-//         let config = BabyBearPoseidon2::new();
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&NUM_TEST_CASES);
+        for input in inputs.iter() {
+            stdin.write(&input);
+        }
 
-//         let program = Program::from(KECCAK256_ELF).unwrap();
-//         let opts = SP1CoreOpts::default();
-//         let machine = RiscvAir::machine(config);
-//         let prover = CpuProver::new(machine);
-//         let (pk, vk) = prover.setup(&program);
-//         let (proof, public_values, _) = prove_core::<_, _>(
-//             &prover,
-//             &pk,
-//             &vk,
-//             program,
-//             &stdin,
-//             opts,
-//             SP1Context::default(),
-//             None,
-//             None,
-//         )
-//         .unwrap();
-//         let mut public_values = SP1PublicValues::from(&public_values);
+        let program = Program::from(&KECCAK256_ELF).unwrap();
+        let mut public_values = utils::run_test(Arc::new(program), stdin).await.unwrap();
 
-//         let config = BabyBearPoseidon2::new();
-//         let mut challenger = config.challenger();
-//         let machine = RiscvAir::machine(config);
-//         let (_, vk) = machine.setup(&Program::from(KECCAK256_ELF).unwrap());
-//         let _ =
-//             tracing::info_span!("verify").in_scope(|| machine.verify(&vk, &proof, &mut
-// challenger));
-
-//         for i in 0..NUM_TEST_CASES {
-//             let expected = outputs.get(i).unwrap();
-//             let actual = public_values.read::<[u8; 32]>();
-//             assert_eq!(expected, &actual);
-//         }
-//     }
-// }
+        for i in 0..NUM_TEST_CASES {
+            let expected = outputs.get(i).unwrap();
+            let actual = public_values.read::<[u8; 32]>();
+            assert_eq!(expected, &actual);
+        }
+    }
+}

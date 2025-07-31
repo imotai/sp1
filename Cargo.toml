@@ -37,7 +37,6 @@ members = [
 exclude = [
   "examples/target",
   "crates/eval",
-  "crates/recursion/circuit-old",
   "crates/recursion/gnark-cli",
   # "crates/verifier",
 ]
@@ -133,6 +132,7 @@ test-artifacts = { path = "crates/test-artifacts" }
 
 
 # misc
+rand = "0.8.5"
 hashbrown = "0.14.5"
 itertools = "0.13.0"
 serde = "1.0.204"

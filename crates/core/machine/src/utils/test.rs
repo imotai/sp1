@@ -20,10 +20,10 @@ use super::prove_core;
 
 /// The canonical entry point for testing a [`Program`] and [`SP1Stdin`] with a [`MachineProver`].
 pub async fn run_test(
-    program: Program,
+    program: Arc<Program>,
     inputs: SP1Stdin,
 ) -> Result<SP1PublicValues, MachineVerifierConfigError<BabyBearPoseidon2>> {
-    let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
+    let mut runtime = Executor::new(program, SP1CoreOpts::default());
     runtime.write_vecs(&inputs.buffer);
     runtime.run::<Trace>().unwrap();
     let public_values = SP1PublicValues::from(&runtime.state.public_values_stream);

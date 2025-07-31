@@ -378,6 +378,8 @@ where
 
 #[cfg(test)]
 pub mod tests {
+    use std::sync::Arc;
+
     use sp1_core_executor::Program;
     use test_artifacts::ED_DECOMPRESS_ELF;
 
@@ -388,6 +390,6 @@ pub mod tests {
         utils::setup_logger();
         let program = Program::from(&ED_DECOMPRESS_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 }

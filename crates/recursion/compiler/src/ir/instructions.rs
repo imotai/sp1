@@ -7,10 +7,7 @@ use backtrace::Backtrace;
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_stark::septic_curve::SepticCurve;
 
-use super::{
-    Array, CircuitV2FriFoldInput, CircuitV2FriFoldOutput, Config, Ext, Felt, FriFoldInput,
-    MemIndex, Ptr, Usize, Var,
-};
+use super::{Array, Config, Ext, Felt, MemIndex, Ptr, Usize, Var};
 
 /// An intermeddiate instruction set for implementing programs.
 ///
@@ -302,20 +299,6 @@ pub enum DslIr<C: Config> {
         Box<(SepticCurve<Felt<C::F>>, SepticCurve<Felt<C::F>>, SepticCurve<Felt<C::F>>)>,
     ),
 
-    // FRI specific instructions.
-    /// Executes a FRI fold operation. 1st field is the size of the fri fold input array.  2nd
-    /// field is the fri fold input array.  See [`FriFoldInput`] for more details.
-    FriFold(Var<C::N>, Array<C, FriFoldInput<C>>),
-    // FRI specific instructions.
-    /// Executes a FRI fold operation. Input is the fri fold input array.  See [`FriFoldInput`] for
-    /// more details.
-    CircuitV2FriFold(Box<(CircuitV2FriFoldOutput<C>, CircuitV2FriFoldInput<C>)>),
-    // FRI specific instructions.
-    /// Executes a Batch FRI loop. Input is the power of alphas, evaluations at z, and evaluations
-    /// at x.
-    CircuitV2BatchFRI(
-        Box<(Ext<C::F, C::EF>, Vec<Ext<C::F, C::EF>>, Vec<Ext<C::F, C::EF>>, Vec<Felt<C::F>>)>,
-    ),
     /// Executes full lagrange eval as well as computes field element that corresponds to input bit
     /// representation.
     CircuitV2PrefixSumChecks(
@@ -358,11 +341,6 @@ pub enum DslIr<C: Config> {
     CycleTrackerV2Enter(Cow<'static, str>),
     /// Tracks the number of cycles used by a block of code annotated by the string input.
     CycleTrackerV2Exit,
-
-    /// Reverse bits exponentiation.
-    ExpReverseBitsLen(Ptr<C::N>, Var<C::N>, Var<C::N>),
-    /// Reverse bits exponentiation. Output, base, exponent bits.
-    CircuitV2ExpReverseBits(Felt<C::F>, Felt<C::F>, Vec<Felt<C::F>>),
 
     // Structuring IR constructors.
     /// Blocks that may be executed in parallel.

@@ -431,8 +431,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use sp1_core_executor::Program;
-    use test_artifacts::ED_ADD_ELF;
+    use test_artifacts::{ED25519_ELF, ED_ADD_ELF};
 
     use crate::{io::SP1Stdin, utils};
 
@@ -441,14 +443,14 @@ mod tests {
         utils::setup_logger();
         let program = Program::from(&ED_ADD_ELF).unwrap();
         let stdin = SP1Stdin::new();
-        utils::run_test(program, stdin).await.unwrap();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
     }
 
-    // #[tokio::test(flavor = "multi_thread")]
-    // async fn test_ed25519_program() {
-    //     utils::setup_logger();
-    //     let program = Program::from(&ED25519_ELF).unwrap();
-    //     let stdin = SP1Stdin::new();
-    //     utils::run_test(program, stdin).await.unwrap();
-    // }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_ed25519_program() {
+        utils::setup_logger();
+        let program = Program::from(&ED25519_ELF).unwrap();
+        let stdin = SP1Stdin::new();
+        utils::run_test(Arc::new(program), stdin).await.unwrap();
+    }
 }

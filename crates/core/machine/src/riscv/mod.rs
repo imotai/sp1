@@ -924,6 +924,8 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
 #[cfg(test)]
 pub mod tests {
 
+    use std::sync::Arc;
+
     use slop_air::BaseAir;
     use slop_baby_bear::BabyBear;
     use sp1_core_executor::{Instruction, Opcode, Program};
@@ -979,7 +981,7 @@ pub mod tests {
         setup_logger();
         let program = simple_program();
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1034,7 +1036,7 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1048,7 +1050,7 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1062,7 +1064,7 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[test]
@@ -1115,7 +1117,7 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1131,7 +1133,7 @@ pub mod tests {
             add_halt(&mut instructions);
             let program = Program::new(instructions, 0, 0);
             let stdin = SP1Stdin::new();
-            run_test(program, stdin).await.unwrap();
+            run_test(Arc::new(program), stdin).await.unwrap();
         }
     }
 
@@ -1149,7 +1151,7 @@ pub mod tests {
             add_halt(&mut instructions);
             let program = Program::new(instructions, 0, 0);
             let stdin = SP1Stdin::new();
-            run_test(program, stdin).await.unwrap();
+            run_test(Arc::new(program), stdin).await.unwrap();
         }
     }
 
@@ -1199,7 +1201,7 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions.to_vec(), 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1207,7 +1209,7 @@ pub mod tests {
         setup_logger();
         let program = fibonacci_program();
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1215,7 +1217,7 @@ pub mod tests {
         setup_logger();
         let program = keccak_permute_program();
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     // #[tokio::test]
@@ -1306,7 +1308,7 @@ pub mod tests {
     //     setup_logger();
     //     let program = simple_memory_program();
     //     let stdin = SP1Stdin::new();
-    //     run_test(program, stdin).await.unwrap();
+    //     run_test(Arc::new(program), stdin).await.unwrap();
     // }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1314,7 +1316,7 @@ pub mod tests {
         setup_logger();
         let program = ssz_withdrawals_program();
         let stdin = SP1Stdin::new();
-        run_test(program, stdin).await.unwrap();
+        run_test(Arc::new(program), stdin).await.unwrap();
     }
 
     // #[test]

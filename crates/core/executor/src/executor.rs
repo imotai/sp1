@@ -289,10 +289,6 @@ pub struct LocalCounts {
 /// Errors that the [``Executor``] can throw.
 #[derive(Error, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ExecutionError {
-    /// The execution failed with a non-zero exit code.
-    #[error("execution failed with exit code {0}")]
-    HaltWithNonZeroExitCode(u32),
-
     /// The execution failed with an invalid memory access.
     #[error("invalid memory access for opcode {0} and address {1}")]
     InvalidMemoryAccess(Opcode, u64),

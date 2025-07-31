@@ -74,126 +74,139 @@ pub use utils::setup_logger;
 
 #[cfg(test)]
 mod tests {
-    // use sp1_primitives::io::SP1PublicValues;
+    use sp1_primitives::io::SP1PublicValues;
 
-    // use crate::{utils, Prover, ProverClient, SP1Stdin};
+    use crate::{utils, ProveRequest, Prover, ProverClient, SP1Stdin};
 
-    // #[test]
-    // fn test_execute() {
-    //     utils::setup_logger();
-    //     let client = ProverClient::builder().cpu().build();
-    //     let elf = test_artifacts::FIBONACCI_ELF;
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&10usize);
-    //     let (_, _) = client.execute(elf, &stdin).run().unwrap();
-    // }
+    #[tokio::test]
+    async fn test_execute() {
+        utils::setup_logger();
+        let client = ProverClient::builder().cpu().build().await;
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
+        let (_, _) = client.execute(elf, stdin).await.unwrap();
+    }
 
-    // #[test]
-    // #[should_panic]
-    // fn test_execute_panic() {
-    //     utils::setup_logger();
-    //     let client = ProverClient::builder().cpu().build();
-    //     let elf = test_artifacts::PANIC_ELF;
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&10usize);
-    //     client.execute(elf, &stdin).run().unwrap();
-    // }
+    #[tokio::test]
+    async fn test_execute_panic() {
+        utils::setup_logger();
+        let client = ProverClient::builder().cpu().build().await;
+        let elf = test_artifacts::PANIC_ELF;
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
+        client.execute(elf, stdin).await.unwrap();
+        // TODO: once the exit code is exposed to the SDK, check its value, both here and elsewhere.
+    }
 
-    // #[should_panic]
-    // #[test]
-    // fn test_cycle_limit_fail() {
-    //     utils::setup_logger();
-    //     let client = ProverClient::builder().cpu().build();
-    //     let elf = test_artifacts::PANIC_ELF;
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&10usize);
-    //     client.execute(elf, &stdin).cycle_limit(1).run().unwrap();
-    // }
+    #[should_panic]
+    #[tokio::test]
+    async fn test_cycle_limit_fail() {
+        utils::setup_logger();
+        let client = ProverClient::builder().cpu().build().await;
+        let elf = test_artifacts::PANIC_ELF;
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
+        client.execute(elf, stdin).cycle_limit(1).await.unwrap();
+    }
 
+    #[tokio::test]
+    async fn test_e2e_core() {
+        utils::setup_logger();
+        let client = ProverClient::builder().cpu().build().await;
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let pk = client.setup(elf).await.unwrap();
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
+
+        // Generate proof & verify.
+        let mut proof = client.prove(&pk, stdin).await.unwrap();
+        client.verify(&proof, &pk.vk).unwrap();
+
+        // Test invalid public values.
+        proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
+        if client.verify(&proof, &pk.vk).is_ok() {
+            panic!("verified proof with invalid public values")
+        }
+    }
+
+    // TODO: reimplement the custom stdout/stderr and revive this test
     // #[tokio::test]
-    // async fn test_e2e_core() {
+    // async fn test_e2e_io_override() {
     //     utils::setup_logger();
-    //     let client = ProverClient::builder().cpu().build();
-    //     let elf = test_artifacts::FIBONACCI_ELF;
-    //     let (pk, vk) = client.setup(elf).await;
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&10usize);
-
-    //     // Generate proof & verify.
-    //     let mut proof = client.prove(pk, stdin).run().await.unwrap();
-    //     client.verify(&proof, &vk).unwrap();
-
-    //     // Test invalid public values.
-    //     proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-    //     if client.verify(&proof, &vk).is_ok() {
-    //         panic!("verified proof with invalid public values")
-    //     }
-    // }
-
-    // #[test]
-    // fn test_e2e_io_override() {
-    //     utils::setup_logger();
-    //     let client = ProverClient::builder().cpu().build();
+    //     let client = ProverClient::builder().cpu().build().await;
     //     let elf = test_artifacts::HELLO_WORLD_ELF;
 
     //     let mut stdout = Vec::new();
 
     //     // Generate proof & verify.
     //     let stdin = SP1Stdin::new();
-    //     let _ = client.execute(elf, &stdin).stdout(&mut stdout).run().unwrap();
+    //     let _ = client.execute(elf, stdin).stdout(&mut stdout).run().unwrap();
 
     //     assert_eq!(stdout, b"Hello, world!\n");
     // }
 
-    // #[tokio::test]
-    // async fn test_e2e_compressed() {
-    //     utils::setup_logger();
-    //     let client = ProverClient::builder().cpu().build();
-    //     let elf = test_artifacts::FIBONACCI_ELF;
-    //     let (pk, vk) = client.setup(elf).await;
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&10usize);
+    // TODO BEFORE RELEASE: remove use of unsound prover when vkey commitments are finally built.
+    #[cfg(feature = "unsound")]
+    #[tokio::test]
+    async fn test_e2e_compressed() {
+        use crate::CpuProver;
 
-    //     // Generate proof & verify.
-    //     let mut proof = client.prove(pk, stdin).compressed().run().await.unwrap();
-    //     client.verify(&proof, &vk).unwrap();
+        utils::setup_logger();
+        let client = CpuProver::new_unsound().await;
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let pk = client.setup(elf).await.unwrap();
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
 
-    //     // Test invalid public values.
-    //     proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-    //     if client.verify(&proof, &vk).is_ok() {
-    //         panic!("verified proof with invalid public values")
-    //     }
-    // }
+        // Generate proof & verify.
+        let mut proof = client.prove(&pk, stdin).compressed().await.unwrap();
+        client.verify(&proof, &pk.vk).unwrap();
 
+        // Test invalid public values.
+        proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
+        if client.verify(&proof, &pk.vk).is_ok() {
+            panic!("verified proof with invalid public values")
+        }
+    }
+
+    // TODO BEFORE RELEASE: add this back when implemented as well as a similar groth16 test, and
+    // remove use of unsound prover (see above).
+    // #[cfg(feature = "unsound")]
     // #[tokio::test]
     // async fn test_e2e_prove_plonk() {
+    //     use crate::CpuProver;
+
     //     utils::setup_logger();
-    //     let client = ProverClient::builder().cpu().build();
+    //     let client = CpuProver::new_unsound().await;
     //     let elf = test_artifacts::FIBONACCI_ELF;
-    //     let (pk, vk) = client.setup(elf).await;
+    //     let pk = client.setup(elf).await.unwrap();
     //     let mut stdin = SP1Stdin::new();
     //     stdin.write(&10usize);
 
     //     // Generate proof & verify.
-    //     let mut proof = client.prove(pk, stdin).plonk().run().await.unwrap();
-    //     client.verify(&proof, &vk).unwrap();
+    //     let mut proof = client.prove(&pk, stdin).plonk().await.unwrap();
+    //     client.verify(&proof, &pk.vk).unwrap();
 
     //     // Test invalid public values.
     //     proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-    //     if client.verify(&proof, &vk).is_ok() {
+    //     if client.verify(&proof, &pk.vk).is_ok() {
     //         panic!("verified proof with invalid public values")
     //     }
     // }
 
+    // TODO: reimplement the mock prover and revive this test
     // #[tokio::test]
     // async fn test_e2e_prove_plonk_mock() {
     //     utils::setup_logger();
-    //     let client = ProverClient::builder().mock().build();
+    //     let client = ProverClient::builder().mock().build().await;
     //     let elf = test_artifacts::FIBONACCI_ELF;
-    //     let (pk, vk) = client.setup(elf).await;
+    //     let pk = client.setup(elf).await.unwrap();
     //     let mut stdin = SP1Stdin::new();
     //     stdin.write(&10usize);
-    //     let proof = client.prove(pk, stdin).plonk().run().await.unwrap();
-    //     client.verify(&proof, &vk).unwrap();
+
+    //     // Generate proof & verify.
+    //     let mut proof = client.prove(&pk, stdin).plonk().await.unwrap();
+    //     client.verify(&proof, &pk.vk).unwrap();
     // }
 }

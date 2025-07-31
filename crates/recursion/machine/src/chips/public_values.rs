@@ -221,31 +221,21 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use crate::{
-        chips::{
-            mem::MemoryAccessCols,
-            public_values::{
-                PublicValuesChip, PublicValuesCols, PublicValuesPreprocessedCols,
-                NUM_PUBLIC_VALUES_COLS, NUM_PUBLIC_VALUES_PREPROCESSED_COLS, PUB_VALUES_LOG_HEIGHT,
-            },
-            test_fixtures,
-        },
+        chips::{public_values::PublicValuesChip, test_fixtures},
         test::test_recursion_linear_program,
     };
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::AbstractField;
-    use slop_baby_bear::BabyBear;
+
     use slop_jagged::JaggedConfig;
-    use slop_matrix::{dense::RowMajorMatrix, Matrix};
-    use sp1_core_machine::utils::{pad_rows_fixed, setup_logger};
+    use slop_matrix::Matrix;
+    use sp1_core_machine::utils::setup_logger;
     use sp1_recursion_executor::{
-        instruction as instr, ExecutionRecord, Instruction, MemAccessKind, RecursionProgram,
-        RecursionPublicValues, DIGEST_SIZE, NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS,
+        instruction as instr, ExecutionRecord, MemAccessKind, RecursionPublicValues, DIGEST_SIZE,
+        NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS,
     };
     use sp1_stark::{air::MachineAir, BabyBearPoseidon2};
-    use std::{
-        array,
-        borrow::{Borrow, BorrowMut},
-    };
+    use std::{array, borrow::Borrow};
 
     #[tokio::test]
     async fn prove_babybear_circuit_public_values() {
@@ -275,112 +265,17 @@ mod tests {
         test_recursion_linear_program(instructions).await;
     }
 
-    #[test]
-    #[ignore = "Failing due to merge conflicts. Will be fixed shortly."]
-    fn generate_public_values_preprocessed_trace() {
-        let program = test_fixtures::program();
-
-        let chip = PublicValuesChip;
-        let trace = chip.generate_preprocessed_trace(&program).unwrap();
-        println!("{:?}", trace.values);
-    }
-
-    fn generate_trace_reference(
-        input: &ExecutionRecord<BabyBear>,
-        _: &mut ExecutionRecord<BabyBear>,
-    ) -> RowMajorMatrix<BabyBear> {
-        type F = BabyBear;
-
-        if input.commit_pv_hash_events.len() != 1 {
-            tracing::warn!("Expected exactly one CommitPVHash event.");
-        }
-
-        let mut rows: Vec<[F; NUM_PUBLIC_VALUES_COLS]> = Vec::new();
-
-        // We only take 1 commit pv hash instruction, since our air only checks for one public
-        // values hash.
-        for event in input.commit_pv_hash_events.iter().take(1) {
-            for element in event.public_values.digest.iter() {
-                let mut row = [F::zero(); NUM_PUBLIC_VALUES_COLS];
-                let cols: &mut PublicValuesCols<F> = row.as_mut_slice().borrow_mut();
-
-                cols.pv_element = *element;
-                rows.push(row);
-            }
-        }
-
-        // Pad the trace to 8 rows.
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_PUBLIC_VALUES_COLS],
-            Some(1 << PUB_VALUES_LOG_HEIGHT),
-        );
-
-        RowMajorMatrix::new(rows.into_iter().flatten().collect(), NUM_PUBLIC_VALUES_COLS)
-    }
-
-    #[test]
-    fn test_generate_trace() {
-        let shard = test_fixtures::shard();
-        let trace = PublicValuesChip.generate_trace(&shard, &mut ExecutionRecord::default());
+    #[tokio::test]
+    async fn generate_trace() {
+        let shard = test_fixtures::shard().await;
+        let trace = PublicValuesChip.generate_trace(shard, &mut ExecutionRecord::default());
         assert_eq!(trace.height(), 16);
-
-        assert_eq!(trace, generate_trace_reference(&shard, &mut ExecutionRecord::default()));
     }
 
-    fn generate_preprocessed_trace_reference(
-        program: &RecursionProgram<BabyBear>,
-    ) -> RowMajorMatrix<BabyBear> {
-        type F = BabyBear;
-
-        let mut rows: Vec<[F; NUM_PUBLIC_VALUES_PREPROCESSED_COLS]> = Vec::new();
-        let commit_pv_hash_instrs = program
-            .inner
-            .iter()
-            .filter_map(|instruction| {
-                if let Instruction::CommitPublicValues(instr) = instruction.inner() {
-                    Some(instr)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        if commit_pv_hash_instrs.len() != 1 {
-            tracing::warn!("Expected exactly one CommitPVHash instruction.");
-        }
-
-        // We only take 1 commit pv hash instruction
-        for instr in commit_pv_hash_instrs.iter().take(1) {
-            for (i, addr) in instr.pv_addrs.digest.iter().enumerate() {
-                let mut row = [F::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS];
-                let cols: &mut PublicValuesPreprocessedCols<F> = row.as_mut_slice().borrow_mut();
-                cols.pv_idx[i] = F::one();
-                cols.pv_mem = MemoryAccessCols { addr: *addr, mult: F::neg_one() };
-                rows.push(row);
-            }
-        }
-
-        // Pad the preprocessed rows to 8 rows
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS],
-            Some(1 << PUB_VALUES_LOG_HEIGHT),
-        );
-
-        RowMajorMatrix::new(
-            rows.into_iter().flatten().collect(),
-            NUM_PUBLIC_VALUES_PREPROCESSED_COLS,
-        )
-    }
-
-    #[test]
-    #[ignore = "Failing due to merge conflicts. Will be fixed shortly."]
-    fn test_generate_preprocessed_trace() {
-        let program = test_fixtures::program();
-        let trace = PublicValuesChip.generate_preprocessed_trace(&program).unwrap();
+    #[tokio::test]
+    async fn generate_preprocessed_trace() {
+        let program = &test_fixtures::program_with_input().await.0;
+        let trace = PublicValuesChip.generate_preprocessed_trace(program).unwrap();
         assert_eq!(trace.height(), 16);
-
-        assert_eq!(trace, generate_preprocessed_trace_reference(&program));
     }
 }

@@ -67,9 +67,6 @@ impl<F> RawProgram<Instruction<F>> {
                                     incr(&mut counts.poseidon2_sbox_events, 1)
                                 }
                                 Instruction::Select(_) => incr(&mut counts.select_events, 1),
-                                Instruction::ExpReverseBitsLen(_) => {
-                                    incr(&mut counts.exp_reverse_bits_len_events, 1)
-                                }
                                 Instruction::Hint(HintInstr { output_addrs_mults })
                                 | Instruction::HintBits(HintBitsInstr {
                                     output_addrs_mults,
@@ -79,14 +76,6 @@ impl<F> RawProgram<Instruction<F>> {
                                     output_addrs_mults,
                                     input_addr: _, // No receive interaction for the hint operation
                                 }) => incr(&mut counts.mem_var_events, output_addrs_mults.len()),
-                                Instruction::FriFold(instr) => incr(
-                                    &mut counts.fri_fold_events,
-                                    instr.ext_vec_addrs.ps_at_z.len(),
-                                ),
-                                Instruction::BatchFRI(instr) => incr(
-                                    &mut counts.batch_fri_events,
-                                    instr.base_vec_addrs.p_at_x.len(),
-                                ),
                                 Instruction::PrefixSumChecks(instr) => {
                                     incr(&mut counts.prefix_sum_checks_events, instr.addrs.x1.len())
                                 }

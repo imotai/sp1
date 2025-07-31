@@ -57,6 +57,7 @@ tokio = { workspace = true }
 futures = { workspace = true }
 
 [dev-dependencies]
+rand = { workspace = true }
 num = { version = "0.4.3", features = ["rand"] }
 sp1-core-executor = { workspace = true }
 test-artifacts = { workspace = true }
@@ -66,6 +67,11 @@ slop-baby-bear = { workspace = true }
 slop-algebra = { workspace = true }
 slop-matrix = { workspace = true }
 slop-jagged = { workspace = true }
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+hex = "0.4.3"
+elliptic-curve = "0.13.8"
+k256 = { version = "0.13.3", features = ["expose-field"] }
+p256 = { version = "0.13.2", features = ["expose-field"] }
 
 [build-dependencies]
 sp1-stark = { workspace = true }

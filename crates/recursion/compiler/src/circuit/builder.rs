@@ -17,14 +17,6 @@ pub trait CircuitV2Builder<C: Config> {
         bits: impl IntoIterator<Item = Felt<<C as Config>::F>>,
     ) -> Felt<C::F>;
     fn num2bits_v2_f(&mut self, num: Felt<C::F>, num_bits: usize) -> Vec<Felt<C::F>>;
-    fn exp_reverse_bits_v2(&mut self, input: Felt<C::F>, power_bits: Vec<Felt<C::F>>)
-        -> Felt<C::F>;
-    fn batch_fri_v2(
-        &mut self,
-        alphas: Vec<Ext<C::F, C::EF>>,
-        p_at_zs: Vec<Ext<C::F, C::EF>>,
-        p_at_xs: Vec<Felt<C::F>>,
-    ) -> Ext<C::F, C::EF>;
     fn prefix_sum_checks_v2(
         &mut self,
         point_1: Vec<Felt<C::F>>,
@@ -34,7 +26,6 @@ pub trait CircuitV2Builder<C: Config> {
         &mut self,
         state: [Felt<C::F>; PERMUTATION_WIDTH],
     ) -> [Felt<C::F>; PERMUTATION_WIDTH];
-    fn fri_fold_v2(&mut self, input: CircuitV2FriFoldInput<C>) -> CircuitV2FriFoldOutput<C>;
     fn ext2felt_v2(&mut self, ext: Ext<C::F, C::EF>) -> [Felt<C::F>; D];
     fn add_curve_v2(
         &mut self,
@@ -119,29 +110,6 @@ impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
         output
     }
 
-    /// A version of `exp_reverse_bits_len` that uses the ExpReverseBitsLen precompile.
-    fn exp_reverse_bits_v2(
-        &mut self,
-        input: Felt<C::F>,
-        power_bits: Vec<Felt<C::F>>,
-    ) -> Felt<C::F> {
-        let output: Felt<_> = self.uninit();
-        self.push_op(DslIr::CircuitV2ExpReverseBits(output, input, power_bits));
-        output
-    }
-
-    /// A version of the `batch_fri` that uses the BatchFRI precompile.
-    fn batch_fri_v2(
-        &mut self,
-        alpha_pows: Vec<Ext<C::F, C::EF>>,
-        p_at_zs: Vec<Ext<C::F, C::EF>>,
-        p_at_xs: Vec<Felt<C::F>>,
-    ) -> Ext<C::F, C::EF> {
-        let output: Ext<_, _> = self.uninit();
-        self.push_op(DslIr::CircuitV2BatchFRI(Box::new((output, alpha_pows, p_at_zs, p_at_xs))));
-        output
-    }
-
     /// A version of the `prefix_sum_checks` that uses the LagrangeEval precompile.
     fn prefix_sum_checks_v2(
         &mut self,
@@ -177,17 +145,6 @@ impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
     ) -> [Felt<C::F>; PERMUTATION_WIDTH] {
         let output: [Felt<C::F>; PERMUTATION_WIDTH] = core::array::from_fn(|_| self.uninit());
         self.push_op(DslIr::CircuitV2Poseidon2PermuteBabyBear(Box::new((output, array))));
-        output
-    }
-
-    /// Runs FRI fold.
-    fn fri_fold_v2(&mut self, input: CircuitV2FriFoldInput<C>) -> CircuitV2FriFoldOutput<C> {
-        let mut uninit_vec = |len| std::iter::from_fn(|| Some(self.uninit())).take(len).collect();
-        let output = CircuitV2FriFoldOutput {
-            alpha_pow_output: uninit_vec(input.alpha_pow_input.len()),
-            ro_output: uninit_vec(input.ro_input.len()),
-        };
-        self.push_op(DslIr::CircuitV2FriFold(Box::new((output.clone(), input))));
         output
     }
 

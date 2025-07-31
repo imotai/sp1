@@ -188,10 +188,28 @@ mod tests {
     use slop_matrix::dense::RowMajorMatrix;
     use sp1_recursion_executor::MemEvent;
 
+    use crate::chips::test_fixtures;
+
     use super::*;
 
+    #[tokio::test]
+    async fn generate_trace() {
+        let shard = test_fixtures::shard().await;
+        let chip = MemoryVarChip::<_, 2>::default();
+        let trace = chip.generate_trace(shard, &mut ExecutionRecord::default());
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
+
+    #[tokio::test]
+    async fn generate_preprocessed_trace() {
+        let program = &test_fixtures::program_with_input().await.0;
+        let chip = MemoryVarChip::<_, 2>::default();
+        let trace = chip.generate_preprocessed_trace(program).unwrap();
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
+
     #[test]
-    pub fn generate_trace() {
+    pub fn generate_trace_simple() {
         let shard = ExecutionRecord::<BabyBear> {
             mem_var_events: vec![
                 MemEvent { inner: BabyBear::one().into() },
@@ -199,7 +217,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let chip = MemoryVarChip::<BabyBear, 2>::default();
+        let chip = MemoryVarChip::<_, 2>::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values)

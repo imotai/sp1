@@ -532,48 +532,49 @@ where
     }
 }
 
-// #[cfg(test)]
-// pub mod tests {
-//     use sp1_core_executor::Program;
-//     use sp1_stark::CpuProver;
-//     use test_artifacts::{
-//         BLS12381_DOUBLE_ELF, BN254_DOUBLE_ELF, SECP256K1_DOUBLE_ELF, SECP256R1_DOUBLE_ELF,
-//     };
+#[cfg(test)]
+pub mod tests {
+    use std::sync::Arc;
 
-//     use crate::{
-//         io::SP1Stdin,
-//         utils::{run_test, setup_logger},
-//     };
+    use sp1_core_executor::Program;
+    use test_artifacts::{
+        BLS12381_DOUBLE_ELF, BN254_DOUBLE_ELF, SECP256K1_DOUBLE_ELF, SECP256R1_DOUBLE_ELF,
+    };
 
-//     #[test]
-//     fn test_secp256k1_double_simple() {
-//         setup_logger();
-//         let program = Program::from(SECP256K1_DOUBLE_ELF).unwrap();
-//         let stdin = SP1Stdin::new();
-//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-//     }
+    use crate::{
+        io::SP1Stdin,
+        utils::{run_test, setup_logger},
+    };
 
-//     #[test]
-//     fn test_secp256r1_double_simple() {
-//         setup_logger();
-//         let program = Program::from(SECP256R1_DOUBLE_ELF).unwrap();
-//         let stdin = SP1Stdin::new();
-//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-//     }
+    #[tokio::test]
+    async fn test_secp256k1_double_simple() {
+        setup_logger();
+        let program = Arc::new(Program::from(&SECP256K1_DOUBLE_ELF).unwrap());
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
 
-//     #[test]
-//     fn test_bn254_double_simple() {
-//         setup_logger();
-//         let program = Program::from(BN254_DOUBLE_ELF).unwrap();
-//         let stdin = SP1Stdin::new();
-//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-//     }
+    #[tokio::test]
+    async fn test_secp256r1_double_simple() {
+        setup_logger();
+        let program = Arc::new(Program::from(&SECP256R1_DOUBLE_ELF).unwrap());
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
 
-//     #[test]
-//     fn test_bls12381_double_simple() {
-//         setup_logger();
-//         let program = Program::from(BLS12381_DOUBLE_ELF).unwrap();
-//         let stdin = SP1Stdin::new();
-//         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-//     }
-// }
+    #[tokio::test]
+    async fn test_bn254_double_simple() {
+        setup_logger();
+        let program = Arc::new(Program::from(&BN254_DOUBLE_ELF).unwrap());
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_bls12381_double_simple() {
+        setup_logger();
+        let program = Arc::new(Program::from(&BLS12381_DOUBLE_ELF).unwrap());
+        let stdin = SP1Stdin::new();
+        run_test(program, stdin).await.unwrap();
+    }
+}

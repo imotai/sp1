@@ -172,11 +172,29 @@ where
 
 #[cfg(test)]
 mod tests {
-    use sp1_recursion_executor::instruction as instr;
+    use slop_matrix::Matrix;
+    use sp1_recursion_executor::{instruction as instr, ExecutionRecord, MemAccessKind};
+    use sp1_stark::air::MachineAir;
 
-    use crate::test::test_recursion_linear_program;
+    use super::MemoryConstChip;
 
-    use super::*;
+    use crate::{chips::test_fixtures, test::test_recursion_linear_program};
+
+    #[tokio::test]
+    async fn generate_trace() {
+        let shard = test_fixtures::shard().await;
+        let chip = MemoryConstChip::default();
+        let trace = chip.generate_trace(shard, &mut ExecutionRecord::default());
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
+
+    #[tokio::test]
+    async fn generate_preprocessed_trace() {
+        let program = &test_fixtures::program_with_input().await.0;
+        let chip = MemoryConstChip::default();
+        let trace = chip.generate_preprocessed_trace(program).unwrap();
+        assert!(trace.height() > test_fixtures::MIN_ROWS);
+    }
 
     #[tokio::test]
     pub async fn prove_basic_mem() {
