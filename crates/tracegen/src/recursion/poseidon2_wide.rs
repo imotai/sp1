@@ -51,7 +51,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
             // args:
             // T *trace,
             // uintptr_t trace_height,
-            // const csl_sys::Poseidon2SkinnyInstr<T> *instructions,
+            // const csl_sys::Poseidon2Instr<T> *instructions,
             // uintptr_t nb_instructions
             let args = args!(trace.as_mut_ptr(), height, instrs_device.as_ptr(), instrs.len());
             scope

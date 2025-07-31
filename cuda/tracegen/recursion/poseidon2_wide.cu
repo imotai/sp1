@@ -12,7 +12,7 @@ template <class T>
 __global__ void recursion_poseidon2_wide_generate_preprocessed_trace_kernel(
     T *trace,
     uintptr_t trace_height,
-    const csl_sys::Poseidon2SkinnyInstr<T> *instructions,
+    const csl_sys::Poseidon2Instr<T> *instructions,
     uintptr_t nb_instructions)
 {
     static const size_t COLUMNS =
