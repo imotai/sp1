@@ -1,6 +1,5 @@
 use derive_where::derive_where;
 use futures::prelude::*;
-use serde::{Deserialize, Serialize};
 use slop_alloc::{HasBackend, ToHost};
 use slop_commit::{Message, Rounds};
 use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, Point};
@@ -16,12 +15,8 @@ pub struct StackedPcsProver<P, S> {
     pub log_stacking_height: u32,
 }
 
-#[derive(Serialize, Deserialize)]
 #[derive_where(Debug, Clone; P::ProverData: Debug + Clone)]
-#[serde(bound(
-    serialize = "Mle<P::F, P::A>: Serialize, P::ProverData: Serialize",
-    deserialize = "Mle<P::F, P::A>: Deserialize<'de>, P::ProverData: Deserialize<'de>"
-))]
+#[derive_where(Serialize, Deserialize; P::ProverData, Mle<P::F, P::A>)]
 pub struct StackedPcsProverData<P: MultilinearPcsProver> {
     pcs_batch_data: P::ProverData,
     pub interleaved_mles: Message<Mle<P::F, P::A>>,

@@ -90,12 +90,12 @@ pub trait DefaultBasefoldProver: BasefoldProverComponents + Sized {
     fn default_prover(verifier: &BasefoldVerifier<Self::Config>) -> BasefoldProver<Self>;
 }
 
-#[derive(Serialize, Deserialize)]
 #[derive_where(Debug, Clone; <C::TcsProver as TensorCsProver<C::A>>::ProverData: Debug + Clone)]
-#[serde(bound(
-    serialize = "<C::TcsProver as TensorCsProver<C::A>>::ProverData: Serialize, RsCodeWord<C::F, C::A>: Serialize",
-    deserialize = "<C::TcsProver as TensorCsProver<C::A>>::ProverData: Deserialize<'de>, RsCodeWord<C::F, C::A>: Deserialize<'de>"
-))]
+#[derive_where(
+    Serialize, Deserialize;
+    <C::TcsProver as TensorCsProver<C::A>>::ProverData,
+    RsCodeWord<C::F, C::A>
+)]
 pub struct BasefoldProverData<C: BasefoldProverComponents> {
     pub tcs_prover_data: <C::TcsProver as TensorCsProver<C::A>>::ProverData,
     pub encoded_messages: Message<RsCodeWord<C::F, C::A>>,

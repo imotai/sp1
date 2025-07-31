@@ -7,7 +7,6 @@ use rayon::prelude::*;
 
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
-use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, GLOBAL_CPU_BACKEND};
 use slop_tensor::Tensor;
@@ -19,12 +18,8 @@ use crate::{
 };
 
 /// A bacth of multi-linear polynomials.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive_where(PartialEq, Eq; Tensor<T, A>)]
-#[serde(bound(
-    serialize = "Tensor<T, A>: Serialize",
-    deserialize = "Tensor<T, A>: Deserialize<'de>"
-))]
+#[derive(Debug, Clone)]
+#[derive_where(PartialEq, Eq, Serialize, Deserialize; Tensor<T, A>)]
 pub struct Mle<T, A: Backend = CpuBackend> {
     guts: Tensor<T, A>,
 }
@@ -396,12 +391,8 @@ pub fn full_geq<F: AbstractField, EF: AbstractExtensionField<F>>(
 }
 
 /// A bacth of multi-linear polynomial evaluations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive_where(PartialEq, Eq; Tensor<T, A>)]
-#[serde(bound(
-    serialize = "Tensor<T, A>: Serialize",
-    deserialize = "Tensor<T, A>: Deserialize<'de>"
-))]
+#[derive(Debug, Clone)]
+#[derive_where(PartialEq, Eq, Serialize, Deserialize; Tensor<T, A>)]
 pub struct MleEval<T, A: Backend = CpuBackend> {
     pub(crate) evaluations: Tensor<T, A>,
 }

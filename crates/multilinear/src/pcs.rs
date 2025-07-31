@@ -3,19 +3,15 @@ use std::{error::Error, fmt::Debug, future::Future};
 
 use crate::{Mle, MleEval, MleEvaluationBackend, Point};
 use derive_where::derive_where;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::ToHost;
 use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_challenger::FieldChallenger;
 use slop_commit::{Message, Rounds};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive_where(PartialEq, Eq; MleEval<F, A>)]
-#[serde(bound(
-    serialize = "MleEval<F, A>: Serialize",
-    deserialize = "MleEval<F, A>: Deserialize<'de>"
-))]
+#[derive(Debug, Clone)]
+#[derive_where(PartialEq, Eq, Serialize, Deserialize; MleEval<F, A>)]
 pub struct Evaluations<F, A: Backend = CpuBackend> {
     pub round_evaluations: Vec<MleEval<F, A>>,
 }

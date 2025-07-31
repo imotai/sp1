@@ -136,7 +136,7 @@ rayon = "1.10.0"
 # misc
 thiserror = "1.0"
 itertools = "0.14.0"
-derive-where = "1.2.7"
+derive-where = { version = "1.5.0", features = ["serde"] }
 rand = "0.8"
 serde = { version = "1.0.217", features = ["derive"] }
 tracing = "0.1.40"

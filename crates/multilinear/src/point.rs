@@ -6,19 +6,14 @@ use std::{
 
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution};
-use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_alloc::{
     buffer, Backend, Buffer, CanCopyFromRef, CanCopyIntoRef, CpuBackend, HasBackend, Init, Slice,
 };
 use slop_tensor::Tensor;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[derive_where(PartialEq, Eq; Buffer<T, A>)]
-#[serde(bound(
-    serialize = "Buffer<T, A>: Serialize",
-    deserialize = "Buffer<T, A>: Deserialize<'de>"
-))]
+#[derive(Clone, Debug)]
+#[derive_where(PartialEq, Eq, Serialize, Deserialize; Buffer<T, A>)]
 pub struct Point<T, A: Backend = CpuBackend> {
     values: Buffer<T, A>,
 }

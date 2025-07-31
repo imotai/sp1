@@ -1,6 +1,6 @@
 use derive_where::derive_where;
 use futures::prelude::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use std::{fmt::Debug, sync::Arc};
 use tracing::Instrument;
 
@@ -123,12 +123,8 @@ pub struct JaggedProver<C: JaggedProverComponents> {
     pub max_log_row_count: usize,
 }
 
-#[derive(Serialize, Deserialize)]
 #[derive_where(Debug, Clone; StackedPcsProverData<C::BatchPcsProver>: Debug + Clone)]
-#[serde(bound(
-    serialize = "StackedPcsProverData<C::BatchPcsProver>: Serialize",
-    deserialize = "StackedPcsProverData<C::BatchPcsProver>: Deserialize<'de>"
-))]
+#[derive_where(Serialize, Deserialize; StackedPcsProverData<C::BatchPcsProver>)]
 pub struct JaggedProverData<C: JaggedProverComponents> {
     pub stacked_pcs_prover_data: StackedPcsProverData<C::BatchPcsProver>,
     pub row_counts: Arc<Vec<usize>>,

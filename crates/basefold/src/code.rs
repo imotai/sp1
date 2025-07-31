@@ -45,12 +45,8 @@ impl<F: TwoAdicField> FriConfig<F> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive_where(PartialEq, Eq; Tensor<F, A>)]
-#[serde(bound(
-    serialize = "Tensor<F, A>: Serialize",
-    deserialize = "Tensor<F, A>: Deserialize<'de>"
-))]
+#[derive(Debug, Clone)]
+#[derive_where(PartialEq, Eq, Serialize, Deserialize; Tensor<F, A>)]
 pub struct RsCodeWord<F, A: Backend = CpuBackend> {
     pub data: Tensor<F, A>,
 }
