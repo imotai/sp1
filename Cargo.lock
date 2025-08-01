@@ -1187,6 +1187,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "deepsize2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86b5184084af9beed35eecbf4c36baf6e26b9dc47b61b74e02f930c72a58e71b"
+dependencies = [
+ "deepsize_derive2",
+ "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "deepsize_derive2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0f8817865cacf3b93b943ca06b0fc5fd8e99eabfdb7ea5d296efcbc4afc4f69"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4325,11 +4346,12 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "bincode",
  "bytemuck",
  "clap",
+ "deepsize2",
  "elf",
  "enum-map",
  "eyre",
@@ -4364,10 +4386,11 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "bincode",
  "cfg-if",
+ "deepsize2",
  "futures",
  "generic-array 1.1.0",
  "hashbrown 0.14.5",
@@ -4408,7 +4431,7 @@ dependencies = [
 [[package]]
 name = "sp1-cuda"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "bincode",
  "bytes",
@@ -4429,7 +4452,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -4450,7 +4473,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4460,7 +4483,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "bincode",
  "blake3",
@@ -4479,7 +4502,7 @@ dependencies = [
 [[package]]
 name = "sp1-prover"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4527,7 +4550,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-circuit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -4565,7 +4588,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-compiler"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -4588,7 +4611,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-derive"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -4597,7 +4620,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -4622,7 +4645,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-gnark-ffi"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4645,7 +4668,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -4673,9 +4696,10 @@ dependencies = [
 [[package]]
 name = "sp1-stark"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#0bc633432585e5faf1787ed3b8aa7f71539149d4"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?tag=v6.0.0#404da2556eb7d066fe8b72034bccd41f854f3840"
 dependencies = [
  "arrayref",
+ "deepsize2",
  "derive-where",
  "futures",
  "hashbrown 0.14.5",
