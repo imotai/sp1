@@ -1,3 +1,5 @@
+use crate::StatusCode;
+
 use super::Prover;
 use sp1_core_executor::{ExecutionError, ExecutionReport, HookEnv, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
@@ -136,6 +138,16 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     #[must_use]
     pub fn calculate_gas(mut self, value: bool) -> Self {
         self.context_builder.calculate_gas(value);
+        self
+    }
+
+    /// Set the expected exit code of the program.
+    ///
+    /// # Arguments
+    /// * `code` - The expected exit code of the program.
+    #[must_use]
+    pub fn expected_exit_code(mut self, code: StatusCode) -> Self {
+        self.context_builder.expected_exit_code(code);
         self
     }
 

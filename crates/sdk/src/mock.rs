@@ -13,7 +13,7 @@ use sp1_prover::{
 use crate::{
     cpu::{CPUProverError, CPUProvingKey, CpuProver},
     prover::{BaseProveRequest, ProveRequest},
-    Prover, SP1Proof, SP1ProofWithPublicValues, SP1VerificationError,
+    Prover, SP1Proof, SP1ProofWithPublicValues, SP1VerificationError, StatusCode,
 };
 use std::{
     future::{Future, IntoFuture},
@@ -60,6 +60,7 @@ impl Prover for MockProver {
         &self,
         proof: &SP1ProofWithPublicValues,
         _vkey: &SP1VerifyingKey,
+        _status_code: Option<StatusCode>,
     ) -> Result<(), SP1VerificationError> {
         match &proof.proof {
             SP1Proof::Plonk(PlonkBn254Proof { public_inputs: _, .. }) => {

@@ -8,6 +8,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::StatusCode;
 use anyhow::Result;
 use itertools::Itertools;
 use slop_algebra::PrimeField32;
@@ -66,12 +67,15 @@ pub trait Prover: Clone + Send + Sync {
     }
 
     /// Verify the given proof.
+    ///
+    /// Note: If the status code is not set, the verification process will check for success.
     fn verify(
         &self,
         proof: &SP1ProofWithPublicValues,
         vkey: &SP1VerifyingKey,
+        status_code: Option<StatusCode>,
     ) -> Result<(), SP1VerificationError> {
-        verify_proof(self.inner().prover(), self.version(), proof, vkey)
+        verify_proof(self.inner().prover(), self.version(), proof, vkey, status_code)
     }
 }
 
@@ -122,6 +126,9 @@ pub enum SP1VerificationError {
     /// An error that occurs when the proof is invalid.
     #[error("Unexpected error: {0:?}")]
     Other(anyhow::Error),
+    /// An error that occurs when the exit code is unexpected.
+    #[error("Unexpected exit code: {0}")]
+    UnexpectedExitCode(u32),
 }
 
 /// In SP1, a proof's public values can either be hashed with SHA2 or Blake3. In SP1 V4, there is no
@@ -138,7 +145,10 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
     version: &str,
     bundle: &SP1ProofWithPublicValues,
     vkey: &SP1VerifyingKey,
+    status_code: Option<StatusCode>,
 ) -> Result<(), SP1VerificationError> {
+    let status_code = status_code.unwrap_or(StatusCode::SUCCESS);
+
     // Check that the SP1 version matches the version of the currentcircuit.
     if bundle.sp1_version != version {
         return Err(SP1VerificationError::VersionMismatch(bundle.sp1_version.clone()));
@@ -148,6 +158,12 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
         SP1Proof::Core(proof) => {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 proof.last().unwrap().public_values.as_slice().borrow();
+
+            if !status_code.is_accepted_code(public_values.exit_code.as_canonical_u32()) {
+                return Err(SP1VerificationError::UnexpectedExitCode(
+                    public_values.exit_code.as_canonical_u32(),
+                ));
+            }
 
             // Get the committed value digest bytes.
             let committed_value_digest_bytes = public_values
@@ -173,6 +189,12 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
         SP1Proof::Compressed(proof) => {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 proof.proof.public_values.as_slice().borrow();
+
+            if !status_code.is_accepted_code(public_values.exit_code.as_canonical_u32()) {
+                return Err(SP1VerificationError::UnexpectedExitCode(
+                    public_values.exit_code.as_canonical_u32(),
+                ));
+            }
 
             // Get the committed value digest bytes.
             let committed_value_digest_bytes = public_values

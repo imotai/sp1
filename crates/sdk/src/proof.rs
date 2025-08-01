@@ -441,7 +441,7 @@ mod tests {
         let proof = prover.prove(&pk, crate::SP1Stdin::new()).compressed().await.unwrap();
 
         // Verify the original proof
-        prover.verify(&proof, &pk.vk).unwrap();
+        prover.verify(&proof, &pk.vk, None).unwrap();
 
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("proof.bin");
@@ -451,6 +451,6 @@ mod tests {
         let proof_loaded = SP1ProofWithPublicValues::load(&path).unwrap();
 
         // Verify the loaded proof
-        prover.verify(&proof_loaded, &pk.vk).unwrap();
+        prover.verify(&proof_loaded, &pk.vk, None).unwrap();
     }
 }

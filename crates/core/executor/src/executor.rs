@@ -4,7 +4,7 @@ use std::{num::Wrapping, str::FromStr, sync::Arc};
 
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
-use crate::{estimator::RecordEstimator, NUM_REGISTERS};
+use crate::{estimator::RecordEstimator, StatusCode, NUM_REGISTERS};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
@@ -180,6 +180,9 @@ pub struct Executor<'a> {
     /// The total number of unconstrained cycles.
     pub total_unconstrained_cycles: u64,
 
+    /// The expected exit code of the program.
+    pub expected_exit_code: StatusCode,
+
     /// Temporary event counts for the current shard. This is a field to reuse memory.
     event_counts: EnumMap<RiscvAirId, u64>,
 
@@ -320,6 +323,10 @@ pub enum ExecutionError {
     /// The unconstrained cycle limit was exceeded.
     #[error("unconstrained cycle limit exceeded")]
     UnconstrainedCycleLimitExceeded(u64),
+
+    /// The program ended with an unexpected status code.
+    #[error("Unexpected exit code: {0}")]
+    UnexpectedExitCode(u32),
 }
 
 impl<'a> Executor<'a> {
@@ -435,6 +442,7 @@ impl<'a> Executor<'a> {
             internal_syscalls_override,
             internal_syscalls_air_id,
             io_options: context.io_options,
+            expected_exit_code: context.expected_exit_code,
             total_unconstrained_cycles: 0,
             transpiler: InstructionTranspiler,
             decoded_instruction_cache: HashMap::new(),
@@ -2419,6 +2427,10 @@ impl<'a> Executor<'a> {
                 record.public_values.prev_exit_code = last_exit_code;
                 record.public_values.exit_code = last_exit_code;
             }
+        }
+
+        if !self.expected_exit_code.is_accepted_code(last_exit_code) {
+            return Err(ExecutionError::UnexpectedExitCode(last_exit_code));
         }
 
         Ok(done)

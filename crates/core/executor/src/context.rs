@@ -10,6 +10,50 @@ use std::io::Write;
 
 use sp1_primitives::consts::fd::LOWEST_ALLOWED_FD;
 
+/// The status code of the execution.
+///
+/// Currently the only supported status codes are `0` for success and `1` for failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusCode(u32);
+
+impl StatusCode {
+    /// The success status code.
+    pub const SUCCESS: Self = Self(0);
+    /// The panic status code.
+    pub const PANIC: Self = Self(1);
+    /// Accept either success or panic.
+    pub const ANY: Self = Self(u32::MAX);
+
+    /// Create a new status code from a u32.
+    ///
+    /// # Arguments
+    /// * `code` - The status code to create.
+    ///
+    /// # Returns
+    /// * `Some(StatusCode)` - The status code if it is valid: {0, 1}.
+    /// * `None` - The status code is not valid.
+    #[must_use]
+    pub const fn new(code: u32) -> Option<Self> {
+        match code {
+            0 => Some(Self::SUCCESS),
+            1 => Some(Self::PANIC),
+            _ => None,
+        }
+    }
+
+    /// Get the u32 value of the status code.
+    #[must_use]
+    pub const fn as_u32(&self) -> u32 {
+        self.0
+    }
+
+    /// Check if the status code is equal to the given value.
+    #[must_use]
+    pub const fn is_accepted_code(&self, code: u32) -> bool {
+        self.0 == Self::ANY.0 || self.0 == code
+    }
+}
+
 /// Context to run a program inside SP1.
 #[derive(Clone)]
 pub struct SP1Context<'a> {
@@ -26,6 +70,9 @@ pub struct SP1Context<'a> {
 
     /// Deferred proof verification.
     pub deferred_proof_verification: bool,
+
+    /// The expected exit code of the program.
+    pub expected_exit_code: StatusCode,
 
     /// Whether gas (available in the `ExecutionReport`) should be calculated during execution.
     /// Does nothing while proving.
@@ -51,6 +98,7 @@ pub struct SP1ContextBuilder<'a> {
     max_cycles: Option<u64>,
     deferred_proof_verification: bool,
     calculate_gas: bool,
+    expected_exit_code: Option<StatusCode>,
     // TODO remove the lifetime here, change stdout and stderr options to accept channels.
     io_options: IoOptions<'a>,
 }
@@ -83,6 +131,7 @@ impl<'a> SP1ContextBuilder<'a> {
             // Always verify deferred proofs by default.
             deferred_proof_verification: true,
             calculate_gas: true,
+            expected_exit_code: None,
             io_options: IoOptions::new(),
         }
     }
@@ -128,6 +177,7 @@ impl<'a> SP1ContextBuilder<'a> {
             deferred_proof_verification,
             calculate_gas,
             io_options: take(&mut self.io_options),
+            expected_exit_code: self.expected_exit_code.unwrap_or(StatusCode::SUCCESS),
         }
     }
 
@@ -200,6 +250,12 @@ impl<'a> SP1ContextBuilder<'a> {
     /// Set the `stderr` writer.
     pub fn stderr<W: IoWriter>(&mut self, writer: &'a mut W) -> &mut Self {
         self.io_options.stderr = Some(writer);
+        self
+    }
+
+    /// Set the expected exit code of the program.
+    pub fn expected_exit_code(&mut self, code: StatusCode) -> &mut Self {
+        self.expected_exit_code = Some(code);
         self
     }
 }

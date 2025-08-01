@@ -1,5 +1,5 @@
 use super::{IntoSendFutureResult, Prover};
-use crate::{SP1ProofMode, SP1ProofWithPublicValues};
+use crate::{SP1ProofMode, SP1ProofWithPublicValues, StatusCode};
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
 
@@ -179,6 +179,16 @@ where
         self.base().deferred_proof_verification(value);
         self
     }
+
+    /// Set the expected exit code of the program.
+    ///
+    /// # Arguments
+    /// * `code` - The expected exit code of the program.
+    #[must_use]
+    fn expected_exit_code(mut self, code: StatusCode) -> Self {
+        self.base().expected_exit_code(code);
+        self
+    }
 }
 
 /// The base prove request for a prover.
@@ -242,5 +252,10 @@ impl<'a, P: Prover> BaseProveRequest<'a, P> {
     /// See [`ProveRequest::deferred_proof_verification`].
     pub fn deferred_proof_verification(&mut self, value: bool) {
         self.context_builder.set_deferred_proof_verification(value);
+    }
+
+    /// See [`ProveRequest::expected_exit_code`].
+    pub fn expected_exit_code(&mut self, code: StatusCode) {
+        self.context_builder.expected_exit_code(code);
     }
 }

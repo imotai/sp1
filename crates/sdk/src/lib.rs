@@ -54,7 +54,9 @@ pub use prover::{ProveRequest, Prover, ProvingKey, SP1VerificationError};
 
 // Re-export the build utilities and executor primitives.
 pub use sp1_build::include_elf;
-pub use sp1_core_executor::{ExecutionReport, Executor, HookEnv, SP1Context, SP1ContextBuilder};
+pub use sp1_core_executor::{
+    ExecutionReport, Executor, HookEnv, SP1Context, SP1ContextBuilder, StatusCode,
+};
 
 // Re-export the machine/prover primitives.
 pub use sp1_core_machine::io::SP1Stdin;
@@ -121,11 +123,11 @@ mod tests {
 
         // Generate proof & verify.
         let mut proof = client.prove(&pk, stdin).await.unwrap();
-        client.verify(&proof, &pk.vk).unwrap();
+        client.verify(&proof, &pk.vk, None).unwrap();
 
         // Test invalid public values.
         proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-        if client.verify(&proof, &pk.vk).is_ok() {
+        if client.verify(&proof, &pk.vk, None).is_ok() {
             panic!("verified proof with invalid public values")
         }
     }
@@ -161,11 +163,11 @@ mod tests {
 
         // Generate proof & verify.
         let mut proof = client.prove(&pk, stdin).compressed().await.unwrap();
-        client.verify(&proof, &pk.vk).unwrap();
+        client.verify(&proof, &pk.vk, None).unwrap();
 
         // Test invalid public values.
         proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-        if client.verify(&proof, &pk.vk).is_ok() {
+        if client.verify(&proof, &pk.vk, None).is_ok() {
             panic!("verified proof with invalid public values")
         }
     }

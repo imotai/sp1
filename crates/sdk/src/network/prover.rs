@@ -23,7 +23,7 @@ use crate::{
         PUBLIC_EXPLORER_URL,
     },
     prover::{verify_proof, BaseProveRequest, SendFutureResult},
-    ProofFromNetwork, Prover, SP1ProofMode, SP1ProofWithPublicValues, SP1VerifyingKey,
+    ProofFromNetwork, Prover, SP1ProofMode, SP1ProofWithPublicValues, SP1VerifyingKey, StatusCode,
 };
 
 #[cfg(not(feature = "reserved-capacity"))]
@@ -88,12 +88,13 @@ impl Prover for NetworkProver {
         &self,
         proof: &SP1ProofWithPublicValues,
         vkey: &SP1VerifyingKey,
+        status_code: Option<StatusCode>,
     ) -> Result<(), crate::SP1VerificationError> {
         if let Some(tee_proof) = &proof.tee_proof {
             verify_tee_proof(&self.tee_signers, tee_proof, vkey, proof.public_values.as_ref())?;
         }
 
-        verify_proof(self.inner().prover(), self.version(), proof, vkey)
+        verify_proof(self.inner().prover(), self.version(), proof, vkey, status_code)
     }
 }
 
