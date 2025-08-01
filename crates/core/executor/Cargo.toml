@@ -46,6 +46,7 @@ clap = { version = "4.5.9", features = ["derive"] }
 subenum = "1.1.2"
 range-set-blaze = "0.1.16"
 serde_arrays = "0.2"
+deepsize2 = { workspace = true }
 
 # profiling
 goblin = { version = "0.9", optional = true }

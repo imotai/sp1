@@ -1,8 +1,8 @@
 use gecko_profile::{Frame, ProfileBuilder, StringIndex, ThreadBuilder};
 use goblin::elf::{sym::STT_FUNC, Elf};
+use hashbrown::HashMap;
 use indicatif::{ProgressBar, ProgressStyle};
 use rustc_demangle::demangle;
-use std::collections::HashMap;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProfilerError {

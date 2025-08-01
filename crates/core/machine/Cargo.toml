@@ -55,6 +55,7 @@ sp1-curves = { workspace = true }
 slop-poseidon2 = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
+deepsize2 = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }

@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 /// The number of local memory entries per row of the memory local chip.
@@ -7,7 +8,7 @@ pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC: usize = 4;
 ///
 /// This object encapsulates the information needed to prove a memory access operation. This
 /// includes the shard, timestamp, and value of the memory address.
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryRecord {
     /// The shard number.
@@ -183,7 +184,7 @@ pub enum MemoryAccessPosition {
 /// This object encapsulates the information needed to prove a memory read operation. This
 /// includes the value, shard, timestamp, and previous shard and timestamp.
 #[allow(clippy::manual_non_exhaustive)]
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryReadRecord {
     /// The value.
@@ -203,7 +204,7 @@ pub struct MemoryReadRecord {
 /// This object encapsulates the information needed to prove a memory write operation. This
 /// includes the value, shard, timestamp, previous value, previous shard, and previous timestamp.
 #[allow(clippy::manual_non_exhaustive)]
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryWriteRecord {
     /// The value.
@@ -224,7 +225,7 @@ pub struct MemoryWriteRecord {
 ///
 /// This enum represents the different types of memory records that can be stored in the memory
 /// event such as reads and writes.
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub enum MemoryRecordEnum {
     /// Read.
     Read(MemoryReadRecord),
@@ -273,7 +274,7 @@ impl MemoryRecordEnum {
 /// This object encapsulates the information needed to prove a memory initialize or finalize
 /// operation. This includes the address, value, shard, timestamp, and whether the memory is
 /// initialized or finalized.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryInitializeFinalizeEvent {
     /// The address.
@@ -375,7 +376,7 @@ impl From<MemoryWriteRecord> for MemoryRecordEnum {
 /// This object encapsulates the information needed to prove a memory access operation within a
 /// shard. This includes the address, initial memory access, and final memory access within a
 /// shard.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryLocalEvent {
     /// The address.

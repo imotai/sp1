@@ -2,6 +2,7 @@
 
 use std::fmt::Display;
 
+use deepsize2::DeepSizeOf;
 use enum_map::Enum;
 use rrs_lib::instruction_formats::{
     OPCODE_AUIPC, OPCODE_BRANCH, OPCODE_JAL, OPCODE_JALR, OPCODE_LOAD, OPCODE_LUI, OPCODE_OP,
@@ -26,7 +27,18 @@ use slop_algebra::Field;
 /// more details.
 #[allow(non_camel_case_types)]
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord, Enum,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    PartialOrd,
+    Ord,
+    Enum,
+    DeepSizeOf,
 )]
 #[repr(u8)]
 pub enum Opcode {
@@ -143,7 +155,9 @@ pub enum Opcode {
 /// This represents a basic operation that can be performed on a byte. Usually, these operations
 /// are performed via lookup tables on that iterate over the domain of two 8-bit values. The
 /// operations include both bitwise operations (AND, OR, XOR) as well as basic arithmetic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, DeepSizeOf,
+)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum ByteOpcode {
     /// Bitwise AND.

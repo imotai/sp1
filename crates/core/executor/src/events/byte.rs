@@ -1,5 +1,6 @@
 use std::hash::Hash;
 
+use deepsize2::DeepSizeOf;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, PrimeField32};
@@ -13,7 +14,7 @@ pub const NUM_BYTE_OPS: usize = 6;
 ///
 /// This object encapsulates the information needed to prove a byte lookup operation. This includes
 /// the shard, opcode, operands, and other relevant information.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DeepSizeOf)]
 pub struct ByteLookupEvent {
     /// The opcode.
     pub opcode: ByteOpcode,

@@ -10,7 +10,9 @@ use std::ops::Add;
 
 /// A septic elliptic curve point on y^2 = x^3 + 2x + 26z^5 over field `F_{p^7} = F_p[z]/(z^7 - 2z -
 /// 5)`.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, deepsize2::DeepSizeOf,
+)]
 #[repr(C)]
 pub struct SepticCurve<F> {
     /// The x-coordinate of an elliptic curve point.

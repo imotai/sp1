@@ -997,6 +997,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "deepsize2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86b5184084af9beed35eecbf4c36baf6e26b9dc47b61b74e02f930c72a58e71b"
+dependencies = [
+ "deepsize_derive2",
+ "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "deepsize_derive2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0f8817865cacf3b93b943ca06b0fc5fd8e99eabfdb7ea5d296efcbc4afc4f69"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4314,6 +4335,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "clap",
+ "deepsize2",
  "elf",
  "enum-map",
  "eyre",
@@ -4357,6 +4379,7 @@ version = "6.0.0"
 dependencies = [
  "bincode",
  "cfg-if",
+ "deepsize2",
  "elliptic-curve",
  "futures",
  "generic-array 1.1.0",
@@ -4748,6 +4771,7 @@ name = "sp1-stark"
 version = "6.0.0"
 dependencies = [
  "arrayref",
+ "deepsize2",
  "derive-where",
  "futures",
  "hashbrown 0.14.5",

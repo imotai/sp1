@@ -17,7 +17,9 @@ use crate::air::{SP1AirBuilder, SepticExtensionAirBuilder};
 /// A septic extension with an irreducible polynomial `z^7 - 2z - 5`.
 ///
 /// The field can be constructed as `F_{p^7} = F_p[z]/(z^7 - 2z - 5)`.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, deepsize2::DeepSizeOf,
+)]
 #[repr(C)]
 pub struct SepticExtension<F>(pub [F; 7]);
 

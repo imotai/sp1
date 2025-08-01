@@ -24,8 +24,8 @@ use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
 };
 use sp1_stark::{
-    prover::MachineProvingKey, BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey,
-    ShardProof,
+    prover::{MachineProvingKey, MemoryPermit},
+    BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey, ShardProof,
 };
 use std::{
     borrow::Borrow,
@@ -50,7 +50,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct LocalProverOpts {
     pub core_opts: SP1CoreOpts,
-    pub records_capacity_buffer: usize,
+    pub records_buffer_size: u64,
     pub prover_task_capacity_buffer: usize,
     pub num_record_workers: usize,
     pub num_recursion_executors: usize,
@@ -60,33 +60,43 @@ impl Default for LocalProverOpts {
     fn default() -> Self {
         let core_opts = SP1CoreOpts::default();
 
-        const DEFAULT_RECORDS_CAPACITY_BUFFER: usize = 1;
-        let records_capacity_buffer = env::var("SP1_PROVER_RECORDS_CAPACITY_BUFFER")
-            .unwrap_or_else(|_| DEFAULT_RECORDS_CAPACITY_BUFFER.to_string())
-            .parse::<usize>()
-            .unwrap_or(DEFAULT_RECORDS_CAPACITY_BUFFER);
+        let sysinfo = sysinfo::System::new_all();
+        let total_memory = sysinfo.total_memory();
+        let used_memory = sysinfo.used_memory();
+        let free_memory = total_memory - used_memory;
+
+        tracing::info!("Free memory at prover init: {} bytes", free_memory);
+
+        // Allow half the available memory for tracegen by default.
+        let records_buffer_size = free_memory / 2;
+
+        // Reserve ~12Gb of memory for records by default.
+        let records_buffer_size = env::var("SP1_PROVER_RECORDS_CAPACITY_BUFFER")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(records_buffer_size);
 
         const DEFAULT_PROVER_TASK_CAPACITY_BUFFER: usize = 2;
         let prover_task_capacity_buffer = env::var("SP1_PROVER_PROVER_TASK_CAPACITY_BUFFER")
-            .unwrap_or_else(|_| DEFAULT_PROVER_TASK_CAPACITY_BUFFER.to_string())
-            .parse::<usize>()
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_PROVER_TASK_CAPACITY_BUFFER);
 
         const DEFAULT_NUM_RECORD_WORKERS: usize = 2;
         let num_record_workers = env::var("SP1_PROVER_NUM_RECORD_WORKERS")
-            .unwrap_or_else(|_| DEFAULT_NUM_RECORD_WORKERS.to_string())
-            .parse::<usize>()
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_NUM_RECORD_WORKERS);
 
         const DEFAULT_NUM_RECURSION_EXECUTORS: usize = 4;
         let num_recursion_executors = env::var("SP1_PROVER_NUM_RECURSION_EXECUTORS")
-            .unwrap_or_else(|_| DEFAULT_NUM_RECURSION_EXECUTORS.to_string())
-            .parse::<usize>()
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_NUM_RECURSION_EXECUTORS);
 
         Self {
             core_opts,
-            records_capacity_buffer,
+            records_buffer_size,
             prover_task_capacity_buffer,
             num_record_workers,
             num_recursion_executors,
@@ -97,7 +107,6 @@ impl Default for LocalProverOpts {
 pub struct LocalProver<C: SP1ProverComponents> {
     prover: SP1Prover<C>,
     executor: MachineExecutor<BabyBear>,
-    records_task_capacity: usize,
     prover_task_capacity: usize,
     compose_batch_size: usize,
     normalize_batch_size: usize,
@@ -106,18 +115,16 @@ pub struct LocalProver<C: SP1ProverComponents> {
 
 impl<C: SP1ProverComponents> LocalProver<C> {
     pub fn new(prover: SP1Prover<C>, opts: LocalProverOpts) -> Self {
-        let records_task_capacity =
-            prover.core().num_prover_workers() * opts.records_capacity_buffer;
         let prover_task_capacity =
             prover.core().num_prover_workers() * opts.prover_task_capacity_buffer;
-        let executor = MachineExecutor::new(opts.num_record_workers, opts.core_opts);
+        let executor =
+            MachineExecutor::new(opts.records_buffer_size, opts.num_record_workers, opts.core_opts);
 
         let compose_batch_size = prover.recursion().max_compose_arity();
         let normalize_batch_size = prover.recursion().normalize_batch_size();
         Self {
             prover,
             executor,
-            records_task_capacity,
             prover_task_capacity,
             compose_batch_size,
             normalize_batch_size,
@@ -187,7 +194,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         context.subproof_verifier = Some(Arc::new(self.clone()));
 
         let (records_tx, mut records_rx) =
-            mpsc::channel::<ExecutionRecord>(self.records_task_capacity);
+            mpsc::unbounded_channel::<(ExecutionRecord, Option<MemoryPermit>)>();
 
         let prover = self.clone();
 
@@ -195,21 +202,27 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let shard_proofs = tokio::spawn(async move {
             let mut shape_count = 0;
             let mut shard_proofs = Vec::new();
-            let mut permits = Vec::new();
             let mut prove_shard_task = FuturesOrdered::new();
-            let prover_spawn_permits = Arc::new(Semaphore::new(prover_task_capacity));
+            let prover_spawn_permits = Semaphore::new(prover_task_capacity);
+            let mut permits = Vec::new();
             loop {
                 tokio::select! {
                     // Accquire a permit and start the exeuction.
-                    Ok((permit, Some(record))) = prover_spawn_permits.clone().acquire_owned()
+                    Ok((permit, Some((record, memory_permit)))) = prover_spawn_permits.acquire()
                         .and_then(|permit|
                             records_rx.recv().map(|record| Ok((permit, record)))) => {
                         let shape = prover.prover.core().core_shape_from_record(&record).unwrap();
 
-                        let proof = prover
-                            .prover
-                            .core()
-                            .prove_shard(pk.clone(), record);
+                        let proof = async {
+                            let proof = prover
+                                .prover
+                                .core()
+                                .prove_shard(pk.clone(), record)
+                                .await;
+
+                            drop(memory_permit);
+                            proof
+                        };
 
                         prove_shard_task.push_back(proof);
                         permits.push(permit);
@@ -252,6 +265,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         // Wait for the executor to finish.
         let output = output.await.unwrap().map_err(SP1ProverError::CoreExecutorError)?;
+
         let pv_stream = output.public_value_stream;
         let cycles = output.cycles;
         let public_values = SP1PublicValues::from(&pv_stream);

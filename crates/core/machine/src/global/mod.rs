@@ -293,7 +293,7 @@ mod tests {
         let program = simple_program();
         let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
         runtime.run::<Trace>().unwrap();
-        let shard = runtime.records[0].clone();
+        let shard = runtime.record;
 
         let chip: GlobalChip = GlobalChip;
 

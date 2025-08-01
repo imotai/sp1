@@ -1,9 +1,10 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::events::{MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord};
 
 /// This is an arithmetic operation for emulating modular arithmetic.
-#[derive(Default, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, PartialEq, Copy, Clone, Debug, Serialize, Deserialize, DeepSizeOf)]
 pub enum FieldOperation {
     /// Addition.
     #[default]
@@ -19,7 +20,7 @@ pub enum FieldOperation {
 /// Emulated Field Operation Events.
 ///
 /// This event is emitted when an emulated field operation is performed on the input operands.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct FpOpEvent {
     /// The shard number.
     pub shard: u32,
@@ -46,7 +47,7 @@ pub struct FpOpEvent {
 /// Emulated Degree 2 Field Addition/Subtraction Events.
 ///
 /// This event is emitted when an emulated degree 2 field operation is performed on the input
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Fp2AddSubEvent {
     /// The shard number.
     pub shard: u32,
@@ -71,7 +72,7 @@ pub struct Fp2AddSubEvent {
 }
 
 /// Emulated Degree 2 Field Multiplication Events.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Fp2MulEvent {
     /// The shard number.
     pub shard: u32,

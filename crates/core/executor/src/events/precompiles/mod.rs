@@ -11,6 +11,7 @@ mod uint256_ops;
 
 use super::{MemoryLocalEvent, SyscallEvent};
 use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, syscalls::SyscallCode};
+use deepsize2::DeepSizeOf;
 pub use ec::*;
 pub use edwards::*;
 pub use fptower::*;
@@ -27,7 +28,7 @@ pub use uint256_ops::*;
 
 // TODO: maybe Box one of the events?
 #[allow(clippy::large_enum_variant)]
-#[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]
+#[derive(Clone, Debug, Serialize, Deserialize, EnumIter, DeepSizeOf)]
 /// Precompile event.  There should be one variant for every precompile syscall.
 pub enum PrecompileEvent {
     /// Sha256 extend precompile event.
@@ -158,7 +159,7 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
 }
 
 /// A record of all the precompile events.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, DeepSizeOf)]
 pub struct PrecompileEvents {
     #[serde(serialize_with = "serialize_hashmap_as_vec")]
     #[serde(deserialize_with = "deserialize_hashmap_as_vec")]

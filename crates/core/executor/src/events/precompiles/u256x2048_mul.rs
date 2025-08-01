@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::events::memory::{MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord};
@@ -5,7 +6,7 @@ use crate::events::memory::{MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecor
 /// `U256xU2048` Mul Event.
 ///
 /// This event is emitted when a `U256xU2048` mul operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct U256xU2048MulEvent {
     /// The shard number.
     pub shard: u32,

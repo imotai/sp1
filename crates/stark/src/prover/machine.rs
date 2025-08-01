@@ -279,7 +279,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
         self.base_workers[idx].setup_from_vk(program, vk, self.worker_permits[idx].clone()).await
     }
 
-    /// Call prove_shard on an available worker.
+    /// Call `prove_shard` on an available worker.
     #[inline]
     #[must_use]
     #[tracing::instrument(skip_all, name = "machine_prove_shard")]
@@ -306,7 +306,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
         proof
     }
 
-    /// Call setup_and_prove_shard on an available worker.
+    /// Call `setup_and_prove_shard` on an available worker.
     #[inline]
     #[must_use]
     #[allow(clippy::type_complexity)]

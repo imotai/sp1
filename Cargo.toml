@@ -145,6 +145,7 @@ derive-where = "1.2.7"
 strum_macros = "0.27.1"
 strum = "0.27.1"
 blake3 = { version = "1.6.1", default-features = false }
+deepsize2 = { version = "0.1.0", features = ["hashbrown"] }
 
 [workspace.metadata.typos]
 default.extend-ignore-re = [

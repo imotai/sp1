@@ -219,6 +219,7 @@ jobs:
             platform: linux
             arch: x86_64
     steps:
+      # Note: We need to checkout the repo in order to upload artifacts to the release.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
@@ -268,12 +269,12 @@ jobs:
         run: |
           git clone https://github.com/succinctlabs/cuslop.git
           cd cuslop/crates/cuslop
-          git checkout min/rv64
+          git checkout n/rm-batch-size
           set -eo pipefail
           cargo update
           cargo build --release --bin cuslop-server
 
-      - name: Archive binaries
+      - name: Prepare artifacts
         id: artifacts
         env:
           PLATFORM_NAME: ${{ matrix.platform }}
@@ -294,7 +295,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SP1_RELEASE_TOKEN }}
         run: |
-          cd sp1/
+          cd sp1
           gh release upload ${{ needs.prepare.outputs.tag_name }} ${{ steps.artifacts.outputs.file_name }}
 
   set-latest-release:

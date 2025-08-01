@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::syscalls::SyscallCode;
@@ -6,7 +7,7 @@ use crate::syscalls::SyscallCode;
 ///
 /// This object encapsulated the information needed to prove a syscall invocation from the CPU
 /// table. This includes its shard, clk, syscall id, arguments, other relevant information.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct SyscallEvent {
     /// The program counter.

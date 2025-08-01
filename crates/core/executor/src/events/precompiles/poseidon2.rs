@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::events::memory::{MemoryLocalEvent, MemoryWriteRecord};
@@ -5,7 +6,7 @@ use crate::events::memory::{MemoryLocalEvent, MemoryWriteRecord};
 /// `Poseidon2PrecompileEvent` Event.
 ///
 /// This event is emitted when a `Poseidon2PrecompileEvent` operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Poseidon2PrecompileEvent {
     /// The shard number.
     pub shard: u32,

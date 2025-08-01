@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::events::{
@@ -8,7 +9,7 @@ use crate::events::{
 /// SHA-256 Compress Event.
 ///
 /// This event is emitted when a SHA-256 compress operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct ShaCompressEvent {
     /// The shard number.
     pub shard: u32,

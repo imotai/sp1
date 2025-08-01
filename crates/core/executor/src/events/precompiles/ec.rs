@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use sp1_curves::{
@@ -23,7 +24,7 @@ use crate::{
 /// Elliptic Curve Add Event.
 ///
 /// This event is emitted when an elliptic curve addition operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveAddEvent {
     /// The shard number.
     pub shard: u32,
@@ -48,7 +49,7 @@ pub struct EllipticCurveAddEvent {
 /// Elliptic Curve Double Event.
 ///
 /// This event is emitted when an elliptic curve doubling operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveDoubleEvent {
     /// The shard number.
     pub shard: u32,
@@ -67,7 +68,7 @@ pub struct EllipticCurveDoubleEvent {
 /// Elliptic Curve Point Decompress Event.
 ///
 /// This event is emitted when an elliptic curve point decompression operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveDecompressEvent {
     /// The shard number.
     pub shard: u32,

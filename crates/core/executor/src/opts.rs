@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use crate::RetainedEventsPreset;
 
 const MAX_SHARD_SIZE: usize = 1 << 24;
-const MAX_SHARD_BATCH_SIZE: usize = 8;
 const MAX_DEFERRED_SPLIT_THRESHOLD: usize = 1 << 14;
 
 /// The trace area threshold for a shard.
@@ -27,8 +26,6 @@ pub struct ShardingThreshold {
 pub struct SP1CoreOpts {
     /// The size of a shard in terms of cycles.
     pub shard_size: usize,
-    /// The size of a batch of shards in terms of cycles.
-    pub shard_batch_size: usize,
     /// Options for splitting deferred events.
     pub split_opts: SplitOpts,
     /// The threshold that determines when to split the shard.
@@ -64,10 +61,6 @@ impl Default for SP1CoreOpts {
 
         Self {
             shard_size,
-            shard_batch_size: env::var("SHARD_BATCH_SIZE").map_or_else(
-                |_| MAX_SHARD_BATCH_SIZE,
-                |s| s.parse::<usize>().unwrap_or(MAX_SHARD_BATCH_SIZE),
-            ),
             split_opts: SplitOpts::new(split_threshold),
             sharding_threshold,
             retained_events_presets,

@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::events::{
@@ -6,7 +7,7 @@ use crate::events::{
 };
 
 /// Uint256 operation types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, DeepSizeOf)]
 pub enum Uint256Operation {
     /// Addition operation.
     #[default]
@@ -16,7 +17,7 @@ pub enum Uint256Operation {
 }
 
 /// Uint256 operations event.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, DeepSizeOf)]
 pub struct Uint256OpsEvent {
     /// Which shard this event occurred in.
     pub shard: u32,

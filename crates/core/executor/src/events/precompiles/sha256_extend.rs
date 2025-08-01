@@ -4,11 +4,11 @@ use crate::events::{
     memory::{MemoryReadRecord, MemoryWriteRecord},
     MemoryLocalEvent,
 };
-
+use deepsize2::DeepSizeOf;
 /// SHA-256 Extend Event.
 ///
 /// This event is emitted when a SHA-256 extend operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct ShaExtendEvent {
     /// The shard number.
     pub shard: u32,

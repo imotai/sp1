@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 use sp1_curves::{edwards::WORDS_FIELD_ELEMENT, COMPRESSED_POINT_BYTES, NUM_BYTES_FIELD_ELEMENT};
 
@@ -9,7 +10,7 @@ use crate::events::{
 /// Edwards Decompress Event.
 ///
 /// This event is emitted when an edwards decompression operation is performed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EdDecompressEvent {
     /// The shard number.
     pub shard: u32,

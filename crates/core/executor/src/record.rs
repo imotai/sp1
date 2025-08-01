@@ -1,4 +1,4 @@
-use enum_map::EnumMap;
+use deepsize2::DeepSizeOf;
 use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
 use slop_air::AirBuilder;
@@ -35,7 +35,7 @@ use crate::{
 /// A record of the execution of a program.
 ///
 /// The trace of the execution is represented as a list of "events" that occur every cycle.
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, DeepSizeOf)]
 pub struct ExecutionRecord {
     /// The program.
     pub program: Arc<Program>,
@@ -117,8 +117,6 @@ pub struct ExecutionRecord {
     pub next_nonce: u64,
     /// The shape of the proof.
     pub shape: Option<Shape<RiscvAirId>>,
-    /// The predicted counts of the proof.
-    pub counts: Option<EnumMap<RiscvAirId, u64>>,
     /// The estimated total trace area of the proof.
     pub estimated_trace_area: u64,
     /// The initial timestamp of the shard.
@@ -336,7 +334,7 @@ impl ExecutionRecord {
 }
 
 /// A memory access record.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, DeepSizeOf)]
 pub struct MemoryAccessRecord {
     /// The memory access of the `a` register.
     pub a: Option<MemoryRecordEnum>,
@@ -349,7 +347,7 @@ pub struct MemoryAccessRecord {
 }
 
 /// Memory record where all three operands are registers.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 pub struct RTypeRecord {
     /// The a operand.
     pub op_a: u8,
@@ -378,7 +376,7 @@ impl RTypeRecord {
     }
 }
 /// Memory record where the first two operands are registers.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 pub struct ITypeRecord {
     /// The a operand.
     pub op_a: u8,
@@ -406,7 +404,7 @@ impl ITypeRecord {
 }
 
 /// Memory record where only one operand is a register.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 pub struct JTypeRecord {
     /// The a operand.
     pub op_a: u8,
@@ -432,7 +430,7 @@ impl JTypeRecord {
 }
 
 /// Memory record where only the first two operands are known to be registers, but the third isn't.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 pub struct ALUTypeRecord {
     /// The a operand.
     pub op_a: u8,

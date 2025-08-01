@@ -1,6 +1,7 @@
 use core::{fmt::Debug, mem::size_of};
 use std::borrow::{Borrow, BorrowMut};
 
+use deepsize2::DeepSizeOf;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField32};
@@ -17,7 +18,7 @@ pub const PV_DIGEST_NUM_WORDS: usize = 8;
 pub const POSEIDON_NUM_WORDS: usize = 8;
 
 /// Stores all of a shard proof's public values.
-#[derive(Serialize, Deserialize, Clone, Copy, Default, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Default, Debug, DeepSizeOf)]
 #[repr(C)]
 pub struct PublicValues<W1, W2, W3, T> {
     /// The hash of all the bytes that the guest program has written to public values.

@@ -7,6 +7,7 @@ use core::{
     mem::size_of,
 };
 pub mod instruction;
+use hashbrown::HashMap;
 use instruction::InstructionCols;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
@@ -15,7 +16,6 @@ use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{ExecutionRecord, Opcode, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
-use std::collections::HashMap;
 
 /// The number of preprocessed program columns.
 pub const NUM_PROGRAM_PREPROCESSED_COLS: usize = size_of::<ProgramPreprocessedCols<u8>>();

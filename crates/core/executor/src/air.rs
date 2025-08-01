@@ -3,6 +3,7 @@ use std::{
     str::FromStr,
 };
 
+use deepsize2::DeepSizeOf;
 use enum_map::{Enum, EnumMap};
 use serde::{Deserialize, Serialize};
 use sp1_stark::shape::Shape;
@@ -31,6 +32,7 @@ use subenum::subenum;
     PartialOrd,
     Ord,
     Enum,
+    DeepSizeOf,
 )]
 pub enum RiscvAirId {
     /// The cpu chip, which is a dummy for now, needed for shape loading.

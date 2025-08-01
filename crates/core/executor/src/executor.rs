@@ -116,9 +116,6 @@ pub struct Executor<'a> {
     /// The maximum size of each shard.
     pub shard_size: u32,
 
-    /// The maximum number of shards to execute at once.
-    pub shard_batch_size: u32,
-
     /// The options for the runtime.
     pub opts: SP1CoreOpts,
 
@@ -127,9 +124,6 @@ pub struct Executor<'a> {
 
     /// The current trace of the execution that is being collected.
     pub record: Box<ExecutionRecord>,
-
-    /// The collected records, split by cpu cycles.
-    pub records: Vec<Box<ExecutionRecord>>,
 
     /// Local memory access events.
     pub local_memory_access: HashMap<u64, MemoryLocalEvent>,
@@ -411,13 +405,11 @@ impl<'a> Executor<'a> {
 
         Self {
             record: Box::new(record),
-            records: vec![],
             state: ExecutionState::new(program.pc_start_abs),
             program,
             program_len,
             memory_accesses: MemoryAccessRecord::default(),
             shard_size: (opts.shard_size as u32) * 4,
-            shard_batch_size: opts.shard_batch_size as u32,
             cycle_tracker: HashMap::new(),
             io_buf: HashMap::new(),
             #[cfg(feature = "profiling")]
@@ -2144,18 +2136,10 @@ impl<'a> Executor<'a> {
                 self.record.cpu_local_memory_access.push(event);
             }
         }
+
         if self.record.last_timestamp == 0 {
             self.record.last_timestamp = self.state.clk;
         }
-
-        let removed_record = std::mem::replace(
-            &mut self.record,
-            Box::new(ExecutionRecord::new(self.program.clone())),
-        );
-        let public_values = removed_record.public_values;
-        self.record.public_values = public_values;
-        self.record.initial_timestamp = self.state.clk;
-        self.records.push(removed_record);
     }
 
     /// Execute up to `self.shard_batch_size` cycles, returning the events emitted and whether the
@@ -2167,15 +2151,14 @@ impl<'a> Executor<'a> {
     pub fn execute_record(
         &mut self,
         emit_global_memory_events: bool,
-    ) -> Result<(Vec<Box<ExecutionRecord>>, bool), ExecutionError> {
+    ) -> Result<(Box<ExecutionRecord>, bool), ExecutionError> {
         self.emit_global_memory_events = emit_global_memory_events;
         self.print_report = true;
         let done = self.execute::<Trace>()?;
-        Ok((std::mem::take(&mut self.records), done))
+        Ok((std::mem::take(&mut self.record), done))
     }
 
-    /// Execute up to `self.shard_batch_size` cycles, returning the checkpoint from before execution
-    /// and whether the program ended.
+    /// Execute the program unitl the shard boundry.
     ///
     /// # Errors
     ///
@@ -2243,12 +2226,9 @@ impl<'a> Executor<'a> {
                     .collect();
             }
         });
-        let mut public_values = self.records.last().as_ref().unwrap().public_values;
+        let mut public_values = self.record.public_values;
         public_values.pc_start = next_pc;
         public_values.next_pc = next_pc;
-        if !done {
-            self.records.clear();
-        }
         Ok((checkpoint, public_values, done))
     }
 
@@ -2328,8 +2308,7 @@ impl<'a> Executor<'a> {
         Ok(())
     }
 
-    /// Executes up to `self.shard_batch_size` cycles of the program, returning whether the program
-    /// has finished.
+    /// Executes up to the shard boundry. Returning whether the program has finished.
     pub fn execute<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
         // Get the program.
         let program = self.program.clone();
@@ -2350,8 +2329,6 @@ impl<'a> Executor<'a> {
         // Loop until we've executed `self.shard_batch_size` shards if `self.shard_batch_size` is
         // set.
         let mut done = false;
-        let mut current_shard = self.state.current_shard;
-        let mut num_shards_executed = 0;
         loop {
             if self.execute_cycle::<E>()? {
                 done = true;
@@ -2367,12 +2344,8 @@ impl<'a> Executor<'a> {
                 }
             }
 
-            if self.shard_batch_size > 0 && current_shard != self.state.current_shard {
-                num_shards_executed += 1;
-                current_shard = self.state.current_shard;
-                if num_shards_executed == self.shard_batch_size {
-                    break;
-                }
+            if start_shard != self.state.current_shard {
+                break;
             }
         }
 
@@ -2404,33 +2377,21 @@ impl<'a> Executor<'a> {
             self.bump_record::<E>();
         }
 
-        // Set the global public values for all shards.
-        let mut last_next_pc = 0;
-        let mut last_exit_code = 0;
-        for (i, record) in self.records.iter_mut().enumerate() {
-            record.program = program.clone();
-            record.public_values = public_values;
-            record.public_values.committed_value_digest = public_values.committed_value_digest;
-            record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
-            record.public_values.execution_shard = start_shard.get() + i as u32;
-            if record.contains_cpu() {
-                record.public_values.pc_start = record.pc_start.unwrap();
-                record.public_values.next_pc = record.next_pc;
-                record.public_values.exit_code = record.exit_code;
-                record.public_values.last_timestamp = record.last_timestamp;
-                record.public_values.initial_timestamp = record.initial_timestamp;
-                last_next_pc = record.public_values.next_pc;
-                last_exit_code = record.public_values.exit_code;
-            } else {
-                record.public_values.pc_start = last_next_pc;
-                record.public_values.next_pc = last_next_pc;
-                record.public_values.prev_exit_code = last_exit_code;
-                record.public_values.exit_code = last_exit_code;
-            }
+        self.record.program = program.clone();
+        self.record.public_values = public_values;
+        self.record.public_values.committed_value_digest = public_values.committed_value_digest;
+        self.record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
+        self.record.public_values.execution_shard = start_shard.get();
+        if self.record.contains_cpu() {
+            self.record.public_values.pc_start = self.record.pc_start.unwrap();
+            self.record.public_values.next_pc = self.record.next_pc;
+            self.record.public_values.exit_code = self.record.exit_code;
+            self.record.public_values.last_timestamp = self.record.last_timestamp;
+            self.record.public_values.initial_timestamp = self.record.initial_timestamp;
         }
 
-        if !self.expected_exit_code.is_accepted_code(last_exit_code) {
-            return Err(ExecutionError::UnexpectedExitCode(last_exit_code));
+        if !self.expected_exit_code.is_accepted_code(self.record.exit_code) {
+            return Err(ExecutionError::UnexpectedExitCode(self.record.exit_code));
         }
 
         Ok(done)

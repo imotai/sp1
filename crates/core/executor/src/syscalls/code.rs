@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
@@ -34,6 +35,7 @@ use crate::{events::FieldOperation, RiscvAirId};
     Deserialize,
     Enum,
     Default,
+    DeepSizeOf,
 )]
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]

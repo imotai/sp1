@@ -13,14 +13,15 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 
 use std::{fmt::Debug, hash::Hash, str::FromStr};
 
-use hashbrown::{hash_map::IntoIter, HashMap, HashSet};
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 use slop_algebra::PrimeField;
+use std::collections::{hash_map::IntoIter, HashMap, HashSet};
 
 use crate::air::MachineAir;
 
 /// A way to keep track of the log2 heights of some set of chips.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, DeepSizeOf)]
 pub struct Shape<K: Clone + Eq + Hash> {
     /// The nonzero log2 heights of each chip.
     pub inner: HashMap<K, usize>,

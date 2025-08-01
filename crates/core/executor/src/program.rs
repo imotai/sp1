@@ -23,7 +23,7 @@ use sp1_stark::{
 ///
 /// Contains a series of instructions along with the initial memory image. It also contains the
 /// start address and base address of the program.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub struct Program {
     /// The instructions of the program.
     pub instructions: Vec<Instruction>,

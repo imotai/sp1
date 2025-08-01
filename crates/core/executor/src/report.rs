@@ -6,7 +6,11 @@ use std::{
 use enum_map::{EnumArray, EnumMap};
 use hashbrown::HashMap;
 
-use crate::{events::generate_execution_report, syscalls::SyscallCode, Opcode};
+use crate::{
+    events::{generate_execution_report, MemInstrEvent, PrecompileEvent, SyscallEvent},
+    syscalls::SyscallCode,
+    ITypeRecord, Opcode,
+};
 
 /// An execution report.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -36,6 +40,25 @@ impl ExecutionReport {
     #[must_use]
     pub fn total_syscall_count(&self) -> u64 {
         self.syscall_counts.values().sum()
+    }
+
+    /// The total size expected size (in bytes) of the execution report.
+    #[must_use]
+    pub fn total_record_size(&self) -> u64 {
+        // todo!(n): make this precise.
+
+        // Fix some average bound for each opcode.
+        let avg_opcode_record_size = std::mem::size_of::<(MemInstrEvent, ITypeRecord)>();
+        let total_opcode_records_size_bytes =
+            self.opcode_counts.values().sum::<u64>() * avg_opcode_record_size as u64;
+
+        // Take the maximum size of each precompile + 512 bytes for the vecs
+        // todo: can we fix the array sizes in the precompile events?
+        let syscall_avg_record_size = std::mem::size_of::<(SyscallEvent, PrecompileEvent)>() + 512;
+        let total_syscall_records_size_bytes =
+            self.syscall_counts.values().sum::<u64>() * syscall_avg_record_size as u64;
+
+        total_opcode_records_size_bytes + total_syscall_records_size_bytes
     }
 }
 

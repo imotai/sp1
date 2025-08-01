@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::events::{
@@ -8,7 +9,7 @@ use crate::events::{
 /// Uint256 Mul Event.
 ///
 /// This event is emitted when a uint256 mul operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Uint256MulEvent {
     /// The shard number.
     pub shard: u32,

@@ -1,3 +1,4 @@
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
 use crate::events::{
@@ -10,7 +11,7 @@ pub(crate) const STATE_SIZE: usize = 25;
 /// Keccak-256 Permutation Event.
 ///
 /// This event is emitted when a keccak-256 permutation operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct KeccakPermuteEvent {
     /// The shard number.
     pub shard: u32,

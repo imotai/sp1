@@ -1,4 +1,10 @@
-use std::sync::{Condvar, Mutex};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Condvar, Mutex},
+    task::{Context, Poll, Waker},
+};
 
 /// A turn-based synchronization primitive.
 pub struct TurnBasedSync {
@@ -22,8 +28,88 @@ impl TurnBasedSync {
 
     /// Advances the current turn.
     pub fn advance_turn(&self) {
-        let mut turn = self.current_turn.lock().unwrap();
+        let mut turn: std::sync::MutexGuard<'_, usize> = self.current_turn.lock().unwrap();
         *turn += 1;
         self.cv.notify_all();
+    }
+}
+
+pub struct AsyncTurn {
+    inner: Arc<Mutex<AsyncTurnInner>>,
+}
+
+impl AsyncTurn {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(AsyncTurnInner { current_turn: 0, wakers: HashMap::new() })),
+        }
+    }
+
+    pub fn wait_for_turn(&self, my_turn: usize) -> AsyncTurnFuture {
+        AsyncTurnFuture { inner: self.inner.clone(), my_turn }
+    }
+}
+
+/// The inner state of the [AsyncTurn] primitive.
+pub struct AsyncTurnInner {
+    current_turn: usize,
+    wakers: HashMap<usize, Waker>,
+}
+
+impl Clone for AsyncTurn {
+    fn clone(&self) -> Self {
+        Self { inner: Arc::clone(&self.inner) }
+    }
+}
+
+#[must_use = "Futures do nothing unless `await`ed"]
+pub struct AsyncTurnFuture {
+    inner: Arc<Mutex<AsyncTurnInner>>,
+    my_turn: usize,
+}
+
+impl Future for AsyncTurnFuture {
+    type Output = AsyncTurnGuard;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        // Get the mutex of all the wakers.
+        let mut inner = this.inner.lock().expect("AsyncTurnFuture poisoned");
+
+        match inner.wakers.entry(this.my_turn) {
+            Entry::Vacant(v) => {
+                v.insert(cx.waker().clone());
+            }
+            Entry::Occupied(mut o) => {
+                let _ = o.insert(cx.waker().clone());
+            }
+        }
+
+        // Wait for the current turn to be equal to the given turn.
+        if inner.current_turn == this.my_turn {
+            Poll::Ready(AsyncTurnGuard { inner: this.inner.clone() })
+        } else if inner.current_turn > this.my_turn {
+            panic!("AsyncTurnFuture: turn {} has already passed", this.my_turn);
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+pub struct AsyncTurnGuard {
+    inner: Arc<Mutex<AsyncTurnInner>>,
+}
+
+impl Drop for AsyncTurnGuard {
+    fn drop(&mut self) {
+        let mut lock = self.inner.lock().expect("AsyncTurnGuard poisoned");
+
+        // Advance the turn.
+        lock.current_turn += 1;
+
+        // Notify the waker.
+        if let Some(waker) = lock.wakers.get(&lock.current_turn) {
+            waker.wake_by_ref();
+        }
     }
 }
