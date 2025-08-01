@@ -269,7 +269,6 @@ jobs:
         run: |
           git clone https://github.com/succinctlabs/cuslop.git
           cd cuslop/crates/cuslop
-          git checkout n/rm-batch-size
           set -eo pipefail
           cargo update
           cargo build --release --bin cuslop-server
