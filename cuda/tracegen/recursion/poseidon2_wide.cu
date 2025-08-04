@@ -30,7 +30,7 @@ __global__ void recursion_poseidon2_wide_generate_preprocessed_trace_kernel(
             cols.output[j] = csl_sys::MemoryAccessColsChips<T>{.addr = instr.addrs.output[j],
                                                                .mult = instr.mults[j]};
         }
-        cols.is_real_neg = -T::one();
+        cols.is_real = T::one();
 
         const T *arr = reinterpret_cast<T *>(&cols);
         for (size_t j = 0; j < COLUMNS; ++j)

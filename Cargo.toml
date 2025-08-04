@@ -82,17 +82,17 @@ slop-stacked = { git = "https://github.com/succinctlabs/slop" }
 slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 
 # SP1
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
-sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", tag = "v6.0.0" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }

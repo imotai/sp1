@@ -1,6 +1,3 @@
-use std::borrow::Borrow;
-use std::iter::once;
-
 use crate::{
     symbolic_expr_f::SymbolicExprF, symbolic_var_f::SymbolicVarF, SymbolicProverFolder, F,
 };
@@ -11,6 +8,7 @@ use slop_baby_bear::BabyBear;
 use slop_matrix::Matrix;
 use sp1_core_executor::events::FieldOperation;
 use sp1_core_executor::syscalls::SyscallCode;
+use sp1_core_executor::ByteOpcode;
 use sp1_core_machine::air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder};
 use sp1_core_machine::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
 use sp1_core_machine::operations::poseidon2::permutation::Poseidon2Cols;
@@ -38,6 +36,7 @@ use sp1_recursion_machine::builder::RecursionAirBuilder;
 use sp1_recursion_machine::chips::poseidon2_wide::columns::preprocessed::Poseidon2PreprocessedColsWide;
 use sp1_recursion_machine::chips::poseidon2_wide::Poseidon2WideChip;
 use sp1_recursion_machine::RecursionAir;
+use sp1_stark::air::ByteAirBuilder;
 use sp1_stark::air::{InstructionAirBuilder, SepticExtensionAirBuilder};
 use sp1_stark::septic_curve::SepticCurve;
 use sp1_stark::septic_extension::SepticExtension;
@@ -46,6 +45,8 @@ use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, MessageBuilder},
     InteractionKind,
 };
+use std::borrow::Borrow;
+use std::iter::once;
 pub trait BlockAir<AB: AirBuilder>: Air<AB> + MachineAir<F> + 'static + Send + Sync {
     fn num_blocks(&self) -> usize {
         1
@@ -314,6 +315,8 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
 
         match index {
             0 => {
+                builder.assert_bool(local.is_real);
+
                 builder.receive(
                     AirInteraction::new(
                         vec![
@@ -336,6 +339,11 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
 
                 // Constrain that the `is_real` is boolean.
                 builder.assert_bool(local.is_real);
+                builder
+                    .when(local.is_real)
+                    .assert_eq(local.is_receive + local.is_send, SymbolicExprF::one());
+                builder.assert_bool(local.is_receive);
+                builder.assert_bool(local.is_send);
 
                 // Compute the offset and range check each bits, ensuring that the offset is a byte.
                 let mut offset = SymbolicExprF::zero();
@@ -350,14 +358,21 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
                 // interaction kind in the upper bits.
                 builder.when(local.is_real).assert_eq(
                     local.message[0],
-                    local.shard_16bit_limb
-                        + local.shard_8bit_limb * SymbolicExprF::from_canonical_u32(1 << 16),
+                    local.message_0_16bit_limb
+                        + local.message_0_8bit_limb * SymbolicExprF::from_canonical_u32(1 << 16),
                 );
                 builder.slice_range_check_u16(
-                    &[local.shard_16bit_limb, local.message[7]],
+                    &[local.message_0_16bit_limb, local.message[7]],
                     local.is_real,
                 );
-                builder.slice_range_check_u8(&[local.shard_8bit_limb], local.is_real);
+                builder.slice_range_check_u8(&[local.message_0_8bit_limb], local.is_real);
+                builder.send_byte(
+                    SymbolicExprF::from_canonical_u32(ByteOpcode::Range as u32),
+                    local.kind,
+                    SymbolicExprF::from_canonical_u32(6),
+                    SymbolicExprF::zero(),
+                    local.is_real,
+                );
 
                 // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate
                 // of the Poseidon2 hash is 8. Combining `values[0]` with `kind` is safe, as
@@ -605,81 +620,33 @@ where
                     local.is_real.into(),
                 );
 
-                // x_addrs[0] = x_ptr.
-                AddrAddOperation::<F>::eval(
-                    builder,
-                    Word([
-                        p_ptr[0].into(),
-                        p_ptr[1].into(),
-                        p_ptr[2].into(),
-                        SymbolicExprF::zero(),
-                    ]),
-                    Word([
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                    ]),
-                    local.p_addrs[0],
-                    local.is_real.into(),
-                );
-
-                let eight = F::from_canonical_u32(8u32);
-                // p_addrs[i] = p_addrs[i - 1] + 8.
-                for i in 1..local.p_addrs.len() {
+                // p_addrs[i] = p_ptr + 8 * i
+                for i in 0..local.p_addrs.len() {
                     AddrAddOperation::<F>::eval(
                         builder,
                         Word([
-                            local.p_addrs[i - 1].value[0].into(),
-                            local.p_addrs[i - 1].value[1].into(),
-                            local.p_addrs[i - 1].value[2].into(),
+                            p_ptr[0].into(),
+                            p_ptr[1].into(),
+                            p_ptr[2].into(),
                             SymbolicExprF::zero(),
                         ]),
-                        Word([
-                            eight.into(),
-                            SymbolicExprF::zero(),
-                            SymbolicExprF::zero(),
-                            SymbolicExprF::zero(),
-                        ]),
+                        Word::from(8 * i as u64),
                         local.p_addrs[i],
                         local.is_real.into(),
                     );
                 }
 
-                AddrAddOperation::<F>::eval(
-                    builder,
-                    Word([
-                        q_ptr[0].into(),
-                        q_ptr[1].into(),
-                        q_ptr[2].into(),
-                        SymbolicExprF::zero(),
-                    ]),
-                    Word([
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                    ]),
-                    local.q_addrs[0],
-                    local.is_real.into(),
-                );
-
-                // q_addrs[i] = q_addrs[i - 1] + 8.
-                for i in 1..local.q_addrs.len() {
+                // q_addrs[i] = q_ptr + 8 * i
+                for i in 0..local.q_addrs.len() {
                     AddrAddOperation::<F>::eval(
                         builder,
                         Word([
-                            local.q_addrs[i - 1].value[0].into(),
-                            local.q_addrs[i - 1].value[1].into(),
-                            local.q_addrs[i - 1].value[2].into(),
+                            q_ptr[0].into(),
+                            q_ptr[1].into(),
+                            q_ptr[2].into(),
                             SymbolicExprF::zero(),
                         ]),
-                        Word([
-                            eight.into(),
-                            SymbolicExprF::zero(),
-                            SymbolicExprF::zero(),
-                            SymbolicExprF::zero(),
-                        ]),
+                        Word::from(8 * i as u64),
                         local.q_addrs[i],
                         local.is_real.into(),
                     );
@@ -868,41 +835,17 @@ where
                     local.is_real.into(),
                 );
 
-                AddrAddOperation::<F>::eval(
-                    builder,
-                    Word([
-                        p_ptr[0].into(),
-                        p_ptr[1].into(),
-                        p_ptr[2].into(),
-                        SymbolicExprF::zero(),
-                    ]),
-                    Word([
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                        SymbolicExprF::zero(),
-                    ]),
-                    local.p_addrs[0],
-                    local.is_real.into(),
-                );
-
-                // p_addrs[i] = p_addrs[i - 1] + 8.
-                let eight = F::from_canonical_u32(8u32);
-                for i in 1..local.p_addrs.len() {
+                // p_addrs[i] = p_ptr + 8 * i
+                for i in 0..local.p_addrs.len() {
                     AddrAddOperation::<F>::eval(
                         builder,
                         Word([
-                            local.p_addrs[i - 1].value[0].into(),
-                            local.p_addrs[i - 1].value[1].into(),
-                            local.p_addrs[i - 1].value[2].into(),
+                            p_ptr[0].into(),
+                            p_ptr[1].into(),
+                            p_ptr[2].into(),
                             SymbolicExprF::zero(),
                         ]),
-                        Word([
-                            eight.into(),
-                            SymbolicExprF::zero(),
-                            SymbolicExprF::zero(),
-                            SymbolicExprF::zero(),
-                        ]),
+                        Word::from(8 * i as u64),
                         local.p_addrs[i],
                         local.is_real.into(),
                     );
@@ -973,12 +916,11 @@ impl<'a, const DEGREE: usize> BlockAir<SymbolicProverFolder<'a>> for Poseidon2Wi
                     .product::<SymbolicExprF>();
                 builder.assert_eq(lhs, rhs);
 
-                // For now, include only memory constraints.
                 (0..WIDTH).for_each(|i| {
-                    builder.send_single(
+                    builder.receive_single(
                         prep_local.input[i],
                         local_row.external_rounds_state()[0][i],
-                        prep_local.is_real_neg,
+                        prep_local.is_real,
                     )
                 });
 
