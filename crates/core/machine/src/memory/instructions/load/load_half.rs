@@ -9,12 +9,12 @@ use std::{
 
 use crate::{
     adapter::{
-        register::i_type::ITypeReader,
+        register::i_type::{ITypeReader, ITypeReaderInput},
         state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
-    operations::{AddressOperation, U16MSBOperation, U16MSBOperationInput},
+    operations::{AddressOperation, AddressOperationInput, U16MSBOperation, U16MSBOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 use hashbrown::HashMap;
@@ -197,15 +197,17 @@ where
         builder.assert_bool(is_real.clone());
 
         // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
+        let aligned_addr = <AddressOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            AB::Expr::zero(),
-            local.offset_bit[0].into(),
-            local.offset_bit[1].into(),
-            is_real.clone(),
-            local.address_operation,
+            AddressOperationInput::new(
+                local.adapter.b().map(Into::into),
+                local.adapter.c().map(Into::into),
+                AB::Expr::zero(),
+                local.offset_bit[0].into(),
+                local.offset_bit[1].into(),
+                is_real.clone(),
+                local.address_operation,
+            ),
         );
 
         // Step 2. Read the memory address.
@@ -267,21 +269,23 @@ where
         );
 
         // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval(
+        <ITypeReader<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            clk_high.clone(),
-            clk_low.clone(),
-            local.state.pc,
-            opcode,
-            [base_opcode, funct3, funct7],
-            Word([
-                local.selected_half.into(),
-                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
-                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
-                AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
-            ]),
-            local.adapter,
-            is_real.clone(),
+            ITypeReaderInput::new(
+                clk_high.clone(),
+                clk_low.clone(),
+                local.state.pc,
+                opcode,
+                [base_opcode, funct3, funct7],
+                Word([
+                    local.selected_half.into(),
+                    AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                    AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                    AB::Expr::from_canonical_u16(u16::MAX) * local.msb.msb,
+                ]),
+                local.adapter,
+                is_real.clone(),
+            ),
         );
     }
 }

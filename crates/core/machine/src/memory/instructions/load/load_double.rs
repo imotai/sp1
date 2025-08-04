@@ -7,10 +7,13 @@ use std::{
 };
 
 use crate::{
-    adapter::{register::i_type::ITypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    adapter::{
+        register::i_type::{ITypeReader, ITypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
-    operations::AddressOperation,
+    operations::{AddressOperation, AddressOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 use hashbrown::HashMap;
@@ -154,15 +157,17 @@ where
         builder.assert_bool(local.is_real);
 
         // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
+        let aligned_addr = <AddressOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_real.into(),
-            local.address_operation,
+            AddressOperationInput::new(
+                local.adapter.b().map(Into::into),
+                local.adapter.c().map(Into::into),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                local.is_real.into(),
+                local.address_operation,
+            ),
         );
 
         // Step 2. Read the memory address.
@@ -178,29 +183,33 @@ where
         builder.assert_zero(local.adapter.op_a_0);
 
         // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            [
-                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
-                local.state.pc[1].into(),
-                local.state.pc[2].into(),
-            ],
-            AB::Expr::from_canonical_u32(CLK_INC),
-            local.is_real.into(),
+            CPUStateInput::new(
+                local.state,
+                [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                AB::Expr::from_canonical_u32(CLK_INC),
+                local.is_real.into(),
+            ),
         );
 
         // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval(
+        <ITypeReader<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            clk_high,
-            clk_low,
-            local.state.pc,
-            opcode,
-            [base_opcode, funct3, funct7],
-            local.memory_access.prev_value,
-            local.adapter,
-            local.is_real.into(),
+            ITypeReaderInput::new(
+                clk_high,
+                clk_low,
+                local.state.pc,
+                opcode,
+                [base_opcode, funct3, funct7],
+                local.memory_access.prev_value.map(Into::into),
+                local.adapter,
+                local.is_real.into(),
+            ),
         );
     }
 }

@@ -5,12 +5,22 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
-use crate::air::WordAirBuilder;
+use crate::air::{SP1Operation, WordAirBuilder};
 
 /// A set of columns needed to compute the addition of two Words as an u48 address.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    AlignedBorrow,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    IntoShape,
+    SP1OperationBuilder,
+)]
 #[repr(C)]
 pub struct AddrAddOperation<T> {
     /// The result of `a + b` in u48 (three u16 limbs).
@@ -62,5 +72,22 @@ impl<F: Field> AddrAddOperation<F> {
 
         // Range check each limb.
         builder.slice_range_check_u16(&cols.value, is_real);
+    }
+}
+
+#[derive(Debug, Clone, InputParams, InputExpr)]
+pub struct AddrAddOperationInput<AB: SP1AirBuilder> {
+    pub a: Word<AB::Expr>,
+    pub b: Word<AB::Expr>,
+    pub cols: AddrAddOperation<AB::Var>,
+    pub is_real: AB::Expr,
+}
+
+impl<AB: SP1AirBuilder> SP1Operation<AB> for AddrAddOperation<AB::F> {
+    type Input = AddrAddOperationInput<AB>;
+    type Output = ();
+
+    fn lower(builder: &mut AB, input: Self::Input) -> Self::Output {
+        Self::eval(builder, input.a, input.b, input.cols, input.is_real);
     }
 }

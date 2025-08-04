@@ -19,10 +19,10 @@ use crate::{
         state::CPUState,
     },
     operations::{
-        AddOperation, AddwOperation, BitwiseOperation, BitwiseU16Operation, IsEqualWordOperation,
-        IsZeroOperation, IsZeroWordOperation, LtOperationSigned, LtOperationUnsigned, MulOperation,
-        SubOperation, SubwOperation, U16CompareOperation, U16MSBOperation, U16toU8OperationSafe,
-        U16toU8OperationUnsafe,
+        AddOperation, AddrAddOperation, AddressOperation, AddwOperation, BitwiseOperation,
+        BitwiseU16Operation, IsEqualWordOperation, IsZeroOperation, IsZeroWordOperation,
+        LtOperationSigned, LtOperationUnsigned, MulOperation, SubOperation, SubwOperation,
+        U16CompareOperation, U16MSBOperation, U16toU8OperationSafe, U16toU8OperationUnsafe,
     },
 };
 
@@ -55,6 +55,8 @@ pub trait SP1CoreOperationBuilder:
     + SP1OperationBuilder<SubwOperation<F<Self>>>
     + SP1OperationBuilder<JTypeReader<F<Self>>>
     + SP1OperationBuilder<ITypeReaderImmutable>
+    + SP1OperationBuilder<AddrAddOperation<F<Self>>>
+    + SP1OperationBuilder<AddressOperation<F<Self>>>
 {
 }
 
@@ -83,6 +85,8 @@ impl<AB> SP1CoreOperationBuilder for AB where
         + SP1OperationBuilder<SubwOperation<F<Self>>>
         + SP1OperationBuilder<JTypeReader<F<Self>>>
         + SP1OperationBuilder<ITypeReaderImmutable>
+        + SP1OperationBuilder<AddrAddOperation<F<Self>>>
+        + SP1OperationBuilder<AddressOperation<F<Self>>>
 {
 }
 

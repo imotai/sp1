@@ -8,10 +8,13 @@ use std::{
 };
 
 use crate::{
-    adapter::{register::i_type::ITypeReader, state::CPUState},
-    air::SP1CoreAirBuilder,
+    adapter::{
+        register::i_type::{ITypeReader, ITypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
-    operations::AddressOperation,
+    operations::{AddressOperation, AddressOperationInput},
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
 use hashbrown::HashMap;
@@ -212,15 +215,17 @@ where
         builder.assert_bool(is_real.clone());
 
         // Step 1. Compute the address, and check offsets and address bounds.
-        let aligned_addr = AddressOperation::<AB::F>::eval(
+        let aligned_addr = <AddressOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.adapter.b().map(Into::into),
-            local.adapter.c().map(Into::into),
-            local.offset_bit[0].into(),
-            local.offset_bit[1].into(),
-            local.offset_bit[2].into(),
-            is_real.clone(),
-            local.address_operation,
+            AddressOperationInput::new(
+                local.adapter.b().map(Into::into),
+                local.adapter.c().map(Into::into),
+                local.offset_bit[0].into(),
+                local.offset_bit[1].into(),
+                local.offset_bit[2].into(),
+                is_real.clone(),
+                local.address_operation,
+            ),
         );
 
         // Step 2. Read the memory address.
@@ -275,16 +280,18 @@ where
         );
 
         // Constrain the state of the CPU.
-        CPUState::<AB::F>::eval(
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            local.state,
-            [
-                local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
-                local.state.pc[1].into(),
-                local.state.pc[2].into(),
-            ],
-            AB::Expr::from_canonical_u32(CLK_INC),
-            is_real.clone(),
+            CPUStateInput::new(
+                local.state,
+                [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                AB::Expr::from_canonical_u32(CLK_INC),
+                is_real.clone(),
+            ),
         );
 
         // Compute the four limbs of the word to be written to `op_a`.
@@ -295,16 +302,18 @@ where
         let limb3 = AB::Expr::from_canonical_u32((1 << 16) - 1) * local.msb;
 
         // Constrain the program and register reads.
-        ITypeReader::<AB::F>::eval(
+        <ITypeReader<AB::F> as SP1Operation<AB>>::eval(
             builder,
-            clk_high,
-            clk_low,
-            local.state.pc,
-            opcode,
-            [base_opcode, funct3, funct7],
-            Word([limb0, limb1, limb2, limb3]),
-            local.adapter,
-            is_real.clone(),
+            ITypeReaderInput::new(
+                clk_high,
+                clk_low,
+                local.state.pc,
+                opcode,
+                [base_opcode, funct3, funct7],
+                Word([limb0, limb1, limb2, limb3]),
+                local.adapter,
+                is_real.clone(),
+            ),
         );
     }
 }
