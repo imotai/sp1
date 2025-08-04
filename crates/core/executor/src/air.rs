@@ -10,9 +10,9 @@ use sp1_stark::shape::Shape;
 use strum::{EnumIter, IntoEnumIterator, IntoStaticStr};
 use subenum::subenum;
 
-/// RV32IM AIR Identifiers.
+/// RV64IM AIR Identifiers.
 ///
-/// These identifiers are for the various chips in the rv32im prover. We need them in the
+/// These identifiers are for the various chips in the rv64im prover. We need them in the
 /// executor to compute the memory cost of the current shard of execution.
 ///
 /// The [`CoreAirId`]s are the AIRs that are not part of precompile shards and not the program or
@@ -328,7 +328,7 @@ impl FromStr for RiscvAirId {
         let air = Self::iter().find(|chip| chip.as_str() == s);
         match air {
             Some(air) => Ok(air),
-            None => Err(format!("Invalid RV32IMAir: {s}")),
+            None => Err(format!("Invalid RV64IMAir: {s}")),
         }
     }
 }

@@ -42,20 +42,6 @@ pub fn vec_to_string<F: Field>(vec: Vec<F>) -> String {
     result
 }
 
-// /// Display field elements as signed integers on the range `[-modulus/2, modulus/2]`.
-// ///
-// /// This presentation is useful when debugging interactions as it makes it clear which
-// // interactions /// are `send` and which are `receive`.
-// fn field_to_int<F: PrimeField32>(x: F) -> i32 {
-//     let modulus = BabyBear::ORDER_U64;
-//     let val = x.as_canonical_u64();
-//     if val > modulus / 2 {
-//         val as i32 - modulus as i32
-//     } else {
-//         val as i32
-//     }
-// }
-
 /// Debugs the interactions of a chip.
 #[allow(clippy::type_complexity)]
 #[allow(clippy::needless_pass_by_value)]
@@ -69,11 +55,8 @@ pub fn debug_interactions<F: Field, A: MachineAir<F>>(
     let mut key_to_vec_data = BTreeMap::new();
     let mut key_to_count = BTreeMap::new();
 
-    // let trace = chip.generate_trace(record, &mut A::Record::default());
     let main = traces.get(&chip.name()).cloned().unwrap();
     let pre_traces = preprocessed_traces.get(&chip.name()).cloned();
-
-    // let main: Mle<C::F> = trace.clone().into();
 
     let height = main.clone().num_real_entries();
 

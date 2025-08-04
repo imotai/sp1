@@ -100,8 +100,8 @@ where
         // Check that this row is enabled.
         builder.assert_bool(local.is_add);
         builder.assert_bool(local.is_mul);
-        builder.assert_eq(local.is_real, local.is_add + local.is_mul);
         builder.assert_bool(local.is_real);
+        builder.assert_eq(local.is_real, local.is_add + local.is_mul);
 
         let a_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 32, local.a_ptr, local.is_real.into());
@@ -137,10 +137,10 @@ where
             local.c_ptr_memory,
             local.is_real,
         );
-        for i in 0..3 {
-            builder.assert_eq(local.c_ptr_memory.prev_value.0[i], local.c_ptr.addr[i]);
-        }
-        builder.assert_zero(local.c_ptr_memory.prev_value.0[3]);
+        builder.assert_word_eq(
+            local.c_ptr_memory.prev_value,
+            Word([c_ptr[0].into(), c_ptr[1].into(), c_ptr[2].into(), AB::Expr::zero()]),
+        );
 
         builder.eval_memory_access_read(
             local.clk_high,
@@ -149,10 +149,10 @@ where
             local.d_ptr_memory,
             local.is_real,
         );
-        for i in 0..3 {
-            builder.assert_eq(local.d_ptr_memory.prev_value.0[i], local.d_ptr.addr[i]);
-        }
-        builder.assert_zero(local.d_ptr_memory.prev_value.0[3]);
+        builder.assert_word_eq(
+            local.d_ptr_memory.prev_value,
+            Word([d_ptr[0].into(), d_ptr[1].into(), d_ptr[2].into(), AB::Expr::zero()]),
+        );
 
         builder.eval_memory_access_read(
             local.clk_high,
@@ -161,129 +161,44 @@ where
             local.e_ptr_memory,
             local.is_real,
         );
-        for i in 0..3 {
-            builder.assert_eq(local.e_ptr_memory.prev_value.0[i], local.e_ptr.addr[i]);
-        }
-        builder.assert_zero(local.e_ptr_memory.prev_value.0[3]);
-
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([a_ptr[0].into(), a_ptr[1].into(), a_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.a_addrs[0],
-            local.is_real.into(),
-        );
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([b_ptr[0].into(), b_ptr[1].into(), b_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.b_addrs[0],
-            local.is_real.into(),
-        );
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([c_ptr[0].into(), c_ptr[1].into(), c_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.c_addrs[0],
-            local.is_real.into(),
-        );
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([d_ptr[0].into(), d_ptr[1].into(), d_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.d_addrs[0],
-            local.is_real.into(),
-        );
-        AddrAddOperation::<AB::F>::eval(
-            builder,
+        builder.assert_word_eq(
+            local.e_ptr_memory.prev_value,
             Word([e_ptr[0].into(), e_ptr[1].into(), e_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.e_addrs[0],
-            local.is_real.into(),
         );
-        for i in 1..4 {
+
+        for i in 0..4 {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.a_addrs[i - 1].value[0].into(),
-                    local.a_addrs[i - 1].value[1].into(),
-                    local.a_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([
-                    AB::Expr::from_canonical_u32(8),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                ]),
+                Word([a_ptr[0].into(), a_ptr[1].into(), a_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.a_addrs[i],
                 local.is_real.into(),
             );
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.b_addrs[i - 1].value[0].into(),
-                    local.b_addrs[i - 1].value[1].into(),
-                    local.b_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([
-                    AB::Expr::from_canonical_u32(8),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                ]),
+                Word([b_ptr[0].into(), b_ptr[1].into(), b_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.b_addrs[i],
                 local.is_real.into(),
             );
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.c_addrs[i - 1].value[0].into(),
-                    local.c_addrs[i - 1].value[1].into(),
-                    local.c_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([
-                    AB::Expr::from_canonical_u32(8),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                ]),
+                Word([c_ptr[0].into(), c_ptr[1].into(), c_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.c_addrs[i],
                 local.is_real.into(),
             );
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.d_addrs[i - 1].value[0].into(),
-                    local.d_addrs[i - 1].value[1].into(),
-                    local.d_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([
-                    AB::Expr::from_canonical_u32(8),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                ]),
+                Word([d_ptr[0].into(), d_ptr[1].into(), d_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.d_addrs[i],
                 local.is_real.into(),
             );
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.e_addrs[i - 1].value[0].into(),
-                    local.e_addrs[i - 1].value[1].into(),
-                    local.e_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([
-                    AB::Expr::from_canonical_u32(8),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                    AB::Expr::zero(),
-                ]),
+                Word([e_ptr[0].into(), e_ptr[1].into(), e_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.e_addrs[i],
                 local.is_real.into(),
             );

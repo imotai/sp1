@@ -122,10 +122,6 @@ impl<F: PrimeField32> MachineAir<F> for StoreHalfChip {
             !shard.memory_store_half_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl StoreHalfChip {

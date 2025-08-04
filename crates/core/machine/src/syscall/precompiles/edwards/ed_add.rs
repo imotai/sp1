@@ -213,10 +213,6 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
             !shard.get_precompile_events(SyscallCode::ED_ADD).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
@@ -240,8 +236,8 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
         cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
         cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
 
-        cols.p_ptr.populate(blu, event.p_ptr, WORDS_CURVE_POINT as u64 * 8);
-        cols.q_ptr.populate(blu, event.q_ptr, WORDS_CURVE_POINT as u64 * 8);
+        cols.p_ptr.populate(blu, event.p_ptr, 64);
+        cols.q_ptr.populate(blu, event.q_ptr, 64);
 
         Self::populate_field_ops(blu, cols, p_x, p_y, q_x, q_y);
 
@@ -335,66 +331,29 @@ where
 
         let result_words = x_result_words.into_iter().chain(y_result_words).collect_vec();
 
-        let p_ptr = SyscallAddrOperation::<AB::F>::eval(
-            builder,
-            WORDS_CURVE_POINT as u32 * 8,
-            local.p_ptr,
-            local.is_real.into(),
-        );
+        let p_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 64, local.p_ptr, local.is_real.into());
 
-        let q_ptr = SyscallAddrOperation::<AB::F>::eval(
-            builder,
-            WORDS_CURVE_POINT as u32 * 8,
-            local.q_ptr,
-            local.is_real.into(),
-        );
+        let q_ptr =
+            SyscallAddrOperation::<AB::F>::eval(builder, 64, local.q_ptr, local.is_real.into());
 
-        // q_addrs_add[0] = q_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.q_addrs_add[0],
-            local.is_real.into(),
-        );
-
-        let eight = AB::F::from_canonical_u32(8u32);
-        // q_addrs_add[i] = q_addrs[i - 1] + 8.
-        for i in 1..WORDS_CURVE_POINT {
+        // q_addrs_add[i] = q_ptr + 8 * i.
+        for i in 0..WORDS_CURVE_POINT {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.q_addrs_add[i - 1].value[0].into(),
-                    local.q_addrs_add[i - 1].value[1].into(),
-                    local.q_addrs_add[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.q_addrs_add[i],
                 local.is_real.into(),
             );
         }
 
-        // p_addrs_add[0] = p_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.p_addrs_add[0],
-            local.is_real.into(),
-        );
-
-        // p_addrs_add[i] = p_addrs[i - 1] + 8.
-        for i in 1..WORDS_CURVE_POINT {
+        // p_addrs_add[i] = p_ptr + 8 * i.
+        for i in 0..WORDS_CURVE_POINT {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.p_addrs_add[i - 1].value[0].into(),
-                    local.p_addrs_add[i - 1].value[1].into(),
-                    local.p_addrs_add[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.p_addrs_add[i],
                 local.is_real.into(),
             );

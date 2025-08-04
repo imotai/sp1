@@ -300,10 +300,6 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             }
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassAddAssignChip<E> {
@@ -344,11 +340,9 @@ where
         // slope = (q.y - p.y) / (q.x - p.x).
         let slope = {
             local.slope_numerator.eval(builder, &q_y, &p_y, FieldOperation::Sub, local.is_real);
-
             local.slope_denominator.eval(builder, &q_x, &p_x, FieldOperation::Sub, local.is_real);
 
-            // We check that (q.x - p.x) is non-zero in the base field, by computing 1 / (q.x -
-            // p.x).
+            // We check (q.x - p.x) is non-zero in the base field, by computing 1 / (q.x - p.x).
             let mut coeff_1 = Vec::new();
             coeff_1.resize(<E::BaseField as NumLimbs>::Limbs::USIZE, AB::Expr::zero());
             coeff_1[0] = AB::Expr::one();
@@ -432,51 +426,23 @@ where
             local.is_real.into(),
         );
 
-        // x_addrs[0] = x_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.p_addrs[0],
-            local.is_real.into(),
-        );
-
-        let eight = AB::F::from_canonical_u32(8u32);
-        // p_addrs[i] = p_addrs[i - 1] + 8.
-        for i in 1..local.p_addrs.len() {
+        // p_addrs[i] = p_ptr + 8 * i
+        for i in 0..local.p_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.p_addrs[i - 1].value[0].into(),
-                    local.p_addrs[i - 1].value[1].into(),
-                    local.p_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.p_addrs[i],
                 local.is_real.into(),
             );
         }
 
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.q_addrs[0],
-            local.is_real.into(),
-        );
-
-        // q_addrs[i] = q_addrs[i - 1] + 8.
-        for i in 1..local.q_addrs.len() {
+        // q_addrs[i] = q_ptr + 8 * i
+        for i in 0..local.q_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.q_addrs[i - 1].value[0].into(),
-                    local.q_addrs[i - 1].value[1].into(),
-                    local.q_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([q_ptr[0].into(), q_ptr[1].into(), q_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.q_addrs[i],
                 local.is_real.into(),
             );
@@ -489,7 +455,6 @@ where
             &local.q_access.iter().map(|access| access.memory_access).collect_vec(),
             local.is_real,
         );
-        // We read p at +1 since p, q could be the same.
         builder.eval_memory_access_slice_write(
             local.clk_high,
             local.clk_low + AB::Expr::one(),

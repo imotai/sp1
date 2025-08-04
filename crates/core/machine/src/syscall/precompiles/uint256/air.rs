@@ -1,6 +1,7 @@
 use crate::{
+    air::SP1Operation,
     memory::MemoryAccessColsU8,
-    operations::{field::field_op::FieldOpCols, AddrAddOperation},
+    operations::{field::field_op::FieldOpCols, AddrAddOperation, IsZeroOperationInput},
 };
 
 use crate::{
@@ -78,8 +79,8 @@ pub struct Uint256MulCols<T> {
     pub y_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
     pub modulus_memory: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
 
-    /// Columns for checking if modulus is zero. If it's zero, then use 2^256 as the effective
-    /// modulus.
+    /// Columns for checking if modulus is zero.
+    /// If it's zero, then use 2^256 as the effective modulus.
     pub modulus_is_zero: IsZeroOperation<T>,
 
     /// Column that is equal to is_real * (1 - modulus_is_zero.result).
@@ -246,10 +247,6 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
             !shard.get_precompile_events(SyscallCode::UINT256_MUL).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<F> BaseAir<F> for Uint256MulChip {
@@ -280,15 +277,19 @@ where
         let modulus_limbs: Limbs<AB::Expr, <U256Field as NumLimbs>::Limbs> =
             Limbs(modulus_limb_vec.try_into().expect("failed to convert limbs"));
 
-        // // If the modulus is zero, then we don't perform the modulus operation.
-        // // Evaluate the modulus_is_zero operation by summing each byte of the modulus. The sum
-        // will // not overflow because we are summing 32 bytes.
-        // let modulus_byte_sum =
-        //     modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc +
-        // limb.clone()); IsZeroOperation::<AB::F>::eval(
-        //     builder,
-        //     (modulus_byte_sum, local.modulus_is_zero, local.is_real.into()),
-        // );
+        // If the modulus is zero, then we don't perform the modulus operation.
+        // Evaluate the modulus_is_zero operation by summing each byte of the modulus.
+        // The sum will not overflow because we are summing 32 bytes.
+        let modulus_byte_sum =
+            modulus_limbs.clone().0.iter().fold(AB::Expr::zero(), |acc, limb| acc + limb.clone());
+        IsZeroOperation::<AB::F>::eval(
+            builder,
+            IsZeroOperationInput::new(
+                modulus_byte_sum,
+                local.modulus_is_zero,
+                local.is_real.into(),
+            ),
+        );
 
         // If the modulus is zero, we'll actually use 2^256 as the modulus, so nothing happens.
         // Otherwise, we use the modulus passed in.
@@ -311,8 +312,10 @@ where
             local.is_real,
         );
 
-        // Verify the range of the output if the moduls is not zero.  Also, check the value of
-        // modulus_is_not_zero.
+        // Verify the range of the output if the modulus is not zero.
+        // Also, check the value of modulus_is_not_zero.
+        // If `is_real` is false, then `modulus_is_not_zero = 0`.
+        // If `is_real` is true, then `modulus_is_zero` will be correctly constrained.
         local.output_range_check.eval(
             builder,
             &local.output.result,
@@ -331,52 +334,23 @@ where
         let y_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 64, local.y_ptr, local.is_real.into());
 
-        // x_addrs[0] = x_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.x_addrs[0],
-            local.is_real.into(),
-        );
-
-        let eight = AB::F::from_canonical_u32(8u32);
-        // x_addrs[i] = x_addrs[i - 1] + 8.
-        for i in 1..local.x_addrs.len() {
+        // x_addrs[i] = x_ptr + 8 * i
+        for i in 0..local.x_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.x_addrs[i - 1].value[0].into(),
-                    local.x_addrs[i - 1].value[1].into(),
-                    local.x_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.x_addrs[i],
                 local.is_real.into(),
             );
         }
 
-        // y_addrs[0] = y_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.y_and_modulus_addrs[0],
-            local.is_real.into(),
-        );
-
-        // y_addrs[i] = y_addrs[i - 1] + 8.
-        for i in 1..local.y_and_modulus_addrs.len() {
+        // y_and_modulus_addrs[i] = y_ptr + 8 * i
+        for i in 0..local.y_and_modulus_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.y_and_modulus_addrs[i - 1].value[0].into(),
-                    local.y_and_modulus_addrs[i - 1].value[1].into(),
-                    local.y_and_modulus_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.y_and_modulus_addrs[i],
                 local.is_real.into(),
             );

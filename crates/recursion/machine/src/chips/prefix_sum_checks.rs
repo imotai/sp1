@@ -207,10 +207,6 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
     fn included(&self, _: &Self::Record) -> bool {
         true
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for PrefixSumChecksChip
@@ -232,6 +228,7 @@ where
 
         let sum_x_y = BinomialExtension::from_base(local.x1.into()) + x2;
 
+        // Check that `is_real` is boolean.
         builder.assert_bool(prep_local.is_real);
 
         // Booleanity check for x1.
@@ -245,13 +242,14 @@ where
         builder.receive_block(prep_local.acc_addr, local.acc, prep_local.is_real);
         builder.receive_single(prep_local.felt_acc_addr, local.felt_acc, prep_local.is_real);
 
-        // Constrain the memory write for the next accumulator for lagrange eval and bit2felt
-        // (Horner's method).
+        // Constrain the memory write for the next accumulator for lagrange eval and bit2felt.
         builder.assert_ext_eq(
             local.new_acc.as_extension::<AB>(),
             local.acc.as_extension::<AB>() * (one - sum_x_y + prod.clone() + prod),
         );
         builder.assert_eq(local.felt_new_acc, local.x1 + two * local.felt_acc);
+
+        // Constrain the memory write for the output accumulator.
         builder.send_block(prep_local.next_acc_addr, local.new_acc, prep_local.next_acc_mult);
         builder.send_single(
             prep_local.felt_next_acc_addr,

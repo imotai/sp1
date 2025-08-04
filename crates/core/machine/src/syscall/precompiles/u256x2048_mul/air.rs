@@ -280,10 +280,6 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
             !shard.get_precompile_events(SyscallCode::U256XU2048_MUL).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<F> BaseAir<F> for U256x2048MulChip {
@@ -313,102 +309,45 @@ where
         let hi_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 32, local.hi_ptr, local.is_real.into());
 
-        // x_addrs[0] = x_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([a_ptr[0].into(), a_ptr[1].into(), a_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.a_addrs[0],
-            local.is_real.into(),
-        );
-
-        // a_addrs[i] = a_addrs[i - 1] + 8.
-        let eight = AB::F::from_canonical_u32(8u32);
-        for i in 1..local.a_addrs.len() {
+        // a_addrs[i] = a_ptr + 8 * i
+        for i in 0..local.a_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.a_addrs[i - 1].value[0].into(),
-                    local.a_addrs[i - 1].value[1].into(),
-                    local.a_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([a_ptr[0].into(), a_ptr[1].into(), a_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.a_addrs[i],
                 local.is_real.into(),
             );
         }
 
-        // b_addrs[0] = b_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([b_ptr[0].into(), b_ptr[1].into(), b_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.b_addrs[0],
-            local.is_real.into(),
-        );
-
-        // b_addrs[i] = b_addrs[i - 1] + 8.
-        for i in 1..local.b_addrs.len() {
+        // b_addrs[i] = b_ptr + 8 * i
+        for i in 0..local.b_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.b_addrs[i - 1].value[0].into(),
-                    local.b_addrs[i - 1].value[1].into(),
-                    local.b_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([b_ptr[0].into(), b_ptr[1].into(), b_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.b_addrs[i],
                 local.is_real.into(),
             );
         }
 
-        // lo_addrs[0] = lo_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([lo_ptr[0].into(), lo_ptr[1].into(), lo_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.lo_addrs[0],
-            local.is_real.into(),
-        );
-
-        // lo_addrs[i] = lo_addrs[i - 1] + 8.
-        for i in 1..local.lo_addrs.len() {
+        // lo_addrs[i] = lo_ptr + 8 * i
+        for i in 0..local.lo_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.lo_addrs[i - 1].value[0].into(),
-                    local.lo_addrs[i - 1].value[1].into(),
-                    local.lo_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([lo_ptr[0].into(), lo_ptr[1].into(), lo_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.lo_addrs[i],
                 local.is_real.into(),
             );
         }
 
-        // hi_addrs[0] = hi_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([hi_ptr[0].into(), hi_ptr[1].into(), hi_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.hi_addrs[0],
-            local.is_real.into(),
-        );
-
-        // hi_addrs[i] = hi_addrs[i - 1] + 8.
-        for i in 1..local.hi_addrs.len() {
+        // hi_addrs[i] = hi_ptr + 8 * i
+        for i in 0..local.hi_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.hi_addrs[i - 1].value[0].into(),
-                    local.hi_addrs[i - 1].value[1].into(),
-                    local.hi_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([hi_ptr[0].into(), hi_ptr[1].into(), hi_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.hi_addrs[i],
                 local.is_real.into(),
             );
@@ -498,8 +437,7 @@ where
             builder,
             &a_limbs,
             &b_limb_array[0],
-            &Polynomial::from_coefficients(&[AB::Expr::zero()]), /* Zero polynomial for no
-                                                                  * previous carry */
+            &Polynomial::from_coefficients(&[AB::Expr::zero()]),
             &modulus_polynomial,
             local.is_real,
         );
@@ -543,13 +481,17 @@ where
 
         // Constrain that the lo_ptr is the value of lo_ptr_memory.
         for i in 0..3 {
-            builder.when(local.is_real).assert_eq(lo_ptr[i], local.lo_ptr_memory.prev_value[i]);
+            builder
+                .when(local.is_real)
+                .assert_eq(local.lo_ptr.addr[i], local.lo_ptr_memory.prev_value[i]);
         }
         builder.assert_eq(local.lo_ptr_memory.prev_value[3], AB::Expr::zero());
 
         // Constrain that the hi_ptr is the value of hi_ptr_memory.
         for i in 0..3 {
-            builder.when(local.is_real).assert_eq(hi_ptr[i], local.hi_ptr_memory.prev_value[i]);
+            builder
+                .when(local.is_real)
+                .assert_eq(local.hi_ptr.addr[i], local.hi_ptr_memory.prev_value[i]);
         }
         builder.assert_eq(local.hi_ptr_memory.prev_value[3], AB::Expr::zero());
     }

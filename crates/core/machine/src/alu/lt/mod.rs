@@ -141,10 +141,6 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
             !shard.lt_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl LtChip {

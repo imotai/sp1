@@ -35,7 +35,6 @@ where
         > + Send
         + Sync,
     C: CircuitConfig<F = SC::F, EF = SC::EF, Bit = Felt<BabyBear>>,
-    // <SC::ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>: Clone,
     A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     JC: RecursiveJaggedConfig<
         F = C::F,

@@ -116,10 +116,6 @@ impl<F: PrimeField32> MachineAir<F> for StoreDoubleChip {
             !shard.memory_store_double_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl StoreDoubleChip {

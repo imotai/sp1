@@ -73,10 +73,6 @@ impl<F: PrimeField32> MachineAir<F> for JalrChip {
             !shard.jalr_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl JalrChip {

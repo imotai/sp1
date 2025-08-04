@@ -1,5 +1,4 @@
-use std::marker::PhantomData;
-
+use crate::{basefold::merkle_tree::verify, hash::FieldHasherVariable, AsRecursive, CircuitConfig};
 use itertools::Itertools;
 use slop_merkle_tree::{
     MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
@@ -7,8 +6,7 @@ use slop_merkle_tree::{
 use slop_tensor::Tensor;
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
-
-use crate::{basefold::merkle_tree::verify, hash::FieldHasherVariable, AsRecursive, CircuitConfig};
+use std::marker::PhantomData;
 
 pub trait RecursiveTcs: Sized {
     type Data;

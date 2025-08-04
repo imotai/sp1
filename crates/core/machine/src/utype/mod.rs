@@ -218,10 +218,6 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
             !shard.utype_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 // #[cfg(test)]

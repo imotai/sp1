@@ -180,10 +180,6 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ExtAluChip {
     fn included(&self, _record: &Self::Record) -> bool {
         true
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for ExtAluChip
@@ -218,7 +214,6 @@ where
 
             // Read the inputs from memory.
             builder.receive_block(addrs.in1, vals.in1, is_real.clone());
-
             builder.receive_block(addrs.in2, vals.in2, is_real);
 
             // Write the output to memory.

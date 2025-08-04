@@ -36,8 +36,7 @@ pub struct IsZeroOperation<T> {
 
 impl<F: Field> IsZeroOperation<F> {
     pub fn populate(&mut self, a: u64) -> u64 {
-        // TODO UNSOUND due to wrapping.
-        self.populate_from_field_element(F::from_wrapped_u64(a))
+        self.populate_from_field_element(F::from_canonical_u64(a))
     }
 
     pub fn populate_from_field_element(&mut self, a: F) -> u64 {

@@ -29,7 +29,7 @@ impl<F: PrimeField32> BabyBearWordRangeChecker<F> {
 
 impl<F: Field> BabyBearWordRangeChecker<F> {
     /// Constrains that `value` represents a value less than the BabyBear modulus.
-    /// Assumes that `value` is a valid `Word` of two u16 limbs.
+    /// Assumes that `value` is a valid `Word` of u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, constrains that `value` is a valid BabyBear word.
     pub fn range_check<AB>(

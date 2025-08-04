@@ -3,7 +3,7 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use clap::Parser;
-use sp1_core_executor::{rv32im_costs, RiscvAirId};
+use sp1_core_executor::{rv64im_costs, RiscvAirId};
 use sp1_core_machine::utils::setup_logger;
 use sp1_stark::shape::Shape;
 
@@ -26,7 +26,7 @@ fn main() {
     let args = Args::parse();
 
     // Load the costs.
-    let costs = rv32im_costs();
+    let costs = rv64im_costs();
 
     if let Some(maximal_shapes_json) = args.maximal_shapes_json {
         // Load the maximal shapes, indexed by log shard size.

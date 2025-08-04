@@ -11,12 +11,12 @@ use crate::{
     operations::{U16MSBOperation, U16MSBOperationInput},
 };
 
-/// A set of columns needed to compute the add of two words.
+/// A set of columns needed to compute the ADDW of two words.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, IntoShape, SP1OperationBuilder)]
 #[repr(C)]
 pub struct AddwOperation<T> {
-    /// The result of `a + b`.
-    pub value: [T; 2],
+    /// The result of the ADDW operation.
+    pub value: [T; WORD_SIZE / 2],
     /// The msb of the result.
     pub msb: U16MSBOperation<T>,
 }
@@ -31,10 +31,11 @@ impl<F: Field> AddwOperation<F> {
         self.msb.populate_msb(record, limbs[1]);
     }
 
-    /// Evaluate the add operation.
-    /// Assumes that `a`, `b` are valid `Word`s of two u16 limbs.
+    /// Evaluate the addw operation.
+    /// Assumes that `a`, `b` are valid `Word`s of u16 limbs.
     /// Constrains that `is_real` is boolean.
-    /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a + b`.
+    /// If `is_real` is true, the `value` is constrained to a the lower u32 of the ADDW result.
+    /// Also, the `msb` will be constrained to equal the most significant bit of the `value`.
     pub fn eval<AB>(
         builder: &mut AB,
         a: Word<AB::Expr>,

@@ -175,10 +175,6 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ConvertChip {
     fn included(&self, _record: &Self::Record) -> bool {
         true
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for ConvertChip
@@ -196,10 +192,14 @@ where
         for (ConvertValueCols { input }, ConvertAccessCols { addrs, mults }) in
             zip(local.values, prep_local.accesses)
         {
-            // Read the inputs from memory.
+            // First handle the read/write of the extension element.
+            // If it's converting extension element to `D` field elements, this is a read.
+            // If it's converting `D` field elements to an extension element, this is a write.
             builder.receive_block(addrs[0], input, mults[0]);
 
-            // Write the output to memory.
+            // Handle the read/write of the field element.
+            // If it's converting extension element to `D` field elements, this is a write.
+            // If it's converting `D` field elements to an extension element, this is a read.
             for i in 0..D {
                 builder.send_single(addrs[i + 1], input[i], mults[i + 1]);
             }

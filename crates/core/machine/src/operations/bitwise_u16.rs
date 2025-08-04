@@ -1,20 +1,16 @@
-use serde::{Deserialize, Serialize};
-use slop_air::AirBuilder;
-use slop_algebra::AbstractField;
-use sp1_core_executor::{events::ByteRecord, Opcode};
-use sp1_stark::{air::SP1AirBuilder, Word};
-
-use slop_algebra::Field;
-use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
-
+use super::{BitwiseOperation, BitwiseOperationInput, U16toU8Operation};
 use crate::{
     air::{SP1Operation, SP1OperationBuilder},
     operations::{U16toU8OperationUnsafe, U16toU8OperationUnsafeInput},
 };
+use serde::{Deserialize, Serialize};
+use slop_air::AirBuilder;
+use slop_algebra::{AbstractField, Field};
+use sp1_core_executor::{events::ByteRecord, Opcode};
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
+use sp1_stark::{air::SP1AirBuilder, Word};
 
-use super::{BitwiseOperation, BitwiseOperationInput, U16toU8Operation};
-
-/// A set of columns needed to compute the bitwise operation over two u16 limbs.
+/// A set of columns needed to compute the bitwise operation over `Word` of u16 limbs.
 #[derive(
     AlignedBorrow,
     Default,
@@ -28,10 +24,10 @@ use super::{BitwiseOperation, BitwiseOperationInput, U16toU8Operation};
 )]
 #[repr(C)]
 pub struct BitwiseU16Operation<T> {
-    /// Lower byte of two limbs of `b`.
+    /// Lower byte of the limbs of `b`.
     pub b_low_bytes: U16toU8Operation<T>,
 
-    /// Lower byte of two limbs of `c`.
+    /// Lower byte of the limbs of `c`.
     pub c_low_bytes: U16toU8Operation<T>,
 
     /// The bitwise operation over bytes.
@@ -47,13 +43,13 @@ impl<F: Field> BitwiseU16Operation<F> {
         c_u64: u64,
         opcode: Opcode,
     ) {
-        self.b_low_bytes.populate_u16_to_u8_unsafe(record, b_u64);
-        self.c_low_bytes.populate_u16_to_u8_unsafe(record, c_u64);
+        self.b_low_bytes.populate_u16_to_u8_unsafe(b_u64);
+        self.c_low_bytes.populate_u16_to_u8_unsafe(c_u64);
         self.bitwise_operation.populate_bitwise(record, a_u64, b_u64, c_u64, opcode);
     }
 
-    /// Evaluate the bitwise operation over two `Word`s of two u16 limbs.
-    /// Assumes that the two words are valid `Word`s of two u16 limbs.
+    /// Evaluate the bitwise operation over two `Word`s of u16 limbs.
+    /// Assumes that the two words are valid `Word`s of u16 limbs.
     /// Assumes that `opcode` is a valid byte opcode.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, the return value is constrained to be correct.
@@ -70,6 +66,7 @@ impl<F: Field> BitwiseU16Operation<F> {
             + SP1OperationBuilder<U16toU8OperationUnsafe>
             + SP1OperationBuilder<BitwiseOperation<<AB as AirBuilder>::F>>,
     {
+        // Constrain that `is_real` is boolean.
         builder.assert_bool(is_real.clone());
 
         // Convert the two words to bytes using the unsafe API.
@@ -78,6 +75,7 @@ impl<F: Field> BitwiseU16Operation<F> {
         let b_bytes = U16toU8OperationUnsafe::eval(builder, b_input);
         let c_input = U16toU8OperationUnsafeInput::new(c.0, cols.c_low_bytes);
         let c_bytes = U16toU8OperationUnsafe::eval(builder, c_input);
+
         // SAFETY: This is safe because `is_real` is constrained to be boolean.
         BitwiseOperation::<AB::F>::eval(
             builder,
@@ -90,7 +88,7 @@ impl<F: Field> BitwiseU16Operation<F> {
             ),
         );
 
-        // Combine the byte results into two u16 limbs.
+        // Combine the byte results into u16 limbs.
         let result_limb0 = cols.bitwise_operation.result[0]
             + cols.bitwise_operation.result[1] * AB::F::from_canonical_u32(1 << 8);
         let result_limb1 = cols.bitwise_operation.result[2]

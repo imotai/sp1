@@ -240,14 +240,6 @@ where
     fn included(&self, shard: &Self::Record) -> bool {
         self.air.included(shard)
     }
-
-    fn commit_scope(&self) -> crate::air::InteractionScope {
-        self.air.commit_scope()
-    }
-
-    fn local_only(&self) -> bool {
-        self.air.local_only()
-    }
 }
 
 // Implement AIR directly on Chip, evaluating both execution and permutation constraints.

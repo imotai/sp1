@@ -25,26 +25,27 @@ pub struct SyscallAddrOperation<T> {
 
 impl<F: PrimeField32> SyscallAddrOperation<F> {
     pub fn populate(&mut self, record: &mut impl ByteRecord, addr: u64, len: u64) {
-        let addr_word_limbs = u64_to_u16_limbs(addr);
+        let addr_limbs = u64_to_u16_limbs(addr);
         let sum_top_two_limb =
-            F::from_canonical_u16(addr_word_limbs[1]) + F::from_canonical_u16(addr_word_limbs[2]);
-        self.addr[0] = F::from_canonical_u16(addr_word_limbs[0]);
-        self.addr[1] = F::from_canonical_u16(addr_word_limbs[1]);
-        self.addr[2] = F::from_canonical_u16(addr_word_limbs[2]);
+            F::from_canonical_u16(addr_limbs[1]) + F::from_canonical_u16(addr_limbs[2]);
+        self.addr[0] = F::from_canonical_u16(addr_limbs[0]);
+        self.addr[1] = F::from_canonical_u16(addr_limbs[1]);
+        self.addr[2] = F::from_canonical_u16(addr_limbs[2]);
         self.top_two_limb_min = sum_top_two_limb.inverse();
         let is_max = self.top_two_limb_max.populate_from_field_element(
             sum_top_two_limb - F::from_canonical_u16(u16::MAX) * F::two(),
         );
         if is_max == 1 {
-            record.add_bit_range_check((addr_word_limbs[0] + (len as u16)) / 8, 13);
+            record.add_bit_range_check((addr_limbs[0] + (len as u16)) / 8, 13);
         } else {
-            record.add_bit_range_check(addr_word_limbs[0] / 8, 13);
+            record.add_bit_range_check(addr_limbs[0] / 8, 13);
         }
     }
 }
 
 impl<F: Field> SyscallAddrOperation<F> {
-    /// The memory address is constrained to be aligned, `>= 2^16` and less than `BabyBear - len`.
+    /// The memory address is constrained to be aligned, `>= 2^16` and less than `2^48 - len`.
+    /// The `cols.addr` is assumed to be composed of valid 3 u16 limbs.
     #[allow(clippy::too_many_arguments)]
     pub fn eval<AB: SP1AirBuilder + SP1OperationBuilder<IsZeroOperation<<AB as AirBuilder>::F>>>(
         builder: &mut AB,
@@ -62,7 +63,7 @@ impl<F: Field> SyscallAddrOperation<F> {
 
         // Check that `addr >= 2^16`, so it doesn't touch registers.
         // This implements a stack guard of size 2^16 bytes = 64KB.
-        // If `is_real = 1`, then `addr.0[1] != 0`, so `addr >= 2^16`.
+        // If `is_real = 1`, then `addr.0[1] + addr.0[2] != 0`, so `addr >= 2^16`.
         builder.assert_eq(cols.top_two_limb_min * sum_top_two_limb.clone(), is_real.clone());
 
         IsZeroOperation::<AB::F>::eval(

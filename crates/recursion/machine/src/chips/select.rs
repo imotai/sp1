@@ -146,10 +146,6 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
     fn included(&self, _record: &Self::Record) -> bool {
         true
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for SelectChip
@@ -164,19 +160,25 @@ where
         let prep_local = prep.row_slice(0);
         let prep_local: &SelectPreprocessedCols<AB::Var> = (*prep_local).borrow();
 
+        // Receive the selector bit and two input values.
         builder.receive_single(prep_local.addrs.bit, local.vals.bit, prep_local.is_real);
         builder.receive_single(prep_local.addrs.in1, local.vals.in1, prep_local.is_real);
         builder.receive_single(prep_local.addrs.in2, local.vals.in2, prep_local.is_real);
-        builder.send_single(prep_local.addrs.out1, local.vals.out1, prep_local.mult1);
-        builder.send_single(prep_local.addrs.out2, local.vals.out2, prep_local.mult2);
+
+        // Assert that `local.vals.bit` is a boolean value.
+        builder.assert_bool(local.vals.bit);
+
+        // If `bit == 1`, then `out1 == in2`. If `bit == 0`, then `out1 == in1`.
         builder.assert_eq(
             local.vals.out1,
-            local.vals.bit * local.vals.in2 + (AB::Expr::one() - local.vals.bit) * local.vals.in1,
+            local.vals.in1 + local.vals.bit * (local.vals.in2 - local.vals.in1),
         );
-        builder.assert_eq(
-            local.vals.out2,
-            local.vals.bit * local.vals.in1 + (AB::Expr::one() - local.vals.bit) * local.vals.in2,
-        );
+        // If `bit == 1`, then `out2 == in1`. If `bit == 0`, then `out2 == in2`.
+        builder.assert_eq(local.vals.out1 + local.vals.out2, local.vals.in1 + local.vals.in2);
+
+        // Send the select result with their respective multiplicity.
+        builder.send_single(prep_local.addrs.out1, local.vals.out1, prep_local.mult1);
+        builder.send_single(prep_local.addrs.out2, local.vals.out2, prep_local.mult2);
     }
 }
 

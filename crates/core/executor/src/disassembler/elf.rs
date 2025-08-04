@@ -8,9 +8,9 @@ use eyre::OptionExt;
 use hashbrown::HashMap;
 use sp1_primitives::consts::{INSTRUCTION_WORD_SIZE, MAXIMUM_MEMORY_SIZE, STACK_TOP};
 
-/// RISC-V 32IM ELF (Executable and Linkable Format) File.
+/// RISC-V 64IM ELF (Executable and Linkable Format) File.
 ///
-/// This file represents a binary in the ELF format, specifically the RISC-V 32IM architecture
+/// This file represents a binary in the ELF format, specifically the RISC-V 64IM architecture
 /// with the following extensions:
 ///
 /// - Base Integer Instruction Set (I)

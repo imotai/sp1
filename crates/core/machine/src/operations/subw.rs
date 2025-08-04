@@ -18,7 +18,7 @@ use crate::{
 #[repr(C)]
 pub struct SubwOperation<T> {
     /// The result of `a - b`.
-    pub value: [T; 2],
+    pub value: [T; WORD_SIZE / 2],
     /// The msb of the result.
     pub msb: U16MSBOperation<T>,
 }
@@ -35,9 +35,10 @@ impl<F: Field> SubwOperation<F> {
     }
 
     /// Evaluate the sub operation.
-    /// Assumes that `a`, `b` are valid `Word`s of two u16 limbs.
+    /// Assumes that `a`, `b` are valid `Word`s of u16 limbs.
     /// Constrains that `is_real` is boolean.
-    /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a - b`.
+    /// If `is_real` is true, the `value` is constrained to be the lower u32 of the SUBW result.
+    /// Also, the `msb` will be constrained to equal the most significant bit of the `value`.
     pub fn eval<AB>(
         builder: &mut AB,
         a: Word<AB::Var>,

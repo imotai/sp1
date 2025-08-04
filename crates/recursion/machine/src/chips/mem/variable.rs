@@ -112,8 +112,6 @@ impl<F: PrimeField32, const VAR_EVENTS_PER_ROW: usize> MachineAir<F>
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
-        // if let Some(shape) = input.program.shape.as_ref() {
-        //     Some(shape.height(self).expect("chip mot included"))
         let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
         let nb_rows = input.mem_var_events.len().div_ceil(VAR_EVENTS_PER_ROW);
         let padded_nb_rows = next_multiple_of_32(nb_rows, height);
@@ -137,7 +135,7 @@ impl<F: PrimeField32, const VAR_EVENTS_PER_ROW: usize> MachineAir<F>
             .collect::<Vec<_>>();
 
         let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
-        // Pad the rows to the next power of two.
+        // Pad the rows to the next multiple of 32.
         pad_rows_fixed(
             &mut rows,
             || vec![F::zero(); NUM_MEM_INIT_COLS * VAR_EVENTS_PER_ROW],
@@ -152,10 +150,6 @@ impl<F: PrimeField32, const VAR_EVENTS_PER_ROW: usize> MachineAir<F>
     }
 
     fn included(&self, _record: &Self::Record) -> bool {
-        true
-    }
-
-    fn local_only(&self) -> bool {
         true
     }
 }

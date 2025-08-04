@@ -63,7 +63,9 @@ where
 
         // Observe the padding.
         let zero: Felt<_> = builder.eval(C::F::zero());
-        challenger.observe(builder, zero);
+        for _ in 0..7 {
+            challenger.observe(builder, zero);
+        }
         machine.verify_shard(builder, vk, proof, &mut challenger);
 
         assert_complete(builder, &public_values.inner, input.is_complete);

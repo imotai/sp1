@@ -7,7 +7,7 @@ use sp1_derive::AlignedBorrow;
 
 use crate::air::WordAirBuilder;
 
-/// A set of columns needed to increment the clk.
+/// A set of columns needed to increment the clk and handle the carry.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ClkOperation<T> {
@@ -42,6 +42,10 @@ impl<F: Field> ClkOperation<F> {
         record.add_u8_range_checks(&[next_clk_16_24, 0]);
     }
 
+    // Check that `clk_low + increment` overflows 24 bits.
+    // Checks that `is_real` is boolean. If `is_real` is true, `next_clk` limbs are correct
+    // low 24 bits of `clk_low + increment`, and `is_overflow` is the carry.
+    // This function assumes that `clk_low` and `increment` is within 24 bits.
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
         clk_low: AB::Expr,
@@ -49,13 +53,22 @@ impl<F: Field> ClkOperation<F> {
         cols: ClkOperation<AB::Var>,
         is_real: AB::Expr,
     ) {
+        // Check that `is_real` is boolean.
         builder.assert_bool(is_real.clone());
+
+        // Check that `is_overflow` is boolean.
         builder.assert_bool(cols.is_overflow);
+
+        // Constrain the `next_clk_low` value.
+        // If `is_overflow` is false, then it's equal to `clk_low + increment`.
+        // If `is_overflow` is true, then it's equal to `clk_low + increment - 2^24`.
         builder.when(is_real.clone()).assert_eq(
             clk_low.clone() + increment.clone()
                 - cols.is_overflow.into() * AB::Expr::from_canonical_u32(1 << 24),
             cols.next_clk_low::<AB>(),
         );
+
+        // Constrain that `next_clk_low` is a valid 24 bit value by decomposing into two limbs.
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
             cols.next_clk_0_16.into(),

@@ -3,8 +3,6 @@ use std::{
     iter::{repeat, zip},
 };
 
-// use itertools::Itertools;
-
 use itertools::Itertools;
 use slop_algebra::{AbstractField, Field};
 use slop_baby_bear::BabyBear;

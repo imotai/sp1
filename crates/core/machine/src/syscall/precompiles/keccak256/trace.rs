@@ -113,10 +113,6 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
             !shard.get_precompile_events(SyscallCode::KECCAK_PERMUTE).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl KeccakPermuteChip {

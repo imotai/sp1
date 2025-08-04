@@ -105,7 +105,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
                     // Update the public values & prover state for the shards which contain
                     // "cpu events".
-                    let mut deferred_reccords = {
+                    let mut deferred_records = {
                         let mut state = state.lock().unwrap();
 
                         state.shard += 1;
@@ -148,10 +148,23 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             state.deferred_proofs_digest =
                                 record.public_values.deferred_proofs_digest;
                         }
-
+                        if state.commit_syscall == 0 {
+                            state.commit_syscall = record.public_values.commit_syscall;
+                        }
+                        if state.commit_deferred_syscall == 0 {
+                            state.commit_deferred_syscall =
+                                record.public_values.commit_deferred_syscall;
+                        }
+                        if state.exit_code == 0 {
+                            state.exit_code = record.public_values.exit_code;
+                        }
                         record.public_values = *state;
-                        state.prev_exit_code = record.public_values.exit_code;
-                        state.initial_timestamp = record.public_values.last_timestamp;
+                        state.prev_exit_code = state.exit_code;
+                        state.prev_commit_syscall = state.commit_syscall;
+                        state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
+                        state.prev_committed_value_digest = state.committed_value_digest;
+                        state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
+                        state.initial_timestamp = state.last_timestamp;
 
                         // Defer events that are too expensive to include in every shard.
                         let mut deferred = deferred.lock().unwrap();
@@ -166,26 +179,29 @@ impl<F: PrimeField32> MachineExecutor<F> {
                                 < opts.split_opts.combine_memory_threshold.1;
 
                         // See if any deferred shards are ready to be committed to.
-                        let mut deferred_reccords = deferred.split(
+                        let mut deferred_records = deferred.split(
                             done,
                             can_pack_global_memory.then_some(&mut *record),
                             opts.split_opts,
                         );
-                        tracing::debug!("deferred {} records", deferred_reccords.len());
+                        tracing::debug!("deferred {} records", deferred_records.len());
 
                         // Update the public values & prover state for the shards which do not
                         // contain "cpu events" before committing to them.
                         state.execution_shard = state.next_execution_shard;
-                        for record in deferred_reccords.iter_mut() {
+                        for record in deferred_records.iter_mut() {
                             state.shard += 1;
-                            state.previous_init_addr_word =
-                                record.public_values.previous_init_addr_word;
-                            state.last_init_addr_word = record.public_values.last_init_addr_word;
-                            state.previous_finalize_addr_word =
-                                record.public_values.previous_finalize_addr_word;
-                            state.last_finalize_addr_word =
-                                record.public_values.last_finalize_addr_word;
+                            state.previous_init_addr = record.public_values.previous_init_addr;
+                            state.last_init_addr = record.public_values.last_init_addr;
+                            state.previous_finalize_addr =
+                                record.public_values.previous_finalize_addr;
+                            state.last_finalize_addr = record.public_values.last_finalize_addr;
                             state.pc_start = state.next_pc;
+                            state.prev_exit_code = state.exit_code;
+                            state.prev_commit_syscall = state.commit_syscall;
+                            state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
+                            state.prev_committed_value_digest = state.committed_value_digest;
+                            state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
                             state.last_timestamp = state.initial_timestamp;
                             state.is_timestamp_high_eq = 1;
                             state.is_timestamp_low_eq = 1;
@@ -193,7 +209,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             record.public_values = *state;
                         }
 
-                        deferred_reccords
+                        deferred_records
                     };
 
                     // Generate the dependencies.
@@ -202,13 +218,13 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         move || {
                             let mut record = vec![*record];
                             machine.generate_dependencies(&mut record, None);
-                            machine.generate_dependencies(&mut deferred_reccords, None);
+                            machine.generate_dependencies(&mut deferred_records, None);
 
                             // Send the records to the output channel.
                             record_tx.send((record.pop().unwrap(), Some(memory_permit))).unwrap();
 
                             // If there are deferred records, send them to the output channel.
-                            for record in deferred_reccords {
+                            for record in deferred_records {
                                 record_tx.send((record, None)).unwrap();
                             }
                         }
@@ -351,19 +367,26 @@ fn trace_checkpoint(
     runtime.subproof_verifier = Some(Arc::new(noop));
 
     // Execute from the checkpoint.
-    let (mut record, done) = runtime.execute_record(true).unwrap();
-    let pv = record.public_values;
+    let (mut record, mut done) = runtime.execute_record(true).unwrap();
+    let mut pv = record.public_values;
 
-    // Handle the case where the COMMIT happens across the last two shards.
-    if !done
-        && (pv.committed_value_digest.iter().any(|v| *v != 0)
-            || pv.deferred_proofs_digest.iter().any(|v| *v != 0))
-    {
+    // Handle the case where `COMMIT` or `COMMIT_DEFERRED_PROOFS` happens across last two shards.
+    if !done && (pv.commit_syscall == 1 || pv.commit_deferred_syscall == 1) {
         // We turn off the `print_report` flag to avoid modifying the report.
         runtime.print_report = false;
-        let (_, next_pv, _) = runtime.execute_state(true).unwrap();
-        record.public_values.committed_value_digest = next_pv.committed_value_digest;
-        record.public_values.deferred_proofs_digest = next_pv.deferred_proofs_digest;
+        loop {
+            runtime.record.public_values = pv;
+            let (_, next_pv, is_done) = runtime.execute_state(true).unwrap();
+            pv = next_pv;
+            done = is_done;
+            if done {
+                record.public_values.commit_syscall = 1;
+                record.public_values.commit_deferred_syscall = 1;
+                record.public_values.committed_value_digest = pv.committed_value_digest;
+                record.public_values.deferred_proofs_digest = pv.deferred_proofs_digest;
+                break;
+            }
+        }
     }
 
     (record, runtime.report)

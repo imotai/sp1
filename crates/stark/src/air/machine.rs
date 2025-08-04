@@ -1,14 +1,8 @@
+use crate::{septic_digest::SepticDigest, MachineRecord};
 use slop_air::BaseAir;
 use slop_algebra::Field;
 use slop_matrix::dense::RowMajorMatrix;
-
-use crate::{septic_digest::SepticDigest, MachineRecord};
-
 pub use sp1_derive::MachineAir;
-
-use super::InteractionScope;
-
-// TODO: add Id type and also fn id()
 
 #[macro_export]
 /// Macro to get the name of a chip.
@@ -64,16 +58,6 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
     /// Generate the preprocessed trace given a specific program.
     fn generate_preprocessed_trace(&self, _program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         None
-    }
-
-    /// Specifies whether it's trace should be part of either the global or local commit.
-    fn commit_scope(&self) -> InteractionScope {
-        InteractionScope::Local
-    }
-
-    /// Specifies whether the air only uses the local row, and not the next row.
-    fn local_only(&self) -> bool {
-        false
     }
 }
 

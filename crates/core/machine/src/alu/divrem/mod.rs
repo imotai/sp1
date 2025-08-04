@@ -1,78 +1,17 @@
-//! Division and remainder verification.
-//!
-//! This module implements the verification logic for division and remainder operations. It ensures
-//! that for any given inputs b and c and outputs quotient and remainder, the equation
-//!
-//! b = c * quotient + remainder
-//!
-//! holds true, while also ensuring that the signs of `b` and `remainder` match.
-//!
-//! A critical aspect of this implementation is the use of 64-bit arithmetic for result calculation.
-//! This choice is driven by the need to make the solution unique: in 32-bit arithmetic,
-//! `c * quotient + remainder` could overflow, leading to results that are congruent modulo 2^{32}
-//! and thus not uniquely defined. The 64-bit approach avoids this overflow, ensuring that each
-//! valid input combination maps to a unique result.
-//!
-//! Implementation:
-//!
-//! # Use the multiplication ALU table. result is 64 bits.
-//! result = quotient * c.
-//!
-//! # Add sign-extended remainder to result. Propagate carry to handle overflow within bytes.
-//! base = pow(2, 8)
-//! carry = 0
-//! for i in range(8):
-//!     x = result\[i\] + remainder\[i\] + carry
-//!     result\[i\] = x % base
-//!     carry = x // base
-//!
-//! # The number represented by c * quotient + remainder in 64 bits must equal b in 32 bits.
-//!
-//! # Assert the lower 32 bits of result match b.
-//! assert result[0..4] == b[0..4]
-//!
-//! # Assert the upper 32 bits of result match the sign of b.
-//! if (b == -2^{31}) and (c == -1):
-//!     # This is the only exception as this is the only case where it overflows.
-//!     assert result[4..8] == [0, 0, 0, 0]
-//! elif b < 0:
-//!     assert result[4..8] == [0xff, 0xff, 0xff, 0xff]
-//! else:
-//!     assert result[4..8] == [0, 0, 0, 0]
-//!
-//! # Check a = quotient or remainder.
-//! assert a == (quotient if opcode == division else remainder)
-//!
-//! # remainder and b must have the same sign.
-//! if remainder < 0:
-//!     assert b <= 0
-//! if remainder > 0:
-//!     assert b >= 0
-//!
-//! # abs(remainder) < abs(c)
-//! if c < 0:
-//!    assert c < remainder <= 0
-//! elif c > 0:
-//!    assert 0 <= remainder < c
-//!
-//! if is_c_0:
-//!    # if division by 0, then quotient = 0xffffffff per RISC-V spec. This needs special care since
-//!    # b = 0 * quotient + b is satisfied by any quotient.
-//!    assert quotient = 0xffffffff
-
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
+use std::num::Wrapping;
 
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
-    get_msb, get_quotient_and_remainder, is_signed_operation, is_signed_word_operation,
-    is_unsigned_operation, is_unsigned_word_operation, is_word_operation, ExecutionRecord, Opcode,
-    Program, CLK_INC, PC_INC,
+    get_msb, get_quotient_and_remainder, is_signed_64bit_operation, is_signed_word_operation,
+    is_unsigned_64bit_operation, is_unsigned_word_operation, is_word_operation, ExecutionRecord,
+    Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
@@ -303,19 +242,29 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 output.add_byte_lookup_events(blu);
             }
 
+            // Get the correct computational values of `b`.
+            let b = if is_signed_word_operation(event.opcode) {
+                event.b as i32 as i64 as u64
+            } else if is_unsigned_word_operation(event.opcode) {
+                event.b as u32 as u64
+            } else {
+                event.b
+            };
+
+            // Get the correct computational values of `c`.
+            let c = if is_signed_word_operation(event.opcode) {
+                event.c as i32 as i64 as u64
+            } else if is_unsigned_word_operation(event.opcode) {
+                event.c as u32 as u64
+            } else {
+                event.c
+            };
+
             // Initialize cols with basic operands and flags derived from the current event.
             {
                 cols.a = Word::from(event.a);
-                if is_signed_word_operation(event.opcode) {
-                    cols.b = Word::from(event.b as i32 as i64 as u64);
-                    cols.c = Word::from(event.c as i32 as i64 as u64);
-                } else if is_unsigned_word_operation(event.opcode) {
-                    cols.b = Word::from(event.b as u32 as u64);
-                    cols.c = Word::from(event.c as u32 as u64);
-                } else {
-                    cols.b = Word::from(event.b);
-                    cols.c = Word::from(event.c);
-                }
+                cols.b = Word::from(b);
+                cols.c = Word::from(c);
 
                 cols.is_real = F::one();
 
@@ -363,31 +312,32 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 let not_word_operation =
                     F::one() - cols.is_divw - cols.is_remw - cols.is_divuw - cols.is_remuw;
                 cols.is_real_not_word = cols.is_real * not_word_operation;
-                cols.is_c_0.populate(event.c);
+                cols.is_c_0.populate(c);
             }
 
             let (quotient, remainder) = get_quotient_and_remainder(event.b, event.c, event.opcode);
-
             cols.quotient = Word::from(quotient);
             cols.remainder = Word::from(remainder);
-            let b = if is_signed_word_operation(event.opcode) {
-                event.b as i32 as i64 as u64
-            } else if is_unsigned_word_operation(event.opcode) {
-                event.b as u32 as u64
+
+            // Get the computational form of `quotient`.
+            let quotient_comp = if is_unsigned_word_operation(event.opcode) {
+                quotient as u32 as u64
             } else {
-                event.b
+                quotient
             };
-            let c = if is_signed_word_operation(event.opcode) {
-                event.c as i32 as i64 as u64
-            } else if is_unsigned_word_operation(event.opcode) {
-                event.c as u32 as u64
+            cols.quotient_comp = Word::from(quotient_comp);
+
+            // Get the computational form of `remainder`.
+            let remainder_comp = if is_unsigned_word_operation(event.opcode) {
+                remainder as u32 as u64
             } else {
-                event.c
+                remainder
             };
+            cols.remainder_comp = Word::from(remainder_comp);
 
             // Calculate flags for sign detection.
             {
-                if is_signed_operation(event.opcode) {
+                if is_signed_64bit_operation(event.opcode) {
                     cols.rem_neg = F::from_canonical_u8(get_msb(remainder));
                     cols.b_neg = F::from_canonical_u8(get_msb(event.b));
                     cols.c_neg = F::from_canonical_u8(get_msb(event.c));
@@ -406,11 +356,11 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                     cols.abs_c = Word::from((c as i64).abs() as u64);
                     cols.max_abs_c_or_1 = Word::from(u64::max(1, (c as i64).abs() as u64));
                 } else if is_unsigned_word_operation(event.opcode) {
-                    cols.abs_remainder = Word::from(remainder as u32);
+                    cols.abs_remainder = cols.remainder_comp;
                     cols.abs_c = Word::from(event.c as u32);
                     cols.max_abs_c_or_1 = Word::from(u32::max(1, event.c as u32));
                 } else {
-                    cols.abs_remainder = cols.remainder;
+                    cols.abs_remainder = cols.remainder_comp;
                     cols.abs_c = Word::from(event.c);
                     cols.max_abs_c_or_1 = Word::from(u64::max(1, event.c));
                 }
@@ -430,6 +380,9 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 // Set the `alu_event` flags.
                 cols.abs_c_alu_event = cols.c_neg * cols.is_real;
                 cols.abs_rem_alu_event = cols.rem_neg * cols.is_real;
+
+                output.add_u16_range_checks_field(&cols.abs_c.0);
+                output.add_u16_range_checks_field(&cols.abs_remainder.0);
 
                 // Populate the c_neg_operation and rem_neg_operation.
                 {
@@ -489,17 +442,24 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             // Calculate c * quotient + remainder.
             {
                 let mut blu_events = vec![];
-                let c_times_quotient_byte = {
-                    if is_signed_operation(event.opcode) {
-                        (((quotient as i64) as i128) * ((event.c as i64) as i128)).to_le_bytes()
-                    } else if is_signed_word_operation(event.opcode) {
-                        (((quotient as i32) * (event.c as i32)) as i128).to_le_bytes()
-                    } else if is_unsigned_word_operation(event.opcode) {
-                        (((quotient as u32) * (event.c as u32)) as u128).to_le_bytes()
-                    } else {
-                        ((quotient as u128) * (event.c as u128)).to_le_bytes()
-                    }
+                let mut c_times_quotient_byte = [0u8; 16];
+
+                let c_times_quotient_byte_lower =
+                    ((Wrapping(quotient_comp) * Wrapping(c)).0 as u64).to_le_bytes();
+
+                let c_times_quotient_byte_upper = if is_signed_64bit_operation(event.opcode)
+                    || is_signed_word_operation(event.opcode)
+                {
+                    ((((quotient_comp as i64) as i128).wrapping_mul((c as i64) as i128) >> 64)
+                        as u64)
+                        .to_le_bytes()
+                } else {
+                    (((quotient_comp as u128 * c as u128) >> 64) as u64).to_le_bytes()
                 };
+
+                c_times_quotient_byte[..8].copy_from_slice(&c_times_quotient_byte_lower);
+                c_times_quotient_byte[8..].copy_from_slice(&c_times_quotient_byte_upper);
+
                 let c_times_quotient_u16: [u16; LONG_WORD_SIZE] = core::array::from_fn(|i| {
                     u16::from_le_bytes([
                         c_times_quotient_byte[2 * i],
@@ -509,48 +469,29 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
                 cols.c_times_quotient = c_times_quotient_u16.map(F::from_canonical_u16);
 
-                // Quotient needs to be truncated in the case of unsigned word operation for the
-                // following computation because unsigned word operations still sign extend the u32
-                // result.
-                let quotient_u32 = if is_unsigned_word_operation(event.opcode) {
-                    quotient as u32 as u64
-                } else {
-                    quotient
-                };
-                cols.quotient_comp = Word::from(quotient_u32);
+                cols.c_times_quotient_lower.populate(
+                    &mut blu_events,
+                    quotient_comp,
+                    c,
+                    false,
+                    false,
+                    false,
+                );
 
-                if is_signed_word_operation(event.opcode) {
-                    cols.c_times_quotient_lower.populate(
+                if is_signed_64bit_operation(event.opcode) {
+                    cols.c_times_quotient_upper.populate(
                         &mut blu_events,
-                        quotient_u32,
+                        quotient_comp,
                         c,
-                        false,
-                        false,
                         true,
-                    );
-                } else {
-                    cols.c_times_quotient_lower.populate(
-                        &mut blu_events,
-                        quotient_u32,
-                        c,
-                        false,
                         false,
                         false,
                     );
                 }
-                if is_signed_operation(event.opcode) {
+                if is_unsigned_64bit_operation(event.opcode) {
                     cols.c_times_quotient_upper.populate(
                         &mut blu_events,
-                        quotient,
-                        c,
-                        true,
-                        false,
-                        false,
-                    );
-                } else if is_unsigned_operation(event.opcode) {
-                    cols.c_times_quotient_upper.populate(
-                        &mut blu_events,
-                        quotient,
+                        quotient_comp,
                         c,
                         false,
                         false,
@@ -560,44 +501,23 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
                 output.add_byte_lookup_events(blu_events);
 
-                let remainder_bytes = {
-                    if is_signed_operation(event.opcode) {
-                        ((remainder as i64) as i128).to_le_bytes()
-                    } else if is_signed_word_operation(event.opcode) {
-                        ((remainder as i32) as i128).to_le_bytes()
-                    } else if is_unsigned_word_operation(event.opcode) {
-                        ((remainder as u32) as u128).to_le_bytes()
-                    } else {
-                        (remainder as u128).to_le_bytes()
-                    }
-                };
-                let remainder_u16: [u16; LONG_WORD_SIZE] = core::array::from_fn(|i| {
-                    u16::from_le_bytes([remainder_bytes[2 * i], remainder_bytes[2 * i + 1]])
-                });
-
-                // Remainder needs to be truncated/sign extended for c * quotient + remainder
-                // computation.
-                if is_word_operation(event.opcode) {
-                    cols.remainder_comp = Word([
-                        F::from_canonical_u16(remainder_u16[0]),
-                        F::from_canonical_u16(remainder_u16[1]),
-                        F::from_canonical_u16(remainder_u16[2]),
-                        F::from_canonical_u16(remainder_u16[3]),
-                    ]);
-                } else {
-                    cols.remainder_comp = cols.remainder;
+                let mut remainder_u16 = [0u32; 8];
+                for i in 0..4 {
+                    remainder_u16[i] = cols.remainder_comp[i].as_canonical_u32();
+                    remainder_u16[i + 4] = cols.rem_neg.as_canonical_u32() * ((1 << 16) - 1);
                 }
 
                 // Add remainder to product.
                 let mut carry = [0u32; 8];
                 let base = 1 << 16;
                 for i in 0..LONG_WORD_SIZE {
-                    let mut x = c_times_quotient_u16[i] as u32 + remainder_u16[i] as u32;
+                    let mut x = c_times_quotient_u16[i] as u32 + remainder_u16[i];
                     if i > 0 {
                         x += carry[i - 1];
                     }
                     carry[i] = x / base;
                     cols.carry[i] = F::from_canonical_u32(carry[i]);
+                    output.add_u16_range_check((x & 0xFFFF) as u16);
                 }
                 // Range check.
                 {
@@ -644,6 +564,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             cols.abs_c[0] = F::one();
             cols.c[0] = F::one();
             cols.max_abs_c_or_1[0] = F::one();
+            cols.b_not_neg_not_overflow = F::one();
 
             cols.is_c_0.populate(1);
 
@@ -663,10 +584,6 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
         } else {
             !shard.divrem_events.is_empty()
         }
-    }
-
-    fn local_only(&self) -> bool {
-        true
     }
 }
 
@@ -688,7 +605,10 @@ where
         let one: AB::Expr = AB::F::one().into();
         let zero: AB::Expr = AB::F::zero().into();
         let is_word_operation = local.is_divw + local.is_remw + local.is_divuw + local.is_remuw;
+        let is_not_word_operation = local.is_divu + local.is_remu + local.is_div + local.is_rem;
         let is_signed_word_operation = local.is_divw + local.is_remw;
+        let is_unsigned_word_operation = local.is_divuw + local.is_remuw;
+        let is_signed_type = local.is_div + local.is_rem + local.is_divw + local.is_remw;
         let u16_max = AB::F::from_canonical_u16(u16::MAX);
         builder.assert_eq(
             local.is_real_not_word,
@@ -698,7 +618,6 @@ where
         // Calculate whether b, remainder, and c are negative.
         {
             // Negative if and only if opcode is signed & MSB = 1.
-            let is_signed_type = local.is_div + local.is_rem + local.is_divw + local.is_remw;
             let msb_sign_pairs = [
                 (local.b_msb.msb, local.b_neg),
                 (local.rem_msb.msb, local.rem_neg),
@@ -732,6 +651,59 @@ where
             }
         }
 
+        // Set up `quotient_comp` and `remainder_comp`.
+        {
+            // `quotient_comp` is defined as following.
+            // - `quotient` for 64-bit operations and signed word operations.
+            // - for signed operations, this is the 32-bit result sign-extended to 64 bits.
+            // - `quotient` but truncated to 32-bit for unsigned word operations.
+            for i in 0..WORD_SIZE / 2 {
+                builder.assert_eq(local.quotient_comp[i], local.quotient[i]);
+            }
+
+            for i in WORD_SIZE / 2..WORD_SIZE {
+                builder
+                    .when(is_unsigned_word_operation.clone())
+                    .assert_eq(local.quotient_comp[i], AB::Expr::zero());
+                builder.when(is_signed_word_operation.clone()).assert_eq(
+                    local.quotient_comp[i],
+                    local.quot_msb.msb * AB::F::from_canonical_u16(u16::MAX),
+                );
+                builder.when(is_word_operation.clone()).assert_eq(
+                    local.quotient[i],
+                    local.quot_msb.msb * AB::F::from_canonical_u16(u16::MAX),
+                );
+                builder
+                    .when(is_not_word_operation.clone())
+                    .assert_eq(local.quotient_comp[i], local.quotient[i]);
+            }
+
+            // `remainder_comp` is defined as following.
+            // - `remainder` for 64-bit operations and signed word operations.
+            // - for signed operations, this is the 32-bit result sign-extended to 64 bits.
+            // - `remainder_comp` but truncated to 32-bit for unsigned word operations.
+            for i in 0..WORD_SIZE / 2 {
+                builder.assert_eq(local.remainder_comp[i], local.remainder[i]);
+            }
+
+            for i in WORD_SIZE / 2..WORD_SIZE {
+                builder
+                    .when(is_unsigned_word_operation.clone())
+                    .assert_eq(local.remainder_comp[i], AB::Expr::zero());
+                builder.when(is_signed_word_operation.clone()).assert_eq(
+                    local.remainder_comp[i],
+                    local.rem_msb.msb * AB::F::from_canonical_u16(u16::MAX),
+                );
+                builder.when(is_word_operation.clone()).assert_eq(
+                    local.remainder[i],
+                    local.rem_msb.msb * AB::F::from_canonical_u16(u16::MAX),
+                );
+                builder
+                    .when(is_not_word_operation.clone())
+                    .assert_eq(local.remainder_comp[i], local.remainder[i]);
+            }
+        }
+
         // Use the mul operation to compute c * quotient and compare it to local.c_times_quotient.
         {
             let lower_half: [AB::Expr; 4] = [
@@ -741,39 +713,23 @@ where
                 local.c_times_quotient[3].into(),
             ];
 
-            // The lower 8 bytes of c_times_quotient must match the lower 8 bytes of (c * quotient).
+            // The lower 8 bytes of c_times_quotient are always computed by `MUL` opcode.
             <MulOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
                 MulOperationInput::new(
                     Word(lower_half),
-                    local.quotient_comp.map(|x| x.into()),
-                    local.c.map(|x| x.into()),
+                    local.quotient_comp.map(Into::into),
+                    local.c.map(Into::into),
                     local.c_times_quotient_lower,
                     local.is_real.into(),
-                    local.is_real.into() - is_signed_word_operation.clone(),
+                    local.is_real.into(), /* local.is_real.into() -
+                                           * is_signed_word_operation.clone(), */
                     AB::Expr::zero(),
-                    is_signed_word_operation.clone(),
+                    AB::Expr::zero(), // is_signed_word_operation.clone(),
                     AB::Expr::zero(),
                     AB::Expr::zero(),
                 ),
             );
-
-            for i in 0..WORD_SIZE / 2 {
-                builder.assert_eq(local.quotient_comp[i], local.quotient[i]);
-            }
-
-            for i in WORD_SIZE / 2..WORD_SIZE {
-                builder
-                    .when(local.is_divuw + local.is_remuw)
-                    .assert_eq(local.quotient_comp[i], AB::Expr::zero());
-                builder.when(local.is_divw + local.is_remw).assert_eq(
-                    local.quotient_comp[i],
-                    local.quot_msb.msb * AB::F::from_canonical_u16(u16::MAX),
-                );
-                builder
-                    .when(one.clone() - is_word_operation.clone())
-                    .assert_eq(local.quotient_comp[i], local.quotient[i]);
-            }
 
             // SAFETY: Since exactly one flag is turned on, `is_mulh` and `is_mulhu` are correct.
             let is_mulh = local.is_div + local.is_rem;
@@ -786,33 +742,33 @@ where
                 local.c_times_quotient[7].into(),
             ];
 
-            // The upper 8 bytes of c_times_quotient must match the upper 8 bytes of (c * quotient).
-            // Only required for non-word operations.
+            // The upper 8 bytes of c_times_quotient are computed by `MULH` or `MULHU` opcode.
             <MulOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
                 MulOperationInput::new(
                     Word(upper_half),
-                    local.quotient.map(|x| x.into()),
-                    local.c.map(|x| x.into()),
+                    local.quotient_comp.map(Into::into),
+                    local.c.map(Into::into),
                     local.c_times_quotient_upper,
                     local.is_real_not_word.into(),
                     AB::Expr::zero(),
-                    is_mulh,
+                    is_mulh.clone(),
                     AB::Expr::zero(),
-                    is_mulhu,
+                    is_mulhu.clone(),
                     AB::Expr::zero(),
                 ),
             );
         }
 
-        // Calculate is_overflow. is_overflow_word = is_equal(b as u32, -2^{31}) * is_equal(c as
-        // u32, -1i32 as u32) * is_signed is_overflow_not_word = is_equal(b, -2^{63}) *
-        // is_equal(c, -1i64 as u64) * is_signed
+        // Calculate is_overflow. This is true if and only if `b, c` are overflow cases, and it's a
+        // signed operation. The overflow cases for `b, c` are defined as
+        // - For word operations, `b == -2^31` and `c == -1`.
+        // - For 64-bit operations, `b == -2^63`, and `c == -1`.
         {
             <IsEqualWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
                 IsEqualWordOperationInput::new(
-                    local.adapter.b().map(|x| x.into()),
+                    local.adapter.b().map(Into::into),
                     Word::from(i64::MIN as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_b,
                     local.is_real_not_word.into(),
@@ -822,15 +778,15 @@ where
             <IsEqualWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
                 IsEqualWordOperationInput::new(
-                    local.adapter.c().map(|x| x.into()),
+                    local.adapter.c().map(Into::into),
                     Word::from(-1i64 as u64).map(|x: AB::F| x.into()),
                     local.is_overflow_c,
                     local.is_real_not_word.into(),
                 ),
             );
 
-            let mut truncated_b = local.adapter.b().map(|x| x.into());
-            let mut truncated_c = local.adapter.c().map(|x| x.into());
+            let mut truncated_b = local.adapter.b().map(Into::into);
+            let mut truncated_c = local.adapter.c().map(Into::into);
             truncated_b[2] = AB::Expr::zero();
             truncated_c[2] = AB::Expr::zero();
             truncated_b[3] = AB::Expr::zero();
@@ -856,14 +812,27 @@ where
                 ),
             );
 
-            let is_signed = local.is_div + local.is_rem + local.is_divw + local.is_remw;
-
             builder.assert_eq(
                 local.is_overflow,
                 local.is_overflow_b.is_diff_zero.result
                     * local.is_overflow_c.is_diff_zero.result
-                    * is_signed,
+                    * is_signed_type.clone(),
             );
+
+            builder.assert_eq(
+                local.b_neg_not_overflow,
+                local.b_neg * (AB::Expr::one() - local.is_overflow),
+            );
+            builder.assert_eq(
+                local.b_not_neg_not_overflow,
+                (AB::Expr::one() - local.b_neg) * (AB::Expr::one() - local.is_overflow),
+            );
+
+            // For overflow cases, explicitly constrain the result.
+            for i in 0..WORD_SIZE {
+                builder.when(local.is_overflow).assert_eq(local.quotient[i], local.b[i]);
+                builder.when(local.is_overflow).assert_eq(local.remainder[i], AB::Expr::zero());
+            }
         }
 
         // Add remainder to product c * quotient, and compare it to b.
@@ -899,75 +868,19 @@ where
 
             // Compare c_times_quotient_plus_remainder to b by checking each limb.
             for i in 0..LONG_WORD_SIZE {
-                if i < WORD_SIZE / 2 {
-                    // The lower 8 bytes of the result must match the corresponding bytes in b.
-                    builder.assert_eq(
-                        local.adapter.b()[i],
-                        c_times_quotient_plus_remainder[i].clone(),
-                    );
-                } else if i < WORD_SIZE {
-                    // The upper 8 bytes of the result must match the corresponding bytes in b.
-                    builder.when(one.clone() - is_word_operation.clone()).assert_eq(
-                        local.adapter.b()[i],
-                        c_times_quotient_plus_remainder[i].clone(),
-                    );
-
+                if i < WORD_SIZE {
                     builder
-                        .when(is_word_operation.clone())
-                        .when(local.b_neg_not_overflow)
-                        .assert_eq(
-                            c_times_quotient_plus_remainder[i].clone(),
-                            AB::F::from_canonical_u16(u16::MAX),
-                        );
-
-                    builder
-                        .when(is_word_operation.clone())
-                        .when(local.b_not_neg_not_overflow)
-                        .assert_eq(c_times_quotient_plus_remainder[i].clone(), AB::F::zero());
-
-                    // Since c * quotient is calculated using MULW, the result is sign extended up
-                    // to WORD_SIZE in the overflow case.
-                    builder.when(is_word_operation.clone()).when(local.is_overflow).assert_eq(
-                        c_times_quotient_plus_remainder[i].clone(),
-                        AB::F::from_canonical_u16(u16::MAX),
-                    );
+                        .when_not(local.is_overflow)
+                        .assert_eq(local.b[i], c_times_quotient_plus_remainder[i].clone());
                 } else {
-                    // The upper 8 bytes must reflect the sign of b in two's complement:
-                    // - All 1s (0xff) for negative b.
-                    // - All 0s for non-negative b.
-                    // let not_overflow = one.clone() - local.is_overflow;
-                    builder.when(local.b_neg_not_overflow).assert_eq(
+                    builder.when_not(local.is_overflow).assert_eq(
+                        local.b_neg * AB::F::from_canonical_u16(u16::MAX),
                         c_times_quotient_plus_remainder[i].clone(),
-                        AB::F::from_canonical_u16(u16::MAX),
                     );
-                    builder
-                        .when(local.b_not_neg_not_overflow)
-                        .assert_zero(c_times_quotient_plus_remainder[i].clone());
-
-                    // The only exception to the upper-8-byte check is the overflow case.
-                    builder
-                        .when(local.is_overflow * (one.clone() - is_word_operation.clone()))
-                        .assert_zero(c_times_quotient_plus_remainder[i].clone());
                 }
             }
 
-            // Constrain that the remainder used for the calculation is sign-extended/truncated
-            // correctly (in case of word operation).
-            for i in 0..WORD_SIZE {
-                if i < WORD_SIZE / 2 {
-                    builder
-                        .when(is_word_operation.clone())
-                        .assert_eq(local.remainder_comp[i], local.remainder[i]);
-                } else {
-                    builder.when(is_word_operation.clone()).assert_eq(
-                        local.remainder_comp[i],
-                        local.rem_neg * AB::F::from_canonical_u16(u16::MAX),
-                    );
-                }
-                builder
-                    .when(one.clone() - is_word_operation.clone())
-                    .assert_eq(local.remainder_comp[i], local.remainder[i]);
-            }
+            builder.slice_range_check_u16(&c_times_quotient_plus_remainder, local.is_real);
         }
 
         // `a` must equal remainder or quotient depending on the opcode.
@@ -980,24 +893,13 @@ where
                 .assert_eq(local.remainder[i], local.a[i]);
         }
 
-        for i in WORD_SIZE / 2..WORD_SIZE {
-            builder.when(is_word_operation.clone()).assert_eq(
-                local.quot_msb.msb * AB::F::from_canonical_u16(u16::MAX),
-                local.quotient[i],
-            );
-            builder.when(is_word_operation.clone()).assert_eq(
-                local.rem_msb.msb * AB::F::from_canonical_u16(u16::MAX),
-                local.remainder[i],
-            );
-        }
-
         // remainder and b must have the same sign. Due to the intricate nature of sign logic in ZK,
         // we will check a slightly stronger condition:
         //
         // 1. If remainder < 0, then b < 0.
         // 2. If remainder > 0, then b >= 0.
         {
-            // A number is 0 if and only if the sum of the two limbs equals to 0.
+            // A number is 0 if and only if the sum of the limbs equals to 0.
             let mut rem_limb_sum = zero.clone();
             for i in 0..WORD_SIZE {
                 rem_limb_sum = rem_limb_sum.clone() + local.remainder[i].into();
@@ -1021,7 +923,7 @@ where
             <IsZeroWordOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
                 IsZeroWordOperationInput::new(
-                    local.adapter.c().map(|x| x.into()),
+                    local.c.map(Into::into),
                     local.is_c_0,
                     local.is_real.into(),
                 ),
@@ -1032,6 +934,11 @@ where
                 builder
                     .when(local.is_c_0.result)
                     .assert_eq(local.quotient[i], AB::F::from_canonical_u16(u16::MAX));
+            }
+
+            // If is_c_0 is true, then the remainder must be `local.b`.
+            for i in 0..WORD_SIZE {
+                builder.when(local.is_c_0.result).assert_eq(local.remainder_comp[i], local.b[i]);
             }
         }
 
@@ -1052,12 +959,13 @@ where
             <AddOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
                 AddOperationInput::new(
-                    local.c.map(|x| x.into()),
-                    local.abs_c.map(|x| x.into()),
+                    local.c.map(Into::into),
+                    local.abs_c.map(Into::into),
                     local.c_neg_operation,
                     local.abs_c_alu_event.into(),
                 ),
             );
+            builder.slice_range_check_u16(&local.abs_c.0, local.is_real);
             builder.when(local.abs_c_alu_event).assert_word_eq(
                 Word([zero.clone(), zero.clone(), zero.clone(), zero.clone()]),
                 local.c_neg_operation.value,
@@ -1066,12 +974,13 @@ where
             <AddOperation<AB::F> as SP1Operation<AB>>::eval(
                 builder,
                 AddOperationInput::new(
-                    local.remainder.map(|x| x.into()),
-                    local.abs_remainder.map(|x| x.into()),
+                    local.remainder_comp.map(Into::into),
+                    local.abs_remainder.map(Into::into),
                     local.rem_neg_operation,
                     local.abs_rem_alu_event.into(),
                 ),
             );
+            builder.slice_range_check_u16(&local.abs_remainder.0, local.is_real);
             builder.when(local.abs_rem_alu_event).assert_word_eq(
                 Word([zero.clone(), zero.clone(), zero.clone(), zero.clone()]),
                 local.rem_neg_operation.value,
@@ -1360,7 +1269,7 @@ where
                 local.state.pc,
                 opcode,
                 [base_opcode, funct3, funct7],
-                local.a.map(|x| x.into()),
+                local.a.map(Into::into),
                 local.adapter,
                 local.is_real.into(),
             );

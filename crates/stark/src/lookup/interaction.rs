@@ -124,7 +124,6 @@ impl<F: Field> Interaction<F> {
         Var: Into<Expr> + Copy,
     {
         let mut multiplicity_eval = self.multiplicity.constant.into();
-        // let mut mult_value = self.multiplicity.constant.into();
         let mut betas = beta.powers();
         for (column, weight) in self.multiplicity.column_weights.iter() {
             let weight: Expr = (*weight).into();

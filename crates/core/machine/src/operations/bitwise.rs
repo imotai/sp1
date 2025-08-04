@@ -1,17 +1,15 @@
+use crate::air::SP1Operation;
 use serde::{Deserialize, Serialize};
+use slop_algebra::Field;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode, Opcode,
 };
+use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 use sp1_primitives::consts::WORD_BYTE_SIZE;
 use sp1_stark::air::SP1AirBuilder;
 
-use slop_algebra::Field;
-use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
-
-use crate::air::SP1Operation;
-
-/// A set of columns needed to compute the bitwise operation over four bytes.
+/// A set of columns needed to compute the bitwise operation over u64s in byte form.
 #[derive(
     AlignedBorrow,
     Default,
@@ -51,7 +49,7 @@ impl<F: Field> BitwiseOperation<F> {
         }
     }
 
-    /// Evaluate the bitwise operation over four bytes.
+    /// Evaluate the bitwise operation over two u64s in byte form.
     /// Assumes that `is_real` is boolean.
     /// If `is_real` is true, constrains that the inputs are valid bytes.
     /// If `is_real` is true, constrains that the `result` is the correct result.

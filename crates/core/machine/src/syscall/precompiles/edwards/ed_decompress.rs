@@ -135,6 +135,7 @@ impl<V: Copy> EdDecompressCols<V> {
         V: Into<AB::Expr>,
     {
         builder.assert_bool(self.sign);
+        builder.assert_bool(self.is_real);
 
         let y_limbs = builder.generate_limbs(&self.y_access, self.is_real.into());
         let y: Limbs<AB::Expr, U32> = Limbs(y_limbs.try_into().expect("failed to convert limbs"));
@@ -182,52 +183,23 @@ impl<V: Copy> EdDecompressCols<V> {
 
         let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, self.ptr, self.is_real.into());
 
-        // addrs[0] = ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            self.addrs[0],
-            self.is_real.into(),
-        );
-        let eight = AB::F::from_canonical_u32(8u32);
-        // addrs[i] = addrs[i - 1] + 8.
-        for i in 1..WORDS_FIELD_ELEMENT {
+        // addrs[i] = ptr + 8 * i.
+        for i in 0..WORDS_FIELD_ELEMENT {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    self.addrs[i - 1].value[0].into(),
-                    self.addrs[i - 1].value[1].into(),
-                    self.addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 self.addrs[i],
                 self.is_real.into(),
             );
         }
 
-        // read_ptrs[0] = ptr + 32.
-        let thirty_two = AB::F::from_canonical_u32(32u32);
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
-            Word([thirty_two.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            self.read_ptrs[0],
-            self.is_real.into(),
-        );
-
-        // read_ptrs[i] = read_ptrs[i - 1] + 8.
-        for i in 1..WORDS_FIELD_ELEMENT {
+        // read_ptrs[i] = ptr + 8 * i + 32.
+        for i in 0..WORDS_FIELD_ELEMENT {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    self.read_ptrs[i - 1].value[0].into(),
-                    self.read_ptrs[i - 1].value[1].into(),
-                    self.read_ptrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64 + 32),
                 self.read_ptrs[i],
                 self.is_real.into(),
             );
@@ -350,10 +322,6 @@ impl<F: PrimeField32, E: EdwardsParameters> MachineAir<F> for EdDecompressChip<E
         } else {
             !shard.get_precompile_events(SyscallCode::ED_DECOMPRESS).is_empty()
         }
-    }
-
-    fn local_only(&self) -> bool {
-        true
     }
 }
 

@@ -7,6 +7,7 @@ use super::poseidon2::{
 use crate::air::WordAirBuilder;
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
+use sp1_core_executor::ByteOpcode;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::SP1AirBuilder,
@@ -32,8 +33,6 @@ impl<F: PrimeField32> GlobalInteractionOperation<F> {
         is_receive: bool,
         kind: u8,
     ) -> (SepticCurve<F>, u8, [F; 16], [F; 16]) {
-        // let x_start = SepticExtension::<F>::from_base_fn(|i| F::from_canonical_u32(values[i]))
-        //     + SepticExtension::from_base(F::from_canonical_u32((kind as u32) << 24));
         let mut new_values = values.map(|x| F::from_canonical_u32(x));
         new_values[0] = new_values[0] + F::from_canonical_u32((kind as u32) << 24);
         let (point, offset, m_trial, m_hash) = SepticCurve::<F>::lift_x(new_values);
@@ -103,10 +102,13 @@ impl<F: Field> GlobalInteractionOperation<F> {
         is_send: AB::Expr,
         is_real: AB::Var,
         kind: AB::Var,
-        shard_limbs: [AB::Var; 2],
+        message_0_limbs: [AB::Var; 2],
     ) {
         // Constrain that the `is_real` is boolean.
         builder.assert_bool(is_real);
+        builder.when(is_real).assert_eq(is_receive.clone() + is_send.clone(), AB::Expr::one());
+        builder.assert_bool(is_receive.clone());
+        builder.assert_bool(is_send.clone());
 
         // Compute the offset and range check each bits, ensuring that the offset is a byte.
         let mut offset = AB::Expr::zero();
@@ -119,14 +121,24 @@ impl<F: Field> GlobalInteractionOperation<F> {
         // interaction kind in the upper bits.
         builder.when(is_real).assert_eq(
             values[0].clone(),
-            shard_limbs[0] + shard_limbs[1] * AB::F::from_canonical_u32(1 << 16),
+            message_0_limbs[0] + message_0_limbs[1] * AB::F::from_canonical_u32(1 << 16),
         );
-        builder.slice_range_check_u16(&[shard_limbs[0].into(), values[7].clone()], is_real);
-        builder.slice_range_check_u8(&[shard_limbs[1]], is_real);
+        builder.slice_range_check_u16(&[message_0_limbs[0].into(), values[7].clone()], is_real);
+        builder.slice_range_check_u8(&[message_0_limbs[1]], is_real);
+        // Range check that the `kind` is at most 6 bits.
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            kind.into(),
+            AB::Expr::from_canonical_u32(6),
+            AB::Expr::zero(),
+            is_real.into(),
+        );
 
         // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate
         // of the Poseidon2 hash is 8. Combining `values[0]` with `kind` is safe, as
-        // `values[0]` is range checked to be 24 bits, and `kind` is known to be small.
+        // `values[0]` is range checked to be 24 bits, and `kind` is known to be 6 bits.
+        // Combining `values[7]` with `offset` is also safe, since `values[7]` is range checked
+        // to be 16 bits, while `offset` is known to be 8 bits.
         let m_trial = [
             values[0].clone() + AB::Expr::from_canonical_u32(1 << 24) * kind,
             values[1].clone(),

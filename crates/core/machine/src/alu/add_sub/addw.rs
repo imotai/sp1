@@ -132,10 +132,6 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
             !shard.addw_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl AddwChip {

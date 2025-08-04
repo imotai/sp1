@@ -173,13 +173,13 @@ impl SP1RecursionProofShape {
     pub fn compress_proof_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 348_064),
-                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_336),
-                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 418_944),
-                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 764_796),
-                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_600),
-                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 245_248),
-                (CompressAir::<BabyBear>::Select(SelectChip), 700_032),
+                (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_904),
+                (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_400),
+                (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 399_968),
+                (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 762_732),
+                (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_664),
+                (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 241_500),
+                (CompressAir::<BabyBear>::Select(SelectChip), 677_984),
                 (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
             ]
             .into_iter()
@@ -439,10 +439,8 @@ pub async fn build_vk_map<C: SP1ProverComponents + 'static>(
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "Program generation failed for shape {}, with error:
-    {:?}",
+                            "Program generation failed for shape {}, with error: {:?}",
                             i,
-                            // shape,
                             e
                         );
                         panic_tx.send(i).unwrap();
@@ -657,39 +655,15 @@ mod tests {
     async fn test_max_arity() {
         setup_logger();
         let prover = SP1ProverBuilder::new().build().await;
-        // arity 3:
-        // let shape = [
-        //     (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 154816),
-        //     (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 393408),
-        //     (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 91232),
-        //     (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 148256),
-        //     (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 89824),
-        //     (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 249984),
-        //     (CompressAir::<BabyBear>::Select(SelectChip), 604800),
-        //     (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
-        // ]
-        // .into_iter()
-        // .collect()
-
-        // [
-        //     (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_392),
-        //     (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 441_824),
-        //     (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 413_472),
-        //     (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 753_588),
-        //     (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_184),
-        //     (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 200_400),
-        //     (CompressAir::<BabyBear>::Select(SelectChip), 700_008),
-        //     (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
-        // ]
 
         let shape = [
-            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347_904),
-            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442_304),
-            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 416_864),
-            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 764_796),
-            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101_600),
-            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 239_904),
-            (CompressAir::<BabyBear>::Select(SelectChip), 700_032),
+            (CompressAir::<BabyBear>::MemoryConst(MemoryConstChip::default()), 347904),
+            (CompressAir::<BabyBear>::MemoryVar(MemoryVarChip::default()), 442400),
+            (CompressAir::<BabyBear>::BaseAlu(BaseAluChip), 399968),
+            (CompressAir::<BabyBear>::ExtAlu(ExtAluChip), 762732),
+            (CompressAir::<BabyBear>::Poseidon2Wide(Poseidon2WideChip), 101664),
+            (CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip), 241500),
+            (CompressAir::<BabyBear>::Select(SelectChip), 677984),
             (CompressAir::<BabyBear>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()
@@ -718,13 +692,7 @@ mod tests {
                 b.poseidon2_linear_layer_events,
             ),
             poseidon2_sbox_events: max(a.poseidon2_sbox_events, b.poseidon2_sbox_events),
-            fri_fold_events: max(a.fri_fold_events, b.fri_fold_events),
-            batch_fri_events: max(a.batch_fri_events, b.batch_fri_events),
             select_events: max(a.select_events, b.select_events),
-            exp_reverse_bits_len_events: max(
-                a.exp_reverse_bits_len_events,
-                b.exp_reverse_bits_len_events,
-            ),
             prefix_sum_checks_events: max(a.prefix_sum_checks_events, b.prefix_sum_checks_events),
             commit_pv_hash_events: max(a.commit_pv_hash_events, b.commit_pv_hash_events),
         }
@@ -781,10 +749,7 @@ mod tests {
             poseidon2_sbox_events: shape
                 .height(&CompressAir::<BabyBear>::Poseidon2SBox(Poseidon2SBoxChip))
                 .unwrap_or(0),
-            fri_fold_events: 0,
-            batch_fri_events: 0,
             select_events: shape.height(&CompressAir::<BabyBear>::Select(SelectChip)).unwrap(),
-            exp_reverse_bits_len_events: 0,
             prefix_sum_checks_events: shape
                 .height(&CompressAir::<BabyBear>::PrefixSumChecks(PrefixSumChecksChip))
                 .unwrap_or(0),

@@ -233,10 +233,6 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
             !shard.get_precompile_events(SyscallCode::POSEIDON2).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<F> BaseAir<F> for Poseidon2Chip {
@@ -258,25 +254,11 @@ where
         let ptr = SyscallAddrOperation::<AB::F>::eval(builder, 64, local.ptr, local.is_real.into());
 
         // Evaluate the address.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.addrs[0],
-            local.is_real.into(),
-        );
-
-        let eight = AB::F::from_canonical_u32(8u32);
-        for i in 1..local.addrs.len() {
+        for i in 0..local.addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.addrs[i - 1].value[0].into(),
-                    local.addrs[i - 1].value[1].into(),
-                    local.addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.addrs[i],
                 local.is_real.into(),
             );
@@ -333,7 +315,7 @@ where
             values
         };
 
-        // // Convert u64s to u32s for Poseidon2 (16 u32 values).
+        // Convert u64s to u32s for Poseidon2 (16 u32 values).
         let output: [AB::Expr; 16] = {
             let mut values = core::array::from_fn(|_| AB::Expr::zero());
             for i in 0..8 {

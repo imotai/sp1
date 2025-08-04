@@ -68,7 +68,6 @@ pub struct RecursiveBasefoldProof<B: RecursiveBasefoldConfig> {
     /// The commitments to the folded polynomials produced in the commit phase.
     pub fri_commitments: Vec<<B::Tcs as RecursiveTcs>::Commitment>,
     /// The query openings for the individual multilinear polynmomials.
-    ///
     /// The vector is indexed by the batch number.
     pub component_polynomials_query_openings: Vec<RecursiveTensorCsOpening<B::Tcs>>,
     /// The query openings and the FRI query proofs for the FRI query phase.

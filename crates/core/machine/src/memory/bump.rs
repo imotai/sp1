@@ -19,7 +19,7 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{InteractionScope, MachineAir};
+use sp1_stark::air::MachineAir;
 
 pub(crate) const NUM_MEMORY_BUMP_COLS: usize = size_of::<MemoryBumpCols<u8>>();
 
@@ -62,7 +62,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
         let blu_batches = event_iter
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|(event, _)| {
+                events.iter().for_each(|(event, addr)| {
                     let mut row = [F::zero(); NUM_MEMORY_BUMP_COLS];
                     let cols: &mut MemoryBumpCols<F> = row.as_mut_slice().borrow_mut();
                     let bump_event = MemoryRecordEnum::Read(MemoryReadRecord {
@@ -73,6 +73,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                         timestamp: (event.current_record().timestamp >> 24) << 24,
                     });
                     cols.access.populate(bump_event, &mut blu);
+                    blu.add_u16_range_checks(&[
+                        (addr & 0xFFFF) as u16,
+                        (addr >> 16) as u16,
+                        (addr >> 32) as u16,
+                    ]);
                 });
                 blu
             })
@@ -131,10 +136,6 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
     fn included(&self, shard: &Self::Record) -> bool {
         shard.cpu_event_count != 0
     }
-
-    fn commit_scope(&self) -> InteractionScope {
-        InteractionScope::Local
-    }
 }
 
 impl<AB> Air<AB> for MemoryBumpChip
@@ -145,7 +146,14 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &MemoryBumpCols<AB::Var> = (*local).borrow();
+
+        // Check that `is_real` is a boolean value.
         builder.assert_bool(local.is_real);
+
+        // Check that the address is a valid u48 address.
+        builder.slice_range_check_u16(&local.addr.map(Into::into), local.is_real);
+
+        // Bump the memory timestamp to a multiple of 2^24, by doing an additional read.
         builder.eval_memory_access_read(
             local.clk_high,
             AB::Expr::zero(),

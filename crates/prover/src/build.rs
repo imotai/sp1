@@ -16,10 +16,9 @@ use sp1_recursion_compiler::{
     ir::Builder,
 };
 use sp1_recursion_executor::RecursionPublicValues;
-use std::{borrow::Borrow, path::PathBuf};
-// use sp1_recursion_core::air::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
 use sp1_stark::{MachineVerifyingKey, ShardProof};
+use std::{borrow::Borrow, path::PathBuf};
 
 pub use sp1_recursion_circuit::witness::{OuterWitness, Witnessable};
 
@@ -156,7 +155,7 @@ pub fn build_constraints_and_witness(
 /// Generate a dummy proof that we can use to build the circuit. We need this to know the shape of
 /// the proof.
 pub async fn dummy_proof() -> (MachineVerifyingKey<OuterSC>, ShardProof<OuterSC>) {
-    let elf = include_bytes!("../elf/riscv32im-succinct-zkvm-elf");
+    let elf = include_bytes!("../elf/riscv64im-succinct-zkvm-elf");
 
     tracing::info!("initializing prover");
     let prover = SP1ProverBuilder::new().build().await;
@@ -213,7 +212,16 @@ fn build_outer_circuit(template_input: &SP1ShapedWitnessValues<OuterSC>) -> Vec<
     for (vk_pc, template_vk_pc) in vk.pc_start.iter().zip_eq(template_vk.pc_start.iter()) {
         builder.assert_felt_eq(*vk_pc, *template_vk_pc);
     }
-
+    // Constrain the preprocessed heights to be the same as template `vk`.
+    for ((vk_chip, vk_dimension), (template_vk_chip, template_vk_dimension)) in vk
+        .preprocessed_chip_information
+        .iter()
+        .zip_eq(template_vk.preprocessed_chip_information.iter())
+    {
+        assert_eq!(vk_chip, template_vk_chip);
+        builder.assert_felt_eq(vk_dimension.height, template_vk_dimension.height);
+        builder.assert_felt_eq(vk_dimension.num_polynomials, template_vk_dimension.num_polynomials);
+    }
     // Verify the proof.
     SP1WrapVerifier::verify(&mut builder, &recursive_wrap_verifier, input);
 

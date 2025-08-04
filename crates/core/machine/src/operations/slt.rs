@@ -77,7 +77,7 @@ impl<F: Field> LtOperationSigned<F> {
     }
 
     /// Evaluate the signed LT operation.
-    /// Assumes that `b`, `c` are valid `Word`s of two u16 limbs.
+    /// Assumes that `b`, `c` are valid `Word`s of u16 limbs.
     /// Constrains that `is_signed` is boolean.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, constrains that the result is the signed LT of `b` and `c`.
@@ -184,7 +184,7 @@ impl<F: Field> LtOperationUnsigned<F> {
     }
 
     /// Evaluate that LT operation.
-    /// Assumes that `b`, `c` are either valid `Word`s of two u16 limbs.
+    /// Assumes that `b`, `c` are either valid `Word`s of u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, constrains that the result is the LT of `b` and `c`.
     pub fn eval_lt_unsigned<AB>(
@@ -199,7 +199,7 @@ impl<F: Field> LtOperationUnsigned<F> {
         builder.assert_bool(is_real.clone());
 
         // Verify that the limb equality flags are set correctly, i.e. all are boolean and only
-        // at most a single byte flag is set.
+        // at most a single flag is set to one.
         let sum_flags =
             cols.u16_flags[0] + cols.u16_flags[1] + cols.u16_flags[2] + cols.u16_flags[3];
         builder.assert_bool(cols.u16_flags[0]);

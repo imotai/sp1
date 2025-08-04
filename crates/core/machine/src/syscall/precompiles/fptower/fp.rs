@@ -208,10 +208,6 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
             }
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<F, P: FpOpField> BaseAir<F> for FpOpChip<P> {
@@ -234,6 +230,7 @@ where
         builder.assert_bool(local.is_add);
         builder.assert_bool(local.is_sub);
         builder.assert_bool(local.is_mul);
+        builder.assert_bool(local.is_real);
 
         // Check that only one of them is set.
         builder.assert_eq(local.is_add + local.is_sub + local.is_mul, AB::Expr::one());
@@ -278,52 +275,23 @@ where
             local.is_real.into(),
         );
 
-        // x_addrs[0] = x_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.x_addrs[0],
-            local.is_real.into(),
-        );
-
-        let eight = AB::F::from_canonical_u32(8u32);
-        // x_addrs[i] = x_addrs[i - 1] + 8.
-        for i in 1..local.x_addrs.len() {
+        // x_addrs[i] = x_ptr + 8 * i
+        for i in 0..local.x_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.x_addrs[i - 1].value[0].into(),
-                    local.x_addrs[i - 1].value[1].into(),
-                    local.x_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.x_addrs[i],
                 local.is_real.into(),
             );
         }
 
-        // y_addrs[0] = y_ptr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.y_addrs[0],
-            local.is_real.into(),
-        );
-
-        // y_addrs[i] = y_addrs[i - 1] + 8.
-        for i in 1..local.y_addrs.len() {
+        // y_addrs[i] = y_ptr + 8 * i
+        for i in 0..local.y_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.y_addrs[i - 1].value[0].into(),
-                    local.y_addrs[i - 1].value[1].into(),
-                    local.y_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.y_addrs[i],
                 local.is_real.into(),
             );

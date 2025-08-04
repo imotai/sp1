@@ -10,7 +10,7 @@ use slop_algebra::PrimeField32;
 use sp1_core_executor::{ExecutionRecord, RiscvAirId};
 use sp1_curves::weierstrass::{bls12_381::Bls12381BaseField, bn254::Bn254BaseField};
 use sp1_stark::{
-    air::{InteractionScope, MachineAir, SP1_PROOF_NUM_PV_ELTS},
+    air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
     Chip, Machine, MachineShape,
 };
 use strum_macros::{EnumDiscriminants, EnumIter};
@@ -954,7 +954,7 @@ pub mod tests {
     #[test]
     fn core_air_cost_consistency() {
         // Load air costs from file
-        let file = std::fs::File::open("../executor/src/artifacts/rv32im_costs.json").unwrap();
+        let file = std::fs::File::open("../executor/src/artifacts/rv64im_costs.json").unwrap();
         let costs: HashMap<String, u64> = serde_json::from_reader(file).unwrap();
         // Compare with costs computed by machine
         let machine_costs = RiscvAir::<BabyBear>::costs();
@@ -970,7 +970,7 @@ pub mod tests {
         if !dir.exists() {
             std::fs::create_dir_all(dir).unwrap();
         }
-        let file = std::fs::File::create(dir.join("rv32im_costs.json")).unwrap();
+        let file = std::fs::File::create(dir.join("rv64im_costs.json")).unwrap();
         serde_json::to_writer_pretty(file, &costs).unwrap();
     }
 
@@ -1168,34 +1168,49 @@ pub mod tests {
             Opcode::REMUW,
             Opcode::REMW,
         ];
-        let operands = [
-            (1, 1),
-            (123, 456 * 789),
-            (123 * 456, 789),
-            (0xffff * (0xffff - 1), 0xffff),
-            (u64::MAX - 5, u64::MAX - 7),
-            (u64::MAX - 5, 7),
-            (1 << 63, u64::MAX),
-            ((1 << 31) as u32 as u64, u32::MAX as i32 as i64 as u64),
-            (1, 0),
-            (0, 0),
-            (0xffffffffu32 as u64, 0xffffffffu32 as u64),
-            (0x80000000u32 as u64, 0x80000000u32 as u64),
-            (0x7fffffffu32 as u64, 0x7fffffffu32 as u64),
-            (0xffff0000, 0xffff0000),
-            (0x0000ffff, 0x0000ffff),
-            (i32::MIN as u64, 1u64),
-            (i32::MAX as u64, -1i32 as u64),
-            (u32::MAX as u64, u32::MAX as u64),
-            (0xffffffff, 2),
-            (0xffffffff, 3),
-        ];
+
+        let mut operands = Vec::<u64>::new();
+        for i in 0..5 {
+            operands.push(i);
+            operands.push(1 << i);
+            operands.push(u64::MAX - (1 << i) + 1);
+            operands.push(u64::MAX - i);
+            operands.push((1 << 16) - i);
+            operands.push((1 << 16) + i);
+            operands.push((1 << 31) - i);
+            operands.push((1 << 31) + i);
+            operands.push((1 << 63) - i);
+            operands.push((1 << 63) + i);
+            operands.push((1 << 32) - i);
+            operands.push((1 << 32) + i);
+            operands.push((i32::MIN as u64) - i);
+            operands.push((i32::MIN as u64) + i);
+        }
+        operands.append(&mut vec![
+            123,
+            456 * 789,
+            123 * 456,
+            789,
+            0xffff * (0xffff - 1),
+            0xffff,
+            0xabcdef,
+            0x12345678abcdef,
+            0xffffffff,
+            0x80000000,
+            0x7fffffff,
+            0xffff0000,
+            0x0000ffff,
+            0xffffffff,
+        ]);
+
         let mut instructions = vec![];
         for div_rem_op in div_rem_ops.iter() {
-            for op in operands.iter() {
-                instructions.push(Instruction::new(Opcode::ADDI, 29, 0, op.0 as u64, false, true));
-                instructions.push(Instruction::new(Opcode::ADDI, 30, 0, op.1 as u64, false, true));
-                instructions.push(Instruction::new(*div_rem_op, 31, 29, 30, false, false));
+            for op1 in operands.iter() {
+                for op2 in operands.iter() {
+                    instructions.push(Instruction::new(Opcode::ADDI, 29, 0, *op1, false, true));
+                    instructions.push(Instruction::new(Opcode::ADDI, 30, 0, *op2, false, true));
+                    instructions.push(Instruction::new(*div_rem_op, 31, 29, 30, false, false));
+                }
             }
         }
         add_halt(&mut instructions);
@@ -1334,7 +1349,6 @@ pub mod tests {
     //     assert_eq!(pk.traces, deserialized_pk.traces);
     //     // assert_eq!(pk.data, deserialized_pk.data);
     //     assert_eq!(pk.chip_ordering, deserialized_pk.chip_ordering);
-    //     assert_eq!(pk.local_only, deserialized_pk.local_only);
 
     //     let serialized_vk = bincode::serialize(&vk).unwrap();
     //     let deserialized_vk: StarkVerifyingKey<BabyBearPoseidon2> =

@@ -178,10 +178,6 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
     fn included(&self, _record: &Self::Record) -> bool {
         true
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for BaseAluChip
@@ -210,10 +206,11 @@ where
             builder.when(is_mul).assert_eq(out, in1 * in2);
             builder.when(is_div).assert_eq(in2 * out, in1);
 
+            // Read the inputs from memory.
             builder.receive_single(addrs.in1, in1, is_real.clone());
-
             builder.receive_single(addrs.in2, in2, is_real);
 
+            // Write the output to memory.
             builder.send_single(addrs.out, out, mult);
         }
     }

@@ -1,5 +1,5 @@
 use sp1_core_executor::events::ByteRecord;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::air::SP1AirBuilder;
 
 use slop_air::AirBuilder;
@@ -8,12 +8,12 @@ use sp1_derive::AlignedBorrow;
 
 use crate::{air::WordAirBuilder, utils::u32_to_half_word};
 
-/// A set of columns needed to compute the add of two words.
+/// A set of columns needed to compute the add of two u32s as a u32.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct AddU32Operation<T> {
     /// The result of `a + b`.
-    pub value: [T; WORD_SIZE / 2],
+    pub value: [T; 2],
 }
 
 impl<F: Field> AddU32Operation<F> {
@@ -26,13 +26,13 @@ impl<F: Field> AddU32Operation<F> {
     }
 
     /// Evaluate the add operation.
-    /// Assumes that `a`, `b` are valid `Word`s of two u16 limbs.
+    /// Assumes that `a`, `b` are valid u32s of two u16 limbs.
     /// Constrains that `is_real` is boolean.
-    /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a + b`.
+    /// If `is_real` is true, the `value` is constrained to a valid u32 representing `a + b`.
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
-        a: [AB::Expr; WORD_SIZE / 2],
-        b: [AB::Expr; WORD_SIZE / 2],
+        a: [AB::Expr; 2],
+        b: [AB::Expr; 2],
         cols: AddU32Operation<AB::Var>,
         is_real: AB::Expr,
     ) {
@@ -47,7 +47,7 @@ impl<F: Field> AddU32Operation<F> {
         //  - 2^16 * carry_next + value[i] = a[i] + b[i] + carry
         //  - carry is boolean
         //  - 0 <= value[i] < 2^16
-        for i in 0..(WORD_SIZE / 2) {
+        for i in 0..2 {
             carry = (a[i].clone() + b[i].clone() - cols.value[i] + carry) * base.inverse();
             builder_is_real.assert_bool(carry.clone());
         }

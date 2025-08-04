@@ -88,10 +88,6 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         true
     }
 
-    fn local_only(&self) -> bool {
-        true
-    }
-
     fn preprocessed_width(&self) -> usize {
         PREPROCESSED_POSEIDON2_WIDTH
     }
@@ -137,7 +133,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
                         addr: instr.addrs.output[j],
                         mult: instr.mults[j],
                     }),
-                    is_real_neg: BabyBear::neg_one(),
+                    is_real: BabyBear::one(),
                 }
             });
 

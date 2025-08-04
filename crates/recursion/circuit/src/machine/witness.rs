@@ -86,10 +86,7 @@ where
 pub type JC<C, SC> =
     RecursiveJaggedConfigImpl<C, SC, RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>>;
 
-impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<BabyBearPoseidon2>
-//where
-// C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<InnerVal>>,
-{
+impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<BabyBearPoseidon2> {
     type WitnessVariable = SP1RecursionWitnessVariable<
         InnerConfig,
         BabyBearPoseidon2,
@@ -167,8 +164,8 @@ where
         let end_shard = self.end_shard.read(builder);
         let end_execution_shard = self.end_execution_shard.read(builder);
         let end_timestamp = self.end_timestamp.read(builder);
-        let init_addr_word = self.init_addr_word.read(builder);
-        let finalize_addr_word = self.finalize_addr_word.read(builder);
+        let init_addr = self.init_addr.read(builder);
+        let finalize_addr = self.finalize_addr.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
 
         SP1DeferredWitnessVariable {
@@ -182,8 +179,8 @@ where
             end_shard,
             end_execution_shard,
             end_timestamp,
-            init_addr_word,
-            finalize_addr_word,
+            init_addr,
+            finalize_addr,
             is_complete,
         }
     }
@@ -199,8 +196,8 @@ where
         self.end_shard.write(witness);
         self.end_execution_shard.write(witness);
         self.end_timestamp.write(witness);
-        self.init_addr_word.write(witness);
-        self.finalize_addr_word.write(witness);
+        self.init_addr.write(witness);
+        self.finalize_addr.write(witness);
         self.is_complete.write(witness);
     }
 }

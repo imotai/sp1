@@ -163,7 +163,7 @@ pub fn estimate_trace_elements(
 /// Pads the event counts to account for the worst case jump in events across N cycles.
 #[must_use]
 #[allow(clippy::match_same_arms)]
-pub fn pad_rv32im_event_counts(
+pub fn pad_rv64im_event_counts(
     mut event_counts: EnumMap<RiscvAirId, u64>,
     num_cycles: u64,
 ) -> EnumMap<RiscvAirId, u64> {

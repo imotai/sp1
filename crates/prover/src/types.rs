@@ -183,21 +183,21 @@ pub enum SP1Bn254ProofData {
     Groth16(Groth16Bn254Proof),
 }
 
-// impl SP1Bn254ProofData {
-//     pub fn get_proof_system(&self) -> ProofSystem {
-//         match self {
-//             SP1Bn254ProofData::Plonk(_) => ProofSystem::Plonk,
-//             SP1Bn254ProofData::Groth16(_) => ProofSystem::Groth16,
-//         }
-//     }
+impl SP1Bn254ProofData {
+    pub fn get_proof_system(&self) -> ProofSystem {
+        match self {
+            SP1Bn254ProofData::Plonk(_) => ProofSystem::Plonk,
+            SP1Bn254ProofData::Groth16(_) => ProofSystem::Groth16,
+        }
+    }
 
-//     pub fn get_raw_proof(&self) -> &str {
-//         match self {
-//             SP1Bn254ProofData::Plonk(proof) => &proof.raw_proof,
-//             SP1Bn254ProofData::Groth16(proof) => &proof.raw_proof,
-//         }
-//     }
-// }
+    pub fn get_raw_proof(&self) -> &str {
+        match self {
+            SP1Bn254ProofData::Plonk(proof) => &proof.raw_proof,
+            SP1Bn254ProofData::Groth16(proof) => &proof.raw_proof,
+        }
+    }
+}
 
 /// The mode of the prover.
 #[derive(Debug, Default, Clone, ValueEnum, PartialEq, Eq)]
@@ -223,13 +223,6 @@ impl ProofSystem {
         }
     }
 }
-
-// /// A proof that can be reduced along with other proofs into one proof.
-// #[derive(Serialize, Deserialize, Clone)]
-// pub enum SP1ReduceProofWrapper {
-//     Core(SP1ReduceProof<CoreSC>),
-//     Recursive(SP1ReduceProof<InnerSC>),
-// }
 
 #[derive(Error, Debug)]
 pub enum SP1RecursionProverError {

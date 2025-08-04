@@ -13,10 +13,10 @@ use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
 use std::array::IntoIter;
 
-/// An array of four bytes to represent a 32-bit value.
+/// An array of four u16 limbs to represent a 64-bit value.
 ///
-/// We use the generic type `T` to represent the different representations of a byte, ranging from
-/// a `u8` to a `AB::Var` or `AB::Expr`.
+/// We use the generic type `T` to represent the different representations of a u16 limb, ranging
+/// from a `u16` to a `AB::Var` or `AB::Expr`.
 #[derive(
     AlignedBorrow, Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
@@ -35,6 +35,19 @@ impl<T> Word<T> {
     /// Extends a variable to a word.
     pub fn extend_var<AB: SP1AirBuilder<Var = T>>(var: T) -> Word<AB::Expr> {
         Word([AB::Expr::zero() + var, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
+    }
+
+    /// Extends a half word to a word.
+    pub fn extend_half<AB: SP1AirBuilder<Var = T>>(var: &[T; 2]) -> Word<AB::Expr>
+    where
+        T: Clone,
+    {
+        Word([
+            AB::Expr::zero() + var[0].clone(),
+            AB::Expr::zero() + var[1].clone(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+        ])
     }
 }
 

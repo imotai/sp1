@@ -149,7 +149,7 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 ) -> Result<(), SP1VerificationError> {
     let status_code = status_code.unwrap_or(StatusCode::SUCCESS);
 
-    // Check that the SP1 version matches the version of the currentcircuit.
+    // Check that the SP1 version matches the version of the current circuit.
     if bundle.sp1_version != version {
         return Err(SP1VerificationError::VersionMismatch(bundle.sp1_version.clone()));
     }

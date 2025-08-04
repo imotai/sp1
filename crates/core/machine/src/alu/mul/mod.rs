@@ -1,33 +1,3 @@
-//! Implementation to check that b * c = product.
-//!
-//! We first extend the operands to 64 bits. We sign-extend them if the op code is signed. Then we
-//! calculate the un-carried product and propagate the carry. Finally, we check that the appropriate
-//! bits of the product match the result.
-//!
-//! b_64 = sign_extend(b) if signed operation else b
-//! c_64 = sign_extend(c) if signed operation else c
-//!
-//! m = []
-//! # 64-bit integers have 8 limbs.
-//! # Calculate un-carried product.
-//! for i in 0..8:
-//!     for j in 0..8:
-//!         if i + j < 8:
-//!             m\[i + j\] += b_64\[i\] * c_64\[j\]
-//!
-//! # Propagate carry
-//! for i in 0..8:
-//!     x = m\[i\]
-//!     if i > 0:
-//!         x += carry\[i - 1\]
-//!     carry\[i\] = x / 256
-//!     m\[i\] = x % 256
-//!
-//! if upper_half:
-//!     assert_eq(a, m\[4..8\])
-//! if lower_half:
-//!     assert_eq(a, m\[0..4\])
-
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -172,10 +142,6 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
         } else {
             !shard.mul_events.is_empty()
         }
-    }
-
-    fn local_only(&self) -> bool {
-        true
     }
 }
 

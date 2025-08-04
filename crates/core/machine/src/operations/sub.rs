@@ -37,7 +37,7 @@ impl<F: Field> SubOperation<F> {
     }
 
     /// Evaluate the sub operation.
-    /// Assumes that `a`, `b` are valid `Word`s of two u16 limbs.
+    /// Assumes that `a`, `b` are valid `Word`s of u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a - b`.
     pub fn eval<AB: SP1AirBuilder>(

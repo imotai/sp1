@@ -9,7 +9,7 @@ use sp1_derive::AlignedBorrow;
 
 use crate::air::WordAirBuilder;
 
-/// A set of columns needed to compute the add of two u48 addresses.
+/// A set of columns needed to compute the addition of two Words as an u48 address.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AddrAddOperation<T> {
@@ -32,7 +32,7 @@ impl<F: Field> AddrAddOperation<F> {
     }
 
     /// Evaluate the add operation.
-    /// Assumes that `a`, `b` are valid u64 addresses.
+    /// Assumes that `a`, `b` are valid `Word`s.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, `value` is constrained to a valid u48 address `a + b`.
     pub fn eval<AB: SP1AirBuilder>(
@@ -42,6 +42,7 @@ impl<F: Field> AddrAddOperation<F> {
         cols: AddrAddOperation<AB::Var>,
         is_real: AB::Expr,
     ) {
+        // Constrain that `is_real` is boolean.
         builder.assert_bool(is_real.clone());
 
         let base = AB::F::from_canonical_u32(1 << 16);

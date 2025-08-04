@@ -3,7 +3,6 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
 };
-use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_stark::air::SP1AirBuilder;
 
 use slop_algebra::Field;
@@ -22,7 +21,7 @@ pub struct XorU32Operation<T> {
     pub c_low_bytes: U32toU8Operation<T>,
 
     /// The result of the xor operation.
-    pub value: [T; WORD_BYTE_SIZE / 2],
+    pub value: [T; 4],
 }
 
 impl<F: Field> XorU32Operation<F> {
@@ -33,12 +32,12 @@ impl<F: Field> XorU32Operation<F> {
         c_u32: u32,
     ) -> u32 {
         let expected = b_u32 ^ c_u32;
-        self.b_low_bytes.populate_u32_to_u8_unsafe(record, b_u32);
-        self.c_low_bytes.populate_u32_to_u8_unsafe(record, c_u32);
+        self.b_low_bytes.populate_u32_to_u8_unsafe(b_u32);
+        self.c_low_bytes.populate_u32_to_u8_unsafe(c_u32);
 
         let b_bytes = b_u32.to_le_bytes();
         let c_bytes = c_u32.to_le_bytes();
-        for i in 0..WORD_BYTE_SIZE / 2 {
+        for i in 0..4 {
             let xor = b_bytes[i] ^ c_bytes[i];
             self.value[i] = F::from_canonical_u8(xor);
 
@@ -53,27 +52,28 @@ impl<F: Field> XorU32Operation<F> {
         expected
     }
 
-    /// Evaluate the xor operation over two `Word`s of two u16 limbs.
-    /// Assumes that the two words are valid `Word`s of two u16 limbs.
+    /// Evaluate the xor operation over two u32s of two u16 limbs.
+    /// Assumes that the two words are valid u32s of two u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, the return value is constrained to be correct.
     pub fn eval_xor_u32<AB: SP1AirBuilder>(
         builder: &mut AB,
-        b: [AB::Expr; WORD_SIZE / 2],
-        c: [AB::Expr; WORD_SIZE / 2],
+        b: [AB::Expr; 2],
+        c: [AB::Expr; 2],
         cols: XorU32Operation<AB::Var>,
         is_real: AB::Var,
-    ) -> [AB::Expr; WORD_SIZE / 2] {
+    ) -> [AB::Expr; 2] {
         builder.assert_bool(is_real);
 
         // Convert the two words to bytes using the unsafe API.
-        // SAFETY: This is safe because the `XorOperation` will range check the bytes.
+        // SAFETY: This is safe because the byte lookup will range check the bytes.
         let b_bytes =
             U32toU8Operation::<AB::F>::eval_u32_to_u8_unsafe(builder, b, cols.b_low_bytes);
         let c_bytes =
             U32toU8Operation::<AB::F>::eval_u32_to_u8_unsafe(builder, c, cols.c_low_bytes);
 
-        for i in 0..WORD_BYTE_SIZE / 2 {
+        // Constrain the `XOR` operation over bytes via a byte lookup.
+        for i in 0..4 {
             builder.send_byte(
                 AB::F::from_canonical_u32(ByteOpcode::XOR as u32),
                 cols.value[i],

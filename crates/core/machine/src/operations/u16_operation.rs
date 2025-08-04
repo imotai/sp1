@@ -7,52 +7,39 @@ use crate::air::{SP1Operation, WordAirBuilder};
 use slop_algebra::{AbstractField, Field};
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
-/// A set of columns for a u16 to u8 adapter.
+/// A set of columns for a u16 to u8 adapter to convert a `Word` to u8 limbs.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize, IntoShape)]
 #[repr(C)]
 pub struct U16toU8Operation<T> {
-    low_bytes: [T; WORD_SIZE], // least significant byte of each u16 limb
+    low_bytes: [T; WORD_SIZE],
 }
 
 impl<F: Field> U16toU8Operation<F> {
-    pub fn populate_u16_to_u8_unsafe(&mut self, _: &mut impl ByteRecord, a_u64: u64) {
+    pub fn populate_u16_to_u8_unsafe(&mut self, a_u64: u64) {
         let a_limbs = u64_to_u16_limbs(a_u64);
-        let mut ret = [0u8; WORD_SIZE];
         for i in 0..WORD_SIZE {
-            ret[i] = (a_limbs[i] % 256) as u8;
+            self.low_bytes[i] = F::from_canonical_u8((a_limbs[i] & 0xFF) as u8);
         }
-        self.low_bytes = ret.map(|x| F::from_canonical_u8(x));
     }
 
     pub fn populate_u16_to_u8_safe(&mut self, record: &mut impl ByteRecord, a_u64: u64) {
         let a_limbs = u64_to_u16_limbs(a_u64);
-        let mut ret = [0u8; WORD_SIZE];
         for i in 0..WORD_SIZE {
-            ret[i] = (a_limbs[i] % 256) as u8;
-            let upper = ((a_limbs[i] - ret[i] as u16) / 256) as u8;
-            record.add_u8_range_check(ret[i], upper);
+            let low_byte = (a_limbs[i] & 0xFF) as u8;
+            let high_byte = ((a_limbs[i] >> 8) & 0xFF) as u8;
+            self.low_bytes[i] = F::from_canonical_u8((a_limbs[i] & 0xFF) as u8);
+            record.add_u8_range_check(low_byte, high_byte);
         }
-        self.low_bytes = ret.map(|x| F::from_canonical_u8(x));
     }
 
-    /// Converts two u16 limbs into four u8 limbs.
+    /// Converts four u16 limbs into eight u8 limbs.
     /// This function assumes that the u8 limbs will be range checked.
-    // TODO reconsider visibility.
     pub fn eval_u16_to_u8_unsafe<AB: SP1AirBuilder>(
         _: &mut AB,
         u16_values: [AB::Expr; WORD_SIZE],
         cols: U16toU8Operation<AB::Var>,
     ) -> [AB::Expr; WORD_BYTE_SIZE] {
-        let mut ret = [
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-        ];
+        let mut ret = core::array::from_fn(|_| AB::Expr::zero());
         let divisor = AB::F::from_canonical_u32(1 << 8).inverse();
 
         for i in 0..WORD_SIZE {
@@ -63,8 +50,8 @@ impl<F: Field> U16toU8Operation<F> {
         ret
     }
 
-    /// Converts two u16 limbs into four u8 limbs.
-    /// This function range checks the four u8 limbs.
+    /// Converts four u16 limbs into eight u8 limbs.
+    /// This function range checks the eight u8 limbs.
     fn eval_u16_to_u8_safe<AB: SP1AirBuilder>(
         builder: &mut AB,
         u16_values: [AB::Expr; WORD_SIZE],
@@ -72,7 +59,7 @@ impl<F: Field> U16toU8Operation<F> {
         is_real: AB::Expr,
     ) -> [AB::Expr; WORD_BYTE_SIZE] {
         let ret = U16toU8Operation::<AB::F>::eval_u16_to_u8_unsafe(builder, u16_values, cols);
-        builder.slice_range_check_u8(&ret, is_real); // TODO u64: Uncomment this
+        builder.slice_range_check_u8(&ret, is_real);
         ret
     }
 }

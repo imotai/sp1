@@ -121,10 +121,6 @@ impl<F: PrimeField32> MachineAir<F> for StoreWordChip {
             !shard.memory_store_word_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl StoreWordChip {

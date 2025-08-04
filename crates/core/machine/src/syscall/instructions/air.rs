@@ -44,7 +44,7 @@ where
             AB::PublicVar,
         > = public_values_slice.as_slice().borrow();
 
-        // Convert the syscall code to four bytes using the safe API.
+        // Convert the syscall code to 8 bytes using the safe API.
         let a_input = U16toU8OperationSafeInput::new(
             local.adapter.prev_a().0.map(Into::into),
             local.a_low_bytes,
@@ -111,6 +111,8 @@ where
             builder,
             &a,
             local,
+            public_values.commit_syscall,
+            public_values.commit_deferred_syscall,
             public_values.committed_value_digest,
             public_values.deferred_proofs_digest,
         );
@@ -144,6 +146,7 @@ impl SyscallInstrsChip {
         builder.when_not(local.is_real).assert_zero(local.is_commit_deferred_proofs.result);
         builder.when(send_to_table.clone()).assert_zero(local.adapter.b()[3]);
         builder.when(send_to_table.clone()).assert_zero(local.adapter.c()[3]);
+        builder.assert_bool(send_to_table.clone());
 
         let b_address = [local.adapter.b()[0], local.adapter.b()[1], local.adapter.b()[2]];
         let c_address = [local.adapter.c()[0], local.adapter.c()[1], local.adapter.c()[2]];
@@ -160,6 +163,7 @@ impl SyscallInstrsChip {
 
         // Check if `op_b` and `op_c` are a valid BabyBear words.
         // SAFETY: The multiplicities are zero when `is_real = 0`.
+        // `op_b` value is already known to be a valid Word, as it is read from a register.
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,
             local.adapter.b().map(Into::into),
@@ -168,6 +172,7 @@ impl SyscallInstrsChip {
         );
 
         // Check if `op_c` is a valid BabyBear word.
+        // `op_c` value is already known to be a valid Word, as it is read from a register.
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,
             local.adapter.c().map(Into::into),
@@ -227,16 +232,24 @@ impl SyscallInstrsChip {
     }
 
     /// Constraints related to the COMMIT and COMMIT_DEFERRED_PROOFS instructions.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn eval_commit<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         prev_a_byte: &[AB::Expr; 8],
         local: &SyscallInstrColumns<AB::Var>,
+        commit_syscall: AB::PublicVar,
+        commit_deferred_syscall: AB::PublicVar,
         commit_digest: [[AB::PublicVar; 4]; PV_DIGEST_NUM_WORDS],
         deferred_proofs_digest: [AB::PublicVar; POSEIDON_NUM_WORDS],
     ) {
-        let (is_commit, is_commit_deferred_proofs) =
-            self.get_is_commit_related_syscall(builder, prev_a_byte, local);
+        let (is_commit, is_commit_deferred_proofs) = self.get_is_commit_related_syscall(
+            builder,
+            prev_a_byte,
+            commit_syscall,
+            commit_deferred_syscall,
+            local,
+        );
 
         // Verify the index bitmap.
         let mut bitmap_sum = AB::Expr::zero();
@@ -264,6 +277,7 @@ impl SyscallInstrsChip {
                 .assert_eq(local.adapter.b()[0], AB::Expr::from_canonical_u32(i as u32));
         }
         // Verify that the upper limb of the word_idx is 0.
+        // SAFETY: Since the limbs are u16s, one can sum them all and test that the sum is zero.
         builder
             .when(local.is_real)
             .when(is_commit.clone() + is_commit_deferred_proofs.clone())
@@ -332,14 +346,14 @@ impl SyscallInstrsChip {
             AB::PublicVar,
         >,
     ) {
-        // `next_pc` is constrained for the case where `is_halt` is true to be `1`
+        // `next_pc` is constrained for the case where `is_halt` is true to be `HALT_PC`.
         builder
             .when(local.is_halt)
             .assert_eq(local.next_pc[0], AB::Expr::from_canonical_u64(HALT_PC));
         builder.when(local.is_halt).assert_zero(local.next_pc[1]);
         builder.when(local.is_halt).assert_zero(local.next_pc[2]);
 
-        // Check that the `op_b_value` reduced is the `public_values.exit_code`.
+        // Check that the `op_b` value reduced is the `public_values.exit_code`.
         builder
             .when(local.is_halt)
             .assert_eq(local.adapter.b().reduce::<AB>(), public_values.exit_code);
@@ -369,19 +383,20 @@ impl SyscallInstrsChip {
             local.is_halt_check.result
         };
 
-        // Verify that the is_halt flag is correct.
+        // Verify that the `is_halt` flag is correct.
         // If `is_real = 0`, then `local.is_halt = 0`.
-        // If `is_real = 1`, then `is_halt_check.result` will be correct, so `local.is_halt` is
-        // correct.
+        // If `is_real = 1`, then `is_halt_check.result` is correct, so `local.is_halt` is as well.
         builder.assert_eq(local.is_halt, is_halt * local.is_real);
     }
 
     /// Returns two boolean expression indicating whether the instruction is a COMMIT or
-    /// COMMIT_DEFERRED_PROOFS instruction.
+    /// COMMIT_DEFERRED_PROOFS instruction, and constrain public values based on it.
     pub(crate) fn get_is_commit_related_syscall<AB: SP1CoreAirBuilder>(
         &self,
         builder: &mut AB,
         prev_a_byte: &[AB::Expr; 8],
+        commit_syscall: AB::PublicVar,
+        commit_deferred_syscall: AB::PublicVar,
         local: &SyscallInstrColumns<AB::Var>,
     ) -> (AB::Expr, AB::Expr) {
         let syscall_id = prev_a_byte[0].clone();
@@ -415,6 +430,11 @@ impl SyscallInstrsChip {
             );
             local.is_commit_deferred_proofs.result
         };
+
+        // If the `COMMIT` syscall is called in the shard, then `pv.commit_syscall == 1`.
+        builder.when(is_commit).assert_one(commit_syscall);
+        // If the `COMMIT_DEFERRED_PROOFS` syscall was called, `pv.commit_deferred_syscall == 1`.
+        builder.when(is_commit_deferred_proofs).assert_one(commit_deferred_syscall);
 
         (is_commit.into(), is_commit_deferred_proofs.into())
     }

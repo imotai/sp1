@@ -2,10 +2,7 @@ use std::fmt;
 
 use slop_algebra::{extension::BinomiallyExtendable, PrimeField32};
 use sp1_recursion_executor::{ExecutionRecord, RecursionAirEventCount, RecursionProgram, D};
-use sp1_stark::{
-    air::{InteractionScope, MachineAir},
-    Chip, Machine, MachineShape, PROOF_MAX_NUM_PVS,
-};
+use sp1_stark::{air::MachineAir, Chip, Machine, MachineShape, PROOF_MAX_NUM_PVS};
 
 use strum::EnumIter;
 use strum_macros::EnumDiscriminants;
@@ -176,7 +173,7 @@ impl<
             ),
             (Self::PrefixSumChecks(PrefixSumChecksChip), heights.prefix_sum_checks_events),
             (Self::Select(SelectChip), heights.select_events),
-            (Self::PublicValues(PublicValuesChip), PUB_VALUES_LOG_HEIGHT),
+            (Self::PublicValues(PublicValuesChip), 1 << PUB_VALUES_LOG_HEIGHT),
         ]
         .map(|(chip, log_height)| (chip.name(), log_height))
         .to_vec()

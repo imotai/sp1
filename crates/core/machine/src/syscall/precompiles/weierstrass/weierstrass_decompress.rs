@@ -329,10 +329,6 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             }
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<F, E: EllipticCurve> BaseAir<F> for WeierstrassDecompressChip<E> {
@@ -522,51 +518,23 @@ where
             local.is_real.into(),
         );
 
-        let num_limbs_as_f = AB::F::from_canonical_u32(num_limbs as u32);
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
-            Word([num_limbs_as_f.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.x_addrs[0],
-            local.is_real.into(),
-        );
-
-        // y_addrs[i] = y_addrs[i - 1] + 8.
-        let eight = AB::F::from_canonical_u32(8u32);
-        for i in 1..local.x_addrs.len() {
+        // x_addrs[i] = ptr + 8 * i + num_limbs
+        for i in 0..local.x_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.x_addrs[i - 1].value[0].into(),
-                    local.x_addrs[i - 1].value[1].into(),
-                    local.x_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+                Word::from(num_limbs as u64 + 8 * i as u64),
                 local.x_addrs[i],
                 local.is_real.into(),
             );
         }
 
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.y_addrs[0],
-            local.is_real.into(),
-        );
-
-        // y_addrs[i] = y_addrs[i - 1] + 8.
-        for i in 1..local.y_addrs.len() {
+        // y_addrs[i] = ptr + 8 * i
+        for i in 0..local.y_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.y_addrs[i - 1].value[0].into(),
-                    local.y_addrs[i - 1].value[1].into(),
-                    local.y_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([ptr[0].into(), ptr[1].into(), ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.y_addrs[i],
                 local.is_real.into(),
             );

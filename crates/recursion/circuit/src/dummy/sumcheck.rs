@@ -2,7 +2,6 @@ use slop_algebra::{Field, UnivariatePolynomial};
 use slop_multilinear::Point;
 use slop_sumcheck::PartialSumcheckProof;
 
-// NOTE: This is a dummy proof for when hop is not implemented.
 pub fn dummy_sumcheck_proof<F: Field>(
     num_variables: usize,
     degree: usize,

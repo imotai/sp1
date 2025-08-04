@@ -24,21 +24,12 @@ impl<F: Field> InteractionBuilder<F> {
     #[must_use]
     pub fn new(preprocessed_width: usize, main_width: usize) -> Self {
         let preprocessed_width = preprocessed_width.max(1);
-        let prep_values = [0, 1]
-            .into_iter()
-            .flat_map(|offset| {
-                (0..preprocessed_width).map(move |column| {
-                    SymbolicVariable::new(Entry::Preprocessed { offset }, column)
-                })
-            })
+        let prep_values = (0..preprocessed_width)
+            .map(move |column| SymbolicVariable::new(Entry::Preprocessed { offset: 0 }, column))
             .collect();
 
-        let main_values = [0, 1]
-            .into_iter()
-            .flat_map(|offset| {
-                (0..main_width)
-                    .map(move |column| SymbolicVariable::new(Entry::Main { offset }, column))
-            })
+        let main_values = (0..main_width)
+            .map(move |column| SymbolicVariable::new(Entry::Main { offset: 0 }, column))
             .collect();
 
         Self {
@@ -68,19 +59,15 @@ impl<F: Field> AirBuilder for InteractionBuilder<F> {
     }
 
     fn is_first_row(&self) -> Self::Expr {
-        SymbolicExpression::IsFirstRow
+        unimplemented!();
     }
 
     fn is_last_row(&self) -> Self::Expr {
-        SymbolicExpression::IsLastRow
+        unimplemented!();
     }
 
-    fn is_transition_window(&self, size: usize) -> Self::Expr {
-        if size == 2 {
-            SymbolicExpression::IsTransition
-        } else {
-            panic!("uni-stark only supports a window size of 2")
-        }
+    fn is_transition_window(&self, _: usize) -> Self::Expr {
+        unimplemented!();
     }
 
     fn assert_zero<I: Into<Self::Expr>>(&mut self, _x: I) {}

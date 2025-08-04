@@ -23,7 +23,7 @@ use sp1_stark::{
     InteractionKind, Word,
 };
 
-pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW: usize = 4;
+pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW: usize = 1;
 pub(crate) const NUM_MEMORY_LOCAL_INIT_COLS: usize = size_of::<MemoryLocalCols<u8>>();
 
 #[derive(AlignedBorrow, Clone, Copy)]
@@ -112,6 +112,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
             let initial_value_byte0 = ((mem_event.initial_mem_access.value >> 32) & 0xFF) as u32;
             let initial_value_byte1 = ((mem_event.initial_mem_access.value >> 40) & 0xFF) as u32;
             blu.add_u8_range_check(initial_value_byte0 as u8, initial_value_byte1 as u8);
+            blu.add_u16_range_checks_field::<F>(&Word::from(mem_event.initial_mem_access.value).0);
 
             events.push(GlobalInteractionEvent {
                 message: [
@@ -129,9 +130,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 is_receive: true,
                 kind: InteractionKind::Memory as u8,
             });
+
             let final_value_byte0 = ((mem_event.final_mem_access.value >> 32) & 0xFF) as u32;
             let final_value_byte1 = ((mem_event.final_mem_access.value >> 40) & 0xFF) as u32;
             blu.add_u8_range_check(final_value_byte0 as u8, final_value_byte1 as u8);
+            blu.add_u16_range_checks_field::<F>(&Word::from(mem_event.final_mem_access.value).0);
             events.push(GlobalInteractionEvent {
                 message: [
                     (mem_event.final_mem_access.timestamp >> 24) as u32,
@@ -233,10 +236,6 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
             shard.get_local_mem_events().nth(0).is_some()
         }
     }
-
-    fn commit_scope(&self) -> InteractionScope {
-        InteractionScope::Local
-    }
 }
 
 impl<AB> Air<AB> for MemoryLocalChip
@@ -257,26 +256,17 @@ where
                 local.is_real * local.is_real * local.is_real,
             );
 
-            // Constrain that value_lower and value_upper are the lower and upper halves of the
-            // third limb of the values.
+            // Constrain that value_lower and value_upper are the lower and upper byte of the limb.
             builder.assert_eq(
                 local.initial_value.0[2],
                 local.initial_value_lower
                     + local.initial_value_upper * AB::F::from_canonical_u32(1 << 8),
             );
-            builder.assert_eq(
-                local.final_value.0[2],
-                local.final_value_lower
-                    + local.final_value_upper * AB::F::from_canonical_u32(1 << 8),
-            );
             builder.slice_range_check_u8(
                 &[local.initial_value_lower, local.initial_value_upper],
                 local.is_real,
             );
-            builder.slice_range_check_u8(
-                &[local.final_value_lower, local.final_value_upper],
-                local.is_real,
-            );
+            builder.slice_range_check_u16(&local.initial_value.0, local.is_real);
 
             let mut values = vec![local.initial_clk_high.into(), local.initial_clk_low.into()];
             values.extend(local.addr.map(Into::into));
@@ -310,6 +300,26 @@ where
                 InteractionScope::Local,
             );
 
+            // Constrain that value_lower and value_upper are the lower and upper byte of the limb.
+            builder.assert_eq(
+                local.final_value.0[2],
+                local.final_value_lower
+                    + local.final_value_upper * AB::F::from_canonical_u32(1 << 8),
+            );
+            builder.slice_range_check_u8(
+                &[local.final_value_lower, local.final_value_upper],
+                local.is_real,
+            );
+            builder.slice_range_check_u16(&local.final_value.0, local.is_real);
+
+            let mut values = vec![local.final_clk_high.into(), local.final_clk_low.into()];
+            values.extend(local.addr.map(Into::into));
+            values.extend(local.final_value.map(Into::into));
+            builder.send(
+                AirInteraction::new(values.clone(), local.is_real.into(), InteractionKind::Memory),
+                InteractionScope::Local,
+            );
+
             // Send the "send interaction" to the global table.
             builder.send(
                 AirInteraction::new(
@@ -331,14 +341,6 @@ where
                     local.is_real.into(),
                     InteractionKind::Global,
                 ),
-                InteractionScope::Local,
-            );
-
-            let mut values = vec![local.final_clk_high.into(), local.final_clk_low.into()];
-            values.extend(local.addr.map(Into::into));
-            values.extend(local.final_value.map(Into::into));
-            builder.send(
-                AirInteraction::new(values.clone(), local.is_real.into(), InteractionKind::Memory),
                 InteractionScope::Local,
             );
         }

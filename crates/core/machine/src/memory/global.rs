@@ -77,8 +77,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         };
 
         let previous_addr = match self.kind {
-            MemoryChipType::Initialize => input.public_values.previous_init_addr_word,
-            MemoryChipType::Finalize => input.public_values.previous_finalize_addr_word,
+            MemoryChipType::Initialize => input.public_values.previous_init_addr,
+            MemoryChipType::Finalize => input.public_values.previous_finalize_addr,
         };
 
         memory_events.sort_by_key(|event| event.addr);
@@ -159,8 +159,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         };
 
         let previous_addr = match self.kind {
-            MemoryChipType::Initialize => input.public_values.previous_init_addr_word,
-            MemoryChipType::Finalize => input.public_values.previous_finalize_addr_word,
+            MemoryChipType::Initialize => input.public_values.previous_init_addr,
+            MemoryChipType::Finalize => input.public_values.previous_finalize_addr,
         };
 
         memory_events.sort_by_key(|event| event.addr);
@@ -228,14 +228,6 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 MemoryChipType::Finalize => !shard.global_memory_finalize_events.is_empty(),
             }
         }
-    }
-
-    fn local_only(&self) -> bool {
-        true
-    }
-
-    fn commit_scope(&self) -> InteractionScope {
-        InteractionScope::Local
     }
 }
 
@@ -312,8 +304,7 @@ where
         // Constrain that the address is a valid `Word`.
         builder.slice_range_check_u16(&local.addr, local.is_real);
 
-        // Assert that value_lower and value_upper are the lower and upper halves of the third limb
-        // of the value.
+        // Assert that value_lower and value_upper are the lower and upper halves of the third limb.
         builder.assert_eq(
             local.value.0[2],
             local.value_lower + local.value_upper * AB::F::from_canonical_u32(1 << 8),
@@ -400,7 +391,10 @@ where
             );
         }
 
-        // Assert that `prev_addr < addr` when `prev_addr != 0 or index != 0`.
+        // Assert that `prev_addr < addr` when `prev_addr != 0` or `index != 0`.
+        // First, check if `prev_addr != 0`, and check if `index != 0`.
+        // SAFETY: Since `prev_addr` are composed of valid u16 limbs, adding them to check if
+        // all three limbs are zero is safe, as overflows are impossible.
         IsZeroOperation::<AB::F>::eval(
             builder,
             IsZeroOperationInput::new(
@@ -418,7 +412,7 @@ where
             ),
         );
 
-        // Comparison will be done unless `prev_addr == 0` and `index == 0`.
+        // Comparison will be done unless both `prev_addr == 0` and `index == 0`.
         // If `is_real = 0`, then `is_comp` will be zero.
         // If `is_real = 1`, then `is_comp` will be zero when `prev_addr == 0` and `index == 0`.
         // If `is_real = 1`, then `is_comp` will be one when `prev_addr != 0` or `index != 0`.
@@ -427,7 +421,8 @@ where
             local.is_real
                 * (AB::Expr::one() - local.is_prev_addr_zero.result * local.is_index_zero.result),
         );
-        // builder.assert_bool(local.is_comp);
+        builder.assert_bool(local.is_comp);
+
         // If `is_comp = 1`, then `prev_addr < addr` should hold.
         <LtOperationUnsigned<AB::F> as SP1Operation<AB>>::eval(
             builder,
@@ -451,6 +446,8 @@ where
         builder.when(local.is_comp).assert_one(local.lt_cols.u16_compare_operation.bit);
 
         // If `prev_addr == 0` and `index == 0`, then `addr == 0`, and the `value` should be zero.
+        // SAFETY: Since `local.addr` is valid u16 limbs, one can constrain that the sum of the
+        // limbs is zero in order to constrain that `addr == 0`, as no overflow is possible.
         // This forces the initialization of address 0 with value 0.
         // Constraints related to register %x0: Register %x0 should always be 0.
         // See 2.6 Load and Store Instruction on P.18 of the RISC-V spec.

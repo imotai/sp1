@@ -1,3 +1,5 @@
+use super::RecursiveMultilinearPcsVerifier;
+use crate::sumcheck::evaluate_mle_ext;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
@@ -6,10 +8,6 @@ use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, SymbolicExt},
 };
-
-use crate::sumcheck::evaluate_mle_ext;
-
-use super::RecursiveMultilinearPcsVerifier;
 
 #[derive(Clone)]
 pub struct RecursiveStackedPcsVerifier<P> {

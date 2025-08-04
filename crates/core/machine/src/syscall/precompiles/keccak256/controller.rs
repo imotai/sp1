@@ -146,10 +146,6 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
             !shard.get_precompile_events(SyscallCode::KECCAK_PERMUTE).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for KeccakPermuteControlChip
@@ -214,32 +210,17 @@ where
             InteractionScope::Local,
         );
 
-        // addrs[0] = state_addr.
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([
-                state_addr[0].into(),
-                state_addr[1].into(),
-                state_addr[2].into(),
-                AB::Expr::zero(),
-            ]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.addrs[0],
-            local.is_real.into(),
-        );
-
-        let eight = AB::F::from_canonical_u32(8u32);
-        // addrs[i] = addrs[i - 1] + 8.
-        for i in 1..local.addrs.len() {
+        // addrs[i] = state_addr + 8 * i
+        for i in 0..local.addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
                 Word([
-                    local.addrs[i - 1].value[0].into(),
-                    local.addrs[i - 1].value[1].into(),
-                    local.addrs[i - 1].value[2].into(),
+                    state_addr[0].into(),
+                    state_addr[1].into(),
+                    state_addr[2].into(),
                     AB::Expr::zero(),
                 ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.addrs[i],
                 local.is_real.into(),
             );

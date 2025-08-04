@@ -126,10 +126,6 @@ impl<F: PrimeField32> MachineAir<F> for SubwChip {
             !shard.subw_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl SubwChip {

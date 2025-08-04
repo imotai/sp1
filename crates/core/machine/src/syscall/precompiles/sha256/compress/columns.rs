@@ -1,8 +1,3 @@
-use std::mem::size_of;
-
-use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::WORD_SIZE;
-
 use crate::{
     memory::MemoryAccessCols,
     operations::{
@@ -10,6 +5,8 @@ use crate::{
         FixedRotateRightOperation, NotU32Operation, XorU32Operation,
     },
 };
+use sp1_derive::AlignedBorrow;
+use std::mem::size_of;
 
 pub const NUM_SHA_COMPRESS_COLS: usize = size_of::<ShaCompressCols<u8>>();
 
@@ -45,7 +42,7 @@ pub struct ShaCompressCols<T> {
     pub mem: MemoryAccessCols<T>,
 
     /// The write value to the memory.
-    pub mem_value: [T; WORD_SIZE / 2],
+    pub mem_value: [T; 2],
 
     /// Current memory address being written/read. During init and finalize, this is A-H. During
     /// compression, this is w[i] being read only.
@@ -55,17 +52,17 @@ pub struct ShaCompressCols<T> {
     pub mem_addr_compress: AddrAddOperation<T>,
     pub mem_addr_finalize: AddrAddOperation<T>,
 
-    pub a: [T; WORD_SIZE / 2],
-    pub b: [T; WORD_SIZE / 2],
-    pub c: [T; WORD_SIZE / 2],
-    pub d: [T; WORD_SIZE / 2],
-    pub e: [T; WORD_SIZE / 2],
-    pub f: [T; WORD_SIZE / 2],
-    pub g: [T; WORD_SIZE / 2],
-    pub h: [T; WORD_SIZE / 2],
+    pub a: [T; 2],
+    pub b: [T; 2],
+    pub c: [T; 2],
+    pub d: [T; 2],
+    pub e: [T; 2],
+    pub f: [T; 2],
+    pub g: [T; 2],
+    pub h: [T; 2],
 
     /// Current value of K[i]. This is a constant array that loops around every 64 iterations.
-    pub k: [T; WORD_SIZE / 2],
+    pub k: [T; 2],
 
     pub e_rr_6: FixedRotateRightOperation<T>,
     pub e_rr_11: FixedRotateRightOperation<T>,
@@ -106,7 +103,7 @@ pub struct ShaCompressCols<T> {
     pub temp1_add_temp2: AddU32Operation<T>,
 
     /// During finalize, this is one of a-h and is being written into `mem`.
-    pub finalized_operand: [T; WORD_SIZE / 2],
+    pub finalized_operand: [T; 2],
     pub finalize_add: AddU32Operation<T>,
 
     pub is_initialize: T,

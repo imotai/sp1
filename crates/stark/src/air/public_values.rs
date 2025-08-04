@@ -21,8 +21,14 @@ pub const POSEIDON_NUM_WORDS: usize = 8;
 #[derive(Serialize, Deserialize, Clone, Copy, Default, Debug, DeepSizeOf)]
 #[repr(C)]
 pub struct PublicValues<W1, W2, W3, T> {
+    /// The `committed_value_digest` value before this shard.
+    pub prev_committed_value_digest: [W1; PV_DIGEST_NUM_WORDS],
+
     /// The hash of all the bytes that the guest program has written to public values.
     pub committed_value_digest: [W1; PV_DIGEST_NUM_WORDS],
+
+    /// The `deferred_proof_digest` value before this shard.
+    pub prev_deferred_proofs_digest: [T; POSEIDON_NUM_WORDS],
 
     /// The hash of all deferred proofs that have been witnessed in the VM. It will be rebuilt in
     /// recursive verification as the proofs get verified. The hash itself is a rolling poseidon2
@@ -52,16 +58,16 @@ pub struct PublicValues<W1, W2, W3, T> {
     pub next_execution_shard: T,
 
     /// The largest address that is witnessed for initialization in the previous shard.
-    pub previous_init_addr_word: W2,
+    pub previous_init_addr: W2,
 
     /// The largest address that is witnessed for initialization in the current shard.
-    pub last_init_addr_word: W2,
+    pub last_init_addr: W2,
 
     /// The largest address that is witnessed for finalization in the previous shard.
-    pub previous_finalize_addr_word: W2,
+    pub previous_finalize_addr: W2,
 
     /// The largest address that is witnessed for finalization in the current shard.
-    pub last_finalize_addr_word: W2,
+    pub last_finalize_addr: W2,
 
     /// The initial timestamp of the shard.
     pub initial_timestamp: W3,
@@ -92,6 +98,18 @@ pub struct PublicValues<W1, W2, W3, T> {
 
     /// The global cumulative sum of the shard.
     pub global_cumulative_sum: SepticDigest<T>,
+
+    /// The `commit_syscall` value of the previous shard.
+    pub prev_commit_syscall: T,
+
+    /// Whether `COMMIT` syscall has been called up to this shard.
+    pub commit_syscall: T,
+
+    /// The `commit_deferred_syscall` value of the previous shard.
+    pub prev_commit_deferred_syscall: T,
+
+    /// Whether `COMMIT_DEFERRED` syscall has been called up to this shard.
+    pub commit_deferred_syscall: T,
 }
 
 impl PublicValues<u32, u64, u64, u32> {
@@ -116,10 +134,10 @@ impl PublicValues<u32, u64, u64, u32> {
         copy.execution_shard = 0;
         copy.pc_start = 0;
         copy.next_pc = 0;
-        copy.previous_init_addr_word = 0;
-        copy.last_init_addr_word = 0;
-        copy.previous_finalize_addr_word = 0;
-        copy.last_finalize_addr_word = 0;
+        copy.previous_init_addr = 0;
+        copy.last_init_addr = 0;
+        copy.previous_finalize_addr = 0;
+        copy.last_finalize_addr = 0;
         copy
     }
 }
@@ -163,9 +181,12 @@ impl<T: Clone> BorrowMut<PublicValues<[T; 4], [T; 3], [T; 4], T>> for [T] {
 impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
     for PublicValues<[F; 4], [F; 3], [F; 4], F>
 {
+    #[allow(clippy::too_many_lines)]
     fn from(value: PublicValues<u32, u64, u64, u32>) -> Self {
         let PublicValues {
+            prev_committed_value_digest,
             committed_value_digest,
+            prev_deferred_proofs_digest,
             deferred_proofs_digest,
             pc_start,
             next_pc,
@@ -174,10 +195,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             shard,
             execution_shard,
             next_execution_shard,
-            previous_init_addr_word,
-            last_init_addr_word,
-            previous_finalize_addr_word,
-            last_finalize_addr_word,
+            previous_init_addr,
+            last_init_addr,
+            previous_finalize_addr,
+            last_finalize_addr,
             initial_timestamp,
             last_timestamp,
             is_timestamp_high_eq,
@@ -188,8 +209,20 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             global_finalize_count,
             global_count,
             global_cumulative_sum,
-            ..
+            prev_commit_syscall,
+            commit_syscall,
+            prev_commit_deferred_syscall,
+            commit_deferred_syscall,
         } = value;
+
+        let prev_committed_value_digest: [_; PV_DIGEST_NUM_WORDS] = core::array::from_fn(|i| {
+            [
+                F::from_canonical_u32(prev_committed_value_digest[i] & 0xFF),
+                F::from_canonical_u32((prev_committed_value_digest[i] >> 8) & 0xFF),
+                F::from_canonical_u32((prev_committed_value_digest[i] >> 16) & 0xFF),
+                F::from_canonical_u32((prev_committed_value_digest[i] >> 24) & 0xFF),
+            ]
+        });
 
         let committed_value_digest: [_; PV_DIGEST_NUM_WORDS] = core::array::from_fn(|i| {
             [
@@ -199,6 +232,9 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
                 F::from_canonical_u32((committed_value_digest[i] >> 24) & 0xFF),
             ]
         });
+
+        let prev_deferred_proofs_digest: [_; POSEIDON_NUM_WORDS] =
+            core::array::from_fn(|i| F::from_canonical_u32(prev_deferred_proofs_digest[i]));
 
         let deferred_proofs_digest: [_; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|i| F::from_canonical_u32(deferred_proofs_digest[i]));
@@ -218,25 +254,25 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
         let shard = F::from_canonical_u32(shard);
         let execution_shard = F::from_canonical_u32(execution_shard);
         let next_execution_shard = F::from_canonical_u32(next_execution_shard);
-        let previous_init_addr_word = [
-            F::from_canonical_u16((previous_init_addr_word & 0xFFFF) as u16),
-            F::from_canonical_u16(((previous_init_addr_word >> 16) & 0xFFFF) as u16),
-            F::from_canonical_u16(((previous_init_addr_word >> 32) & 0xFFFF) as u16),
+        let previous_init_addr = [
+            F::from_canonical_u16((previous_init_addr & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_init_addr >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_init_addr >> 32) & 0xFFFF) as u16),
         ];
-        let last_init_addr_word = [
-            F::from_canonical_u16((last_init_addr_word & 0xFFFF) as u16),
-            F::from_canonical_u16(((last_init_addr_word >> 16) & 0xFFFF) as u16),
-            F::from_canonical_u16(((last_init_addr_word >> 32) & 0xFFFF) as u16),
+        let last_init_addr = [
+            F::from_canonical_u16((last_init_addr & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_init_addr >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_init_addr >> 32) & 0xFFFF) as u16),
         ];
-        let previous_finalize_addr_word = [
-            F::from_canonical_u16((previous_finalize_addr_word & 0xFFFF) as u16),
-            F::from_canonical_u16(((previous_finalize_addr_word >> 16) & 0xFFFF) as u16),
-            F::from_canonical_u16(((previous_finalize_addr_word >> 32) & 0xFFFF) as u16),
+        let previous_finalize_addr = [
+            F::from_canonical_u16((previous_finalize_addr & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_finalize_addr >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((previous_finalize_addr >> 32) & 0xFFFF) as u16),
         ];
-        let last_finalize_addr_word = [
-            F::from_canonical_u16((last_finalize_addr_word & 0xFFFF) as u16),
-            F::from_canonical_u16(((last_finalize_addr_word >> 16) & 0xFFFF) as u16),
-            F::from_canonical_u16(((last_finalize_addr_word >> 32) & 0xFFFF) as u16),
+        let last_finalize_addr = [
+            F::from_canonical_u16((last_finalize_addr & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_finalize_addr >> 16) & 0xFFFF) as u16),
+            F::from_canonical_u16(((last_finalize_addr >> 32) & 0xFFFF) as u16),
         ];
         let initial_timestamp = [
             F::from_canonical_u16((initial_timestamp >> 32) as u16),
@@ -262,8 +298,15 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
         let global_cumulative_sum =
             SepticDigest(SepticCurve::convert(global_cumulative_sum.0, F::from_canonical_u32));
 
+        let prev_commit_syscall = F::from_canonical_u32(prev_commit_syscall);
+        let commit_syscall = F::from_canonical_u32(commit_syscall);
+        let prev_commit_deferred_syscall = F::from_canonical_u32(prev_commit_deferred_syscall);
+        let commit_deferred_syscall = F::from_canonical_u32(commit_deferred_syscall);
+
         Self {
+            prev_committed_value_digest,
             committed_value_digest,
+            prev_deferred_proofs_digest,
             deferred_proofs_digest,
             pc_start,
             next_pc,
@@ -272,10 +315,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             shard,
             execution_shard,
             next_execution_shard,
-            previous_init_addr_word,
-            last_init_addr_word,
-            previous_finalize_addr_word,
-            last_finalize_addr_word,
+            previous_init_addr,
+            last_init_addr,
+            previous_finalize_addr,
+            last_finalize_addr,
             initial_timestamp,
             last_timestamp,
             is_timestamp_high_eq,
@@ -286,7 +329,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             global_finalize_count,
             global_count,
             global_cumulative_sum,
-            // empty: core::array::from_fn(|_| F::zero()),
+            prev_commit_syscall,
+            commit_syscall,
+            prev_commit_deferred_syscall,
+            commit_deferred_syscall,
         }
     }
 }

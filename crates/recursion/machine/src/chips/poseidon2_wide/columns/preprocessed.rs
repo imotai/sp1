@@ -10,5 +10,5 @@ use crate::chips::mem::MemoryAccessColsChips;
 pub struct Poseidon2PreprocessedColsWide<T: Copy> {
     pub input: [Address<T>; WIDTH],
     pub output: [MemoryAccessColsChips<T>; WIDTH],
-    pub is_real_neg: T,
+    pub is_real: T,
 }

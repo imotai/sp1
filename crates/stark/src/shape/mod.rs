@@ -1,6 +1,6 @@
 //! Utilities for working with shapes
 
-// TODO: Depracate the rest of this module.
+// TODO: Deprecate the rest of this module.
 
 mod cluster;
 mod ordered;

@@ -100,10 +100,6 @@ impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
             !shard.addi_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for MinimalAddChip

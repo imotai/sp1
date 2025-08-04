@@ -135,10 +135,6 @@ impl<F: PrimeField32> MachineAir<F> for StoreByteChip {
             !shard.memory_store_byte_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl StoreByteChip {

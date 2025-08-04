@@ -215,10 +215,7 @@ pub struct RecursionAirEventCount {
     pub poseidon2_wide_events: usize,
     pub poseidon2_linear_layer_events: usize,
     pub poseidon2_sbox_events: usize,
-    pub fri_fold_events: usize,
-    pub batch_fri_events: usize,
     pub select_events: usize,
-    pub exp_reverse_bits_len_events: usize,
     pub prefix_sum_checks_events: usize,
     pub commit_pv_hash_events: usize,
 }

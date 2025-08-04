@@ -182,10 +182,6 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
             !shard.shift_left_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl ShiftLeft {

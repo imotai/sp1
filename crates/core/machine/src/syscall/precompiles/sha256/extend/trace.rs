@@ -25,6 +25,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        // Each extend syscall takes 48 rows.
         let nb_rows = input.get_precompile_events(SyscallCode::SHA_EXTEND).len() * 48;
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
@@ -48,10 +49,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
 
         let mut rows = wrapped_rows.unwrap();
         let nb_rows = rows.len();
-        let mut padded_nb_rows = nb_rows.next_multiple_of(32);
-        if padded_nb_rows == 2 || padded_nb_rows == 1 {
-            padded_nb_rows = 4;
-        }
+        let padded_nb_rows = nb_rows.next_multiple_of(32);
         for _ in nb_rows..padded_nb_rows {
             let row = [F::zero(); NUM_SHA_EXTEND_COLS];
             rows.push(row);
@@ -90,10 +88,6 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
         } else {
             !shard.get_precompile_events(SyscallCode::SHA_EXTEND).is_empty()
         }
-    }
-
-    fn local_only(&self) -> bool {
-        true
     }
 }
 

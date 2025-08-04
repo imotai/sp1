@@ -14,8 +14,8 @@ use super::AddrAddOperation;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AddressOperation<T> {
-    /// Instance of `AddOperation` for addr_word.
-    pub addr_word_operation: AddrAddOperation<T>,
+    /// Instance of `AddOperation` for addr.
+    pub addr_operation: AddrAddOperation<T>,
 
     /// This is used to check if the top two limbs of the address is not both zero.
     pub top_two_limb_inv: T,
@@ -24,12 +24,12 @@ pub struct AddressOperation<T> {
 impl<F: PrimeField32> AddressOperation<F> {
     pub fn populate(&mut self, record: &mut impl ByteRecord, b: u64, c: u64) -> u64 {
         let memory_addr = b.wrapping_add(c);
-        let addr_word_limbs = u64_to_u16_limbs(memory_addr);
-        self.addr_word_operation.populate(record, b, c);
+        let addr_limbs = u64_to_u16_limbs(memory_addr);
+        self.addr_operation.populate(record, b, c);
         let sum_top_two_limb =
-            F::from_canonical_u16(addr_word_limbs[1]) + F::from_canonical_u16(addr_word_limbs[2]);
+            F::from_canonical_u16(addr_limbs[1]) + F::from_canonical_u16(addr_limbs[2]);
         self.top_two_limb_inv = sum_top_two_limb.inverse();
-        record.add_bit_range_check(addr_word_limbs[0] / 8, 13);
+        record.add_bit_range_check(addr_limbs[0] / 8, 13);
         memory_addr
     }
 }
@@ -57,8 +57,8 @@ impl<F: Field> AddressOperation<F> {
         builder.assert_bool(offset_bit2.clone());
 
         // `addr` is computed as `op_b + op_c`, and is range checked to be three u16 limbs.
-        AddrAddOperation::<AB::F>::eval(builder, b, c, cols.addr_word_operation, is_real.clone());
-        let addr = cols.addr_word_operation.value;
+        AddrAddOperation::<AB::F>::eval(builder, b, c, cols.addr_operation, is_real.clone());
+        let addr = cols.addr_operation.value;
 
         let sum_top_two_limb = addr[1] + addr[2];
 

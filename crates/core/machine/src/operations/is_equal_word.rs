@@ -26,9 +26,8 @@ use super::{IsZeroWordOperation, IsZeroWordOperationInput};
 )]
 #[repr(C)]
 pub struct IsEqualWordOperation<T> {
-    /// An operation to check whether the differences in limbs are all 0 (i.e., `a[0] - b[0]`,
-    /// `a[1] - b[1]`). The result of `IsEqualWordOperation` is
-    /// `is_diff_zero.result`.
+    /// An operation to check whether the differences in limbs are all 0.
+    /// The result of `IsEqualWordOperation` is `is_diff_zero.result`.
     pub is_diff_zero: IsZeroWordOperation<T>,
 }
 

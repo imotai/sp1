@@ -853,8 +853,8 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         end_shard: BabyBear::zero(),
         end_execution_shard: BabyBear::zero(),
         end_timestamp: [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()],
-        init_addr_word: [BabyBear::zero(); 3],
-        finalize_addr_word: [BabyBear::zero(); 3],
+        init_addr: [BabyBear::zero(); 3],
+        finalize_addr: [BabyBear::zero(); 3],
         is_complete: false,
     }
 }

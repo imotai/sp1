@@ -1,13 +1,9 @@
-use std::{borrow::BorrowMut, mem::MaybeUninit};
-
-use serde::{Deserialize, Serialize};
-use slop_algebra::{AbstractField, Field, PrimeField32};
+use slop_algebra::{AbstractField, Field};
 use slop_baby_bear::BabyBear;
 use slop_challenger::DuplexChallenger;
 use slop_merkle_tree::{OUTER_CHALLENGER_RATE, OUTER_DIGEST_SIZE};
 use slop_multilinear::Point;
 use slop_symmetric::CryptographicPermutation;
-use sp1_derive::AlignedBorrow;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{DslIr, Var},
@@ -19,9 +15,6 @@ use crate::CircuitConfig;
 
 // Constants for the Multifield challenger.
 pub const POSEIDON_2_BB_RATE: usize = 16;
-
-// use crate::{DigestVariable, VerifyingKeyVariable};
-
 pub trait CanCopyChallenger<C: CircuitConfig> {
     fn copy(&self, builder: &mut Builder<C>) -> Self;
 }
@@ -143,43 +136,6 @@ impl<C: CircuitConfig<F = BabyBear>> DuplexChallengerVariable<C> {
         let mut rand_f_bits = builder.num2bits_v2_f(rand_f, NUM_BITS);
         rand_f_bits.truncate(nb_bits);
         rand_f_bits
-    }
-
-    pub fn public_values(&self, builder: &mut Builder<C>) -> ChallengerPublicValues<Felt<C::F>> {
-        assert!(self.input_buffer.len() <= PERMUTATION_WIDTH);
-        assert!(self.output_buffer.len() <= PERMUTATION_WIDTH);
-
-        let sponge_state = self.sponge_state;
-        let num_inputs = builder.eval(C::F::from_canonical_usize(self.input_buffer.len()));
-        let num_outputs = builder.eval(C::F::from_canonical_usize(self.output_buffer.len()));
-
-        let input_buffer: [_; PERMUTATION_WIDTH] = self
-            .input_buffer
-            .iter()
-            .copied()
-            .chain((self.input_buffer.len()..PERMUTATION_WIDTH).map(|_| builder.eval(C::F::zero())))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        let output_buffer: [_; PERMUTATION_WIDTH] = self
-            .output_buffer
-            .iter()
-            .copied()
-            .chain(
-                (self.output_buffer.len()..PERMUTATION_WIDTH).map(|_| builder.eval(C::F::zero())),
-            )
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        ChallengerPublicValues {
-            sponge_state,
-            num_inputs,
-            input_buffer,
-            num_outputs,
-            output_buffer,
-        }
     }
 }
 
@@ -304,7 +260,6 @@ impl<C: CircuitConfig> MultiField32ChallengerVariable<C> {
         }
         self.input_buffer.clear();
 
-        // TODO make this a method for the builder.
         builder.push_op(DslIr::CircuitPoseidon2Permute(self.sponge_state));
 
         self.output_buffer.clear();
@@ -481,54 +436,6 @@ pub fn split_32<C: CircuitConfig>(
         results.push(result);
     }
     results
-}
-
-pub const CHALLENGER_STATE_NUM_ELTS: usize = size_of::<ChallengerPublicValues<u8>>();
-
-#[derive(AlignedBorrow, Serialize, Deserialize, Clone, Copy, Default, Debug)]
-#[repr(C)]
-pub struct ChallengerPublicValues<T> {
-    pub sponge_state: [T; PERMUTATION_WIDTH],
-    pub num_inputs: T,
-    pub input_buffer: [T; PERMUTATION_WIDTH],
-    pub num_outputs: T,
-    pub output_buffer: [T; PERMUTATION_WIDTH],
-}
-
-impl<T: Clone> ChallengerPublicValues<T> {
-    pub fn set_challenger<P: CryptographicPermutation<[T; PERMUTATION_WIDTH]>>(
-        &self,
-        challenger: &mut DuplexChallenger<T, P, PERMUTATION_WIDTH, HASH_RATE>,
-    ) where
-        T: PrimeField32,
-    {
-        challenger.sponge_state = self.sponge_state;
-        let num_inputs = self.num_inputs.as_canonical_u32() as usize;
-        challenger.input_buffer = self.input_buffer[..num_inputs].to_vec();
-        let num_outputs = self.num_outputs.as_canonical_u32() as usize;
-        challenger.output_buffer = self.output_buffer[..num_outputs].to_vec();
-    }
-
-    pub fn as_array(&self) -> [T; CHALLENGER_STATE_NUM_ELTS]
-    where
-        T: Copy,
-    {
-        unsafe {
-            let mut ret = [MaybeUninit::<T>::zeroed().assume_init(); CHALLENGER_STATE_NUM_ELTS];
-            let pv: &mut ChallengerPublicValues<T> = ret.as_mut_slice().borrow_mut();
-            *pv = *self;
-            ret
-        }
-    }
-}
-
-impl<T: Copy> IntoIterator for ChallengerPublicValues<T> {
-    type Item = T;
-    type IntoIter = std::array::IntoIter<T, CHALLENGER_STATE_NUM_ELTS>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.as_array().into_iter()
-    }
 }
 
 #[cfg(test)]

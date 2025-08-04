@@ -112,7 +112,6 @@ where
                 chip.generate_dependencies(record, &mut output);
                 record.append(&mut output);
             });
-            // tracing::debug_span!("register nonces").in_scope(|| record.register_nonces(opts));
         });
     }
 }

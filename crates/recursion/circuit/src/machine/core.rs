@@ -1,8 +1,6 @@
 use std::{
-    array,
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
-    mem::MaybeUninit,
 };
 
 use itertools::Itertools;
@@ -12,13 +10,9 @@ use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
 
 use serde::{Deserialize, Serialize};
-use sp1_core_machine::{
-    // cpu::MAX_CPU_LOG_DEGREE,
-    riscv::{RiscvAir, MAX_LOG_NUMBER_OF_SHARDS},
-};
+use sp1_core_machine::riscv::{RiscvAir, MAX_LOG_NUMBER_OF_SHARDS};
 
-use sp1_recursion_executor::PV_DIGEST_NUM_WORDS;
-use sp1_stark::air::{PublicValues, POSEIDON_NUM_WORDS};
+use sp1_stark::air::PublicValues;
 
 use sp1_stark::{MachineConfig, MachineVerifyingKey, ShardProof};
 
@@ -67,33 +61,6 @@ pub struct SP1NormalizeWitnessValues<SC: MachineConfig> {
     pub reconstruct_deferred_digest: [SC::F; 8],
 }
 
-// impl<SC: BabyBearFriConfig + Send + Sync> SP1RecursionWitnessValues<SC> {
-//     pub fn shape(&self) -> SP1RecursionShape {
-//         let proof_shapes = self.shard_proofs.iter().map(|proof| proof.shape()).collect();
-
-//         SP1RecursionShape { proof_shapes, is_complete: self.is_complete }
-//     }
-// }
-
-// impl SP1RecursionWitnessValues<BabyBearPoseidon2> {
-//     pub fn dummy(
-//         machine: &MachineVerifier<BabyBearPoseidon2, RiscvAir<BabyBear>>,
-//         shape: &SP1RecursionShape,
-//     ) -> Self {
-//         let (mut vks, shard_proofs): (Vec<_>, Vec<_>) =
-//             shape.proof_shapes.iter().map(|shape| dummy_vk_and_shard_proof(machine,
-// shape)).unzip();         let vk = vks.pop().unwrap();
-//         Self {
-//             vk,
-//             shard_proofs,
-//             reconstruct_deferred_digest: [BabyBear::zero(); DIGEST_SIZE],
-//             is_complete: shape.is_complete,
-//             is_first_shard: false,
-//             vk_root: [BabyBear::zero(); DIGEST_SIZE],
-//         }
-//     }
-// }
-
 /// A program for recursively verifying a batch of SP1 proofs.
 #[derive(Debug, Clone, Copy)]
 pub struct SP1RecursiveVerifier<C: Config, SC: BabyBearFriConfig, JC: RecursiveJaggedConfig> {
@@ -130,28 +97,16 @@ where
     ///
     /// This program represents a first recursive step in the verification of an SP1 proof
     /// consisting of one or more shards. Each shard proof is verified and its public values are
-    /// aggregated into a single set representing the start and end state of the program execution
-    /// across all shards.
+    /// turned into the recursion public values, which will be aggregated in compress.
     ///
     /// # Constraints
     ///
-    /// ## Verifying the STARK proofs.
-    /// For each shard, the verifier asserts the correctness of the STARK proof which is composed
-    /// of verifying the FRI proof for openings and verifying the constraints.
+    /// ## Verifying the core shard proofs.
+    /// For each shard, the verifier asserts the correctness of the shard proof which is composed
+    /// of verifying the polynomial commitment's proof for openings and verifying the constraints.
     ///
-    /// ## Aggregating the shard public values.
-    /// See [SP1Prover::verify] for the verification algorithm of a complete SP1 proof. In this
-    /// function, we are aggregating several shard proofs and attesting to an aggregated state which
-    /// represents all the shards.
-    ///
-    /// ## The leaf challenger.
-    /// A key difference between the recursive tree verification and the complete one in
-    /// [SP1Prover::verify] is that the recursive verifier has no way of reconstructing the
-    /// chanllenger only from a part of the shard proof. Therefore, the value of the leaf challenger
-    /// is witnessed in the program and the verifier asserts correctness given this challenger.
-    /// In the course of the recursive verification, the challenger is reconstructed by observing
-    /// the commitments one by one, and in the final step, the challenger is asserted to be the same
-    /// as the one witnessed here.
+    /// ## Verifing the first shard constraints.
+    /// The first shard has some additional constraints for initialization.
     pub fn verify(
         builder: &mut Builder<C>,
         machine: &RecursiveShardVerifier<RiscvAir<<SC as JaggedConfig>::F>, SC, C, JC>,
@@ -169,398 +124,124 @@ where
             reconstruct_deferred_digest,
         } = input;
 
-        // Initialize shard variables.
-        let mut initial_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-
-        // Initialize execution shard variables.
-        let mut initial_execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-
-        // Initialize program counter variables.
-        let mut pc_start: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
-        let mut current_pc: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
-
-        // Initialize memory initialization and finalization variables.
-        let mut initial_previous_init_addr_word: [Felt<_>; 3] =
-            array::from_fn(|_| builder.uninit());
-        let mut initial_previous_finalize_addr_word: [Felt<_>; 3] =
-            array::from_fn(|_| builder.uninit());
-        let mut current_init_addr_word: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
-        let mut current_finalize_addr_word: [Felt<_>; 3] = array::from_fn(|_| builder.uninit());
-        let mut initial_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
-        let mut current_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
-
-        // Initialize the exit code variable.
-        let mut prev_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-
-        // Initialize the public values digest.
-        let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
-            array::from_fn(|_| array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() }));
-
-        // Initialize the deferred proofs digest.
-        let mut deferred_proofs_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
-            array::from_fn(|_| builder.uninit());
+        // Assert that the number of proofs is one.
+        assert!(shard_proofs.len() == 1);
+        let shard_proof = &shard_proofs[0];
 
         // Initialize the cumulative sum.
         let mut global_cumulative_sums = Vec::new();
 
-        // Assert that the number of proofs is not zero.
-        assert!(!shard_proofs.is_empty());
+        // Get the public values.
+        let public_values: &PublicValues<[Felt<_>; 4], [Felt<_>; 3], [Felt<_>; 4], Felt<_>> =
+            shard_proof.public_values.as_slice().borrow();
 
-        // Verify proofs.
-        for (i, shard_proof) in shard_proofs.into_iter().enumerate() {
-            // let contains_cpu = shard_proof.contains_cpu();
-            // let contains_memory_init = shard_proof.contains_memory_init();
-            // let contains_memory_finalize = shard_proof.contains_memory_finalize();
+        // First shard constraints. We verify the validity of the `is_first_shard` boolean
+        // flag, and make assertions for that are specific to the first shard using it.
+        // We assert that `is_first_shard == (public_values.shard == 1)` in three steps.
 
-            // Get the public values.
-            let public_values: &PublicValues<[Felt<_>; 4], [Felt<_>; 3], [Felt<_>; 4], Felt<_>> =
-                shard_proof.public_values.as_slice().borrow();
+        // First, we assert that the `is_first_shard` flag is boolean.
+        builder.assert_felt_eq(is_first_shard * (is_first_shard - C::F::one()), C::F::zero());
 
-            // If this is the first proof in the batch, initialize the variables.
-            if i == 0 {
-                // Shard.
-                initial_shard = public_values.shard;
-                current_shard = public_values.shard;
+        // Assert that if `is_first_shard == 1`, then `public_values.shard == 1`.
+        builder.assert_felt_eq(is_first_shard * (public_values.shard - C::F::one()), C::F::zero());
 
-                // Execution shard.
-                initial_execution_shard = public_values.execution_shard;
-                current_execution_shard = public_values.execution_shard;
+        // Assert that if `is_first_shard == 0`, then `public_values.shard != 1`.
+        // This asserts that if `public_values.shard == 1`, then `is_first_shard == 1`.
+        builder.assert_felt_ne(
+            (SymbolicFelt::one() - is_first_shard) * public_values.shard,
+            C::F::one(),
+        );
 
-                // Timestamp.
-                initial_timestamp = public_values.initial_timestamp;
-                current_timestamp = public_values.initial_timestamp;
-
-                // Program counter.
-                pc_start = public_values.pc_start;
-                current_pc = public_values.pc_start;
-
-                // Memory initialization & finalization.
-                for ((limb, pub_limb), first_limb) in current_init_addr_word
-                    .iter_mut()
-                    .zip(public_values.previous_init_addr_word.iter())
-                    .zip(initial_previous_init_addr_word.iter_mut())
-                {
-                    *limb = *pub_limb;
-                    *first_limb = *pub_limb;
-                }
-                for ((limb, pub_limb), first_limb) in current_finalize_addr_word
-                    .iter_mut()
-                    .zip(public_values.previous_finalize_addr_word.iter())
-                    .zip(initial_previous_finalize_addr_word.iter_mut())
-                {
-                    *limb = *pub_limb;
-                    *first_limb = *pub_limb;
-                }
-
-                // Exit code.
-                prev_exit_code = public_values.prev_exit_code;
-                current_exit_code = public_values.prev_exit_code;
-
-                // Committed public values digests.
-                for (word, first_word) in committed_value_digest
-                    .iter_mut()
-                    .zip_eq(public_values.committed_value_digest.iter())
-                {
-                    for (byte, first_byte) in word.iter_mut().zip_eq(first_word.iter()) {
-                        *byte = *first_byte;
-                    }
-                }
-
-                // Deferred proofs digests.
-                for (digest, first_digest) in deferred_proofs_digest
-                    .iter_mut()
-                    .zip_eq(public_values.deferred_proofs_digest.iter())
-                {
-                    *digest = *first_digest;
-                }
-
-                // First shard constraints. We verify the validity of the `is_first_shard` boolean
-                // flag, and make assertions for that are specific to the first shard using that
-                // flag.
-
-                // We assert that `is_first_shard == (initial_shard == 1)` in three steps.
-
-                // First, we assert that the `is_first_shard` flag is boolean.
-                builder
-                    .assert_felt_eq(is_first_shard * (is_first_shard - C::F::one()), C::F::zero());
-                // Assert that if `is_first_shard == 1`, then `initial_shard == 1`.
-                builder
-                    .assert_felt_eq(is_first_shard * (initial_shard - C::F::one()), C::F::zero());
-                // Assert that if `is_first_shard == 0`, then `initial_shard != 1`.
-                // This asserts that if `initial_shard == 1`, then `is_first_shard == 1`.
-                builder.assert_felt_ne(
-                    (SymbolicFelt::one() - is_first_shard) * initial_shard,
-                    C::F::one(),
-                );
-
-                // If it's the first shard (which is the first execution shard), then the `pc_start`
-                // should be vk.pc_start_rel.
-                for (pc, vk_pc) in pc_start.iter().zip_eq(vk.pc_start.iter()) {
-                    builder.assert_felt_eq(is_first_shard * (*pc - *vk_pc), C::F::zero());
-                }
-
-                // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the
-                // digest. If it's not the first shard, we add the zero digest to the digest.
-                global_cumulative_sums.push(builder.select_global_cumulative_sum(
-                    is_first_shard,
-                    vk.initial_global_cumulative_sum,
-                ));
-
-                // If it's the first shard, the execution shard should be 1.
-                builder.assert_felt_eq(
-                    is_first_shard * (initial_execution_shard - C::F::one()),
-                    C::F::zero(),
-                );
-                // If it's the first shard, it must be a CPU shard, so the next execution shard must
-                // be 2.
-                builder.assert_felt_eq(
-                    is_first_shard * (public_values.next_execution_shard - C::F::two()),
-                    C::F::zero(),
-                );
-
-                for limb in initial_timestamp.iter().take(3) {
-                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
-                }
-
-                builder.assert_felt_eq(
-                    is_first_shard * (initial_timestamp[3] - C::F::one()),
-                    C::F::zero(),
-                );
-
-                // Assert that `init_addr_word` and `finalize_addr_word` are zero for the first
-                for limb in current_init_addr_word.iter() {
-                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
-                }
-                for limb in current_finalize_addr_word.iter() {
-                    builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
-                }
+        // If it's the first shard, `prev_committed_value_digest` must be zero.
+        for word in public_values.prev_committed_value_digest.iter() {
+            for limb in word.iter() {
+                builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
             }
-
-            // Verify the shard.
-            //
-            // Do not verify the cumulative sum here, since the permutation challenge is shared
-            // between all shards.
-            let not_cpu_shard: Felt<_> = builder.eval(
-                SymbolicFelt::one()
-                    - (public_values.next_execution_shard - public_values.execution_shard),
-            );
-
-            // Prepare a challenger.
-            let mut challenger = SC::challenger_variable(builder);
-
-            // Observe the vk and start pc.
-            challenger.observe(builder, vk.preprocessed_commit);
-            challenger.observe_slice(builder, vk.pc_start);
-            challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
-            challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
-            // Observe the padding.
-            let zero: Felt<_> = builder.eval(C::F::zero());
-            challenger.observe(builder, zero);
-
-            tracing::debug_span!("verify shard")
-                .in_scope(|| machine.verify_shard(builder, &vk, &shard_proof, &mut challenger));
-
-            // Assert that first shard has a "CPU". Equivalently, assert that if the shard does
-            // not have a "CPU", then the current shard is not 1.
-            builder.assert_felt_ne(not_cpu_shard * current_shard, C::F::one());
-
-            // Shard constraints.
-            {
-                // Assert that the shard of the proof is equal to the current shard.
-                builder.assert_felt_eq(current_shard, public_values.shard);
-
-                // Increment the current shard by one.
-                current_shard = builder.eval(current_shard + C::F::one());
-            }
-
-            // Execution shard constraints.
-            {
-                builder.assert_felt_eq(current_execution_shard, public_values.execution_shard);
-                current_execution_shard = public_values.next_execution_shard;
-            }
-
-            // Timestamp constraints.
-            {
-                for (limb, pub_limb) in
-                    current_timestamp.iter().zip(public_values.initial_timestamp.iter())
-                {
-                    builder.assert_felt_eq(*limb, *pub_limb);
-                }
-                for (limb, pub_limb) in
-                    current_timestamp.iter_mut().zip(public_values.last_timestamp.iter())
-                {
-                    builder.assert_felt_eq(not_cpu_shard * (*limb - *pub_limb), C::F::zero());
-                    *limb = *pub_limb;
-                }
-            }
-
-            // Program counter constraints.
-            {
-                // Assert that the pc_start of the proof is equal to the current pc.
-                for (limb, pub_limb) in current_pc.iter().zip_eq(public_values.pc_start.iter()) {
-                    builder.assert_felt_eq(*limb, *pub_limb);
-                }
-
-                // If it's not a CPU shard, then assert that the pc_start equals the next_pc.
-                // Update current_pc to be the end_pc of the current proof.
-                for (limb, pub_limb) in current_pc.iter_mut().zip_eq(public_values.next_pc.iter()) {
-                    builder.assert_felt_eq(not_cpu_shard * (*limb - *pub_limb), C::F::zero());
-                    *limb = *pub_limb;
-                }
-            }
-
-            // Exit code constraints.
-            {
-                // Assert that the exit code is zero (success) for all proofs.
-                builder.assert_felt_eq(current_exit_code, public_values.prev_exit_code);
-
-                // If `prev_exit_code` is non-zero, then the exit code shouldn't change.
-                builder.assert_felt_eq(
-                    current_exit_code * (current_exit_code - public_values.exit_code),
-                    C::F::zero(),
-                );
-
-                // If it's not a shard with "CPU", then the exit code shouldn't change.
-                builder.assert_felt_eq(
-                    not_cpu_shard * (public_values.prev_exit_code - public_values.exit_code),
-                    C::F::zero(),
-                );
-
-                // Update the exit code.
-                current_exit_code = public_values.exit_code;
-            }
-
-            // Memory initialization & finalization constraints.
-            {
-                // Assert that the MemoryInitialize address limbs match the current loop variable.
-                for (limb, current_limb) in current_init_addr_word
-                    .iter()
-                    .zip_eq(public_values.previous_init_addr_word.iter())
-                {
-                    builder.assert_felt_eq(*limb, *current_limb);
-                }
-
-                // Assert that the MemoryFinalize address limbs match the current loop variable.
-                for (limb, current_limb) in current_finalize_addr_word
-                    .iter()
-                    .zip_eq(public_values.previous_finalize_addr_word.iter())
-                {
-                    builder.assert_felt_eq(*limb, *current_limb);
-                }
-
-                // Update the MemoryInitialize address limbs.
-                for (limb, pub_limb) in
-                    current_init_addr_word.iter_mut().zip(public_values.last_init_addr_word.iter())
-                {
-                    *limb = *pub_limb;
-                }
-
-                // Update the MemoryFinalize address limbs.
-                for (limb, pub_limb) in current_finalize_addr_word
-                    .iter_mut()
-                    .zip(public_values.last_finalize_addr_word.iter())
-                {
-                    *limb = *pub_limb;
-                }
-            }
-
-            // Digest constraints.
-            {
-                // // If `committed_value_digest` is not zero, then the current value should be
-                // equal to `public_values.committed_value_digest`.
-
-                // Set flags to indicate whether `committed_value_digest` is non-zero. The flags are
-                // given by the elements of the array, and they will be used as filters to constrain
-                // the equality.
-                let mut is_non_zero_flags = vec![];
-                for word in committed_value_digest {
-                    for byte in word {
-                        is_non_zero_flags.push(byte);
-                    }
-                }
-
-                // Using the flags, we can constrain the equality.
-                for is_non_zero in is_non_zero_flags {
-                    for (word_current, word_public) in
-                        committed_value_digest.into_iter().zip(public_values.committed_value_digest)
-                    {
-                        for (byte_current, byte_public) in word_current.into_iter().zip(word_public)
-                        {
-                            builder.assert_felt_eq(
-                                is_non_zero * (byte_current - byte_public),
-                                C::F::zero(),
-                            );
-                        }
-                    }
-                }
-
-                // If it's not a shard with "CPU", then the committed value digest shouldn't change.
-                for (word_d, pub_word_d) in
-                    committed_value_digest.iter().zip(public_values.committed_value_digest.iter())
-                {
-                    for (d, pub_d) in word_d.iter().zip(pub_word_d.iter()) {
-                        builder.assert_felt_eq(not_cpu_shard * (*d - *pub_d), C::F::zero());
-                    }
-                }
-
-                // Update the committed value digest.
-                for (word_d, pub_word_d) in committed_value_digest
-                    .iter_mut()
-                    .zip(public_values.committed_value_digest.iter())
-                {
-                    for (d, pub_d) in word_d.iter_mut().zip(pub_word_d.iter()) {
-                        *d = *pub_d;
-                    }
-                }
-
-                // If `deferred_proofs_digest` is not zero, then the current value should be equal
-                // to `public_values.deferred_proofs_digest.
-
-                // Set a flag to indicate whether `deferred_proofs_digest` is non-zero. The flags
-                // are given by the elements of the array, and they will be used as filters to
-                // constrain the equality.
-                let mut is_non_zero_flags = vec![];
-                for element in deferred_proofs_digest {
-                    is_non_zero_flags.push(element);
-                }
-
-                // Using the flags, we can constrain the equality.
-                for is_non_zero in is_non_zero_flags {
-                    for (deferred_current, deferred_public) in deferred_proofs_digest
-                        .iter()
-                        .zip(public_values.deferred_proofs_digest.iter())
-                    {
-                        builder.assert_felt_eq(
-                            is_non_zero * (*deferred_current - *deferred_public),
-                            C::F::zero(),
-                        );
-                    }
-                }
-
-                // If it's not a shard with "CPU", then the deferred proofs digest should not
-                // change.
-                for (d, pub_d) in
-                    deferred_proofs_digest.iter().zip(public_values.deferred_proofs_digest.iter())
-                {
-                    builder.assert_felt_eq(not_cpu_shard * (*d - *pub_d), C::F::zero());
-                }
-
-                // Update the deferred proofs digest.
-                deferred_proofs_digest.copy_from_slice(&public_values.deferred_proofs_digest);
-            }
-
-            // Verify that the number of shards is not too large, i.e. that for every shard, we
-            // have shard < 2^{MAX_LOG_NUMBER_OF_SHARDS}.
-            C::range_check_felt(builder, public_values.shard, MAX_LOG_NUMBER_OF_SHARDS);
-
-            // We add the global cumulative sums of the global chips.
-            // Note that we constrain that the non-global chips have zero global cumulative sum in
-            // `verify_shard`.
-            global_cumulative_sums.push(public_values.global_cumulative_sum);
         }
+
+        // If it's the first shard, `prev_deferred_proofs_digest` must be zero.
+        for limb in public_values.prev_deferred_proofs_digest.iter() {
+            builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
+        }
+
+        // If it's the first shard (which is the first execution shard), then the `pc_start`
+        // should be vk.pc_start.
+        for (pc, vk_pc) in public_values.pc_start.iter().zip_eq(vk.pc_start.iter()) {
+            builder.assert_felt_eq(is_first_shard * (*pc - *vk_pc), C::F::zero());
+        }
+
+        // If it's the first shard, the `prev_exit_code` must be zero.
+        builder.assert_felt_eq(is_first_shard * public_values.prev_exit_code, C::F::zero());
+
+        // If it's the first shard, the execution shard should be 1.
+        builder.assert_felt_eq(
+            is_first_shard * (public_values.execution_shard - C::F::one()),
+            C::F::zero(),
+        );
+        // If it's the first shard, it must be a CPU shard, so the next execution shard must be 2.
+        builder.assert_felt_eq(
+            is_first_shard * (public_values.next_execution_shard - C::F::two()),
+            C::F::zero(),
+        );
+
+        // Assert that `previous_init_addr`, `previous_finalize_addr` are zero for the first shard.
+        for limb in public_values.previous_init_addr.iter() {
+            builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
+        }
+        for limb in public_values.previous_finalize_addr.iter() {
+            builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
+        }
+
+        // If it's the first shard, the initial timestamp must be `1`.
+        for limb in public_values.initial_timestamp.iter().take(3) {
+            builder.assert_felt_eq(is_first_shard * *limb, C::F::zero());
+        }
+        builder.assert_felt_eq(
+            is_first_shard * (public_values.initial_timestamp[3] - C::F::one()),
+            C::F::zero(),
+        );
+
+        // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the
+        // digest. If it's not the first shard, we add the zero digest to the digest.
+        global_cumulative_sums.push(
+            builder.select_global_cumulative_sum(is_first_shard, vk.initial_global_cumulative_sum),
+        );
+
+        // If it's the first shard, `prev_commit_syscall` must be zero.
+        builder.assert_felt_eq(is_first_shard * public_values.prev_commit_syscall, C::F::zero());
+
+        // If it's the first shard, `prev_commit_deferred_syscall` must be zero.
+        builder.assert_felt_eq(
+            is_first_shard * public_values.prev_commit_deferred_syscall,
+            C::F::zero(),
+        );
+
+        // Prepare a challenger.
+        let mut challenger = SC::challenger_variable(builder);
+
+        // Observe the vk and start pc.
+        challenger.observe(builder, vk.preprocessed_commit);
+        challenger.observe_slice(builder, vk.pc_start);
+        challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
+        challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
+        // Observe the padding.
+        let zero: Felt<_> = builder.eval(C::F::zero());
+        for _ in 0..7 {
+            challenger.observe(builder, zero);
+        }
+
+        // Verify the shard proof.
+        tracing::debug_span!("verify shard")
+            .in_scope(|| machine.verify_shard(builder, &vk, shard_proof, &mut challenger));
+
+        // Verify that the shard index has at most `MAX_LOG_NUMBER_OF_SHARDS` bits.
+        C::range_check_felt(builder, public_values.shard, MAX_LOG_NUMBER_OF_SHARDS);
+
+        // Verify the shard index is non-zero.
+        builder.assert_felt_ne(public_values.shard, C::F::zero());
+
+        // We add the global cumulative sum of the shard.
+        global_cumulative_sums.push(public_values.global_cumulative_sum);
 
         // We sum the digests in `global_cumulative_sums` to get the overall global cumulative sum.
         let global_cumulative_sum = builder.sum_digest_v2(global_cumulative_sums);
@@ -575,29 +256,37 @@ where
             let mut recursion_public_values_stream = [zero; RECURSIVE_PROOF_NUM_PV_ELTS];
             let recursion_public_values: &mut RecursionPublicValues<_> =
                 recursion_public_values_stream.as_mut_slice().borrow_mut();
-            recursion_public_values.committed_value_digest = committed_value_digest;
-            recursion_public_values.deferred_proofs_digest = deferred_proofs_digest;
-            recursion_public_values.pc_start = pc_start;
-            recursion_public_values.next_pc = current_pc;
-            recursion_public_values.start_shard = initial_shard;
-            recursion_public_values.next_shard = current_shard;
-            recursion_public_values.start_execution_shard = initial_execution_shard;
-            recursion_public_values.next_execution_shard = current_execution_shard;
-            recursion_public_values.initial_timestamp = initial_timestamp;
-            recursion_public_values.last_timestamp = current_timestamp;
-            recursion_public_values.previous_init_addr_word = initial_previous_init_addr_word;
-            recursion_public_values.last_init_addr_word = current_init_addr_word;
-            recursion_public_values.previous_finalize_addr_word =
-                initial_previous_finalize_addr_word;
-            recursion_public_values.last_finalize_addr_word = current_finalize_addr_word;
-            recursion_public_values.sp1_vk_digest = vk_digest;
-            recursion_public_values.global_cumulative_sum = global_cumulative_sum;
+            recursion_public_values.prev_committed_value_digest =
+                public_values.prev_committed_value_digest;
+            recursion_public_values.committed_value_digest = public_values.committed_value_digest;
+            recursion_public_values.prev_deferred_proofs_digest =
+                public_values.prev_deferred_proofs_digest;
+            recursion_public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
+            recursion_public_values.pc_start = public_values.pc_start;
+            recursion_public_values.next_pc = public_values.next_pc;
+            recursion_public_values.start_shard = public_values.shard;
+            recursion_public_values.next_shard = builder.eval(public_values.shard + C::F::one());
+            recursion_public_values.start_execution_shard = public_values.execution_shard;
+            recursion_public_values.next_execution_shard = public_values.next_execution_shard;
+            recursion_public_values.initial_timestamp = public_values.initial_timestamp;
+            recursion_public_values.last_timestamp = public_values.last_timestamp;
+            recursion_public_values.previous_init_addr = public_values.previous_init_addr;
+            recursion_public_values.last_init_addr = public_values.last_init_addr;
+            recursion_public_values.previous_finalize_addr = public_values.previous_finalize_addr;
+            recursion_public_values.last_finalize_addr = public_values.last_finalize_addr;
             recursion_public_values.start_reconstruct_deferred_digest = reconstruct_deferred_digest;
             recursion_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
-            recursion_public_values.prev_exit_code = prev_exit_code;
-            recursion_public_values.exit_code = current_exit_code;
-            recursion_public_values.is_complete = is_complete;
+            recursion_public_values.sp1_vk_digest = vk_digest;
             recursion_public_values.vk_root = vk_root;
+            recursion_public_values.global_cumulative_sum = global_cumulative_sum;
+            recursion_public_values.is_complete = is_complete;
+            recursion_public_values.prev_exit_code = public_values.prev_exit_code;
+            recursion_public_values.exit_code = public_values.exit_code;
+            recursion_public_values.prev_commit_syscall = public_values.prev_commit_syscall;
+            recursion_public_values.commit_syscall = public_values.commit_syscall;
+            recursion_public_values.prev_commit_deferred_syscall =
+                public_values.prev_commit_deferred_syscall;
+            recursion_public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
 
             // Calculate the digest and set it in the public values.
             recursion_public_values.digest =

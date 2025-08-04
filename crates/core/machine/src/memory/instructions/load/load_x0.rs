@@ -134,10 +134,6 @@ impl<F: PrimeField32> MachineAir<F> for LoadX0Chip {
             !shard.memory_load_x0_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl LoadX0Chip {

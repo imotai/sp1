@@ -5,8 +5,8 @@ use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, PrimeField};
 use sp1_stark::{
     air::{
-        AirInteraction, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
-        SP1_PROOF_NUM_PV_ELTS,
+        AirInteraction, BaseAirBuilder, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
+        PV_DIGEST_NUM_WORDS, SP1_PROOF_NUM_PV_ELTS,
     },
     septic_digest::SepticDigest,
     shape::Shape,
@@ -248,8 +248,8 @@ impl ExecutionRecord {
                 &mut blank_record
             };
 
-            let mut init_addr_word = 0;
-            let mut finalize_addr_word = 0;
+            let mut init_addr = 0;
+            let mut finalize_addr = 0;
             for mem_chunks in self
                 .global_memory_initialize_events
                 .chunks(opts.memory)
@@ -263,18 +263,18 @@ impl ExecutionRecord {
                     EitherOrBoth::Right(mem_finalize_chunk) => ([].as_slice(), mem_finalize_chunk),
                 };
                 last_record_ref.global_memory_initialize_events.extend_from_slice(mem_init_chunk);
-                last_record_ref.public_values.previous_init_addr_word = init_addr_word;
+                last_record_ref.public_values.previous_init_addr = init_addr;
                 if let Some(last_event) = mem_init_chunk.last() {
-                    init_addr_word = last_event.addr;
+                    init_addr = last_event.addr;
                 }
-                last_record_ref.public_values.last_init_addr_word = init_addr_word;
+                last_record_ref.public_values.last_init_addr = init_addr;
 
                 last_record_ref.global_memory_finalize_events.extend_from_slice(mem_finalize_chunk);
-                last_record_ref.public_values.previous_finalize_addr_word = finalize_addr_word;
+                last_record_ref.public_values.previous_finalize_addr = finalize_addr;
                 if let Some(last_event) = mem_finalize_chunk.last() {
-                    finalize_addr_word = last_event.addr;
+                    finalize_addr = last_event.addr;
                 }
-                last_record_ref.public_values.last_finalize_addr_word = finalize_addr_word;
+                last_record_ref.public_values.last_finalize_addr = finalize_addr;
 
                 if !pack_memory_events_into_last_record {
                     // If not packing memory events into the last record, add 'last_record_ref'
@@ -571,6 +571,9 @@ impl MachineRecord for ExecutionRecord {
         > = public_values_slice.as_slice().borrow();
 
         Self::eval_state(public_values, builder);
+        Self::eval_exit_code(public_values, builder);
+        Self::eval_committed_value_digest(public_values, builder);
+        Self::eval_deferred_proofs_digest(public_values, builder);
         Self::eval_global_sum(public_values, builder);
         Self::eval_global_memory_init(public_values, builder);
         Self::eval_global_memory_finalize(public_values, builder);
@@ -692,28 +695,28 @@ impl ExecutionRecord {
         );
 
         // If execution shard is not incremented, assert that timestamp and pc remains equal.
-        let increment_execution_shard =
+        let is_execution_shard =
             public_values.next_execution_shard.into() - public_values.execution_shard.into();
-        builder.assert_bool(increment_execution_shard.clone());
+        builder.assert_bool(is_execution_shard.clone());
         builder
-            .when_not(increment_execution_shard.clone())
+            .when_not(is_execution_shard.clone())
             .assert_eq(initial_timestamp_low.clone(), last_timestamp_low.clone());
         builder
-            .when_not(increment_execution_shard.clone())
+            .when_not(is_execution_shard.clone())
             .assert_eq(initial_timestamp_high.clone(), last_timestamp_high.clone());
-        for i in 0..3 {
-            builder
-                .when_not(increment_execution_shard.clone())
-                .assert_eq(public_values.pc_start[i], public_values.next_pc[i]);
-        }
+        builder
+            .when_not(is_execution_shard.clone())
+            .assert_all_eq(public_values.pc_start, public_values.next_pc);
 
         // IsZeroOperation on the high bits of the timestamp.
         builder.assert_bool(public_values.is_timestamp_high_eq);
+        // If high bits are equal, then `is_timestamp_high_eq == 1`.
         builder.assert_eq(
             (last_timestamp_high.clone() - initial_timestamp_high.clone())
                 * public_values.inv_timestamp_high.into(),
             AB::Expr::one() - public_values.is_timestamp_high_eq.into(),
         );
+        // If high bits are distinct, then `is_timestamp_high_eq == 0`.
         builder.assert_zero(
             (last_timestamp_high.clone() - initial_timestamp_high.clone())
                 * public_values.is_timestamp_high_eq.into(),
@@ -721,11 +724,13 @@ impl ExecutionRecord {
 
         // IsZeroOperation on the low bits of the timestamp.
         builder.assert_bool(public_values.is_timestamp_low_eq);
+        // If low bits are equal, then `is_timestamp_low_eq == 1`.
         builder.assert_eq(
             (last_timestamp_low.clone() - initial_timestamp_low.clone())
                 * public_values.inv_timestamp_low.into(),
             AB::Expr::one() - public_values.is_timestamp_low_eq.into(),
         );
+        // If low bits are distinct, then `is_timestamp_low_eq == 0`.
         builder.assert_zero(
             (last_timestamp_low.clone() - initial_timestamp_low.clone())
                 * public_values.is_timestamp_low_eq.into(),
@@ -733,8 +738,170 @@ impl ExecutionRecord {
 
         // If the execution shard is incremented, then the timestamp is different.
         builder.assert_eq(
-            AB::Expr::one() - increment_execution_shard.clone(),
+            AB::Expr::one() - is_execution_shard.clone(),
             public_values.is_timestamp_high_eq.into() * public_values.is_timestamp_low_eq.into(),
+        );
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn eval_exit_code<AB: SP1AirBuilder>(
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            [AB::PublicVar; 3],
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
+        builder: &mut AB,
+    ) {
+        let is_execution_shard =
+            public_values.next_execution_shard.into() - public_values.execution_shard.into();
+
+        // If the `prev_exit_code` is non-zero, then the `exit_code` must be equal to it.
+        builder.assert_zero(
+            public_values.prev_exit_code.into()
+                * (public_values.exit_code.into() - public_values.prev_exit_code.into()),
+        );
+
+        // If it's not an execution shard, assert that `exit_code` will not change in that shard.
+        builder
+            .when_not(is_execution_shard.clone())
+            .assert_eq(public_values.prev_exit_code, public_values.exit_code);
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn eval_committed_value_digest<AB: SP1AirBuilder>(
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            [AB::PublicVar; 3],
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
+        builder: &mut AB,
+    ) {
+        let is_execution_shard =
+            public_values.next_execution_shard.into() - public_values.execution_shard.into();
+
+        // Assert that both `prev_committed_value_digest` and `committed_value_digest` are bytes.
+        for i in 0..PV_DIGEST_NUM_WORDS {
+            builder.send_byte(
+                AB::Expr::from_canonical_u8(ByteOpcode::U8Range as u8),
+                AB::Expr::zero(),
+                public_values.prev_committed_value_digest[i][0],
+                public_values.prev_committed_value_digest[i][1],
+                AB::Expr::one(),
+            );
+            builder.send_byte(
+                AB::Expr::from_canonical_u8(ByteOpcode::U8Range as u8),
+                AB::Expr::zero(),
+                public_values.prev_committed_value_digest[i][2],
+                public_values.prev_committed_value_digest[i][3],
+                AB::Expr::one(),
+            );
+            builder.send_byte(
+                AB::Expr::from_canonical_u8(ByteOpcode::U8Range as u8),
+                AB::Expr::zero(),
+                public_values.committed_value_digest[i][0],
+                public_values.committed_value_digest[i][1],
+                AB::Expr::one(),
+            );
+            builder.send_byte(
+                AB::Expr::from_canonical_u8(ByteOpcode::U8Range as u8),
+                AB::Expr::zero(),
+                public_values.committed_value_digest[i][2],
+                public_values.committed_value_digest[i][3],
+                AB::Expr::one(),
+            );
+        }
+
+        // Assert that both `prev_commit_syscall` and `commit_syscall` are boolean.
+        builder.assert_bool(public_values.prev_commit_syscall);
+        builder.assert_bool(public_values.commit_syscall);
+
+        // Assert that `prev_commit_syscall == 1` implies `commit_syscall == 1`.
+        builder.when(public_values.prev_commit_syscall).assert_one(public_values.commit_syscall);
+
+        // Assert that the `commit_syscall` value doesn't change in a non-execution shard.
+        builder
+            .when_not(is_execution_shard.clone())
+            .assert_eq(public_values.prev_commit_syscall, public_values.commit_syscall);
+
+        // Assert that `committed_value_digest` will not change in a non-execution shard.
+        for i in 0..PV_DIGEST_NUM_WORDS {
+            builder.when_not(is_execution_shard.clone()).assert_all_eq(
+                public_values.prev_committed_value_digest[i],
+                public_values.committed_value_digest[i],
+            );
+        }
+
+        // Assert that `prev_committed_value_digest != [0u8; 32]` implies `committed_value_digest`
+        // must remain equal to the `prev_committed_value_digest`.
+        for word in public_values.prev_committed_value_digest {
+            for limb in word {
+                for i in 0..PV_DIGEST_NUM_WORDS {
+                    builder.when(limb).assert_all_eq(
+                        public_values.prev_committed_value_digest[i],
+                        public_values.committed_value_digest[i],
+                    );
+                }
+            }
+        }
+
+        // Assert that if `prev_commit_syscall` is true, `committed_value_digest` doesn't change.
+        for i in 0..PV_DIGEST_NUM_WORDS {
+            builder.when(public_values.prev_commit_syscall).assert_all_eq(
+                public_values.prev_committed_value_digest[i],
+                public_values.committed_value_digest[i],
+            );
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn eval_deferred_proofs_digest<AB: SP1AirBuilder>(
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            [AB::PublicVar; 3],
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
+        builder: &mut AB,
+    ) {
+        let is_execution_shard =
+            public_values.next_execution_shard.into() - public_values.execution_shard.into();
+
+        // Assert that `prev_commit_deferred_syscall` and `commit_deferred_syscall` are boolean.
+        builder.assert_bool(public_values.prev_commit_deferred_syscall);
+        builder.assert_bool(public_values.commit_deferred_syscall);
+
+        // Assert that `prev_commit_deferred_syscall == 1` implies `commit_deferred_syscall == 1`.
+        builder
+            .when(public_values.prev_commit_deferred_syscall)
+            .assert_one(public_values.commit_deferred_syscall);
+
+        // Assert that the `commit_deferred_syscall` value doesn't change in a non-execution shard.
+        builder.when_not(is_execution_shard.clone()).assert_eq(
+            public_values.prev_commit_deferred_syscall,
+            public_values.commit_deferred_syscall,
+        );
+
+        // Assert that `deferred_proofs_digest` will not change in a non-execution shard.
+        builder.when_not(is_execution_shard.clone()).assert_all_eq(
+            public_values.prev_deferred_proofs_digest,
+            public_values.deferred_proofs_digest,
+        );
+
+        // Assert that `prev_deferred_proofs_digest != 0` implies `deferred_proofs_digest` must
+        // remain equal to the `prev_deferred_proofs_digest`.
+        for limb in public_values.prev_deferred_proofs_digest {
+            builder.when(limb).assert_all_eq(
+                public_values.prev_deferred_proofs_digest,
+                public_values.deferred_proofs_digest,
+            );
+        }
+
+        // If `prev_commit_deferred_syscall` is true, `deferred_proofs_digest` doesn't change.
+        builder.when(public_values.prev_commit_deferred_syscall).assert_all_eq(
+            public_values.prev_deferred_proofs_digest,
+            public_values.deferred_proofs_digest,
         );
     }
 
@@ -783,10 +950,28 @@ impl ExecutionRecord {
         >,
         builder: &mut AB,
     ) {
+        // Check the addresses are of valid u16 limbs.
+        for i in 0..3 {
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.previous_init_addr[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.last_init_addr[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+        }
+
         builder.send(
             AirInteraction::new(
                 once(AB::Expr::zero())
-                    .chain(public_values.previous_init_addr_word.into_iter().map(Into::into))
+                    .chain(public_values.previous_init_addr.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),
@@ -797,7 +982,7 @@ impl ExecutionRecord {
         builder.receive(
             AirInteraction::new(
                 once(public_values.global_init_count.into())
-                    .chain(public_values.last_init_addr_word.into_iter().map(Into::into))
+                    .chain(public_values.last_init_addr.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),
@@ -817,10 +1002,28 @@ impl ExecutionRecord {
         >,
         builder: &mut AB,
     ) {
+        // Check the addresses are of valid u16 limbs.
+        for i in 0..3 {
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.previous_finalize_addr[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+            builder.send_byte(
+                AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+                public_values.last_finalize_addr[i].into(),
+                AB::Expr::from_canonical_u32(16),
+                AB::Expr::zero(),
+                AB::Expr::one(),
+            );
+        }
+
         builder.send(
             AirInteraction::new(
                 once(AB::Expr::zero())
-                    .chain(public_values.previous_finalize_addr_word.into_iter().map(Into::into))
+                    .chain(public_values.previous_finalize_addr.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),
@@ -831,7 +1034,7 @@ impl ExecutionRecord {
         builder.receive(
             AirInteraction::new(
                 once(public_values.global_finalize_count.into())
-                    .chain(public_values.last_finalize_addr_word.into_iter().map(Into::into))
+                    .chain(public_values.last_finalize_addr.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
                 AB::Expr::one(),

@@ -1,5 +1,3 @@
-use std::{borrow::Borrow, path::Path, str::FromStr};
-
 use crate::{
     utils::{is_recursion_public_values_valid, is_root_public_values_valid},
     HashableKey, OuterSC,
@@ -19,6 +17,7 @@ use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierConfigError, MachineVerifierError,
 };
+use std::{borrow::Borrow, path::Path, str::FromStr};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -50,7 +49,8 @@ bn254 proof"
 
 impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a core proof by verifying the shards, verifying lookup bus, verifying that the
-    /// shards are contiguous and complete.
+    /// shards are contiguous and complete. Some of the public values verification is inside the
+    /// `eval_public_values` function, which is a part of the core shard proof.
     pub fn verify(
         &self,
         proof: &SP1CoreProofData,
@@ -62,17 +62,16 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             return Err(MachineVerifierError::EmptyProof);
         }
 
-        // First shard has a "CPU" constraint.
-        //
-        // Assert that the first shard has a "CPU".
+        // Assert that the first shard is an execution shard.
         let first_shard = proof.0.first().unwrap();
         let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
             first_shard.public_values.as_slice().borrow();
-        if public_values.execution_shard != BabyBear::one()
+        if public_values.shard != BabyBear::one()
+            || public_values.execution_shard != BabyBear::one()
             || public_values.next_execution_shard != BabyBear::two()
         {
             return Err(MachineVerifierError::InvalidPublicValues(
-                "first shard does not contain CPU",
+                "first shard does not contain RISCV cycles",
             ));
         }
 
@@ -96,6 +95,21 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // Execution shard and timestamp constraints.
+        //
+        // Initialization:
+        // - The `execution_shard` and `initial_timestamp` of the first shard must be one.
+        //
+        // Transition:
+        // - A shard's `next_execution_shard` must equal the next shard's `execution_shard`.
+        // - A shard's `last_timestamp` must equal the next shard's `initial_timestamp`.
+        //
+        // Internal Constraints:
+        // - Inside the shard proof, it's constrained that `next_execution_shard` is equal to
+        // `execution_shard` if the `initial_timestamp` is equal to `last_timestamp`.
+        // - Inside the shard proof, it's constrained that `next_execution_shard` is equal to
+        // `execution_shard + 1` if the `initial_timestamp` is different to `last_timestamp`.
+        // - Inside the shard proof, the timestamp's limbs are range checked.
+        // - We include some of these checks inside the verify function for additional verification.
         let mut prev_next_execution_shard = BabyBear::one();
         let mut prev_timestamp =
             [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()];
@@ -108,6 +122,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             if public_values.initial_timestamp != prev_timestamp {
                 return Err(MachineVerifierError::InvalidPublicValues("invalid initial timestamp"));
             }
+            // These checks below are already done in the shard proof, but done additionally.
             if public_values.execution_shard != public_values.next_execution_shard
                 && public_values.initial_timestamp == public_values.last_timestamp
             {
@@ -115,7 +130,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     "timestamp should change on execution shard",
                 ));
             }
-            if public_values.execution_shard == public_values.next_execution_shard
+            if public_values.execution_shard + BabyBear::one() != public_values.next_execution_shard
                 && public_values.initial_timestamp != public_values.last_timestamp
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -132,13 +147,16 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - `pc_start` should start as `vk.pc_start`.
         //
         // Transition:
-        // - `next_pc` of the previous shard should equal `pc_start`.
-        // - If it's not a shard with "CPU", then `pc_start` equals `next_pc`.
-        // - If it's a shard with "CPU", then `pc_start` should never equal zero.
+        // - `next_pc` of a shard should equal to `pc_start` of the next shard.
         //
         // Finalization:
-        // - `next_pc` should equal HALT_PC.
-        let mut prev_next_pc = [BabyBear::zero(); 3];
+        // - `next_pc` should equal `HALT_PC`.
+        //
+        // Internal Constraints:
+        // - Inside the shard proof, it's constrained that `pc_start` and `next_pc` are composed of
+        // valid u16 limbs, and that in a non-execution shard, `pc_start` and `next_pc` are equal.
+        // - We include some of these checks inside the verify function for additional verification.
+        let mut prev_next_pc = vk.pc_start;
         let halt_pc = [
             BabyBear::from_canonical_u64(sp1_core_executor::HALT_PC),
             BabyBear::zero(),
@@ -147,46 +165,62 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         for (i, shard_proof) in proof.0.iter().enumerate() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if i == 0 && public_values.pc_start != vk.pc_start {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "pc_start != vk.pc_start: program counter should start at vk.pc_start",
-                ));
-            } else if i != 0 && public_values.pc_start != prev_next_pc {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "pc_start != next_pc_prev: pc_start should equal next_pc_prev for all shards",
-                ));
-            } else if i == proof.0.len() - 1 && public_values.next_pc != halt_pc {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "next_pc != HALT_PC: execution should have halted",
-                ));
-            } else if public_values.execution_shard == public_values.next_execution_shard
+            if public_values.pc_start != prev_next_pc {
+                if i == 0 {
+                    return Err(MachineVerifierError::InvalidPublicValues(
+                        "pc_start != vk.pc_start: program counter should start at vk.pc_start",
+                    ));
+                } else {
+                    return Err(MachineVerifierError::InvalidPublicValues(
+                        "pc_start != prev_next_pc: pc_start should equal prev_next_pc for all shards",
+                    ));
+                }
+            }
+            // These checks below are already done in the shard proof, but done additionally.
+            if public_values.execution_shard == public_values.next_execution_shard
                 && public_values.pc_start != public_values.next_pc
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "pc_start != next_pc: pc_start should equal next_pc for non-cpu shards",
+                    "pc_start != next_pc: pc_start should equal next_pc for non-execution shards",
                 ));
             }
             prev_next_pc = public_values.next_pc;
         }
+        if prev_next_pc != halt_pc {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "next_pc != HALT_PC: execution should have halted",
+            ));
+        }
 
         // Exit code constraints.
         //
-        // - In every shard, the exit code should be zero.
+        // Initialization
+        // - The `prev_exit_code` of the first shard must be zero.
+        //
+        // Transition
+        // - The `exit_code` of the shard must be the `prev_exit_code` of the next shard.
+        //
+        // Internal Constraints:
+        // - Inside the shard proof, it is constrained that `prev_exit_code` and `exit_code` must
+        // equal to each other if the shard is not an execution shard.
+        // - Inside the shard proof, it is constrained that if `prev_exit_code` is non-zero, then
+        // `exit_code` must be equal to the `prev_exit_code`.
+        // - We include these checks inside the verify function for additional verification.
+        let mut prev_exit_code = BabyBear::zero();
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if public_values.shard == BabyBear::one()
-                && public_values.prev_exit_code != BabyBear::zero()
-            {
+            if public_values.prev_exit_code != prev_exit_code {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "prev_exit_code != 0: previous exit code should be zero for first shard",
+                    "public_values.prev_exit_code != prev_exit_code: prev_exit_code does not match previous shard's exit_code",
                 ));
             }
+            // These checks below are already done in the shard proof, but done additionally.
             if public_values.execution_shard == public_values.next_execution_shard
                 && public_values.prev_exit_code != public_values.exit_code
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "prev_exit_code != exit_code: exit code should be same in non-cpu shards",
+                    "prev_exit_code != exit_code: exit code should be same in non-execution shards",
                 ));
             }
             if public_values.prev_exit_code != BabyBear::zero()
@@ -196,88 +230,133 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     "prev_exit_code != exit_code: exit code should change at most once",
                 ));
             }
+            prev_exit_code = public_values.exit_code;
         }
 
         // Memory initialization & finalization constraints.
         //
         // Initialization:
-        // - `previous_init_addr_bits` should be zero.
-        // - `previous_finalize_addr_bits` should be zero.
+        // - `previous_init_addr` should be zero.
+        // - `previous_finalize_addr` should be zero.
         //
         // Transition:
-        // - For all shards, `previous_init_addr_bits` should equal `last_init_addr_bits` of the
-        //   previous shard.
-        // - For all shards, `previous_finalize_addr_bits` should equal `last_finalize_addr_bits` of
-        //   the previous shard.
-        // - For shards without "MemoryInit", `previous_init_addr_bits` should equal
-        //   `last_init_addr_bits`.
-        // - For shards without "MemoryFinalize", `previous_finalize_addr_bits` should equal
-        //   `last_finalize_addr_bits`.
-        let mut last_init_addr_word_prev = [BabyBear::zero(); 3];
-        let mut last_finalize_addr_word_prev = [BabyBear::zero(); 3];
+        // - The `previous_init_addr` should equal `last_init_addr` of the previous shard.
+        // - The `previous_finalize_addr` should equal `last_finalize_addr` of the previous shard.
+        //
+        // Finalization:
+        // - The final `last_init_addr` should be non-zero.
+        // - The final `last_finalize_addr` should be non-zero.
+        //
+        // Internal Constraints:
+        // - Inside the shard proof, it is constrained that the addresses are of valid u16 limbs.
+        let mut last_init_addr_prev = [BabyBear::zero(); 3];
+        let mut last_finalize_addr_prev = [BabyBear::zero(); 3];
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if public_values.previous_init_addr_word != last_init_addr_word_prev {
+            if public_values.previous_init_addr != last_init_addr_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "previous_init_addr_word != last_init_addr_word_prev",
+                    "previous_init_addr != last_init_addr_prev",
                 ));
-            } else if public_values.previous_finalize_addr_word != last_finalize_addr_word_prev {
+            } else if public_values.previous_finalize_addr != last_finalize_addr_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "previous_finalize_addr_word != last_finalize_addr_word_prev",
+                    "previous_finalize_addr != last_finalize_addr_prev",
                 ));
             }
-            last_init_addr_word_prev = public_values.last_init_addr_word;
-            last_finalize_addr_word_prev = public_values.last_finalize_addr_word;
+            last_init_addr_prev = public_values.last_init_addr;
+            last_finalize_addr_prev = public_values.last_finalize_addr;
+        }
+        if last_init_addr_prev == [BabyBear::zero(); 3] {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "the zero address was never initialized",
+            ));
+        }
+        if last_finalize_addr_prev == [BabyBear::zero(); 3] {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "the zero address was never finalized",
+            ));
         }
 
         // Digest constraints.
         //
         // Initialization:
-        // - `committed_value_digest` should be zero.
-        // - `deferred_proofs_digest` should be zero.
+        // - `prev_committed_value_digest` should be zero.
+        // - `prev_deferred_proofs_digest` should be zero.
+        // - `prev_commit_syscall` should be zero.
+        // - `prev_commit_deferred_syscall` should be zero.
         //
         // Transition:
-        // - If `committed_value_digest_prev` is not zero, then `committed_value_digest` equal
-        //  `committed_value_digest_prev`. Otherwise, `committed_value_digest` should equal zero.
-        // - If `deferred_proofs_digest_prev` is not zero, then `deferred_proofs_digest` should be
-        //   `deferred_proofs_digest_prev`. Otherwise, `deferred_proofs_digest` should be zero.
-        // - If it's not a shard with "CPU", then `committed_value_digest` should not change.
-        // - If it's not a shard with "CPU", then `deferred_proofs_digest` should not change.
+        // - `committed_value_digest` must equal the next shard's `prev_committed_value_digest`.
+        // - `deferred_proofs_digest` must equal the next shard's `prev_deferred_proofs_digest`.
+        // - `commit_syscall` must equal the next shard's `prev_commit_syscall`.
+        // - `commit_deferred_syscall` must equal the next shard's `prev_commit_deferred_syscall`.
+        //
+        // Finalization:
+        // - The last `commit_syscall` should equal one.
+        // - The last `commit_deferred_syscall` should equal one.
+        //
+        // Internal Constraints for `committed_value_digest` and `commit_syscall`:
+        // - The `prev_committed_value_digest` are of valid bytes.
+        // - The `committed_value_digest` are of valid bytes.
+        // - If the `COMMIT` syscall was called in the shard, then `commit_syscall == 1`.
+        // - `prev_commit_syscall` and `commit_syscall` are boolean.
+        // - If `prev_commit_syscall == 1`, then `commit_syscall == 1`.
+        // - In a non-execution shard, `prev_commit_syscall == commit_syscall`.
+        // - If the shard isn't an execution shard, or has `prev_commit_syscall == 1`, or if
+        // `prev_committed_value_digest` has a non-zero byte inside it, then
+        // `prev_committed_value_digest == committed_value_digest`.
+        //
+        // Internal Constraints for `deferred_proofs_digest` and `commit_deferred_syscall`:
+        // - If `COMMIT_DEFERRED_PROOFS` syscall was called, `commit_deferred_syscall == 1`.
+        // - `prev_commit_deferred_syscall` and `commit_deferred_syscall` are boolean.
+        // - If `prev_commit_deferred_syscall == 1`, then `commit_deferred_syscall == 1`.
+        // - In a non-execution shard, `prev_commit_deferred_syscall == commit_deferred_syscall`.
+        // - If the shard isn't an execution shard, or has `prev_commit_deferred_syscall == 1`, or
+        // if `prev_deferred_proofs_digest` has a non-zero limb inside it, then
+        // `prev_deferred_proofs_digest == deferred_proofs_digest`.
         let zero_committed_value_digest = [[BabyBear::zero(); 4]; PV_DIGEST_NUM_WORDS];
         let zero_deferred_proofs_digest = [BabyBear::zero(); POSEIDON_NUM_WORDS];
+        let mut commit_syscall_prev = BabyBear::zero();
+        let mut commit_deferred_syscall_prev = BabyBear::zero();
         let mut committed_value_digest_prev = zero_committed_value_digest;
         let mut deferred_proofs_digest_prev = zero_deferred_proofs_digest;
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if committed_value_digest_prev != zero_committed_value_digest
-                && public_values.committed_value_digest != committed_value_digest_prev
-            {
+            if public_values.prev_committed_value_digest != committed_value_digest_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "committed_value_digest != committed_value_digest_prev",
+                    "prev_committed_value_digest doesn't equal the previous shard's committed_value_digest",
                 ));
-            } else if deferred_proofs_digest_prev != zero_deferred_proofs_digest
-                && public_values.deferred_proofs_digest != deferred_proofs_digest_prev
-            {
+            }
+            if public_values.prev_deferred_proofs_digest != deferred_proofs_digest_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "deferred_proofs_digest != deferred_proofs_digest_prev",
+                    "prev_deferred_proofs_digest doesn't equal the previous shard's deferred_proofs_digest",
                 ));
-            } else if public_values.execution_shard == public_values.next_execution_shard
-                && public_values.committed_value_digest != committed_value_digest_prev
-            {
+            }
+            if public_values.prev_commit_syscall != commit_syscall_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "committed_value_digest != committed_value_digest_prev",
+                    "prev_commit_syscall doesn't equal the previous shard's commit_syscall",
                 ));
-            } else if public_values.execution_shard == public_values.next_execution_shard
-                && public_values.deferred_proofs_digest != deferred_proofs_digest_prev
-            {
+            }
+            if public_values.prev_commit_deferred_syscall != commit_deferred_syscall_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "deferred_proofs_digest != deferred_proofs_digest_prev",
+                    "prev_commit_deferred_syscall doesn't equal the previous shard's commit_deferred_syscall",
                 ));
             }
             committed_value_digest_prev = public_values.committed_value_digest;
             deferred_proofs_digest_prev = public_values.deferred_proofs_digest;
+            commit_syscall_prev = public_values.commit_syscall;
+            commit_deferred_syscall_prev = public_values.commit_deferred_syscall;
+        }
+        if commit_syscall_prev != BabyBear::one() {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "COMMIT syscall was never called",
+            ));
+        }
+        if commit_deferred_syscall_prev != BabyBear::one() {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "COMMIT_DEFERRED_PROOFS syscall was never called",
+            ));
         }
 
         // Verify that the number of shards is not too large.
@@ -323,32 +402,37 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let SP1RecursionProof { vk: compress_vk, proof } = proof;
         let mut challenger = self.recursion_prover.verifier().challenger();
         compress_vk.observe_into(&mut challenger);
+
+        // Verify the shard proof.
         self.recursion_prover
             .verifier()
             .verify_shard(compress_vk, proof, &mut challenger)
             .map_err(MachineVerifierError::InvalidShardProof)?;
 
-        // Validate public values
+        // Validate the public values.
         let public_values: &RecursionPublicValues<_> = proof.public_values.as_slice().borrow();
 
+        // The `digest` is the correct hash of the recursion public values.
         if !is_recursion_public_values_valid(public_values) {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "recursion public values are invalid",
             ));
         }
 
+        // The `vk_root` is the expected `vk_root`.
         if public_values.vk_root != self.recursion_prover.recursion_vk_root {
             return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
         }
 
+        // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
+        // This `vk_verification` must be only turned off for testing purposes.
         if self.recursion_prover.vk_verification()
             && !self.recursion_prover.recursion_vk_map.contains_key(&compress_vk.hash_babybear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
-        // `is_complete` should be 1. In the reduce program, this ensures that the proof is fully
-        // reduced.
+        // `is_complete` should be 1. This ensures that the proof is fully reduced.
         if public_values.is_complete != BabyBear::one() {
             return Err(MachineVerifierError::InvalidPublicValues("is_complete is not 1"));
         }
@@ -372,32 +456,37 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let shrink_vk = self.recursion_prover.get_shrink_keys().1;
         let mut challenger = self.recursion_prover.shrink_verifier().challenger();
         shrink_vk.observe_into(&mut challenger);
+
+        // Verify the shard proof.
         self.recursion_prover
             .shrink_verifier()
             .verify_shard(&shrink_vk, proof, &mut challenger)
             .map_err(MachineVerifierError::InvalidShardProof)?;
 
-        // Validate public values
+        // Validate public values.
         let public_values: &RecursionPublicValues<_> = proof.public_values.as_slice().borrow();
 
+        // The `digest` is the correct hash of the recursion public values.
         if !is_recursion_public_values_valid(public_values) {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "recursion public values are invalid",
             ));
         }
 
+        // The `vk_root` is the expected `vk_root`.
         if public_values.vk_root != self.recursion_prover.recursion_vk_root {
             return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
         }
 
+        // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
+        // This `vk_verification` must be only turned off for testing purposes.
         if self.recursion_prover.vk_verification()
             && !self.recursion_prover.recursion_vk_map.contains_key(&shrink_vk.hash_babybear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
-        // `is_complete` should be 1. In the reduce program, this ensures that the proof is fully
-        // reduced.
+        // `is_complete` should be 1. This ensures that the proof is fully reduced.
         if public_values.is_complete != BabyBear::one() {
             return Err(MachineVerifierError::InvalidPublicValues("is_complete is not 1"));
         }
@@ -421,12 +510,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let wrap_vk = self.recursion_prover.get_wrap_keys().1;
         let mut challenger = self.recursion_prover.wrap_verifier().challenger();
         wrap_vk.observe_into(&mut challenger);
+
+        // Verify the shard proof.
         self.recursion_prover
             .wrap_verifier()
             .verify_shard(&wrap_vk, proof, &mut challenger)
             .map_err(MachineVerifierError::InvalidShardProof)?;
 
-        // Validate public values
+        // Validate public values.
         let public_values: &RootPublicValues<_> = proof.public_values.as_slice().borrow();
         if !is_root_public_values_valid(public_values) {
             return Err(MachineVerifierError::InvalidPublicValues(

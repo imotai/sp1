@@ -104,7 +104,7 @@ where
     <N::Limbs as Div<U8>>::Output: ArrayLength + Debug,
     <N::Limbs as Div<U4>>::Output: ArrayLength + Debug,
 {
-    /// Each word has 8 limbs so we divide by 8.
+    /// Each word has 8 bytes so we divide by 8.
     type WordsFieldElement = <N::Limbs as Div<U8>>::Output;
     /// Curve point has 2 field elements so we divide by 4.
     type WordsCurvePoint = <N::Limbs as Div<U4>>::Output;

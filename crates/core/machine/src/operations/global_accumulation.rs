@@ -170,8 +170,7 @@ impl<F: Field> GlobalAccumulationOperation<F> {
         // Since `sum_checker_x` is degree 3, we constrain it to be equal to
         // `witnessed_sum_checker_x` first.
         builder.assert_septic_ext_eq(sum_checker_x, witnessed_sum_checker_x.clone());
-        // Now we can constrain that when `local_is_real[i] == 1`, the two `sum_checker` values are
-        // both zero.
+        // Now we can constrain that when `is_real == 1`, the two `sum_checker` values are zero.
         builder
             .when(local_is_real)
             .assert_septic_ext_eq(witnessed_sum_checker_x, SepticExtension::<AB::Expr>::zero());
@@ -185,7 +184,7 @@ impl<F: Field> GlobalAccumulationOperation<F> {
             .assert_septic_ext_eq(initial_digest.x.clone(), cumulative_sum.x.clone());
         builder.when_not(local_is_real).assert_septic_ext_eq(initial_digest.y, cumulative_sum.y);
 
-        // Send the next digest.
+        // Send the next digest, with the incremented `index`.
         builder.send(
             AirInteraction::new(
                 vec![local_index + AB::Expr::one()]

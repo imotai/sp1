@@ -39,14 +39,6 @@ pub fn dummy_query_proof(
             TensorCsOpening { values: openings, proof: MerkleTreeTcsProof { paths: proof } }
         })
         .collect::<Vec<_>>()
-    // QueryProof {
-    //     commit_phase_openings: (0..height)
-    //         .map(|i| CommitPhaseProofStep {
-    //             sibling_value: InnerChallenge::zero(),
-    //             opening_proof: vec![dummy_hash().into(); height - i + log_blowup - 1],
-    //         })
-    //         .collect(),
-    // };
 }
 
 /// Make a dummy PCS proof for a given proof shape. Used to generate vkey information for fixed
@@ -128,28 +120,6 @@ pub fn dummy_pcs_proof(
         added_columns: added_cols.to_vec(),
     }
 }
-// For each query, create a dummy batch opening for each matrix in the batch. `batch_shapes`
-// determines the sizes of each dummy batch opening.
-// let query_openings = (0..fri_queries)
-//     .map(|_| {
-//         batch_shapes
-//             .iter()
-//             .map(|shapes| {
-//                 let batch_max_height =
-//                     shapes.shapes.iter().map(|shape| shape.log_degree).max().unwrap();
-//                 BatchOpening {
-//                     opened_values: shapes
-//                         .shapes
-//                         .iter()
-//                         .map(|shape| vec![BabyBear::zero(); shape.width])
-//                         .collect(),
-//                     opening_proof: vec![dummy_hash().into(); batch_max_height + log_blowup],
-//                 }
-//             })
-//             .collect::<Vec<_>>()
-//     })
-//     .collect::<Vec<_>>();
-// TwoAdicFriPcsProof { fri_proof: basefold_proof, query_openings }
 
 #[cfg(test)]
 mod tests {

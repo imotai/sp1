@@ -629,8 +629,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     BabyBear::zero(),
                     BabyBear::one(),
                 ],
-                init_addr_word: [BabyBear::zero(); 3],
-                finalize_addr_word: [BabyBear::zero(); 3],
+                init_addr: [BabyBear::zero(); 3],
+                finalize_addr: [BabyBear::zero(); 3],
                 committed_value_digest: [[BabyBear::zero(); 4]; 8],
                 deferred_proofs_digest: [BabyBear::zero(); 8],
             });

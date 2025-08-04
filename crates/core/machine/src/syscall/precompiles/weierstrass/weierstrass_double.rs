@@ -317,10 +317,6 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             }
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
@@ -471,26 +467,12 @@ where
             local.is_real.into(),
         );
 
-        AddrAddOperation::<AB::F>::eval(
-            builder,
-            Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
-            Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
-            local.p_addrs[0],
-            local.is_real.into(),
-        );
-
-        // p_addrs[i] = p_addrs[i - 1] + 8.
-        let eight = AB::F::from_canonical_u32(8u32);
-        for i in 1..local.p_addrs.len() {
+        // p_addrs[i] = p_ptr + 8 * i
+        for i in 0..local.p_addrs.len() {
             AddrAddOperation::<AB::F>::eval(
                 builder,
-                Word([
-                    local.p_addrs[i - 1].value[0].into(),
-                    local.p_addrs[i - 1].value[1].into(),
-                    local.p_addrs[i - 1].value[2].into(),
-                    AB::Expr::zero(),
-                ]),
-                Word([eight.into(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()]),
+                Word([p_ptr[0].into(), p_ptr[1].into(), p_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
                 local.p_addrs[i],
                 local.is_real.into(),
             );

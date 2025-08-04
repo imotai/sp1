@@ -183,10 +183,6 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2Linea
     fn included(&self, _record: &Self::Record) -> bool {
         true
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for Poseidon2LinearLayerChip
@@ -206,9 +202,13 @@ where
             Poseidon2LinearLayerAccessCols { addrs, external, internal },
         ) in zip(local.values, prep_local.accesses)
         {
+            // Check that the `external`, `internal` flags are boolean, and at most one is on.
             let is_real = external + internal;
+            builder.assert_bool(external);
+            builder.assert_bool(internal);
+            builder.assert_bool(is_real.clone());
 
-            // Read the inputs from memory.
+            // Read the inputs from memory. The inputs are packed in extension elements.
             #[allow(clippy::needless_range_loop)]
             for i in 0..PERMUTATION_WIDTH / D {
                 builder.receive_block(addrs.input[i], input[i], is_real.clone());
@@ -218,16 +218,20 @@ where
                 core::array::from_fn(|_| AB::Expr::zero());
             let mut state_internal: [_; PERMUTATION_WIDTH] =
                 core::array::from_fn(|_| AB::Expr::zero());
+
+            // Unpack the extension elements into field elements.
             for i in 0..PERMUTATION_WIDTH / D {
                 for j in 0..D {
                     state_external[i * D + j] = input[i].0[j].into();
                     state_internal[i * D + j] = input[i].0[j].into();
                 }
             }
+
+            // Apply the external/internal linear layer.
             external_linear_layer_mut(&mut state_external);
             internal_linear_layer_mut(&mut state_internal);
 
-            // Write the output to memory, in the external linear layer case.
+            // Write the output to memory for each case.
             for i in 0..PERMUTATION_WIDTH / D {
                 builder.send_block(
                     Address(addrs.output[i].0.into()),

@@ -3,7 +3,7 @@ use std::borrow::BorrowMut;
 use slop_algebra::PrimeField32;
 use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
-use sp1_stark::air::MachineAir;
+use sp1_stark::air::{MachineAir, PV_DIGEST_NUM_WORDS};
 
 use crate::utils::zeroed_f_vec;
 
@@ -44,6 +44,14 @@ impl<F: PrimeField32> MachineAir<F> for ByteChip<F> {
 
         output.add_u8_range_check(initial_timestamp_1, initial_timestamp_2);
         output.add_u8_range_check(last_timestamp_1, last_timestamp_2);
+        for i in 0..PV_DIGEST_NUM_WORDS {
+            output.add_u8_range_checks(&u32::to_le_bytes(
+                input.public_values.prev_committed_value_digest[i],
+            ));
+            output.add_u8_range_checks(&u32::to_le_bytes(
+                input.public_values.committed_value_digest[i],
+            ));
+        }
     }
 
     fn generate_trace(

@@ -12,7 +12,6 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind,
@@ -35,8 +34,8 @@ pub struct ShaCompressControlCols<T> {
     pub w_ptr: SyscallAddrOperation<T>,
     pub h_ptr: SyscallAddrOperation<T>,
     pub is_real: T,
-    pub initial_state: [[T; WORD_SIZE / 2]; 8],
-    pub final_state: [[T; WORD_SIZE / 2]; 8],
+    pub initial_state: [[T; 2]; 8],
+    pub final_state: [[T; 2]; 8],
 }
 
 impl<F> BaseAir<F> for ShaCompressControlChip {
@@ -77,23 +76,25 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
             let cols: &mut ShaCompressControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            // `w_ptr` has 64 words, so 512 bytes - but only 256 bytes are actually used.
             cols.w_ptr.populate(&mut blu_events, event.w_ptr, 512);
+            // `h_ptr` has 8 words, so 64 bytes - but only 32 bytes are actually used.
             cols.h_ptr.populate(&mut blu_events, event.h_ptr, 64);
             cols.is_real = F::one();
             for i in 0..8 {
                 let prev_value = event.h[i];
                 let value = event.h_write_records[i].value;
+                // The state is the `a, b, c, d, e, f, g, h` values.
                 cols.initial_state[i] = u32_to_half_word(prev_value);
+                // The `value` here is the resulting hash values, which are incremented by
+                // `a, b, c, d, e, f, g, h` values - therefore, we do a subtraction here.
                 cols.final_state[i] = u32_to_half_word((value as u32).wrapping_sub(prev_value));
             }
             rows.push(row);
         }
 
         let nb_rows = rows.len();
-        let mut padded_nb_rows = nb_rows.next_multiple_of(32);
-        if padded_nb_rows == 2 || padded_nb_rows == 1 {
-            padded_nb_rows = 4;
-        }
+        let padded_nb_rows = nb_rows.next_multiple_of(32);
         for _ in nb_rows..padded_nb_rows {
             let row = [F::zero(); NUM_SHA_COMPRESS_CONTROL_COLS];
             rows.push(row);
@@ -114,10 +115,6 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
             !shard.get_precompile_events(SyscallCode::SHA_COMPRESS).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for ShaCompressControlChip
@@ -130,8 +127,11 @@ where
         let local = main.row_slice(0);
         let local: &ShaCompressControlCols<AB::Var> = (*local).borrow();
 
+        // Constrain that `is_real` is boolean.
         builder.assert_bool(local.is_real);
 
+        // Constrain the two pointers.
+        // SAFETY: `w_ptr, h_ptr` are with valid u16 limbs, as they are received from the syscall.
         let w_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 512, local.w_ptr, local.is_real.into());
         let h_ptr =
@@ -148,7 +148,8 @@ where
             InteractionScope::Local,
         );
 
-        // Send the initial state.
+        // Send the initial state. The initial index is 0.
+        // The initial state will be constrained by the `ShaCompressChip`.
         let send_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
             .chain(w_ptr.map(Into::into))
@@ -163,7 +164,8 @@ where
             InteractionScope::Local,
         );
 
-        // Receive the final state.
+        // Receive the final state. The final index is 80.
+        // The final state will be constrained by the `ShaCompressChip`.
         let receive_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
             .chain(w_ptr.map(Into::into))

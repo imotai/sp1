@@ -54,8 +54,8 @@ pub struct GlobalChip;
 pub struct GlobalCols<T: Copy> {
     pub message: [T; 8],
     pub kind: T,
-    pub shard_16bit_limb: T,
-    pub shard_8bit_limb: T,
+    pub message_0_16bit_limb: T,
+    pub message_0_8bit_limb: T,
     pub interaction: GlobalInteractionOperation<T>,
     pub is_receive: T,
     pub is_send: T,
@@ -90,6 +90,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     blu.add_u16_range_check(message0_16bit_limb);
                     blu.add_u16_range_check(event.message[7] as u16);
                     blu.add_u8_range_check(0, message0_8bit_limb);
+                    blu.add_bit_range_check(event.kind as u16, 6);
                 });
                 blu
             })
@@ -142,9 +143,9 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     } else {
                         cols.is_send = F::one();
                     }
-                    cols.shard_16bit_limb =
+                    cols.message_0_16bit_limb =
                         F::from_canonical_u16((event.message[0] & 0xffff) as u16);
-                    cols.shard_8bit_limb =
+                    cols.message_0_8bit_limb =
                         F::from_canonical_u8(((event.message[0] >> 16) & 0xff) as u8);
                     point_chunks.push(SepticCurveComplete::Affine(SepticCurve {
                         x: SepticExtension(cols.interaction.x_coordinate.0),
@@ -200,10 +201,6 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
     fn included(&self, _: &Self::Record) -> bool {
         true
     }
-
-    fn commit_scope(&self) -> InteractionScope {
-        InteractionScope::Global
-    }
 }
 
 impl<F> BaseAir<F> for GlobalChip {
@@ -221,6 +218,9 @@ where
         let local = main.row_slice(0);
         let local: &GlobalCols<AB::Var> = (*local).borrow();
 
+        // Constrain that `local.is_real` is boolean.
+        builder.assert_bool(local.is_real);
+
         // Receive the arguments, which consists of 8 message columns, `is_send`, `is_receive`, and
         // `kind`. In MemoryGlobal, MemoryLocal, Syscall chips, `is_send`, `is_receive`,
         // `kind` are sent with correct constant values. For a global send interaction,
@@ -229,7 +229,6 @@ where
         // `kind = InteractionKind::Memory` is used. For a syscall global interaction, `kind
         // = InteractionKind::Syscall` is used. Therefore, `is_send`, `is_receive` are
         // already known to be boolean, and `kind` is also known to be a `u8` value.
-        // Note that `local.is_real` is constrained to be boolean in `eval_single_digest`.
         builder.receive(
             AirInteraction::new(
                 vec![
@@ -260,7 +259,7 @@ where
             local.is_send.into(),
             local.is_real,
             local.kind,
-            [local.shard_16bit_limb, local.shard_8bit_limb],
+            [local.message_0_16bit_limb, local.message_0_8bit_limb],
         );
 
         // Evaluate the accumulation.

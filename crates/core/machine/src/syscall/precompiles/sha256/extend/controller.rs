@@ -68,6 +68,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             let cols: &mut ShaExtendControlCols<F> = row.as_mut_slice().borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            // This precompile accesses 64 words, which is 512 bytes.
             cols.w_ptr.populate(&mut blu_events, event.w_ptr, 512);
             cols.is_real = F::one();
             rows.push(row);
@@ -76,10 +77,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
         output.add_byte_lookup_events(blu_events);
 
         let nb_rows = rows.len();
-        let mut padded_nb_rows = nb_rows.next_multiple_of(32);
-        if padded_nb_rows == 2 || padded_nb_rows == 1 {
-            padded_nb_rows = 4;
-        }
+        let padded_nb_rows = nb_rows.next_multiple_of(32);
         for _ in nb_rows..padded_nb_rows {
             let row = [F::zero(); NUM_SHA_EXTEND_CONTROL_COLS];
             rows.push(row);
@@ -99,10 +97,6 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             !shard.get_precompile_events(SyscallCode::SHA_EXTEND).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for ShaExtendControlChip
@@ -115,8 +109,11 @@ where
         let local = main.row_slice(0);
         let local: &ShaExtendControlCols<AB::Var> = (*local).borrow();
 
+        // Check that `is_real` is boolean.
         builder.assert_bool(local.is_real);
 
+        // Check that `w_ptr` is within bounds.
+        // SAFETY: `w_ptr` is with 3 u16 limbs, as it is received from the syscall.
         let w_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 512, local.w_ptr, local.is_real.into());
 
@@ -131,7 +128,7 @@ where
             InteractionScope::Local,
         );
 
-        // Send the initial state.
+        // Send the initial state, with the starting index being 16.
         let send_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
             .chain(w_ptr.map(Into::into))
@@ -142,7 +139,7 @@ where
             InteractionScope::Local,
         );
 
-        // Receive the final state.
+        // Receive the final state, with the final index being 64.
         let receive_values = once(local.clk_high.into())
             .chain(once(local.clk_low.into()))
             .chain(w_ptr.map(Into::into))

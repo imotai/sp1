@@ -9,7 +9,7 @@ use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationB
 
 use crate::air::{SP1Operation, WordAirBuilder};
 
-/// A set of columns needed to compute the add of two words.
+/// A set of columns needed to compute the add of two `Words`.
 #[derive(
     AlignedBorrow,
     Default,
@@ -37,7 +37,7 @@ impl<F: Field> AddOperation<F> {
     }
 
     /// Evaluate the add operation.
-    /// Assumes that `a`, `b` are valid `Word`s of two u16 limbs.
+    /// Assumes that `a`, `b` are valid `Word`s of u16 limbs.
     /// Constrains that `is_real` is boolean.
     /// If `is_real` is true, the `value` is constrained to a valid `Word` representing `a + b`.
     pub fn eval<AB: SP1AirBuilder>(

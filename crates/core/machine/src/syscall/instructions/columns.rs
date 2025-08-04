@@ -21,7 +21,7 @@ pub struct SyscallInstrColumns<T> {
     /// The next program counter.
     pub next_pc: [T; 3],
 
-    /// Whether the current instruction is a halt instruction.  This is verified by the
+    /// Whether the current instruction is a halt instruction. This is verified by the
     /// is_halt_check operation.
     pub is_halt: T,
 

@@ -49,12 +49,11 @@ where
             .product::<AB::Expr>();
         builder.assert_eq(lhs, rhs);
 
-        // For now, include only memory constraints.
         (0..WIDTH).for_each(|i| {
-            builder.send_single(
+            builder.receive_single(
                 prep_local.input[i],
                 local_row.external_rounds_state()[0][i],
-                prep_local.is_real_neg,
+                prep_local.is_real,
             )
         });
 

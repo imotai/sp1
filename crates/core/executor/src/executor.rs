@@ -27,7 +27,7 @@ use crate::{
     },
     hook::{HookEnv, HookRegistry},
     memory::{Entry, Memory},
-    pad_rv32im_event_counts,
+    pad_rv64im_event_counts,
     record::{ExecutionRecord, MemoryAccessRecord},
     report::ExecutionReport,
     state::{ExecutionState, ForkState},
@@ -379,7 +379,7 @@ impl<'a> Executor<'a> {
         let hook_registry = context.hook_registry.unwrap_or_default();
 
         let costs: HashMap<String, usize> =
-            serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
+            serde_json::from_str(include_str!("./artifacts/rv64im_costs.json")).unwrap();
         let costs: EnumMap<RiscvAirId, usize> =
             costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v)).collect();
 
@@ -2065,7 +2065,7 @@ impl<'a> Executor<'a> {
                     self.sharding_threshold
                 {
                     let padded_event_counts =
-                        pad_rv32im_event_counts(self.event_counts, self.size_check_frequency);
+                        pad_rv64im_event_counts(self.event_counts, self.size_check_frequency);
                     let (padded_element_count, max_height) = estimate_trace_elements(
                         padded_event_counts,
                         &self.costs,
@@ -2381,6 +2381,8 @@ impl<'a> Executor<'a> {
         self.record.public_values = public_values;
         self.record.public_values.committed_value_digest = public_values.committed_value_digest;
         self.record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
+        self.record.public_values.commit_syscall = public_values.commit_syscall;
+        self.record.public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
         self.record.public_values.execution_shard = start_shard.get();
         if self.record.contains_cpu() {
             self.record.public_values.pc_start = self.record.pc_start.unwrap();

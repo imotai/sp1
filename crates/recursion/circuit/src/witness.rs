@@ -74,7 +74,6 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> WitnessWriter<C>
     }
 }
 
-/// TODO change the name. For now, the name is unique to prevent confusion.
 pub trait Witnessable<C: CircuitConfig> {
     type WitnessVariable;
 

@@ -179,10 +179,6 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2SBoxC
     fn included(&self, _record: &Self::Record) -> bool {
         true
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<AB> Air<AB> for Poseidon2SBoxChip
@@ -202,27 +198,33 @@ where
             Poseidon2SBoxAccessCols { addrs, external, internal },
         ) in zip(local.values, prep_local.accesses)
         {
-            // First we constrain the x -> x^7 mapping.
+            // Check that the `external`, `internal` flags are boolean, and at most one is on.
+            let is_real = external + internal;
+            builder.assert_bool(external);
+            builder.assert_bool(internal);
+            builder.assert_bool(is_real.clone());
+
+            // Read the input from memory. `D` field elements are packed inside the extension.
+            builder.receive_block(addrs.input, vals.input, is_real.clone());
+
+            // Constrain that the SBOX result.
             for i in 0..D {
+                // Constrain that `intermediate.0[i] == vals.input.0[i] ** 3`.
                 builder.assert_eq(
                     vals.input.0[i] * vals.input.0[i] * vals.input.0[i],
                     intermediate.0[i],
                 );
+                // Constrain that `vals.output.0[i] == vals.input.0[i] ** 7`.
                 builder.assert_eq(
                     vals.input.0[i] * intermediate.0[i] * intermediate.0[i],
                     vals.output.0[i],
                 );
             }
 
-            let is_real = external + internal;
-
-            // Read the inputs from memory.
-            builder.receive_block(addrs.input, vals.input, is_real.clone());
-
-            // Write the output to memory, in the external SBox case.
+            // Write the output to memory in the external SBox case.
             builder.send_block(addrs.output, vals.output, external);
 
-            // Write the output to memory, in the internal SBox case.
+            // Write the output to memory in the internal SBox case.
             builder.send_block(
                 addrs.output,
                 Block([vals.output.0[0], vals.input.0[1], vals.input.0[2], vals.input.0[3]]),

@@ -2,22 +2,22 @@ use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{u32_to_u16_limbs, WORD_SIZE};
+use sp1_primitives::consts::u32_to_u16_limbs;
 use sp1_stark::air::SP1AirBuilder;
 
 use crate::utils::u32_to_half_word;
 
-/// A set of columns needed to compute `>>` of a word with a fixed offset R.
+/// A set of columns needed to compute `>>` of an u32 with a fixed offset R.
 ///
 /// Note that we decompose shifts into a limb shift and a bit shift.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct FixedShiftRightOperation<T> {
     /// The output value.
-    pub value: [T; WORD_SIZE / 2],
+    pub value: [T; 2],
 
     /// The higher bits of each limb.
-    pub higher_limb: [T; WORD_SIZE / 2],
+    pub higher_limb: [T; 2],
 }
 
 impl<F: Field> FixedShiftRightOperation<F> {
@@ -45,13 +45,13 @@ impl<F: Field> FixedShiftRightOperation<F> {
 
         // Perform the limb shift.
         let mut word = [0u16; 2];
-        for i in 0..WORD_SIZE / 2 {
-            if i + nb_limbs_to_shift < WORD_SIZE / 2 {
+        for i in 0..2 {
+            if i + nb_limbs_to_shift < 2 {
                 word[i] = input_limbs[i + nb_limbs_to_shift];
             }
         }
 
-        for i in (0..WORD_SIZE / 2).rev() {
+        for i in (0..2).rev() {
             let limb = word[i];
             let lower_limb = (limb & ((1 << nb_bits_to_shift) - 1)) as u16;
             let higher_limb = (limb >> nb_bits_to_shift) as u16;
@@ -63,9 +63,12 @@ impl<F: Field> FixedShiftRightOperation<F> {
         expected
     }
 
+    /// Evaluates the u32 fixed shift right. Constrains that `is_real` is boolean.
+    /// If `is_real` is true, the result `value` will be the correct result with two u16 limbs.
+    /// This function assumes that the `input` is a u32 with valid two u16 limbs.
     pub fn eval<AB: SP1AirBuilder>(
         builder: &mut AB,
-        input: [AB::Var; WORD_SIZE / 2],
+        input: [AB::Var; 2],
         rotation: usize,
         cols: FixedShiftRightOperation<AB::Var>,
         is_real: AB::Var,
@@ -78,29 +81,30 @@ impl<F: Field> FixedShiftRightOperation<F> {
         let carry_multiplier = AB::F::from_canonical_u32(Self::carry_multiplier(rotation));
 
         // Perform the limb shift.
-        let input_limbs_rotated: [AB::Expr; WORD_SIZE / 2] = std::array::from_fn(|i| {
-            if i + nb_limbs_to_shift < WORD_SIZE / 2 {
+        let input_limbs_shifted: [AB::Expr; 2] = std::array::from_fn(|i| {
+            if i + nb_limbs_to_shift < 2 {
                 input[i + nb_limbs_to_shift].into()
             } else {
                 AB::Expr::zero()
             }
         });
 
-        // For each limb, constrain the lower and higher bits.
-        let mut first_shift = AB::Expr::zero();
-        let mut last_carry = AB::Expr::zero();
-        for i in (0..WORD_SIZE / 2).rev() {
-            let limb = input_limbs_rotated[i].clone();
+        // For each limb, constrain the lower and higher parts of the limb.
+        let mut lower_limb = [AB::Expr::zero(), AB::Expr::zero()];
+        for i in 0..2 {
+            let limb = input_limbs_shifted[i].clone();
+
             // Break down the limb into lower and higher parts.
             //  - `limb = lower_limb + higher_limb * 2^bit_shift`
             //  - `lower_limb < 2^(bit_shift)`
             //  - `higher_limb < 2^(16 - bit_shift)`
-            let lower_limb =
+            lower_limb[i] =
                 limb - cols.higher_limb[i] * AB::Expr::from_canonical_u32(1 << nb_bits_to_shift);
+
             // Check that `lower_limb < 2^(bit_shift)`
             builder.send_byte(
                 AB::F::from_canonical_u32(ByteOpcode::Range as u32),
-                lower_limb.clone(),
+                lower_limb[i].clone(),
                 AB::F::from_canonical_u32(nb_bits_to_shift as u32),
                 AB::Expr::zero(),
                 is_real,
@@ -113,17 +117,13 @@ impl<F: Field> FixedShiftRightOperation<F> {
                 AB::Expr::zero(),
                 is_real,
             );
-            if i == WORD_SIZE / 2 - 1 {
-                first_shift = cols.higher_limb[i].into();
-            } else {
-                builder
-                    .when(is_real)
-                    .assert_eq(cols.value[i], cols.higher_limb[i] + last_carry * carry_multiplier);
-            }
-            last_carry = lower_limb;
         }
 
-        // For the first limb, we don't move over the carry as this is a shift, not a rotate.
-        builder.when(is_real).assert_eq(cols.value[WORD_SIZE / 2 - 1], first_shift);
+        // Constrain the resulting value using the lower and higher parts.
+        builder.when(is_real).assert_eq(cols.value[1], cols.higher_limb[1]);
+        builder.when(is_real).assert_eq(
+            cols.value[0],
+            cols.higher_limb[0] + lower_limb[1].clone() * carry_multiplier,
+        );
     }
 }

@@ -153,7 +153,7 @@ impl<F: Field> MulOperation<F> {
     }
 
     /// Evaluate the MUL operation.
-    /// Assumes that `b_word`, `c_word` are valid `Word`s of two u16 limbs.
+    /// Assumes that `b_word`, `c_word` are valid `Word`s of u16 limbs.
     /// Constrains that all flags are boolean.
     /// Constrains that at most one of `is_mul`, `is_mulh`, `is_mulhu`, `is_mulhsu` is true.
     /// If `is_real` is true, constrains that the product is correctly placed at `a_word`.
