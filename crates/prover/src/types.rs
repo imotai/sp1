@@ -91,7 +91,7 @@ where
     C::Commitment: Borrow<[BabyBear; DIGEST_SIZE]>,
 {
     fn hash_babybear(&self) -> [BabyBear; DIGEST_SIZE] {
-        let num_inputs = DIGEST_SIZE + 1 + 14;
+        let num_inputs = DIGEST_SIZE + 3 + 14;
         let mut inputs = Vec::with_capacity(num_inputs);
         inputs.extend(self.preprocessed_commit.borrow());
         inputs.extend(self.pc_start);

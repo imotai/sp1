@@ -118,6 +118,8 @@ impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
             })
             .sum::<SymbolicExt<C::F, C::EF>>();
 
+        builder.assert_ext_eq(jagged_eval, partial_sumcheck_proof.claimed_sum);
+
         // Verify the jagged eval proof.
         builder.cycle_tracker_v2_enter("jagged eval - verify sumcheck");
         verify_sumcheck::<C, SC>(builder, challenger, partial_sumcheck_proof);

@@ -81,7 +81,7 @@ where
         C::F: TwoAdicField,
         SC::DigestVariable: IntoIterator<Item = Felt<C::F>>,
     {
-        let num_inputs = DIGEST_SIZE + 1 + 14;
+        let num_inputs = DIGEST_SIZE + 3 + 14;
         let mut inputs = Vec::with_capacity(num_inputs);
         inputs.extend(self.preprocessed_commit);
         inputs.extend(self.pc_start);

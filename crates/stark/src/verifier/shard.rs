@@ -506,7 +506,10 @@ where
             .map(|(name, x)| (name.clone(), x.degree.clone()))
             .collect::<BTreeMap<_, _>>();
 
-        if shard_chips.len() != opened_values.chips.len() || shard_chips.len() != degrees.len() {
+        if shard_chips.len() != opened_values.chips.len()
+            || shard_chips.len() != degrees.len()
+            || shard_chips.len() != logup_gkr_proof.logup_evaluations.chip_openings.len()
+        {
             return Err(ShardVerifierError::InvalidShape);
         }
 
