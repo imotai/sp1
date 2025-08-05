@@ -216,12 +216,12 @@ impl<F: PrimeField32> MachineExecutor<F> {
                     tokio::task::spawn_blocking({
                         let machine = machine.clone();
                         move || {
-                            let mut record = vec![*record];
-                            machine.generate_dependencies(&mut record, None);
-                            machine.generate_dependencies(&mut deferred_records, None);
+                            let record_iter = std::iter::once(&mut *record);
+                            machine.generate_dependencies(record_iter, None);
+                            machine.generate_dependencies(deferred_records.iter_mut(), None);
 
                             // Send the records to the output channel.
-                            record_tx.send((record.pop().unwrap(), Some(memory_permit))).unwrap();
+                            record_tx.send((*record, Some(memory_permit))).unwrap();
 
                             // If there are deferred records, send them to the output channel.
                             for record in deferred_records {

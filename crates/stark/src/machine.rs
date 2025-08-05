@@ -89,9 +89,9 @@ where
 
     /// Generates the dependencies of the given records.
     #[allow(clippy::needless_for_each)]
-    pub fn generate_dependencies(
+    pub fn generate_dependencies<'a>(
         &self,
-        records: &mut [A::Record],
+        records: impl Iterator<Item = &'a mut A::Record>,
         chips_filter: Option<&[String]>,
     ) {
         let chips = self
@@ -106,7 +106,7 @@ where
             })
             .collect::<Vec<_>>();
 
-        records.iter_mut().for_each(|record| {
+        records.for_each(|record| {
             chips.iter().for_each(|chip| {
                 let mut output = A::Record::default();
                 chip.generate_dependencies(record, &mut output);

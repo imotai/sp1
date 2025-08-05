@@ -175,7 +175,7 @@ pub fn generate_records<F: PrimeField32>(
             let mut records = Vec::new();
             records.push(*record);
             records.extend(deferred);
-            machine.generate_dependencies(&mut records, None);
+            machine.generate_dependencies(records.iter_mut(), None);
 
             // Let another worker update the state.
             record_gen_sync.advance_turn();

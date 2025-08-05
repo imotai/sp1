@@ -488,14 +488,12 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             );
         runtime.witness_stream = witness_stream.into();
         runtime.run().map_err(|e| SP1RecursionProverError::RuntimeError(e.to_string()))?;
-        let record = runtime.record;
+        let mut record = runtime.record;
         runtime_span.exit();
 
         // Generate the dependencies.
-        let mut records = vec![record];
         tracing::debug_span!("generate dependencies")
-            .in_scope(|| self.machine().generate_dependencies(&mut records, None));
-        let record = records.pop().unwrap();
+            .in_scope(|| self.machine().generate_dependencies(std::iter::once(&mut record), None));
         Ok(record)
     }
 
