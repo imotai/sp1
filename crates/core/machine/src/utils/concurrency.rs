@@ -73,9 +73,14 @@ impl Future for AsyncTurnFuture {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        // Get the mutex of all the wakers.
         let mut inner = this.inner.lock().expect("AsyncTurnFuture poisoned");
 
+        // Fast path: if the current turn is equal to the given turn, we can return immediately.
+        if inner.current_turn == this.my_turn {
+            return Poll::Ready(AsyncTurnGuard { inner: this.inner.clone() });
+        }
+
+        // Normal path: We need to wait for `this.my_turn` to be reached.
         match inner.wakers.entry(this.my_turn) {
             Entry::Vacant(v) => {
                 v.insert(cx.waker().clone());
@@ -85,11 +90,15 @@ impl Future for AsyncTurnFuture {
             }
         }
 
-        // Wait for the current turn to be equal to the given turn.
-        if inner.current_turn == this.my_turn {
-            Poll::Ready(AsyncTurnGuard { inner: this.inner.clone() })
-        } else if inner.current_turn > this.my_turn {
-            panic!("AsyncTurnFuture: turn {} has already passed", this.my_turn);
+        // Ensure our turn has not passed.
+        if inner.current_turn > this.my_turn {
+            #[cold]
+            #[inline(never)]
+            fn panic_turn_passed(turn: usize) -> ! {
+                panic!("AsyncTurnFuture: turn {turn} has already passed");
+            }
+
+            panic_turn_passed(this.my_turn);
         } else {
             Poll::Pending
         }
