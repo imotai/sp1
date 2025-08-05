@@ -36,6 +36,8 @@ pub enum JaggedEvalSumcheckError<F: Field> {
     JaggedEvaluationFailed(F, F),
     #[error("proof has incorrect shape")]
     IncorrectShape,
+    #[error("jagged evaluation does not match the claimed sumcheck sum")]
+    IncorrectEvaluation,
 }
 
 impl<F, EF, Challenger> JaggedEvalConfig<F, EF, Challenger> for JaggedEvalSumcheckConfig<F>
@@ -77,6 +79,11 @@ where
                 *partial_lagrange * *branching_program_eval
             })
             .sum::<EF>();
+
+        // Check the evaluation is the claimed sum of the sumcheck.
+        if jagged_eval != partial_sumcheck_proof.claimed_sum {
+            return Err(JaggedEvalSumcheckError::IncorrectEvaluation);
+        }
 
         // Verify the jagged eval proof.
         let result = partially_verify_sumcheck_proof(
