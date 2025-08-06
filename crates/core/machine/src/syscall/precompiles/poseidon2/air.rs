@@ -5,20 +5,23 @@ use crate::{
         poseidon2::{permutation::Poseidon2Cols, Poseidon2Operation},
         AddrAddOperation, BabyBearWordRangeChecker, SyscallAddrOperation,
     },
-    utils::{next_multiple_of_32, pad_rows_fixed},
+    utils::{next_multiple_of_32, zeroed_f_vec},
 };
+use hashbrown::HashMap;
+use itertools::Itertools;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteRecord, MemoryRecordEnum, PrecompileEvent},
+    events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{InteractionScope, MachineAir},
-    MachineRecord, Word,
+    Word,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -91,139 +94,175 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
-        output: &mut ExecutionRecord,
+        _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
         // Generate the trace rows & corresponding records for each event.
-        let rows_and_records = input
-            .get_precompile_events(SyscallCode::POSEIDON2)
-            .chunks(1)
-            .map(|events| {
-                let mut records = ExecutionRecord::default();
-                let mut new_byte_lookup_events = Vec::new();
+        let events = input.get_precompile_events(SyscallCode::POSEIDON2);
+        let chunk_size = std::cmp::max(events.len() / num_cpus::get(), 1);
+        let padded_nb_rows = <Poseidon2Chip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let mut values = zeroed_f_vec(padded_nb_rows * NUM_COLS);
 
-                let rows = events
-                    .iter()
-                    .map(|(_, event)| {
-                        let event = if let PrecompileEvent::POSEIDON2(event) = event {
-                            event
-                        } else {
-                            unreachable!()
-                        };
-                        let mut row: [F; NUM_COLS] = [F::zero(); NUM_COLS];
-                        let cols: &mut Poseidon2Cols2<F> = row.as_mut_slice().borrow_mut();
+        values.chunks_mut(chunk_size * NUM_COLS).enumerate().par_bridge().for_each(|(i, rows)| {
+            rows.chunks_mut(NUM_COLS).enumerate().for_each(|(j, row)| {
+                let idx = i * chunk_size + j;
+                let cols: &mut Poseidon2Cols2<F> = row.borrow_mut();
 
-                        // Assign basic values to the columns.
-                        cols.is_real = F::one();
+                if idx < events.len() {
+                    let mut byte_lookup_events = Vec::new();
+                    let event = if let PrecompileEvent::POSEIDON2(event) = &events[idx].1 {
+                        event
+                    } else {
+                        unreachable!()
+                    };
 
-                        cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
-                        cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+                    // Assign basic values to the columns.
+                    cols.is_real = F::one();
 
-                        cols.ptr.populate(&mut new_byte_lookup_events, event.ptr, 64);
+                    cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+                    cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
 
-                        // Populate memory columns for the 8 u64 words.
+                    cols.ptr.populate(&mut byte_lookup_events, event.ptr, 64);
+
+                    // Populate memory columns for the 8 u64 words.
+                    for i in 0..8 {
+                        cols.addrs[i].populate(&mut byte_lookup_events, event.ptr, 8 * i as u64);
+
+                        let memory_record = MemoryRecordEnum::Write(event.memory_records[i]);
+                        cols.memory[i].populate(memory_record, &mut byte_lookup_events);
+                        cols.hash_result[i] = Word::from(event.memory_records[i].value);
+
+                        cols.hash_result_range_checkers[2 * i].populate(
+                            Word([
+                                cols.hash_result[i][0],
+                                cols.hash_result[i][1],
+                                F::zero(),
+                                F::zero(),
+                            ]),
+                            &mut byte_lookup_events,
+                        );
+                        cols.hash_result_range_checkers[2 * i + 1].populate(
+                            Word([
+                                cols.hash_result[i][2],
+                                cols.hash_result[i][3],
+                                F::zero(),
+                                F::zero(),
+                            ]),
+                            &mut byte_lookup_events,
+                        );
+                    }
+
+                    // Extract the input values from memory.
+                    let input: [F; 16] = {
+                        let mut values = [F::zero(); 16];
                         for i in 0..8 {
-                            cols.addrs[i].populate(
-                                &mut new_byte_lookup_events,
-                                event.ptr,
-                                8 * i as u64,
-                            );
-
-                            let memory_record = MemoryRecordEnum::Write(event.memory_records[i]);
-                            cols.memory[i].populate(memory_record, &mut new_byte_lookup_events);
-                            cols.hash_result[i] = Word::from(event.memory_records[i].value);
-
-                            new_byte_lookup_events
-                                .add_u16_range_checks_field(&cols.hash_result[i].0);
-                            cols.hash_result_range_checkers[2 * i].populate(
-                                Word([
-                                    cols.hash_result[i][0],
-                                    cols.hash_result[i][1],
-                                    F::zero(),
-                                    F::zero(),
-                                ]),
-                                &mut new_byte_lookup_events,
-                            );
-                            cols.hash_result_range_checkers[2 * i + 1].populate(
-                                Word([
-                                    cols.hash_result[i][2],
-                                    cols.hash_result[i][3],
-                                    F::zero(),
-                                    F::zero(),
-                                ]),
-                                &mut new_byte_lookup_events,
-                            );
+                            let val = event.memory_records[i].prev_value;
+                            let val_lo = val as u32;
+                            let val_hi = (val >> 32) as u32;
+                            values[2 * i] = F::from_canonical_u32(val_lo);
+                            values[2 * i + 1] = F::from_canonical_u32(val_hi);
+                            cols.input_range_checkers[2 * i]
+                                .populate(Word::from(val_lo), &mut byte_lookup_events);
+                            cols.input_range_checkers[2 * i + 1]
+                                .populate(Word::from(val_hi), &mut byte_lookup_events);
                         }
+                        values
+                    };
 
-                        // Extract the input values from memory.
-                        let input: [F; 16] = {
-                            let mut values = [F::zero(); 16];
-                            for i in 0..8 {
-                                let val = event.memory_records[i].prev_value;
-                                let val_lo = val as u32;
-                                let val_hi = (val >> 32) as u32;
-                                values[2 * i] = F::from_canonical_u32(val_lo);
-                                values[2 * i + 1] = F::from_canonical_u32(val_hi);
-                                new_byte_lookup_events
-                                    .add_u16_range_checks_field::<F>(&Word::from(val).0);
-                                cols.input_range_checkers[2 * i]
-                                    .populate(Word::from(val_lo), &mut new_byte_lookup_events);
-                                cols.input_range_checkers[2 * i + 1]
-                                    .populate(Word::from(val_hi), &mut new_byte_lookup_events);
-                            }
-                            values
-                        };
+                    // Extract the output values that will be written.
+                    let output: [F; 16] = {
+                        let mut values = [F::zero(); 16];
+                        for i in 0..8 {
+                            let val = event.memory_records[i].value;
+                            values[2 * i] = F::from_canonical_u32(val as u32);
+                            values[2 * i + 1] = F::from_canonical_u32((val >> 32) as u32);
+                        }
+                        values
+                    };
 
-                        // Extract the output values that will be written.
-                        let output: [F; 16] = {
-                            let mut values = [F::zero(); 16];
-                            for i in 0..8 {
-                                let val = event.memory_records[i].value;
-                                values[2 * i] = F::from_canonical_u32(val as u32);
-                                values[2 * i + 1] = F::from_canonical_u32((val >> 32) as u32);
-                            }
-                            values
-                        };
+                    // Populate the Poseidon2 operation.
+                    cols.poseidon2_operation =
+                        crate::operations::poseidon2::trace::populate_perm_deg3(
+                            input,
+                            Some(output),
+                        );
+                } else {
+                    // Populate with dummy Poseidon2 operation for padding rows.
+                    let dummy_input = [F::zero(); 16];
+                    cols.poseidon2_operation =
+                        crate::operations::poseidon2::trace::populate_perm_deg3(dummy_input, None);
+                }
+            });
+        });
 
-                        // Populate the Poseidon2 operation.
-                        cols.poseidon2_operation =
-                            crate::operations::poseidon2::trace::populate_perm_deg3(
-                                input,
-                                Some(output),
-                            );
+        // Convert the trace to a row major matrix.
+        RowMajorMatrix::new(values, NUM_COLS)
+    }
 
-                        row
-                    })
-                    .collect::<Vec<_>>();
-                records.add_byte_lookup_events(new_byte_lookup_events);
-                (rows, records)
+    fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
+        let events = input.get_precompile_events(SyscallCode::POSEIDON2);
+        let chunk_size = std::cmp::max(events.len() / num_cpus::get(), 1);
+        let event_iter = events.chunks(chunk_size);
+
+        let blu_batches = event_iter
+            .par_bridge()
+            .map(|events| {
+                let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                events.iter().for_each(|event| {
+                    let mut row = [F::zero(); NUM_COLS];
+                    let cols: &mut Poseidon2Cols2<F> = row.as_mut_slice().borrow_mut();
+
+                    let event = if let PrecompileEvent::POSEIDON2(event) = &event.1 {
+                        event
+                    } else {
+                        unreachable!()
+                    };
+
+                    cols.ptr.populate(&mut blu, event.ptr, 64);
+
+                    // Populate memory columns for the 8 u64 words.
+                    for i in 0..8 {
+                        cols.addrs[i].populate(&mut blu, event.ptr, 8 * i as u64);
+
+                        let memory_record = MemoryRecordEnum::Write(event.memory_records[i]);
+                        cols.memory[i].populate(memory_record, &mut blu);
+                        cols.hash_result[i] = Word::from(event.memory_records[i].value);
+
+                        blu.add_u16_range_checks_field(&cols.hash_result[i].0);
+                        cols.hash_result_range_checkers[2 * i].populate(
+                            Word([
+                                cols.hash_result[i][0],
+                                cols.hash_result[i][1],
+                                F::zero(),
+                                F::zero(),
+                            ]),
+                            &mut blu,
+                        );
+                        cols.hash_result_range_checkers[2 * i + 1].populate(
+                            Word([
+                                cols.hash_result[i][2],
+                                cols.hash_result[i][3],
+                                F::zero(),
+                                F::zero(),
+                            ]),
+                            &mut blu,
+                        );
+                    }
+
+                    // Extract the input values from memory.
+                    for i in 0..8 {
+                        let val = event.memory_records[i].prev_value;
+                        let val_lo = val as u32;
+                        let val_hi = (val >> 32) as u32;
+                        blu.add_u16_range_checks_field::<F>(&Word::from(val).0);
+                        cols.input_range_checkers[2 * i].populate(Word::from(val_lo), &mut blu);
+                        cols.input_range_checkers[2 * i + 1].populate(Word::from(val_hi), &mut blu);
+                    }
+                });
+                blu
             })
             .collect::<Vec<_>>();
 
-        // Generate the trace rows for each event.
-        let mut rows = Vec::new();
-        for (row, mut record) in rows_and_records {
-            rows.extend(row);
-            output.append(&mut record);
-        }
-
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut row: [F; NUM_COLS] = [F::zero(); NUM_COLS];
-                let cols: &mut Poseidon2Cols2<F> = row.as_mut_slice().borrow_mut();
-
-                // Populate with dummy Poseidon2 operation for padding rows.
-                let dummy_input = [F::zero(); 16];
-                cols.poseidon2_operation =
-                    crate::operations::poseidon2::trace::populate_perm_deg3(dummy_input, None);
-
-                row
-            },
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS)
+        output.add_byte_lookup_events_from_maps(blu_batches.iter().collect_vec());
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
