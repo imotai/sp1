@@ -54,7 +54,6 @@ pub const CORE_LOG_BLOWUP: usize = 1;
 
 /// The configuration for the inner prover.
 pub type InnerSC = BabyBearPoseidon2;
-pub const COMPRESS_LOG_BLOWUP: usize = 1;
 
 /// The configuration for the outer prover.
 pub type OuterSC = Bn254JaggedConfig;
