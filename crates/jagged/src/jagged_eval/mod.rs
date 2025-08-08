@@ -66,9 +66,9 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
+    use slop_baby_bear::baby_bear_poseidon2::{my_bb_16_perm, Perm};
     use slop_baby_bear::BabyBear;
     use slop_challenger::DuplexChallenger;
-    use slop_merkle_tree::{my_bb_16_perm, Perm};
     use slop_multilinear::Mle;
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use slop_utils::log2_ceil_usize;

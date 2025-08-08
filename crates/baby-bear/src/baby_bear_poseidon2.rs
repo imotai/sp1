@@ -1,31 +1,12 @@
+use crate::{BabyBear, DiffusionMatrixBabyBear};
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
-use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-
-use crate::{DefaultMerkleTreeConfig, MerkleTreeConfig};
 
 #[derive(Debug, Clone, Default, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Poseidon2BabyBearConfig<const STATE_WIDTH: usize = 16>;
 
 pub type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
-
-impl MerkleTreeConfig for Poseidon2BabyBearConfig {
-    type Data = BabyBear;
-    type Digest = [BabyBear; 8];
-    type Hasher = PaddingFreeSponge<Perm, 16, 8, 8>;
-    type Compressor = TruncatedPermutation<Perm, 2, 8, 16>;
-}
-
-impl DefaultMerkleTreeConfig for Poseidon2BabyBearConfig {
-    fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor) {
-        let perm = my_bb_16_perm();
-        let hasher = Self::Hasher::new(perm.clone());
-        let compressor = Self::Compressor::new(perm.clone());
-        (hasher, compressor)
-    }
-}
 
 pub fn my_bb_16_perm() -> Perm {
     const ROUNDS_F: usize = 8;
@@ -45,12 +26,6 @@ pub fn my_bb_16_perm() -> Perm {
         DiffusionMatrixBabyBear,
     )
 }
-
-// pub type ValMmcs =
-//     FieldMerkleTreeMmcs<<Val as Field>::Packing, <Val as Field>::Packing, MyHash, MyCompress, 8>;
-// pub type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
-// pub type Dft = Radix2DitParallel;
-// pub type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
 
 lazy_static::lazy_static! {
     // These constants are created by a RNG.

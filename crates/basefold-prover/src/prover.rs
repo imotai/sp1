@@ -1,3 +1,4 @@
+use slop_baby_bear::baby_bear_poseidon2::Poseidon2BabyBearConfig;
 use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_bn254::Bn254Fr;
 use slop_koala_bear::{KoalaBear, Poseidon2KoalaBearConfig};
@@ -19,8 +20,8 @@ use slop_commit::{ComputeTcsOpenings, Message, Rounds, TensorCs, TensorCsOpening
 use slop_dft::p3::Radix2DitParallel;
 use slop_futures::OwnedBorrow;
 use slop_merkle_tree::{
-    FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2BabyBear16Prover, Poseidon2BabyBearConfig,
-    Poseidon2Bn254Config, Poseidon2KoalaBear16Prover, OUTER_DIGEST_SIZE,
+    FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2BabyBear16Prover, Poseidon2Bn254Config,
+    Poseidon2KoalaBear16Prover, OUTER_DIGEST_SIZE,
 };
 use slop_multilinear::{
     Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MleFixedAtZeroBackend,

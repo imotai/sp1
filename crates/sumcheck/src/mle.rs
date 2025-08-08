@@ -96,9 +96,9 @@ where
 mod tests {
     use rand::thread_rng;
     use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField};
+    use slop_baby_bear::baby_bear_poseidon2::{my_bb_16_perm, Perm};
     use slop_baby_bear::BabyBear;
     use slop_challenger::DuplexChallenger;
-    use slop_merkle_tree::{my_bb_16_perm, Perm};
 
     use crate::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
 

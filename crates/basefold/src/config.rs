@@ -3,7 +3,10 @@ use std::marker::PhantomData;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, TwoAdicField};
-use slop_baby_bear::BabyBear;
+use slop_baby_bear::{
+    baby_bear_poseidon2::{my_bb_16_perm, Perm, Poseidon2BabyBearConfig},
+    BabyBear,
+};
 use slop_bn254::Bn254Fr;
 use slop_challenger::{
     CanObserve, DuplexChallenger, FieldChallenger, GrindingChallenger, MultiField32Challenger,
@@ -11,8 +14,8 @@ use slop_challenger::{
 use slop_commit::TensorCs;
 use slop_koala_bear::{my_kb_16_perm, KoalaBear, KoalaPerm, Poseidon2KoalaBearConfig};
 use slop_merkle_tree::{
-    my_bb_16_perm, outer_perm, MerkleTreeTcs, OuterPerm, Perm, Poseidon2BabyBearConfig,
-    Poseidon2Bn254Config, OUTER_CHALLENGER_RATE, OUTER_CHALLENGER_STATE_WIDTH, OUTER_DIGEST_SIZE,
+    outer_perm, MerkleTreeTcs, OuterPerm, Poseidon2Bn254Config, OUTER_CHALLENGER_RATE,
+    OUTER_CHALLENGER_STATE_WIDTH, OUTER_DIGEST_SIZE,
 };
 use slop_symmetric::Hash;
 

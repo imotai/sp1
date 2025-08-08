@@ -1041,7 +1041,7 @@ dependencies = [
 [[package]]
 name = "p3-koala-bear"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
 dependencies = [
  "num-bigint 0.4.6",
  "p3-field",
@@ -1534,7 +1534,12 @@ dependencies = [
 name = "slop-baby-bear"
 version = "1.2.0"
 dependencies = [
+ "lazy_static",
  "p3-baby-bear",
+ "serde",
+ "slop-algebra",
+ "slop-poseidon2",
+ "slop-symmetric",
 ]
 
 [[package]]
