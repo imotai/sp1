@@ -19,6 +19,7 @@ slop-matrix = { workspace = true }
 slop-tensor = { workspace = true }
 slop-alloc = { workspace = true }
 slop-baby-bear = { workspace = true }
+slop-koala-bear = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-poseidon2 = { workspace = true }
 slop-merkle-tree = { workspace = true }

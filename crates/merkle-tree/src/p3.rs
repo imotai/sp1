@@ -12,13 +12,14 @@ use slop_alloc::CpuBackend;
 use slop_baby_bear::BabyBear;
 use slop_commit::{ComputeTcsOpenings, Message, TensorCsProver};
 use slop_futures::OwnedBorrow;
+use slop_koala_bear::KoalaBear;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
 
 use crate::{
     DefaultMerkleTreeConfig, MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof,
-    Poseidon2BabyBearConfig,
+    Poseidon2BabyBearConfig, Poseidon2KoalaBearConfig,
 };
 
 #[derive_where(Default; M : DefaultMerkleTreeConfig)]
@@ -57,6 +58,13 @@ pub type Poseidon2BabyBear16Prover = FieldMerkleTreeProver<
     <BabyBear as Field>::Packing,
     <BabyBear as Field>::Packing,
     Poseidon2BabyBearConfig,
+    8,
+>;
+
+pub type Poseidon2KoalaBear16Prover = FieldMerkleTreeProver<
+    <KoalaBear as Field>::Packing,
+    <KoalaBear as Field>::Packing,
+    Poseidon2KoalaBearConfig,
     8,
 >;
 
@@ -254,6 +262,7 @@ where
 mod tests {
     use rand::{thread_rng, Rng};
     use slop_commit::{TensorCs, TensorCsOpening};
+    use slop_koala_bear::KoalaBear;
 
     use super::*;
 
@@ -282,5 +291,37 @@ mod tests {
         let opening = TensorCsOpening { values: openings, proof };
         let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
         tcs.verify_tensor_openings(&root, &indices, &opening, merkle_path_len).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_kb_merkle_proof() {
+        let mut rng = thread_rng();
+
+        let height = 1000;
+        let width = 25;
+        let num_tensors = 10;
+
+        let num_indices = 5;
+
+        let tensors = (0..num_tensors)
+            .map(|_| Tensor::<KoalaBear>::rand(&mut rng, [height, width]))
+            .collect::<Message<_>>();
+
+        let prover = Poseidon2KoalaBear16Prover::default();
+        let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+
+        let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
+        let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
+        let openings = prover.compute_openings_at_indices(tensors, &indices).await;
+
+        let opening = TensorCsOpening { values: openings, proof };
+        let tcs = MerkleTreeTcs::<Poseidon2KoalaBearConfig>::default();
+        tcs.verify_tensor_openings(
+            &root,
+            &indices,
+            &opening,
+            height.next_power_of_two().ilog2() as usize,
+        )
+        .unwrap();
     }
 }

@@ -9,6 +9,7 @@ use slop_challenger::{
     CanObserve, DuplexChallenger, FieldChallenger, GrindingChallenger, MultiField32Challenger,
 };
 use slop_commit::TensorCs;
+use slop_koala_bear::{my_kb_16_perm, KoalaBear, KoalaPerm, Poseidon2KoalaBearConfig};
 use slop_merkle_tree::{
     my_bb_16_perm, outer_perm, MerkleTreeTcs, OuterPerm, Perm, Poseidon2BabyBearConfig,
     Poseidon2Bn254Config, OUTER_CHALLENGER_RATE, OUTER_CHALLENGER_STATE_WIDTH, OUTER_DIGEST_SIZE,
@@ -98,6 +99,13 @@ pub type Poseidon2BabyBear16BasefoldConfig = BasefoldConfigImpl<
     DuplexChallenger<BabyBear, Perm, 16, 8>,
 >;
 
+pub type Poseidon2KoalaBear16BasefoldConfig = BasefoldConfigImpl<
+    KoalaBear,
+    BinomialExtensionField<KoalaBear, 4>,
+    MerkleTreeTcs<Poseidon2KoalaBearConfig>,
+    DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>,
+>;
+
 pub type Poseidon2Bn254FrBasefoldConfig = BasefoldConfigImpl<
     BabyBear,
     BinomialExtensionField<BabyBear, 4>,
@@ -172,6 +180,27 @@ impl DefaultBasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
     fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
         let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 84);
         let tcs = MerkleTreeTcs::<Poseidon2Bn254Config>::default();
+        BasefoldVerifier::<Self> { fri_config, tcs }
+    }
+}
+
+impl BasefoldConfig for Poseidon2KoalaBear16BasefoldConfig {
+    type F = KoalaBear;
+    type EF = BinomialExtensionField<KoalaBear, 4>;
+    type Commitment = <MerkleTreeTcs<Poseidon2KoalaBearConfig> as TensorCs>::Commitment;
+    type Tcs = MerkleTreeTcs<Poseidon2KoalaBearConfig>;
+    type Challenger = DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>;
+
+    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::Challenger {
+        let default_perm = my_kb_16_perm();
+        DuplexChallenger::new(default_perm)
+    }
+}
+
+impl DefaultBasefoldConfig for Poseidon2KoalaBear16BasefoldConfig {
+    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
+        let fri_config = FriConfig::<KoalaBear>::auto(log_blowup, 84);
+        let tcs = MerkleTreeTcs::<Poseidon2KoalaBearConfig>::default();
         BasefoldVerifier::<Self> { fri_config, tcs }
     }
 }

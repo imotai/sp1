@@ -5,13 +5,16 @@ use slop_baby_bear::BabyBear;
 use slop_basefold::{
     BasefoldConfig, BasefoldProof, BasefoldVerifier, DefaultBasefoldConfig,
     Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig,
+    Poseidon2KoalaBear16BasefoldConfig,
 };
 use slop_basefold_prover::{
     BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver,
     Poseidon2BabyBear16BasefoldCpuProverComponents, Poseidon2Bn254BasefoldCpuProverComponents,
+    Poseidon2KoalaBear16BasefoldCpuProverComponents,
 };
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::TensorCs;
+use slop_koala_bear::KoalaBear;
 use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
 use std::fmt::Debug;
 
@@ -24,6 +27,9 @@ use crate::{
 
 pub type BabyBearPoseidon2 =
     JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, JaggedEvalSumcheckConfig<BabyBear>>;
+
+pub type KoalaBearPoseidon2 =
+    JaggedBasefoldConfig<Poseidon2KoalaBear16BasefoldConfig, JaggedEvalSumcheckConfig<KoalaBear>>;
 
 pub type Bn254JaggedConfig =
     JaggedBasefoldConfig<Poseidon2Bn254FrBasefoldConfig, JaggedEvalSumcheckConfig<BabyBear>>;
@@ -43,6 +49,21 @@ pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverCompon
         >,
         CpuBackend,
         <BabyBearPoseidon2 as JaggedConfig>::Challenger,
+    >,
+>;
+
+pub type Poseidon2KoalaBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
+    Poseidon2KoalaBear16BasefoldCpuProverComponents,
+    HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
+    JaggedEvalSumcheckProver<
+        KoalaBear,
+        JaggedAssistSumAsPolyCPUImpl<
+            KoalaBear,
+            BinomialExtensionField<KoalaBear, 4>,
+            <KoalaBearPoseidon2 as JaggedConfig>::Challenger,
+        >,
+        CpuBackend,
+        <KoalaBearPoseidon2 as JaggedConfig>::Challenger,
     >,
 >;
 
@@ -184,19 +205,65 @@ mod tests {
 
     use super::*;
 
+    //     type JC = BabyBearPoseidon2;
+    // type Prover = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
+    // type F = <JC as JaggedConfig>::F;
+    // type EF = <JC as JaggedConfig>::EF;
+
     #[tokio::test]
-    async fn test_jagged_basefold() {
+    async fn test_baby_bear_jagged_basefold() {
+        test_jagged_basefold::<
+            Poseidon2BabyBear16BasefoldConfig,
+            Poseidon2BabyBearJaggedCpuProverComponents,
+        >()
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_koala_bear_jagged_basefold() {
+        test_jagged_basefold::<
+            Poseidon2KoalaBear16BasefoldConfig,
+            Poseidon2KoalaBearJaggedCpuProverComponents,
+        >()
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_bn254_jagged_basefold() {
+        test_jagged_basefold::<
+            Poseidon2Bn254FrBasefoldConfig,
+            Poseidon2Bn254JaggedCpuProverComponents,
+        >()
+        .await;
+    }
+
+    type E<F> = JaggedEvalSumcheckConfig<F>;
+    type JC<B> = JaggedBasefoldConfig<B, E<<B as BasefoldConfig>::F>>;
+
+    // #[tokio::test]
+    async fn test_jagged_basefold<
+        BC: BasefoldConfig<Commitment: Debug> + DefaultBasefoldConfig,
+        Prover: JaggedProverComponents<
+                Config = JaggedBasefoldConfig<BC, E<BC::F>>,
+                F = BC::F,
+                EF = BC::EF,
+                Challenger = <JC<BC> as JaggedConfig>::Challenger,
+                A = CpuBackend,
+                Commitment = <JC<BC> as JaggedConfig>::Commitment,
+            > + DefaultJaggedProver,
+    >()
+    where
+        rand::distributions::Standard: rand::distributions::Distribution<<BC as BasefoldConfig>::F>,
+        rand::distributions::Standard:
+            rand::distributions::Distribution<<BC as BasefoldConfig>::EF>,
+        <JC<BC> as JaggedConfig>::Commitment: Copy,
+    {
         let row_counts_rounds = vec![vec![1 << 10, 0, 1 << 10], vec![1 << 8]];
         let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
 
         let log_blowup = 1;
         let log_stacking_height = 11;
         let max_log_row_count = 10;
-
-        type JC = BabyBearPoseidon2;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
-        type F = <JC as JaggedConfig>::F;
-        type EF = <JC as JaggedConfig>::EF;
 
         let row_counts = row_counts_rounds.into_iter().collect::<Rounds<Vec<usize>>>();
         let column_counts = column_counts_rounds.into_iter().collect::<Rounds<Vec<usize>>>();
@@ -216,7 +283,7 @@ mod tests {
                         if *num_rows == 0 {
                             PaddedMle::zeros(*num_cols, max_log_row_count)
                         } else {
-                            let mle = Mle::<F>::rand(&mut rng, *num_cols, num_rows.ilog(2));
+                            let mle = Mle::<BC::F>::rand(&mut rng, *num_cols, num_rows.ilog(2));
                             PaddedMle::padded_with_zeros(Arc::new(mle), max_log_row_count)
                         }
                     })
@@ -224,20 +291,20 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier = JaggedPcsVerifier::<JC>::new(
+        let jagged_verifier = JaggedPcsVerifier::<JaggedBasefoldConfig<BC, E<BC::F>>>::new(
             log_blowup,
             log_stacking_height,
             max_log_row_count as usize,
         );
 
-        let jagged_prover = Prover::from_verifier(&jagged_verifier);
+        let jagged_prover = JaggedProver::<Prover>::from_verifier(&jagged_verifier);
 
         let machine_verifier = MachineJaggedPcsVerifier::new(
             &jagged_verifier,
             vec![column_counts[0].clone(), column_counts[1].clone()],
         );
 
-        let eval_point = (0..max_log_row_count).map(|_| rng.gen::<EF>()).collect::<Point<_>>();
+        let eval_point = (0..max_log_row_count).map(|_| rng.gen::<BC::EF>()).collect::<Point<_>>();
 
         // Begin the commit rounds
         let mut challenger = jagged_verifier.challenger();
@@ -248,8 +315,6 @@ mod tests {
             let (commit, data) =
                 jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
             challenger.observe(commit);
-            let data_bytes = bincode::serialize(&data).unwrap();
-            let data = bincode::deserialize(&data_bytes).unwrap();
             prover_data.push(data);
             commitments.push(commit);
         }

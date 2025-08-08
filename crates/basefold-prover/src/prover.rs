@@ -1,5 +1,6 @@
-use slop_basefold::Poseidon2Bn254FrBasefoldConfig;
+use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_bn254::Bn254Fr;
+use slop_koala_bear::{KoalaBear, Poseidon2KoalaBearConfig};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -19,7 +20,7 @@ use slop_dft::p3::Radix2DitParallel;
 use slop_futures::OwnedBorrow;
 use slop_merkle_tree::{
     FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2BabyBear16Prover, Poseidon2BabyBearConfig,
-    Poseidon2Bn254Config, OUTER_DIGEST_SIZE,
+    Poseidon2Bn254Config, Poseidon2KoalaBear16Prover, OUTER_DIGEST_SIZE,
 };
 use slop_multilinear::{
     Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MleFixedAtZeroBackend,
@@ -378,6 +379,27 @@ impl BasefoldProverComponents for Poseidon2BabyBear16BasefoldCpuProverComponents
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
+pub struct Poseidon2KoalaBear16BasefoldCpuProverComponents;
+
+impl BasefoldProverComponents for Poseidon2KoalaBear16BasefoldCpuProverComponents {
+    type F = KoalaBear;
+    type EF = BinomialExtensionField<KoalaBear, 4>;
+    type A = CpuBackend;
+    type Tcs = MerkleTreeTcs<Poseidon2KoalaBearConfig>;
+    type Challenger = <Poseidon2KoalaBear16BasefoldConfig as BasefoldConfig>::Challenger;
+    type Config = Poseidon2KoalaBear16BasefoldConfig;
+    type Encoder = CpuDftEncoder<KoalaBear, Radix2DitParallel>;
+    type FriProver = FriCpuProver<Self::Encoder, Self::TcsProver>;
+    type TcsProver = FieldMerkleTreeProver<
+        <KoalaBear as Field>::Packing,
+        <KoalaBear as Field>::Packing,
+        Poseidon2KoalaBearConfig,
+        8,
+    >;
+    type PowProver = GrindingPowProver;
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub struct Poseidon2Bn254BasefoldCpuProverComponents;
 
 impl BasefoldProverComponents for Poseidon2Bn254BasefoldCpuProverComponents {
@@ -416,6 +438,28 @@ impl DefaultBasefoldProver for Poseidon2BabyBear16BasefoldCpuProverComponents {
     }
 }
 
+impl DefaultBasefoldProver for Poseidon2KoalaBear16BasefoldCpuProverComponents {
+    fn default_prover(
+        verifier: &BasefoldVerifier<Poseidon2KoalaBear16BasefoldConfig>,
+    ) -> BasefoldProver<Self> {
+        let encoder =
+            CpuDftEncoder { config: verifier.fri_config, dft: Arc::new(Radix2DitParallel) };
+        let fri_prover = FriCpuProver::<
+            CpuDftEncoder<KoalaBear, Radix2DitParallel>,
+            FieldMerkleTreeProver<
+                <KoalaBear as Field>::Packing,
+                <KoalaBear as Field>::Packing,
+                Poseidon2KoalaBearConfig,
+                8,
+            >,
+        >(PhantomData);
+
+        let tcs_prover = Poseidon2KoalaBear16Prover::default();
+        let pow_prover = GrindingPowProver;
+        BasefoldProver { encoder, fri_prover, tcs_prover, pow_prover }
+    }
+}
+
 impl DefaultBasefoldProver for Poseidon2Bn254BasefoldCpuProverComponents {
     fn default_prover(
         verifier: &BasefoldVerifier<Poseidon2Bn254FrBasefoldConfig>,
@@ -442,18 +486,47 @@ impl DefaultBasefoldProver for Poseidon2Bn254BasefoldCpuProverComponents {
 mod tests {
     use futures::prelude::*;
     use rand::thread_rng;
-    use slop_baby_bear::BabyBear;
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+    use slop_basefold::{
+        BasefoldVerifier, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig,
+    };
     use slop_multilinear::MultilinearPcsVerifier;
 
     use super::*;
 
     #[tokio::test]
-    async fn test_basefold_prover_backend() {
-        type C = Poseidon2BabyBear16BasefoldConfig;
-        type Prover = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
-        type EF = BinomialExtensionField<BabyBear, 4>;
+    async fn test_baby_bear_basefold_prover() {
+        test_basefold_prover_backend::<
+            Poseidon2BabyBear16BasefoldConfig,
+            Poseidon2BabyBear16BasefoldCpuProverComponents,
+        >()
+        .await;
+    }
 
+    #[tokio::test]
+    async fn test_koala_bear_basefold_prover() {
+        test_basefold_prover_backend::<
+            Poseidon2KoalaBear16BasefoldConfig,
+            Poseidon2KoalaBear16BasefoldCpuProverComponents,
+        >()
+        .await;
+    }
+
+    async fn test_basefold_prover_backend<
+        C: DefaultBasefoldConfig,
+        Prover: DefaultBasefoldProver<
+            Config = C,
+            F = C::F,
+            EF = C::EF,
+            A = CpuBackend,
+            Challenger = C::Challenger,
+        >,
+    >()
+    where
+        rand::distributions::Standard:
+            rand::distributions::Distribution<<C as slop_basefold::BasefoldConfig>::F>,
+        rand::distributions::Standard:
+            rand::distributions::Distribution<<C as slop_basefold::BasefoldConfig>::EF>,
+    {
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
         let log_blowup = 1;
@@ -464,23 +537,23 @@ mod tests {
             .map(|widths| {
                 widths
                     .iter()
-                    .map(|&w| Mle::<BabyBear>::rand(&mut rng, w, num_variables))
+                    .map(|&w| Mle::<C::F>::rand(&mut rng, w, num_variables))
                     .collect::<Message<_>>()
             })
             .collect::<Rounds<_>>();
 
         let verifier = BasefoldVerifier::<C>::new(log_blowup);
-        let prover = Prover::new(&verifier);
+        let prover = BasefoldProver::<Prover>::new(&verifier);
 
         let mut challenger = verifier.challenger();
         let mut commitments = vec![];
         let mut prover_data = Rounds::new();
         let mut eval_claims = Rounds::new();
-        let point = Point::<EF>::rand(&mut rng, num_variables);
+        let point = Point::<C::EF>::rand(&mut rng, num_variables);
         for mles in round_mles.iter() {
             let (commitment, data) = prover.commit_mles(mles.clone()).await.unwrap();
-            challenger.observe(commitment);
-            commitments.push(commitment);
+            challenger.observe(commitment.clone());
+            commitments.push(commitment.clone());
             prover_data.push(data);
             let evaluations = stream::iter(mles.iter())
                 .then(|mle| mle.eval_at(&point))
@@ -502,7 +575,7 @@ mod tests {
 
         let mut challenger = verifier.challenger();
         for commitment in commitments.iter() {
-            challenger.observe(*commitment);
+            challenger.observe(commitment.clone());
         }
         verifier
             .verify_trusted_evaluations(&commitments, point, &eval_claims, &proof, &mut challenger)

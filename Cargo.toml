@@ -38,6 +38,7 @@ members = [
     "crates/futures",
     "crates/keccak-air",
     "crates/uni-stark",
+    "crates/koala-bear",
 ]
 resolver = "2"
 
@@ -73,6 +74,7 @@ p3-symmetric = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_c
 p3-fri = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-uni-stark = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 p3-keccak-air = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
+p3-koala-bear = { git = "https://github.com/erabinov/Plonky3/", branch = "clone_config" }
 
 
 # slop
@@ -83,6 +85,7 @@ slop-sumcheck = { path = "crates/sumcheck" }
 slop-multilinear = { path = "crates/multilinear" }
 slop-utils = { path = "crates/utils" }
 slop-baby-bear = { path = "crates/baby-bear" }
+slop-koala-bear = { path = "crates/koala-bear" }
 slop-dft = { path = "crates/dft" }
 slop-matrix = { path = "crates/matrix" }
 slop-symmetric = { path = "crates/symmetric" }
@@ -106,11 +109,10 @@ slop-uni-stark = { path = "crates/uni-stark" }
 # For local development. 
 # p3-air = { path = "../Plonky3/air" }
 # p3-field = { path = "../Plonky3/field", features = ["profile_ops"] }
-# p3-field = { path = "../Plonky3/field" }
 # p3-commit = { path = "../Plonky3/commit" }
 # p3-matrix = { path = "../Plonky3/matrix" }
 # p3-baby-bear = { path = "../Plonky3/baby-bear", features = ["nightly-features", "profile_ops"] }
-# p3-baby-bear = { path = "../Plonky3/baby-bear", features = ["nightly-features"] }
+# p3-koala-bear = { path = "../Plonky3/koala-bear" }
 # p3-util = { path = "../Plonky3/util", features = ["profile_ops"] }
 # p3-util = { path = "../Plonky3/util" }
 # p3-challenger = { path = "../Plonky3/challenger" }
@@ -123,7 +125,6 @@ slop-uni-stark = { path = "crates/uni-stark" }
 # p3-mds = { path = "../Plonky3/mds" }
 # p3-merkle-tree = { path = "../Plonky3/merkle-tree" }
 # p3-poseidon2 = { path = "../Plonky3/poseidon2", features = ["profile_ops"] }
-# p3-poseidon2 = { path = "../Plonky3/poseidon2" }
 # p3-symmetric = { path = "../Plonky3/symmetric" }
 # p3-uni-stark = { path = "../Plonky3/uni-stark" }
 # p3-maybe-rayon = { path = "../Plonky3/maybe-rayon", features = ["parallel"] }
