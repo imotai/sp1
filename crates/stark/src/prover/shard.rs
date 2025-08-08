@@ -648,7 +648,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
 
     /// Generate a proof for a given execution record.
     #[allow(clippy::type_complexity)]
-    async fn prove_shard_with_data(
+    pub async fn prove_shard_with_data(
         &self,
         data: ShardData<C>,
         challenger: &mut C::Challenger,
