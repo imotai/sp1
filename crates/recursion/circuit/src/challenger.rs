@@ -222,7 +222,7 @@ impl<C: CircuitConfig<F = BabyBear>> FieldChallengerVariable<C, Felt<C::F>>
         self.sponge_state = C::poseidon2_permute_v2(builder, self.sponge_state);
 
         self.output_buffer.clear();
-        self.output_buffer.extend_from_slice(&self.sponge_state);
+        self.output_buffer.extend_from_slice(&self.sponge_state[0..HASH_RATE]);
     }
 }
 
@@ -264,7 +264,7 @@ impl<C: CircuitConfig> MultiField32ChallengerVariable<C> {
 
         self.output_buffer.clear();
         self.output_var_buffer.clear();
-        for &pf_val in self.sponge_state.iter() {
+        for &pf_val in self.sponge_state[0..OUTER_CHALLENGER_RATE].iter() {
             self.output_var_buffer.push(pf_val);
         }
     }
