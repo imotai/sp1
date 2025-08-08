@@ -39,10 +39,13 @@ class DuplexChallenger
         hasher.permute(sponge_state, output_buffer);
 
         // Copy the output buffer to the sponge state.
-        output_buffer_size = WIDTH;
+        output_buffer_size = RATE;
         for (size_t i = 0; i < WIDTH; i++)
         {
             sponge_state[i] = output_buffer[i];
+            if (i >= RATE) {
+                output_buffer[i] = bb31_t::zero();
+            }
         }
     }
 
@@ -214,20 +217,22 @@ class MultiField32Challenger
         hasher.permute(sponge_state, next_state);
 
         // Copy the output buffer to the sponge state.
-        output_buffer_size = WIDTH * num_f_elms;
+        output_buffer_size = RATE * num_f_elms;
         for (size_t i = 0; i < WIDTH; i++)
         {
             sponge_state[i] = next_state[i];
             bn254_t x = next_state[i];
             x.from();
-            uint32_t v0 = (uint32_t)(((uint64_t)(x[0]) + (uint64_t(1) << 32) * (uint64_t)(x[1])) % 0x78000001);
-            uint32_t v1 = (uint32_t)(((uint64_t)(x[2]) + (uint64_t(1) << 32) * (uint64_t)(x[3])) % 0x78000001);
-            uint32_t v2 = (uint32_t)(((uint64_t)(x[4]) + (uint64_t(1) << 32) * (uint64_t)(x[5])) % 0x78000001);
-            uint32_t v3 = (uint32_t)(((uint64_t)(x[6]) + (uint64_t(1) << 32) * (uint64_t)(x[7])) % 0x78000001);
-            output_buffer[i * 4] = bb31_t::from_canonical_u32(v0);
-            output_buffer[i * 4 + 1] = bb31_t::from_canonical_u32(v1);
-            output_buffer[i * 4 + 2] = bb31_t::from_canonical_u32(v2);
-            output_buffer[i * 4 + 3] = bb31_t::from_canonical_u32(v3);
+            if (i < RATE) {
+                uint32_t v0 = (uint32_t)(((uint64_t)(x[0]) + (uint64_t(1) << 32) * (uint64_t)(x[1])) % 0x78000001);
+                uint32_t v1 = (uint32_t)(((uint64_t)(x[2]) + (uint64_t(1) << 32) * (uint64_t)(x[3])) % 0x78000001);
+                uint32_t v2 = (uint32_t)(((uint64_t)(x[4]) + (uint64_t(1) << 32) * (uint64_t)(x[5])) % 0x78000001);
+                uint32_t v3 = (uint32_t)(((uint64_t)(x[6]) + (uint64_t(1) << 32) * (uint64_t)(x[7])) % 0x78000001);
+                output_buffer[i * 4] = bb31_t::from_canonical_u32(v0);
+                output_buffer[i * 4 + 1] = bb31_t::from_canonical_u32(v1);
+                output_buffer[i * 4 + 2] = bb31_t::from_canonical_u32(v2);
+                output_buffer[i * 4 + 3] = bb31_t::from_canonical_u32(v3);
+            }
         }
     }
 
