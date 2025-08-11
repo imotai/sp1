@@ -8,4 +8,4 @@ sp1-sdk = { path = "../../../crates/sdk" }
 tokio = { workspace = true }
 
 [build-dependencies]
-sp1-build = { workspace = true, features = ["64bit"] }
+sp1-build = { workspace = true }

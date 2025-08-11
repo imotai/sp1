@@ -17,12 +17,12 @@ sp1-prover = { path = "../../../crates/prover" }
 sp1-sdk = { workspace = true }
 
 sp1-core-executor = { workspace = true, features = ["profiling"] }
-sp1-build = { workspace = true, features = ["64bit"] }
+sp1-build = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }
 
 [build-dependencies]
-sp1-build = { path = "../../../crates/build", features = ["64bit"] }
+sp1-build = { path = "../../../crates/build" }
 
 [features]
 default = []

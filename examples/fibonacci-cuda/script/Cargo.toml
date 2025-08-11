@@ -12,7 +12,7 @@ tokio = { workspace = true }
 sp1-sdk = { workspace = true }
 
 [build-dependencies]
-sp1-build = { workspace = true, features = ["64bit"] }
+sp1-build = { workspace = true }
 
 [[bin]]
 name = "fibonacci-cuda-script"

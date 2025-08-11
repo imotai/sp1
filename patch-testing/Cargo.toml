@@ -41,7 +41,7 @@ publish = false
 [workspace.dependencies]
 # sp1-zkvm = { path = "../crates/zkvm/entrypoint" }
 sp1-zkvm = {  path = "../crates/zkvm/entrypoint" }
-sp1-build = { path = "../crates/build", features = ["64bit"] }
+sp1-build = { path = "../crates/build" }
 sp1-sdk = { path = "../crates/sdk", default-features = false }
 sp1-core-executor = { path = "../crates/core/executor" }
 serde = { version = "1.0.215", features = ["derive"] }
