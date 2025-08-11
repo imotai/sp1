@@ -17,6 +17,3 @@ anyhow = { version = "1.0.83" }
 clap = { version = "4.5.9", features = ["derive", "env"] }
 dirs = "5.0.1"
 chrono = { version = "0.4.38", default-features = false, features = ["clock"] }
-
-[features]
-64bit = []

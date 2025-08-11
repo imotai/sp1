@@ -239,7 +239,7 @@ dependencies = [
  "num",
  "rand 0.8.5",
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -319,7 +319,7 @@ dependencies = [
 name = "bls-decompress-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -329,14 +329,14 @@ dependencies = [
  "common-test-utils",
  "sp1-curves",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
 name = "bls12381-double-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -345,7 +345,7 @@ version = "1.1.1"
 dependencies = [
  "num-bigint",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -354,7 +354,7 @@ version = "1.1.1"
 dependencies = [
  "num-bigint",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -363,7 +363,7 @@ version = "1.1.1"
 dependencies = [
  "num-bigint",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -372,7 +372,7 @@ version = "1.1.0"
 dependencies = [
  "sp1-derive",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -382,14 +382,14 @@ dependencies = [
  "common-test-utils",
  "sp1-curves",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
 name = "bn254-double-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -398,7 +398,7 @@ version = "1.1.1"
 dependencies = [
  "num-bigint",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -407,7 +407,7 @@ version = "1.1.1"
 dependencies = [
  "num-bigint",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -416,7 +416,7 @@ version = "1.1.1"
 dependencies = [
  "num-bigint",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -425,7 +425,7 @@ version = "1.1.0"
 dependencies = [
  "sp1-derive",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -631,7 +631,7 @@ name = "cycle-tracker-test"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -876,7 +876,7 @@ dependencies = [
 name = "ed-add-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -884,7 +884,7 @@ name = "ed-decompress-test"
 version = "1.1.0"
 dependencies = [
  "hex-literal",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -928,7 +928,7 @@ version = "1.1.0"
 dependencies = [
  "ed25519-dalek",
  "hex-literal",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1022,7 +1022,7 @@ checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 name = "fibonacci-program-tests"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1205,7 +1205,7 @@ dependencies = [
 name = "hello-world-program"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1224,7 +1224,7 @@ checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 name = "hint-io-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1397,14 +1397,14 @@ dependencies = [
 name = "keccak-permute-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
 name = "keccak256-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
  "tiny-keccak 2.0.2 (git+https://github.com/sp1-patches/tiny-keccak?branch=patch-v2.0.2)",
 ]
 
@@ -1681,7 +1681,7 @@ dependencies = [
 name = "panic-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1918,7 +1918,7 @@ name = "rand-test"
 version = "1.1.0"
 dependencies = [
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2183,21 +2183,21 @@ dependencies = [
  "common-test-utils",
  "sp1-curves",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
 name = "secp256k1-decompress-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
 name = "secp256k1-double-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2205,7 +2205,7 @@ name = "secp256k1-mul-test"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2219,14 +2219,14 @@ dependencies = [
  "p256",
  "sp1-curves",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
 name = "secp256r1-decompress-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2240,7 +2240,7 @@ dependencies = [
  "p256",
  "sp1-curves",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2355,14 +2355,14 @@ dependencies = [
 name = "sha-compress-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
 name = "sha-extend-test"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2405,7 +2405,7 @@ dependencies = [
  "hex",
  "hex-literal",
  "sha2 0.10.6",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2554,7 +2554,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp1-zkvm-64"
+name = "sp1-zkvm"
 version = "6.0.0"
 dependencies = [
  "cfg-if",
@@ -2590,7 +2590,7 @@ dependencies = [
  "serde",
  "serde_with",
  "sha2 0.9.8",
- "sp1-zkvm-64",
+ "sp1-zkvm",
  "ssz_rs",
 ]
 
@@ -2728,7 +2728,7 @@ version = "1.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "sp1-zkvm-64",
+ "sp1-zkvm",
  "tendermint",
  "tendermint-light-client-verifier",
 ]
@@ -2896,7 +2896,7 @@ dependencies = [
  "num-bigint",
  "rand 0.8.5",
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2923,7 +2923,7 @@ version = "1.1.0"
 dependencies = [
  "crypto-bigint",
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2957,7 +2957,7 @@ dependencies = [
  "bytemuck",
  "hex",
  "sha2 0.10.9",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]

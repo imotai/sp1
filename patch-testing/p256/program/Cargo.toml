@@ -13,7 +13,7 @@ name = "p256_recover"
 path = "bin/recover.rs"
 
 [dependencies]
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
+sp1-zkvm = {  path = "../../../crates/zkvm/entrypoint" }
 p256 = { version = "0.13.2", default-features = false, features = [
     "ecdsa",
     "alloc",

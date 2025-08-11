@@ -14,11 +14,11 @@ use core::arch::asm;
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_uint256_add_with_carry(
-    a: *const [u32; 8],
-    b: *const [u32; 8],
-    c: *const [u32; 8],
-    d: *mut [u32; 8],
-    e: *mut [u32; 8],
+    a: *const [u64; 4],
+    b: *const [u64; 4],
+    c: *const [u64; 4],
+    d: *mut [u64; 4],
+    e: *mut [u64; 4],
 ) {
     #[cfg(target_os = "zkvm")]
     unsafe {
@@ -50,11 +50,11 @@ pub extern "C" fn syscall_uint256_add_with_carry(
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_uint256_mul_with_carry(
-    a: *const [u32; 8],
-    b: *const [u32; 8],
-    c: *const [u32; 8],
-    d: *mut [u32; 8],
-    e: *mut [u32; 8],
+    a: *const [u64; 4],
+    b: *const [u64; 4],
+    c: *const [u64; 4],
+    d: *mut [u64; 4],
+    e: *mut [u64; 4],
 ) {
     #[cfg(target_os = "zkvm")]
     unsafe {

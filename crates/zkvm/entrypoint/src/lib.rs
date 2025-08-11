@@ -1,6 +1,3 @@
-#[cfg(all(target_os = "zkvm", feature = "embedded"))]
-use syscalls::MAX_MEMORY;
-
 #[cfg(target_os = "zkvm")]
 use {
     cfg_if::cfg_if,
@@ -31,19 +28,6 @@ mod libm;
 pub const PV_DIGEST_NUM_WORDS: usize = 8;
 pub const POSEIDON_NUM_WORDS: usize = 8;
 
-/// Size of the reserved region for input values with the embedded allocator.
-#[cfg(all(target_os = "zkvm", feature = "embedded"))]
-pub(crate) const EMBEDDED_RESERVED_INPUT_REGION_SIZE: usize = 1024 * 1024 * 1024;
-
-/// Start of the reserved region for inputs with the embedded allocator.
-#[cfg(all(target_os = "zkvm", feature = "embedded"))]
-pub(crate) const EMBEDDED_RESERVED_INPUT_START: usize =
-    MAX_MEMORY - EMBEDDED_RESERVED_INPUT_REGION_SIZE;
-
-/// Pointer to the current position in the reserved region for inputs with the embedded allocator.
-#[cfg(all(target_os = "zkvm", feature = "embedded"))]
-static mut EMBEDDED_RESERVED_INPUT_PTR: usize = EMBEDDED_RESERVED_INPUT_START;
-
 #[repr(C)]
 pub struct ReadVecResult {
     pub ptr: *mut u8,
@@ -57,8 +41,6 @@ pub struct ReadVecResult {
 ///
 /// When the `bump` feature is enabled, the buffer is read into a new buffer allocated by the
 /// program.
-///
-/// When the `embedded` feature is enabled, the buffer is read into the reserved input region.
 ///
 /// When there is no allocator selected, the program will fail to compile.
 ///
@@ -80,35 +62,13 @@ pub extern "C" fn read_vec_raw() -> ReadVecResult {
             return ReadVecResult { ptr: std::ptr::null_mut(), len: 0, capacity: 0 };
         }
 
-        // Round up to multiple of 4 for whole-word alignment.
-        let capacity = (len + 3) / 4 * 4;
+        // Round up to multiple of 8 for whole-word alignment.
+        let capacity = (len + 7) / 8 * 8;
 
         cfg_if! {
-            if #[cfg(feature = "embedded")] {
-                // Get the existing pointer in the reserved region which is the start of the vec.
-                // Increment the pointer by the capacity to set the new pointer to the end of the vec.
-                let ptr = unsafe { EMBEDDED_RESERVED_INPUT_PTR };
-                if ptr.saturating_add(capacity) > MAX_MEMORY {
-                    panic!("Input region overflowed.")
-                }
-
-                // SAFETY: The VM is single threaded.
-                unsafe { EMBEDDED_RESERVED_INPUT_PTR += capacity };
-
-                // Read the vec into uninitialized memory. The syscall assumes the memory is
-                // uninitialized, which is true because the input ptr is incremented manually on each
-                // read.
-                syscall_hint_read(ptr as *mut u8, len);
-
-                // Return the result.
-                ReadVecResult {
-                    ptr: ptr as *mut u8,
-                    len,
-                    capacity,
-                }
-            } else {
+            if #[cfg(feature = "bump")] {
                 // Allocate a buffer of the required length that is 4 byte aligned.
-                let layout = std::alloc::Layout::from_size_align(capacity, 4).expect("vec is too large");
+                let layout = std::alloc::Layout::from_size_align(capacity, 8).expect("vec is too large");
 
                 // SAFETY: The layout was made through the checked constructor.
                 let ptr = unsafe { std::alloc::alloc(layout) };
@@ -124,6 +84,9 @@ pub extern "C" fn read_vec_raw() -> ReadVecResult {
                     len,
                     capacity,
                 }
+            } else {
+                // An allocator must be selected.
+                compile_error!("There is no allocator selected. Please enable the `bump` feature.");
             }
         }
     }
@@ -157,9 +120,6 @@ mod zkvm {
     #[no_mangle]
     unsafe extern "C" fn __start() {
         {
-            #[cfg(all(target_os = "zkvm", feature = "embedded"))]
-            crate::allocators::init();
-
             cfg_if::cfg_if! {
                 if #[cfg(feature = "blake3")] {
                     PUBLIC_VALUES_HASHER = Some(blake3::Hasher::new());
@@ -183,11 +143,11 @@ mod zkvm {
         syscall_halt(0);
     }
 
-    static STACK_TOP: u32 = 0x0020_0400;
-
-    core::arch::global_asm!(include_str!("memset.s"));
+    // core::arch::global_asm!(include_str!("memset.s"));
     core::arch::global_asm!(include_str!("memcpy.s"));
 
+    // Alias the stack top to a static we can load easily.
+    static _STACK_TOP: u64 = sp1_primitives::consts::STACK_TOP;
     core::arch::global_asm!(
         r#"
     .section .text._start;
@@ -198,13 +158,13 @@ mod zkvm {
         la gp, __global_pointer$;
         .option pop;
         la sp, {0}
-        lw sp, 0(sp)
+        ld sp, 0(sp)
         call __start;
     "#,
-        sym STACK_TOP
+        sym _STACK_TOP
     );
 
-    pub fn zkvm_getrandom_v2(s: &mut [u8]) -> Result<(), getrandom_v2::Error> {
+    pub fn zkvm_getrandom(s: &mut [u8]) -> Result<(), getrandom_v2::Error> {
         unsafe {
             crate::syscalls::sys_rand(s.as_mut_ptr(), s.len());
         }
@@ -212,7 +172,7 @@ mod zkvm {
         Ok(())
     }
 
-    getrandom_v2::register_custom_getrandom!(zkvm_getrandom_v2);
+    getrandom_v2::register_custom_getrandom!(zkvm_getrandom);
 
     #[no_mangle]
     unsafe extern "Rust" fn __getrandom_v03_custom(

@@ -17,7 +17,7 @@ name = "k256_schnorr_verify"
 path = "bin/schnorr_verify.rs"
 
 [dependencies]
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
+sp1-zkvm = {  path = "../../../crates/zkvm/entrypoint" }
 k256 = { version = "0.13.4", default-features = false, features = [
     "ecdsa",
     "serde",

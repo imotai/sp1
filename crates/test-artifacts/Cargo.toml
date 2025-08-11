@@ -9,7 +9,7 @@ categories.workspace = true
 publish = false
 
 [dependencies]
-sp1-build = { workspace = true, features = ["64bit"] }
+sp1-build = { workspace = true }
 
 [build-dependencies]
-sp1-build = { workspace = true, features = ["64bit"] }
+sp1-build = { workspace = true }

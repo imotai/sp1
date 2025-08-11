@@ -50,7 +50,7 @@ pub const fn sys_getenv(
     varname: *const u8,
     varname_len: usize,
 ) -> usize {
-    usize::MAX
+    0
 }
 
 #[allow(unused_variables)]

@@ -13,7 +13,7 @@ pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
         "build".to_string(),
         "--release".to_string(),
         "--target".to_string(),
-        args.build_target.clone(),
+        crate::DEFAULT_TARGET.to_string(),
     ];
 
     if args.ignore_rust_version {

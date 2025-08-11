@@ -40,7 +40,7 @@ publish = false
 
 [workspace.dependencies]
 # sp1-zkvm = { path = "../crates/zkvm/entrypoint" }
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../crates/zkvm/entrypoint64" }
+sp1-zkvm = {  path = "../crates/zkvm/entrypoint" }
 sp1-build = { path = "../crates/build", features = ["64bit"] }
 sp1-sdk = { path = "../crates/sdk", default-features = false }
 sp1-core-executor = { path = "../crates/core/executor" }

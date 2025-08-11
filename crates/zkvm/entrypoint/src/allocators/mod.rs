@@ -1,12 +1,6 @@
 //! Allocators for the SP1 zkVM.
 //!
-//! The `embedded` allocator takes precedence if enabled.
+//! Currently, the only allocator available is the `"bump"` allocator, which is enabled by default.
 
-#[cfg(not(feature = "embedded"))]
+#[cfg(all(feature = "bump"))]
 mod bump;
-
-#[cfg(feature = "embedded")]
-pub mod embedded;
-
-#[cfg(feature = "embedded")]
-pub use embedded::init;

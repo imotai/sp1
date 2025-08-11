@@ -6,6 +6,6 @@ publish = false
 
 [dependencies]
 common-test-utils = { path = "../common" }
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../../crates/zkvm/entrypoint64" }
+sp1-zkvm = { path = "../../../../crates/zkvm/entrypoint" }
 sp1-lib = { path = "../../../../crates/zkvm/lib" }
 sp1-curves = { path = "../../../../crates/curves" }

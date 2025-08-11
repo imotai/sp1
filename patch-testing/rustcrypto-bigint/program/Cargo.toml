@@ -13,7 +13,7 @@ name = "bigint_test_mul_add_residue"
 path = "bin/mul_add_residue.rs"
 
 [dependencies]
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
+sp1-zkvm = {  path = "../../../crates/zkvm/entrypoint" }
 sp1-lib = { path = "../../../crates/zkvm/lib" }
 num-bigint = "0.4.0"
 crypto-bigint = "0.5.5"

@@ -28,10 +28,6 @@ pub(crate) fn create_local_command(
         }
     }
 
-    // the following flag is added to avoid build failure on ring:
-    // https://github.com/briansmith/ring/blob/bcf68dd27a071ff1947b6327d4c6bde526e24b60/include/ring-core/target.h#L47
-    command.env("CFLAGS_riscv32im_succinct_zkvm_elf", "-D__ILP32__");
-
     // If CC_riscv64im_succinct_zkvm_elf is not set, set it to the default C++ toolchain
     // downloaded by 'sp1up --c-toolchain'.
     if env::var("CC_riscv64im_succinct_zkvm_elf").is_err() {

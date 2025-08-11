@@ -6,6 +6,6 @@ publish = false
 
 
 [dependencies]
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../../crates/zkvm/entrypoint64" }
+sp1-zkvm = {  path = "../../../../crates/zkvm/entrypoint" }
 num-bigint = "0.4.6"
 rand = "0.8.5"

@@ -29,7 +29,7 @@ name = "sha3"
 path = "bin/sha3.rs"
 
 [dependencies]
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
+sp1-zkvm = {  path = "../../../crates/zkvm/entrypoint" }
 serde = { version = "1.0.215", features = ["derive"] }
 
 sha2-v0-9-9 = { version = "0.9.9", package = "sha2", optional = true }

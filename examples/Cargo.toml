@@ -79,7 +79,7 @@ sp1-recursion-program = { path = "../crates/recursion/program", default-features
 sp1-recursion-circuit = { path = "../crates/recursion/circuit", default-features = false }
 sp1-sdk = { path = "../crates/sdk" }
 sp1-lib = { path = "../crates/zkvm/lib", default-features = false }
-sp1-zkvm = { path = "../crates/zkvm/entrypoint64", package = "sp1-zkvm-64", features = [
+sp1-zkvm = { path = "../crates/zkvm/entrypoint",  features = [
   "lib",
 ] }
 sp1-cuda = { path = "../crates/cuda" }

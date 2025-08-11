@@ -21,7 +21,7 @@ name = "curve25519_ng_zero_mul"
 path = "bin/zero_mul.rs"
 
 [dependencies]
-sp1-zkvm = { package = "sp1-zkvm-64", path = "../../../crates/zkvm/entrypoint64" }
+sp1-zkvm = {  path = "../../../crates/zkvm/entrypoint" }
 curve25519-dalek-ng = { version = "4.1.1", default-features = false, features = [
     "u64_backend",
     "alloc",
