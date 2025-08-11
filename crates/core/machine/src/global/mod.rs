@@ -12,7 +12,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, GlobalInteractionEvent},
     ExecutionRecord, Program,
 };
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
     septic_curve::{SepticCurve, SepticCurveComplete},
     septic_digest::SepticDigest,
@@ -281,10 +281,11 @@ mod tests {
 
     use super::*;
     use crate::programs::tests::*;
-    use slop_baby_bear::BabyBear;
+
     use slop_matrix::dense::RowMajorMatrix;
     use sp1_core_executor::{ExecutionRecord, Executor, SP1CoreOpts, Trace};
-    use sp1_stark::air::MachineAir;
+    use sp1_hypercube::air::MachineAir;
+    use sp1_primitives::SP1Field;
 
     #[test]
     #[allow(clippy::uninlined_format_args)]
@@ -296,7 +297,7 @@ mod tests {
 
         let chip: GlobalChip = GlobalChip;
 
-        let trace: RowMajorMatrix<BabyBear> =
+        let trace: RowMajorMatrix<SP1Field> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values);
 

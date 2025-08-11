@@ -18,7 +18,13 @@ impl<C> MachineConfig for C where
 {
 }
 
-pub use slop_jagged::{BabyBearPoseidon2, Bn254JaggedConfig};
+pub use slop_jagged::{
+    BabyBearPoseidon2 as SP1CoreJaggedConfig, Bn254JaggedConfig as SP1OuterConfig,
+    Poseidon2BabyBearJaggedCpuProverComponents as SP1CpuJaggedProverComponents,
+};
+
+pub use slop_baby_bear::baby_bear_poseidon2::Poseidon2BabyBearConfig as SP1MerkleTreeConfig;
+pub use slop_basefold::Poseidon2BabyBear16BasefoldConfig as SP1BasefoldConfig;
 
 /// A specification of preprocessed polynomial batch dimensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

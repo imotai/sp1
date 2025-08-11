@@ -14,8 +14,8 @@ use sp1_core_executor::{
     Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::{air::MachineAir, Word};
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
     adapter::{
@@ -1287,16 +1287,16 @@ where
 //         riscv::RiscvAir,
 //         utils::{run_malicious_test, run_test_machine, setup_test_machine},
 //     };
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use rand::{thread_rng, Rng};
 //     use sp1_core_executor::{
 //         events::{AluEvent, MemoryRecordEnum},
 //         ExecutionRecord, Instruction, Opcode, Program,
 //     };
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
+//         baby_bear_poseidon2::SP1CoreJaggedConfig,
 //         Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -1307,7 +1307,7 @@ where
 //         let mut shard = ExecutionRecord::default();
 //         shard.divrem_events = vec![AluEvent::new(0, Opcode::DIVU, 2, 17, 3, false)];
 //         let chip = DivRemChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&shard, &mut ExecutionRecord::default());
 //         println!("{:?}", trace.values)
 //     }
@@ -1368,7 +1368,7 @@ where
 
 //         // Run setup.
 //         let air = DivRemChip::default();
-//         let config = BabyBearPoseidon2::new();
+//         let config = SP1CoreJaggedConfig::new();
 //         let chip = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -1379,10 +1379,10 @@ where
 
 //         // Run the test.
 //         let air = DivRemChip::default();
-//         let chip: Chip<BabyBear, DivRemChip> = Chip::new(air);
+//         let chip: Chip<SP1Field, DivRemChip> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, DivRemChip>(vec![shard], machine, pk, vk).unwrap();
-//     }
+//         run_test_machine::<SP1CoreJaggedConfig, DivRemChip>(vec![shard], machine, pk,
+// vk).unwrap();     }
 
 //     #[test]
 //     fn test_malicious_divrem() {
@@ -1421,13 +1421,13 @@ where
 //                 let program = Program::new(instructions, 0, 0);
 //                 let stdin = SP1Stdin::new();
 
-//                 type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//                 type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //                 let malicious_trace_pv_generator = move |prover: &P,
 //                                                          record: &mut ExecutionRecord|
 //                       -> Vec<(
 //                     String,
-//                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
+//                     RowMajorMatrix<Val<SP1CoreJaggedConfig>>,
 //                 )> {
 //                     let mut malicious_record = record.clone();
 //                     malicious_record.cpu_events[0].a = op_a;

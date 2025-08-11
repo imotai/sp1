@@ -1,5 +1,5 @@
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::PV_DIGEST_NUM_WORDS, Word};
+use sp1_hypercube::{air::PV_DIGEST_NUM_WORDS, Word};
 use std::mem::size_of;
 
 use crate::{
@@ -53,10 +53,10 @@ pub struct SyscallInstrColumns<T> {
     /// The expected public values digest.
     pub expected_public_values_digest: [T; 4],
 
-    /// The check if `op_b` is a valid BabyBear.
+    /// The check if `op_b` is a valid SP1Field.
     pub op_b_range_check: BabyBearWordRangeChecker<T>,
 
-    /// The check if `op_c` is a valid BabyBear.
+    /// The check if `op_c` is a valid SP1Field.
     pub op_c_range_check: BabyBearWordRangeChecker<T>,
 
     /// Whether the current instruction is a real instruction.

@@ -2,9 +2,10 @@
 
 use itertools::Itertools;
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
+use sp1_hypercube::{MachineVerifyingKey, ShardProof};
+use sp1_primitives::SP1Field;
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
     machine::{SP1ShapedWitnessValues, SP1WrapVerifier},
@@ -17,7 +18,6 @@ use sp1_recursion_compiler::{
 };
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
-use sp1_stark::{MachineVerifyingKey, ShardProof};
 use std::{borrow::Borrow, path::PathBuf};
 
 pub use sp1_recursion_circuit::witness::{OuterWitness, Witnessable};
@@ -134,9 +134,9 @@ pub fn build_constraints_and_witness(
     let constraints =
         tracing::info_span!("wrap circuit").in_scope(|| build_outer_circuit(&template_input));
 
-    let pv: &RecursionPublicValues<BabyBear> = template_proof.public_values.as_slice().borrow();
+    let pv: &RecursionPublicValues<SP1Field> = template_proof.public_values.as_slice().borrow();
     let vkey_hash = babybears_to_bn254(&pv.sp1_vk_digest);
-    let committed_values_digest_bytes: [BabyBear; 32] =
+    let committed_values_digest_bytes: [SP1Field; 32] =
         words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
     let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
     let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());

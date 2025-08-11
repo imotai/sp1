@@ -1,5 +1,5 @@
 use slop_algebra::Field;
-use slop_merkle_tree::my_bb_16_perm;
+use slop_baby_bear::baby_bear_poseidon2::my_bb_16_perm;
 
 /// The digest size.
 pub const DIGEST_SIZE: usize = 8;
@@ -36,6 +36,6 @@ pub fn log2_ceil_usize(n: usize) -> usize {
 
 /// Get the inner perm
 #[must_use]
-pub fn inner_perm() -> slop_merkle_tree::Perm {
+pub fn inner_perm() -> slop_baby_bear::baby_bear_poseidon2::Perm {
     my_bb_16_perm()
 }

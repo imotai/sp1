@@ -8,14 +8,14 @@ use crate::{
     machine::{SP1CompressWithVKeyVerifier, SP1CompressWithVKeyWitnessVariable},
     shard::RecursiveShardVerifier,
     zerocheck::RecursiveVerifierConstraintFolder,
-    BabyBearFriConfigVariable, CircuitConfig,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 use slop_air::Air;
 use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
+use sp1_hypercube::air::MachineAir;
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::DIGEST_SIZE;
-use sp1_stark::air::MachineAir;
 
 /// A program to verify a single recursive proof representing a complete proof of program execution.
 ///
@@ -28,13 +28,13 @@ pub struct SP1CompressRootVerifierWithVKey<C, SC, A, JC> {
 
 impl<C, SC, A, JC> SP1CompressRootVerifierWithVKey<C, SC, A, JC>
 where
-    SC: BabyBearFriConfigVariable<
+    SC: SP1FieldConfigVariable<
             C,
             FriChallengerVariable = DuplexChallengerVariable<C>,
-            DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
+            DigestVariable = [Felt<SP1Field>; DIGEST_SIZE],
         > + Send
         + Sync,
-    C: CircuitConfig<F = SC::F, EF = SC::EF, Bit = Felt<BabyBear>>,
+    C: CircuitConfig<F = SC::F, EF = SC::EF, Bit = Felt<SP1Field>>,
     A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     JC: RecursiveJaggedConfig<
         F = C::F,

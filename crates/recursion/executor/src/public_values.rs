@@ -3,7 +3,7 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
+use sp1_hypercube::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
 use static_assertions::const_assert_eq;
 use std::{
     borrow::BorrowMut,

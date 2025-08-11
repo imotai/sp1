@@ -7,7 +7,6 @@ use std::{
 
 use slop_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder};
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
 use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_machine::{
     adapter::{
@@ -31,7 +30,7 @@ use sp1_core_machine::{
     },
 };
 use sp1_primitives::consts::WORD_BYTE_SIZE;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, MachineAir, MessageBuilder},
     Word,
 };
@@ -40,8 +39,9 @@ use crate::ir::{Func, FuncCtx, FuncDecl};
 
 use super::{Ast, BinOp, ExprExtRef, ExprRef, IrVar};
 
-type F = BabyBear;
-type EF = BinomialExtensionField<BabyBear, 4>;
+use sp1_primitives::SP1Field;
+type F = SP1Field;
+type EF = BinomialExtensionField<SP1Field, 4>;
 
 type AstType = Ast<ExprRef<F>, ExprExtRef<EF>>;
 type Ty = crate::ir::Ty<ExprRef<F>, ExprExtRef<EF>>;

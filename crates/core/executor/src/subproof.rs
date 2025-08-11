@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use sp1_stark::{BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey};
+use sp1_hypercube::{MachineVerifierConfigError, MachineVerifyingKey, SP1CoreJaggedConfig};
 
 use crate::SP1RecursionProof;
 
@@ -16,11 +16,11 @@ pub trait SubproofVerifier: Sync + Send {
     /// Verify a deferred proof.
     fn verify_deferred_proof(
         &self,
-        proof: &SP1RecursionProof<BabyBearPoseidon2>,
-        vk: &MachineVerifyingKey<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        vk: &MachineVerifyingKey<SP1CoreJaggedConfig>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>>;
+    ) -> Result<(), MachineVerifierConfigError<SP1CoreJaggedConfig>>;
 }
 
 /// A dummy verifier which does nothing.
@@ -29,11 +29,11 @@ pub struct NoOpSubproofVerifier;
 impl SubproofVerifier for NoOpSubproofVerifier {
     fn verify_deferred_proof(
         &self,
-        _proof: &SP1RecursionProof<BabyBearPoseidon2>,
-        _vk: &MachineVerifyingKey<BabyBearPoseidon2>,
+        _proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        _vk: &MachineVerifyingKey<SP1CoreJaggedConfig>,
         _vk_hash: [u64; 4],
         _committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1CoreJaggedConfig>> {
         Ok(())
     }
 }
@@ -46,11 +46,11 @@ where
 {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1RecursionProof<BabyBearPoseidon2>,
-        vk: &MachineVerifyingKey<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        vk: &MachineVerifyingKey<SP1CoreJaggedConfig>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1CoreJaggedConfig>> {
         (*self).verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }
@@ -61,11 +61,11 @@ where
 {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1RecursionProof<BabyBearPoseidon2>,
-        vk: &MachineVerifyingKey<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        vk: &MachineVerifyingKey<SP1CoreJaggedConfig>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1CoreJaggedConfig>> {
         self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }
@@ -76,11 +76,11 @@ where
 {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1RecursionProof<BabyBearPoseidon2>,
-        vk: &MachineVerifyingKey<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        vk: &MachineVerifyingKey<SP1CoreJaggedConfig>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1CoreJaggedConfig>> {
         self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }

@@ -1,15 +1,15 @@
 use core::borrow::Borrow;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, Field, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_core_machine::utils::next_multiple_of_32;
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::MachineAir;
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     Address, ExecutionRecord, Instruction, RecursionProgram, SelectInstr, SelectIo,
 };
-use sp1_stark::air::MachineAir;
 use std::borrow::BorrowMut;
 
 use crate::builder::SP1RecursionAirBuilder;
@@ -63,12 +63,12 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_preprocessed_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_preprocessed_trace only supports SP1Field field"
         );
 
         let instrs = unsafe {
-            std::mem::transmute::<Vec<&SelectInstr<F>>, Vec<&SelectInstr<BabyBear>>>(
+            std::mem::transmute::<Vec<&SelectInstr<F>>, Vec<&SelectInstr<SP1Field>>>(
                 program
                     .inner
                     .iter()
@@ -80,7 +80,7 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
             )
         };
         let padded_nb_rows = self.preprocessed_num_rows(program, instrs.len()).unwrap();
-        let mut values = vec![BabyBear::zero(); padded_nb_rows * SELECT_PREPROCESSED_COLS];
+        let mut values = vec![SP1Field::zero(); padded_nb_rows * SELECT_PREPROCESSED_COLS];
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let populate_len = instrs.len() * SELECT_PREPROCESSED_COLS;
@@ -89,7 +89,7 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
                 let SelectInstr { addrs, mult1, mult2 } = instr;
                 let access: &mut SelectPreprocessedCols<_> = row.borrow_mut();
                 *access = SelectPreprocessedCols {
-                    is_real: BabyBear::one(),
+                    is_real: SP1Field::one(),
                     addrs: addrs.to_owned(),
                     mult1: mult1.to_owned(),
                     mult2: mult2.to_owned(),
@@ -99,7 +99,7 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
 
         // Convert the trace to a row major matrix.
         Some(RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<BabyBear>, Vec<F>>(values) },
+            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
             SELECT_PREPROCESSED_COLS,
         ))
     }
@@ -117,15 +117,15 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
     fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_trace only supports SP1Field field"
         );
 
         let events = unsafe {
-            std::mem::transmute::<&Vec<SelectIo<F>>, &Vec<SelectIo<BabyBear>>>(&input.select_events)
+            std::mem::transmute::<&Vec<SelectIo<F>>, &Vec<SelectIo<SP1Field>>>(&input.select_events)
         };
         let padded_nb_rows = self.num_rows(input).unwrap();
-        let mut values = vec![BabyBear::zero(); padded_nb_rows * SELECT_COLS];
+        let mut values = vec![SP1Field::zero(); padded_nb_rows * SELECT_COLS];
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let populate_len = events.len() * SELECT_COLS;
@@ -138,7 +138,7 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<BabyBear>, Vec<_>>(values) },
+            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<_>>(values) },
             SELECT_COLS,
         )
     }
@@ -188,14 +188,14 @@ mod tests {
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_jagged::JaggedConfig;
 
+    use sp1_hypercube::SP1CoreJaggedConfig;
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};
-    use sp1_stark::BabyBearPoseidon2;
 
     use super::*;
 
     #[tokio::test]
     async fn prove_select() {
-        type F = <BabyBearPoseidon2 as JaggedConfig>::F;
+        type F = <SP1CoreJaggedConfig as JaggedConfig>::F;
 
         let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
         let mut addr = 0;

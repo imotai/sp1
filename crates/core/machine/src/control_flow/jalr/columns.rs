@@ -1,6 +1,6 @@
 use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::Word;
+use sp1_hypercube::Word;
 use std::mem::size_of;
 
 use crate::operations::AddOperation;

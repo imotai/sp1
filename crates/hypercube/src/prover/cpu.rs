@@ -9,21 +9,18 @@ use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_alloc::CpuBackend;
-use slop_baby_bear::BabyBear;
-use slop_jagged::{
-    DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents,
-    Poseidon2BabyBearJaggedCpuProverComponents,
-};
+use slop_jagged::{DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents};
 use slop_uni_stark::SymbolicAirBuilder;
+use sp1_primitives::SP1Field;
 
 use super::{
     DefaultTraceGenerator, MachineProver, MachineProverBuilder, ProverSemaphore, ShardProver,
     ShardProverComponents, ZerocheckAir, ZerocheckCpuProverData,
 };
 use crate::{
-    air::MachineAir, prover::MachineProverComponents, BabyBearPoseidon2, ConstraintSumcheckFolder,
-    GkrProverImpl, LogupGkrCpuProverComponents, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator,
-    ShardVerifier,
+    air::MachineAir, prover::MachineProverComponents, ConstraintSumcheckFolder, GkrProverImpl,
+    LogupGkrCpuProverComponents, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator,
+    SP1CoreJaggedConfig, ShardVerifier,
 };
 
 /// The components of a CPU shard prover.
@@ -188,13 +185,13 @@ where
     }
 }
 
-impl<A> CpuProverBuilder<Poseidon2BabyBearJaggedCpuProverComponents, A>
+impl<A> CpuProverBuilder<crate::SP1CpuJaggedProverComponents, A>
 where
-    A: ZerocheckAir<BabyBear, BinomialExtensionField<BabyBear, 4>> + std::fmt::Debug,
+    A: ZerocheckAir<SP1Field, BinomialExtensionField<SP1Field, 4>> + std::fmt::Debug,
 {
     // /// Create a new CPU prover builder from a verifier and resource options.
     // #[must_use]
-    // pub fn from_verifier(verifier: ShardVerifier<BabyBearPoseidon2, A>, opts: SP1CoreOpts) ->
+    // pub fn from_verifier(verifier: ShardVerifier<SP1CoreJaggedConfig, A>, opts: SP1CoreOpts) ->
     // Self {     let shard_prover = Arc::new(CpuShardProver::new(verifier.clone()));
     //     let prover_permits = Arc::new(Semaphore::new(opts.shard_batch_size));
 
@@ -205,7 +202,7 @@ where
     /// Create a new CPU prover builder from a verifier, having a single worker with a single
     /// permit.
     #[must_use]
-    pub fn simple(verifier: ShardVerifier<BabyBearPoseidon2, A>) -> Self {
+    pub fn simple(verifier: ShardVerifier<SP1CoreJaggedConfig, A>) -> Self {
         let shard_prover = Arc::new(CpuShardProver::new(verifier.clone()));
         let prover_permits = ProverSemaphore::new(1);
 
@@ -217,7 +214,7 @@ where
     /// Create a new CPU prover builder from a verifier.
     #[must_use]
     pub fn new(
-        verifier: ShardVerifier<BabyBearPoseidon2, A>,
+        verifier: ShardVerifier<SP1CoreJaggedConfig, A>,
         prover_permits: ProverSemaphore,
     ) -> Self {
         let shard_prover = Arc::new(CpuShardProver::new(verifier.clone()));

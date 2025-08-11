@@ -7,7 +7,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_hypercube::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},

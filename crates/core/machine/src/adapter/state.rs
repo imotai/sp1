@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 use crate::air::SP1Operation;
 

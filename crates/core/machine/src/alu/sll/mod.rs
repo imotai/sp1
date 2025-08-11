@@ -14,8 +14,8 @@ use sp1_core_executor::{
     ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::{air::MachineAir, Word};
 use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_SIZE};
-use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
     adapter::{
@@ -470,16 +470,16 @@ where
 //         riscv::RiscvAir,
 //         utils::{run_malicious_test, run_test_machine, setup_test_machine},
 //     };
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use rand::{thread_rng, Rng};
 //     use sp1_core_executor::{
 //         events::{AluEvent, MemoryRecordEnum},
 //         ExecutionRecord, Instruction, Opcode, Program,
 //     };
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
+//         baby_bear_poseidon2::SP1CoreJaggedConfig,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -490,7 +490,7 @@ where
 //         let mut shard = ExecutionRecord::default();
 //         shard.shift_left_events = vec![AluEvent::new(0, Opcode::SLL, 16, 8, 1, false)];
 //         let chip = ShiftLeft::default();
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&shard, &mut ExecutionRecord::default());
 //         println!("{:?}", trace.values)
 //     }
@@ -533,7 +533,7 @@ where
 
 //         // Run setup.
 //         let air = ShiftLeft::default();
-//         let config = BabyBearPoseidon2::new();
+//         let config = SP1CoreJaggedConfig::new();
 //         let chip = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -544,10 +544,10 @@ where
 
 //         // Run the test.
 //         let air = ShiftLeft::default();
-//         let chip: Chip<BabyBear, ShiftLeft> = Chip::new(air);
+//         let chip: Chip<SP1Field, ShiftLeft> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, ShiftLeft>(vec![shard], machine, pk, vk).unwrap();
-//     }
+//         run_test_machine::<SP1CoreJaggedConfig, ShiftLeft>(vec![shard], machine, pk,
+// vk).unwrap();     }
 
 //     #[test]
 //     fn test_malicious_sll() {
@@ -570,12 +570,12 @@ where
 //             let program = Program::new(instructions, 0, 0);
 //             let stdin = SP1Stdin::new();
 
-//             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //             let malicious_trace_pv_generator =
 //                 move |prover: &P,
 //                       record: &mut ExecutionRecord|
-//                       -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//                       -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                     let mut malicious_record = record.clone();
 //                     malicious_record.cpu_events[0].a = op_a as u32;
 //                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
@@ -584,11 +584,11 @@ where
 //                         write_record.value = op_a as u32;
 //                     }
 //                     let mut traces = prover.generate_traces(&malicious_record);
-//                     let shift_left_chip_name = chip_name!(ShiftLeft, BabyBear);
+//                     let shift_left_chip_name = chip_name!(ShiftLeft, SP1Field);
 //                     for (name, trace) in traces.iter_mut() {
 //                         if *name == shift_left_chip_name {
 //                             let first_row = trace.row_mut(0);
-//                             let first_row: &mut ShiftLeftCols<BabyBear> = first_row.borrow_mut();
+//                             let first_row: &mut ShiftLeftCols<SP1Field> = first_row.borrow_mut();
 //                             first_row.a = op_a.into();
 //                         }
 //                     }

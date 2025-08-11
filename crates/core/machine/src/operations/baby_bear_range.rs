@@ -3,7 +3,7 @@ use std::array;
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
@@ -49,7 +49,7 @@ impl<F: Field> BabyBearBitDecomposition<F> {
         builder.when(is_real.clone()).assert_eq(reconstructed_value, value);
 
         // Range check that value is less than baby bear modulus.  To do this, it is sufficient
-        // to just do comparisons for the most significant byte. BabyBear's modulus is (in big
+        // to just do comparisons for the most significant byte. SP1Field's modulus is (in big
         // endian binary) 01111000_00000000_00000000_00000001.  So we need to check the
         // following conditions:
         // 1) if most_sig_byte > 01111000, then fail.

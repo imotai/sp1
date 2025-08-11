@@ -25,7 +25,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_stark::{air::MachineAir, Word};
+use sp1_hypercube::{air::MachineAir, Word};
 
 #[derive(Default)]
 pub struct StoreWordChip;

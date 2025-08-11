@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field, PrimeField32};
-use sp1_stark::{air::SP1AirBuilder, MachineRecord, PROOF_MAX_NUM_PVS};
+use sp1_hypercube::{air::SP1AirBuilder, MachineRecord, PROOF_MAX_NUM_PVS};
 
 use crate::{
     instruction::{HintBitsInstr, HintExt2FeltsInstr, HintInstr},

@@ -6,7 +6,7 @@ use std::{
 
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
-use sp1_stark::{BabyBearPoseidon2, MachineVerifyingKey};
+use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig};
 
 use crate::{
     events::{MemoryEntry, Shard},
@@ -50,7 +50,7 @@ pub struct ExecutionState {
 
     /// A stream of proofs (reduce vk, proof, verifying key) inputted to the program.
     pub proof_stream:
-        Vec<(SP1RecursionProof<BabyBearPoseidon2>, MachineVerifyingKey<BabyBearPoseidon2>)>,
+        Vec<(SP1RecursionProof<SP1CoreJaggedConfig>, MachineVerifyingKey<SP1CoreJaggedConfig>)>,
 
     /// A ptr to the current position in the proof stream, incremented after verifying a proof.
     pub proof_stream_ptr: usize,

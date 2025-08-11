@@ -18,12 +18,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 // mod tests {
 //     use std::borrow::BorrowMut;
 
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_algebra::AbstractField;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+//     use sp1_hypercube::{
+//         air::MachineAir, baby_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 //     use sp1_zkvm::syscalls::{COMMIT, COMMIT_DEFERRED_PROOFS, HALT, SHA_EXTEND};
@@ -67,12 +67,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //             let program = Program::new(test_case.program, 0, 0);
 //             let stdin = SP1Stdin::new();
 
-//             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //             let malicious_trace_pv_generator =
 //                 move |prover: &P,
 //                       record: &mut ExecutionRecord|
-//                       -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//                       -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                     // Create a malicious record where the next pc is set to the incorrect value.
 //                     let mut malicious_record = record.clone();
 
@@ -102,36 +102,36 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                 let mut traces = prover.generate_traces(record);
 
-//                 let cpu_chip_name = chip_name!(CpuChip, BabyBear);
-//                 let syscall_chip_name = chip_name!(SyscallInstrsChip, BabyBear);
+//                 let cpu_chip_name = chip_name!(CpuChip, SP1Field);
+//                 let syscall_chip_name = chip_name!(SyscallInstrsChip, SP1Field);
 
 //                 for (chip_name, trace) in traces.iter_mut() {
 //                     if *chip_name == cpu_chip_name {
 //                         let third_row = trace.row_mut(2);
-//                         let third_row: &mut CpuCols<BabyBear> = third_row.borrow_mut();
-//                         assert!(third_row.is_syscall == BabyBear::one());
-//                         third_row.num_extra_cycles = BabyBear::from_canonical_usize(8);
+//                         let third_row: &mut CpuCols<SP1Field> = third_row.borrow_mut();
+//                         assert!(third_row.is_syscall == SP1Field::one());
+//                         third_row.num_extra_cycles = SP1Field::from_canonical_usize(8);
 //                         // Correct value is 48.
 
 //                         let fourth_row = trace.row_mut(3);
-//                         let fourth_row: &mut CpuCols<BabyBear> = fourth_row.borrow_mut();
-//                         fourth_row.clk_16bit_limb = BabyBear::from_canonical_usize(20);
+//                         let fourth_row: &mut CpuCols<SP1Field> = fourth_row.borrow_mut();
+//                         fourth_row.clk_16bit_limb = SP1Field::from_canonical_usize(20);
 //                         // Correct value is 60.
 //                     }
 
 //                     if *chip_name == syscall_chip_name {
 //                         let first_row = trace.row_mut(0);
-//                         let first_row: &mut SyscallInstrColumns<BabyBear> =
+//                         let first_row: &mut SyscallInstrColumns<SP1Field> =
 // first_row.borrow_mut();                         first_row.num_extra_cycles =
-// BabyBear::from_canonical_usize(4);                         // Correct value is 48.
+// SP1Field::from_canonical_usize(4);                         // Correct value is 48.
 //                     }
 //                 }
 
@@ -154,12 +154,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                 record.public_values.committed_value_digest[0] = 10; // The correct value is 40.
 //                 prover.generate_traces(record)
 //             };
@@ -180,12 +180,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                 record.public_values.deferred_proofs_digest[0] = 10; // The correct value is 40.
 //                 prover.generate_traces(record)
 //             };

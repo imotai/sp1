@@ -85,7 +85,7 @@ impl<F: Field> ByteChip<F> {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use slop_baby_bear::BabyBear;
+    use sp1_primitives::SP1Field;
     use std::time::Instant;
 
     use super::*;
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     pub fn test_trace_and_map() {
         let start = Instant::now();
-        ByteChip::<BabyBear>::trace();
+        ByteChip::<SP1Field>::trace();
         println!("trace and map: {:?}", start.elapsed());
     }
 }

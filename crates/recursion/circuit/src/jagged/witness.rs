@@ -1,9 +1,9 @@
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
 use slop_jagged::{
     JaggedConfig, JaggedEvalConfig, JaggedLittlePolynomialVerifierParams, JaggedPcsProof,
     JaggedSumcheckEvalProof,
 };
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::ir::{Builder, Ext};
 
 use crate::{
@@ -61,7 +61,7 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
 impl<C, SC, RecursiveStackedPcsProof, RecursiveJaggedEvalProof> Witnessable<C>
     for JaggedPcsProof<SC>
 where
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
     SC: JaggedConfig<
             F = C::F,
             EF = C::EF,

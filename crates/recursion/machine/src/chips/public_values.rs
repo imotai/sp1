@@ -1,15 +1,15 @@
 use crate::builder::SP1RecursionAirBuilder;
 use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_machine::utils::pad_rows_fixed;
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::MachineAir;
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     CommitPublicValuesEvent, CommitPublicValuesInstr, ExecutionRecord, Instruction,
     RecursionProgram, RecursionPublicValues, DIGEST_SIZE, RECURSIVE_PROOF_NUM_PV_ELTS,
 };
-use sp1_stark::air::MachineAir;
 use std::borrow::{Borrow, BorrowMut};
 
 use super::mem::MemoryAccessColsChips;
@@ -73,11 +73,11 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_preprocessed_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_preprocessed_trace only supports SP1Field field"
         );
 
-        let mut rows: Vec<[BabyBear; NUM_PUBLIC_VALUES_PREPROCESSED_COLS]> = Vec::new();
+        let mut rows: Vec<[SP1Field; NUM_PUBLIC_VALUES_PREPROCESSED_COLS]> = Vec::new();
         let commit_pv_hash_instrs = program
             .inner
             .iter()
@@ -86,7 +86,7 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
                     Some(unsafe {
                         std::mem::transmute::<
                             &Box<CommitPublicValuesInstr<F>>,
-                            &Box<CommitPublicValuesInstr<BabyBear>>,
+                            &Box<CommitPublicValuesInstr<SP1Field>>,
                         >(instr)
                     })
                 } else {
@@ -103,11 +103,11 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         // values hash.
         for instr in commit_pv_hash_instrs.iter().take(1) {
             for (i, addr) in instr.pv_addrs.digest.iter().enumerate() {
-                let mut row = [BabyBear::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS];
-                let cols: &mut PublicValuesPreprocessedCols<BabyBear> =
+                let mut row = [SP1Field::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS];
+                let cols: &mut PublicValuesPreprocessedCols<SP1Field> =
                     row.as_mut_slice().borrow_mut();
-                cols.pv_idx[i] = BabyBear::one();
-                cols.pv_mem = MemoryAccessCols { addr: *addr, mult: BabyBear::one() };
+                cols.pv_idx[i] = SP1Field::one();
+                cols.pv_mem = MemoryAccessCols { addr: *addr, mult: SP1Field::one() };
                 rows.push(row);
             }
         }
@@ -116,14 +116,14 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         // gpu code breaks for small traces
         pad_rows_fixed(
             &mut rows,
-            || [BabyBear::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS],
+            || [SP1Field::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS],
             self.preprocessed_num_rows(program, commit_pv_hash_instrs.len()),
         );
 
         let trace = RowMajorMatrix::new(
             unsafe {
-                std::mem::transmute::<Vec<BabyBear>, Vec<F>>(
-                    rows.into_iter().flatten().collect::<Vec<BabyBear>>(),
+                std::mem::transmute::<Vec<SP1Field>, Vec<F>>(
+                    rows.into_iter().flatten().collect::<Vec<SP1Field>>(),
                 )
             },
             NUM_PUBLIC_VALUES_PREPROCESSED_COLS,
@@ -138,28 +138,28 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
     ) -> RowMajorMatrix<F> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_trace only supports SP1Field field"
         );
 
         if input.commit_pv_hash_events.len() != 1 {
             tracing::warn!("Expected exactly one CommitPVHash event.");
         }
 
-        let mut rows: Vec<[BabyBear; NUM_PUBLIC_VALUES_COLS]> = Vec::new();
+        let mut rows: Vec<[SP1Field; NUM_PUBLIC_VALUES_COLS]> = Vec::new();
 
         // We only take 1 commit pv hash instruction, since our air only checks for one public
         // values hash.
         for event in input.commit_pv_hash_events.iter().take(1) {
             let bb_event = unsafe {
-                std::mem::transmute::<&CommitPublicValuesEvent<F>, &CommitPublicValuesEvent<BabyBear>>(
+                std::mem::transmute::<&CommitPublicValuesEvent<F>, &CommitPublicValuesEvent<SP1Field>>(
                     event,
                 )
             };
 
             for element in bb_event.public_values.digest.iter() {
-                let mut row = [BabyBear::zero(); NUM_PUBLIC_VALUES_COLS];
-                let cols: &mut PublicValuesCols<BabyBear> = row.as_mut_slice().borrow_mut();
+                let mut row = [SP1Field::zero(); NUM_PUBLIC_VALUES_COLS];
+                let cols: &mut PublicValuesCols<SP1Field> = row.as_mut_slice().borrow_mut();
 
                 cols.pv_element = *element;
                 rows.push(row);
@@ -169,15 +169,15 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         // Pad the trace to 8 rows.
         pad_rows_fixed(
             &mut rows,
-            || [BabyBear::zero(); NUM_PUBLIC_VALUES_COLS],
+            || [SP1Field::zero(); NUM_PUBLIC_VALUES_COLS],
             self.num_rows(input),
         );
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(
             unsafe {
-                std::mem::transmute::<Vec<BabyBear>, Vec<F>>(
-                    rows.into_iter().flatten().collect::<Vec<BabyBear>>(),
+                std::mem::transmute::<Vec<SP1Field>, Vec<F>>(
+                    rows.into_iter().flatten().collect::<Vec<SP1Field>>(),
                 )
             },
             NUM_PUBLIC_VALUES_COLS,
@@ -228,17 +228,17 @@ mod tests {
     use slop_jagged::JaggedConfig;
     use slop_matrix::Matrix;
     use sp1_core_machine::utils::setup_logger;
+    use sp1_hypercube::{air::MachineAir, SP1CoreJaggedConfig};
     use sp1_recursion_executor::{
         instruction as instr, ExecutionRecord, MemAccessKind, RecursionPublicValues, DIGEST_SIZE,
         NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS,
     };
-    use sp1_stark::{air::MachineAir, BabyBearPoseidon2};
     use std::{array, borrow::Borrow};
 
     #[tokio::test]
     async fn prove_babybear_circuit_public_values() {
         setup_logger();
-        type F = <BabyBearPoseidon2 as JaggedConfig>::F;
+        type F = <SP1CoreJaggedConfig as JaggedConfig>::F;
 
         let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
         let mut random_felt = move || -> F { F::from_canonical_u32(rng.gen_range(0..1 << 16)) };

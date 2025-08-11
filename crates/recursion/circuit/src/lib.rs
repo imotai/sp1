@@ -2,7 +2,7 @@ use challenger::{
     CanCopyChallenger, CanObserveVariable, DuplexChallengerVariable, FieldChallengerVariable,
     MultiField32ChallengerVariable,
 };
-use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
+use hash::{FieldHasherVariable, Poseidon2MyFieldHasherVariable};
 use itertools::izip;
 use slop_algebra::{AbstractExtensionField, AbstractField};
 use slop_bn254::Bn254Fr;
@@ -17,14 +17,11 @@ use std::iter::{repeat, zip};
 use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
 use slop_basefold::{
-    BasefoldConfig, BasefoldProof, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig,
-    Poseidon2Bn254FrBasefoldConfig,
+    BasefoldConfig, BasefoldProof, BasefoldVerifier, Poseidon2Bn254FrBasefoldConfig,
 };
 use slop_commit::TensorCs;
-use slop_merkle_tree::{
-    MerkleTreeConfig, MerkleTreeTcs, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
-};
-use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
+use slop_merkle_tree::{MerkleTreeConfig, MerkleTreeTcs, Poseidon2Bn254Config};
+use sp1_hypercube::{SP1BasefoldConfig, SP1CoreJaggedConfig, SP1MerkleTreeConfig, SP1OuterConfig};
 pub mod basefold;
 pub mod challenger;
 pub mod dummy;
@@ -39,22 +36,21 @@ pub mod utils;
 pub mod witness;
 pub mod zerocheck;
 pub const D: usize = 4;
-use slop_baby_bear::BabyBear;
 use slop_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
 use slop_jagged::JaggedConfig;
-use sp1_primitives::RC_16_30_U32;
-type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
+use sp1_primitives::{SP1Field, RC_16_30_U32};
+type EF = <SP1CoreJaggedConfig as JaggedConfig>::EF;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
 
-pub type InnerSC = BabyBearPoseidon2;
+pub type InnerSC = SP1CoreJaggedConfig;
 
 pub trait AsRecursive<C: CircuitConfig> {
     type Recursive;
 }
-pub trait BabyBearFriConfig:
+pub trait SP1FieldFriConfig:
     JaggedConfig<
-    F = BabyBear,
+    F = SP1Field,
     EF = EF,
     Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
     BatchPcsProof = BasefoldProof<Self::BasefoldConfig>,
@@ -63,21 +59,21 @@ pub trait BabyBearFriConfig:
 >
 {
     type BasefoldConfig: BasefoldConfig<
-        F = BabyBear,
+        F = SP1Field,
         EF = EF,
         Tcs = MerkleTreeTcs<Self::MerkleTreeConfig>,
         Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
         Challenger = Self::FriChallenger,
     >;
-    type MerkleTreeConfig: MerkleTreeConfig<Data = BabyBear>;
+    type MerkleTreeConfig: MerkleTreeConfig<Data = SP1Field>;
     type FriChallenger: CanObserve<<Self::BasefoldConfig as BasefoldConfig>::Commitment>
         + CanSample<EF>
-        + GrindingChallenger<Witness = BabyBear>
-        + FieldChallenger<BabyBear>;
+        + GrindingChallenger<Witness = SP1Field>
+        + FieldChallenger<SP1Field>;
 }
 
-pub trait BabyBearFriConfigVariable<C: CircuitConfig<F = BabyBear>>:
-    BabyBearFriConfig + FieldHasherVariable<C> + Posedion2BabyBearHasherVariable<C> + Send + Sync
+pub trait SP1FieldConfigVariable<C: CircuitConfig<F = SP1Field>>:
+    SP1FieldFriConfig + FieldHasherVariable<C> + Poseidon2MyFieldHasherVariable<C> + Send + Sync
 {
     type FriChallengerVariable: FieldChallengerVariable<C, <C as CircuitConfig>::Bit>
         + CanObserveVariable<C, <Self as FieldHasherVariable<C>>::DigestVariable>
@@ -791,14 +787,14 @@ impl CircuitConfig for OuterConfig {
     }
 }
 
-impl BabyBearFriConfig for BabyBearPoseidon2 {
-    type BasefoldConfig = Poseidon2BabyBear16BasefoldConfig;
-    type MerkleTreeConfig = Poseidon2BabyBearConfig;
+impl SP1FieldFriConfig for SP1CoreJaggedConfig {
+    type BasefoldConfig = SP1BasefoldConfig;
+    type MerkleTreeConfig = SP1MerkleTreeConfig;
     type FriChallenger = <Self as JaggedConfig>::Challenger;
 }
 
-impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVariable<C>
-    for BabyBearPoseidon2
+impl<C: CircuitConfig<F = SP1Field, Bit = Felt<SP1Field>>> SP1FieldConfigVariable<C>
+    for SP1CoreJaggedConfig
 {
     type FriChallengerVariable = DuplexChallengerVariable<C>;
 
@@ -814,14 +810,14 @@ impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVari
     }
 }
 
-impl BabyBearFriConfig for Bn254JaggedConfig {
+impl SP1FieldFriConfig for SP1OuterConfig {
     type BasefoldConfig = Poseidon2Bn254FrBasefoldConfig;
     type MerkleTreeConfig = Poseidon2Bn254Config;
     type FriChallenger = <Self as JaggedConfig>::Challenger;
 }
 
-impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFriConfigVariable<C>
-    for Bn254JaggedConfig
+impl<C: CircuitConfig<F = SP1Field, N = Bn254Fr, Bit = Var<Bn254Fr>>> SP1FieldConfigVariable<C>
+    for SP1OuterConfig
 {
     type FriChallengerVariable = MultiField32ChallengerVariable<C>;
 

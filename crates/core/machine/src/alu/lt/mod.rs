@@ -14,7 +14,7 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::MachineAir, Word};
+use sp1_hypercube::{air::MachineAir, Word};
 
 use crate::{
     adapter::{
@@ -287,7 +287,7 @@ where
 //         riscv::RiscvAir,
 //         utils::{run_malicious_test, run_test_machine, setup_test_machine},
 //     };
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_algebra::AbstractField;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use rand::{thread_rng, Rng};
@@ -295,9 +295,9 @@ where
 //         events::{AluEvent, MemoryRecordEnum},
 //         ExecutionRecord, Instruction, Opcode, Program,
 //     };
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
+//         baby_bear_poseidon2::SP1CoreJaggedConfig,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -309,14 +309,14 @@ where
 //         shard.lt_events = vec![AluEvent::new(0, Opcode::SLT, 0, 3, 2, false)];
 //         let chip = LtChip::default();
 //         let generate_trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());
-//         let trace: RowMajorMatrix<BabyBear> = generate_trace;
+//         let trace: RowMajorMatrix<SP1Field> = generate_trace;
 //         println!("{:?}", trace.values)
 //     }
 
 //     fn prove_babybear_template(shard: ExecutionRecord) {
 //         // Run setup.
 //         let air = LtChip::default();
-//         let config = BabyBearPoseidon2::new();
+//         let config = SP1CoreJaggedConfig::new();
 //         let chip = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -327,9 +327,9 @@ where
 
 //         // Run the test.
 //         let air = LtChip::default();
-//         let chip: Chip<BabyBear, LtChip> = Chip::new(air);
+//         let chip: Chip<SP1Field, LtChip> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, LtChip>(vec![shard], machine, pk, vk).unwrap();
+//         run_test_machine::<SP1CoreJaggedConfig, LtChip>(vec![shard], machine, pk, vk).unwrap();
 //     }
 
 //     #[test]
@@ -408,13 +408,13 @@ where
 //                 let program = Program::new(instructions, 0, 0);
 //                 let stdin = SP1Stdin::new();
 
-//                 type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//                 type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //                 let malicious_trace_pv_generator = move |prover: &P,
 //                                                          record: &mut ExecutionRecord|
 //                       -> Vec<(
 //                     String,
-//                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
+//                     RowMajorMatrix<Val<SP1CoreJaggedConfig>>,
 //                 )> {
 //                     let mut malicious_record = record.clone();
 //                     malicious_record.cpu_events[0].a = op_a as u32;
@@ -425,12 +425,12 @@ where
 //                     }
 //                     let mut traces = prover.generate_traces(&malicious_record);
 
-//                     let lt_chip_name = chip_name!(LtChip, BabyBear);
+//                     let lt_chip_name = chip_name!(LtChip, SP1Field);
 //                     for (chip_name, trace) in traces.iter_mut() {
 //                         if *chip_name == lt_chip_name {
 //                             let first_row = trace.row_mut(0);
-//                             let first_row: &mut LtCols<BabyBear> = first_row.borrow_mut();
-//                             first_row.a = BabyBear::from_bool(op_a);
+//                             let first_row: &mut LtCols<SP1Field> = first_row.borrow_mut();
+//                             first_row.a = SP1Field::from_bool(op_a);
 //                         }
 //                     }
 

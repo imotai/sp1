@@ -13,13 +13,13 @@ use anyhow::Result;
 use itertools::Itertools;
 use slop_algebra::PrimeField32;
 use sp1_core_machine::io::SP1Stdin;
+use sp1_hypercube::{air::PublicValues, MachineVerifierConfigError};
 use sp1_primitives::types::Elf;
 use sp1_prover::{
     components::{CpuSP1ProverComponents, SP1ProverComponents},
     local::LocalProver,
     CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
-use sp1_stark::{air::PublicValues, MachineVerifierConfigError};
 use thiserror::Error;
 
 /// The module that exposes the [`ExecuteRequest`] type.

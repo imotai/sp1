@@ -1,7 +1,7 @@
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::BaseAirBuilder, Word};
+use sp1_hypercube::{air::BaseAirBuilder, Word};
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -26,8 +26,8 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
+use sp1_hypercube::air::MachineAir;
 use sp1_primitives::consts::u64_to_u16_limbs;
-use sp1_stark::air::MachineAir;
 
 #[derive(Default)]
 pub struct LoadHalfChip;

@@ -20,7 +20,7 @@ sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-recursion-executor = { workspace = true }
 sp1-recursion-derive = { workspace = true }
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

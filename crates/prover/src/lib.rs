@@ -29,13 +29,11 @@ use shapes::{SP1NormalizeInputShape, DEFAULT_ARITY};
 use sp1_core_executor::Program;
 use std::{collections::BTreeMap, sync::Arc};
 
-use slop_baby_bear::BabyBear;
-
+use sp1_hypercube::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphore};
 use sp1_recursion_executor::RecursionProgram;
-use sp1_stark::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphore};
 
-use slop_jagged::Bn254JaggedConfig;
-use sp1_stark::BabyBearPoseidon2;
+use sp1_hypercube::{SP1CoreJaggedConfig, SP1OuterConfig};
+use sp1_primitives::SP1Field;
 
 pub use types::*;
 
@@ -49,18 +47,18 @@ pub use components::{CpuSP1ProverComponents, SP1ProverComponents};
 pub const SP1_CIRCUIT_VERSION: &str = include_str!("../SP1_VERSION");
 
 /// The configuration for the core prover.
-pub type CoreSC = BabyBearPoseidon2;
+pub type CoreSC = SP1CoreJaggedConfig;
 pub const CORE_LOG_BLOWUP: usize = 1;
 
 /// The configuration for the inner prover.
-pub type InnerSC = BabyBearPoseidon2;
+pub type InnerSC = SP1CoreJaggedConfig;
 
 /// The configuration for the outer prover.
-pub type OuterSC = Bn254JaggedConfig;
+pub type OuterSC = SP1OuterConfig;
 
 // pub type DeviceProvingKey<C> = <<C as SP1ProverComponents>::CoreProver as MachineProver<
-//     BabyBearPoseidon2,
-//     RiscvAir<BabyBear>,
+//     SP1CoreJaggedConfig,
+//     RiscvAir<SP1Field>,
 // >>::DeviceProvingKey;
 use sp1_recursion_machine::RecursionAir;
 
@@ -89,7 +87,7 @@ pub struct SP1ProverBuilder<C: SP1ProverComponents> {
     wrap_prover_builder: MachineProverBuilder<C::WrapComponents>,
     normalize_programs_cache_size: usize,
     maximum_compose_arity: usize,
-    normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<BabyBear>>>,
+    normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<SP1Field>>>,
     vk_verification: bool,
     vk_map_path: Option<String>,
 }
@@ -257,7 +255,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
 
     pub fn with_normalize_programs(
         &mut self,
-        normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<BabyBear>>>,
+        normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<SP1Field>>>,
     ) -> &mut Self {
         self.normalize_programs = normalize_programs;
         self
@@ -266,7 +264,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
     pub fn insert_normalize_program(
         &mut self,
         shape: SP1NormalizeInputShape,
-        program: Arc<RecursionProgram<BabyBear>>,
+        program: Arc<RecursionProgram<SP1Field>>,
     ) -> &mut Self {
         self.normalize_programs.insert(shape, program);
         self

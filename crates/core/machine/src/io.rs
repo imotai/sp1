@@ -1,6 +1,6 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sp1_core_executor::SP1RecursionProof;
-use sp1_stark::{BabyBearPoseidon2, MachineVerifyingKey};
+use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig};
 
 /// Standard input for the prover.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -9,7 +9,8 @@ pub struct SP1Stdin {
     /// a vec of bytes at a time.
     pub buffer: Vec<Vec<u8>>,
     pub ptr: usize,
-    pub proofs: Vec<(SP1RecursionProof<BabyBearPoseidon2>, MachineVerifyingKey<BabyBearPoseidon2>)>,
+    pub proofs:
+        Vec<(SP1RecursionProof<SP1CoreJaggedConfig>, MachineVerifyingKey<SP1CoreJaggedConfig>)>,
 }
 
 impl SP1Stdin {
@@ -55,8 +56,8 @@ impl SP1Stdin {
 
     pub fn write_proof(
         &mut self,
-        proof: SP1RecursionProof<BabyBearPoseidon2>,
-        vk: MachineVerifyingKey<BabyBearPoseidon2>,
+        proof: SP1RecursionProof<SP1CoreJaggedConfig>,
+        vk: MachineVerifyingKey<SP1CoreJaggedConfig>,
     ) {
         self.proofs.push((proof, vk));
     }
@@ -64,7 +65,7 @@ impl SP1Stdin {
 
 // pub mod proof_serde {
 //     use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
-//     use sp1_stark::{MachineProof, StarkGenericConfig};
+//     use sp1_hypercube::{MachineProof, StarkGenericConfig};
 
 //     pub fn serialize<S, SC: StarkGenericConfig + Serialize>(
 //         proof: &MachineProof<SC>,

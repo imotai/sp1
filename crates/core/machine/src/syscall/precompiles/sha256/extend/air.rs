@@ -2,7 +2,7 @@ use slop_air::{Air, BaseAir};
 use slop_algebra::AbstractField;
 use slop_matrix::Matrix;
 use sp1_core_executor::ByteOpcode;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, InteractionScope},
     InteractionKind, Word,
 };

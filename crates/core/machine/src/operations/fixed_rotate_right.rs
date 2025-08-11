@@ -2,8 +2,8 @@ use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::SP1AirBuilder;
 use sp1_primitives::consts::u32_to_u16_limbs;
-use sp1_stark::air::SP1AirBuilder;
 
 /// A set of columns needed to compute `rotateright` of a u32 with a fixed offset R.
 ///

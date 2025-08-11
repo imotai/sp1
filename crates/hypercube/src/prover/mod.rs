@@ -15,3 +15,6 @@ pub use permits::*;
 pub use shard::*;
 pub use trace::*;
 pub use zerocheck::*;
+
+pub use slop_basefold_prover::Poseidon2BabyBear16BasefoldCpuProverComponents as SP1BasefoldCpuProverComponents;
+pub use slop_merkle_tree::Poseidon2BabyBear16Prover as SP1MerkleTreeProver;

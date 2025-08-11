@@ -3,15 +3,15 @@ use core::borrow::Borrow;
 use itertools::Itertools;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::{BinomialExtension, MachineAir};
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     Address, Block, ExecutionRecord, Instruction, PrefixSumChecksEvent, PrefixSumChecksInstr,
     RecursionProgram,
 };
-use sp1_stark::air::{BinomialExtension, MachineAir};
 
 use std::borrow::BorrowMut;
 use tracing::instrument;
@@ -82,14 +82,14 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_preprocessed_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_preprocessed_trace only supports SP1Field field"
         );
 
         let instrs = unsafe {
             std::mem::transmute::<
                 Vec<&Box<PrefixSumChecksInstr<F>>>,
-                Vec<&Box<PrefixSumChecksInstr<BabyBear>>>,
+                Vec<&Box<PrefixSumChecksInstr<SP1Field>>>,
             >(
                 program
                     .inner
@@ -102,15 +102,15 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
             )
         };
 
-        let mut rows: Vec<[BabyBear; NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS]> = Vec::new();
+        let mut rows: Vec<[SP1Field; NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS]> = Vec::new();
 
         instrs.iter().for_each(|instruction| {
             let PrefixSumChecksInstr { addrs, acc_mults, field_acc_mults } = instruction.as_ref();
             let len = addrs.x1.len();
             let mut row_add =
-                vec![[BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS]; len];
+                vec![[SP1Field::zero(); NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS]; len];
             row_add.iter_mut().enumerate().for_each(|(i, row)| {
-                let cols: &mut PrefixSumChecksPreprocessedCols<BabyBear> =
+                let cols: &mut PrefixSumChecksPreprocessedCols<SP1Field> =
                     row.as_mut_slice().borrow_mut();
                 if i == 0 {
                     cols.acc_addr = addrs.one;
@@ -125,7 +125,7 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
                 cols.next_acc_mult = acc_mults[i];
                 cols.felt_next_acc_addr = addrs.field_accs[i];
                 cols.felt_next_acc_mult = field_acc_mults[i];
-                cols.is_real = BabyBear::one();
+                cols.is_real = SP1Field::one();
             });
             rows.extend(row_add);
         });
@@ -134,14 +134,14 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
         // Pad the trace to a power of two.
         pad_rows_fixed(
             &mut rows,
-            || [BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS],
+            || [SP1Field::zero(); NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS],
             Some(height),
         );
 
         let trace = RowMajorMatrix::new(
             unsafe {
-                std::mem::transmute::<Vec<BabyBear>, Vec<F>>(
-                    rows.into_iter().flatten().collect::<Vec<BabyBear>>(),
+                std::mem::transmute::<Vec<SP1Field>, Vec<F>>(
+                    rows.into_iter().flatten().collect::<Vec<SP1Field>>(),
                 )
             },
             NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS,
@@ -162,11 +162,11 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
         _: &mut ExecutionRecord<F>,
     ) -> RowMajorMatrix<F> {
         assert!(
-            std::any::TypeId::of::<F>() == std::any::TypeId::of::<BabyBear>(),
-            "generate_trace only supports BabyBear field"
+            std::any::TypeId::of::<F>() == std::any::TypeId::of::<SP1Field>(),
+            "generate_trace only supports SP1Field field"
         );
 
-        let mut rows: Vec<[BabyBear; NUM_PREFIX_SUM_CHECKS_COLS]> =
+        let mut rows: Vec<[SP1Field; NUM_PREFIX_SUM_CHECKS_COLS]> =
             input
                 .prefix_sum_checks_events
                 .iter()
@@ -174,11 +174,11 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
                     let bb_event = unsafe {
                         std::mem::transmute::<
                             &PrefixSumChecksEvent<F>,
-                            &PrefixSumChecksEvent<BabyBear>,
+                            &PrefixSumChecksEvent<SP1Field>,
                         >(event)
                     };
-                    let mut row = [BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_COLS];
-                    let cols: &mut PrefixSumChecksCols<BabyBear> = row.as_mut_slice().borrow_mut();
+                    let mut row = [SP1Field::zero(); NUM_PREFIX_SUM_CHECKS_COLS];
+                    let cols: &mut PrefixSumChecksCols<SP1Field> = row.as_mut_slice().borrow_mut();
                     cols.x1 = bb_event.x1;
                     cols.x2 = bb_event.x2;
                     cols.acc = bb_event.acc;
@@ -191,13 +191,13 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
 
         // Pad the trace to a power of two.
         let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
-        pad_rows_fixed(&mut rows, || [BabyBear::zero(); NUM_PREFIX_SUM_CHECKS_COLS], height);
+        pad_rows_fixed(&mut rows, || [SP1Field::zero(); NUM_PREFIX_SUM_CHECKS_COLS], height);
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(
             unsafe {
-                std::mem::transmute::<Vec<BabyBear>, Vec<F>>(
-                    rows.into_iter().flatten().collect::<Vec<BabyBear>>(),
+                std::mem::transmute::<Vec<SP1Field>, Vec<F>>(
+                    rows.into_iter().flatten().collect::<Vec<SP1Field>>(),
                 )
             },
             NUM_PREFIX_SUM_CHECKS_COLS,
@@ -264,12 +264,12 @@ mod tests {
     use crate::test::test_recursion_linear_program;
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
-    use slop_baby_bear::BabyBear;
+
     use sp1_recursion_executor::{instruction as instr, Instruction, MemAccessKind};
 
     use slop_matrix::Matrix;
+    use sp1_hypercube::air::MachineAir;
     use sp1_recursion_executor::ExecutionRecord;
-    use sp1_stark::air::MachineAir;
 
     use super::PrefixSumChecksChip;
 
@@ -291,18 +291,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_prefix_sum_checks() {
-        type F = BabyBear;
+        use sp1_primitives::SP1Field;
+        type F = SP1Field;
         let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
         let mut random_extfelt = move || {
             let inner: [F; 4] = core::array::from_fn(|_| rng.sample(rand::distributions::Standard));
             BinomialExtensionField::<F, 4>::from_base_slice(&inner)
         };
         let mut felt_rng = StdRng::seed_from_u64(0xDEADBEEF);
-        let mut random_felt = move || -> BabyBear {
+        let mut random_felt = move || -> SP1Field {
             if felt_rng.gen_bool(0.5) {
-                BabyBear::one()
+                SP1Field::one()
             } else {
-                BabyBear::zero()
+                SP1Field::zero()
             }
         };
         let mut addr = 0;
@@ -310,7 +311,7 @@ mod tests {
         let instructions = (0..10)
             .flat_map(|_| {
                 let x1 = [random_felt(), random_felt()];
-                let one = BinomialExtensionField::<F, 4>::from_base(BabyBear::one());
+                let one = BinomialExtensionField::<F, 4>::from_base(SP1Field::one());
                 let x2 = [random_extfelt(), random_extfelt()];
 
                 let mut result = one;
@@ -321,8 +322,8 @@ mod tests {
                         + prod;
                 }
 
-                let mut felt = BabyBear::zero();
-                let two = BabyBear::from_canonical_u32(2);
+                let mut felt = SP1Field::zero();
+                let two = SP1Field::from_canonical_u32(2);
                 for &x1 in &x1 {
                     felt = x1 + two * felt;
                 }
@@ -336,7 +337,7 @@ mod tests {
                     instr::mem_ext(MemAccessKind::Write, 1, a[2], x2[0]),
                     instr::mem_ext(MemAccessKind::Write, 1, a[3], x2[1]),
                     instr::mem_ext(MemAccessKind::Write, 1, a[4], one),
-                    instr::mem_single(MemAccessKind::Write, 1, a[5], BabyBear::zero()),
+                    instr::mem_single(MemAccessKind::Write, 1, a[5], SP1Field::zero()),
                     instr::prefix_sum_checks(
                         vec![1, 1],
                         vec![1, 1],
@@ -351,7 +352,7 @@ mod tests {
                     instr::mem_single(MemAccessKind::Read, 1, a[9], felt),
                 ]
             })
-            .collect::<Vec<Instruction<BabyBear>>>();
+            .collect::<Vec<Instruction<SP1Field>>>();
 
         test_recursion_linear_program(instructions).await;
     }

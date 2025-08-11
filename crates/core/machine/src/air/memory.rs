@@ -4,7 +4,7 @@ use itertools::Itertools;
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_core_executor::ByteOpcode;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, BaseAirBuilder, ByteAirBuilder, InteractionScope},
     InteractionKind, Word,
 };
@@ -304,7 +304,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         // `current_comp_val <= prev_comp_val`, then `current_comp_val-prev_comp_val-1 < 0` and will
         // underflow in the prime field, resulting in a value that is `>= 2^28` as long as both
         // `current_comp_val, prev_comp_val` are range-checked to be `<2^28` and as long as we're
-        // working in a field larger than `2 * 2^28` (which is true of the BabyBear and Mersenne31
+        // working in a field larger than `2 * 2^28` (which is true of the SP1Field and Mersenne31
         // prime).
         let diff_minus_one = current_comp_val - prev_comp_value - Self::Expr::one();
 

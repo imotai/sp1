@@ -3,10 +3,10 @@ use anyhow::Result;
 use clap::ValueEnum;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_primitives::{io::SP1PublicValues, poseidon2_hash};
+use sp1_hypercube::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
+use sp1_primitives::{io::SP1PublicValues, poseidon2_hash, SP1Field};
 use sp1_recursion_circuit::{
     machine::{
         SP1CompressWithVKeyWitnessValues, SP1DeferredWitnessValues, SP1NormalizeWitnessValues,
@@ -16,7 +16,6 @@ use sp1_recursion_circuit::{
     InnerSC,
 };
 pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
-use sp1_stark::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
 use std::{borrow::Borrow, fs::File, path::Path};
 use thiserror::Error;
 
@@ -30,8 +29,8 @@ pub struct SP1VerifyingKey {
 
 /// A trait for keys that can be hashed into a digest.
 pub trait HashableKey {
-    /// Hash the key into a digest of BabyBear elements.
-    fn hash_babybear(&self) -> [BabyBear; DIGEST_SIZE];
+    /// Hash the key into a digest of SP1Field elements.
+    fn hash_babybear(&self) -> [SP1Field; DIGEST_SIZE];
 
     /// Hash the key into a digest of u32 elements.
     fn hash_u32(&self) -> [u32; DIGEST_SIZE];
@@ -77,7 +76,7 @@ pub trait HashableKey {
 }
 
 impl HashableKey for SP1VerifyingKey {
-    fn hash_babybear(&self) -> [BabyBear; DIGEST_SIZE] {
+    fn hash_babybear(&self) -> [SP1Field; DIGEST_SIZE] {
         self.vk.hash_babybear()
     }
 
@@ -86,11 +85,11 @@ impl HashableKey for SP1VerifyingKey {
     }
 }
 
-impl<C: MachineConfig<F = BabyBear>> HashableKey for MachineVerifyingKey<C>
+impl<C: MachineConfig<F = SP1Field>> HashableKey for MachineVerifyingKey<C>
 where
-    C::Commitment: Borrow<[BabyBear; DIGEST_SIZE]>,
+    C::Commitment: Borrow<[SP1Field; DIGEST_SIZE]>,
 {
-    fn hash_babybear(&self) -> [BabyBear; DIGEST_SIZE] {
+    fn hash_babybear(&self) -> [SP1Field; DIGEST_SIZE] {
         let num_inputs = DIGEST_SIZE + 3 + 14;
         let mut inputs = Vec::with_capacity(num_inputs);
         inputs.extend(self.preprocessed_commit.borrow());
@@ -101,9 +100,9 @@ where
             self.preprocessed_chip_information.iter()
         {
             inputs.push(*height);
-            inputs.push(BabyBear::from_canonical_usize(name.len()));
+            inputs.push(SP1Field::from_canonical_usize(name.len()));
             for byte in name.as_bytes() {
-                inputs.push(BabyBear::from_canonical_u8(*byte));
+                inputs.push(SP1Field::from_canonical_u8(*byte));
             }
         }
 

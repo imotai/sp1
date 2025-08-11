@@ -18,7 +18,7 @@ use sp1_core_executor::{
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::MachineAir, Word};
+use sp1_hypercube::{air::MachineAir, Word};
 
 use crate::{
     adapter::{

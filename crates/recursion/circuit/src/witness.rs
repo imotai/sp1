@@ -5,24 +5,24 @@ use crate::{
     hash::FieldHasherVariable,
     jagged::RecursiveJaggedConfig,
     shard::{MachineVerifyingKeyVariable, ShardProofVariable},
-    AsRecursive, BabyBearFriConfigVariable, CircuitConfig,
+    AsRecursive, CircuitConfig, SP1FieldConfigVariable,
 };
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use slop_commit::Rounds;
 use slop_jagged::{JaggedConfig, JaggedEvalConfig};
+use sp1_hypercube::{
+    septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
+    AirOpenedValues, ChipDimensions, ChipOpenedValues, MachineConfig, MachineVerifyingKey,
+    ShardOpenedValues, ShardProof,
+};
+use sp1_primitives::SP1Field;
 pub use sp1_recursion_compiler::ir::Witness as OuterWitness;
 use sp1_recursion_compiler::{
     config::OuterConfig,
     ir::{Builder, Config, Ext, Felt, Var},
 };
 use sp1_recursion_executor::Block;
-use sp1_stark::{
-    septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
-    AirOpenedValues, ChipDimensions, ChipOpenedValues, MachineConfig, MachineVerifyingKey,
-    ShardOpenedValues, ShardProof,
-};
 
 pub trait WitnessWriter<C: CircuitConfig>: Sized {
     fn write_bit(&mut self, value: bool);
@@ -43,18 +43,18 @@ impl WitnessWriter<OuterConfig> for OuterWitness<OuterConfig> {
         self.vars.push(value);
     }
 
-    fn write_felt(&mut self, value: BabyBear) {
+    fn write_felt(&mut self, value: SP1Field) {
         self.felts.push(value);
     }
 
-    fn write_ext(&mut self, value: BinomialExtensionField<BabyBear, 4>) {
+    fn write_ext(&mut self, value: BinomialExtensionField<SP1Field, 4>) {
         self.exts.push(value);
     }
 }
 
 pub type WitnessBlock<C> = Block<<C as Config>::F>;
 
-impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> WitnessWriter<C>
+impl<C: CircuitConfig<F = SP1Field, Bit = Felt<SP1Field>>> WitnessWriter<C>
     for Vec<WitnessBlock<C>>
 {
     fn write_bit(&mut self, value: bool) {
@@ -127,8 +127,8 @@ impl<C: CircuitConfig, T: Witnessable<C>, U: Witnessable<C>> Witnessable<C> for 
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear>> Witnessable<C> for BabyBear {
-    type WitnessVariable = Felt<BabyBear>;
+impl<C: CircuitConfig<F = SP1Field>> Witnessable<C> for SP1Field {
+    type WitnessVariable = Felt<SP1Field>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         C::read_felt(builder)
@@ -139,10 +139,10 @@ impl<C: CircuitConfig<F = BabyBear>> Witnessable<C> for BabyBear {
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
-    for BinomialExtensionField<BabyBear, 4>
+impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
+    for BinomialExtensionField<SP1Field, 4>
 {
-    type WitnessVariable = Ext<BabyBear, BinomialExtensionField<BabyBear, 4>>;
+    type WitnessVariable = Ext<SP1Field, BinomialExtensionField<SP1Field, 4>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         C::read_ext(builder)
@@ -225,7 +225,7 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Rounds<T> {
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear>> Witnessable<C> for SepticDigest<C::F> {
+impl<C: CircuitConfig<F = SP1Field>> Witnessable<C> for SepticDigest<C::F> {
     type WitnessVariable = SepticDigest<Felt<C::F>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
@@ -240,7 +240,7 @@ impl<C: CircuitConfig<F = BabyBear>> Witnessable<C> for SepticDigest<C::F> {
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
+impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
     for ShardOpenedValues<C::F, C::EF>
 {
     type WitnessVariable = ShardOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>;
@@ -255,7 +255,7 @@ impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> W
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
+impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
     for ChipOpenedValues<C::F, C::EF>
 {
     type WitnessVariable = ChipOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>;
@@ -276,7 +276,7 @@ impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> W
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> Witnessable<C>
+impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
     for AirOpenedValues<C::EF>
 {
     type WitnessVariable = AirOpenedValues<Ext<C::F, C::EF>>;
@@ -293,8 +293,8 @@ impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>> W
 
 impl<C, SC, RecursiveStackedPcsProof, RecursiveJaggedEvalProof> Witnessable<C> for ShardProof<SC>
 where
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-    SC: BabyBearFriConfigVariable<C>
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    SC: SP1FieldConfigVariable<C>
         + MachineConfig
         + JaggedConfig<
             F = C::F,
@@ -350,8 +350,8 @@ where
 
 impl<C, MC> Witnessable<C> for MachineVerifyingKey<MC>
 where
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-    MC: MachineConfig + BabyBearFriConfigVariable<C> + MachineConfig + JaggedConfig,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    MC: MachineConfig + SP1FieldConfigVariable<C> + MachineConfig + JaggedConfig,
     MC::Commitment:
         Witnessable<C, WitnessVariable = <MC as FieldHasherVariable<C>>::DigestVariable>,
 {

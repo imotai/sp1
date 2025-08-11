@@ -5,7 +5,7 @@ use slop_air::{Air, AirBuilder};
 use slop_algebra::AbstractField;
 use slop_matrix::Matrix;
 use sp1_core_executor::{syscalls::SyscallCode, Opcode, CLK_INC, HALT_PC};
-use sp1_stark::{
+use sp1_hypercube::{
     air::{
         BaseAirBuilder, InteractionScope, PublicValues, SP1AirBuilder, POSEIDON_NUM_WORDS,
         PV_DIGEST_NUM_WORDS, SP1_PROOF_NUM_PV_ELTS,
@@ -161,7 +161,7 @@ impl SyscallInstrsChip {
             InteractionScope::Local,
         );
 
-        // Check if `op_b` and `op_c` are a valid BabyBear words.
+        // Check if `op_b` and `op_c` are a valid SP1Field words.
         // SAFETY: The multiplicities are zero when `is_real = 0`.
         // `op_b` value is already known to be a valid Word, as it is read from a register.
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
@@ -171,7 +171,7 @@ impl SyscallInstrsChip {
             local.is_halt.into(),
         );
 
-        // Check if `op_c` is a valid BabyBear word.
+        // Check if `op_c` is a valid SP1Field word.
         // `op_c` value is already known to be a valid Word, as it is read from a register.
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,

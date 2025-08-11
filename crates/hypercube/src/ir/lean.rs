@@ -60,13 +60,13 @@ impl<F: Field, EF: ExtensionField<F>> Shape<ExprRef<F>, ExprExtRef<EF>> {
     /// For example,
     /// ```lean
     /// structure AddOperation where
-    ///   value : Word BabyBear
+    ///   value : Word SP1Field
     ///
     /// def AddOperation.constraints
-    ///   (b : BabyBear)
-    ///   (c : BabyBear)
+    ///   (b : SP1Field)
+    ///   (c : SP1Field)
     ///   (cols : AddOperation)
-    ///   (is_real : BabyBear) := sorry
+    ///   (is_real : SP1Field) := sorry
     /// ```
     ///
     /// `Expr(InputArg(3))` then maps to "cols.value[1]" because if you recursively flatten the

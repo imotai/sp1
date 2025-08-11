@@ -10,7 +10,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, FieldOperation},
     ByteOpcode,
 };
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 use super::{field_op::FieldOpCols, range::FieldLtCols};
 use crate::air::WordAirBuilder;
@@ -145,7 +145,7 @@ where
 //     use slop_algebra::{Field, PrimeField32};
 //     use sp1_core_executor::{ExecutionRecord, Program};
 //     use sp1_curves::params::{FieldParameters, Limbs};
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
 //         Chip, StarkMachine,
 //     };
@@ -157,14 +157,14 @@ where
 //     };
 //     use num::bigint::RandBigInt;
 //     use slop_air::Air;
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_algebra::AbstractField;
 //     use slop_matrix::{dense::RowMajorMatrix, Matrix};
 //     use rand::thread_rng;
 //     use sp1_core_executor::events::ByteRecord;
 //     use sp1_curves::edwards::ed25519::{ed25519_sqrt, Ed25519BaseField};
 //     use sp1_derive::AlignedBorrow;
-//     use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
+//     use sp1_hypercube::baby_bear_poseidon2::SP1CoreJaggedConfig;
 
 //     use super::FieldSqrtCols;
 
@@ -268,7 +268,7 @@ where
 //     fn generate_trace() {
 //         let chip: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
 //         let shard = ExecutionRecord::default();
-//         let _: RowMajorMatrix<BabyBear> =
+//         let _: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&shard, &mut ExecutionRecord::default());
 //         // println!("{:?}", trace.values)
 //     }
@@ -277,15 +277,15 @@ where
 //     fn prove_babybear() {
 //         let air: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
 //         let shard = ExecutionRecord::default();
-//         <EdSqrtChip<Ed25519BaseField> as MachineAir<BabyBear>>::generate_trace(
+//         <EdSqrtChip<Ed25519BaseField> as MachineAir<SP1Field>>::generate_trace(
 //             &air,
 //             &shard,
 //             &mut ExecutionRecord::default(),
 //         );
 
 //         // Run setup.
-//         let config = BabyBearPoseidon2::new();
-//         let chip: Chip<BabyBear, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
+//         let config = SP1CoreJaggedConfig::new();
+//         let chip: Chip<SP1Field, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
 //             vec![chip],
@@ -295,9 +295,9 @@ where
 
 //         // Run the test.
 //         let air: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
-//         let chip: Chip<BabyBear, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
+//         let chip: Chip<SP1Field, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, EdSqrtChip<Ed25519BaseField>>(
+//         run_test_machine::<SP1CoreJaggedConfig, EdSqrtChip<Ed25519BaseField>>(
 //             vec![shard],
 //             machine,
 //             pk,

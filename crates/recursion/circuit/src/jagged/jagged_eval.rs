@@ -1,18 +1,18 @@
 use std::marker::PhantomData;
 
 use rayon::ThreadPoolBuilder;
-use slop_baby_bear::BabyBear;
 use slop_jagged::{
     BranchingProgram, JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof,
 };
 use slop_multilinear::{Mle, Point};
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, Felt, SymbolicExt, SymbolicFelt},
 };
 
 use crate::{
-    sumcheck::verify_sumcheck, symbolic::IntoSymbolic, BabyBearFriConfigVariable, CircuitConfig,
+    sumcheck::verify_sumcheck, symbolic::IntoSymbolic, CircuitConfig, SP1FieldConfigVariable,
 };
 
 impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<Felt<C::F>> {
@@ -84,7 +84,7 @@ impl<C: CircuitConfig> RecursiveJaggedEvalConfig<C, ()> for RecursiveTrivialJagg
 }
 pub struct RecursiveJaggedEvalSumcheckConfig<SC>(pub PhantomData<SC>);
 
-impl<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>
+impl<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariable<C>>
     RecursiveJaggedEvalConfig<C, SC::FriChallengerVariable>
     for RecursiveJaggedEvalSumcheckConfig<SC>
 {
@@ -174,21 +174,23 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
-    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use slop_baby_bear::baby_bear_poseidon2::Perm;
     use slop_challenger::DuplexChallenger;
     use slop_jagged::{
         JaggedEvalProver, JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams,
-        JaggedProverComponents, Poseidon2BabyBearJaggedCpuProverComponents,
+        JaggedProverComponents,
     };
-    use slop_merkle_tree::{my_bb_16_perm, Perm};
     use slop_multilinear::Point;
     use sp1_core_machine::utils::setup_logger;
+    use sp1_hypercube::{
+        inner_perm, log2_ceil_usize, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents,
+    };
+    use sp1_primitives::SP1DiffusionMatrix;
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder},
         ir::{Ext, Felt},
     };
     use sp1_recursion_executor::Runtime;
-    use sp1_stark::{log2_ceil_usize, BabyBearPoseidon2};
 
     use crate::{
         challenger::DuplexChallengerVariable,
@@ -197,15 +199,15 @@ mod tests {
             RecursiveTrivialJaggedEvalConfig,
         },
         witness::Witnessable,
-        BabyBearFriConfigVariable,
+        SP1FieldConfigVariable,
     };
 
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    use sp1_primitives::SP1Field;
+    type F = SP1Field;
+    type EF = BinomialExtensionField<SP1Field, 4>;
     type C = AsmConfig<F, EF>;
-    type SC = BabyBearPoseidon2;
-    type EvalProver =
-        <Poseidon2BabyBearJaggedCpuProverComponents as JaggedProverComponents>::JaggedEvalProver;
+    type SC = SP1CoreJaggedConfig;
+    type EvalProver = <SP1CpuJaggedProverComponents as JaggedProverComponents>::JaggedEvalProver;
 
     fn trivial_jagged_eval(
         verifier_params: &JaggedLittlePolynomialVerifierParams<F>,
@@ -248,7 +250,7 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&z_trace, &mut witness_stream);
 
         let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(Arc::new(program), my_bb_16_perm());
+            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
         runtime.witness_stream = witness_stream.into();
         if should_succeed {
             runtime.run().unwrap();
@@ -267,8 +269,8 @@ mod tests {
         should_succeed: bool,
     ) -> Vec<Felt<F>> {
         let prover = EvalProver::default();
-        let default_perm = my_bb_16_perm();
-        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
+        let default_perm = inner_perm();
+        let mut challenger = DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm.clone());
         let jagged_eval_proof = prover
             .prove_jagged_evaluation(
                 prover_params,
@@ -292,7 +294,7 @@ mod tests {
         let (recursive_jagged_evaluation, prefix_sum_felts) =
             <RecursiveJaggedEvalSumcheckConfig<SC> as RecursiveJaggedEvalConfig<
                 C,
-                <SC as BabyBearFriConfigVariable<C>>::FriChallengerVariable,
+                <SC as SP1FieldConfigVariable<C>>::FriChallengerVariable,
             >>::jagged_evaluation(
                 &recursive_jagged_evaluator,
                 &mut builder,
@@ -319,7 +321,7 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&z_trace, &mut witness_stream);
         Witnessable::<AsmConfig<F, EF>>::write(&jagged_eval_proof, &mut witness_stream);
         let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(Arc::new(program), my_bb_16_perm());
+            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
         runtime.witness_stream = witness_stream.into();
         if should_succeed {
             runtime.run().unwrap();

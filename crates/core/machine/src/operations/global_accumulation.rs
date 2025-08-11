@@ -1,7 +1,7 @@
 use crate::operations::GlobalInteractionOperation;
 use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, SP1AirBuilder, SepticExtensionAirBuilder},
     septic_curve::{SepticCurve, SepticCurveComplete},
     septic_extension::{SepticBlock, SepticExtension},

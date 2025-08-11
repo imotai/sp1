@@ -6,7 +6,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::{AlignedBorrow, IntoShape, SP1OperationBuilder};
 
-use sp1_stark::{
+use sp1_hypercube::{
     air::SP1AirBuilder,
     ir::{Attribute, ConstraintCompiler, FuncCtx, Shape},
     Word,

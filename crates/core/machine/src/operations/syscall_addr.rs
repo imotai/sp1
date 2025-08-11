@@ -3,8 +3,8 @@ use slop_algebra::{AbstractField, Field, PrimeField32};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
+use sp1_hypercube::air::SP1AirBuilder;
 use sp1_primitives::consts::u64_to_u16_limbs;
-use sp1_stark::air::SP1AirBuilder;
 
 use super::{IsZeroOperation, IsZeroOperationInput};
 use crate::air::{SP1Operation, SP1OperationBuilder};

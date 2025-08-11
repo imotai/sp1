@@ -517,7 +517,7 @@ where
             if shard_chip.name() != *chip_name {
                 return Err(ShardVerifierError::InvalidChipOrder(
                     shard_chip.name(),
-                    chip_name.to_string(),
+                    chip_name.clone(),
                 ));
             }
         }

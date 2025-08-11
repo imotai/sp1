@@ -101,10 +101,10 @@ mod zkvm {
 
     cfg_if! {
         if #[cfg(feature = "verify")] {
-            use slop_baby_bear::BabyBear;
+            use sp1_primitives::SP1Field;
             use slop_algebra::AbstractField;
 
-            pub static mut DEFERRED_PROOFS_DIGEST: Option<[BabyBear; 8]> = None;
+            pub static mut DEFERRED_PROOFS_DIGEST: Option<[SP1Field; 8]> = None;
         }
     }
 
@@ -131,7 +131,7 @@ mod zkvm {
 
             #[cfg(feature = "verify")]
             {
-                DEFERRED_PROOFS_DIGEST = Some([BabyBear::zero(); 8]);
+                DEFERRED_PROOFS_DIGEST = Some([SP1Field::zero(); 8]);
             }
 
             extern "C" {

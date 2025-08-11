@@ -11,11 +11,12 @@ mod tests {
     use std::sync::Arc;
 
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use sp1_primitives::SP1DiffusionMatrix;
 
     // use sp1_core_machine::utils::run_test_machine;
     // use sp1_recursion_core::{machine::RecursionAir, Runtime, RuntimeError};
-    use slop_merkle_tree::my_bb_16_perm;
+    use sp1_hypercube::inner_perm;
+    use sp1_primitives::SP1Field;
     use sp1_recursion_executor::{Runtime, RuntimeError};
 
     use crate::{
@@ -25,9 +26,9 @@ mod tests {
 
     // const DEGREE: usize = 3;
 
-    // type SC = BabyBearPoseidon2Inner;
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    // type SC = SP1CoreJaggedConfigInner;
+    type F = SP1Field;
+    type EF = BinomialExtensionField<SP1Field, 4>;
     // type A = RecursionAir<F, DEGREE>;
 
     #[test]
@@ -54,8 +55,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
         runtime.witness_stream = [
             vec![F::one().into(), F::one().into(), F::two().into()],
             vec![F::zero().into(), F::one().into(), F::two().into()],
@@ -94,8 +94,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
         runtime.witness_stream =
             [vec![F::one().into(), F::one().into(), F::two().into()]].concat().into();
 

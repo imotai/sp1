@@ -1,7 +1,7 @@
-use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
+use sp1_hypercube::{prover::MachineProverComponents, MachineVerifier, ShardVerifier};
+use sp1_primitives::SP1Field;
 use sp1_recursion_circuit::machine::InnerVal;
-use sp1_stark::{prover::MachineProverComponents, MachineVerifier, ShardVerifier};
 
 use crate::{CompressAir, InnerSC, OuterSC, WrapAir};
 
@@ -26,7 +26,7 @@ pub trait RecursionProverComponents:
         let compress_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
         let compress_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
 
-        let machine = CompressAir::<BabyBear>::compress_machine();
+        let machine = CompressAir::<SP1Field>::compress_machine();
         let recursion_shard_verifier = ShardVerifier::from_basefold_parameters(
             compress_log_blowup,
             compress_log_stacking_height,
@@ -42,7 +42,7 @@ pub trait RecursionProverComponents:
         let shrink_log_stacking_height = SHRINK_LOG_STACKING_HEIGHT;
         let shrink_max_log_row_count = SHRINK_MAX_LOG_ROW_COUNT;
 
-        let machine = CompressAir::<BabyBear>::shrink_machine();
+        let machine = CompressAir::<SP1Field>::shrink_machine();
         let recursion_shard_verifier = ShardVerifier::from_basefold_parameters(
             shrink_log_blowup,
             shrink_log_stacking_height,
@@ -66,7 +66,7 @@ pub trait WrapProverComponents:
         let wrap_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
         let wrap_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
 
-        let machine = WrapAir::<BabyBear>::wrap_machine();
+        let machine = WrapAir::<SP1Field>::wrap_machine();
         let wrap_shard_verifier = ShardVerifier::from_basefold_parameters(
             wrap_log_blowup,
             wrap_log_stacking_height,

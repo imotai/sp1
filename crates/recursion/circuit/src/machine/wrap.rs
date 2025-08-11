@@ -8,12 +8,12 @@ use crate::{
     machine::{assert_complete, assert_root_public_values_valid, RootPublicValues},
     shard::RecursiveShardVerifier,
     zerocheck::RecursiveVerifierConstraintFolder,
-    BabyBearFriConfigVariable, CircuitConfig,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 use slop_air::Air;
 use slop_algebra::AbstractField;
+use sp1_hypercube::air::MachineAir;
 use sp1_recursion_compiler::ir::{Builder, Felt};
-use sp1_stark::air::MachineAir;
 use std::borrow::Borrow;
 
 /// A program to verify a single recursive proof representing a complete proof of program execution.
@@ -27,7 +27,7 @@ pub struct SP1WrapVerifier<C, SC, A, JC> {
 
 impl<C, SC, A, JC> SP1WrapVerifier<C, SC, A, JC>
 where
-    SC: BabyBearFriConfigVariable<C> + Send + Sync,
+    SC: SP1FieldConfigVariable<C> + Send + Sync,
     C: CircuitConfig<F = SC::F, EF = SC::EF>,
     A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     JC: RecursiveJaggedConfig<
@@ -55,7 +55,7 @@ where
         let public_values: &RootPublicValues<Felt<C::F>> = proof.public_values.as_slice().borrow();
         assert_root_public_values_valid::<C, SC>(builder, public_values);
 
-        let mut challenger = <SC as BabyBearFriConfigVariable<C>>::challenger_variable(builder);
+        let mut challenger = <SC as SP1FieldConfigVariable<C>>::challenger_variable(builder);
         challenger.observe(builder, vk.preprocessed_commit);
         challenger.observe_slice(builder, vk.pc_start);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);

@@ -117,15 +117,15 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                impl #name<sp1_stark::ir::ConstraintCompiler> {
+                impl #name<sp1_hypercube::ir::ConstraintCompiler> {
                     fn params_vec(
                         self,
                     ) -> Vec<(
                         String,
-                        sp1_stark::ir::Attribute,
-                        sp1_stark::ir::Shape<
-                            <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
-                            <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
+                        sp1_hypercube::ir::Attribute,
+                        sp1_hypercube::ir::Shape<
+                            <sp1_hypercube::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
+                            <sp1_hypercube::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
                         >,
                     )> {
                         vec![
@@ -140,7 +140,7 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
             let remaining_params_with_constraint_compiler = replace_bounds(
                 ast.generics.params.iter().skip(1),
                 first_param_name.clone(),
-                "< sp1_stark :: ir :: ConstraintCompiler as slop_air :: AirBuilder >",
+                "< sp1_hypercube :: ir :: ConstraintCompiler as slop_air :: AirBuilder >",
             );
 
             let remaining_params = ast.generics.params.iter().skip(1);
@@ -165,15 +165,15 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                impl<#(#remaining_params_with_constraint_compiler),*> #name<sp1_stark::ir::ConstraintCompiler, #(#type_args),*> {
+                impl<#(#remaining_params_with_constraint_compiler),*> #name<sp1_hypercube::ir::ConstraintCompiler, #(#type_args),*> {
                     fn params_vec(
                         self,
                     ) -> Vec<(
                         String,
-                        sp1_stark::ir::Attribute,
-                        sp1_stark::ir::Shape<
-                            <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
-                            <sp1_stark::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
+                        sp1_hypercube::ir::Attribute,
+                        sp1_hypercube::ir::Shape<
+                            <sp1_hypercube::ir::ConstraintCompiler as slop_air::AirBuilder>::Expr,
+                            <sp1_hypercube::ir::ConstraintCompiler as slop_air::ExtensionBuilder>::ExprEF,
                         >,
                     )> {
                         vec![
@@ -227,14 +227,14 @@ fn parse_picus_attributes(attrs: &[Attribute]) -> TokenStream2 {
                     if let syn::NestedMeta::Meta(syn::Meta::Path(path)) = nested {
                         if path.is_ident("input") {
                             return quote! {
-                                sp1_stark::ir::Attribute {
-                                    picus: sp1_stark::ir::PicusArg::Input,
+                                sp1_hypercube::ir::Attribute {
+                                    picus: sp1_hypercube::ir::PicusArg::Input,
                                 }
                             };
                         } else if path.is_ident("output") {
                             return quote! {
-                                sp1_stark::ir::Attribute {
-                                    picus: sp1_stark::ir::PicusArg::Output,
+                                sp1_hypercube::ir::Attribute {
+                                    picus: sp1_hypercube::ir::PicusArg::Output,
                                 }
                             };
                         }
@@ -244,5 +244,5 @@ fn parse_picus_attributes(attrs: &[Attribute]) -> TokenStream2 {
         }
     }
     // Default to Unknown if no attribute is specified
-    quote! { sp1_stark::ir::Attribute::default() }
+    quote! { sp1_hypercube::ir::Attribute::default() }
 }

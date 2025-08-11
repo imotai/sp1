@@ -15,7 +15,7 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{ExecutionRecord, Opcode, Program};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use sp1_hypercube::air::{MachineAir, SP1AirBuilder};
 
 /// The number of preprocessed program columns.
 pub const NUM_PROGRAM_PREPROCESSED_COLS: usize = size_of::<ProgramPreprocessedCols<u8>>();
@@ -318,11 +318,11 @@ mod tests {
     use std::sync::Arc;
 
     use hashbrown::HashMap;
-    use slop_baby_bear::BabyBear;
 
     use slop_matrix::dense::RowMajorMatrix;
     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
-    use sp1_stark::air::MachineAir;
+    use sp1_hypercube::air::MachineAir;
+    use sp1_primitives::SP1Field;
 
     use crate::program::ProgramChip;
 
@@ -349,7 +349,7 @@ mod tests {
             ..Default::default()
         };
         let chip = ProgramChip::new();
-        let trace: RowMajorMatrix<BabyBear> =
+        let trace: RowMajorMatrix<SP1Field> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values)
     }

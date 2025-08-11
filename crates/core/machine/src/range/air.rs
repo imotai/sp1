@@ -4,7 +4,7 @@ use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, Field};
 use slop_matrix::Matrix;
 use sp1_core_executor::ByteOpcode;
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 use super::{
     columns::{RangeMultCols, RangePreprocessedCols, NUM_RANGE_MULT_COLS},

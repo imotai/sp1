@@ -8,7 +8,7 @@ use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_core_executor::{events::ByteRecord, Opcode};
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_hypercube::{air::SP1AirBuilder, Word};
 
 /// A set of columns needed to compute the bitwise operation over `Word` of u16 limbs.
 #[derive(

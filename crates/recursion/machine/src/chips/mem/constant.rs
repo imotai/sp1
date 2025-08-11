@@ -5,10 +5,10 @@ use slop_algebra::PrimeField32;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::MachineAir;
 use sp1_recursion_executor::{
     Block, ExecutionRecord, Instruction, MemAccessKind, MemInstr, RecursionProgram,
 };
-use sp1_stark::air::MachineAir;
 use std::{borrow::BorrowMut, iter::zip, marker::PhantomData};
 
 use crate::builder::SP1RecursionAirBuilder;
@@ -169,8 +169,8 @@ where
 #[cfg(test)]
 mod tests {
     use slop_matrix::Matrix;
+    use sp1_hypercube::air::MachineAir;
     use sp1_recursion_executor::{instruction as instr, ExecutionRecord, MemAccessKind};
-    use sp1_stark::air::MachineAir;
 
     use super::MemoryConstChip;
 

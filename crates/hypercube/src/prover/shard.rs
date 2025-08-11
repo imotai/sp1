@@ -630,7 +630,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
                 let main = AirOpenedValues { local: main_evals.to_vec() };
 
                 (
-                    air.name().to_string(),
+                    air.name().clone(),
                     ChipOpenedValues {
                         preprocessed,
                         main,

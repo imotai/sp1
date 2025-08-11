@@ -9,7 +9,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, JumpEvent},
     ExecutionRecord, Program,
 };
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::air::MachineAir;
 
 use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 

@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
 use sp1_core_executor::{ExecutionRecord, Program, HEIGHT_THRESHOLD};
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_stark::{
+use sp1_hypercube::{
     prover::{
         CoreProofShape, MachineProver, MachineProverComponents, MachineProvingKey, PreprocessedData,
     },
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
+use sp1_primitives::SP1Field;
 use static_assertions::const_assert;
 
 use crate::{
@@ -36,7 +36,7 @@ pub trait CoreProverComponents:
     /// The default verifier for the core prover.
     ///
     /// Thew verifier fixes the parameters of the underlying proof system.
-    fn verifier() -> MachineVerifier<CoreSC, RiscvAir<BabyBear>> {
+    fn verifier() -> MachineVerifier<CoreSC, RiscvAir<SP1Field>> {
         let core_log_blowup = CORE_LOG_BLOWUP;
         let core_log_stacking_height = CORE_LOG_STACKING_HEIGHT;
         let core_max_log_row_count = CORE_MAX_LOG_ROW_COUNT;

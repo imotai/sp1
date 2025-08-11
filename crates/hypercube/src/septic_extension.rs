@@ -420,7 +420,7 @@ impl<F: AbstractField> Display for SepticExtension<F> {
 impl<F: Field> SepticExtension<F> {
     /// Returns the value of z^{index * p} in the [`SepticExtension`] field.
     fn z_pow_p(index: u32) -> Self {
-        // The constants written below are specifically for the BabyBear field.
+        // The constants written below are specifically for the SP1Field field.
         debug_assert_eq!(F::order(), BigUint::from(2013265921u32));
         if index == 0 {
             return Self::one();
@@ -496,7 +496,7 @@ impl<F: Field> SepticExtension<F> {
 
     /// Returns the value of z^{index * p^2} in the [`SepticExtension`] field.
     fn z_pow_p2(index: u32) -> Self {
-        // The constants written below are specifically for the BabyBear field.
+        // The constants written below are specifically for the SP1Field field.
         debug_assert_eq!(F::order(), BigUint::from(2013265921u32));
         if index == 0 {
             return Self::one();
@@ -828,14 +828,14 @@ impl<T> IntoIterator for SepticBlock<T> {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use slop_baby_bear::BabyBear;
+    use sp1_primitives::SP1Field;
 
     use super::*;
 
     #[test]
     fn test_mul() {
-        let a: SepticExtension<BabyBear> = SepticExtension::from_canonical_u32(1);
-        let b: SepticExtension<BabyBear> = SepticExtension::from_canonical_u32(2);
+        let a: SepticExtension<SP1Field> = SepticExtension::from_canonical_u32(1);
+        let b: SepticExtension<SP1Field> = SepticExtension::from_canonical_u32(2);
         let c = a * b;
         println!("{c}");
     }
@@ -843,24 +843,24 @@ mod tests {
     #[test]
     fn test_inv() {
         for i in 0..256 {
-            let a: SepticExtension<BabyBear> = SepticExtension([
-                BabyBear::from_canonical_u32(i + 3),
-                BabyBear::from_canonical_u32(2 * i + 6),
-                BabyBear::from_canonical_u32(5 * i + 17),
-                BabyBear::from_canonical_u32(6 * i + 91),
-                BabyBear::from_canonical_u32(8 * i + 37),
-                BabyBear::from_canonical_u32(11 * i + 35),
-                BabyBear::from_canonical_u32(14 * i + 33),
+            let a: SepticExtension<SP1Field> = SepticExtension([
+                SP1Field::from_canonical_u32(i + 3),
+                SP1Field::from_canonical_u32(2 * i + 6),
+                SP1Field::from_canonical_u32(5 * i + 17),
+                SP1Field::from_canonical_u32(6 * i + 91),
+                SP1Field::from_canonical_u32(8 * i + 37),
+                SP1Field::from_canonical_u32(11 * i + 35),
+                SP1Field::from_canonical_u32(14 * i + 33),
             ]);
             let b = a.inv();
-            assert_eq!(a * b, SepticExtension::<BabyBear>::one());
+            assert_eq!(a * b, SepticExtension::<SP1Field>::one());
         }
     }
 
     #[test]
     fn test_legendre() {
-        let a: SepticExtension<BabyBear> = SepticExtension::generator();
-        let mut b = SepticExtension::<BabyBear>::one();
+        let a: SepticExtension<SP1Field> = SepticExtension::generator();
+        let mut b = SepticExtension::<SP1Field>::one();
         for i in 1..256 {
             b *= a;
             let (_, c) = b.is_square();
@@ -871,22 +871,22 @@ mod tests {
     #[test]
     fn test_sqrt() {
         for i in 0..256 {
-            let a: SepticExtension<BabyBear> = SepticExtension([
-                BabyBear::from_canonical_u32(i + 3),
-                BabyBear::from_canonical_u32(2 * i + 6),
-                BabyBear::from_canonical_u32(5 * i + 17),
-                BabyBear::from_canonical_u32(6 * i + 91),
-                BabyBear::from_canonical_u32(8 * i + 37),
-                BabyBear::from_canonical_u32(11 * i + 35),
-                BabyBear::from_canonical_u32(14 * i + 33),
+            let a: SepticExtension<SP1Field> = SepticExtension([
+                SP1Field::from_canonical_u32(i + 3),
+                SP1Field::from_canonical_u32(2 * i + 6),
+                SP1Field::from_canonical_u32(5 * i + 17),
+                SP1Field::from_canonical_u32(6 * i + 91),
+                SP1Field::from_canonical_u32(8 * i + 37),
+                SP1Field::from_canonical_u32(11 * i + 35),
+                SP1Field::from_canonical_u32(14 * i + 33),
             ]);
             let b = a * a;
             let recovered_a = b.sqrt().unwrap();
             assert_eq!(recovered_a * recovered_a, b);
         }
-        let mut b = SepticExtension::<BabyBear>::one();
+        let mut b = SepticExtension::<SP1Field>::one();
         for i in 1..256 {
-            let a: SepticExtension<BabyBear> = SepticExtension::generator();
+            let a: SepticExtension<SP1Field> = SepticExtension::generator();
             b *= a;
             let c = b.sqrt();
             if i % 2 == 1 {

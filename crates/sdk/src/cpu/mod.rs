@@ -11,6 +11,7 @@ use anyhow::Result;
 use prove::CpuProveBuilder;
 use sp1_core_executor::{ExecutionError, Program, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
+use sp1_hypercube::prover::MachineProvingKey;
 use sp1_primitives::Elf;
 use sp1_prover::{
     components::CpuSP1ProverComponents,
@@ -24,7 +25,6 @@ use sp1_prover::{
     local::{LocalProver, LocalProverOpts},
     SP1ProverBuilder, SP1VerifyingKey,
 };
-use sp1_stark::prover::MachineProvingKey;
 
 use crate::{
     install::try_install_circuit_artifacts,

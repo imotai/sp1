@@ -5,7 +5,6 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
-use slop_baby_bear::BabyBear;
 
 use crate::{
     air::{AirInteraction, InteractionScope},
@@ -13,8 +12,9 @@ use crate::{
     InteractionKind,
 };
 
-type F = BabyBear;
-type EF = BinomialExtensionField<BabyBear, 4>;
+use sp1_primitives::SP1Field;
+type F = SP1Field;
+type EF = BinomialExtensionField<SP1Field, 4>;
 
 type AstType = Ast<ExprRef<F>, ExprExtRef<EF>>;
 

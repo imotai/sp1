@@ -6,15 +6,15 @@ use std::{
 use itertools::Itertools;
 use slop_air::Air;
 use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
+use sp1_primitives::SP1Field;
 
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::riscv::{RiscvAir, MAX_LOG_NUMBER_OF_SHARDS};
 
-use sp1_stark::air::PublicValues;
+use sp1_hypercube::air::PublicValues;
 
-use sp1_stark::{MachineConfig, MachineVerifyingKey, ShardProof};
+use sp1_hypercube::{MachineConfig, MachineVerifyingKey, ShardProof};
 
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -30,12 +30,12 @@ use crate::{
     machine::{assert_complete, recursion_public_values_digest},
     shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
-    BabyBearFriConfig, BabyBearFriConfigVariable, CircuitConfig, InnerSC,
+    CircuitConfig, InnerSC, SP1FieldConfigVariable, SP1FieldFriConfig,
 };
 
 pub struct SP1RecursionWitnessVariable<
-    C: CircuitConfig<F = BabyBear, EF = crate::EF>,
-    SC: BabyBearFriConfigVariable<C>,
+    C: CircuitConfig<F = SP1Field, EF = crate::EF>,
+    SC: SP1FieldConfigVariable<C>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -63,7 +63,7 @@ pub struct SP1NormalizeWitnessValues<SC: MachineConfig> {
 
 /// A program for recursively verifying a batch of SP1 proofs.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1RecursiveVerifier<C: Config, SC: BabyBearFriConfig, JC: RecursiveJaggedConfig> {
+pub struct SP1RecursiveVerifier<C: Config, SC: SP1FieldFriConfig, JC: RecursiveJaggedConfig> {
     _phantom: PhantomData<(C, SC, JC)>,
 }
 
@@ -72,17 +72,17 @@ type InnerChallenge = <InnerSC as JaggedConfig>::EF;
 
 impl<C, SC, JC> SP1RecursiveVerifier<C, SC, JC>
 where
-    SC: BabyBearFriConfigVariable<
+    SC: SP1FieldConfigVariable<
             C,
             FriChallengerVariable = DuplexChallengerVariable<C>,
-            DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
+            DigestVariable = [Felt<SP1Field>; DIGEST_SIZE],
         > + Send
         + Sync,
-    C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<BabyBear>>,
+    C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<SP1Field>>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
-    SC: BabyBearFriConfigVariable<C> + MachineConfig,
+    SC: SP1FieldConfigVariable<C> + MachineConfig,
     JC: RecursiveJaggedConfig<
         F = C::F,
         EF = C::EF,

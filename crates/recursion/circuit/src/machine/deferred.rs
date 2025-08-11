@@ -11,14 +11,14 @@ use crate::machine::{
 };
 use slop_air::Air;
 use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
-use sp1_recursion_compiler::ir::{Builder, Felt};
-use sp1_stark::{
+use sp1_hypercube::{
     air::{MachineAir, POSEIDON_NUM_WORDS},
     septic_curve::SepticCurve,
     septic_digest::SepticDigest,
     MachineVerifyingKey, ShardProof,
 };
+use sp1_primitives::SP1Field;
+use sp1_recursion_compiler::ir::{Builder, Felt};
 
 use sp1_recursion_executor::{
     RecursionPublicValues, DIGEST_SIZE, PV_DIGEST_NUM_WORDS, RECURSIVE_PROOF_NUM_PV_ELTS,
@@ -31,7 +31,7 @@ use crate::{
     jagged::RecursiveJaggedConfig,
     shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
-    BabyBearFriConfig, BabyBearFriConfigVariable, CircuitConfig,
+    CircuitConfig, SP1FieldConfigVariable, SP1FieldFriConfig,
 };
 
 use super::{assert_complete, recursion_public_values_digest};
@@ -47,7 +47,7 @@ pub struct SP1DeferredVerifier<C, SC, A, JC> {
 #[serde(bound(
     deserialize = "SC::Challenger: Deserialize<'de>, ShardProof<SC>: Deserialize<'de>,  [SC::F; DIGEST_SIZE]: Deserialize<'de>, SC::Digest: Deserialize<'de>"
 ))]
-pub struct SP1DeferredWitnessValues<SC: BabyBearFriConfig + FieldHasher<BabyBear> + Send + Sync> {
+pub struct SP1DeferredWitnessValues<SC: SP1FieldFriConfig + FieldHasher<SP1Field> + Send + Sync> {
     pub vks_and_proofs: Vec<(MachineVerifyingKey<SC>, ShardProof<SC>)>,
     pub vk_merkle_data: SP1MerkleProofWitnessValues<SC>,
     pub start_reconstruct_deferred_digest: [SC::F; POSEIDON_NUM_WORDS],
@@ -65,8 +65,8 @@ pub struct SP1DeferredWitnessValues<SC: BabyBearFriConfig + FieldHasher<BabyBear
 
 #[allow(clippy::type_complexity)]
 pub struct SP1DeferredWitnessVariable<
-    C: CircuitConfig<F = BabyBear, EF = crate::EF>,
-    SC: FieldHasherVariable<C> + BabyBearFriConfigVariable<C>,
+    C: CircuitConfig<F = SP1Field, EF = crate::EF>,
+    SC: FieldHasherVariable<C> + SP1FieldConfigVariable<C>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -88,13 +88,13 @@ pub struct SP1DeferredWitnessVariable<
 
 impl<C, SC, A, JC> SP1DeferredVerifier<C, SC, A, JC>
 where
-    SC: BabyBearFriConfigVariable<
+    SC: SP1FieldConfigVariable<
             C,
             FriChallengerVariable = DuplexChallengerVariable<C>,
-            DigestVariable = [Felt<BabyBear>; DIGEST_SIZE],
+            DigestVariable = [Felt<SP1Field>; DIGEST_SIZE],
         > + Send
         + Sync,
-    C: CircuitConfig<F = SC::F, EF = SC::EF, Bit = Felt<BabyBear>>,
+    C: CircuitConfig<F = SC::F, EF = SC::EF, Bit = Felt<SP1Field>>,
     A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     JC: RecursiveJaggedConfig<
         F = C::F,

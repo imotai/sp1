@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sp1_derive::{AlignedBorrow, IntoShape};
-use sp1_stark::Word;
+use sp1_hypercube::Word;
 
 use crate::operations::U16toU8Operation;
 

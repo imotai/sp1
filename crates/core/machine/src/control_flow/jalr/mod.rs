@@ -18,12 +18,12 @@ impl<F> BaseAir<F> for JalrChip {
 // mod tests {
 //     use std::borrow::BorrowMut;
 
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_algebra::AbstractField;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+//     use sp1_hypercube::{
+//         air::MachineAir, baby_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 
@@ -54,18 +54,18 @@ impl<F> BaseAir<F> for JalrChip {
 //     //         let program = Program::new(instructions.to_vec(), 0, 0);
 //     //         let stdin = SP1Stdin::new();
 
-//     //         type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//     //         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //     //         let malicious_trace_pv_generator =
 //     //             |prover: &P,
 //     //              record: &mut ExecutionRecord|
-//     //              -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//     //              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //     //                 let mut traces = prover.generate_traces(record);
-//     //                 let jump_chip_name = chip_name!(JumpChip, BabyBear);
+//     //                 let jump_chip_name = chip_name!(JumpChip, SP1Field);
 //     //                 for (chip_name, trace) in traces.iter_mut() {
 //     //                     if *chip_name == jump_chip_name {
 //     //                         let first_row = trace.row_mut(0);
-//     //                         let first_row: &mut JumpColumns<BabyBear> =
+//     //                         let first_row: &mut JumpColumns<SP1Field> =
 // first_row.borrow_mut();     //                         first_row.next_pc = 4.into();
 //     //                     }
 //     //                 }
@@ -90,21 +90,21 @@ impl<F> BaseAir<F> for JalrChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                 // Modify the branch chip to have a row that has multiple opcode flags set.
 //                 let mut traces = prover.generate_traces(record);
-//                 let jump_chip_name = chip_name!(JumpChip, BabyBear);
+//                 let jump_chip_name = chip_name!(JumpChip, SP1Field);
 //                 for (chip_name, trace) in traces.iter_mut() {
 //                     if *chip_name == jump_chip_name {
 //                         let first_row = trace.row_mut(0);
-//                         let first_row: &mut JumpColumns<BabyBear> = first_row.borrow_mut();
-//                         assert!(first_row.is_jal == BabyBear::one());
-//                         first_row.is_jalr = BabyBear::one();
+//                         let first_row: &mut JumpColumns<SP1Field> = first_row.borrow_mut();
+//                         assert!(first_row.is_jal == SP1Field::one());
+//                         first_row.is_jalr = SP1Field::one();
 //                     }
 //                 }
 //                 traces

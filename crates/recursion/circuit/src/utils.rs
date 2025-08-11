@@ -1,17 +1,17 @@
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
+use sp1_primitives::SP1Field;
 
 use sp1_recursion_compiler::ir::{Builder, Config, Felt, Var};
 use sp1_recursion_executor::DIGEST_SIZE;
 
-/// Convert 8 BabyBear words into a Bn254Fr field element by shifting by 31 bits each time. The last
+/// Convert 8 SP1Field words into a Bn254Fr field element by shifting by 31 bits each time. The last
 /// word becomes the least significant bits.
 #[allow(dead_code)]
-pub fn babybears_to_bn254(digest: &[BabyBear; 8]) -> Bn254Fr {
+pub fn babybears_to_bn254(digest: &[SP1Field; 8]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for word in digest.iter() {
-        // Since BabyBear prime is less than 2^31, we can shift by 31 bits each time and still be
+        // Since SP1Field prime is less than 2^31, we can shift by 31 bits each time and still be
         // within the Bn254Fr field, so we don't have to truncate the top 3 bits.
         result *= Bn254Fr::from_canonical_u64(1 << 31);
         result += Bn254Fr::from_canonical_u32(word.as_canonical_u32());
@@ -19,13 +19,13 @@ pub fn babybears_to_bn254(digest: &[BabyBear; 8]) -> Bn254Fr {
     result
 }
 
-/// Convert 32 BabyBear bytes into a Bn254Fr field element. The first byte's most significant 3 bits
+/// Convert 32 SP1Field bytes into a Bn254Fr field element. The first byte's most significant 3 bits
 /// (which would become the 3 most significant bits) are truncated.
 #[allow(dead_code)]
-pub fn babybear_bytes_to_bn254(bytes: &[BabyBear; 32]) -> Bn254Fr {
+pub fn babybear_bytes_to_bn254(bytes: &[SP1Field; 32]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for (i, byte) in bytes.iter().enumerate() {
-        debug_assert!(byte < &BabyBear::from_canonical_u32(256));
+        debug_assert!(byte < &SP1Field::from_canonical_u32(256));
         if i == 0 {
             // 32 bytes is more than Bn254 prime, so we need to truncate the top 3 bits.
             result = Bn254Fr::from_canonical_u32(byte.as_canonical_u32() & 0x1f);

@@ -4,7 +4,6 @@ use futures::{
     stream::{FuturesOrdered, FuturesUnordered},
 };
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use slop_futures::queue::WorkerQueue;
 use sp1_core_executor::{
@@ -12,7 +11,11 @@ use sp1_core_executor::{
     Program, SP1Context, SP1CoreOpts, SP1RecursionProof,
 };
 use sp1_core_machine::{executor::MachineExecutor, io::SP1Stdin};
-use sp1_primitives::io::SP1PublicValues;
+use sp1_hypercube::{
+    prover::{MachineProvingKey, MemoryPermit},
+    MachineVerifierConfigError, MachineVerifyingKey, SP1CoreJaggedConfig, ShardProof,
+};
+use sp1_primitives::{io::SP1PublicValues, SP1Field};
 use sp1_recursion_circuit::{
     machine::{SP1DeferredWitnessValues, SP1NormalizeWitnessValues, SP1ShapedWitnessValues},
     utils::{babybear_bytes_to_bn254, babybears_to_bn254, words_to_bytes},
@@ -22,10 +25,6 @@ use sp1_recursion_circuit::{
 use sp1_recursion_executor::{ExecutionRecord as RecursionRecord, RecursionPublicValues};
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
-};
-use sp1_stark::{
-    prover::{MachineProvingKey, MemoryPermit},
-    BabyBearPoseidon2, MachineVerifierConfigError, MachineVerifyingKey, ShardProof,
 };
 use std::{
     borrow::Borrow,
@@ -90,7 +89,7 @@ impl Default for LocalProverOpts {
 
 pub struct LocalProver<C: SP1ProverComponents> {
     prover: SP1Prover<C>,
-    executor: MachineExecutor<BabyBear>,
+    executor: MachineExecutor<SP1Field>,
     compose_batch_size: usize,
     normalize_batch_size: usize,
     num_recursion_executors: usize,
@@ -156,7 +155,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     /// Get a reference to the underlying [MachineExecutor]
     #[inline]
     #[must_use]
-    pub fn executor(&self) -> &MachineExecutor<BabyBear> {
+    pub fn executor(&self) -> &MachineExecutor<SP1Field> {
         &self.executor
     }
 
@@ -478,10 +477,10 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             is_complete: true,
         };
 
-        let pv: &RecursionPublicValues<BabyBear> = wrap_proof.public_values.as_slice().borrow();
+        let pv: &RecursionPublicValues<SP1Field> = wrap_proof.public_values.as_slice().borrow();
 
         let vkey_hash = babybears_to_bn254(&pv.sp1_vk_digest);
-        let committed_values_digest_bytes: [BabyBear; 32] =
+        let committed_values_digest_bytes: [SP1Field; 32] =
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
         let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
@@ -522,10 +521,10 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             is_complete: true,
         };
 
-        let pv: &RecursionPublicValues<BabyBear> = wrap_proof.public_values.as_slice().borrow();
+        let pv: &RecursionPublicValues<SP1Field> = wrap_proof.public_values.as_slice().borrow();
 
         let vkey_hash = babybears_to_bn254(&pv.sp1_vk_digest);
-        let committed_values_digest_bytes: [BabyBear; 32] =
+        let committed_values_digest_bytes: [SP1Field; 32] =
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
         let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
@@ -587,11 +586,11 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         vk: &'a MachineVerifyingKey<CoreSC>,
         deferred_proofs: &[SP1RecursionProof<InnerSC>],
         batch_size: usize,
-    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
+    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [SP1Field; 8]) {
         self.get_deferred_inputs_with_initial_digest(
             vk,
             deferred_proofs,
-            [BabyBear::zero(); 8],
+            [SP1Field::zero(); 8],
             batch_size,
         )
     }
@@ -600,9 +599,9 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         &'a self,
         vk: &'a MachineVerifyingKey<CoreSC>,
         deferred_proofs: &[SP1RecursionProof<InnerSC>],
-        initial_deferred_digest: [BabyBear; 8],
+        initial_deferred_digest: [SP1Field; 8],
         batch_size: usize,
-    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
+    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [SP1Field; 8]) {
         // Prepare the inputs for the deferred proofs recursive verification.
         let mut deferred_digest = initial_deferred_digest;
         let mut deferred_inputs = Vec::new();
@@ -621,18 +620,18 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 is_complete: false,
                 sp1_vk_digest: vk.hash_babybear(),
                 end_pc: vk.pc_start,
-                end_shard: BabyBear::one(),
-                end_execution_shard: BabyBear::one(),
+                end_shard: SP1Field::one(),
+                end_execution_shard: SP1Field::one(),
                 end_timestamp: [
-                    BabyBear::zero(),
-                    BabyBear::zero(),
-                    BabyBear::zero(),
-                    BabyBear::one(),
+                    SP1Field::zero(),
+                    SP1Field::zero(),
+                    SP1Field::zero(),
+                    SP1Field::one(),
                 ],
-                init_addr: [BabyBear::zero(); 3],
-                finalize_addr: [BabyBear::zero(); 3],
-                committed_value_digest: [[BabyBear::zero(); 4]; 8],
-                deferred_proofs_digest: [BabyBear::zero(); 8],
+                init_addr: [SP1Field::zero(); 3],
+                finalize_addr: [SP1Field::zero(); 3],
+                committed_value_digest: [[SP1Field::zero(); 4]; 8],
+                deferred_proofs_digest: [SP1Field::zero(); 8],
             });
 
             deferred_digest = SP1RecursionProver::<C>::hash_deferred_proofs(deferred_digest, batch);
@@ -646,7 +645,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         shard_proofs: &[ShardProof<CoreSC>],
         batch_size: usize,
         is_complete: bool,
-        deferred_digest: [BabyBear; 8],
+        deferred_digest: [SP1Field; 8],
     ) -> Vec<SP1NormalizeWitnessValues<CoreSC>> {
         let mut core_inputs = Vec::new();
 
@@ -670,11 +669,11 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 impl<C: SP1ProverComponents> SubproofVerifier for LocalProver<C> {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1RecursionProof<BabyBearPoseidon2>,
-        vk: &MachineVerifyingKey<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        vk: &MachineVerifyingKey<SP1CoreJaggedConfig>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<BabyBearPoseidon2>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1CoreJaggedConfig>> {
         self.prover.verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }
@@ -879,7 +878,7 @@ struct ExecuteTask {
 struct ProveTask<C: SP1ProverComponents> {
     keys: Option<(Arc<MachineProvingKey<C::RecursionComponents>>, MachineVerifyingKey<InnerSC>)>,
     range: Range<usize>,
-    record: RecursionRecord<BabyBear>,
+    record: RecursionRecord<SP1Field>,
 }
 
 #[cfg(all(test, feature = "unsound"))]

@@ -15,12 +15,12 @@ pub use test::*;
 pub use zerocheck_unit_test::*;
 
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use sp1_hypercube::{air::SP1AirBuilder, Word};
 use sp1_primitives::consts::WORD_BYTE_SIZE;
 pub use sp1_primitives::consts::{
     bytes_to_words_le, bytes_to_words_le_vec, num_to_comma_separated, words_to_bytes_le,
     words_to_bytes_le_vec,
 };
-use sp1_stark::{air::SP1AirBuilder, Word};
 
 pub const fn indices_arr<const N: usize>() -> [usize; N] {
     let mut indices_arr = [0; N];

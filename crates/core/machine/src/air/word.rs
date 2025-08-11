@@ -3,8 +3,8 @@ use std::array;
 use itertools::Itertools;
 use slop_algebra::AbstractField;
 use sp1_core_executor::ByteOpcode;
+use sp1_hypercube::{air::ByteAirBuilder, Word};
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::ByteAirBuilder, Word};
 
 pub trait WordAirBuilder: ByteAirBuilder {
     /// Asserts that the two words are equal.

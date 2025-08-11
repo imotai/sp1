@@ -1,7 +1,7 @@
 use slop_algebra::AbstractField;
 use sp1_curves::params::FieldParameters;
+use sp1_hypercube::air::SP1AirBuilder;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::SP1AirBuilder;
 
 pub fn eval_field_operation<AB: SP1AirBuilder, P: FieldParameters>(
     builder: &mut AB,

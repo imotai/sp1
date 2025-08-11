@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
 use slop_jagged::{
     JaggedBasefoldConfig, JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof,
 };
 use slop_multilinear::{Evaluations, Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, Felt, SymbolicExt},
@@ -20,7 +20,7 @@ use crate::{
     },
     challenger::FieldChallengerVariable,
     sumcheck::{evaluate_mle_ext, verify_sumcheck},
-    AsRecursive, BabyBearFriConfigVariable, CircuitConfig,
+    AsRecursive, CircuitConfig, SP1FieldConfigVariable,
 };
 
 use super::jagged_eval::{RecursiveJaggedEvalConfig, RecursiveJaggedEvalSumcheckConfig};
@@ -47,8 +47,8 @@ pub struct RecursiveJaggedConfigImpl<C, SC, P> {
 }
 
 impl<
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-        SC: BabyBearFriConfigVariable<C>,
+        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+        SC: SP1FieldConfigVariable<C>,
         P: RecursiveMultilinearPcsVerifier<F = C::F, EF = C::EF>,
     > RecursiveJaggedConfig for RecursiveJaggedConfigImpl<C, SC, P>
 {
@@ -72,10 +72,10 @@ pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
     pub added_columns: Vec<usize>,
 }
 
-impl<C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>, BC, E> AsRecursive<C>
+impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>, BC, E> AsRecursive<C>
     for JaggedBasefoldConfig<BC, E>
 where
-    Self: BabyBearFriConfigVariable<C>,
+    Self: SP1FieldConfigVariable<C>,
 {
     type Recursive = RecursiveJaggedConfigImpl<
         C,
@@ -87,8 +87,8 @@ where
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct RecursiveJaggedPcsVerifier<
-    SC: BabyBearFriConfigVariable<C>,
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    SC: SP1FieldConfigVariable<C>,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -99,8 +99,8 @@ pub struct RecursiveJaggedPcsVerifier<
 }
 
 impl<
-        SC: BabyBearFriConfigVariable<C>,
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+        SC: SP1FieldConfigVariable<C>,
+        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
         JC: RecursiveJaggedConfig<
             F = C::F,
             EF = C::EF,
@@ -180,7 +180,7 @@ impl<
         builder.cycle_tracker_v2_exit();
 
         // Compute the expected evaluation of the dense trace polynomial.
-        let expected_eval: SymbolicExt<BabyBear, BinomialExtensionField<BabyBear, 4>> =
+        let expected_eval: SymbolicExt<SP1Field, BinomialExtensionField<SP1Field, 4>> =
             sumcheck_proof.point_and_eval.1 / jagged_eval;
 
         // Verify the evaluation proof.
@@ -200,8 +200,8 @@ impl<
 #[allow(dead_code)]
 pub struct RecursiveMachineJaggedPcsVerifier<
     'a,
-    SC: BabyBearFriConfigVariable<C>,
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    SC: SP1FieldConfigVariable<C>,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -212,8 +212,8 @@ pub struct RecursiveMachineJaggedPcsVerifier<
 
 impl<
         'a,
-        SC: BabyBearFriConfigVariable<C>,
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+        SC: SP1FieldConfigVariable<C>,
+        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
         JC: RecursiveJaggedConfig<
             F = C::F,
             EF = C::EF,
@@ -270,20 +270,21 @@ mod tests {
 
     use rand::{thread_rng, Rng};
     use slop_algebra::AbstractField;
-    use slop_baby_bear::DiffusionMatrixBabyBear;
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+    use slop_basefold::BasefoldVerifier;
     use slop_challenger::CanObserve;
     use slop_commit::Rounds;
     use slop_jagged::{
         JaggedConfig, JaggedPcsProof, JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
-        MachineJaggedPcsVerifier, Poseidon2BabyBearJaggedCpuProverComponents,
+        MachineJaggedPcsVerifier,
     };
-    use slop_merkle_tree::my_bb_16_perm;
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
     use sp1_core_machine::utils::setup_logger;
+    use sp1_hypercube::{
+        inner_perm, SP1BasefoldConfig, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents,
+    };
+    use sp1_primitives::SP1DiffusionMatrix;
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder};
     use sp1_recursion_executor::Runtime;
-    use sp1_stark::BabyBearPoseidon2;
 
     use crate::{
         basefold::{
@@ -301,11 +302,11 @@ mod tests {
         witness::Witnessable,
     };
 
-    type SC = BabyBearPoseidon2;
+    type SC = SP1CoreJaggedConfig;
     type F = <SC as JaggedConfig>::F;
     type EF = <SC as JaggedConfig>::EF;
     type C = AsmConfig<F, EF>;
-    type Prover = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
+    type Prover = JaggedProver<SP1CpuJaggedProverComponents>;
 
     async fn generate_jagged_proof(
         jagged_verifier: &JaggedPcsVerifier<SC>,
@@ -313,7 +314,7 @@ mod tests {
         eval_point: Point<EF>,
     ) -> (
         JaggedPcsProof<SC>,
-        Rounds<<Poseidon2BabyBearJaggedCpuProverComponents as JaggedProverComponents>::Commitment>,
+        Rounds<<SP1CpuJaggedProverComponents as JaggedProverComponents>::Commitment>,
         Rounds<Evaluations<EF>>,
     ) {
         let jagged_prover = Prover::from_verifier(jagged_verifier);
@@ -463,7 +464,7 @@ mod tests {
             challenger_variable.observe_slice(&mut builder, *commitment_var);
         }
         builder.cycle_tracker_v2_exit();
-        let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(log_blowup);
+        let verifier = BasefoldVerifier::<SP1BasefoldConfig>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
@@ -482,7 +483,7 @@ mod tests {
         > {
             stacked_pcs_verifier: recursive_verifier,
             max_log_row_count: max_log_row_count as usize,
-            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
+            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<SP1CoreJaggedConfig>(PhantomData),
         };
 
         let recursive_jagged_verifier = RecursiveMachineJaggedPcsVerifier::new(
@@ -513,10 +514,8 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&eval_point, &mut witness_stream);
         Witnessable::<AsmConfig<F, EF>>::write(&evaluation_claims, &mut witness_stream);
         Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(
-            Arc::new(program.clone()),
-            my_bb_16_perm(),
-        );
+        let mut runtime =
+            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program.clone()), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().unwrap();
 
@@ -528,7 +527,7 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&evaluation_claims, &mut witness_stream);
         Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
         let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(Arc::new(program), my_bb_16_perm());
+            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().expect_err("invalid proof should not be verified");
     }

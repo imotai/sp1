@@ -6,12 +6,16 @@ use std::{
 };
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_jagged::JaggedConfig;
-use slop_merkle_tree::my_bb_16_perm;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_primitives::hash_deferred_proof;
+use sp1_hypercube::{
+    air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
+    inner_perm,
+    prover::{MachineProver, MachineProverComponents, MachineProvingKey},
+    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
+};
+use sp1_primitives::{hash_deferred_proof, SP1Field};
 use sp1_recursion_circuit::{
     basefold::{
         merkle_tree::MerkleTree, stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
@@ -29,7 +33,7 @@ use sp1_recursion_circuit::{
     },
     shard::RecursiveShardVerifier,
     witness::Witnessable,
-    BabyBearFriConfigVariable, CircuitConfig, WrapConfig as CircuitWrapConfig,
+    CircuitConfig, SP1FieldConfigVariable, WrapConfig as CircuitWrapConfig,
 };
 use sp1_recursion_compiler::{
     circuit::AsmCompiler,
@@ -39,11 +43,6 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::{
     shape::RecursionShape, ExecutionRecord, RecursionProgram, RecursionPublicValues, Runtime,
     DIGEST_SIZE,
-};
-use sp1_stark::{
-    air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    prover::{MachineProver, MachineProverComponents, MachineProvingKey},
-    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 
 use crate::{
@@ -71,32 +70,32 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
     pub(crate) prover: MachineProver<C::RecursionComponents>,
     pub(crate) shrink_prover: MachineProver<C::RecursionComponents>,
     wrap_prover: MachineProver<C::WrapComponents>,
-    pub(crate) core_verifier: MachineVerifier<CoreSC, RiscvAir<BabyBear>>,
+    pub(crate) core_verifier: MachineVerifier<CoreSC, RiscvAir<SP1Field>>,
     pub(crate) normalize_program_cache: SP1NormalizeCache,
     reduce_shape: SP1RecursionProofShape,
-    compose_programs: BTreeMap<usize, Arc<RecursionProgram<BabyBear>>>,
+    compose_programs: BTreeMap<usize, Arc<RecursionProgram<SP1Field>>>,
     compose_keys: BTreeMap<
         usize,
         (Arc<MachineProvingKey<C::RecursionComponents>>, MachineVerifyingKey<RecursionConfig<C>>),
     >,
-    deferred_program: Option<Arc<RecursionProgram<BabyBear>>>,
+    deferred_program: Option<Arc<RecursionProgram<SP1Field>>>,
     deferred_keys: Option<(
         Arc<MachineProvingKey<C::RecursionComponents>>,
         MachineVerifyingKey<RecursionConfig<C>>,
     )>,
-    shrink_program: Arc<RecursionProgram<BabyBear>>,
+    shrink_program: Arc<RecursionProgram<SP1Field>>,
     shrink_keys: Mutex<
         Option<(
             Arc<MachineProvingKey<C::RecursionComponents>>,
             MachineVerifyingKey<RecursionConfig<C>>,
         )>,
     >,
-    wrap_program: Arc<RecursionProgram<BabyBear>>,
+    wrap_program: Arc<RecursionProgram<SP1Field>>,
     wrap_keys: Mutex<
         Option<(Arc<MachineProvingKey<C::WrapComponents>>, MachineVerifyingKey<WrapConfig<C>>)>,
     >,
     pub recursive_core_verifier:
-        RecursiveShardVerifier<RiscvAir<BabyBear>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
+        RecursiveShardVerifier<RiscvAir<SP1Field>, CoreSC, InnerConfig, JC<InnerConfig, CoreSC>>,
     pub(crate) recursive_compress_verifier: RecursiveShardVerifier<
         CompressAir<InnerVal>,
         InnerSC,
@@ -104,11 +103,11 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
         JC<InnerConfig, InnerSC>,
     >,
     /// The root of the allowed recursion verification keys.
-    pub recursion_vk_root: <InnerSC as FieldHasher<BabyBear>>::Digest,
+    pub recursion_vk_root: <InnerSC as FieldHasher<SP1Field>>::Digest,
     /// The allowed vks and their corresponding indices.
-    pub recursion_vk_map: BTreeMap<<InnerSC as FieldHasher<BabyBear>>::Digest, usize>,
+    pub recursion_vk_map: BTreeMap<<InnerSC as FieldHasher<SP1Field>>::Digest, usize>,
     /// The merkle root of allowed vks.
-    pub recursion_vk_tree: MerkleTree<BabyBear, InnerSC>,
+    pub recursion_vk_tree: MerkleTree<SP1Field, InnerSC>,
     /// Whether to verify the vk.
     vk_verification: bool,
     maximum_compose_arity: usize,
@@ -117,12 +116,12 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
 
 impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub async fn new(
-        core_verifier: ShardVerifier<CoreSC, RiscvAir<BabyBear>>,
+        core_verifier: ShardVerifier<CoreSC, RiscvAir<SP1Field>>,
         prover: MachineProver<C::RecursionComponents>,
         shrink_prover: MachineProver<C::RecursionComponents>,
         wrap_prover: MachineProver<C::WrapComponents>,
         normalize_programs_cache_size: usize,
-        normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<BabyBear>>>,
+        normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<SP1Field>>>,
         max_compose_arity: usize,
         vk_verification: bool,
         vk_map_path: Option<String>,
@@ -154,16 +153,16 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
 
         let file = std::fs::File::open(vk_map_path.unwrap_or("./src/vk_map.bin".to_string())).ok();
 
-        let allowed_vk_map: BTreeMap<[BabyBear; DIGEST_SIZE], usize> = if vk_verification {
+        let allowed_vk_map: BTreeMap<[SP1Field; DIGEST_SIZE], usize> = if vk_verification {
             file.and_then(|file| bincode::deserialize_from(file).ok()).unwrap_or_else(|| {
                 (0..1 << 18)
-                    .map(|i| ([BabyBear::from_canonical_u32(i as u32); DIGEST_SIZE], i))
+                    .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
                     .collect()
             })
         } else {
             // Dummy merkle tree when vk_verification is false.
             (0..1 << 18)
-                .map(|i| ([BabyBear::from_canonical_u32(i as u32); DIGEST_SIZE], i))
+                .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
                 .collect()
         };
 
@@ -276,7 +275,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
                 .map(|(vk, _)| {
                     let vk_digest = vk.hash_babybear();
                     let index = (vk_digest[0].as_canonical_u32() as usize) % num_vks;
-                    (index, [BabyBear::from_canonical_usize(index); 8])
+                    (index, [SP1Field::from_canonical_usize(index); 8])
                 })
                 .unzip()
         };
@@ -332,21 +331,21 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub async fn prove_shard(
         &self,
         pk: Arc<MachineProvingKey<C::RecursionComponents>>,
-        record: ExecutionRecord<BabyBear>,
+        record: ExecutionRecord<SP1Field>,
     ) -> ShardProof<InnerSC> {
         self.prover.prove_shard(pk, record).await
     }
 
     #[inline]
     #[must_use]
-    pub async fn prove_shrink(&self, record: ExecutionRecord<BabyBear>) -> ShardProof<InnerSC> {
+    pub async fn prove_shrink(&self, record: ExecutionRecord<SP1Field>) -> ShardProof<InnerSC> {
         let shrink_keys = self.get_shrink_keys();
         self.shrink_prover.prove_shard(shrink_keys.0, record).await
     }
 
     #[inline]
     #[must_use]
-    pub async fn prove_wrap(&self, record: ExecutionRecord<BabyBear>) -> ShardProof<OuterSC> {
+    pub async fn prove_wrap(&self, record: ExecutionRecord<SP1Field>) -> ShardProof<OuterSC> {
         let wrap_keys = self.get_wrap_keys();
         self.wrap_prover.prove_shard(wrap_keys.0, record).await
     }
@@ -355,9 +354,9 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     #[must_use]
     pub async fn setup_and_prove_shard(
         &self,
-        program: Arc<RecursionProgram<BabyBear>>,
+        program: Arc<RecursionProgram<SP1Field>>,
         vk: Option<MachineVerifyingKey<InnerSC>>,
-        record: ExecutionRecord<BabyBear>,
+        record: ExecutionRecord<SP1Field>,
     ) -> (MachineVerifyingKey<InnerSC>, ShardProof<InnerSC>) {
         self.prover.setup_and_prove_shard(program, vk, record).await
     }
@@ -370,7 +369,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub fn normalize_program(
         &self,
         input: &SP1NormalizeWitnessValues<CoreSC>,
-    ) -> Arc<RecursionProgram<BabyBear>> {
+    ) -> Arc<RecursionProgram<SP1Field>> {
         let proof_shapes = input
             .shard_proofs
             .iter()
@@ -396,7 +395,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub fn compress_program(
         &self,
         input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
-    ) -> Arc<RecursionProgram<BabyBear>> {
+    ) -> Arc<RecursionProgram<SP1Field>> {
         let arity = input.compress_val.vks_and_proofs.len();
         self.compose_programs[&arity].clone()
     }
@@ -410,7 +409,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub(crate) fn compose_program_from_input(
         &self,
         input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
-    ) -> RecursionProgram<BabyBear> {
+    ) -> RecursionProgram<SP1Field> {
         compose_program_from_input(&self.recursive_compress_verifier, self.vk_verification, input)
     }
 
@@ -447,7 +446,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
     pub fn execute(
         &self,
         input: SP1CircuitWitness,
-    ) -> Result<ExecutionRecord<BabyBear>, SP1RecursionProverError> {
+    ) -> Result<ExecutionRecord<SP1Field>, SP1RecursionProverError> {
         let (program, witness_stream) = tracing::debug_span!("get program and witness stream")
             .in_scope(|| match input {
                 SP1CircuitWitness::Core(input) => {
@@ -484,7 +483,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         let mut runtime =
             Runtime::<<InnerSC as JaggedConfig>::F, <InnerSC as JaggedConfig>::EF, _>::new(
                 program.clone(),
-                my_bb_16_perm(),
+                inner_perm(),
             );
         runtime.witness_stream = witness_stream.into();
         runtime.run().map_err(|e| SP1RecursionProverError::RuntimeError(e.to_string()))?;
@@ -579,7 +578,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         self.deferred_keys.clone()
     }
 
-    pub fn deferred_program(&self) -> Arc<RecursionProgram<BabyBear>> {
+    pub fn deferred_program(&self) -> Arc<RecursionProgram<SP1Field>> {
         self.deferred_program.clone().unwrap()
     }
 
@@ -618,13 +617,13 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
 /// (RISC-V) machine.
 pub fn normalize_program_from_input(
     recursive_verifier: &RecursiveShardVerifier<
-        RiscvAir<BabyBear>,
+        RiscvAir<SP1Field>,
         CoreSC,
         InnerConfig,
         JC<InnerConfig, CoreSC>,
     >,
     input: &SP1NormalizeWitnessValues<CoreSC>,
-) -> RecursionProgram<BabyBear> {
+) -> RecursionProgram<SP1Field> {
     // Get the operations.
     let builder_span = tracing::debug_span!("build recursion program").entered();
     let mut builder = Builder::<InnerConfig>::default();
@@ -654,7 +653,7 @@ pub(crate) fn deferred_program_from_input(
     >,
     vk_verification: bool,
     input: &SP1DeferredWitnessValues<InnerSC>,
-) -> RecursionProgram<BabyBear> {
+) -> RecursionProgram<SP1Field> {
     // Get the operations.
     let operations_span = tracing::debug_span!("get operations for the deferred program").entered();
     let mut builder = Builder::<InnerConfig>::default();
@@ -689,7 +688,7 @@ pub(crate) fn compose_program_from_input(
     >,
     vk_verification: bool,
     input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
-) -> RecursionProgram<BabyBear> {
+) -> RecursionProgram<SP1Field> {
     let builder_span = tracing::debug_span!("build compress program").entered();
     let mut builder = Builder::<InnerConfig>::default();
     // read the input.
@@ -727,7 +726,7 @@ pub(crate) fn shrink_program_from_input(
     >,
     vk_verification: bool,
     input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
-) -> RecursionProgram<BabyBear> {
+) -> RecursionProgram<SP1Field> {
     let builder_span = tracing::debug_span!("build shrink program").entered();
     let mut builder = Builder::<InnerConfig>::default();
     // read the input.
@@ -767,7 +766,7 @@ fn wrap_program_from_input(
     >,
     vk_verification: bool,
     input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
-) -> RecursionProgram<BabyBear> {
+) -> RecursionProgram<SP1Field> {
     let builder_span = tracing::debug_span!("build wrap program").entered();
     let mut builder = Builder::<CircuitWrapConfig>::default();
     // read the input.
@@ -843,16 +842,16 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
     SP1DeferredWitnessValues {
         vks_and_proofs: compress_input.compress_val.vks_and_proofs,
         vk_merkle_data: compress_input.merkle_val,
-        start_reconstruct_deferred_digest: [BabyBear::zero(); POSEIDON_NUM_WORDS],
-        sp1_vk_digest: [BabyBear::zero(); DIGEST_SIZE],
-        committed_value_digest: [[BabyBear::zero(); 4]; PV_DIGEST_NUM_WORDS],
-        deferred_proofs_digest: [BabyBear::zero(); POSEIDON_NUM_WORDS],
-        end_pc: [BabyBear::zero(); 3],
-        end_shard: BabyBear::zero(),
-        end_execution_shard: BabyBear::zero(),
-        end_timestamp: [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()],
-        init_addr: [BabyBear::zero(); 3],
-        finalize_addr: [BabyBear::zero(); 3],
+        start_reconstruct_deferred_digest: [SP1Field::zero(); POSEIDON_NUM_WORDS],
+        sp1_vk_digest: [SP1Field::zero(); DIGEST_SIZE],
+        committed_value_digest: [[SP1Field::zero(); 4]; PV_DIGEST_NUM_WORDS],
+        deferred_proofs_digest: [SP1Field::zero(); POSEIDON_NUM_WORDS],
+        end_pc: [SP1Field::zero(); 3],
+        end_shard: SP1Field::zero(),
+        end_execution_shard: SP1Field::zero(),
+        end_timestamp: [SP1Field::zero(), SP1Field::zero(), SP1Field::zero(), SP1Field::one()],
+        init_addr: [SP1Field::zero(); 3],
+        finalize_addr: [SP1Field::zero(); 3],
         is_complete: false,
     }
 }
@@ -862,8 +861,8 @@ pub(crate) fn recursive_verifier<A, SC, C, JC>(
 ) -> RecursiveShardVerifier<A, SC, C, JC>
 where
     A: MachineAir<C::F>,
-    SC: BabyBearFriConfigVariable<C> + JaggedConfig<F = C::F, EF = C::EF>,
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    SC: SP1FieldConfigVariable<C> + JaggedConfig<F = C::F, EF = C::EF>,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
         JaggedEvaluator = RecursiveJaggedEvalSumcheckConfig<SC>,

@@ -4,12 +4,12 @@ use std::{
 };
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
+use sp1_primitives::SP1Field;
 
 use crate::ir::{BinOp, ExprExtRef, ExprRef, GLOBAL_AST};
 
-pub(crate) type F = BabyBear;
-pub(crate) type EF = BinomialExtensionField<BabyBear, 4>;
+pub(crate) type F = SP1Field;
+pub(crate) type EF = BinomialExtensionField<SP1Field, 4>;
 pub(crate) type Expr = ExprRef<F>;
 pub(crate) type ExprExt = ExprExtRef<EF>;
 

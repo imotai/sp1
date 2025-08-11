@@ -3,14 +3,14 @@
 // use std::panic::{catch_unwind, AssertUnwindSafe};
 
 // use clap::Parser;
-// use slop_baby_bear::BabyBear;
+// use sp1_primitives::SP1Field;
 // use sp1_core_machine::utils::setup_logger;
 // use sp1_prover::{
 //     components::CpuSP1ProverComponents, shapes::SP1ProofShape, SP1Prover, ShrinkAir,
 //     REDUCE_BATCH_SIZE,
 // };
 // // use sp1_recursion_machine::RecursionShapeConfig;
-// use sp1_stark::{shape::OrderedShape, MachineProver};
+// use sp1_hypercube::{shape::OrderedShape, MachineProver};
 
 // #[derive(Parser, Debug)]
 // #[command(author, version, about, long_about = None)]
@@ -108,7 +108,7 @@
 //     }
 
 //     // Repeat this process to tune the shrink shape.
-//     let mut shrink_shape = ShrinkAir::<BabyBear>::shrink_shape().clone_into_hash_map();
+//     let mut shrink_shape = ShrinkAir::<SP1Field>::shrink_shape().clone_into_hash_map();
 
 //     // First, check that the current shrink shape is compatible with the compress shape choice
 //     // arising from the tuning process above.

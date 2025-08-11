@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BinomialExtension, ExtensionAirBuilder, SP1AirBuilder};
+use sp1_hypercube::air::{BinomialExtension, ExtensionAirBuilder, SP1AirBuilder};
 
 use std::ops::{Index, IndexMut};
 

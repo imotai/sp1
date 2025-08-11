@@ -5,11 +5,11 @@ use std::borrow::Cow;
 use crate::prelude::*;
 use itertools::Itertools;
 use slop_algebra::{AbstractExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
-use sp1_recursion_executor::{RecursionPublicValues, D, PERMUTATION_WIDTH};
-use sp1_stark::{
+use sp1_hypercube::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
 };
+use sp1_primitives::SP1Field;
+use sp1_recursion_executor::{RecursionPublicValues, D, PERMUTATION_WIDTH};
 
 pub trait CircuitV2Builder<C: Config> {
     fn bits2num_v2_f(
@@ -49,7 +49,7 @@ pub trait CircuitV2Builder<C: Config> {
     fn hint_felts_v2(&mut self, len: usize) -> Vec<Felt<C::F>>;
 }
 
-impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
+impl<C: Config<F = SP1Field>> CircuitV2Builder<C> for Builder<C> {
     fn bits2num_v2_f(
         &mut self,
         bits: impl IntoIterator<Item = Felt<<C as Config>::F>>,
@@ -76,13 +76,13 @@ impl<C: Config<F = BabyBear>> CircuitV2Builder<C> for Builder<C> {
             })
             .sum();
 
-        // Range check the bits to be less than the BabyBear modulus.
+        // Range check the bits to be less than the SP1Field modulus.
 
         assert!(num_bits <= 31, "num_bits must be less than or equal to 31");
 
         // If there are less than 31 bits, there is nothing to check.
         if num_bits > 30 {
-            // Since BabyBear modulus is 2^31 - 2^27 + 1, if any of the top `4` bits are zero, the
+            // Since SP1Field modulus is 2^31 - 2^27 + 1, if any of the top `4` bits are zero, the
             // number is less than 2^27, and we can stop the iteration. Othwriwse, if all the top
             // `4` bits are '1`, we need to check that all the bottom `27` are '0`
 

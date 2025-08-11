@@ -1,11 +1,11 @@
 // use std::time::{Duration, Instant};
 
 // use clap::{command, Parser};
-// use slop_baby_bear::BabyBear;
+// use sp1_primitives::SP1Field;
 // use sp1_core_executor::{Executor, ExecutorMode, Program, Trace};
 // use sp1_core_machine::shape::CoreShapeConfig;
 // use sp1_sdk::{self, SP1Stdin};
-// use sp1_stark::SP1ProverOpts;
+// use sp1_hypercube::SP1ProverOpts;
 
 // #[derive(Parser, Clone)]
 // #[command(about = "Evaluate the performance of SP1 on programs.")]
@@ -56,7 +56,7 @@
 //     let opts = SP1ProverOpts::auto();
 
 //     let mut program = Program::from(&elf).expect("failed to parse program");
-//     let shape_config = CoreShapeConfig::<BabyBear>::default();
+//     let shape_config = CoreShapeConfig::<SP1Field>::default();
 //     shape_config.fix_preprocessed_shape(&mut program).unwrap();
 //     let maximal_shapes = shape_config
 //         .maximal_core_shapes(opts.core_opts.shard_size.ilog2() as usize)

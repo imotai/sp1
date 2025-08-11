@@ -11,7 +11,7 @@ use sp1_core_executor::{
     subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport,
     ExecutionState, Executor, Program, SP1Context, SP1CoreOpts,
 };
-use sp1_stark::{
+use sp1_hypercube::{
     air::PublicValues,
     prover::{MemoryPermit, MemoryPermitting},
     Machine, MachineRecord,

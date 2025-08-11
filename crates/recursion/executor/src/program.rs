@@ -1,7 +1,7 @@
 use crate::{analyzed::AnalyzedInstruction, shape::RecursionShape, *};
 use serde::{Deserialize, Serialize};
 use slop_algebra::Field;
-use sp1_stark::{air::MachineProgram, septic_digest::SepticDigest};
+use sp1_hypercube::{air::MachineProgram, septic_digest::SepticDigest};
 use std::ops::{Deref, DerefMut};
 
 pub use basic_block::BasicBlock;

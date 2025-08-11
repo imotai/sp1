@@ -8,11 +8,11 @@ use itertools::Itertools;
 use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField64, TwoAdicField};
 #[cfg(feature = "debug")]
 use sp1_core_machine::utils::SpanBuilder;
+use sp1_hypercube::septic_curve::SepticCurve;
 use sp1_recursion_executor::{
     BaseAluInstr, BaseAluOpcode, Block, RecursionPublicValues, PERMUTATION_WIDTH,
     RECURSIVE_PROOF_NUM_PV_ELTS,
 };
-use sp1_stark::septic_curve::SepticCurve;
 use std::{
     borrow::{Borrow, Cow},
     collections::HashMap,
@@ -1032,9 +1032,9 @@ mod tests {
 
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-    use slop_merkle_tree::my_bb_16_perm;
     use slop_symmetric::Permutation;
+    use sp1_hypercube::inner_perm;
+    use sp1_primitives::{SP1DiffusionMatrix, SP1Field};
 
     // use sp1_core_machine::utils::{run_test_machine};
     use slop_algebra::PrimeField32;
@@ -1045,14 +1045,13 @@ mod tests {
 
     use super::*;
 
-    // type SC = BabyBearPoseidon2;
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    // type SC = SP1CoreJaggedConfig;
+    type F = SP1Field;
+    type EF = BinomialExtensionField<SP1Field, 4>;
     // type EF = <SC as StarkGenericConfig>::Challenge;
     fn test_block(block: DslIrBlock<AsmConfig<F, EF>>) {
         test_block_with_runner(block, |program| {
-            let mut runtime =
-                Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+            let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
             runtime.run().unwrap();
             runtime.record
         });
@@ -1068,7 +1067,7 @@ mod tests {
 
         // Run with the poseidon2 wide chip.
         // let wide_machine =
-        //     RecursionAir::<_, 3>::machine_wide_with_all_chips(BabyBearPoseidon2::default());
+        //     RecursionAir::<_, 3>::machine_wide_with_all_chips(SP1CoreJaggedConfig::default());
         // let (pk, vk) = wide_machine.setup(&program);
         // let result = run_test_machine(vec![record.clone()], wide_machine, pk, vk);
         // if let Err(e) = result {
@@ -1077,7 +1076,7 @@ mod tests {
 
         // Run with the poseidon2 skinny chip.
         // let skinny_machine = RecursionAir::<_, 9>::machine_skinny_with_all_chips(
-        //     BabyBearPoseidon2::ultra_compressed(),
+        //     SP1CoreJaggedConfig::ultra_compressed(),
         // );
         // let (pk, vk) = skinny_machine.setup(&program);
         // let result = run_test_machine(vec![record.clone()], skinny_machine, pk, vk);
@@ -1095,7 +1094,7 @@ mod tests {
             .sample_iter::<[F; PERMUTATION_WIDTH], _>(rand::distributions::Standard);
         for _ in 0..100 {
             let input_1: [F; PERMUTATION_WIDTH] = rng.next().unwrap();
-            let output_1 = my_bb_16_perm().permute(input_1);
+            let output_1 = inner_perm().permute(input_1);
 
             let input_1_felts = input_1.map(|x| builder.eval(x));
             let output_1_felts = builder.poseidon2_permute_v2(input_1_felts);
@@ -1171,8 +1170,7 @@ mod tests {
         builder.cycle_tracker_v2_exit();
 
         test_block_with_runner(builder.into_root_block(), |program| {
-            let mut runtime =
-                Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+            let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
             runtime.debug_stdout = Box::new(&mut buf);
             runtime.run().unwrap();
             runtime.record

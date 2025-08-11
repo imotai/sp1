@@ -1,15 +1,17 @@
 use derive_where::derive_where;
 use slop_algebra::PrimeField32;
-use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
-use slop_jagged::{BabyBearPoseidon2, JaggedConfig};
+use slop_jagged::JaggedConfig;
 
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_multilinear::MultilinearPcsVerifier;
+use sp1_primitives::SP1Field;
 use thiserror::Error;
 
-use crate::{air::MachineAir, prover::CoreProofShape, Machine, VerifierConstraintFolder};
+use crate::{
+    air::MachineAir, prover::CoreProofShape, Machine, SP1CoreJaggedConfig, VerifierConstraintFolder,
+};
 
 use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
 /// A complete proof of program execution.
@@ -152,11 +154,11 @@ where
     }
 }
 
-impl<A: MachineAir<BabyBear>> MachineVerifier<BabyBearPoseidon2, A> {
+impl<A: MachineAir<SP1Field>> MachineVerifier<SP1CoreJaggedConfig, A> {
     /// Get the FRI config.
     #[must_use]
     #[inline]
-    pub fn fri_config(&self) -> &FriConfig<BabyBear> {
+    pub fn fri_config(&self) -> &FriConfig<SP1Field> {
         &self.shard_verifier.pcs_verifier.stacked_pcs_verifier.pcs_verifier.fri_config
     }
 }

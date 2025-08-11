@@ -5,7 +5,7 @@ cfg_if::cfg_if! {
     if #[cfg(target_os = "zkvm")] {
         use crate::syscalls::VERIFY_SP1_PROOF;
         use crate::zkvm::DEFERRED_PROOFS_DIGEST;
-        use slop_baby_bear::BabyBear;
+        use sp1_primitives::SP1Field;
         use slop_algebra::AbstractField;
         use sp1_primitives::hash_deferred_proof;
     }
@@ -44,10 +44,10 @@ pub fn syscall_verify_sp1_proof(vk_digest: &[u64; 4], pv_digest: &[u64; 4]) {
         // Although not a safety invariant, note that the guest target is always little-endian,
         // which was just sanity-checked, so this will always have the expected behavior.
         let vk_digest_babybear = unsafe { core::mem::transmute::<&[u64; 4], &[u32; 8]>(vk_digest) }
-            .map(BabyBear::from_canonical_u32);
+            .map(SP1Field::from_canonical_u32);
         // Remaining 32 elements are pv_digest converted from u8 to BabyBear
         let pv_digest_babybear = unsafe { core::mem::transmute::<&[u64; 4], &[u8; 32]>(pv_digest) }
-            .map(BabyBear::from_canonical_u8);
+            .map(SP1Field::from_canonical_u8);
 
         *deferred_proofs_digest =
             hash_deferred_proof(deferred_proofs_digest, &vk_digest_babybear, &pv_digest_babybear);

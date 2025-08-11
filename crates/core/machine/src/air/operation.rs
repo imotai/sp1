@@ -3,7 +3,7 @@ use std::ops::{Add, Mul, MulAssign, Sub};
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_uni_stark::SymbolicAirBuilder;
-use sp1_stark::{
+use sp1_hypercube::{
     air::SP1AirBuilder, ConstraintSumcheckFolder, GenericVerifierConstraintFolder,
     InteractionBuilder,
 };

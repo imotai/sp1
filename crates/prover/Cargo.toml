@@ -18,7 +18,7 @@ sp1-recursion-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true }
 sp1-recursion-gnark-ffi = { workspace = true }
 sp1-core-machine = { workspace = true }
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 slop-air = { workspace = true }
 slop-jagged = { workspace = true }
 slop-merkle-tree = { workspace = true }

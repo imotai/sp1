@@ -3,7 +3,7 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode,
 };
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 use slop_algebra::Field;
 use sp1_derive::AlignedBorrow;

@@ -30,7 +30,7 @@ use sp1_curves::{
     params::{FieldParameters, Limbs},
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };

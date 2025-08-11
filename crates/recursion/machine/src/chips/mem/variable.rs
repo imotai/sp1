@@ -5,11 +5,11 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::MachineAir;
 use sp1_recursion_executor::{
     instruction::{HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr},
     Block, ExecutionRecord, Instruction, RecursionProgram,
 };
-use sp1_stark::air::MachineAir;
 use std::{borrow::BorrowMut, iter::zip, marker::PhantomData};
 
 use crate::builder::SP1RecursionAirBuilder;
@@ -178,8 +178,9 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use slop_algebra::AbstractField;
-    use slop_baby_bear::BabyBear;
+
     use slop_matrix::dense::RowMajorMatrix;
+    use sp1_primitives::SP1Field;
     use sp1_recursion_executor::MemEvent;
 
     use crate::chips::test_fixtures;
@@ -204,15 +205,15 @@ mod tests {
 
     #[test]
     pub fn generate_trace_simple() {
-        let shard = ExecutionRecord::<BabyBear> {
+        let shard = ExecutionRecord::<SP1Field> {
             mem_var_events: vec![
-                MemEvent { inner: BabyBear::one().into() },
-                MemEvent { inner: BabyBear::one().into() },
+                MemEvent { inner: SP1Field::one().into() },
+                MemEvent { inner: SP1Field::one().into() },
             ],
             ..Default::default()
         };
         let chip = MemoryVarChip::<_, 2>::default();
-        let trace: RowMajorMatrix<BabyBear> =
+        let trace: RowMajorMatrix<SP1Field> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values)
     }

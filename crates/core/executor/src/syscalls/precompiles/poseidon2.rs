@@ -4,9 +4,9 @@ use crate::{
     ExecutorConfig,
 };
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_baby_bear::BabyBear;
-use slop_merkle_tree::my_bb_16_perm;
 use slop_symmetric::Permutation;
+use sp1_hypercube::inner_perm;
+use sp1_primitives::SP1Field;
 
 pub(crate) fn poseidon2_syscall<E: ExecutorConfig>(
     rt: &mut SyscallContext<E>,
@@ -20,12 +20,12 @@ pub(crate) fn poseidon2_syscall<E: ExecutorConfig>(
     assert!(arg1.is_multiple_of(8));
 
     let mut input = rt.slice_unsafe(ptr, 8);
-    let perm = my_bb_16_perm();
+    let perm = inner_perm();
 
     let input_arr: &[u32; 16] = unsafe { &*(input.as_mut_ptr().cast::<[u32; 16]>()) };
 
     let output_hash =
-        perm.permute(input_arr.map(BabyBear::from_canonical_u32)).map(|x| x.as_canonical_u32());
+        perm.permute(input_arr.map(SP1Field::from_canonical_u32)).map(|x| x.as_canonical_u32());
 
     let u64_result: Vec<u64> = output_hash
         .chunks_exact(2)

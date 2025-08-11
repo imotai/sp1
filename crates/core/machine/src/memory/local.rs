@@ -18,7 +18,7 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
     InteractionKind, Word,
 };
@@ -356,12 +356,12 @@ where
 //         memory::MemoryLocalChip, riscv::RiscvAir,
 //         syscall::precompiles::sha256::extend_tests::sha_extend_program, utils::setup_logger,
 //     };
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Executor, Trace};
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{InteractionScope, MachineAir},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
+//         baby_bear_poseidon2::SP1CoreJaggedConfig,
 //         debug_interactions_with_all_chips, InteractionKind, SP1CoreOpts, StarkMachine,
 //     };
 
@@ -374,7 +374,7 @@ where
 
 //         let chip: MemoryLocalChip = MemoryLocalChip::new();
 
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&shard, &mut ExecutionRecord::default());
 //         println!("{:?}", trace.values);
 
@@ -390,8 +390,8 @@ where
 //         let program_clone = program.clone();
 //         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 //         runtime.run::<Trace>().unwrap();
-//         let machine: StarkMachine<BabyBearPoseidon2, RiscvAir<BabyBear>> =
-//             RiscvAir::machine(BabyBearPoseidon2::new());
+//         let machine: StarkMachine<SP1CoreJaggedConfig, RiscvAir<SP1Field>> =
+//             RiscvAir::machine(SP1CoreJaggedConfig::new());
 //         let (pkey, _) = machine.setup(&program_clone);
 //         let opts = SP1CoreOpts::default();
 //         machine.generate_dependencies(
@@ -402,7 +402,7 @@ where
 
 //         let shards = runtime.records;
 //         for shard in shards.clone() {
-//             debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+//             debug_interactions_with_all_chips::<SP1CoreJaggedConfig, RiscvAir<SP1Field>>(
 //                 &machine,
 //                 &pkey,
 //                 &[*shard],
@@ -410,7 +410,7 @@ where
 //                 InteractionScope::Local,
 //             );
 //         }
-//         debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+//         debug_interactions_with_all_chips::<SP1CoreJaggedConfig, RiscvAir<SP1Field>>(
 //             &machine,
 //             &pkey,
 //             &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),
@@ -426,7 +426,7 @@ where
 //         let program_clone = program.clone();
 //         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 //         runtime.run::<Trace>().unwrap();
-//         let machine = RiscvAir::machine(BabyBearPoseidon2::new());
+//         let machine = RiscvAir::machine(SP1CoreJaggedConfig::new());
 //         let (pkey, _) = machine.setup(&program_clone);
 //         let opts = SP1CoreOpts::default();
 //         machine.generate_dependencies(
@@ -437,7 +437,7 @@ where
 
 //         let shards = runtime.records;
 //         for shard in shards.clone() {
-//             debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+//             debug_interactions_with_all_chips::<SP1CoreJaggedConfig, RiscvAir<SP1Field>>(
 //                 &machine,
 //                 &pkey,
 //                 &[*shard],
@@ -445,7 +445,7 @@ where
 //                 InteractionScope::Local,
 //             );
 //         }
-//         debug_interactions_with_all_chips::<BabyBearPoseidon2, RiscvAir<BabyBear>>(
+//         debug_interactions_with_all_chips::<SP1CoreJaggedConfig, RiscvAir<SP1Field>>(
 //             &machine,
 //             &pkey,
 //             &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),
@@ -463,7 +463,7 @@ where
 //         let cpu_local_memory_access = (0..=255)
 //             .flat_map(|_| {
 //                 [{
-//                     let addr = thread_rng().gen_range(0..BabyBear::ORDER_U32);
+//                     let addr = thread_rng().gen_range(0..SP1Field::ORDER_U32);
 //                     let init_value = thread_rng().gen_range(0..u32::MAX);
 //                     let init_shard = thread_rng().gen_range(0..(1u32 << 16));
 //                     let init_timestamp = thread_rng().gen_range(0..(1u32 << 24));
@@ -496,7 +496,7 @@ where
 
 //         let record = get_test_execution_record();
 //         let chip = MemoryLocalChip::new();
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&record, &mut ExecutionRecord::default());
 //         let trace_ffi = generate_trace_ffi(&record, trace.height());
 
@@ -504,7 +504,7 @@ where
 //     }
 
 //     #[cfg(feature = "sys")]
-//     fn generate_trace_ffi(input: &ExecutionRecord, height: usize) -> RowMajorMatrix<BabyBear> {
+//     fn generate_trace_ffi(input: &ExecutionRecord, height: usize) -> RowMajorMatrix<SP1Field> {
 //         use std::borrow::BorrowMut;
 
 //         use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
@@ -516,7 +516,8 @@ where
 //             utils::zeroed_f_vec,
 //         };
 
-//         type F = BabyBear;
+//         use sp1_primitives::SP1Field;
+// type F = SP1Field;
 //         // Generate the trace rows for each event.
 //         let events = input.get_local_mem_events().collect::<Vec<_>>();
 //         let nb_rows = events.len().div_ceil(4);

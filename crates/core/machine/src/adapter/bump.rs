@@ -17,7 +17,7 @@ use sp1_core_executor::{
     ByteOpcode, ExecutionRecord, Program, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::air::MachineAir;
 pub(crate) const NUM_STATE_BUMP_COLS: usize = size_of::<StateBumpCols<u8>>();
 
 #[derive(AlignedBorrow, Clone, Copy)]

@@ -11,7 +11,7 @@ pub(crate) fn hint_len_syscall<E: ExecutorConfig>(
 ) -> Option<u64> {
     // Note: If the user supplies an input > than length 2^32, then the length returned will be
     // truncated to 32-bits. Reading from the syscall will definitely fail in that case, as the
-    // BabyBear field is < 2^32.
+    // SP1Field field is < 2^32.
     Some(ctx.rt.state.input_stream.front().map_or(u32::MAX, |data| data.len() as u32) as u64)
 }
 

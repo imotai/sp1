@@ -4,7 +4,7 @@ use crate::utils::zeroed_f_vec;
 use slop_algebra::PrimeField32;
 use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::air::MachineAir;
 
 use super::{
     columns::{RangeMultCols, NUM_RANGE_MULT_COLS, NUM_RANGE_PREPROCESSED_COLS},

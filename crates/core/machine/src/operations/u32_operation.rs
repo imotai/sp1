@@ -1,7 +1,7 @@
 use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::SP1AirBuilder;
 use sp1_primitives::consts::u32_to_u16_limbs;
-use sp1_stark::air::SP1AirBuilder;
 
 /// A set of columns to convert a u32 with u16 limbs into u8 limbs.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]

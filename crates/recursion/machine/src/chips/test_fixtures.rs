@@ -10,8 +10,8 @@ use rand::{
     Rng, SeedableRng,
 };
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use slop_merkle_tree::my_bb_16_perm;
+use sp1_hypercube::inner_perm;
+use sp1_primitives::{SP1DiffusionMatrix, SP1Field};
 use sp1_recursion_executor::{
     instruction::{HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr},
     linear_program, Address, BaseAluInstr, BaseAluIo, BaseAluOpcode, Block,
@@ -24,7 +24,7 @@ use sp1_recursion_executor::{
 use strum::VariantArray;
 use tokio::sync::OnceCell;
 
-type F = BabyBear;
+type F = SP1Field;
 type EF = BinomialExtensionField<F, 4>;
 
 #[derive(Debug, Clone, Copy, strum::VariantArray)]
@@ -383,13 +383,13 @@ pub async fn program_with_input() -> &'static (Arc<RecursionProgram<F>>, Witness
 
 /// The `ExecutionRecord` obtained by running the result of [`program_with_input`]. It is unprovable
 /// -- see the documentation of [`program_with_input`] for more details.
-pub async fn shard() -> &'static ExecutionRecord<BabyBear> {
+pub async fn shard() -> &'static ExecutionRecord<SP1Field> {
     static RECORD: OnceCell<ExecutionRecord<F>> = OnceCell::const_new();
     RECORD
         .get_or_init(|| async {
             let (program, witness_stream) = program_with_input().await;
             let mut executor =
-                Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+                Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
             executor.witness_stream = witness_stream.clone();
             executor.run().unwrap();
             assert!(executor.witness_stream.is_empty());

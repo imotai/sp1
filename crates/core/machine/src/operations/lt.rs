@@ -8,7 +8,7 @@ use sp1_core_executor::{
     ByteOpcode,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
+use sp1_hypercube::air::{BaseAirBuilder, SP1AirBuilder};
 
 /// Operation columns for verifying that an element is within the range `[0, modulus)`.
 #[derive(Debug, Clone, Copy, AlignedBorrow)]

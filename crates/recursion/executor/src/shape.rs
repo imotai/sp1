@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, PrimeField32};
-use sp1_stark::{air::MachineAir, ChipDimensions};
+use sp1_hypercube::{air::MachineAir, ChipDimensions};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecursionShape<F> {

@@ -607,16 +607,17 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
-    use slop_baby_bear::BabyBear;
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+
+    use slop_basefold::BasefoldVerifier;
     use slop_challenger::FieldChallenger;
     use slop_matrix::dense::RowMajorMatrix;
     use slop_multilinear::{PaddedMle, Padding};
     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
     use slop_tensor::Tensor;
+    use sp1_primitives::SP1Field;
 
-    type EF = BinomialExtensionField<BabyBear, 4>;
-    type F = BabyBear;
+    type EF = BinomialExtensionField<SP1Field, 4>;
+    type F = SP1Field;
 
     fn random_layer(
         rng: &mut impl Rng,
@@ -862,7 +863,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_logup_poly_sumcheck_circuit_layer() {
-        type Config = Poseidon2BabyBear16BasefoldConfig;
+        type Config = crate::SP1BasefoldConfig;
         let mut rng = thread_rng();
 
         let verifier = BasefoldVerifier::<Config>::new(1);
@@ -1047,7 +1048,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_logup_gkr_circuit_transition() {
-        type TraceGenerator = LogupGkrCpuTraceGenerator<BabyBear, EF, ()>;
+        type TraceGenerator = LogupGkrCpuTraceGenerator<SP1Field, EF, ()>;
         let mut rng = thread_rng();
 
         let trace_generator = TraceGenerator::default();
@@ -1196,8 +1197,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_logup_gkr_round_prover() {
-        type Config = Poseidon2BabyBear16BasefoldConfig;
-        type TraceGenerator = LogupGkrCpuTraceGenerator<BabyBear, EF, ()>;
+        type Config = crate::SP1BasefoldConfig;
+        type TraceGenerator = LogupGkrCpuTraceGenerator<SP1Field, EF, ()>;
         let verifier = BasefoldVerifier::<Config>::new(1);
         let get_challenger = move || verifier.clone().challenger();
         let trace_generator = TraceGenerator::default();

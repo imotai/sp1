@@ -2,11 +2,11 @@ use std::iter::once;
 
 use slop_air::AirBuilderWithPublicValues;
 use slop_algebra::AbstractField;
-use sp1_recursion_executor::{Address, Block};
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, BaseAirBuilder, InteractionScope, MachineAirBuilder},
     InteractionKind,
 };
+use sp1_recursion_executor::{Address, Block};
 
 /// A trait which contains all helper methods for building SP1 recursion machine AIRs.
 pub trait SP1RecursionAirBuilder: MachineAirBuilder + RecursionAirBuilder {}

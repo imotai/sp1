@@ -4,8 +4,8 @@ use slop_air::PairBuilder;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_baby_bear::{MONTY_INVERSE, POSEIDON2_INTERNAL_MATRIX_DIAG_16_BABYBEAR_MONTY};
 use slop_poseidon2::matmul_internal;
+use sp1_hypercube::air::MachineAirBuilder;
 use sp1_primitives::RC_16_30_U32;
-use sp1_stark::air::MachineAirBuilder;
 
 use super::{permutation::Poseidon2Cols, NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS, WIDTH};
 

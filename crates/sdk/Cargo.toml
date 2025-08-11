@@ -40,7 +40,7 @@ strum = { workspace = true }
 strum_macros = { workspace = true }
 thiserror = "1.0.63"
 sp1-core-executor = { workspace = true }
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
 itertools = { workspace = true }
 tonic = { version = "0.12", features = ["tls", "tls-roots"], optional = true }

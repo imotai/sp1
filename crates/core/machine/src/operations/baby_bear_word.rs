@@ -3,7 +3,7 @@ use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field, PrimeField32};
 use sp1_core_executor::events::ByteRecord;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{BaseAirBuilder, SP1AirBuilder},
     Word,
 };
@@ -12,7 +12,7 @@ use crate::air::{SP1Operation, SP1OperationBuilder};
 
 use super::{U16CompareOperation, U16CompareOperationInput};
 
-/// A set of columns needed to range check a BabyBear word.
+/// A set of columns needed to range check a SP1Field word.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BabyBearWordRangeChecker<T> {
@@ -28,10 +28,10 @@ impl<F: PrimeField32> BabyBearWordRangeChecker<F> {
 }
 
 impl<F: Field> BabyBearWordRangeChecker<F> {
-    /// Constrains that `value` represents a value less than the BabyBear modulus.
+    /// Constrains that `value` represents a value less than the SP1Field modulus.
     /// Assumes that `value` is a valid `Word` of u16 limbs.
     /// Constrains that `is_real` is boolean.
-    /// If `is_real` is true, constrains that `value` is a valid BabyBear word.
+    /// If `is_real` is true, constrains that `value` is a valid SP1Field word.
     pub fn range_check<AB>(
         builder: &mut AB,
         value: Word<AB::Expr>,
@@ -44,7 +44,7 @@ impl<F: Field> BabyBearWordRangeChecker<F> {
         builder.when(is_real.clone()).assert_zero(value[2].clone());
         builder.when(is_real.clone()).assert_zero(value[3].clone());
 
-        // Note that BabyBear modulus is 2^31 - 2^27 + 1 = 15 * 2^27 + 1.
+        // Note that SP1Field modulus is 2^31 - 2^27 + 1 = 15 * 2^27 + 1.
         // First, check if the most significant limb is less than 15 * 2^11 = 30720.
         <U16CompareOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,
@@ -57,7 +57,7 @@ impl<F: Field> BabyBearWordRangeChecker<F> {
         );
 
         // If the range check bit is off, the most significant limb is >= 15 * 2^11 = 30720.
-        // To be a valid BabyBear word, the most significant limb must be 15 * 2^11 = 30720.
+        // To be a valid SP1Field word, the most significant limb must be 15 * 2^11 = 30720.
         builder
             .when(is_real.clone())
             .when_not(cols.most_sig_limb_lt_30720.bit)

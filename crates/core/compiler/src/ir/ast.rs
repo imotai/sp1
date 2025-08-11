@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, InteractionScope},
     InteractionKind, Word,
 };

@@ -12,7 +12,7 @@ categories = { workspace = true }
 [dependencies]
 sp1-prover = { workspace = true }
 sp1-sdk = { workspace = true }
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 
 anyhow = "1.0.83"
 clap = { version = "4.5.9", features = ["derive"] }

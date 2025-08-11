@@ -6,7 +6,7 @@ use std::{
 use deepsize2::DeepSizeOf;
 use enum_map::{Enum, EnumMap};
 use serde::{Deserialize, Serialize};
-use sp1_stark::shape::Shape;
+use sp1_hypercube::shape::Shape;
 use strum::{EnumIter, IntoEnumIterator, IntoStaticStr};
 use subenum::subenum;
 

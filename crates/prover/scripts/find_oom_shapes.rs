@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 use clap::Parser;
 use sp1_core_executor::{rv64im_costs, RiscvAirId};
 use sp1_core_machine::utils::setup_logger;
-use sp1_stark::shape::Shape;
+use sp1_hypercube::shape::Shape;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

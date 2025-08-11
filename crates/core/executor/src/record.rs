@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, PrimeField};
-use sp1_stark::{
+use sp1_hypercube::{
     air::{
         AirInteraction, BaseAirBuilder, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
         PV_DIGEST_NUM_WORDS, SP1_PROOF_NUM_PV_ELTS,

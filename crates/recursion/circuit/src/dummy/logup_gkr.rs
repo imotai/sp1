@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use slop_air::BaseAir;
 use slop_algebra::{ExtensionField, Field};
 use slop_multilinear::Point;
-use sp1_stark::{
+use sp1_hypercube::{
     air::MachineAir, log2_ceil_usize, Chip, ChipEvaluation, LogUpEvaluations, LogUpGkrOutput,
     LogupGkrProof, LogupGkrRoundProof,
 };

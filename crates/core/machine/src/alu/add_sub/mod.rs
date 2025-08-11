@@ -7,16 +7,16 @@ pub mod subw;
 // mod tests {
 //     #![allow(clippy::print_stdout)]
 
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use rand::{thread_rng, Rng};
 //     use sp1_core_executor::{
 //         events::{AluEvent, MemoryRecordEnum},
 //         ExecutionRecord, Instruction, Opcode, DEFAULT_PC_INC,
 //     };
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
+//         baby_bear_poseidon2::SP1CoreJaggedConfig,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 //     use std::sync::LazyLock;
@@ -59,7 +59,7 @@ pub mod subw;
 //         let mut shard = ExecutionRecord::default();
 //         shard.add_events = vec![AluEvent::new(0, Opcode::ADD, 14, 8, 6, false)];
 //         let chip = AddSubChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&shard, &mut ExecutionRecord::default());
 //         println!("{:?}", trace.values)
 //     }
@@ -96,7 +96,7 @@ pub mod subw;
 
 //         // Run setup.
 //         let air = AddSubChip::default();
-//         let config = BabyBearPoseidon2::new();
+//         let config = SP1CoreJaggedConfig::new();
 //         let chip = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -107,10 +107,10 @@ pub mod subw;
 
 //         // Run the test.
 //         let air = AddSubChip::default();
-//         let chip: Chip<BabyBear, AddSubChip> = Chip::new(air);
+//         let chip: Chip<SP1Field, AddSubChip> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, AddSubChip>(vec![shard], machine, pk, vk).unwrap();
-//     }
+//         run_test_machine::<SP1CoreJaggedConfig, AddSubChip>(vec![shard], machine, pk,
+// vk).unwrap();     }
 
 //     #[cfg(feature = "sys")]
 //     #[test]
@@ -118,7 +118,7 @@ pub mod subw;
 //         let shard = LazyLock::force(&SHARD);
 
 //         let chip = AddSubChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(shard, &mut ExecutionRecord::default());
 //         let trace_ffi = generate_trace_ffi(shard);
 
@@ -126,12 +126,13 @@ pub mod subw;
 //     }
 
 //     #[cfg(feature = "sys")]
-//     fn generate_trace_ffi(input: &ExecutionRecord) -> RowMajorMatrix<BabyBear> {
+//     fn generate_trace_ffi(input: &ExecutionRecord) -> RowMajorMatrix<SP1Field> {
 //         use rayon::slice::ParallelSlice;
 
 //         use crate::utils::pad_rows_fixed;
 
-//         type F = BabyBear;
+//         use sp1_primitives::SP1Field;
+// type F = SP1Field;
 
 //         let chunk_size =
 //             std::cmp::max((input.add_events.len() + input.sub_events.len()) / num_cpus::get(),
@@ -192,13 +193,13 @@ pub mod subw;
 //                 let program = Program::new(instructions, 0, 0);
 //                 let stdin = SP1Stdin::new();
 
-//                 type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//                 type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //                 let malicious_trace_pv_generator = move |prover: &P,
 //                                                          record: &mut ExecutionRecord|
 //                       -> Vec<(
 //                     String,
-//                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
+//                     RowMajorMatrix<Val<SP1CoreJaggedConfig>>,
 //                 )> {
 //                     let mut malicious_record = record.clone();
 //                     malicious_record.cpu_events[0].a = op_a;
@@ -217,7 +218,7 @@ pub mod subw;
 
 //                     let mut traces = prover.generate_traces(&malicious_record);
 
-//                     let add_sub_chip_name = chip_name!(AddSubChip, BabyBear);
+//                     let add_sub_chip_name = chip_name!(AddSubChip, SP1Field);
 //                     for (chip_name, trace) in traces.iter_mut() {
 //                         if *chip_name == add_sub_chip_name {
 //                             // Add the add instructions are added first to the trace, before the
@@ -225,7 +226,7 @@ pub mod subw;
 // };
 
 //                             let first_row = trace.row_mut(index);
-//                             let first_row: &mut AddSubCols<BabyBear> = first_row.borrow_mut();
+//                             let first_row: &mut AddSubCols<SP1Field> = first_row.borrow_mut();
 //                             if opcode == Opcode::ADD {
 //                                 first_row.add_operation.value = op_a.into();
 //                             } else {
@@ -240,7 +241,7 @@ pub mod subw;
 //                 let result =
 //                     run_malicious_test::<P>(program, stdin,
 // Box::new(malicious_trace_pv_generator));                 println!("Result for {opcode:?}:
-// {result:?}");                 let add_sub_chip_name = chip_name!(AddSubChip, BabyBear);
+// {result:?}");                 let add_sub_chip_name = chip_name!(AddSubChip, SP1Field);
 //                 assert!(
 //                     result.is_err() &&
 //                         result.unwrap_err().is_constraints_failing(&add_sub_chip_name)

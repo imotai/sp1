@@ -8,7 +8,6 @@ use std::{
 use itertools::Itertools;
 
 use slop_air::Air;
-use slop_baby_bear::BabyBear;
 
 use slop_algebra::AbstractField;
 use slop_jagged::JaggedConfig;
@@ -16,9 +15,10 @@ use slop_jagged::JaggedConfig;
 use serde::{Deserialize, Serialize};
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 
-use sp1_stark::{
+use sp1_hypercube::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE,
 };
@@ -33,7 +33,7 @@ use crate::{
     },
     shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
-    BabyBearFriConfigVariable, CircuitConfig, EF,
+    CircuitConfig, SP1FieldConfigVariable, EF,
 };
 
 use sp1_recursion_compiler::circuit::CircuitV2Builder;
@@ -53,8 +53,8 @@ pub enum PublicValuesOutputDigest {
 /// Witness layout for the compress stage verifier.
 #[allow(clippy::type_complexity)]
 pub struct SP1ShapedWitnessVariable<
-    C: CircuitConfig<F = BabyBear, EF = EF>,
-    SC: BabyBearFriConfigVariable<C> + Send + Sync,
+    C: CircuitConfig<F = SP1Field, EF = EF>,
+    SC: SP1FieldConfigVariable<C> + Send + Sync,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -75,11 +75,11 @@ pub struct SP1ShapedWitnessValues<SC: MachineConfig> {
 
 impl<C, SC, A, JC> SP1CompressVerifier<C, SC, A, JC>
 where
-    SC: BabyBearFriConfigVariable<C> + Send + Sync,
-    C: CircuitConfig<F = BabyBear, EF = <SC as JaggedConfig>::EF>,
+    SC: SP1FieldConfigVariable<C> + Send + Sync,
+    C: CircuitConfig<F = SP1Field, EF = <SC as JaggedConfig>::EF>,
     A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
     JC: RecursiveJaggedConfig<
-        F = BabyBear,
+        F = SP1Field,
         EF = C::EF,
         Circuit = C,
         Commitment = SC::DigestVariable,

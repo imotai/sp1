@@ -10,8 +10,8 @@ use sp1_core_executor::{
     syscalls::SyscallCode,
     ExecutionRecord, Program, RTypeRecord, HALT_PC,
 };
+use sp1_hypercube::{air::MachineAir, Word};
 use sp1_primitives::consts::u64_to_u16_limbs;
-use sp1_stark::{air::MachineAir, Word};
 
 use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
@@ -151,7 +151,7 @@ impl SyscallInstrsChip {
             blu.add_u8_range_checks(&digest_bytes);
         }
 
-        // Add the BabyBear range check of the operands.
+        // Add the SP1Field range check of the operands.
         if cols.is_halt == F::one() {
             cols.op_b_range_check.populate(Word::from(event.arg1), blu);
         }

@@ -1,13 +1,13 @@
 use clap::{Parser, ValueEnum};
 use slop_air::Air;
-use slop_baby_bear::BabyBear;
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_stark::{
+use sp1_hypercube::{
     air::MachineAir,
     ir::{ConstraintCompiler, Shape},
 };
+use sp1_primitives::SP1Field;
 
-type F = BabyBear;
+type F = SP1Field;
 
 #[derive(ValueEnum, Clone, Debug)]
 enum OutputFormat {

@@ -19,17 +19,17 @@ mod tests {
     use std::borrow::BorrowMut;
 
     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
-    use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+    use sp1_hypercube::{
+        air::MachineAir, baby_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
         MachineProver, Val,
     };
 
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_algebra::AbstractField;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+//     use sp1_hypercube::{
+//         air::MachineAir, baby_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 
@@ -170,12 +170,12 @@ mod tests {
             let program = Program::new(instructions, 0, 0);
             let stdin = SP1Stdin::new();
 
-            type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+            type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
             let malicious_trace_pv_generator =
                 move |prover: &P,
                       record: &mut ExecutionRecord|
-                      -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+                      -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
                     // Create a malicious record where the BEQ instruction branches incorrectly.
                     let mut malicious_record = record.clone();
                     malicious_record.branch_events[0].next_pc = test_case.incorrect_next_pc;
@@ -211,21 +211,21 @@ mod tests {
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
 
-        type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+        type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
         let malicious_trace_pv_generator =
             |prover: &P,
              record: &mut ExecutionRecord|
-             -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+             -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
                 // Modify the branch chip to have a row that has multiple opcode flags set.
                 let mut traces = prover.generate_traces(record);
-                let branch_chip_name = chip_name!(BranchChip, BabyBear);
+                let branch_chip_name = chip_name!(BranchChip, SP1Field);
                 for (chip_name, trace) in traces.iter_mut() {
                     if *chip_name == branch_chip_name {
                         let first_row = trace.row_mut(0);
-                        let first_row: &mut BranchColumns<BabyBear> = first_row.borrow_mut();
-                        assert!(first_row.is_beq == BabyBear::one());
-                        first_row.is_bne = BabyBear::one();
+                        let first_row: &mut BranchColumns<SP1Field> = first_row.borrow_mut();
+                        assert!(first_row.is_beq == SP1Field::one());
+                        first_row.is_bne = SP1Field::one();
                     }
                 }
                 traces

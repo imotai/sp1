@@ -14,7 +14,7 @@ use core::borrow::Borrow;
 use slop_air::{Air, BaseAir};
 use slop_algebra::AbstractField;
 use slop_matrix::Matrix;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, BaseAirBuilder, InteractionScope, SP1AirBuilder},
     InteractionKind, Word,
 };

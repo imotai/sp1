@@ -9,7 +9,7 @@ use syn::{parse_macro_input, DeriveInput};
 ///
 /// # Requirements
 /// - The struct must have no or exactly one type parameter. If the type parameter has constraints,
-///   then this constraint must be satisfiable by [sp1_stark::ir::ConstraintCompiler].
+///   then this constraint must be satisfiable by [sp1_hypercube::ir::ConstraintCompiler].
 /// - The associated Input type must implement `Clone`, `params_vec()`, and `to_input()`. The later
 ///   two can be obtained by deriving [crate::InputParams] and [crate::InputExpr], respectively.
 /// - The associated Output type must implement `SP1OperationOutput`.
@@ -81,29 +81,29 @@ pub fn sp1_operation_builder_derive(input: TokenStream) -> TokenStream {
     let struct_type = if ast.generics.params.is_empty() {
         quote! { #name }
     } else {
-        quote! { #name<<sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::F> }
+        quote! { #name<<sp1_hypercube::ir::ConstraintCompiler as slop_air::AirBuilder>::F> }
     };
 
     // Generate the implementation
     let expanded = quote! {
         impl crate::air::SP1OperationBuilder<#struct_type>
-            for sp1_stark::ir::ConstraintCompiler
+            for sp1_hypercube::ir::ConstraintCompiler
         {
             fn eval_operation(
                 &mut self,
                 input: <#struct_type as crate::air::SP1Operation<
-                    sp1_stark::ir::ConstraintCompiler
+                    sp1_hypercube::ir::ConstraintCompiler
                 >>::Input,
             ) -> <#struct_type as crate::air::SP1Operation<
-                sp1_stark::ir::ConstraintCompiler
+                sp1_hypercube::ir::ConstraintCompiler
             >>::Output{
-                type F = <sp1_stark::ir::ConstraintCompiler as slop_air::AirBuilder>::F;
+                type F = <sp1_hypercube::ir::ConstraintCompiler as slop_air::AirBuilder>::F;
                 type O = <#struct_type as crate::air::SP1Operation<
-                    sp1_stark::ir::ConstraintCompiler,
+                    sp1_hypercube::ir::ConstraintCompiler,
                 >>::Output;
 
-                let result : O = <O as sp1_stark::ir::SP1OperationOutput<O>>::alloc();
-                sp1_stark::ir::GLOBAL_AST.lock().unwrap().call_operation(
+                let result : O = <O as sp1_hypercube::ir::SP1OperationOutput<O>>::alloc();
+                sp1_hypercube::ir::GLOBAL_AST.lock().unwrap().call_operation(
                     #name_str.to_string(),
                     input.clone().params_vec(),
                     result.into(),
@@ -111,19 +111,19 @@ pub fn sp1_operation_builder_derive(input: TokenStream) -> TokenStream {
 
                 // Record the operation module
                 if !self.modules().contains_key(#name_str) {
-                    let mut ctx = sp1_stark::ir::FuncCtx::new();
+                    let mut ctx = sp1_hypercube::ir::FuncCtx::new();
                     let func_input = input.to_input(&mut ctx);
-                    let func_output : O = <O as sp1_stark::ir::SP1OperationOutput<O>>::to_output(&result, &mut ctx);
+                    let func_output : O = <O as sp1_hypercube::ir::SP1OperationOutput<O>>::to_output(&result, &mut ctx);
 
                     self.register_module(
-                        // sp1_stark::ir::FuncDecl::new(
+                        // sp1_hypercube::ir::FuncDecl::new(
                             #name_str.to_string(),
                             func_input.clone().params_vec(),
                             // result.into(),
                         // ),
                         |body| {
-                            let output : O = <#struct_type as crate::air::SP1Operation<sp1_stark::ir::ConstraintCompiler>>::lower(body, func_input);
-                            <O as sp1_stark::ir::SP1OperationOutput<O>>::assign(&func_output, output);
+                            let output : O = <#struct_type as crate::air::SP1Operation<sp1_hypercube::ir::ConstraintCompiler>>::lower(body, func_input);
+                            <O as sp1_hypercube::ir::SP1OperationOutput<O>>::assign(&func_output, output);
                             output.into()
                         },
                     );

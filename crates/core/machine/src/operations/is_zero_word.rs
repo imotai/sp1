@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use slop_air::AirBuilder;
 use slop_algebra::Field;
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
+use sp1_hypercube::{air::SP1AirBuilder, Word};
 use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::air::{SP1Operation, SP1OperationBuilder};
 

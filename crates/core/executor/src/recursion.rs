@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sp1_stark::{MachineConfig, MachineVerifyingKey, ShardProof};
+use sp1_hypercube::{MachineConfig, MachineVerifyingKey, ShardProof};
 /// An intermediate proof which proves the execution of a Hypercube verifier.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound(

@@ -1,9 +1,9 @@
 use super::RecursiveMultilinearPcsVerifier;
 use crate::sumcheck::evaluate_mle_ext;
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, Mle, Point};
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, SymbolicExt},
@@ -21,7 +21,7 @@ pub struct RecursiveStackedPcsProof<PcsProof, F, EF> {
 }
 
 impl<
-        P: RecursiveMultilinearPcsVerifier<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+        P: RecursiveMultilinearPcsVerifier<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
     > RecursiveStackedPcsVerifier<P>
 {
     pub const fn new(recursive_pcs_verifier: P, log_stacking_height: u32) -> Self {
@@ -65,12 +65,12 @@ mod tests {
     use rand::thread_rng;
     use slop_commit::Message;
     use sp1_core_machine::utils::setup_logger;
+    use sp1_hypercube::{SP1BasefoldConfig, SP1CoreJaggedConfig};
     use sp1_recursion_compiler::circuit::AsmConfig;
-    use sp1_stark::BabyBearPoseidon2;
     use std::{collections::VecDeque, marker::PhantomData, sync::Arc};
 
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use sp1_primitives::SP1DiffusionMatrix;
 
     use crate::{
         basefold::{
@@ -82,29 +82,30 @@ mod tests {
 
     use super::*;
 
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
-    use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
+    use slop_basefold::BasefoldVerifier;
+    use slop_basefold_prover::BasefoldProver;
     use slop_challenger::CanObserve;
 
     use slop_commit::Rounds;
 
     use crate::challenger::CanObserveVariable;
-    use slop_merkle_tree::my_bb_16_perm;
     use slop_multilinear::Mle;
     use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
+    use sp1_hypercube::{inner_perm, prover::SP1BasefoldCpuProverComponents};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
     use sp1_recursion_executor::Runtime;
 
-    type F = BabyBear;
+    use sp1_primitives::SP1Field;
+    type F = SP1Field;
 
     async fn test_round_widths_and_log_heights(
         round_widths_and_log_heights: &[Vec<(usize, u32)>],
         log_stacking_height: u32,
         batch_size: usize,
     ) {
-        type C = Poseidon2BabyBear16BasefoldConfig;
-        type Prover = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
-        type EF = BinomialExtensionField<BabyBear, 4>;
+        type C = SP1BasefoldConfig;
+        type Prover = BasefoldProver<SP1BasefoldCpuProverComponents>;
+        type EF = BinomialExtensionField<SP1Field, 4>;
         let total_data_length = round_widths_and_log_heights
             .iter()
             .map(|dims| dims.iter().map(|&(w, log_h)| w << log_h).sum::<usize>())
@@ -119,7 +120,7 @@ mod tests {
             .iter()
             .map(|dims| {
                 dims.iter()
-                    .map(|&(w, log_h)| Mle::<BabyBear>::rand(&mut rng, w, log_h))
+                    .map(|&(w, log_h)| Mle::<SP1Field>::rand(&mut rng, w, log_h))
                     .collect::<Message<_>>()
             })
             .collect::<Rounds<_>>();
@@ -187,10 +188,10 @@ mod tests {
 
         let verifier = BasefoldVerifier::<C>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, BabyBearPoseidon2>,
+            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
         > {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, BabyBearPoseidon2>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>(PhantomData),
         };
         let recursive_verifier =
             RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);
@@ -208,8 +209,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.debug_stdout = Box::new(&mut buf);
         runtime.run().unwrap();

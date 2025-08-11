@@ -9,7 +9,7 @@ use sp1_core_executor::{
     ExecutionRecord, Program,
 };
 use sp1_curves::{params::NumWords, uint256::U256Field};
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::air::MachineAir;
 use std::borrow::BorrowMut;
 
 pub use air::{Uint256OpsChip, Uint256OpsCols, NUM_UINT256_OPS_COLS};

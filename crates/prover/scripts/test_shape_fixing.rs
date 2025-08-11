@@ -1,13 +1,13 @@
 // #![allow(clippy::print_stdout)]
 
 // use clap::Parser;
-// use slop_baby_bear::BabyBear;
+// use sp1_primitives::SP1Field;
 // use slop_algebra::log2_ceil_usize;
 // use sp1_core_executor::{Executor, Program, RiscvAirId, SP1Context};
 // use sp1_core_machine::{
 //     io::SP1Stdin, riscv::RiscvAir, shape::CoreShapeConfig, utils::setup_logger,
 // };
-// use sp1_stark::SP1CoreOpts;
+// use sp1_hypercube::SP1CoreOpts;
 
 // #[derive(Parser, Debug)]
 // #[command(author, version, about, long_about = None)]
@@ -23,7 +23,7 @@
 //     stdin: &SP1Stdin,
 //     opts: SP1CoreOpts,
 //     context: SP1Context,
-//     shape_config: &CoreShapeConfig<BabyBear>,
+//     shape_config: &CoreShapeConfig<SP1Field>,
 // ) {
 //     // Setup the program.
 //     let mut program = Program::from(elf).unwrap();
@@ -46,7 +46,7 @@
 //         finished = f;
 //         for mut record in records {
 //             let _ = record.defer();
-//             let heights = RiscvAir::<BabyBear>::core_heights(&record);
+//             let heights = RiscvAir::<SP1Field>::core_heights(&record);
 //             println!("heights: {heights:?}");
 
 //             shape_config.fix_shape(&mut record).unwrap();
@@ -68,7 +68,7 @@
 //     let args = Args::parse();
 
 //     // Setup the options.
-//     let config = CoreShapeConfig::<BabyBear>::default();
+//     let config = CoreShapeConfig::<SP1Field>::default();
 //     let mut opts = SP1CoreOpts { shard_batch_size: 1, ..Default::default() };
 //     opts.shard_size = 1 << args.shard_size;
 

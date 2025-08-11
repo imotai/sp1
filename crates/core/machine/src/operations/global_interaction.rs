@@ -9,7 +9,7 @@ use slop_air::AirBuilder;
 use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
 use sp1_core_executor::ByteOpcode;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
+use sp1_hypercube::{
     air::SP1AirBuilder,
     septic_curve::{SepticCurve, CURVE_WITNESS_DUMMY_POINT_X, CURVE_WITNESS_DUMMY_POINT_Y},
     septic_extension::{SepticBlock, SepticExtension},

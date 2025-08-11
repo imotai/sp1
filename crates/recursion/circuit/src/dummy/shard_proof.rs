@@ -1,43 +1,43 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
-use slop_basefold::{DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig};
+use slop_basefold::DefaultBasefoldConfig;
 use slop_jagged::JaggedConfig;
 use slop_multilinear::Point;
-use sp1_stark::{
-    air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, BabyBearPoseidon2, Chip,
-    ChipDimensions, ChipOpenedValues, MachineVerifyingKey, ShardOpenedValues, ShardProof,
-    PROOF_MAX_NUM_PVS,
+use sp1_hypercube::{
+    air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, Chip, ChipDimensions,
+    ChipOpenedValues, MachineVerifyingKey, SP1BasefoldConfig, SP1CoreJaggedConfig,
+    ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
 };
+use sp1_primitives::SP1Field;
 
 use crate::dummy::{
     jagged::dummy_pcs_proof, logup_gkr::dummy_gkr_proof, sumcheck::dummy_sumcheck_proof,
 };
 
-type F = <BabyBearPoseidon2 as JaggedConfig>::F;
-type EF = <BabyBearPoseidon2 as JaggedConfig>::EF;
+type F = <SP1CoreJaggedConfig as JaggedConfig>::F;
+type EF = <SP1CoreJaggedConfig as JaggedConfig>::EF;
 
 pub fn dummy_vk(
     preprocessed_chip_information: BTreeMap<String, ChipDimensions<F>>,
-) -> MachineVerifyingKey<BabyBearPoseidon2> {
+) -> MachineVerifyingKey<SP1CoreJaggedConfig> {
     MachineVerifyingKey {
-        pc_start: [BabyBear::zero(); 3],
+        pc_start: [SP1Field::zero(); 3],
         initial_global_cumulative_sum: SepticDigest::zero(),
-        preprocessed_commit: [BabyBear::zero(); 8],
+        preprocessed_commit: [SP1Field::zero(); 8],
         preprocessed_chip_information,
     }
 }
 
-pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
-    shard_chips: BTreeSet<Chip<BabyBear, A>>,
+pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
+    shard_chips: BTreeSet<Chip<SP1Field, A>>,
     max_log_row_count: usize,
     log_blowup: usize,
     log_stacking_height: usize,
     log_stacking_height_multiples: &[usize],
     added_cols: &[usize],
-) -> ShardProof<BabyBearPoseidon2> {
-    let default_verifier = Poseidon2BabyBear16BasefoldConfig::default_verifier(log_blowup);
+) -> ShardProof<SP1CoreJaggedConfig> {
+    let default_verifier = SP1BasefoldConfig::default_verifier(log_blowup);
     let fri_queries = default_verifier.fri_config.num_queries;
 
     let total_machine_cols =
@@ -53,17 +53,17 @@ pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
         added_cols,
     );
 
-    let logup_gkr_proof = dummy_gkr_proof::<_, <BabyBearPoseidon2 as JaggedConfig>::EF, _>(
+    let logup_gkr_proof = dummy_gkr_proof::<_, <SP1CoreJaggedConfig as JaggedConfig>::EF, _>(
         &shard_chips,
         max_log_row_count,
     );
 
     let zerocheck_proof =
-        dummy_sumcheck_proof::<<BabyBearPoseidon2 as JaggedConfig>::EF>(max_log_row_count, 4);
+        dummy_sumcheck_proof::<<SP1CoreJaggedConfig as JaggedConfig>::EF>(max_log_row_count, 4);
 
     ShardProof {
-        public_values: vec![BabyBear::zero(); PROOF_MAX_NUM_PVS],
-        main_commitment: [BabyBear::zero(); 8],
+        public_values: vec![SP1Field::zero(); PROOF_MAX_NUM_PVS],
+        main_commitment: [SP1Field::zero(); 8],
         logup_gkr_proof,
         zerocheck_proof,
         opened_values: ShardOpenedValues {
@@ -71,7 +71,7 @@ pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
                 .iter()
                 .map(|chip| {
                     (
-                        chip.name().to_string(),
+                        chip.name().clone(),
                         ChipOpenedValues {
                             preprocessed: AirOpenedValues {
                                 local: vec![EF::zero(); chip.preprocessed_width()],
@@ -85,6 +85,6 @@ pub fn dummy_shard_proof<A: MachineAir<BabyBear>>(
                 .collect(),
         },
         evaluation_proof,
-        shard_chips: shard_chips.iter().map(|chip| chip.air.name().to_string()).collect(),
+        shard_chips: shard_chips.iter().map(|chip| chip.air.name().clone()).collect(),
     }
 }

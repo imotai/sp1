@@ -14,7 +14,7 @@ sp1-core-machine = { workspace = true }
 sp1-derive = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 
 
 slop-air = { workspace = true }
@@ -37,7 +37,7 @@ zkhash = "0.2.0"
 
 [build-dependencies]
 rand = "0.8.5"
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
 slop-baby-bear = { workspace = true }
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }

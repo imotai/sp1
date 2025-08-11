@@ -1,7 +1,7 @@
 use slop_algebra::PrimeField;
 use sp1_core_executor::{Instruction, Register};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::Word;
+use sp1_hypercube::Word;
 use std::{iter::once, mem::size_of, vec::IntoIter};
 
 pub const NUM_INSTRUCTION_COLS: usize = size_of::<InstructionCols<u8>>();

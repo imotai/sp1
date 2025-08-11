@@ -1,8 +1,8 @@
 use std::fmt;
 
 use slop_algebra::{extension::BinomiallyExtendable, PrimeField32};
+use sp1_hypercube::{air::MachineAir, Chip, Machine, MachineShape, PROOF_MAX_NUM_PVS};
 use sp1_recursion_executor::{ExecutionRecord, RecursionAirEventCount, RecursionProgram, D};
-use sp1_stark::{air::MachineAir, Chip, Machine, MachineShape, PROOF_MAX_NUM_PVS};
 
 use strum::EnumIter;
 use strum_macros::EnumDiscriminants;
@@ -190,7 +190,7 @@ pub mod tests {
         extension::{BinomialExtensionField, HasFrobenius},
         AbstractExtensionField, AbstractField, Field,
     };
-    use slop_baby_bear::BabyBear;
+
     use sp1_recursion_executor::{
         instruction as instr, BaseAluOpcode, ExtAluOpcode, MemAccessKind, D,
     };
@@ -238,7 +238,8 @@ pub mod tests {
 
     #[tokio::test]
     pub async fn field_norm() {
-        type F = BabyBear;
+        use sp1_primitives::SP1Field;
+        type F = SP1Field;
 
         let mut instructions = Vec::new();
 

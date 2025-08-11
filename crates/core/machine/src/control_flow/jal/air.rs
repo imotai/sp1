@@ -7,7 +7,7 @@ use slop_air::{Air, AirBuilder};
 use slop_algebra::AbstractField;
 use slop_matrix::Matrix;
 use sp1_core_executor::{Opcode, CLK_INC};
-use sp1_stark::Word;
+use sp1_hypercube::Word;
 use std::borrow::Borrow;
 
 use super::{JalChip, JalColumns};

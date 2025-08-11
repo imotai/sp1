@@ -9,7 +9,7 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
+use sp1_hypercube::air::{MachineAir, SP1AirBuilder};
 
 use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
@@ -128,23 +128,24 @@ where
 //     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 //     use slop_alloc::CpuBackend;
 //     use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig,
-// Poseidon2BabyBear16BasefoldConfig};     use slop_matrix::dense::RowMajorMatrixView;
+// };
+//     use slop_matrix::dense::RowMajorMatrixView;
 //     use slop_multilinear::{full_geq, Mle, PaddedMle, Padding, Point, VirtualGeq};
 //     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
 //     use sp1_core_executor::{
 //         events::{AluEvent, MemoryReadRecord, MemoryRecordEnum},
 //         ExecutionRecord, ITypeRecord, Instruction, Opcode, Program, DEFAULT_PC_INC,
 //     };
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::MachineAir,
 //         prover::{ZeroCheckPoly, ZerocheckCpuProverData, ZerocheckProverData},
-//         AirOpenedValues, BabyBearPoseidon2, Chip, ChipOpenedValues, ConstraintSumcheckFolder,
+//         AirOpenedValues, SP1CoreJaggedConfig, Chip, ChipOpenedValues, ConstraintSumcheckFolder,
 //         ShardVerifier, PROOF_MAX_NUM_PVS,
 //     };
 
 //     use crate::alu::minimal_add::{MinimalAddChip, NUM_MINIMAL_ADD_COLS};
 
-//     type F = slop_baby_bear::BabyBear;
+//     type F = sp1_primitives::SP1Field;
 //     type EF = BinomialExtensionField<F, 4>;
 
 //     #[tokio::test]
@@ -279,8 +280,8 @@ where
 //         let t = 1;
 //         let lambda = EF::zero();
 
-//         let mut challenger = Poseidon2BabyBear16BasefoldConfig::default_challenger(
-//             &Poseidon2BabyBear16BasefoldConfig::default_verifier(1),
+//         let mut challenger = MyBaseFoldConfig::default_challenger(
+//             &MyBaseFoldConfig::default_verifier(1),
 //         );
 
 //         let (proof, column_openings) =
@@ -312,7 +313,7 @@ where
 //         let zerocheck_eq_val = Mle::full_lagrange_eval(&zeta, &chip_eval_point);
 
 //         let padded_row_adjustment =
-//             ShardVerifier::<BabyBearPoseidon2, _>::compute_padded_row_adjustment(
+//             ShardVerifier::<SP1CoreJaggedConfig, _>::compute_padded_row_adjustment(
 //                 &Chip::new(MinimalAddChip::default()),
 //                 alpha,
 //                 &public_values,
@@ -323,7 +324,7 @@ where
 
 //         let geq_val = full_geq(&opening.degree, &point_extended);
 
-//         let eval = ShardVerifier::<BabyBearPoseidon2, _>::eval_constraints(
+//         let eval = ShardVerifier::<SP1CoreJaggedConfig, _>::eval_constraints(
 //             &Chip::new(MinimalAddChip::default()),
 //             &opening,
 //             alpha,
@@ -332,8 +333,8 @@ where
 
 //         let constraint_eval = eval - padded_row_adjustment * geq_val;
 
-//         let mut challenger = Poseidon2BabyBear16BasefoldConfig::default_challenger(
-//             &Poseidon2BabyBear16BasefoldConfig::default_verifier(1),
+//         let mut challenger = MyBaseFoldConfig::default_challenger(
+//             &MyBaseFoldConfig::default_verifier(1),
 //         );
 
 //         partially_verify_sumcheck_proof(&proof, &mut challenger).unwrap();

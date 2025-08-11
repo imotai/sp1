@@ -11,7 +11,7 @@ use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, PrimeField32};
 use slop_maybe_rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
-use sp1_stark::{
+use sp1_hypercube::{
     air::{MachineAir, MachineProgram},
     septic_curve::{SepticCurve, SepticCurveComplete},
     septic_digest::SepticDigest,

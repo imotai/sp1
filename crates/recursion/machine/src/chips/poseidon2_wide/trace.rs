@@ -1,16 +1,16 @@
 use slop_air::BaseAir;
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_matrix::dense::RowMajorMatrix;
 use slop_maybe_rayon::prelude::*;
 use sp1_core_machine::{
     operations::poseidon2::{trace::populate_perm, WIDTH},
     utils::next_multiple_of_32,
 };
+use sp1_hypercube::air::MachineAir;
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     ExecutionRecord, Instruction, Poseidon2Instr, Poseidon2Io, RecursionProgram,
 };
-use sp1_stark::air::MachineAir;
 use std::{borrow::BorrowMut, mem::size_of};
 use tracing::instrument;
 
@@ -47,18 +47,18 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
     ) -> RowMajorMatrix<F> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_trace only supports SP1Field field"
         );
 
         let events = unsafe {
-            std::mem::transmute::<&Vec<Poseidon2Io<F>>, &Vec<Poseidon2Io<BabyBear>>>(
+            std::mem::transmute::<&Vec<Poseidon2Io<F>>, &Vec<Poseidon2Io<SP1Field>>>(
                 &input.poseidon2_events,
             )
         };
         let padded_nb_rows = self.num_rows(input).unwrap();
-        let num_columns = <Self as BaseAir<BabyBear>>::width(self);
-        let mut values = vec![BabyBear::zero(); padded_nb_rows * num_columns];
+        let num_columns = <Self as BaseAir<SP1Field>>::width(self);
+        let mut values = vec![SP1Field::zero(); padded_nb_rows * num_columns];
 
         let populate_len = input.poseidon2_events.len() * num_columns;
         let (values_pop, values_dummy) = values.split_at_mut(populate_len);
@@ -66,12 +66,12 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         join(
             || {
                 values_pop.par_chunks_mut(num_columns).zip_eq(events).for_each(|(row, &event)| {
-                    populate_perm::<BabyBear, DEGREE>(event.input, Some(event.output), row);
+                    populate_perm::<SP1Field, DEGREE>(event.input, Some(event.output), row);
                 })
             },
             || {
-                let mut dummy_row = vec![BabyBear::zero(); num_columns];
-                populate_perm::<BabyBear, DEGREE>([BabyBear::zero(); WIDTH], None, &mut dummy_row);
+                let mut dummy_row = vec![SP1Field::zero(); num_columns];
+                populate_perm::<SP1Field, DEGREE>([SP1Field::zero(); WIDTH], None, &mut dummy_row);
                 values_dummy
                     .par_chunks_mut(num_columns)
                     .for_each(|row| row.copy_from_slice(&dummy_row))
@@ -79,7 +79,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         );
 
         RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<BabyBear>, Vec<F>>(values) },
+            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
             num_columns,
         )
     }
@@ -100,17 +100,17 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_preprocessed_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_preprocessed_trace only supports SP1Field field"
         );
 
         // Allocating an intermediate `Vec` is faster.
-        let instrs: Vec<&Poseidon2Instr<BabyBear>> = program
+        let instrs: Vec<&Poseidon2Instr<SP1Field>> = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
             .filter_map(|instruction| match instruction.inner() {
                 Instruction::Poseidon2(instr) => Some(unsafe {
-                    std::mem::transmute::<&Poseidon2Instr<F>, &Poseidon2Instr<BabyBear>>(
+                    std::mem::transmute::<&Poseidon2Instr<F>, &Poseidon2Instr<SP1Field>>(
                         instr.as_ref(),
                     )
                 }),
@@ -118,7 +118,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
             })
             .collect::<Vec<_>>();
         let padded_nb_rows = self.preprocessed_num_rows(program, instrs.len()).unwrap();
-        let mut values = vec![BabyBear::zero(); padded_nb_rows * PREPROCESSED_POSEIDON2_WIDTH];
+        let mut values = vec![SP1Field::zero(); padded_nb_rows * PREPROCESSED_POSEIDON2_WIDTH];
 
         let populate_len = instrs.len() * PREPROCESSED_POSEIDON2_WIDTH;
         values[..populate_len]
@@ -133,12 +133,12 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
                         addr: instr.addrs.output[j],
                         mult: instr.mults[j],
                     }),
-                    is_real: BabyBear::one(),
+                    is_real: SP1Field::one(),
                 }
             });
 
         Some(RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<BabyBear>, Vec<F>>(values) },
+            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
             PREPROCESSED_POSEIDON2_WIDTH,
         ))
     }
@@ -148,8 +148,8 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
 mod tests {
     use crate::chips::{poseidon2_wide::Poseidon2WideChip, test_fixtures};
     use slop_matrix::Matrix;
+    use sp1_hypercube::air::MachineAir;
     use sp1_recursion_executor::ExecutionRecord;
-    use sp1_stark::air::MachineAir;
 
     const DEGREE_3: usize = 3;
     const DEGREE_9: usize = 9;

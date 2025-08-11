@@ -14,7 +14,7 @@ use sp1_core_executor::{
     ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::air::MachineAir;
 
 use crate::{
     adapter::{
@@ -288,12 +288,12 @@ where
 // mod tests {
 //     #![allow(clippy::print_stdout)]
 
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{events::AluEvent, ExecutionRecord, Opcode};
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
+//         baby_bear_poseidon2::SP1CoreJaggedConfig,
 //         Chip, StarkMachine,
 //     };
 
@@ -306,7 +306,7 @@ where
 //         let mut shard = ExecutionRecord::default();
 //         shard.bitwise_events = vec![AluEvent::new(0, Opcode::XOR, 25, 10, 19, false)];
 //         let chip = BitwiseChip::default();
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&shard, &mut ExecutionRecord::default());
 //         println!("{:?}", trace.values)
 //     }
@@ -323,7 +323,7 @@ where
 
 //         // Run setup.
 //         let air = BitwiseChip::default();
-//         let config = BabyBearPoseidon2::new();
+//         let config = SP1CoreJaggedConfig::new();
 //         let chip = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -334,9 +334,9 @@ where
 
 //         // Run the test.
 //         let air = BitwiseChip::default();
-//         let chip: Chip<BabyBear, BitwiseChip> = Chip::new(air);
+//         let chip: Chip<SP1Field, BitwiseChip> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, BitwiseChip>(vec![shard], machine, pk,
+//         run_test_machine::<SP1CoreJaggedConfig, BitwiseChip>(vec![shard], machine, pk,
 // vk).unwrap();     }
 
 //     // TODO: Re-enable when we LOGUP-GKR working.
@@ -367,13 +367,13 @@ where
 //     //             let program = Program::new(instructions, 0, 0);
 //     //             let stdin = SP1Stdin::new();
 
-//     //             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//     //             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //     //             let malicious_trace_pv_generator = move |prover: &P,
 //     //                                                      record: &mut ExecutionRecord|
 //     //                   -> Vec<(
 //     //                 String,
-//     //                 RowMajorMatrix<Val<BabyBearPoseidon2>>,
+//     //                 RowMajorMatrix<Val<SP1CoreJaggedConfig>>,
 //     //             )> {
 //     //                 let mut malicious_record = record.clone();
 //     //                 malicious_record.cpu_events[0].a = op_a;

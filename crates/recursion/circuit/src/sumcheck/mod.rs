@@ -3,21 +3,21 @@ pub mod witness;
 use crate::{
     challenger::{CanObserveVariable, FieldChallengerVariable},
     symbolic::IntoSymbolic,
-    BabyBearFriConfigVariable, CircuitConfig,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, UnivariatePolynomial};
 use slop_alloc::{buffer, Buffer};
-use slop_baby_bear::BabyBear;
 use slop_multilinear::{partial_lagrange_blocking, Mle, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::{Dimensions, Tensor};
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::{
     ir::Felt,
     prelude::{Builder, Ext, SymbolicExt},
 };
 
 pub fn evaluate_mle_ext<
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
 >(
     builder: &mut Builder<C>,
     mle: Mle<Ext<C::F, C::EF>>,
@@ -48,7 +48,7 @@ pub fn evaluate_mle_ext<
     MleEval::new(dst)
 }
 
-pub fn verify_sumcheck<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>>(
+pub fn verify_sumcheck<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariable<C>>(
     builder: &mut Builder<C>,
     challenger: &mut SC::FriChallengerVariable,
     proof: &PartialSumcheckProof<Ext<C::F, C::EF>>,
@@ -114,12 +114,12 @@ mod tests {
     use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
     use rand::{rngs::OsRng, thread_rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
-    use slop_baby_bear::DiffusionMatrixBabyBear;
+    use slop_baby_bear::baby_bear_poseidon2::Perm;
     use slop_challenger::DuplexChallenger;
-    use slop_jagged::BabyBearPoseidon2;
-    use slop_merkle_tree::{my_bb_16_perm, Perm};
     use slop_multilinear::{full_geq, Mle};
     use slop_sumcheck::reduce_sumcheck_to_evaluation;
+    use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig};
+    use sp1_primitives::SP1DiffusionMatrix;
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder},
         config::InnerConfig,
@@ -128,23 +128,24 @@ mod tests {
     use sp1_recursion_executor::Runtime;
     use zkhash::ark_ff::UniformRand;
 
-    type F = BabyBear;
-    type SC = BabyBearPoseidon2;
+    use sp1_primitives::SP1Field;
+    type F = SP1Field;
+    type SC = SP1CoreJaggedConfig;
     type C = InnerConfig;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    type EF = BinomialExtensionField<SP1Field, 4>;
 
     #[tokio::test]
     async fn test_sumcheck() {
         let mut rng = thread_rng();
 
-        let mle = Mle::<BabyBear>::rand(&mut rng, 1, 10);
+        let mle = Mle::<SP1Field>::rand(&mut rng, 1, 10);
 
-        let default_perm = my_bb_16_perm();
-        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
+        let default_perm = inner_perm();
+        let mut challenger = DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm.clone());
 
-        let claim = EF::from_base(mle.guts().as_slice().iter().copied().sum::<BabyBear>());
+        let claim = EF::from_base(mle.guts().as_slice().iter().copied().sum::<SP1Field>());
 
-        let (sumcheck_proof, _) = reduce_sumcheck_to_evaluation::<BabyBear, EF, _>(
+        let (sumcheck_proof, _) = reduce_sumcheck_to_evaluation::<SP1Field, EF, _>(
             vec![mle.clone()],
             &mut challenger,
             vec![claim],
@@ -170,7 +171,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().unwrap();
     }
@@ -179,14 +180,14 @@ mod tests {
     async fn test_sumcheck_failure() {
         let mut rng = thread_rng();
 
-        let mle = Mle::<BabyBear>::rand(&mut rng, 1, 10);
+        let mle = Mle::<SP1Field>::rand(&mut rng, 1, 10);
 
-        let default_perm = my_bb_16_perm();
-        let mut challenger = DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm.clone());
+        let default_perm = inner_perm();
+        let mut challenger = DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm.clone());
 
-        let claim = EF::from_base(mle.guts().as_slice().iter().copied().sum::<BabyBear>());
+        let claim = EF::from_base(mle.guts().as_slice().iter().copied().sum::<SP1Field>());
 
-        let (mut sumcheck_proof, _) = reduce_sumcheck_to_evaluation::<BabyBear, EF, _>(
+        let (mut sumcheck_proof, _) = reduce_sumcheck_to_evaluation::<SP1Field, EF, _>(
             vec![mle.clone()],
             &mut challenger,
             vec![claim],
@@ -215,7 +216,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().expect_err("Sumcheck should fail");
     }
@@ -238,7 +239,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         let coeffs = (0..3).map(|_| F::rand(&mut rng)).collect::<Vec<_>>();
         let point = F::rand(&mut rng);
         runtime.witness_stream =
@@ -264,7 +265,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream =
             [vec![F::zero().into(), F::one().into()], vec![F::zero().into(), F::one().into()]]
                 .concat()
@@ -288,7 +289,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program, my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream =
             [vec![F::zero().into(), F::one().into()], vec![F::one().into(), F::zero().into()]]
                 .concat()

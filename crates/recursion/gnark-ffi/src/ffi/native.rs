@@ -292,15 +292,15 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use slop_algebra::AbstractField;
-    use slop_baby_bear::BabyBear;
     use slop_symmetric::Permutation;
-    use sp1_stark::inner_perm;
+    use sp1_hypercube::inner_perm;
+    use sp1_primitives::SP1Field;
 
     #[test]
     #[allow(clippy::uninlined_format_args)]
     pub fn test_babybear_poseidon2() {
         let perm = inner_perm();
-        let zeros = [BabyBear::zero(); 16];
+        let zeros = [SP1Field::zero(); 16];
         let result = perm.permute(zeros);
         println!("{result:?}");
         super::test_babybear_poseidon2();

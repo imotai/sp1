@@ -7,22 +7,22 @@ use crate::{
     shard::RecursiveShardVerifier,
     sumcheck::verify_sumcheck,
     symbolic::IntoSymbolic,
-    BabyBearFriConfigVariable, CircuitConfig,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{full_geq, Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
+use sp1_hypercube::{
+    air::MachineAir, Chip, ChipOpenedValues, GenericVerifierConstraintFolder, LogUpEvaluations,
+    OpeningShapeError, ShardOpenedValues,
+};
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::{
     ir::{Config, Felt},
     prelude::{Builder, Ext, SymbolicExt},
-};
-use sp1_stark::{
-    air::MachineAir, Chip, ChipOpenedValues, GenericVerifierConstraintFolder, LogUpEvaluations,
-    OpeningShapeError, ShardOpenedValues,
 };
 
 pub type RecursiveVerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
@@ -35,7 +35,7 @@ pub type RecursiveVerifierConstraintFolder<'a, C> = GenericVerifierConstraintFol
 >;
 
 #[allow(clippy::type_complexity)]
-pub fn eval_constraints<C: CircuitConfig<F = BabyBear>, SC: BabyBearFriConfigVariable<C>, A>(
+pub fn eval_constraints<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariable<C>, A>(
     builder: &mut Builder<C>,
     chip: &Chip<C::F, A>,
     opening: &ChipOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>,
@@ -111,8 +111,8 @@ where
 
 impl<C, SC, A, JC> RecursiveShardVerifier<A, SC, C, JC>
 where
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-    SC: BabyBearFriConfigVariable<C>,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    SC: SP1FieldConfigVariable<C>,
     A: MachineAir<C::F>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
@@ -262,10 +262,10 @@ where
 //     use std::{marker::PhantomData, sync::Arc};
 
 //     use slop_algebra::extension::BinomialExtensionField;
-//     use slop_baby_bear::DiffusionMatrixBabyBear;
-//     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
-//     use slop_jagged::BabyBearPoseidon2;
-//     use slop_merkle_tree::my_bb_16_perm;
+//     use sp1_primitives::SP1DiffusionMatrix;
+//     use slop_basefold::{BasefoldVerifier, SP1BasefoldConfig};
+//     use slop_jagged::SP1CoreJaggedConfig;
+//     use sp1_hypercube::inner_perm;
 //     use sp1_core_executor::{Program, SP1Context};
 //     use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir, utils::prove_core};
 //     use sp1_recursion_compiler::{
@@ -273,7 +273,7 @@ where
 //         config::InnerConfig,
 //     };
 //     use sp1_recursion_executor::Runtime;
-//     use sp1_stark::{prover::CpuProver, SP1CoreOpts, ShardVerifier};
+//     use sp1_hypercube::{prover::CpuProver, SP1CoreOpts, ShardVerifier};
 
 //     use crate::{
 //         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
@@ -287,16 +287,17 @@ where
 
 //     use super::*;
 
-//     type F = BabyBear;
-//     type SC = BabyBearPoseidon2;
+//     use sp1_primitives::SP1Field;
+//    type F = SP1Field;
+//     type SC = SP1CoreJaggedConfig;
 //     type JC = RecursiveJaggedConfigImpl<
 //         C,
 //         SC,
 //         RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
 //     >;
 //     type C = InnerConfig;
-//     type EF = BinomialExtensionField<BabyBear, 4>;
-//     type A = RiscvAir<BabyBear>;
+//     type EF = BinomialExtensionField<SP1Field, 4>;
+//     type A = RiscvAir<SP1Field>;
 
 //     #[tokio::test]
 //     async fn test_zerocheck() {
@@ -356,7 +357,7 @@ where
 //             })
 //             .collect::<Vec<_>>();
 
-//         let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(log_blowup);
+//         let verifier = BasefoldVerifier::<SP1BasefoldConfig>::new(log_blowup);
 //         let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>>
 // {             fri_config: verifier.fri_config,
 //             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
@@ -373,7 +374,7 @@ where
 //                 RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
 //             >,
 //         > { stacked_pcs_verifier: recursive_verifier, max_log_row_count, jagged_evaluator:
-//         > RecursiveJaggedEvalSumcheckConfig::<BabyBearPoseidon2>(PhantomData),
+//         > RecursiveJaggedEvalSumcheckConfig::<SP1CoreJaggedConfig>(PhantomData),
 //         };
 
 //         let stark_verifier = StarkVerifier::<A, SC, C, JC> {
@@ -413,7 +414,7 @@ where
 //         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
 //         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
 //         let mut runtime =
-//             Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+//             Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
 //         runtime.witness_stream = witness_stream.into();
 //         runtime.run().unwrap();
 
@@ -436,8 +437,8 @@ where
 //                 &mut witness_stream,
 //             );
 //         });
-//         let mut runtime = Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program,
-// my_bb_16_perm());         runtime.witness_stream = witness_stream.into();
+//         let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program,
+// inner_perm());         runtime.witness_stream = witness_stream.into();
 //         runtime.run().expect_err("invalid proof should not be verified");
 //     }
 // }

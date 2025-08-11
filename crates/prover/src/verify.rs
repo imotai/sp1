@@ -5,17 +5,19 @@ use crate::{
 use anyhow::Result;
 use num_bigint::BigUint;
 use slop_algebra::{AbstractField, PrimeField, PrimeField64};
-use slop_baby_bear::BabyBear;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
-use sp1_primitives::io::{blake3_hash, SP1PublicValues};
+use sp1_hypercube::{
+    air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
+    MachineVerifierConfigError, MachineVerifierError, SP1CoreJaggedConfig, SP1OuterConfig,
+};
+use sp1_primitives::{
+    io::{blake3_hash, SP1PublicValues},
+    SP1Field,
+};
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
-};
-use sp1_stark::{
-    air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    BabyBearPoseidon2, Bn254JaggedConfig, MachineVerifierConfigError, MachineVerifierError,
 };
 use std::{borrow::Borrow, path::Path, str::FromStr};
 use thiserror::Error;
@@ -66,9 +68,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let first_shard = proof.0.first().unwrap();
         let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
             first_shard.public_values.as_slice().borrow();
-        if public_values.shard != BabyBear::one()
-            || public_values.execution_shard != BabyBear::one()
-            || public_values.next_execution_shard != BabyBear::two()
+        if public_values.shard != SP1Field::one()
+            || public_values.execution_shard != SP1Field::one()
+            || public_values.next_execution_shard != SP1Field::two()
         {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "first shard does not contain RISCV cycles",
@@ -82,11 +84,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //
         // Transition:
         // - Shard should increment by one for each shard.
-        let mut current_shard = BabyBear::zero();
+        let mut current_shard = SP1Field::zero();
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            current_shard += BabyBear::one();
+            current_shard += SP1Field::one();
             if public_values.shard != current_shard {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "shard index should be the previous shard index + 1 and start at 1",
@@ -110,9 +112,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // `execution_shard + 1` if the `initial_timestamp` is different to `last_timestamp`.
         // - Inside the shard proof, the timestamp's limbs are range checked.
         // - We include some of these checks inside the verify function for additional verification.
-        let mut prev_next_execution_shard = BabyBear::one();
+        let mut prev_next_execution_shard = SP1Field::one();
         let mut prev_timestamp =
-            [BabyBear::zero(), BabyBear::zero(), BabyBear::zero(), BabyBear::one()];
+            [SP1Field::zero(), SP1Field::zero(), SP1Field::zero(), SP1Field::one()];
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
@@ -130,7 +132,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     "timestamp should change on execution shard",
                 ));
             }
-            if public_values.execution_shard + BabyBear::one() != public_values.next_execution_shard
+            if public_values.execution_shard + SP1Field::one() != public_values.next_execution_shard
                 && public_values.initial_timestamp != public_values.last_timestamp
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -158,9 +160,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - We include some of these checks inside the verify function for additional verification.
         let mut prev_next_pc = vk.pc_start;
         let halt_pc = [
-            BabyBear::from_canonical_u64(sp1_core_executor::HALT_PC),
-            BabyBear::zero(),
-            BabyBear::zero(),
+            SP1Field::from_canonical_u64(sp1_core_executor::HALT_PC),
+            SP1Field::zero(),
+            SP1Field::zero(),
         ];
         for (i, shard_proof) in proof.0.iter().enumerate() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
@@ -206,7 +208,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - Inside the shard proof, it is constrained that if `prev_exit_code` is non-zero, then
         // `exit_code` must be equal to the `prev_exit_code`.
         // - We include these checks inside the verify function for additional verification.
-        let mut prev_exit_code = BabyBear::zero();
+        let mut prev_exit_code = SP1Field::zero();
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
@@ -223,7 +225,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     "prev_exit_code != exit_code: exit code should be same in non-execution shards",
                 ));
             }
-            if public_values.prev_exit_code != BabyBear::zero()
+            if public_values.prev_exit_code != SP1Field::zero()
                 && public_values.prev_exit_code != public_values.exit_code
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -249,8 +251,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         //
         // Internal Constraints:
         // - Inside the shard proof, it is constrained that the addresses are of valid u16 limbs.
-        let mut last_init_addr_prev = [BabyBear::zero(); 3];
-        let mut last_finalize_addr_prev = [BabyBear::zero(); 3];
+        let mut last_init_addr_prev = [SP1Field::zero(); 3];
+        let mut last_finalize_addr_prev = [SP1Field::zero(); 3];
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
@@ -266,12 +268,12 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             last_init_addr_prev = public_values.last_init_addr;
             last_finalize_addr_prev = public_values.last_finalize_addr;
         }
-        if last_init_addr_prev == [BabyBear::zero(); 3] {
+        if last_init_addr_prev == [SP1Field::zero(); 3] {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "the zero address was never initialized",
             ));
         }
-        if last_finalize_addr_prev == [BabyBear::zero(); 3] {
+        if last_finalize_addr_prev == [SP1Field::zero(); 3] {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "the zero address was never finalized",
             ));
@@ -314,10 +316,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - If the shard isn't an execution shard, or has `prev_commit_deferred_syscall == 1`, or
         // if `prev_deferred_proofs_digest` has a non-zero limb inside it, then
         // `prev_deferred_proofs_digest == deferred_proofs_digest`.
-        let zero_committed_value_digest = [[BabyBear::zero(); 4]; PV_DIGEST_NUM_WORDS];
-        let zero_deferred_proofs_digest = [BabyBear::zero(); POSEIDON_NUM_WORDS];
-        let mut commit_syscall_prev = BabyBear::zero();
-        let mut commit_deferred_syscall_prev = BabyBear::zero();
+        let zero_committed_value_digest = [[SP1Field::zero(); 4]; PV_DIGEST_NUM_WORDS];
+        let zero_deferred_proofs_digest = [SP1Field::zero(); POSEIDON_NUM_WORDS];
+        let mut commit_syscall_prev = SP1Field::zero();
+        let mut commit_deferred_syscall_prev = SP1Field::zero();
         let mut committed_value_digest_prev = zero_committed_value_digest;
         let mut deferred_proofs_digest_prev = zero_deferred_proofs_digest;
         for shard_proof in proof.0.iter() {
@@ -348,12 +350,12 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             commit_syscall_prev = public_values.commit_syscall;
             commit_deferred_syscall_prev = public_values.commit_deferred_syscall;
         }
-        if commit_syscall_prev != BabyBear::one() {
+        if commit_syscall_prev != SP1Field::one() {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "COMMIT syscall was never called",
             ));
         }
-        if commit_deferred_syscall_prev != BabyBear::one() {
+        if commit_deferred_syscall_prev != SP1Field::one() {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "COMMIT_DEFERRED_PROOFS syscall was never called",
             ));
@@ -396,7 +398,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a compressed proof.
     pub fn verify_compressed(
         &self,
-        proof: &SP1RecursionProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         let SP1RecursionProof { vk: compress_vk, proof } = proof;
@@ -433,7 +435,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // `is_complete` should be 1. This ensures that the proof is fully reduced.
-        if public_values.is_complete != BabyBear::one() {
+        if public_values.is_complete != SP1Field::one() {
             return Err(MachineVerifierError::InvalidPublicValues("is_complete is not 1"));
         }
 
@@ -449,7 +451,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a shrink proof.
     pub fn verify_shrink(
         &self,
-        proof: &SP1RecursionProof<BabyBearPoseidon2>,
+        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
         let SP1RecursionProof { vk: _, proof } = proof;
@@ -487,7 +489,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // `is_complete` should be 1. This ensures that the proof is fully reduced.
-        if public_values.is_complete != BabyBear::one() {
+        if public_values.is_complete != SP1Field::one() {
             return Err(MachineVerifierError::InvalidPublicValues("is_complete is not 1"));
         }
 
@@ -503,7 +505,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a wrap bn254 proof.
     pub fn verify_wrap_bn254(
         &self,
-        proof: &SP1RecursionProof<Bn254JaggedConfig>,
+        proof: &SP1RecursionProof<SP1OuterConfig>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<OuterSC>> {
         let SP1RecursionProof { vk: _, proof } = proof;
@@ -676,7 +678,7 @@ impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
     fn verify_deferred_proof(
         &self,
         proof: &sp1_core_machine::recursion::SP1RecursionProof<InnerSC>,
-        vk: &sp1_stark::MachineVerifyingKey<CoreSC>,
+        vk: &sp1_hypercube::MachineVerifyingKey<CoreSC>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
     ) -> Result<(), MachineVerifierConfigError<CoreSC>> {

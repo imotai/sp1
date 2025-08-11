@@ -1850,7 +1850,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81bddcdb20abf9501610992b6759a4c888aef7d1a7247ef75e2404275ac24af1"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.104",
@@ -2447,7 +2447,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
 dependencies = [
  "p3-field",
  "serde",
@@ -2456,15 +2456,20 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
 dependencies = [
+ "lazy_static",
  "p3-baby-bear",
+ "serde",
+ "slop-algebra",
+ "slop-poseidon2",
+ "slop-symmetric",
 ]
 
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -2472,7 +2477,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
 dependencies = [
  "p3-symmetric",
 ]

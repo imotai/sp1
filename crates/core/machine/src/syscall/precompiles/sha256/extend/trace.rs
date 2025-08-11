@@ -8,7 +8,7 @@ use sp1_core_executor::{
     syscalls::SyscallCode,
     ByteOpcode, ExecutionRecord, Program,
 };
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::air::MachineAir;
 use std::borrow::BorrowMut;
 
 use crate::utils::next_multiple_of_32;

@@ -36,11 +36,11 @@ use sp1_curves::{
     CurveType, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };
+use sp1_primitives::polynomial::Polynomial;
 use std::{fmt::Debug, marker::PhantomData};
 use typenum::Unsigned;
 

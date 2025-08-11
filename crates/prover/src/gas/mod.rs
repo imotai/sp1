@@ -11,12 +11,12 @@ use slop_algebra::PrimeField32;
 
 use sp1_core_executor::{estimator::RecordEstimator, RiscvAirId};
 use sp1_core_machine::shape::{CoreShapeConfig, CoreShapeError, Shapeable, ShardKind};
-use sp1_stark::{shape::Shape, SP1CoreOpts, SplitOpts};
+use sp1_hypercube::{shape::Shape, SP1CoreOpts, SplitOpts};
 
 pub const GAS_OPTS: SP1CoreOpts = SP1CoreOpts {
     shard_size: 2097152,
     shard_batch_size: 1,
-    split_opts: sp1_stark::SplitOpts {
+    split_opts: sp1_hypercube::SplitOpts {
         combine_memory_threshold: 131072,
         deferred: 16384,
         keccak: 5461,

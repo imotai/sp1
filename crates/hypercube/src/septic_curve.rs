@@ -1,11 +1,10 @@
 //! Elliptic Curve `y^2 = x^3 + 2x + 26z^5` over the `F_{p^7} = F_p[z]/(z^7 - 2z - 5)` extension
 //! field.
-use crate::septic_extension::SepticExtension;
+use crate::{inner_perm, septic_extension::SepticExtension};
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
-use slop_baby_bear::BabyBear;
-use slop_merkle_tree::my_bb_16_perm;
 use slop_symmetric::Permutation;
+use sp1_primitives::SP1Field;
 use std::ops::Add;
 
 /// A septic elliptic curve point on y^2 = x^3 + 2x + 26z^5 over field `F_{p^7} = F_p[z]/(z^7 - 2z -
@@ -123,7 +122,7 @@ impl<F: PrimeField32> SepticCurve<F> {
     ///
     /// TODO: this function should maybe take a Perm argument or express the dependency in some way.
     pub fn lift_x(m: [F; 8]) -> (Self, u8, [F; 16], [F; 16]) {
-        let perm = my_bb_16_perm();
+        let perm = inner_perm();
         for offset in 0..=255 {
             let m_trial = [
                 m[0],
@@ -145,7 +144,7 @@ impl<F: PrimeField32> SepticCurve<F> {
             ];
 
             let m_hash = perm
-                .permute(m_trial.map(|x| BabyBear::from_canonical_u32(x.as_canonical_u32())))
+                .permute(m_trial.map(|x| SP1Field::from_canonical_u32(x.as_canonical_u32())))
                 .map(|x| F::from_canonical_u32(x.as_canonical_u32()));
             let x_trial = SepticExtension(m_hash[..7].try_into().unwrap());
 
@@ -252,39 +251,39 @@ impl<F: Field> SepticCurveComplete<F> {
 mod tests {
     // use rayon::prelude::*;
     // use rayon_scan::ScanParallelIterator;
-    // use slop_baby_bear::BabyBear;
+    // use sp1_primitives::SP1Field;
     // use std::time::Instant;
 
     // use super::*;
 
     // #[test]
     // fn test_lift_x() {
-    //     let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-    //         BabyBear::from_canonical_u32(0x2013),
-    //         BabyBear::from_canonical_u32(0x2015),
-    //         BabyBear::from_canonical_u32(0x2016),
-    //         BabyBear::from_canonical_u32(0x2023),
-    //         BabyBear::from_canonical_u32(0x2024),
-    //         BabyBear::from_canonical_u32(0x2016),
-    //         BabyBear::from_canonical_u32(0x2017),
+    //     let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
+    //         SP1Field::from_canonical_u32(0x2013),
+    //         SP1Field::from_canonical_u32(0x2015),
+    //         SP1Field::from_canonical_u32(0x2016),
+    //         SP1Field::from_canonical_u32(0x2023),
+    //         SP1Field::from_canonical_u32(0x2024),
+    //         SP1Field::from_canonical_u32(0x2016),
+    //         SP1Field::from_canonical_u32(0x2017),
     //     ]);
-    //     let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //     let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
     //     assert!(curve_point.check_on_point());
     //     assert!(!curve_point.x.is_receive());
     // }
 
     // #[test]
     // fn test_double() {
-    //     let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-    //         BabyBear::from_canonical_u32(0x2013),
-    //         BabyBear::from_canonical_u32(0x2015),
-    //         BabyBear::from_canonical_u32(0x2016),
-    //         BabyBear::from_canonical_u32(0x2023),
-    //         BabyBear::from_canonical_u32(0x2024),
-    //         BabyBear::from_canonical_u32(0x2016),
-    //         BabyBear::from_canonical_u32(0x2017),
+    //     let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
+    //         SP1Field::from_canonical_u32(0x2013),
+    //         SP1Field::from_canonical_u32(0x2015),
+    //         SP1Field::from_canonical_u32(0x2016),
+    //         SP1Field::from_canonical_u32(0x2023),
+    //         SP1Field::from_canonical_u32(0x2024),
+    //         SP1Field::from_canonical_u32(0x2016),
+    //         SP1Field::from_canonical_u32(0x2017),
     //     ]);
-    //     let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //     let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
     //     let double_point = curve_point.double();
     //     assert!(double_point.check_on_point());
     // }
@@ -298,16 +297,16 @@ mod tests {
     //     let mut sum = Vec::with_capacity(D as usize);
     //     let start = Instant::now();
     //     for i in 0..D {
-    //         let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-    //             BabyBear::from_canonical_u32(i + 25),
-    //             BabyBear::from_canonical_u32(2 * i + 376),
-    //             BabyBear::from_canonical_u32(4 * i + 23),
-    //             BabyBear::from_canonical_u32(8 * i + 531),
-    //             BabyBear::from_canonical_u32(16 * i + 542),
-    //             BabyBear::from_canonical_u32(32 * i + 196),
-    //             BabyBear::from_canonical_u32(64 * i + 667),
+    //         let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
+    //             SP1Field::from_canonical_u32(i + 25),
+    //             SP1Field::from_canonical_u32(2 * i + 376),
+    //             SP1Field::from_canonical_u32(4 * i + 23),
+    //             SP1Field::from_canonical_u32(8 * i + 531),
+    //             SP1Field::from_canonical_u32(16 * i + 542),
+    //             SP1Field::from_canonical_u32(32 * i + 196),
+    //             SP1Field::from_canonical_u32(64 * i + 667),
     //         ]);
-    //         let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //         let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
     //         vec.push(curve_point);
     //     }
     //     println!("Time elapsed: {:?}", start.elapsed());
@@ -319,12 +318,12 @@ mod tests {
     //     let start = Instant::now();
     //     for i in 0..(D as usize) {
     //         assert!(
-    //             SepticCurve::<BabyBear>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
-    //                 == SepticExtension::<BabyBear>::zero()
+    //             SepticCurve::<SP1Field>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
+    //                 == SepticExtension::<SP1Field>::zero()
     //         );
     //         assert!(
-    //             SepticCurve::<BabyBear>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
-    //                 == SepticExtension::<BabyBear>::zero()
+    //             SepticCurve::<SP1Field>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
+    //                 == SepticExtension::<SP1Field>::zero()
     //         );
     //     }
     //     println!("Time elapsed: {:?}", start.elapsed());
@@ -338,16 +337,16 @@ mod tests {
     //     let mut vec = Vec::with_capacity(D as usize);
     //     let start = Instant::now();
     //     for i in 0..D {
-    //         let x: SepticExtension<BabyBear> = SepticExtension::from_base_slice(&[
-    //             BabyBear::from_canonical_u32(i + 25),
-    //             BabyBear::from_canonical_u32(2 * i + 376),
-    //             BabyBear::from_canonical_u32(4 * i + 23),
-    //             BabyBear::from_canonical_u32(8 * i + 531),
-    //             BabyBear::from_canonical_u32(16 * i + 542),
-    //             BabyBear::from_canonical_u32(32 * i + 196),
-    //             BabyBear::from_canonical_u32(64 * i + 667),
+    //         let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
+    //             SP1Field::from_canonical_u32(i + 25),
+    //             SP1Field::from_canonical_u32(2 * i + 376),
+    //             SP1Field::from_canonical_u32(4 * i + 23),
+    //             SP1Field::from_canonical_u32(8 * i + 531),
+    //             SP1Field::from_canonical_u32(16 * i + 542),
+    //             SP1Field::from_canonical_u32(32 * i + 196),
+    //             SP1Field::from_canonical_u32(64 * i + 667),
     //         ]);
-    //         let (curve_point, _, _, _) = SepticCurve::<BabyBear>::lift_x(x);
+    //         let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
     //         vec.push(SepticCurveComplete::Affine(curve_point));
     //     }
     //     println!("Time elapsed: {:?}", start.elapsed());
@@ -363,7 +362,7 @@ mod tests {
     //         .into_par_iter()
     //         .with_min_len(1 << 16)
     //         .scan(|a, b| *a + *b, SepticCurveComplete::Infinity)
-    //         .collect::<Vec<SepticCurveComplete<BabyBear>>>();
+    //         .collect::<Vec<SepticCurveComplete<SP1Field>>>();
     //     println!("Time elapsed: {:?}", start.elapsed());
     //     assert_eq!(cum_sum, *par_sum.last().unwrap());
     // }

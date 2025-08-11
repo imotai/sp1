@@ -8,7 +8,7 @@ pub use operation::*;
 pub use program::*;
 pub use word::*;
 
-use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
+use sp1_hypercube::air::{BaseAirBuilder, SP1AirBuilder};
 
 use crate::{
     memory::MemoryAccessColsU8,

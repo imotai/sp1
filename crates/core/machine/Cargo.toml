@@ -49,7 +49,7 @@ strum_macros = { workspace = true }
 thiserror = "1.0.63"
 hashbrown = { workspace = true, features = ["serde", "inline-more"] }
 
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-curves = { workspace = true }
 slop-poseidon2 = { workspace = true }
@@ -75,7 +75,7 @@ k256 = { version = "0.13.3", features = ["expose-field"] }
 p256 = { version = "0.13.2", features = ["expose-field"] }
 
 [build-dependencies]
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
 slop-baby-bear = { workspace = true }
 

@@ -28,11 +28,11 @@ use sp1_curves::{
     uint256::U256Field,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{InteractionScope, MachineAir},
     MachineRecord, Word,
 };
+use sp1_primitives::polynomial::Polynomial;
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,

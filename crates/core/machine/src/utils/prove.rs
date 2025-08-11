@@ -11,7 +11,7 @@ use crate::{executor::MachineExecutor, riscv::RiscvAir};
 use thiserror::Error;
 
 use slop_algebra::PrimeField32;
-use sp1_stark::{
+use sp1_hypercube::{
     air::PublicValues,
     prover::{
         MachineProverBuilder, MachineProverComponents, MachineProvingKey, MemoryPermit,

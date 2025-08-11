@@ -5,7 +5,7 @@ use sp1_core_executor::{
     ByteOpcode,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 /// A set of columns needed to compute the AND operation over two u16 limbs.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]

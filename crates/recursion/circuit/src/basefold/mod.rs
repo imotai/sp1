@@ -1,16 +1,17 @@
 use crate::{
     challenger::{CanObserveVariable, CanSampleBitsVariable, FieldChallengerVariable},
-    BabyBearFriConfigVariable, CircuitConfig,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 use itertools::Itertools;
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
-use slop_baby_bear::BabyBear;
 use slop_basefold::FriConfig;
 use slop_multilinear::{Evaluations, Point};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, DslIr, Ext, Felt, SymbolicExt},
 };
+
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::D;
 use std::{iter::once, marker::PhantomData};
 use tcs::{RecursiveMerkleTreeTcs, RecursiveTcs, RecursiveTensorCsOpening};
@@ -19,8 +20,8 @@ pub mod stacked;
 pub mod tcs;
 pub mod witness;
 use crate::AsRecursive;
-use slop_basefold::{Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig};
-use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
+use slop_basefold::Poseidon2Bn254FrBasefoldConfig;
+use sp1_hypercube::{SP1BasefoldConfig, SP1CoreJaggedConfig, SP1OuterConfig};
 
 pub trait RecursiveBasefoldConfig: Sized {
     type F: Copy;
@@ -39,21 +40,21 @@ pub trait RecursiveBasefoldConfig: Sized {
 
 pub struct RecursiveBasefoldConfigImpl<C, SC>(PhantomData<(C, SC)>);
 
-impl<C: CircuitConfig> AsRecursive<C> for Poseidon2BabyBear16BasefoldConfig {
-    type Recursive = RecursiveBasefoldConfigImpl<C, BabyBearPoseidon2>;
+impl<C: CircuitConfig> AsRecursive<C> for SP1BasefoldConfig {
+    type Recursive = RecursiveBasefoldConfigImpl<C, SP1CoreJaggedConfig>;
 }
 
 impl<C: CircuitConfig> AsRecursive<C> for Poseidon2Bn254FrBasefoldConfig {
-    type Recursive = RecursiveBasefoldConfigImpl<C, Bn254JaggedConfig>;
+    type Recursive = RecursiveBasefoldConfigImpl<C, SP1OuterConfig>;
 }
 
 impl<
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-        SC: BabyBearFriConfigVariable<C>,
+        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+        SC: SP1FieldConfigVariable<C>,
     > RecursiveBasefoldConfig for RecursiveBasefoldConfigImpl<C, SC>
 {
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    type F = SP1Field;
+    type EF = BinomialExtensionField<SP1Field, 4>;
     type Commitment = SC::DigestVariable;
     type Circuit = C;
     type Bit = C::Bit;
@@ -134,13 +135,13 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
 }
 
 impl<
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-        SC: BabyBearFriConfigVariable<C>,
+        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+        SC: SP1FieldConfigVariable<C>,
     > RecursiveMultilinearPcsVerifier
     for RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>
 {
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    type F = SP1Field;
+    type EF = BinomialExtensionField<SP1Field, 4>;
     type Commitment = SC::DigestVariable;
     type Proof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>;
     type Circuit = C;
@@ -168,8 +169,8 @@ impl<
 }
 
 impl<
-        C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-        SC: BabyBearFriConfigVariable<C>,
+        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+        SC: SP1FieldConfigVariable<C>,
     > RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>
 {
     fn verify_mle_evaluations(
@@ -453,31 +454,32 @@ mod tests {
     use std::sync::Arc;
 
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use sp1_primitives::SP1DiffusionMatrix;
 
     use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
 
     use super::*;
     use futures::prelude::*;
 
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
-    use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
+    use slop_basefold::BasefoldVerifier;
+    use slop_basefold_prover::BasefoldProver;
     use slop_challenger::CanObserve;
 
     use slop_commit::Rounds;
 
-    use slop_merkle_tree::my_bb_16_perm;
     use slop_multilinear::Mle;
+    use sp1_hypercube::inner_perm;
+    use sp1_primitives::SP1Field;
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
     use sp1_recursion_executor::Runtime;
 
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    type F = SP1Field;
+    type EF = BinomialExtensionField<SP1Field, 4>;
 
     #[tokio::test]
     async fn test_basefold_proof() {
-        type C = Poseidon2BabyBear16BasefoldConfig;
-        type Prover = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
+        type C = SP1BasefoldConfig;
+        type Prover = BasefoldProver<sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
@@ -489,17 +491,17 @@ mod tests {
             .map(|widths| {
                 widths
                     .iter()
-                    .map(|&w| Mle::<BabyBear>::rand(&mut rng, w, num_variables))
+                    .map(|&w| Mle::<SP1Field>::rand(&mut rng, w, num_variables))
                     .collect::<Message<_>>()
             })
             .collect::<Rounds<_>>();
 
         let verifier = BasefoldVerifier::<C>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, BabyBearPoseidon2>,
+            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
         > {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, BabyBearPoseidon2>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>(PhantomData),
         };
 
         let prover = Prover::new(&verifier);
@@ -556,7 +558,9 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
 
-        RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, BabyBearPoseidon2>>::verify_mle_evaluations(
+        RecursiveBasefoldVerifier::<
+            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
+        >::verify_mle_evaluations(
             &recursive_verifier,
             &mut builder,
             &commitments,
@@ -568,16 +572,15 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().unwrap();
     }
 
     #[tokio::test]
     async fn test_invalid_basefold_proof() {
-        type C = Poseidon2BabyBear16BasefoldConfig;
-        type Prover = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
+        type C = SP1BasefoldConfig;
+        type Prover = BasefoldProver<sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
@@ -589,17 +592,17 @@ mod tests {
             .map(|widths| {
                 widths
                     .iter()
-                    .map(|&w| Mle::<BabyBear>::rand(&mut rng, w, num_variables))
+                    .map(|&w| Mle::<SP1Field>::rand(&mut rng, w, num_variables))
                     .collect::<Message<_>>()
             })
             .collect::<Rounds<_>>();
 
         let verifier = BasefoldVerifier::<C>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, BabyBearPoseidon2>,
+            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
         > {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, BabyBearPoseidon2>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>(PhantomData),
         };
 
         let prover = Prover::new(&verifier);
@@ -659,7 +662,9 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
 
-        RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, BabyBearPoseidon2>>::verify_mle_evaluations(
+        RecursiveBasefoldVerifier::<
+            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
+        >::verify_mle_evaluations(
             &recursive_verifier,
             &mut builder,
             &commitments,
@@ -671,8 +676,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().expect_err("invalid proof should not be verified");
     }

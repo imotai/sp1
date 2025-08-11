@@ -4,8 +4,8 @@ use std::{
 };
 
 use backtrace::Backtrace;
+use sp1_hypercube::septic_curve::SepticCurve;
 use sp1_recursion_executor::RecursionPublicValues;
-use sp1_stark::septic_curve::SepticCurve;
 
 use super::{Array, Config, Ext, Felt, MemIndex, Ptr, Usize, Var};
 
@@ -228,9 +228,9 @@ pub enum DslIr<C: Config> {
     /// Permutes an array of Bn254 elements using Poseidon2 (output = p2_permute(array)). Should
     /// only be used when target is a gnark circuit.
     CircuitPoseidon2Permute([Var<C::N>; 3]),
-    /// Permutates an array of BabyBear elements in the circuit.
+    /// Permutates an array of SP1Field elements in the circuit.
     CircuitPoseidon2PermuteBabyBear(Box<[Felt<C::F>; 16]>),
-    /// Permutates an array of BabyBear elements in the circuit using the skinny precompile.
+    /// Permutates an array of SP1Field elements in the circuit using the skinny precompile.
     CircuitV2Poseidon2PermuteBabyBear(Box<([Felt<C::F>; 16], [Felt<C::F>; 16])>),
     /// Commits the public values.
     CircuitV2CommitPublicValues(Box<RecursionPublicValues<Felt<C::F>>>),

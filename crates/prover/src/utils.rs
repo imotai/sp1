@@ -6,11 +6,10 @@ use std::{
 };
 
 use itertools::Itertools;
-use slop_baby_bear::BabyBear;
-use slop_merkle_tree::{DefaultMerkleTreeConfig, Poseidon2BabyBearConfig};
 use slop_symmetric::CryptographicHasher;
 use sp1_core_executor::{Executor, Program, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
+use sp1_primitives::{poseidon2_hasher, SP1Field};
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_executor::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH};
 
@@ -18,14 +17,14 @@ use crate::SP1CoreProofData;
 
 /// Compute the digest of the public values.
 pub fn recursion_public_values_digest(
-    public_values: &RecursionPublicValues<BabyBear>,
-) -> [BabyBear; 8] {
-    let (hasher, _) = Poseidon2BabyBearConfig::default_hasher_and_compressor();
+    public_values: &RecursionPublicValues<SP1Field>,
+) -> [SP1Field; 8] {
+    let hasher = poseidon2_hasher();
     hasher.hash_slice(&public_values.as_array()[0..NUM_PV_ELMS_TO_HASH])
 }
 
-pub fn root_public_values_digest(public_values: &RootPublicValues<BabyBear>) -> [BabyBear; 8] {
-    let (hasher, _) = Poseidon2BabyBearConfig::default_hasher_and_compressor();
+pub fn root_public_values_digest(public_values: &RootPublicValues<SP1Field>) -> [SP1Field; 8] {
+    let hasher = poseidon2_hasher();
     let input = (*public_values.sp1_vk_digest())
         .into_iter()
         .chain(
@@ -37,7 +36,7 @@ pub fn root_public_values_digest(public_values: &RootPublicValues<BabyBear>) -> 
     hasher.hash_slice(&input)
 }
 
-pub fn is_root_public_values_valid(public_values: &RootPublicValues<BabyBear>) -> bool {
+pub fn is_root_public_values_valid(public_values: &RootPublicValues<SP1Field>) -> bool {
     let expected_digest = root_public_values_digest(public_values);
     for (value, expected) in public_values.digest().iter().copied().zip_eq(expected_digest) {
         if value != expected {
@@ -48,7 +47,7 @@ pub fn is_root_public_values_valid(public_values: &RootPublicValues<BabyBear>) -
 }
 
 /// Assert that the digest of the public values is correct.
-pub fn is_recursion_public_values_valid(public_values: &RecursionPublicValues<BabyBear>) -> bool {
+pub fn is_recursion_public_values_valid(public_values: &RecursionPublicValues<SP1Field>) -> bool {
     let expected_digest = recursion_public_values_digest(public_values);
     for (value, expected) in public_values.digest.iter().copied().zip_eq(expected_digest) {
         if value != expected {

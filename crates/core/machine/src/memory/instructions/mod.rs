@@ -5,14 +5,14 @@ pub mod store;
 // mod tests {
 //     use std::borrow::BorrowMut;
 
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_algebra::AbstractField;
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{
 //         events::MemoryRecordEnum, ExecutionRecord, Instruction, Opcode, Program,
 //     };
-//     use sp1_stark::{
-//         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+//     use sp1_hypercube::{
+//         air::MachineAir, baby_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 
@@ -64,12 +64,12 @@ pub mod store;
 //             let program = Program::new(instructions, 0, 0);
 //             let stdin = SP1Stdin::new();
 
-//             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //             let malicious_trace_pv_generator =
 //                 move |prover: &P,
 //                       record: &mut ExecutionRecord|
-//                       -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//                       -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                     // Create a malicious record where the incorrect value is saved to memory.
 //                     let mut malicious_record = record.clone();
 //                     if let MemoryRecordEnum::Write(mem_write_record) =
@@ -138,12 +138,12 @@ pub mod store;
 //             let program = Program::new(instructions, 0, 0);
 //             let stdin = SP1Stdin::new();
 
-//             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //             let malicious_trace_pv_generator =
 //                 move |prover: &P,
 //                       record: &mut ExecutionRecord|
-//                       -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//                       -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                     // Create a malicious record where the incorrect value is loaded from memory.
 //                     let mut malicious_record = record.clone();
 //                     malicious_record.cpu_events[3].a = test_case.incorrect_value;
@@ -177,22 +177,22 @@ pub mod store;
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<BabyBearPoseidon2>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
 //                 // Modify the branch chip to have a row that has multiple opcode flags set.
 //                 let mut traces = prover.generate_traces(record);
-//                 let memory_instr_chip_name = chip_name!(MemoryInstructionsChip, BabyBear);
+//                 let memory_instr_chip_name = chip_name!(MemoryInstructionsChip, SP1Field);
 //                 for (chip_name, trace) in traces.iter_mut() {
 //                     if *chip_name == memory_instr_chip_name {
-//                         let first_row: &mut [BabyBear] = trace.row_mut(0);
-//                         let first_row: &mut MemoryInstructionsColumns<BabyBear> =
+//                         let first_row: &mut [SP1Field] = trace.row_mut(0);
+//                         let first_row: &mut MemoryInstructionsColumns<SP1Field> =
 //                             first_row.borrow_mut();
-//                         assert!(first_row.is_sw == BabyBear::one());
-//                         first_row.is_lw = BabyBear::one();
+//                         assert!(first_row.is_sw == SP1Field::one());
+//                         first_row.is_lw = SP1Field::one();
 //                     }
 //                 }
 //                 traces

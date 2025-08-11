@@ -6,8 +6,8 @@ use slop_algebra::PrimeField32;
 use sp1_core_executor::events::ByteRecord;
 use sp1_curves::params::{FieldParameters, Limbs};
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::SP1AirBuilder;
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::air::SP1AirBuilder;
 
 use super::util_air::eval_field_operation;
 use crate::air::WordAirBuilder;
@@ -171,9 +171,9 @@ where
 //     use slop_algebra::{Field, PrimeField32};
 //     use sp1_core_executor::{ExecutionRecord, Program};
 //     use sp1_curves::params::FieldParameters;
-//     use sp1_stark::{
+//     use sp1_hypercube::{
 //         air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::BabyBearPoseidon2,
+//         baby_bear_poseidon2::SP1CoreJaggedConfig,
 //         Chip, StarkMachine,
 //     };
 
@@ -187,7 +187,7 @@ where
 //     };
 //     use num::bigint::RandBigInt;
 //     use slop_air::Air;
-//     use slop_baby_bear::BabyBear;
+//     use sp1_primitives::SP1Field;
 //     use slop_algebra::AbstractField;
 //     use slop_matrix::{dense::RowMajorMatrix, Matrix};
 //     use rand::thread_rng;
@@ -294,7 +294,7 @@ where
 //     fn generate_trace() {
 //         let shard = ExecutionRecord::default();
 //         let chip: FieldDenChip<Ed25519BaseField> = FieldDenChip::new(true);
-//         let trace: RowMajorMatrix<BabyBear> =
+//         let trace: RowMajorMatrix<SP1Field> =
 //             chip.generate_trace(&shard, &mut ExecutionRecord::default());
 //         println!("{:?}", trace.values)
 //     }
@@ -304,18 +304,18 @@ where
 //         let shard = ExecutionRecord::default();
 
 //         let air: FieldDenChip<Ed25519BaseField> = FieldDenChip::new(true);
-//         <FieldDenChip<Ed25519BaseField> as MachineAir<BabyBear>>::generate_trace(
+//         <FieldDenChip<Ed25519BaseField> as MachineAir<SP1Field>>::generate_trace(
 //             &air,
 //             &shard,
 //             &mut ExecutionRecord::default(),
 //         );
 //         // This it to test that the proof DOESN'T work if messed up.
 //         // let row = trace.row_mut(0);
-//         // row[0] = BabyBear::from_canonical_u8(0);
+//         // row[0] = SP1Field::from_canonical_u8(0);
 
 //         // Run setup.
-//         let config = BabyBearPoseidon2::new();
-//         let chip: Chip<BabyBear, FieldDenChip<Ed25519BaseField>> = Chip::new(air);
+//         let config = SP1CoreJaggedConfig::new();
+//         let chip: Chip<SP1Field, FieldDenChip<Ed25519BaseField>> = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
 //             vec![chip],
@@ -325,9 +325,9 @@ where
 
 //         // Run the test.
 //         let air: FieldDenChip<Ed25519BaseField> = FieldDenChip::new(true);
-//         let chip: Chip<BabyBear, FieldDenChip<Ed25519BaseField>> = Chip::new(air);
+//         let chip: Chip<SP1Field, FieldDenChip<Ed25519BaseField>> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<BabyBearPoseidon2, FieldDenChip<Ed25519BaseField>>(
+//         run_test_machine::<SP1CoreJaggedConfig, FieldDenChip<Ed25519BaseField>>(
 //             vec![shard],
 //             machine,
 //             pk,

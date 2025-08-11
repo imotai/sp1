@@ -1,14 +1,11 @@
-use slop_baby_bear::BabyBear;
-use slop_jagged::{
-    JaggedConfig, Poseidon2BabyBearJaggedCpuProverComponents,
-    Poseidon2Bn254JaggedCpuProverComponents,
-};
+use slop_jagged::{JaggedConfig, Poseidon2Bn254JaggedCpuProverComponents};
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_recursion_circuit::machine::InnerVal;
-use sp1_stark::{
+use sp1_hypercube::{
     prover::{CpuMachineProverComponents, MachineProverComponents},
-    MachineVerifier,
+    MachineVerifier, SP1CpuJaggedProverComponents,
 };
+use sp1_primitives::SP1Field;
+use sp1_recursion_circuit::machine::InnerVal;
 
 use crate::{
     core::CoreProverComponents,
@@ -34,7 +31,7 @@ pub trait SP1ProverComponents: Send + Sync + 'static {
     type RecursionComponents: RecursionProverComponents;
     type WrapComponents: WrapProverComponents;
 
-    fn core_verifier() -> MachineVerifier<CoreSC, RiscvAir<BabyBear>> {
+    fn core_verifier() -> MachineVerifier<CoreSC, RiscvAir<SP1Field>> {
         <Self::CoreComponents as CoreProverComponents>::verifier()
     }
 
@@ -51,17 +48,15 @@ pub trait SP1ProverComponents: Send + Sync + 'static {
     }
 }
 
-// ShardProver<CpuProverComponents<JaggedBasefoldProverComponents<Poseidon2BabyBear16BasefoldCpuProverComponents, HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>, JaggedEvalSumcheckProver<BabyBear>>, RiscvAir<BabyBear>>>
-
 pub struct CpuSP1ProverComponents;
 
 impl SP1ProverComponents for CpuSP1ProverComponents {
     type CoreComponents = CpuMachineProverComponents<
-        Poseidon2BabyBearJaggedCpuProverComponents,
+        SP1CpuJaggedProverComponents,
         RiscvAir<<CoreSC as JaggedConfig>::F>,
     >;
     type RecursionComponents = CpuMachineProverComponents<
-        Poseidon2BabyBearJaggedCpuProverComponents,
+        SP1CpuJaggedProverComponents,
         CompressAir<<InnerSC as JaggedConfig>::F>,
     >;
     type WrapComponents = CpuMachineProverComponents<

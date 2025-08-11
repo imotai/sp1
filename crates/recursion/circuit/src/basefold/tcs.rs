@@ -1,11 +1,9 @@
 use crate::{basefold::merkle_tree::verify, hash::FieldHasherVariable, AsRecursive, CircuitConfig};
 use itertools::Itertools;
-use slop_merkle_tree::{
-    MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2BabyBearConfig, Poseidon2Bn254Config,
-};
+use slop_merkle_tree::{MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2Bn254Config};
 use slop_tensor::Tensor;
+use sp1_hypercube::{SP1CoreJaggedConfig, SP1MerkleTreeConfig, SP1OuterConfig};
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
-use sp1_stark::{BabyBearPoseidon2, Bn254JaggedConfig};
 use std::marker::PhantomData;
 
 pub trait RecursiveTcs: Sized {
@@ -40,12 +38,12 @@ impl<C, M> Clone for RecursiveMerkleTreeTcs<C, M> {
     }
 }
 
-impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<Poseidon2BabyBearConfig> {
-    type Recursive = RecursiveMerkleTreeTcs<C, BabyBearPoseidon2>;
+impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<SP1MerkleTreeConfig> {
+    type Recursive = RecursiveMerkleTreeTcs<C, SP1CoreJaggedConfig>;
 }
 
 impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<Poseidon2Bn254Config> {
-    type Recursive = RecursiveMerkleTreeTcs<C, Bn254JaggedConfig>;
+    type Recursive = RecursiveMerkleTreeTcs<C, SP1OuterConfig>;
 }
 
 impl<C, M> RecursiveTcs for RecursiveMerkleTreeTcs<C, M>
@@ -90,24 +88,26 @@ where
 mod tests {
     use rand::{thread_rng, Rng};
     use slop_commit::Message;
+    use sp1_hypercube::inner_perm;
     use sp1_recursion_compiler::circuit::AsmConfig;
     use std::sync::Arc;
 
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+    use sp1_primitives::SP1DiffusionMatrix;
 
     use crate::witness::Witnessable;
 
     use super::*;
     use itertools::Itertools;
     use slop_commit::{ComputeTcsOpenings, TensorCsOpening, TensorCsProver};
-    use slop_merkle_tree::{my_bb_16_perm, Poseidon2BabyBear16Prover};
     use slop_tensor::Tensor;
+    use sp1_hypercube::prover::SP1MerkleTreeProver;
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
     use sp1_recursion_executor::Runtime;
 
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    use sp1_primitives::SP1Field;
+    type F = SP1Field;
+    type EF = BinomialExtensionField<SP1Field, 4>;
 
     #[tokio::test]
     async fn test_merkle_proof() {
@@ -120,16 +120,16 @@ mod tests {
         let num_indices = rng.gen_range(2..10);
 
         let tensors = (0..num_tensors)
-            .map(|_| Tensor::<BabyBear>::rand(&mut rng, [height, width]))
+            .map(|_| Tensor::<SP1Field>::rand(&mut rng, [height, width]))
             .collect::<Message<_>>();
 
-        let prover = Poseidon2BabyBear16Prover::default();
+        let prover = SP1MerkleTreeProver::default();
         let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
         let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
         let openings = prover.compute_openings_at_indices(tensors, &indices).await;
-        let opening: TensorCsOpening<MerkleTreeTcs<Poseidon2BabyBearConfig>> =
+        let opening: TensorCsOpening<MerkleTreeTcs<SP1MerkleTreeConfig>> =
             TensorCsOpening { values: openings, proof };
 
         let bit_len = height.next_power_of_two().ilog2();
@@ -150,7 +150,7 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&opening, &mut witness_stream);
         let opening = opening.read(&mut builder);
 
-        RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, BabyBearPoseidon2>::verify_tensor_openings(
+        RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>::verify_tensor_openings(
             &mut builder,
             &root,
             &index_bits,
@@ -160,8 +160,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().unwrap();
     }
@@ -177,16 +176,16 @@ mod tests {
         let num_indices = rng.gen_range(2..10);
 
         let tensors = (0..num_tensors)
-            .map(|_| Tensor::<BabyBear>::rand(&mut rng, [height, width]))
+            .map(|_| Tensor::<SP1Field>::rand(&mut rng, [height, width]))
             .collect::<Message<_>>();
 
-        let prover = Poseidon2BabyBear16Prover::default();
+        let prover = SP1MerkleTreeProver::default();
         let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
         let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
         let openings = prover.compute_openings_at_indices(tensors, &indices).await;
-        let opening: TensorCsOpening<MerkleTreeTcs<Poseidon2BabyBearConfig>> =
+        let opening: TensorCsOpening<MerkleTreeTcs<SP1MerkleTreeConfig>> =
             TensorCsOpening { values: openings, proof };
 
         let bit_len = height.next_power_of_two().ilog2();
@@ -209,7 +208,7 @@ mod tests {
         Witnessable::<AsmConfig<F, EF>>::write(&opening, &mut witness_stream);
         let opening = opening.read(&mut builder);
 
-        RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, BabyBearPoseidon2>::verify_tensor_openings(
+        RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>::verify_tensor_openings(
             &mut builder,
             &root,
             &index_bits,
@@ -219,8 +218,7 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime =
-            Runtime::<F, EF, DiffusionMatrixBabyBear>::new(program.clone(), my_bb_16_perm());
+        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().expect_err("merkle proof should not verify");
     }

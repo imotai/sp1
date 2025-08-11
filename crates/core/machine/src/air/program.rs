@@ -1,5 +1,5 @@
 use slop_air::AirBuilder;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, BaseAirBuilder, InteractionScope},
     InteractionKind,
 };

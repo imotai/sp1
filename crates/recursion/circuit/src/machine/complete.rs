@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Config, Felt},
@@ -11,7 +11,7 @@ use sp1_recursion_executor::RecursionPublicValues;
 ///
 /// The assertions consist of checking all the expected boundary conditions from a compress proof
 /// that represents the end of the recursion tower.
-pub(crate) fn assert_complete<C: Config<F = BabyBear>>(
+pub(crate) fn assert_complete<C: Config<F = SP1Field>>(
     builder: &mut Builder<C>,
     public_values: &RecursionPublicValues<Felt<C::F>>,
     is_complete: Felt<C::F>,

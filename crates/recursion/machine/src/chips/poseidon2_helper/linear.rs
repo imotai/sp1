@@ -1,7 +1,6 @@
 use core::borrow::Borrow;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{extension::BinomiallyExtendable, AbstractField, Field, PrimeField32};
-use slop_baby_bear::BabyBear;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_core_machine::{
@@ -9,11 +8,12 @@ use sp1_core_machine::{
     utils::next_multiple_of_32,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::MachineAir;
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     Address, Block, ExecutionRecord, Instruction, Poseidon2LinearLayerInstr,
     Poseidon2LinearLayerIo, RecursionProgram, D, PERMUTATION_WIDTH,
 };
-use sp1_stark::air::MachineAir;
 use std::{borrow::BorrowMut, iter::zip};
 
 use crate::builder::SP1RecursionAirBuilder;
@@ -87,14 +87,14 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2Linea
     fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_preprocessed_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_preprocessed_trace only supports SP1Field field"
         );
 
         let instrs = unsafe {
             std::mem::transmute::<
                 Vec<&Poseidon2LinearLayerInstr<F>>,
-                Vec<&Poseidon2LinearLayerInstr<BabyBear>>,
+                Vec<&Poseidon2LinearLayerInstr<SP1Field>>,
             >(
                 program
                     .inner
@@ -107,7 +107,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2Linea
             )
         };
         let padded_nb_rows = self.preprocessed_num_rows(program, instrs.len()).unwrap();
-        let mut values = vec![BabyBear::zero(); padded_nb_rows * NUM_LINEAR_PREPROCESSED_COLS];
+        let mut values = vec![SP1Field::zero(); padded_nb_rows * NUM_LINEAR_PREPROCESSED_COLS];
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let populate_len = instrs.len() * NUM_LINEAR_ACCESS_COLS;
@@ -118,21 +118,21 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2Linea
                 access.addrs = addrs.to_owned();
                 #[allow(clippy::needless_range_loop)]
                 for i in 0..PERMUTATION_WIDTH / D {
-                    assert!(mults[i] == BabyBear::one());
+                    assert!(mults[i] == SP1Field::one());
                 }
                 if *external {
-                    access.external = BabyBear::one();
-                    access.internal = BabyBear::zero();
+                    access.external = SP1Field::one();
+                    access.internal = SP1Field::zero();
                 } else {
-                    access.external = BabyBear::zero();
-                    access.internal = BabyBear::one();
+                    access.external = SP1Field::zero();
+                    access.internal = SP1Field::one();
                 }
             },
         );
 
         // Convert the trace to a row major matrix.
         Some(RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<BabyBear>, Vec<F>>(values) },
+            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
             NUM_LINEAR_PREPROCESSED_COLS,
         ))
     }
@@ -151,18 +151,18 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2Linea
     fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {
         assert_eq!(
             std::any::TypeId::of::<F>(),
-            std::any::TypeId::of::<BabyBear>(),
-            "generate_trace only supports BabyBear field"
+            std::any::TypeId::of::<SP1Field>(),
+            "generate_trace only supports SP1Field field"
         );
 
         let events = unsafe {
             std::mem::transmute::<
                 &Vec<Poseidon2LinearLayerIo<Block<F>>>,
-                &Vec<Poseidon2LinearLayerIo<Block<BabyBear>>>,
+                &Vec<Poseidon2LinearLayerIo<Block<SP1Field>>>,
             >(&input.poseidon2_linear_layer_events)
         };
         let padded_nb_rows = self.num_rows(input).unwrap();
-        let mut values = vec![BabyBear::zero(); padded_nb_rows * NUM_LINEAR_COLS];
+        let mut values = vec![SP1Field::zero(); padded_nb_rows * NUM_LINEAR_COLS];
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let populate_len = events.len() * NUM_LINEAR_VALUE_COLS;
@@ -175,7 +175,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2Linea
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<BabyBear>, Vec<F>>(values) },
+            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
             NUM_LINEAR_COLS,
         )
     }
@@ -261,8 +261,8 @@ where
 #[cfg(test)]
 mod tests {
     use slop_matrix::Matrix;
+    use sp1_hypercube::air::MachineAir;
     use sp1_recursion_executor::ExecutionRecord;
-    use sp1_stark::air::MachineAir;
 
     use super::Poseidon2LinearLayerChip;
 

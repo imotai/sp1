@@ -12,8 +12,8 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use rrs_lib::process_instruction;
 use serde::{Deserialize, Serialize};
+use sp1_hypercube::air::PublicValues;
 use sp1_primitives::consts::{MAXIMUM_MEMORY_SIZE, PAGE_SIZE, PROT_EXEC, PROT_READ, PROT_WRITE};
-use sp1_stark::air::PublicValues;
 use thiserror::Error;
 
 use crate::{

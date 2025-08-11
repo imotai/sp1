@@ -2,8 +2,8 @@ use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 
 use sp1_core_executor::events::ByteRecord;
+use sp1_hypercube::air::SP1AirBuilder;
 use sp1_primitives::consts::u32_to_u16_limbs;
-use sp1_stark::air::SP1AirBuilder;
 
 use crate::{air::WordAirBuilder, utils::u32_to_half_word};
 
@@ -74,7 +74,7 @@ impl<F: Field> Add4Operation<F> {
         //  - 2^16 * carry_next + value[i] = a[i] + b[i] + c[i] + d[i] + carry
         //  - 0 <= carry < 2^8
         //  - 0 <= value[i] < 2^16
-        // Since the carries are bounded by 2^8, no BabyBear overflows are possible.
+        // Since the carries are bounded by 2^8, no SP1Field overflows are possible.
         // The maximum carry possible is less than 2^8, so the circuit is complete.
         for i in 0..2 {
             carry = (a[i].clone() + b[i].clone() + c[i].clone() + d[i].clone() - cols.value[i]

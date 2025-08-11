@@ -1,8 +1,8 @@
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::SP1AirBuilder;
 use sp1_primitives::consts::u32_to_u16_limbs;
-use sp1_stark::air::SP1AirBuilder;
 
 /// A set of columns needed to compute the NOT of an u32 value.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]

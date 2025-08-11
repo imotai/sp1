@@ -16,8 +16,8 @@ use sp1_curves::{
     uint256::U256Field,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::{air::InteractionScope, Word};
 use sp1_primitives::polynomial::Polynomial;
-use sp1_stark::{air::InteractionScope, Word};
 use typenum::Unsigned;
 
 use crate::operations::SyscallAddrOperation;

@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use slop_baby_bear::BabyBear;
 use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
-use sp1_primitives::io::SP1PublicValues;
-use sp1_stark::{
+use sp1_hypercube::{
     prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
-    BabyBearPoseidon2, MachineProof, MachineVerifier, MachineVerifierConfigError, ShardVerifier,
+    MachineProof, MachineVerifier, MachineVerifierConfigError, SP1CoreJaggedConfig,
+    SP1CpuJaggedProverComponents, ShardVerifier,
 };
+use sp1_primitives::{io::SP1PublicValues, SP1Field};
 use tracing::Instrument;
 
 use crate::{io::SP1Stdin, riscv::RiscvAir};
@@ -22,7 +22,7 @@ use super::prove_core;
 pub async fn run_test(
     program: Arc<Program>,
     inputs: SP1Stdin,
-) -> Result<SP1PublicValues, MachineVerifierConfigError<BabyBearPoseidon2>> {
+) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1CoreJaggedConfig>> {
     let mut runtime = Executor::new(program, SP1CoreOpts::default());
     runtime.write_vecs(&inputs.buffer);
     runtime.run::<Trace>().unwrap();
@@ -32,12 +32,12 @@ pub async fn run_test(
     Ok(public_values)
 }
 
-// pub fn run_malicious_test<P: MachineProver<BabyBearPoseidon2, RiscvAir<BabyBear>>>(
+// pub fn run_malicious_test<P: MachineProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>>(
 //     mut program: Program,
 //     inputs: SP1Stdin,
-//     malicious_trace_pv_generator: MaliciousTracePVGeneratorType<BabyBear, P>,
-// ) -> Result<SP1PublicValues, MachineVerificationError<BabyBearPoseidon2>> {
-//     let shape_config = CoreShapeConfig::<BabyBear>::default();
+//     malicious_trace_pv_generator: MaliciousTracePVGeneratorType<SP1Field, P>,
+// ) -> Result<SP1PublicValues, MachineVerificationError<SP1CoreJaggedConfig>> {
+//     let shape_config = CoreShapeConfig::<SP1Field>::default();
 //     shape_config.fix_preprocessed_shape(&mut program).unwrap();
 
 //     let runtime = tracing::debug_span!("runtime.run(...)").in_scope(|| {
@@ -71,7 +71,7 @@ pub async fn run_test(
 pub async fn run_test_core(
     runtime: Executor<'static>,
     inputs: SP1Stdin,
-) -> Result<MachineProof<BabyBearPoseidon2>, MachineVerifierConfigError<BabyBearPoseidon2>> {
+) -> Result<MachineProof<SP1CoreJaggedConfig>, MachineVerifierConfigError<SP1CoreJaggedConfig>> {
     let log_blowup = 1;
     let log_stacking_height = 21;
     let max_log_row_count = 22;
@@ -85,9 +85,7 @@ pub async fn run_test_core(
         max_log_row_count,
         machine,
     );
-    let prover = CpuShardProver::<slop_jagged::Poseidon2BabyBearJaggedCpuProverComponents, _>::new(
-        verifier.clone(),
-    );
+    let prover = CpuShardProver::<SP1CpuJaggedProverComponents, _>::new(verifier.clone());
     let setup_permit = ProverSemaphore::new(1);
     let (pk, vk) = prover
         .setup(runtime.program.clone(), setup_permit.clone())
@@ -96,11 +94,8 @@ pub async fn run_test_core(
     let pk = unsafe { pk.into_inner() };
     let challenger = verifier.pcs_verifier.challenger();
     let (proof, _) = prove_core::<
-        BabyBear,
-        CpuMachineProverComponents<
-            slop_jagged::Poseidon2BabyBearJaggedCpuProverComponents,
-            RiscvAir<BabyBear>,
-        >,
+        SP1Field,
+        CpuMachineProverComponents<SP1CpuJaggedProverComponents, RiscvAir<SP1Field>>,
     >(
         verifier.clone(),
         Arc::new(prover),

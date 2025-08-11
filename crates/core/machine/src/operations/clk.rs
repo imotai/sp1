@@ -1,5 +1,5 @@
 use sp1_core_executor::{events::ByteRecord, ByteOpcode};
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};

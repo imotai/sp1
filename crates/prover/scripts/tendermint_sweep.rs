@@ -7,7 +7,7 @@ use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_prover::components::CpuProverComponents;
 use sp1_prover::SP1Prover;
-use sp1_stark::SP1ProverOpts;
+use sp1_hypercube::SP1ProverOpts;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::{fmt::format::FmtSpan, util::SubscriberInitExt};
 

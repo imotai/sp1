@@ -1,37 +1,37 @@
 use slop_algebra::AbstractField;
 use slop_alloc::CpuBackend;
-use slop_baby_bear::BabyBear;
-use slop_basefold::{BasefoldConfig, BasefoldProof, Poseidon2BabyBear16BasefoldConfig};
+use slop_basefold::{BasefoldConfig, BasefoldProof};
 use slop_commit::{Rounds, TensorCsOpening};
 use slop_jagged::{JaggedLittlePolynomialVerifierParams, JaggedPcsProof, JaggedSumcheckEvalProof};
 use slop_merkle_tree::MerkleTreeTcsProof;
 use slop_multilinear::{Evaluations, Point};
 use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
+use sp1_hypercube::{log2_ceil_usize, SP1BasefoldConfig, SP1CoreJaggedConfig};
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::DIGEST_SIZE;
-use sp1_stark::{log2_ceil_usize, BabyBearPoseidon2};
 
 use crate::machine::{InnerChallenge, InnerVal};
 
 use super::sumcheck::dummy_sumcheck_proof;
 
-pub fn dummy_hash() -> [BabyBear; DIGEST_SIZE] {
-    [BabyBear::zero(); DIGEST_SIZE]
+pub fn dummy_hash() -> [SP1Field; DIGEST_SIZE] {
+    [SP1Field::zero(); DIGEST_SIZE]
 }
 
 pub fn dummy_query_proof(
     max_height: usize,
     log_blowup: usize,
     num_queries: usize,
-) -> Vec<TensorCsOpening<<Poseidon2BabyBear16BasefoldConfig as BasefoldConfig>::Tcs>> {
+) -> Vec<TensorCsOpening<<SP1BasefoldConfig as BasefoldConfig>::Tcs>> {
     // The outer Vec is an iteration over the commit-phase rounds, of which there should be
     // `log_max_height-1` (perhaps there's an off-by-one error here). The TensorCsOpening is
     // laid out so that the tensor shape is [num_queries, 8 (degree of extension field*folding
     // parameter)].
     (0..max_height)
         .map(|i| {
-            let openings = Tensor::<BabyBear, _>::zeros_in([num_queries, 4 * 2], CpuBackend);
-            let proof = Tensor::<[BabyBear; DIGEST_SIZE], _>::zeros_in(
+            let openings = Tensor::<SP1Field, _>::zeros_in([num_queries, 4 * 2], CpuBackend);
+            let proof = Tensor::<[SP1Field; DIGEST_SIZE], _>::zeros_in(
                 [num_queries, max_height - i + log_blowup - 1],
                 CpuBackend,
             );
@@ -53,19 +53,19 @@ pub fn dummy_pcs_proof(
     total_machine_cols: usize,
     max_log_row_count: usize,
     added_cols: &[usize],
-) -> JaggedPcsProof<BabyBearPoseidon2> {
+) -> JaggedPcsProof<SP1CoreJaggedConfig> {
     let max_pcs_height = log_stacking_height;
     let dummy_component_polys = log_stacking_height_multiples.iter().map(|&x| {
-        let proof = Tensor::<[BabyBear; DIGEST_SIZE], _>::zeros_in(
+        let proof = Tensor::<[SP1Field; DIGEST_SIZE], _>::zeros_in(
             [fri_queries, max_pcs_height + log_blowup],
             CpuBackend,
         );
         TensorCsOpening {
-            values: Tensor::<BabyBear, _>::zeros_in([fri_queries, x], CpuBackend),
+            values: Tensor::<SP1Field, _>::zeros_in([fri_queries, x], CpuBackend),
             proof: MerkleTreeTcsProof { paths: proof },
         }
     });
-    let basefold_proof = BasefoldProof::<Poseidon2BabyBear16BasefoldConfig> {
+    let basefold_proof = BasefoldProof::<SP1BasefoldConfig> {
         univariate_messages: vec![[InnerChallenge::zero(); 2]; max_pcs_height],
         fri_commitments: vec![dummy_hash(); max_pcs_height],
         final_poly: InnerChallenge::zero(),
@@ -131,12 +131,10 @@ mod tests {
 
     use slop_challenger::CanObserve;
     use slop_commit::Rounds;
-    use slop_jagged::{
-        JaggedConfig, JaggedPcsVerifier, JaggedProver, Poseidon2BabyBearJaggedCpuProverComponents,
-    };
+    use slop_jagged::{JaggedConfig, JaggedPcsVerifier, JaggedProver};
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
-    use sp1_stark::BabyBearPoseidon2;
+    use sp1_hypercube::{SP1CoreJaggedConfig, SP1CpuJaggedProverComponents};
 
     use crate::dummy::jagged::dummy_pcs_proof;
 
@@ -149,8 +147,8 @@ mod tests {
         let log_stacking_height = 10;
         let max_log_row_count = 9;
 
-        type JC = BabyBearPoseidon2;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
+        type JC = SP1CoreJaggedConfig;
+        type Prover = JaggedProver<SP1CpuJaggedProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
 

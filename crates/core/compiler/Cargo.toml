@@ -13,7 +13,8 @@ slop-air = { workspace = true }
 slop-baby-bear = { workspace = true }
 
 sp1-core-machine = { workspace = true }
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
+sp1-primitives = { workspace = true }
 
 # dependencies for the binary
 

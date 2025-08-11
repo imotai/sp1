@@ -31,7 +31,7 @@ use sp1_curves::{
     AffinePoint, EllipticCurve,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{InteractionScope, MachineAir},
     Word,
 };

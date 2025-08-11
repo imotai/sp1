@@ -3,20 +3,20 @@ use sp1_recursion_compiler::prelude::*;
 use std::{collections::BTreeSet, marker::PhantomData, ops::Deref};
 
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
 use slop_multilinear::{full_geq, Mle, MleEval, Point};
-use sp1_recursion_compiler::ir::Builder;
-use sp1_stark::{
+use sp1_hypercube::{
     air::MachineAir, Chip, ChipEvaluation, LogUpEvaluations, LogUpGkrOutput, LogupGkrProof,
     LogupGkrRoundProof,
 };
+use sp1_primitives::SP1Field;
+use sp1_recursion_compiler::ir::Builder;
 
 use crate::{
     challenger::FieldChallengerVariable,
     sumcheck::{evaluate_mle_ext, verify_sumcheck},
     symbolic::IntoSymbolic,
     witness::{WitnessWriter, Witnessable},
-    BabyBearFriConfigVariable, CircuitConfig,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 
 /// Verifier for `LogUp` GKR.
@@ -25,8 +25,8 @@ pub struct RecursiveLogUpGkrVerifier<C, SC, A>(PhantomData<(C, SC, A)>);
 
 impl<C, SC, A> RecursiveLogUpGkrVerifier<C, SC, A>
 where
-    C: CircuitConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
-    SC: BabyBearFriConfigVariable<C>,
+    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    SC: SP1FieldConfigVariable<C>,
     A: MachineAir<C::F>,
 {
     /// Verify the `LogUp` GKR proof.

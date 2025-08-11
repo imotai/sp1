@@ -5,7 +5,7 @@ use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::AbstractField;
 use slop_keccak_air::{NUM_ROUNDS, U64_LIMBS};
 use slop_matrix::Matrix;
-use sp1_stark::{
+use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, SP1AirBuilder},
     InteractionKind,
 };

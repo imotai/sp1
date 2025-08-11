@@ -6,7 +6,7 @@ use sp1_core_executor::{
 };
 use sp1_derive::{AlignedBorrow, InputExpr, InputParams, IntoShape, SP1OperationBuilder};
 
-use sp1_stark::{air::SP1AirBuilder, Word};
+use sp1_hypercube::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},
@@ -203,13 +203,13 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
 }
 
 // impl<T: Into<<ConstraintCompiler as AirBuilder>::Expr> + Clone>
-//     Into<Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>, ExprExtRef<sp1_stark::ir::EF>>>
-//     for RTypeReaderInput<ConstraintCompiler>
+//     Into<Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>,
+// ExprExtRef<sp1_hypercube::ir::EF>>>     for RTypeReaderInput<ConstraintCompiler>
 // {
 //     fn into(
 //         self,
-//     ) -> Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>, ExprExtRef<sp1_stark::ir::EF>> {
-//         Shape::Struct(
+//     ) -> Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>, ExprExtRef<sp1_hypercube::ir::EF>>
+// {         Shape::Struct(
 //             "RTypeReaderInput".to_string(),
 //             vec![
 //                 ("clk_high".to_string(), Box::new(self.clk_high.into())),
@@ -230,8 +230,8 @@ impl<AB: SP1AirBuilder> SP1Operation<AB> for RTypeReaderImmutable {
 //     //     self,
 //     // ) -> Vec<(
 //     //     String,
-//     //     Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>, ExprExtRef<sp1_stark::ir::EF>>,
-//     // )> {
+//     //     Shape<ExprRef<<ConstraintCompiler as AirBuilder>::F>,
+// ExprExtRef<sp1_hypercube::ir::EF>>,     // )> {
 //     //     vec![
 //     //         // for demonstration only; not all fields are filled in
 //     //         ("clk_high".to_string(), self.clk_high.into()),

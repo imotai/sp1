@@ -180,15 +180,17 @@ mod tests {
 
     use slop_air::{Air, BaseAir};
     use slop_algebra::AbstractField;
-    use slop_baby_bear::BabyBear;
+
     use slop_matrix::Matrix;
+    use sp1_primitives::SP1Field;
 
     use super::*;
     use crate::{air::SP1AirBuilder, lookup::InteractionKind};
 
     #[test]
     fn test_symbolic_to_virtual_pair_col() {
-        type F = BabyBear;
+        use sp1_primitives::SP1Field;
+        type F = SP1Field;
 
         let x = SymbolicVariable::<F>::new(Entry::Main { offset: 0 }, 0);
 
@@ -257,7 +259,7 @@ mod tests {
     fn test_lookup_interactions() {
         let air = LookupTestAir {};
 
-        let mut builder = InteractionBuilder::<BabyBear>::new(0, NUM_COLS);
+        let mut builder = InteractionBuilder::<SP1Field>::new(0, NUM_COLS);
 
         air.eval(&mut builder);
 
@@ -267,7 +269,7 @@ mod tests {
         for interaction in receives {
             print!("Receive values: ");
             for value in interaction.values {
-                let expr = value.apply::<SymbolicExpression<BabyBear>, SymbolicVariable<BabyBear>>(
+                let expr = value.apply::<SymbolicExpression<SP1Field>, SymbolicVariable<SP1Field>>(
                     &[],
                     main.row_mut(0),
                 );
@@ -276,7 +278,7 @@ mod tests {
 
             let multiplicity = interaction
                 .multiplicity
-                .apply::<SymbolicExpression<BabyBear>, SymbolicVariable<BabyBear>>(
+                .apply::<SymbolicExpression<SP1Field>, SymbolicVariable<SP1Field>>(
                     &[],
                     main.row_mut(0),
                 );
@@ -287,7 +289,7 @@ mod tests {
         for interaction in sends {
             print!("Send values: ");
             for value in interaction.values {
-                let expr = value.apply::<SymbolicExpression<BabyBear>, SymbolicVariable<BabyBear>>(
+                let expr = value.apply::<SymbolicExpression<SP1Field>, SymbolicVariable<SP1Field>>(
                     &[],
                     main.row_mut(0),
                 );
@@ -296,7 +298,7 @@ mod tests {
 
             let multiplicity = interaction
                 .multiplicity
-                .apply::<SymbolicExpression<BabyBear>, SymbolicVariable<BabyBear>>(
+                .apply::<SymbolicExpression<SP1Field>, SymbolicVariable<SP1Field>>(
                     &[],
                     main.row_mut(0),
                 );
