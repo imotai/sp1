@@ -26,7 +26,9 @@ use slop_alloc::{Buffer, HasBackend};
 use slop_baby_bear::BabyBear;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
-use sp1_stark::{air::MachineAir, prover::Traces, Chip, LogUpGkrOutput, LogUpGkrTraceGenerator};
+use sp1_hypercube::{
+    air::MachineAir, prover::Traces, Chip, LogUpGkrOutput, LogUpGkrTraceGenerator,
+};
 
 use crate::{
     FirstGkrLayer, FirstLayerData, GkrCircuitLayer, GkrInputData, GkrLayer, Interactions,
@@ -128,7 +130,7 @@ where
                 let real_height = input_data.traces.get(name).unwrap().num_real_entries();
                 let height = std::cmp::max(real_height, 1);
                 let height = height.div_ceil(4);
-                dimensions.push(sp1_stark::log2_ceil_usize(height) + 1);
+                dimensions.push(sp1_hypercube::log2_ceil_usize(height) + 1);
                 vec![height as u32; interactions.num_interactions]
             })
             .collect::<Vec<_>>();

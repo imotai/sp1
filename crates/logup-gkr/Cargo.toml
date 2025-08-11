@@ -21,7 +21,7 @@ slop-challenger = { workspace = true }
 slop-basefold = { workspace = true }
 slop-futures = { workspace = true }
 
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 tokio = { workspace = true }
 itertools = { workspace = true }
 futures = { workspace = true }

@@ -7,7 +7,7 @@ use slop_alloc::{Buffer, IntoHost};
 use slop_baby_bear::BabyBear;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_tensor::{ReduceSumBackend, Tensor};
-use sp1_stark::{
+use sp1_hypercube::{
     air::MachineAir,
     prover::{ZerocheckProverData, ZerocheckRoundProver},
     ConstraintSumcheckFolder,

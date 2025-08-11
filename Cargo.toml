@@ -84,7 +84,7 @@ slop-jagged = { git = "https://github.com/succinctlabs/slop" }
 # SP1
 sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-stark = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-hypercube = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
@@ -119,7 +119,7 @@ sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "mult
 # for local development
 # sp1-core-executor = { path = "../sp1-wip/crates/core/executor", features = ["bigint-rug"] }
 # sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
-# sp1-stark = { path = "../sp1-wip/crates/stark" }
+# sp1-hypercube = { path = "../sp1-wip/crates/stark" }
 # sp1-primitives = { path = "../sp1-wip/crates/primitives" }
 # sp1-prover = { path = "../sp1-wip/crates/prover" }
 # sp1-recursion-circuit = { path = "../sp1-wip/crates/recursion/circuit" }

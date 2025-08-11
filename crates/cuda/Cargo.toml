@@ -28,7 +28,7 @@ slop-commit = { workspace = true }
 slop-jagged = { workspace = true }
 slop-futures = { workspace = true }
 
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 
 serde = { workspace = true }
 thiserror = { workspace = true }

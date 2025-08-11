@@ -155,8 +155,8 @@ mod tests {
     use slop_algebra::AbstractField;
     use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use slop_challenger::{CanObserve, CanSample, GrindingChallenger};
-    use slop_merkle_tree::my_bb_16_perm;
     use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+    use sp1_hypercube::inner_perm;
 
     pub type Perm =
         Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
@@ -164,7 +164,7 @@ mod tests {
     #[tokio::test]
     async fn test_grinding() {
         for bits in 1..20 {
-            let default_perm = my_bb_16_perm();
+            let default_perm = inner_perm();
             let mut challenger =
                 slop_challenger::DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
 

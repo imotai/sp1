@@ -19,7 +19,7 @@ slop-alloc = { workspace = true }
 slop-baby-bear = { workspace = true }
 slop-multilinear = { workspace = true }
 
-sp1-stark = { workspace = true }
+sp1-hypercube = { workspace = true }
 sp1-core-machine = { workspace = true }
 
 futures = { workspace = true }

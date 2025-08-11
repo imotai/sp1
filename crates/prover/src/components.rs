@@ -13,14 +13,14 @@ use slop_algebra::extension::BinomialExtensionField;
 use slop_baby_bear::BabyBear;
 use slop_jagged::{DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents};
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, OuterSC, WrapAir};
-use sp1_stark::{
+use sp1_hypercube::{
     air::MachineAir,
     prover::{
         MachineProverComponents, ProvingKey, ShardProver, ShardProverComponents, ZerocheckAir,
     },
     GkrProverImpl, MachineConfig, ShardVerifier,
 };
+use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, OuterSC, WrapAir};
 
 pub struct CudaSP1ProverComponents;
 

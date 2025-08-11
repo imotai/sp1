@@ -11,10 +11,10 @@ use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
 use sp1_core_machine::global::{GlobalChip, GlobalCols, GLOBAL_INITIAL_DIGEST_POS};
-use sp1_stark::air::MachineAir;
-use sp1_stark::septic_curve::SepticCurve;
-use sp1_stark::septic_digest::SepticDigest;
-use sp1_stark::septic_extension::{SepticBlock, SepticExtension};
+use sp1_hypercube::air::MachineAir;
+use sp1_hypercube::septic_curve::SepticCurve;
+use sp1_hypercube::septic_digest::SepticDigest;
+use sp1_hypercube::septic_extension::{SepticBlock, SepticExtension};
 
 use csl_cuda::TracegenRiscvGlobalKernel;
 
@@ -262,8 +262,8 @@ mod tests {
     use slop_tensor::Tensor;
     use sp1_core_executor::{events::GlobalInteractionEvent, ExecutionRecord};
     use sp1_core_machine::global::GlobalChip;
-    use sp1_stark::air::MachineAir;
-    use sp1_stark::MachineRecord;
+    use sp1_hypercube::air::MachineAir;
+    use sp1_hypercube::MachineRecord;
 
     use crate::{CudaTracegenAir, F};
 

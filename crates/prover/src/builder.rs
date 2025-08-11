@@ -2,8 +2,8 @@ use std::ops::{Deref, DerefMut};
 
 use csl_cuda::{cuda_memory_info, TaskScope};
 use sp1_core_executor::SplitOpts;
+use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover::{components::SP1ProverComponents, local::LocalProverOpts, SP1ProverBuilder};
-use sp1_stark::prover::ProverSemaphore;
 
 use crate::{new_cuda_prover_sumcheck_eval, CudaSP1ProverComponents};
 

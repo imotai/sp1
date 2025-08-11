@@ -17,13 +17,13 @@ use slop_alloc::CopyIntoBackend;
 use slop_baby_bear::BabyBear;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_tensor::TransposeBackend;
-use sp1_stark::prover::{MainTraceData, PreprocessedTraceData, ProverSemaphore, TraceData};
-use sp1_stark::{
+use sp1_hypercube::prover::{MainTraceData, PreprocessedTraceData, ProverSemaphore, TraceData};
+use sp1_hypercube::{
     air::MachineAir,
     prover::{TraceGenerator, Traces},
     Machine,
 };
-use sp1_stark::{Chip, MachineRecord};
+use sp1_hypercube::{Chip, MachineRecord};
 use tracing::{debug_span, instrument, Instrument};
 
 /// We currently only link to BabyBear-specialized trace generation FFI.
@@ -329,7 +329,7 @@ where
         program: Arc<<A as MachineAir<F>>::Program>,
         record: <A as MachineAir<F>>::Record,
         max_log_row_count: usize,
-        prover_permits: sp1_stark::prover::ProverSemaphore,
+        prover_permits: sp1_hypercube::prover::ProverSemaphore,
     ) -> TraceData<F, A, TaskScope> {
         let record = Arc::new(record);
 
@@ -411,7 +411,7 @@ pub(crate) mod tests {
     use rand::{rngs::StdRng, SeedableRng};
     use slop_alloc::ToHost;
     use slop_tensor::Tensor;
-    use sp1_stark::air::MachineAir;
+    use sp1_hypercube::air::MachineAir;
     use std::collections::BTreeSet;
 
     pub(crate) fn test_traces_eq(

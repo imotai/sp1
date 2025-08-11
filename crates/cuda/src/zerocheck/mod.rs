@@ -13,7 +13,7 @@ use slop_sumcheck::{
     ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend, SumcheckPolyBase,
 };
 use slop_tensor::TransposeBackend;
-use sp1_stark::prover::{ZeroCheckPoly, ZerocheckRoundProver};
+use sp1_hypercube::prover::{ZeroCheckPoly, ZerocheckRoundProver};
 use sum_as_poly::zerocheck_sum_as_poly_in_last_variable_device;
 
 use crate::TaskScope;

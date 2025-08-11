@@ -4,12 +4,13 @@ use csl_cuda::TaskScope;
 use csl_dft::SpparkDftBabyBear;
 use csl_merkle_tree::{Poseidon2BabyBear16CudaProver, Poseidon2Bn254CudaProver};
 use slop_algebra::extension::BinomialExtensionField;
+use slop_baby_bear::baby_bear_poseidon2::Poseidon2BabyBearConfig;
 use slop_baby_bear::BabyBear;
 use slop_basefold::{
     BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig,
 };
 use slop_basefold_prover::{BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver};
-use slop_merkle_tree::{MerkleTreeTcs, Poseidon2BabyBearConfig, Poseidon2Bn254Config};
+use slop_merkle_tree::{MerkleTreeTcs, Poseidon2Bn254Config};
 
 use crate::{BasefoldCudaConfig, CudaDftEncoder, FriCudaProver, GrindingPowCudaProver};
 

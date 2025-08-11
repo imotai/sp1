@@ -4,7 +4,7 @@ use csl_cuda::TaskScope;
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CpuBackend};
 use slop_tensor::Tensor;
-use sp1_stark::{prover::Traces, LogUpGkrCircuit};
+use sp1_hypercube::{prover::Traces, LogUpGkrCircuit};
 
 use crate::{
     CircuitTransitionKernel, FirstLayerTransitionKernel, Interactions, LogUpGkrCudaTraceGenerator,

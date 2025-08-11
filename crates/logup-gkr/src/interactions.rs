@@ -2,7 +2,7 @@ use csl_cuda::TaskScope;
 use slop_air::PairCol;
 use slop_algebra::Field;
 use slop_alloc::{mem::CopyError, Backend, Buffer, CopyToBackend, CpuBackend, HasBackend};
-use sp1_stark::Interaction;
+use sp1_hypercube::Interaction;
 use std::ops::Mul;
 
 #[derive(Clone, Copy, Debug)]

@@ -31,20 +31,20 @@ use sp1_curves::params::FieldParameters;
 use sp1_curves::params::{Limbs, NumLimbs};
 use sp1_curves::weierstrass::WeierstrassParameters;
 use sp1_curves::{BigUint, CurveType, EllipticCurve};
+use sp1_hypercube::air::ByteAirBuilder;
+use sp1_hypercube::air::{InstructionAirBuilder, SepticExtensionAirBuilder};
+use sp1_hypercube::septic_curve::SepticCurve;
+use sp1_hypercube::septic_extension::SepticExtension;
+use sp1_hypercube::Word;
+use sp1_hypercube::{
+    air::{AirInteraction, InteractionScope, MachineAir, MessageBuilder},
+    InteractionKind,
+};
 use sp1_primitives::polynomial::Polynomial;
 use sp1_recursion_machine::builder::RecursionAirBuilder;
 use sp1_recursion_machine::chips::poseidon2_wide::columns::preprocessed::Poseidon2PreprocessedColsWide;
 use sp1_recursion_machine::chips::poseidon2_wide::Poseidon2WideChip;
 use sp1_recursion_machine::RecursionAir;
-use sp1_stark::air::ByteAirBuilder;
-use sp1_stark::air::{InstructionAirBuilder, SepticExtensionAirBuilder};
-use sp1_stark::septic_curve::SepticCurve;
-use sp1_stark::septic_extension::SepticExtension;
-use sp1_stark::Word;
-use sp1_stark::{
-    air::{AirInteraction, InteractionScope, MachineAir, MessageBuilder},
-    InteractionKind,
-};
 use std::borrow::Borrow;
 use std::iter::once;
 pub trait BlockAir<AB: AirBuilder>: Air<AB> + MachineAir<F> + 'static + Send + Sync {

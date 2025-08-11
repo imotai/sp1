@@ -112,10 +112,10 @@ pub(crate) mod tests {
     use slop_alloc::ToHost;
     use slop_tensor::Tensor;
 
+    use sp1_hypercube::air::MachineAir;
     use sp1_recursion_executor::{
         AnalyzedInstruction, BasicBlock, RawProgram, RecursionProgram, RootProgram, SeqBlock,
     };
-    use sp1_stark::air::MachineAir;
 
     use crate::{CudaTracegenAir, F};
 

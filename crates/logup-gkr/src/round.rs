@@ -29,7 +29,7 @@ use slop_sumcheck::{
     SumcheckPolyFirstRound,
 };
 use slop_tensor::{ReduceSumBackend, Tensor};
-use sp1_stark::{LogUpGkrRoundProver, LogupGkrRoundProof};
+use sp1_hypercube::{LogUpGkrRoundProver, LogupGkrRoundProof};
 
 use crate::{FirstGkrLayer, GkrCircuitLayer, GkrLayer};
 

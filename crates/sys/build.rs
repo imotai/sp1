@@ -61,7 +61,7 @@ fn cbindgen_builder() -> cbindgen::Builder {
         .with_sys_include("cstdint")
         .with_parse_deps(true)
         .with_parse_include(&[
-            "sp1-stark",
+            "sp1-hypercube",
             "sp1-primitives",
             "slop-baby-bear",
             "p3-baby-bear",
@@ -71,7 +71,7 @@ fn cbindgen_builder() -> cbindgen::Builder {
             "sp1-recursion-machine",
         ])
         .with_parse_extra_bindings(&[
-            "sp1-stark",
+            "sp1-hypercube",
             "sp1-primitives",
             "slop-baby-bear",
             "p3-baby-bear",

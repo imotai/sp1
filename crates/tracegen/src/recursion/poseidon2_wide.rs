@@ -7,9 +7,9 @@ use slop_alloc::mem::CopyError;
 use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
+use sp1_hypercube::air::MachineAir;
 use sp1_recursion_executor::Instruction;
 use sp1_recursion_machine::chips::poseidon2_wide::Poseidon2WideChip;
-use sp1_stark::air::MachineAir;
 
 use crate::{CudaTracegenAir, F};
 
@@ -183,7 +183,7 @@ mod tests {
                 Poseidon2WideChip::<3>,
                 |rng| {
                     let input = rng.gen();
-                    let permuter = slop_merkle_tree::my_bb_16_perm();
+                    let permuter = sp1_hypercube::inner_perm();
                     let output = permuter.permute(input);
 
                     Poseidon2Event { input, output }
@@ -203,7 +203,7 @@ mod tests {
                 Poseidon2WideChip::<9>,
                 |rng| {
                     let input = rng.gen();
-                    let permuter = slop_merkle_tree::my_bb_16_perm();
+                    let permuter = sp1_hypercube::inner_perm();
                     let output = permuter.permute(input);
 
                     Poseidon2Event { input, output }

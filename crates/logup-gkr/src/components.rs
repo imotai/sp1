@@ -5,7 +5,7 @@ use slop_algebra::{ExtensionField, Field};
 use slop_challenger::FieldChallenger;
 use slop_multilinear::MleEvaluationBackend;
 use slop_tensor::{AddAssignBackend, TransposeBackend};
-use sp1_stark::{air::MachineAir, GkrProverImpl, LogUpGkrProverComponents};
+use sp1_hypercube::{air::MachineAir, GkrProverImpl, LogUpGkrProverComponents};
 
 use crate::{
     CircuitTransitionKernel, ExtractOutputKernel, FirstLayerKernels, FirstLayerTransitionKernel,

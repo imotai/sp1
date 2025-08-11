@@ -9,7 +9,7 @@ use slop_alloc::HasBackend;
 use slop_multilinear::{
     HostEvaluationBackend, MleBaseBackend, MleEvaluationBackend, MleFixLastVariableBackend,
 };
-use sp1_stark::prover::{ZeroCheckPoly, ZerocheckRoundProver};
+use sp1_hypercube::prover::{ZeroCheckPoly, ZerocheckRoundProver};
 
 use crate::{sync::CudaSend, TaskScope};
 

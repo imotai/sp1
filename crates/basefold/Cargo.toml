@@ -13,6 +13,9 @@ csl-cuda = { workspace = true }
 csl-merkle-tree = { workspace = true }
 csl-challenger = { workspace = true }
 
+sp1-hypercube = {workspace = true}
+sp1-primitives = {workspace = true}
+
 slop-basefold = { workspace = true }
 slop-futures = { workspace = true }
 slop-alloc = { workspace = true }

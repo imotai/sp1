@@ -13,8 +13,8 @@ use slop_multilinear::{
     HostEvaluationBackend, Mle, MleBaseBackend, PartialLagrangeBackend, PointBackend,
 };
 use slop_sumcheck::SumcheckPolyBase;
-use sp1_stark::prover::{ZeroCheckPoly, ZerocheckRoundProver};
-use sp1_stark::MAX_CONSTRAINT_DEGREE;
+use sp1_hypercube::prover::{ZeroCheckPoly, ZerocheckRoundProver};
+use sp1_hypercube::MAX_CONSTRAINT_DEGREE;
 
 use crate::TaskScope;
 

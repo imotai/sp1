@@ -5,8 +5,8 @@ use slop_alloc::mem::CopyError;
 use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
+use sp1_hypercube::air::MachineAir;
 use sp1_recursion_machine::chips::prefix_sum_checks::PrefixSumChecksChip;
-use sp1_stark::air::MachineAir;
 
 use crate::{CudaTracegenAir, F};
 

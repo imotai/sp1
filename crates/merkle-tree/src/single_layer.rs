@@ -18,13 +18,13 @@ use csl_cuda::{
 use slop_algebra::{AbstractField, Field};
 use slop_alloc::CpuBackend;
 use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
+use slop_baby_bear::baby_bear_poseidon2::Poseidon2BabyBearConfig;
 use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use slop_commit::{ComputeTcsOpenings, Message, TensorCsProver};
 use slop_futures::OwnedBorrow;
 use slop_merkle_tree::{
-    bn254_poseidon2_rc3, MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof,
-    Poseidon2BabyBearConfig, Poseidon2Bn254Config,
+    bn254_poseidon2_rc3, MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2Bn254Config,
 };
 use slop_tensor::Tensor;
 use thiserror::Error;

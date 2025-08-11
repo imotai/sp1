@@ -77,7 +77,7 @@ pub async fn make_measurement(
 
     // // Serialize the proof and vk and save to a file.
     // let vk_bytes = bincode::serialize(&vk).unwrap();
-    // let core_machine_proof = sp1_stark::MachineProof::<BabyBearPoseidon2> {
+    // let core_machine_proof = sp1_hypercube::MachineProof::<BabyBearPoseidon2> {
     //     shard_proofs: core_proof.proof.0.clone(),
     // };
     // let proof_bytes = bincode::serialize(&core_machine_proof).unwrap();
