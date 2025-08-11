@@ -14,6 +14,7 @@ categories = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-curves = { workspace = true }
 sp1-hypercube = { workspace = true }
+sp1-jit = { workspace = true }
 
 # slop (replaced p3 dependencies)
 slop-algebra = { workspace = true }

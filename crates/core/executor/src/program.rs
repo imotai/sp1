@@ -19,6 +19,7 @@ use sp1_hypercube::{
     InteractionKind,
 };
 use sp1_primitives::consts::split_page_idx;
+use std::sync::Arc;
 
 /// A program that can be executed by the SP1 zkVM.
 ///
@@ -38,6 +39,8 @@ pub struct Program {
     pub memory_image: HashMap<u64, u64>,
     /// The initial page protection image, mapping page indices to protection flags.
     pub page_prot_image: HashMap<u64, u8>,
+    /// The initial memory image, useful for global constants
+    pub memory_image: Arc<HashMap<u64, u64>>,
     /// The shape for the preprocessed tables.
     pub preprocessed_shape: Option<Shape<RiscvAirId>>,
     /// Flag indicating if untrusted programs are allowed.
@@ -55,6 +58,7 @@ impl Program {
             pc_base,
             memory_image: HashMap::new(),
             page_prot_image: HashMap::new(),
+            memory_image: Arc::new(HashMap::new()),
             preprocessed_shape: None,
             enable_untrusted_programs: false,
         }

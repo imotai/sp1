@@ -31,6 +31,7 @@ mod hook;
 mod instruction;
 mod io;
 mod memory;
+// mod minimal;
 mod opcode;
 mod opts;
 #[cfg(feature = "profiling")]
@@ -52,6 +53,7 @@ pub use cost::*;
 pub use executor::*;
 pub use hook::*;
 pub use instruction::*;
+// pub use minimal::*;
 pub use opcode::*;
 pub use opts::*;
 pub use program::*;

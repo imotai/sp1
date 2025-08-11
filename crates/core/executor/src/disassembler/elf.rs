@@ -13,6 +13,8 @@ use sp1_primitives::consts::{
 };
 
 /// RISC-V 64IM ELF (Executable and Linkable Format) File.
+use std::sync::Arc;
+/// RISC-V 32IM ELF (Executable and Linkable Format) File.
 ///
 /// This file represents a binary in the ELF format, specifically the RISC-V 64IM architecture
 /// with the following extensions:
@@ -35,12 +37,13 @@ pub(crate) struct Elf {
     pub(crate) page_prot_image: HashMap<u64, u8>,
     /// Flag indicating if untrusted programs are enabled.
     pub(crate) enable_untrusted_programs: bool,
+    pub(crate) memory_image: Arc<HashMap<u64, u64>>,
 }
 
 impl Elf {
     /// Create a new [Elf].
     #[must_use]
-    pub(crate) const fn new(
+    pub(crate) fn new(
         instructions: Vec<u32>,
         pc_start: u64,
         pc_base: u64,
@@ -48,14 +51,7 @@ impl Elf {
         page_prot_image: HashMap<u64, u8>,
         enable_untrusted_programs: bool,
     ) -> Self {
-        Self {
-            instructions,
-            pc_start,
-            pc_base,
-            memory_image,
-            page_prot_image,
-            enable_untrusted_programs,
-        }
+        Self { instructions, pc_start, pc_base, memory_image: Arc::new(memory_image) }
     }
 
     /// Parse the ELF file into a vector of 32-bit encoded instructions and the first memory

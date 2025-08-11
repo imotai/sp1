@@ -1,6 +1,10 @@
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
-use std::{num::Wrapping, str::FromStr, sync::Arc};
+use std::{
+    num::Wrapping,
+    str::FromStr,
+    sync::{Arc, OnceLock},
+};
 
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
@@ -51,6 +55,22 @@ use crate::{
 pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
 /// The increment for the program counter.  Is used for all instructions except
+use std::sync::mpsc;
+
+#[allow(clippy::type_complexity)]
+static DEBUG_REGISTERS: OnceLock<mpsc::Sender<Option<(u32, u64, [u32; 32])>>> = OnceLock::new();
+
+/// Initialize the sender for debugging registers at each timesstamp.
+///
+/// Todo: feature gate.
+pub fn init_debug_registers() -> mpsc::Receiver<Option<(u32, u64, [u32; 32])>> {
+    let (tx, rx) = mpsc::channel();
+    DEBUG_REGISTERS.set(tx).expect("DEBUG_REGISTERS already initialized");
+
+    rx
+}
+
+/// The default increment for the program counter.  Is used for all instructions except
 /// for branches and jumps.
 pub const PC_INC: u32 = 4;
 /// The default increment for the timestamp.
@@ -1776,6 +1796,17 @@ impl<'a> Executor<'a> {
             }
         }
 
+        // eprintln!(
+        //     "registers: {:?}",
+        //     self.state
+        //         .memory
+        //         .registers
+        //         .registers
+        //         .iter()
+        //         .map(|r| r.map(|r| r.value).unwrap_or(0))
+        //         .collect::<Vec<_>>()
+        // );
+
         if instruction.is_alu_instruction() {
             (a, b, c) = self.execute_alu::<E>(instruction);
         } else if instruction.is_memory_load_instruction() {
@@ -1838,11 +1869,16 @@ impl<'a> Executor<'a> {
             );
         }
 
+        // eprintln!("instruction: {:?}", instruction);
+        // eprintln!("pc: {:?}", self.state.pc);
+
         // Update the program counter.
         self.state.pc = next_pc;
 
         // Update the clk to the next cycle.
         self.state.clk += 8;
+
+        // eprintln!("clk: {:?}", clk);
 
         Ok(())
     }
@@ -2438,8 +2474,8 @@ impl<'a> Executor<'a> {
         self.state.clk = 1;
 
         tracing::debug!("loading memory image");
-        for (&addr, value) in &self.program.memory_image {
-            self.state.memory.insert(addr, MemoryEntry::init(*value));
+        for (addr, value) in self.program.memory_image.iter() {
+            self.state.memory.insert(*addr, MemoryEntry::init(*value));
         }
         if self.program.enable_untrusted_programs {
             for (&page_idx, page_prot) in &self.program.page_prot_image {
@@ -2564,6 +2600,11 @@ impl<'a> Executor<'a> {
         let public_values = self.record.public_values;
 
         if done {
+            if let Some(sender) = DEBUG_REGISTERS.get() {
+                eprintln!("finalize registers in executor");
+                sender.send(None).unwrap();
+            }
+
             self.postprocess::<E>();
 
             // Push the remaining execution record with memory initialize & finalize events.

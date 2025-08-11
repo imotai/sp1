@@ -1,0 +1,21 @@
+[package]
+name = "sp1-jit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
+
+[dependencies]
+dynasmrt = "3.2.0"
+memfd = "0.6.4"
+memmap2 = "0.9.5"
+paste = "1.0.15"
+serde = { workspace = true, features = ["derive"]}
+tracing.workspace = true
+uuid = { version = "1.17.0", features = ["v4"] }
+
+[lints]
+workspace = true
