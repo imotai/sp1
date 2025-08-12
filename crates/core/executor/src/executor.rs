@@ -1941,7 +1941,7 @@ impl<'a> Executor<'a> {
                     b % c
                 }
             }
-            // RISCV-64
+            // RISCV-64 word operations
             Opcode::ADDW => (Wrapping(b as i32) + Wrapping(c as i32)).0 as i64 as u64,
             Opcode::SUBW => (Wrapping(b as i32) - Wrapping(c as i32)).0 as i64 as u64,
             Opcode::MULW => (Wrapping(b as i32) * Wrapping(c as i32)).0 as i64 as u64,
@@ -1973,7 +1973,7 @@ impl<'a> Executor<'a> {
                     (((b as u32) % (c as u32)) as i32) as i64 as u64
                 }
             }
-            // RISC-V 64-bit operations
+            // RISCV-64 bit operations
             Opcode::SLLW => (((b as i64) << (c & 0x1f)) as i32) as i64 as u64,
             Opcode::SRLW => (((b as u32) >> ((c & 0x1f) as u32)) as i32) as u64,
             Opcode::SRAW => {

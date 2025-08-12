@@ -140,8 +140,8 @@ pub struct JitFunction {
     code: ExecutableBuffer,
 
     /// The initial memory image.
-    initial_memory_image: Arc<HashMap<u32, u32>>,
-    pc_start: u32,
+    initial_memory_image: Arc<HashMap<u64, u64>>,
+    pc_start: u64,
     input_buffer: VecDeque<Vec<u8>>,
 
     /// The unconstrained context, this is used to create the COW memory at runtime.
@@ -155,8 +155,8 @@ pub struct JitFunction {
     /// The JIT funciton may stop "in the middle" of an program,
     /// we want to be able to resune it, so this is the information needed to do so.
     pub memory: MmapMut,
-    pub pc: u32,
-    pub registers: [u32; 32],
+    pub pc: u64,
+    pub registers: [u64; 32],
     pub clk: u64,
 }
 
@@ -166,7 +166,7 @@ impl JitFunction {
         jump_table: Vec<usize>,
         memory_size: usize,
         trace_buf_size: usize,
-        pc_start: u32,
+        pc_start: u64,
     ) -> std::io::Result<Self> {
         // Adjust the jump table to be absolute addresses.
         let buf_ptr = code.as_ptr();
@@ -177,7 +177,7 @@ impl JitFunction {
             .create(uuid::Uuid::new_v4().to_string())
             .expect("Failed to create jit memory");
 
-        fd.as_file().set_len((memory_size + std::mem::align_of::<u32>()) as u64)?;
+        fd.as_file().set_len((memory_size + std::mem::align_of::<u64>()) as u64)?;
 
         Ok(Self {
             jump_table,
@@ -196,7 +196,7 @@ impl JitFunction {
     }
 
     /// Write the initial memory image to the JIT memory.
-    pub fn with_initial_memory_image(&mut self, memory: Arc<HashMap<u32, u32>>) {
+    pub fn with_initial_memory_image(&mut self, memory: Arc<HashMap<u64, u64>>) {
         for (addr, val) in memory.iter() {
             let bytes = val.to_le_bytes();
 
@@ -318,7 +318,7 @@ pub struct JitContext {
     trace_buf: NonNull<u8>,
     /// The registers to start the execution with,
     /// these are loaded into real native registers at the start of execution.
-    registers: [u32; 32],
+    registers: [u64; 32],
     /// The input buffer to the program.
     input_buffer: NonNull<VecDeque<Vec<u8>>>,
     /// The memory file descriptor, this is used to create the COW memory at runtime.
@@ -326,7 +326,7 @@ pub struct JitContext {
     /// The unconstrained context, this is used to create the COW memory at runtime.
     maybe_unconstrained: Option<UnconstrainedCtx>,
     /// The current program counter
-    pub pc: u32,
+    pub pc: u64,
     /// The number of cycles executed.
     pub clk: u64,
 }
@@ -334,7 +334,7 @@ pub struct JitContext {
 impl JitContext {
     /// # Safety
     /// - todo
-    pub unsafe fn trace_mem_access(&self, reads: &[u32]) {
+    pub unsafe fn trace_mem_access(&self, reads: &[u64]) {
         // QUESTIONABLE: I think as long as Self is not Sync youre mostly fine, but its unclear,
         // how to actually call this method safe.
 
@@ -352,7 +352,7 @@ impl JitContext {
         let reads_start = std::mem::size_of::<TraceChunkRaw>();
         let reads_ptr = raw.add(reads_start);
         for (i, read) in reads.iter().enumerate() {
-            std::ptr::write_unaligned(reads_ptr.add(i * 4) as *mut u32, *read);
+            std::ptr::write_unaligned(reads_ptr.add(i * 8) as *mut u64, *read);
         }
     }
 
@@ -419,15 +419,15 @@ impl JitContext {
     }
 
     /// Obtain a view of the registers.
-    pub const fn registers(&self) -> &[u32; 32] {
+    pub const fn registers(&self) -> &[u64; 32] {
         &self.registers
     }
 
-    pub const fn rw(&mut self, reg: RiscRegister, val: u32) {
+    pub const fn rw(&mut self, reg: RiscRegister, val: u64) {
         self.registers[reg as usize] = val;
     }
 
-    pub const fn rr(&self, reg: RiscRegister) -> u32 {
+    pub const fn rr(&self, reg: RiscRegister) -> u64 {
         self.registers[reg as usize]
     }
 }
@@ -440,11 +440,11 @@ pub struct UnconstrainedCtx {
     // The pointer to the actual memory.
     pub actual_memory_ptr: NonNull<u8>,
     // The program counter.
-    pub pc: u32,
+    pub pc: u64,
     // The clock.
     pub clk: u64,
     // The registers.
-    pub registers: [u32; 32],
+    pub registers: [u64; 32],
 }
 
 /// A type representing the memory of the emulated program.
@@ -463,12 +463,12 @@ impl<'a> ContextMemory<'a> {
     }
 
     /// Read a u32 from the memory.
-    pub fn mr(&self, addr: u32) -> u32 {
+    pub fn mr(&self, addr: u64) -> u64 {
         let ptr = unsafe { self.ctx.memory.add(addr as usize) };
 
         // SAFETY: The pointer is valid to read from, as it was aligned by us during allocation.
         // See [JitFunction::new] for more details.
-        let value = unsafe { std::ptr::read(ptr.as_ptr() as *const u32) };
+        let value = unsafe { std::ptr::read(ptr.as_ptr() as *const u64) };
 
         unsafe { self.ctx.trace_mem_access(&[value]) };
 
@@ -476,18 +476,18 @@ impl<'a> ContextMemory<'a> {
     }
 
     /// Write a u32 to the memory.
-    pub const fn mw(&mut self, addr: u32, val: u32) {
+    pub const fn mw(&mut self, addr: u64, val: u64) {
         let ptr = unsafe { self.ctx.memory.add(addr as usize) };
 
         // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
         // See [JitFunction::new] for more details.
-        unsafe { std::ptr::write(ptr.as_ptr() as *mut u32, val) };
+        unsafe { std::ptr::write(ptr.as_ptr() as *mut u64, val) };
     }
 
     /// Read a slice of u32 from the memory.
-    pub fn mr_slice(&self, addr: u32, len: usize) -> &[u32] {
+    pub fn mr_slice(&self, addr: u64, len: usize) -> &[u64] {
         let ptr = unsafe { self.ctx.memory.add(addr as usize) };
-        let ptr = ptr.as_ptr() as *const u32;
+        let ptr = ptr.as_ptr() as *const u64;
 
         // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
         // See [JitFunction::new] for more details.
@@ -499,9 +499,9 @@ impl<'a> ContextMemory<'a> {
     }
 
     /// Write a slice of u32 to the memory.
-    pub fn mw_slice(&mut self, addr: u32, vals: &[u32]) {
+    pub fn mw_slice(&mut self, addr: u64, vals: &[u64]) {
         let ptr = unsafe { self.ctx.memory.add(addr as usize) };
-        let ptr = ptr.as_ptr() as *mut u32;
+        let ptr = ptr.as_ptr() as *mut u64;
 
         // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
         // See [JitFunction::new] for more details
@@ -512,7 +512,7 @@ impl<'a> ContextMemory<'a> {
     }
 
     /// Read a byte from the memory.
-    pub fn byte(&self, addr: u32) -> u8 {
+    pub fn byte(&self, addr: u64) -> u8 {
         let ptr = unsafe { self.ctx.memory.add(addr as usize) };
         let ptr = ptr.as_ptr() as *const u8;
 

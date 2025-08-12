@@ -60,7 +60,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 1. Add 4 to the current PC in temp_a
             // ------------------------------------
-            add Rd(TEMP_A), 4
+            add Rq(TEMP_A), 4
         }
 
         // Store the current PC + 4 into the destination register.
@@ -83,7 +83,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             self;
             .arch x64;
 
-            add Rd(TEMP_B), 4
+            add Rq(TEMP_B), 4
         }
 
         // ------------------------------------
@@ -96,20 +96,18 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             self;
             .arch x64;
 
-            add Rd(TEMP_A), imm as i32;
-            mov DWORD [Rq(CONTEXT) + PC_OFFSET], Rd(TEMP_A)
+            add Rq(TEMP_A), imm as i32;
+            mov QWORD [Rq(CONTEXT) + PC_OFFSET], Rq(TEMP_A)
         }
 
         // ------------------------------------
         // 3. Store the computed PC into rd
         // ------------------------------------
-
         self.emit_risc_register_store(TEMP_B, rd);
 
         // ------------------------------------
         // 3. Jump to the target pc.
         // ------------------------------------
-
         self.jump_to_pc();
     }
 
@@ -129,7 +127,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // Set the PC in the context to the target.
             // ------------------------------------
-            mov DWORD [Rq(CONTEXT) + PC_OFFSET], target as i32
+            mov QWORD [Rq(CONTEXT) + PC_OFFSET], target as i32
         }
     }
 
@@ -205,17 +203,17 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 1. Copy the current PC into TEMP_A
             // ------------------------------------
-            mov Rd(TEMP_A), [Rq(CONTEXT) + PC_OFFSET];
+            mov Rq(TEMP_A), [Rq(CONTEXT) + PC_OFFSET];
 
             // ------------------------------------
             // 2. Increment the PC by the immediate.
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Increment the PC to the next instruction.
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
         }
 
         // Store the result in the destination register.
@@ -233,7 +231,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             .arch x64;
 
             // Check if rs1 == rs2
-            cmp Rd(TEMP_A), Rd(TEMP_B);
+            cmp Rq(TEMP_A), Rq(TEMP_B);
             // If rs1 != rs2, jump to not_branched, since that would imply !(rs1 == rs2)
             jne >not_branched;
 
@@ -241,17 +239,17 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // Branched:
             // 0. Bump the pc by the immediate.
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
 
             // ------------------------------------
             // 1. Load the current pc into TEMP_A
             // ------------------------------------
-            mov Rd(TEMP_A), DWORD [Rq(CONTEXT) + PC_OFFSET];
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
 
             // ------------------------------------
             // 2. Lookup into the jump table and load the asm offset into TEMP_A
             // ------------------------------------
-            sub Rd(TEMP_A), pc_base;
+            sub Rq(TEMP_A), pc_base;
             shr Rq(TEMP_A), 2;
             mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
 
@@ -268,7 +266,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
         }
     }
 
@@ -282,7 +280,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             .arch x64;
 
             // Check if rs1 == rs2
-            cmp Rd(TEMP_A), Rd(TEMP_B);
+            cmp Rq(TEMP_A), Rq(TEMP_B);
             // If rs1 < rs2, jump to not_branched, since that would imply !(rs1 >= rs2)
             jl >not_branched;
 
@@ -290,18 +288,18 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // Branched:
             // 0. Bump the pc by the immediate.
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
 
             // ------------------------------------
             // 1. Load the current pc into TEMP_A
             // ------------------------------------
-            mov Rd(TEMP_A), DWORD [Rq(CONTEXT) + PC_OFFSET];
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
 
             // ------------------------------------
             // 2. Lookup into the jump table and load the asm offset into TEMP_A
             // ------------------------------------
-            sub Rd(TEMP_A), pc_base;
-            shr Rd(TEMP_A), 2; // Divide by 4 to get the index.
+            sub Rq(TEMP_A), pc_base;
+            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
             mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
 
             // ------------------------------------
@@ -317,7 +315,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
         }
     }
 
@@ -330,7 +328,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             self;
             .arch x64;
 
-            cmp Rd(TEMP_A), Rd(TEMP_B);
+            cmp Rq(TEMP_A), Rq(TEMP_B);
             // If rs1 < rs2, jump to not_branched, since that would imply !(rs1 >= rs2)
             jb >not_branched;
 
@@ -338,18 +336,18 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // Branched:
             // 0. Bump the pc by the immediate.
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
 
             // ------------------------------------
             // 1. Load the current pc into TEMP_A
             // ------------------------------------
-            mov Rd(TEMP_A), DWORD [Rq(CONTEXT) + PC_OFFSET];
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
 
             // ------------------------------------
             // 2. Lookup into the jump table and load the asm offset into TEMP_A
             // ------------------------------------
-            sub Rd(TEMP_A), pc_base;
-            shr Rd(TEMP_A), 2;
+            sub Rq(TEMP_A), pc_base;
+            shr Rq(TEMP_A), 2;
             mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
 
             // ------------------------------------
@@ -365,7 +363,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
         }
     }
 
@@ -381,25 +379,25 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // Compare the two registers.
             //
-            cmp Rd(TEMP_A), Rd(TEMP_B);   // signed compare
+            cmp Rq(TEMP_A), Rq(TEMP_B);   // signed compare
             jge >not_branched;            // rs1 ≥ rs2  →  skip
 
             // ------------------------------------
             // Branched:
             // 0. Bump the pc by the immediate.
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
 
             // ------------------------------------
             // 1. Load the current pc into TEMP_A
             // ------------------------------------
-            mov Rd(TEMP_A), DWORD [Rq(CONTEXT) + PC_OFFSET];
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
 
             // ------------------------------------
             // 2. Lookup into the jump table and load the asm offset into TEMP_A
             // ------------------------------------
-            sub Rd(TEMP_A), pc_base;
-            shr Rd(TEMP_A), 2; // Divide by 4 to get the index.
+            sub Rq(TEMP_A), pc_base;
+            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
             mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
 
             // ------------------------------------
@@ -415,7 +413,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
         }
     }
 
@@ -427,25 +425,25 @@ impl SP1RiscvTranspiler for TranspilerBackend {
         dynasm! {
             self;
             .arch x64;
-            cmp Rd(TEMP_A), Rd(TEMP_B);   // unsigned compare
+            cmp Rq(TEMP_A), Rq(TEMP_B);   // unsigned compare
             jae >not_branched;             // rs1 ≥ rs2 (unsigned) → skip
 
             // ------------------------------------
             // Branched:
             // 0. Bump the pc by the immediate.
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
 
             // ------------------------------------
             // 1. Load the current pc into TEMP_A
             // ------------------------------------
-            mov Rd(TEMP_A), DWORD [Rq(CONTEXT) + PC_OFFSET];
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
 
             // ------------------------------------
             // 2. Lookup into the jump table and load the asm offset into TEMP_A
             // ------------------------------------
-            sub Rd(TEMP_A), pc_base;
-            shr Rd(TEMP_A), 2; // Divide by 4 to get the index.
+            sub Rq(TEMP_A), pc_base;
+            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
             mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
 
             // ------------------------------------
@@ -459,7 +457,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             not_branched:;
 
             // 1. Bump the pc by 4
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
         }
     }
 
@@ -471,25 +469,25 @@ impl SP1RiscvTranspiler for TranspilerBackend {
         dynasm! {
             self;
             .arch x64;
-            cmp Rd(TEMP_A), Rd(TEMP_B);   // sets ZF
+            cmp Rq(TEMP_A), Rq(TEMP_B);   // sets ZF
             je  >not_branched;            // rs1 == rs2  →  skip
 
             // ------------------------------------
             // Branched:
             // 0. Bump the pc in the context by the immediate.
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
 
             // ------------------------------------
             // 1. Load the current pc into TEMP_A
             // ------------------------------------
-            mov Rd(TEMP_A), DWORD [Rq(CONTEXT) + PC_OFFSET];
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
 
             // ------------------------------------
             // 2. Lookup into the jump table and load the asm offset into TEMP_A
             // ------------------------------------
-            sub Rd(TEMP_A), pc_base;
-            shr Rd(TEMP_A), 2; // Divide by 4 to get the index.
+            sub Rq(TEMP_A), pc_base;
+            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
             mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
 
             // ------------------------------------
@@ -505,7 +503,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add DWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
         }
     }
 
@@ -540,7 +538,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -550,7 +548,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 4. Load byte → sign-extend to 32 bits
             // ------------------------------------
-            movsx Rd(TEMP_B), BYTE [Rq(TEMP_B)]
+            movsx Rq(TEMP_B), BYTE [Rq(TEMP_B)]
         }
 
         // 4. Write back to destination register
@@ -572,7 +570,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to
@@ -583,7 +581,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 4. Load byte → zero-extend to 32 bits
             // ------------------------------------
-            movzx Rd(TEMP_B), BYTE [Rq(TEMP_B)]
+            movzx Rq(TEMP_B), BYTE [Rq(TEMP_B)]
         }
 
         self.emit_risc_register_store(TEMP_B, rd);
@@ -604,7 +602,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -614,7 +612,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 4. Load half-word → sign-extend to 32 bits
             // ------------------------------------
-            movsx Rd(TEMP_B), WORD [Rq(TEMP_B)]
+            movsx Rq(TEMP_B), WORD [Rq(TEMP_B)]
         }
 
         self.emit_risc_register_store(TEMP_B, rd);
@@ -635,7 +633,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -645,7 +643,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 4. Load half-word → zero-extend to 32 bits
             // ------------------------------------
-            movzx Rd(TEMP_B), WORD [Rq(TEMP_B)]
+            movzx Rq(TEMP_B), WORD [Rq(TEMP_B)]
         }
 
         self.emit_risc_register_store(TEMP_B, rd);
@@ -666,7 +664,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -679,7 +677,81 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 3. Load the word from physical memory into TEMP_B
             // ------------------------------------
-            mov Rd(TEMP_B), DWORD [Rq(TEMP_B)]
+            movsx Rq(TEMP_B), DWORD [Rq(TEMP_B)]
+        }
+
+        // ------------------------------------
+        // 4. Store the result in the destination register.
+        // ------------------------------------
+        self.emit_risc_register_store(TEMP_B, rd);
+    }
+
+    fn lwu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u32) {
+        // ------------------------------------
+        // 1. Load the base (risc32) address into TEMP_A
+        // and physical memory pointer into TEMP_B
+        // ------------------------------------
+        self.emit_risc_operand_load(rs1.into(), TEMP_A);
+        self.load_memory_ptr(TEMP_B);
+
+        dynasm! {
+            self;
+            .arch x64;
+
+            // ------------------------------------
+            // 2. Add the immediate to the base address
+            // ------------------------------------
+            add Rq(TEMP_A), imm as i32;
+
+            // ------------------------------------
+            // 3. Add the risc32 byte offset to the physical memory pointer
+            //
+            // We use 64 bit arithmetic since were dealing with native memory.
+            // If there was an overflow it wouldve been handled correctly by the previous add.
+            // ------------------------------------
+            add Rq(TEMP_B), Rq(TEMP_A);
+
+            // ------------------------------------
+            // 3. Load the word from physical memory into TEMP_B
+            // ------------------------------------
+            mov Rq(TEMP_B), DWORD [Rq(TEMP_B)]
+        }
+
+        // ------------------------------------
+        // 4. Store the result in the destination register.
+        // ------------------------------------
+        self.emit_risc_register_store(TEMP_B, rd);
+    }
+
+    fn ld(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u32) {
+        // ------------------------------------
+        // 1. Load the base (risc32) address into TEMP_A
+        // and physical memory pointer into TEMP_B
+        // ------------------------------------
+        self.emit_risc_operand_load(rs1.into(), TEMP_A);
+        self.load_memory_ptr(TEMP_B);
+
+        dynasm! {
+            self;
+            .arch x64;
+
+            // ------------------------------------
+            // 2. Add the immediate to the base address
+            // ------------------------------------
+            add Rq(TEMP_A), imm as i32;
+
+            // ------------------------------------
+            // 3. Add the risc32 byte offset to the physical memory pointer
+            //
+            // We use 64 bit arithmetic since were dealing with native memory.
+            // If there was an overflow it wouldve been handled correctly by the previous add.
+            // ------------------------------------
+            add Rq(TEMP_B), Rq(TEMP_A);
+
+            // ------------------------------------
+            // 3. Load the word from physical memory into TEMP_B
+            // ------------------------------------
+            mov Rq(TEMP_B), QWORD [Rq(TEMP_B)]
         }
 
         // ------------------------------------
@@ -703,7 +775,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -723,7 +795,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             self;
             .arch x64;
 
-            mov [Rq(TEMP_B)], Rb(TEMP_A)
+            mov BYTE [Rq(TEMP_B)], Rb(TEMP_A)
         }
     }
 
@@ -742,7 +814,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -762,7 +834,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             self;
             .arch x64;
 
-            mov [Rq(TEMP_B)], Rw(TEMP_A)
+            mov WORD [Rq(TEMP_B)], Rw(TEMP_A)
         }
     }
 
@@ -781,7 +853,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // 2. Add the immediate to the base address
             // ------------------------------------
-            add Rd(TEMP_A), imm as i32;
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -801,7 +873,46 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             self;
             .arch x64;
 
-            mov [Rq(TEMP_B)], Rd(TEMP_A)
+            mov DWORD [Rq(TEMP_B)], Rq(TEMP_A)
+        }
+    }
+
+    fn sd(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u32) {
+        // ------------------------------------
+        // 1. Load the base (risc32) address into TEMP_A
+        // and physical memory pointer into TEMP_B
+        // ------------------------------------
+        self.emit_risc_operand_load(rs1.into(), TEMP_A);
+        self.load_memory_ptr(TEMP_B);
+
+        dynasm! {
+            self;
+            .arch x64;
+
+            // ------------------------------------
+            // 2. Add the immediate to the base address
+            // ------------------------------------
+            add Rq(TEMP_A), imm as i32;
+
+            // ------------------------------------
+            // 3. Add the risc32 byte offset to the physical memory pointer
+            // ------------------------------------
+            add Rq(TEMP_B), Rq(TEMP_A)
+        }
+
+        // ------------------------------------
+        // 4. Load the word from the RISC register into TEMP_A
+        // ------------------------------------
+        self.emit_risc_operand_load(rs2.into(), TEMP_A);
+
+        // ------------------------------------
+        // 5. Store the word into physical memory
+        // ------------------------------------
+        dynasm! {
+            self;
+            .arch x64;
+
+            mov QWORD [Rq(TEMP_B)], Rq(TEMP_A)
         }
     }
 }

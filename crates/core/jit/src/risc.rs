@@ -104,10 +104,10 @@ impl From<i32> for RiscOperand {
 /// A convience structure for getting offsets of fields in the actual [TraceChunk].
 #[repr(C)]
 pub struct TraceChunkRaw {
-    pub start_registers: [u32; 32],
-    pub pc_start: u32,
-    pub clk_start: u32,
-    pub num_mem_reads: u32,
+    pub start_registers: [u64; 32],
+    pub pc_start: u64,
+    pub clk_start: u64,
+    pub num_mem_reads: u64,
 }
 
 /// A trace chunk is a collection of traces for a given program.
@@ -122,10 +122,10 @@ pub struct TraceChunkRaw {
 #[repr(C)]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TraceChunk {
-    pub start_registers: [u32; 32],
-    pub pc_start: u32,
-    pub clk_start: u32,
-    pub mem_reads: Vec<u32>,
+    pub start_registers: [u64; 32],
+    pub pc_start: u64,
+    pub clk_start: u64,
+    pub mem_reads: Vec<u64>,
 }
 
 impl TraceChunk {
@@ -162,9 +162,9 @@ impl TraceChunk {
 
         /* ---------- 4. extract tail ---------- */
         let tail = &src[HDR..total]; // only after the length check
-        let mem_reads: Vec<u32> = tail
+        let mem_reads: Vec<u64> = tail
             .chunks_exact(4)
-            .map(|b| unsafe { core::ptr::read_unaligned(b.as_ptr() as *const u32) })
+            .map(|b| unsafe { core::ptr::read_unaligned(b.as_ptr() as *const u64) })
             .collect();
 
         Self {

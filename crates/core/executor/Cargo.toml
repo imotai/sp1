@@ -14,7 +14,7 @@ categories = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-curves = { workspace = true }
 sp1-hypercube = { workspace = true }
-sp1-jit = { workspace = true }
+sp1-jit = { workspace = true, optional = true }
 
 # slop (replaced p3 dependencies)
 slop-algebra = { workspace = true }
@@ -68,6 +68,7 @@ profiling = [
   "dep:gecko_profile",
   "dep:indicatif",
 ]
+native-executor = ["dep:sp1-jit"]
 
 [lints]
 workspace = true

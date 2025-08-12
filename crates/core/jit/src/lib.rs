@@ -126,6 +126,16 @@ pub trait SP1RiscvTranspiler: TraceCollector + ALUBackend + Sized {
     /// lhu: rd = zx(m16(rs1 + imm))
     fn lhu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u32);
 
+    /// Load a double word from memory into a register.
+    ///
+    /// ldu: rd = m64(rs1 + imm)
+    fn ld(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u32);
+
+    /// Load a word from memory into a register, zero extended.
+    ///
+    /// lwu: rd = zx(m32(rs1 + imm))
+    fn lwu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u32);
+
     /// Store a byte into memory.
     ///
     /// sb: m8(rs1 + imm) = rs2[7:0]
@@ -140,6 +150,11 @@ pub trait SP1RiscvTranspiler: TraceCollector + ALUBackend + Sized {
     ///
     /// sw: m32(rs1 + imm) = rs2[31:0]
     fn sw(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u32);
+
+    /// Store a double word into memory.
+    ///
+    /// sd: m64(rs1 + imm) = rs2[63:0]
+    fn sd(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u32);
 
     /// Compare the values of two registers, and jump to an address if they are equal.
     ///

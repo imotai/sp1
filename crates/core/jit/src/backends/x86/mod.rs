@@ -314,7 +314,7 @@ impl TranspilerBackend {
                         self;
                         .arch x64;
 
-                        mov Rd(dst), 0_i32 // load 0 into dst
+                        mov Rq(dst), 0_i32 // load 0 into dst
                     };
                 }
                 _ => {
@@ -324,7 +324,7 @@ impl TranspilerBackend {
                         self;
                         .arch x64;
 
-                        pextrd Rd(dst), Rx(xmm_index), xmm_offset // load into low 32 bits of dst
+                        pextrd Rq(dst), Rx(xmm_index), xmm_offset // load into low 32 bits of dst
                     };
                 }
             },
@@ -333,7 +333,7 @@ impl TranspilerBackend {
                     self;
                     .arch x64;
 
-                    mov Rd(dst), imm
+                    mov Rq(dst), imm
                 };
             }
         }
@@ -354,7 +354,7 @@ impl TranspilerBackend {
         dynasm! {
             self;
             .arch x64;
-            pinsrd Rx(xmm_index), Rd(src), xmm_offset
+            pinsrd Rx(xmm_index), Rq(src), xmm_offset
         };
     }
 
@@ -364,7 +364,7 @@ impl TranspilerBackend {
     /// We map a register to an index in the range `[0, 7]` and an offset in the range `[0, 3]`.
     const fn get_xmm_index(reg: RiscRegister) -> (u8, i8) {
         let reg = reg as u8;
-        (reg / 4, (reg % 4) as i8)
+        (reg / 2, (reg % 2) as i8)
     }
 
     /// Call an external function, assumes that the arguments are already in the correct registers.
@@ -446,7 +446,7 @@ impl TranspilerBackend {
         dynasm! {
             self;
             .arch x64;
-            mov Rd(dst), DWORD [Rq(CONTEXT) + pc_offset]
+            mov Rq(dst), QWORD [Rq(CONTEXT) + pc_offset]
         }
     }
 
@@ -455,7 +455,7 @@ impl TranspilerBackend {
         dynasm! {
             self;
             .arch x64;
-            mov Rq(src), [Rq(CONTEXT) + MEMORY_PTR_OFFSET]
+            mov Rq(src), QWORD [Rq(CONTEXT) + MEMORY_PTR_OFFSET]
         }
     }
 
@@ -467,7 +467,8 @@ impl TranspilerBackend {
         dynasm! {
             self;
             .arch x64;
-            add DWORD [Rq(CONTEXT) + pc_offset], amt as i32
+
+            add QWORD [Rq(CONTEXT) + pc_offset], amt as i32
         }
     }
 
@@ -482,13 +483,13 @@ impl TranspilerBackend {
             .arch x64;
 
             // If the PC we want to jump to is 0, jump to the exit label.
-            cmp Rd(TEMP_A), 0;
+            cmp Rq(TEMP_A), 0;
             je ->exit;
 
             // add the pc to the jump table pointer and load
             // Scale by 8 since these are 8 byte pointers
-            sub Rd(TEMP_A), pc_base;
-            shr Rd(TEMP_A), 2; // Divide by 4 to get the index
+            sub Rq(TEMP_A), pc_base;
+            shr Rq(TEMP_A), 2; // Divide by 4 to get the index
             mov Rq(TEMP_B), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8]; // Convert to a byte offset
             jmp Rq(TEMP_B)
         }
