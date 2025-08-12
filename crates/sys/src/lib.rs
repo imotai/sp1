@@ -6,6 +6,7 @@ pub mod jagged;
 pub mod logup_gkr;
 pub mod merkle_tree;
 pub mod mle;
+pub mod prover_clean;
 pub mod reduce;
 pub mod runtime;
 pub mod scan;

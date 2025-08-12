@@ -3,7 +3,7 @@ pub mod reduce;
 mod sum;
 pub mod transpose;
 
-use slop_alloc::{mem::CopyError, Backend, CopyIntoBackend, CpuBackend, HasBackend};
+use slop_alloc::{mem::CopyError, Backend, CopyIntoBackend, CopyToBackend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
 
 use crate::{DeviceCopy, SmallBuffer};
@@ -25,6 +25,24 @@ impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Tensor<T, CpuBack
         let Tensor { storage, dimensions } = self;
         let storage = storage.copy_into_backend(backend).await?;
         Ok(Tensor { storage, dimensions })
+    }
+}
+
+impl<T: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Tensor<T, TaskScope> {
+    type Output = Tensor<T, CpuBackend>;
+    async fn copy_to_backend(&self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
+        let Tensor { storage, dimensions } = self;
+        let storage = storage.copy_to_backend(backend).await?;
+        Ok(Tensor { storage, dimensions: dimensions.clone() })
+    }
+}
+
+impl<T: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Tensor<T, CpuBackend> {
+    type Output = Tensor<T, TaskScope>;
+    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
+        let Tensor { storage, dimensions } = self;
+        let storage = storage.copy_to_backend(backend).await?;
+        Ok(Tensor { storage, dimensions: dimensions.clone() })
     }
 }
 

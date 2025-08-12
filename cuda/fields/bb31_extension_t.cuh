@@ -81,6 +81,12 @@ public:
         return bb31_extension_t(values);
     }
 
+    static __device__ __forceinline__ const bb31_extension_t two()
+    {
+        bb31_t values[D] = {bb31_t::two(), bb31_t(0), bb31_t(0), bb31_t(0)};
+        return bb31_extension_t(values);
+    }
+
     __device__ __forceinline__ bb31_extension_t &operator+=(const bb31_extension_t b)
     {
         for (size_t i = 0; i < D; i++)

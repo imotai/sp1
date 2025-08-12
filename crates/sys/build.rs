@@ -33,6 +33,7 @@ fn builder() -> cc::Build {
         .flag("-fopenmp")
         .flag("-lnvToolsExt")
         .flag("-arch=sm_89")
+        .flag("-lineinfo")
         .flag("-ldl")
         .flag("-lnvToolsExt")
         .flag("--expt-relaxed-constexpr");

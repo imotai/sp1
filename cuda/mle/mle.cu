@@ -223,7 +223,7 @@ __global__ void fixLastVariableConstantPadding(
                     oneValue = paddingValue;
                 }
             } else {
-                oneValue =  F::load(input, j * inputHeight + (i << 1) + 1);
+                oneValue = F::load(input, j * inputHeight + (i << 1) + 1);
             }
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
             EF value = alpha.interpolateLinear(oneValue, zeroValue);

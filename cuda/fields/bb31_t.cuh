@@ -824,7 +824,7 @@ public:
     {
         return ptr[i];
     }
-
+        
     static inline void store(bb31_t *ptr, size_t i, bb31_t value)
     {
         ptr[i] = value;
