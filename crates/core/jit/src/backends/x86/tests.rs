@@ -1,12 +1,12 @@
 use super::TranspilerBackend;
 use crate::{
-    ALUBackend, Debuggable, JitContext, RiscOperand, RiscRegister, SP1RiscvTranspiler,
-    TraceChunkRaw,
+    ComputeInstructions, ControlFlowInstructions, Debuggable, JitContext, MemoryInstructions,
+    RiscOperand, RiscRegister, SP1RiscvTranspiler, TraceChunkRaw,
 };
 
 macro_rules! assert_register_is {
     ($expected:expr) => {{
-        extern "C" fn assert_register_is_expected(val: u32) {
+        extern "C" fn assert_register_is_expected(val: u64) {
             assert_eq!(val, $expected);
         }
 
@@ -15,7 +15,7 @@ macro_rules! assert_register_is {
 }
 
 fn new_backend() -> TranspilerBackend {
-    TranspilerBackend::new(0, 16, std::mem::size_of::<TraceChunkRaw>() * 100, 1, 1).unwrap()
+    TranspilerBackend::new(0, 1024, std::mem::size_of::<TraceChunkRaw>() * 100, 100, 100).unwrap()
 }
 
 /// Finalize the function and call it.
@@ -35,7 +35,7 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(5), RiscOperand::Immediate(10), RiscRegister::X5);
+        backend.add(RiscRegister::X5, RiscOperand::Immediate(5), RiscOperand::Immediate(10));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(15));
 
         run_test(backend);
@@ -46,32 +46,32 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(5), RiscOperand::Immediate(10), RiscRegister::X5);
+        backend.add(RiscRegister::X5, RiscOperand::Immediate(5), RiscOperand::Immediate(10));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(15));
 
-        backend.risc_add(RiscOperand::Immediate(10), RiscOperand::Immediate(10), RiscRegister::X6);
+        backend.add(RiscRegister::X6, RiscOperand::Immediate(10), RiscOperand::Immediate(10));
         backend.inspect_register(RiscRegister::X6, assert_register_is!(20));
 
-        backend.risc_add(RiscOperand::Immediate(20), RiscOperand::Immediate(5), RiscRegister::X7);
+        backend.add(RiscRegister::X7, RiscOperand::Immediate(20), RiscOperand::Immediate(5));
         backend.inspect_register(RiscRegister::X7, assert_register_is!(25));
 
         run_test(backend);
     }
 
     #[test]
-    fn test_add_handles_overflow_32bit() {
+    fn test_add_handles_overflow_64bit() {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_add(
-            RiscOperand::Immediate((u32::MAX - 1) as i32),
-            RiscOperand::Immediate((u32::MAX - 1) as i32),
+        backend.add(
             RiscRegister::X5,
+            RiscOperand::Immediate((u64::MAX - 1) as i32),
+            RiscOperand::Immediate((u64::MAX - 1) as i32),
         );
 
         backend.inspect_register(
             RiscRegister::X5,
-            assert_register_is!((u32::MAX - 1).wrapping_add(u32::MAX - 1)),
+            assert_register_is!((u64::MAX - 1).wrapping_add(u64::MAX - 1)),
         );
 
         run_test(backend);
@@ -82,26 +82,26 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_mul(RiscOperand::Immediate(5), RiscOperand::Immediate(4), RiscRegister::X5);
+        backend.mul(RiscRegister::X5, RiscOperand::Immediate(5), RiscOperand::Immediate(4));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(20));
 
         run_test(backend);
     }
 
     #[test]
-    fn test_mul_handles_overflow_32bit() {
+    fn test_mul_handles_overflow_64bit() {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_mul(
-            RiscOperand::Immediate((u32::MAX - 1) as i32),
-            RiscOperand::Immediate((u32::MAX - 1) as i32),
+        backend.mul(
             RiscRegister::X5,
+            RiscOperand::Immediate((u64::MAX - 1) as i32),
+            RiscOperand::Immediate((u64::MAX - 1) as i32),
         );
 
         backend.inspect_register(
             RiscRegister::X5,
-            assert_register_is!((u32::MAX - 1).wrapping_mul(u32::MAX - 1)),
+            assert_register_is!((u64::MAX - 1).wrapping_mul(u64::MAX - 1)),
         );
 
         run_test(backend);
@@ -112,14 +112,14 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_div(RiscOperand::Immediate(10), RiscOperand::Immediate(2), RiscRegister::X5);
+        backend.div(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(2));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(5));
 
-        backend.risc_div(RiscOperand::Immediate(10), RiscOperand::Immediate(0), RiscRegister::X5);
+        backend.div(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(0));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_div(RiscOperand::Immediate(-10), RiscOperand::Immediate(2), RiscRegister::X5);
-        backend.inspect_register(RiscRegister::X5, assert_register_is!(-5_i32 as u32));
+        backend.div(RiscRegister::X5, RiscOperand::Immediate(-10), RiscOperand::Immediate(2));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(-5_i64 as u64));
 
         run_test(backend);
     }
@@ -130,23 +130,23 @@ mod alu {
         backend.start_instr();
 
         // 0x7FFF_FFFF * 2  → 0x0000_0000_FFFF_FFFE  → high=0
-        backend.risc_mulh(
+        backend.mulh(
+            RiscRegister::X5,
             RiscOperand::Immediate(0x7FFF_FFFF), // +2 147 483 647
             RiscOperand::Immediate(2),
-            RiscRegister::X5,
         );
         backend.inspect_register(
             RiscRegister::X5,
-            assert_register_is!(((0x7FFF_FFFF_i64 * 2) >> 32) as u32),
+            assert_register_is!(((0x7FFF_FFFF_i64 * 2) >> 32) as u64),
         );
 
         // -1 * 3 → 0xFFFF_FFFF_FFFF_FFFD  → high=0xFFFF_FFFF
-        backend.risc_mulh(
+        backend.mulh(
+            RiscRegister::X5,
             RiscOperand::Immediate(-1), // 0xFFFF_FFFF
             RiscOperand::Immediate(3),
-            RiscRegister::X5,
         );
-        backend.inspect_register(RiscRegister::X5, assert_register_is!((-3_i64 >> 32) as u32));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!((-3_i64 >> 32) as u64));
 
         run_test(backend);
     }
@@ -157,19 +157,19 @@ mod alu {
 
         backend.start_instr();
 
-        // 0xFFFF_FFFF * 0xFFFF_FFFF → 0xFFFF_FFFE_0000_0001 → high=0xFFFF_FFFE
-        backend.risc_mulhu(
-            RiscOperand::Immediate(-1), // 0xFFFF_FFFF as i32
+        // 0xFFFF_FFFF_FFFF_FFFF * 0xFFFF_FFFF_FFFF_FFFF → high 64 bits
+        backend.mulhu(
+            RiscRegister::X5,
+            RiscOperand::Immediate(-1), // 0xFFFF_FFFF_FFFF_FFFF as unsigned
             RiscOperand::Immediate(-1),
-            RiscRegister::X5,
         );
-        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFF_FFFE));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFF_FFFF_FFFF_FFFE));
 
-        // 0x8000_0000 * 2 → 0x1_0000_0000 → high=1
-        backend.risc_mulhu(
-            RiscOperand::Immediate(0x8000_0000u32 as i32), // 2 147 483 648
-            RiscOperand::Immediate(2),
+        // 0x8000_0000 * 2 → for 64-bit system, this becomes larger multiplication
+        backend.mulhu(
             RiscRegister::X5,
+            RiscOperand::Immediate(0x8000_0000u32 as i32), // 2^31
+            RiscOperand::Immediate(2),
         );
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0x0000_0001));
 
@@ -182,24 +182,21 @@ mod alu {
 
         backend.start_instr();
 
-        // -1 * 3 → 0xFFFF_FFFF_FFFF_FFFD → high = 0xFFFF_FFFF
-        backend.risc_mulhsu(
-            RiscOperand::Immediate(-1), // signed -1
+        // -1 * 3 in 64-bit: high 64 bits of 128-bit result
+        backend.mulhsu(
+            RiscRegister::X5,
+            RiscOperand::Immediate(-1), // signed -1 (0xFFFF_FFFF_FFFF_FFFF)
             RiscOperand::Immediate(3),  // unsigned 3
-            RiscRegister::X5,
         );
-        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFF_FFFF));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFF_FFFF_FFFF_FFFF));
 
-        // 0x7FFF_FFFF * 0xFFFF_FFFF → 0x7FFF_FFFE_8000_0001 → high = 0x7FFF_FFFE
-        backend.risc_mulhsu(
-            RiscOperand::Immediate(0x7FFF_FFFF), // +2 147 483 647
-            RiscOperand::Immediate(-1),          // 0xFFFF_FFFF (unsigned 4 294 967 295)
+        // 0x7FFF_FFFF * 0xFFFF_FFFF for 64-bit
+        backend.mulhsu(
             RiscRegister::X5,
+            RiscOperand::Immediate(0x7FFF_FFFF), // positive value
+            RiscOperand::Immediate(-1),          // 0xFFFF_FFFF_FFFF_FFFF as unsigned
         );
-        backend.inspect_register(
-            RiscRegister::X5,
-            assert_register_is!(((0x7FFF_FFFF_i64 * 0xFFFF_FFFF_i64) >> 32) as u32),
-        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0x7FFF_FFFE));
 
         run_test(backend);
     }
@@ -209,14 +206,14 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_rem(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.rem(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(1));
 
-        backend.risc_rem(RiscOperand::Immediate(10), RiscOperand::Immediate(0), RiscRegister::X5);
+        backend.rem(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(0));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_rem(RiscOperand::Immediate(-10), RiscOperand::Immediate(3), RiscRegister::X5);
-        backend.inspect_register(RiscRegister::X5, assert_register_is!(-1_i32 as u32));
+        backend.rem(RiscRegister::X5, RiscOperand::Immediate(-10), RiscOperand::Immediate(3));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(-1_i32 as u64));
 
         run_test(backend);
     }
@@ -226,14 +223,15 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_remu(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.remu(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(1));
 
-        backend.risc_remu(RiscOperand::Immediate(10), RiscOperand::Immediate(0), RiscRegister::X5);
+        backend.remu(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(0));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_remu(RiscOperand::Immediate(-10), RiscOperand::Immediate(3), RiscRegister::X5);
-        backend.inspect_register(RiscRegister::X5, assert_register_is!((-10_i32 as u32) % 3));
+        backend.remu(RiscRegister::X5, RiscOperand::Immediate(-10), RiscOperand::Immediate(3));
+        backend
+            .inspect_register(RiscRegister::X5, assert_register_is!(((-10_i32 as u32) % 3) as u64));
 
         run_test(backend);
     }
@@ -243,11 +241,11 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_sll(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.sll(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(10 << 3));
 
-        backend.risc_sll(RiscOperand::Immediate(10), RiscOperand::Immediate(500), RiscRegister::X5);
-        backend.inspect_register(RiscRegister::X5, assert_register_is!(10_u32.wrapping_shl(500)));
+        backend.sll(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(500));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(10_u64.wrapping_shl(500)));
 
         run_test(backend);
     }
@@ -257,10 +255,10 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_srl(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.srl(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(10 >> 3));
 
-        backend.risc_srl(RiscOperand::Immediate(10), RiscOperand::Immediate(500), RiscRegister::X5);
+        backend.srl(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(500));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
         run_test(backend);
@@ -271,11 +269,11 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_sra(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.sra(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(10 >> 3));
 
-        backend.risc_sra(RiscOperand::Immediate(-10), RiscOperand::Immediate(3), RiscRegister::X5);
-        backend.inspect_register(RiscRegister::X5, assert_register_is!((-10 >> 3) as u32));
+        backend.sra(RiscRegister::X5, RiscOperand::Immediate(-10), RiscOperand::Immediate(3));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!((-10 >> 3) as u64));
 
         run_test(backend);
     }
@@ -285,10 +283,10 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_slt(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.slt(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_slt(RiscOperand::Immediate(-10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.slt(RiscRegister::X5, RiscOperand::Immediate(-10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(1));
 
         run_test(backend);
@@ -299,16 +297,16 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_sltu(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.sltu(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_sltu(RiscOperand::Immediate(10), RiscOperand::Immediate(10), RiscRegister::X5);
+        backend.sltu(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(10));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_sltu(RiscOperand::Immediate(-10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.sltu(RiscRegister::X5, RiscOperand::Immediate(-10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_sltu(RiscOperand::Immediate(3), RiscOperand::Immediate(10), RiscRegister::X5);
+        backend.sltu(RiscRegister::X5, RiscOperand::Immediate(3), RiscOperand::Immediate(10));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(1));
 
         run_test(backend);
@@ -319,14 +317,505 @@ mod alu {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_sub(RiscOperand::Immediate(10), RiscOperand::Immediate(3), RiscRegister::X5);
+        backend.sub(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(3));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(10 - 3));
 
-        backend.risc_sub(RiscOperand::Immediate(10), RiscOperand::Immediate(10), RiscRegister::X5);
+        backend.sub(RiscRegister::X5, RiscOperand::Immediate(10), RiscOperand::Immediate(10));
         backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
 
-        backend.risc_sub(RiscOperand::Immediate(-10), RiscOperand::Immediate(3), RiscRegister::X5);
-        backend.inspect_register(RiscRegister::X5, assert_register_is!((-10 - 3) as u32));
+        backend.sub(RiscRegister::X5, RiscOperand::Immediate(-10), RiscOperand::Immediate(3));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!((-10_i64 - 3) as u64));
+
+        run_test(backend);
+    }
+}
+
+mod rv64i {
+    use super::*;
+
+    // RV64I Word Operations Tests (32-bit operations on 64-bit system)
+
+    #[test]
+    fn test_addw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // ADDW sign-extends the 32-bit result to 64 bits
+        backend.addw(
+            RiscRegister::X5,
+            RiscOperand::Immediate(0x7FFFFFFF),
+            RiscOperand::Immediate(1),
+        );
+        // 0x7FFFFFFF + 1 = 0x80000000, sign-extended to 0xFFFFFFFF80000000
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFF80000000));
+
+        backend.addw(RiscRegister::X6, RiscOperand::Immediate(10), RiscOperand::Immediate(20));
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(30));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_addw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers with values
+        backend.add(
+            RiscRegister::X1,
+            RiscOperand::Immediate(0x7FFFFFFF),
+            RiscOperand::Immediate(0),
+        );
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(1), RiscOperand::Immediate(0));
+
+        // Test register + register
+        backend.addw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFF80000000));
+
+        // Test register + immediate
+        backend.addw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Immediate(2),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFF80000001));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_subw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // SUBW sign-extends the 32-bit result to 64 bits
+        backend.subw(RiscRegister::X5, RiscOperand::Immediate(0), RiscOperand::Immediate(1));
+        // 0 - 1 = -1 (0xFFFFFFFF in 32-bit), sign-extended to 0xFFFFFFFFFFFFFFFF
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFFFFFFFFFF));
+
+        backend.subw(RiscRegister::X6, RiscOperand::Immediate(30), RiscOperand::Immediate(10));
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(20));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_subw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(0), RiscOperand::Immediate(0));
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(1), RiscOperand::Immediate(0));
+
+        // Test register - register
+        backend.subw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFFFFFFFFFF));
+
+        // Test register - immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(100), RiscOperand::Immediate(0));
+        backend.subw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(50),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(50));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_mulw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // MULW takes lower 32 bits and sign-extends
+        backend.mulw(
+            RiscRegister::X5,
+            RiscOperand::Immediate(0x10000),
+            RiscOperand::Immediate(0x10000),
+        );
+        // 0x10000 * 0x10000 = 0x100000000, truncated to 0 in 32-bit, sign-extended to 0
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
+
+        backend.mulw(RiscRegister::X6, RiscOperand::Immediate(-5), RiscOperand::Immediate(3));
+        // -5 * 3 = -15 (0xFFFFFFF1 in 32-bit), sign-extended to 0xFFFFFFFFFFFFFFF1
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFF1));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_mulw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(0x10000), RiscOperand::Immediate(0));
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(0x10000), RiscOperand::Immediate(0));
+
+        // Test register * register
+        backend.mulw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0));
+
+        // Test register * immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(-5), RiscOperand::Immediate(0));
+        backend.mulw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(4),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFEC)); // -20 sign-extended
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_divw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        backend.divw(RiscRegister::X5, RiscOperand::Immediate(100), RiscOperand::Immediate(3));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(33));
+
+        backend.divw(RiscRegister::X6, RiscOperand::Immediate(-100), RiscOperand::Immediate(3));
+        // -100 / 3 = -33 (0xFFFFFFDF in 32-bit), sign-extended
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFDF));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_divw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(100), RiscOperand::Immediate(0));
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(3), RiscOperand::Immediate(0));
+
+        // Test register / register
+        backend.divw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(33));
+
+        // Test register / immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(-100), RiscOperand::Immediate(0));
+        backend.divw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(7),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFF2)); // -14 sign-extended
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_divuw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // DIVUW treats operands as unsigned 32-bit values
+        backend.divuw(RiscRegister::X5, RiscOperand::Immediate(-1), RiscOperand::Immediate(2));
+        // 0xFFFFFFFF / 2 = 0x7FFFFFFF (unsigned), sign-extended to 0x000000007FFFFFFF
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0x7FFFFFFF));
+
+        backend.divuw(RiscRegister::X6, RiscOperand::Immediate(100), RiscOperand::Immediate(3));
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(33));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_divuw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(-1), RiscOperand::Immediate(0));
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(2), RiscOperand::Immediate(0));
+
+        // Test register / register (unsigned)
+        backend.divuw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0x7FFFFFFF));
+
+        // Test register / immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(100), RiscOperand::Immediate(0));
+        backend.divuw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(7),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(14));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_remw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        backend.remw(RiscRegister::X5, RiscOperand::Immediate(100), RiscOperand::Immediate(7));
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(2));
+
+        backend.remw(RiscRegister::X6, RiscOperand::Immediate(-100), RiscOperand::Immediate(7));
+        // -100 % 7 = -2 (0xFFFFFFFE in 32-bit), sign-extended
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFFE));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_remw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(100), RiscOperand::Immediate(0));
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(7), RiscOperand::Immediate(0));
+
+        // Test register % register
+        backend.remw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(2));
+
+        // Test register % immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(-100), RiscOperand::Immediate(0));
+        backend.remw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(9),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFFF)); // -1 sign-extended (-100 % 9 = -1)
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_remuw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // REMUW treats operands as unsigned 32-bit values
+        backend.remuw(RiscRegister::X5, RiscOperand::Immediate(-1), RiscOperand::Immediate(10));
+        // 0xFFFFFFFF % 10 = 5 (unsigned), sign-extended to 0x0000000000000005
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(5));
+
+        backend.remuw(RiscRegister::X6, RiscOperand::Immediate(100), RiscOperand::Immediate(7));
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(2));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_remuw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(-1), RiscOperand::Immediate(0));
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(10), RiscOperand::Immediate(0));
+
+        // Test register % register (unsigned)
+        backend.remuw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(5));
+
+        // Test register % immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(100), RiscOperand::Immediate(0));
+        backend.remuw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(9),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(1));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_sllw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // SLLW performs 32-bit shift and sign-extends result
+        backend.sllw(
+            RiscRegister::X5,
+            RiscOperand::Immediate(0x40000000),
+            RiscOperand::Immediate(1),
+        );
+        // 0x40000000 << 1 = 0x80000000, sign-extended to 0xFFFFFFFF80000000
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFF80000000));
+
+        backend.sllw(RiscRegister::X6, RiscOperand::Immediate(5), RiscOperand::Immediate(3));
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(40));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_sllw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(
+            RiscRegister::X1,
+            RiscOperand::Immediate(0x40000000),
+            RiscOperand::Immediate(0),
+        );
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(1), RiscOperand::Immediate(0));
+
+        // Test register << register
+        backend.sllw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFF80000000));
+
+        // Test register << immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(7), RiscOperand::Immediate(0));
+        backend.sllw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(4),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(112));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_srlw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // SRLW performs logical (unsigned) 32-bit shift and sign-extends result
+        backend.srlw(
+            RiscRegister::X5,
+            RiscOperand::Immediate(0x80000000u32 as i32),
+            RiscOperand::Immediate(1),
+        );
+        // 0x80000000 >> 1 = 0x40000000 (logical), sign-extended to 0x0000000040000000
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0x40000000));
+
+        backend.srlw(RiscRegister::X6, RiscOperand::Immediate(40), RiscOperand::Immediate(3));
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(5));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_srlw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(
+            RiscRegister::X1,
+            RiscOperand::Immediate(0x80000000u32 as i32),
+            RiscOperand::Immediate(0),
+        );
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(1), RiscOperand::Immediate(0));
+
+        // Test register >> register (logical)
+        backend.srlw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0x40000000));
+
+        // Test register >> immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(80), RiscOperand::Immediate(0));
+        backend.srlw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(4),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(5));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_sraw_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // SRAW performs arithmetic 32-bit shift and sign-extends result
+        backend.sraw(
+            RiscRegister::X5,
+            RiscOperand::Immediate(0x80000000u32 as i32),
+            RiscOperand::Immediate(1),
+        );
+        // 0x80000000 >> 1 = 0xC0000000 (arithmetic), sign-extended to 0xFFFFFFFFC0000000
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFFC0000000));
+
+        backend.sraw(RiscRegister::X6, RiscOperand::Immediate(-40), RiscOperand::Immediate(3));
+        // -40 (0xFFFFFFD8 in 32-bit) >> 3 = 0xFFFFFFFB, sign-extended
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFFB));
+
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_sraw_register() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set up registers
+        backend.add(
+            RiscRegister::X1,
+            RiscOperand::Immediate(0x80000000u32 as i32),
+            RiscOperand::Immediate(0),
+        );
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(1), RiscOperand::Immediate(0));
+
+        // Test register >> register (arithmetic)
+        backend.sraw(
+            RiscRegister::X5,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Register(RiscRegister::X2),
+        );
+        backend.inspect_register(RiscRegister::X5, assert_register_is!(0xFFFFFFFFC0000000));
+
+        // Test register >> immediate
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(-80), RiscOperand::Immediate(0));
+        backend.sraw(
+            RiscRegister::X6,
+            RiscOperand::Register(RiscRegister::X3),
+            RiscOperand::Immediate(4),
+        );
+        backend.inspect_register(RiscRegister::X6, assert_register_is!(0xFFFFFFFFFFFFFFFB)); // -5 sign-extended
 
         run_test(backend);
     }
@@ -393,11 +882,11 @@ mod control_flow {
 
         // PC = 0
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(1), RiscOperand::Immediate(1), RiscRegister::X1); // 1 + 1 = 2
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(1), RiscOperand::Immediate(1)); // 1 + 1 = 2
 
         // // PC = 1
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(2), RiscOperand::Immediate(2), RiscRegister::X2); // 2 + 2 = 4
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(2), RiscOperand::Immediate(2)); // 2 + 2 = 4
 
         backend.print_ctx();
 
@@ -409,13 +898,13 @@ mod control_flow {
 
         // // PC = 3 (also skipped due to jump of 3)
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(100), RiscOperand::Immediate(23), RiscRegister::X3);
+        backend.add(RiscRegister::X3, RiscOperand::Immediate(100), RiscOperand::Immediate(23));
 
         backend.print_ctx();
 
         // // // PC = 4
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(42), RiscOperand::Immediate(1), RiscRegister::X4); // 42 + 1 = 43
+        backend.add(RiscRegister::X4, RiscOperand::Immediate(42), RiscOperand::Immediate(1)); // 42 + 1 = 43
 
         backend.print_ctx();
 
@@ -433,18 +922,18 @@ mod control_flow {
 
         // PC = 0
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(5), RiscOperand::Immediate(0), RiscRegister::X1);
-        backend.set_pc(4);
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
+        backend.set_pc(104);
 
         // PC = 1
         backend.start_instr();
-        backend.risc_add(RiscRegister::X2.into(), RiscOperand::Immediate(1), RiscRegister::X2);
-        backend.set_pc(8);
+        backend.add(RiscRegister::X2, RiscRegister::X2.into(), RiscOperand::Immediate(1));
+        backend.set_pc(108);
 
         // PC = 2
         // Branch to PC = 1 if X1 != X2
         backend.start_instr();
-        backend.bne(RiscRegister::X1, RiscRegister::X2, u32::MAX);
+        backend.bne(RiscRegister::X1, RiscRegister::X2, u64::MAX);
         backend.inspect_register(RiscRegister::X2, assert_register_is!(5));
 
         run_test(backend);
@@ -500,7 +989,7 @@ mod memory {
 
         backend.start_instr();
         backend.lb(RiscRegister::X1, RiscRegister::X1, 0); // LB x1, 0(x1)
-        backend.inspect_register(RiscRegister::X1, assert_register_is!(0xFFFFFF80)); // −128 sign-extended
+        backend.inspect_register(RiscRegister::X1, assert_register_is!(0xFFFFFFFFFFFFFF80)); // −128 sign-extended
 
         // memory[0] = 0x80  (remaining three bytes are 0)
         run_test_with_memory(backend, &[(0, 0x0000_0080)]);
@@ -523,7 +1012,7 @@ mod memory {
 
         backend.start_instr();
         backend.lh(RiscRegister::X1, RiscRegister::X1, 0); // LH x1, 0(x1)
-        backend.inspect_register(RiscRegister::X1, assert_register_is!(0xFFFF8000)); // −32768 sign-extended
+        backend.inspect_register(RiscRegister::X1, assert_register_is!(0xFFFFFFFFFFFF8000)); // −32768 sign-extended
 
         // memory[0..2] = 0x00,0x80  (i.e., little-endian 0x8000)
         run_test_with_memory(backend, &[(0, 0x0000_8000)]);
@@ -545,7 +1034,7 @@ mod memory {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(5), RiscOperand::Immediate(0), RiscRegister::X1);
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
 
         // Store 5 into memory[0]
         backend.start_instr();
@@ -562,11 +1051,7 @@ mod memory {
 
         // Put 0x01F2 (little-endian bytes F2 01) into x1
         backend.start_instr();
-        backend.risc_add(
-            RiscOperand::Immediate(0x01F2),
-            RiscOperand::Immediate(0),
-            RiscRegister::X1,
-        );
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(0x01F2), RiscOperand::Immediate(0));
 
         // SH: store 16-bit value at address 0
         backend.start_instr();
@@ -588,7 +1073,7 @@ mod memory {
 
         // Put 0xAB into x1
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(0xAB), RiscOperand::Immediate(0), RiscRegister::X1);
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(0xAB), RiscOperand::Immediate(0));
 
         // SB: store 8-bit value at address 0
         backend.start_instr();
@@ -646,7 +1131,7 @@ mod memory {
 
         backend.start_instr();
         backend.lh(RiscRegister::X2, RiscRegister::X1, 0);
-        backend.inspect_register(RiscRegister::X2, assert_register_is!(0xFFFFF234));
+        backend.inspect_register(RiscRegister::X2, assert_register_is!(0xFFFFFFFFFFFFF234));
 
         run_test_with_memory(backend, &[(0, 0xABCD_F234)]);
     }
@@ -658,9 +1143,153 @@ mod memory {
 
         backend.start_instr();
         backend.lh(RiscRegister::X3, RiscRegister::X1, 2);
-        backend.inspect_register(RiscRegister::X3, assert_register_is!(0xFFFF8000));
+        backend.inspect_register(RiscRegister::X3, assert_register_is!(0xFFFFFFFFFFFF8000));
 
         run_test_with_memory(backend, &[(0, 0x8000_1234)]);
+    }
+
+    // Helper function for 64-bit memory operations
+    fn run_test_with_memory_64(assembler: TranspilerBackend, memory: &[(u32, u64)]) {
+        let mut func = assembler.finalize().expect("Failed to finalize function");
+
+        for (addr, val) in memory {
+            assert!(*addr < func.memory.len() as u32, "Addr out of bounds");
+            assert!(*addr % 8 == 0, "Addr must be 8 byte aligned");
+
+            let bytes = val.to_le_bytes();
+            for (i, byte) in bytes.iter().enumerate() {
+                func.memory[*addr as usize + i] = *byte;
+            }
+        }
+
+        unsafe {
+            func.call();
+        }
+    }
+
+    // RV64I Memory Operation Tests
+
+    #[test]
+    fn test_ld_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        backend.ld(RiscRegister::X1, RiscRegister::X0, 0);
+        backend.inspect_register(RiscRegister::X1, assert_register_is!(0xDEADBEEFCAFEBABE));
+
+        run_test_with_memory_64(backend, &[(0, 0xDEADBEEFCAFEBABE)]);
+    }
+
+    #[test]
+    fn test_ld_with_offset() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Load base address 8 into X2
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(8), RiscOperand::Immediate(0));
+        // Load doubleword from address X2 + 8 (= 16)
+        backend.ld(RiscRegister::X1, RiscRegister::X2, 8);
+        backend.inspect_register(RiscRegister::X1, assert_register_is!(0x1234567890ABCDEF));
+
+        run_test_with_memory_64(backend, &[(16, 0x1234567890ABCDEF)]);
+    }
+
+    #[test]
+    fn test_sd_immediate() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Store value 0xFEDCBA9876543210 to address 0
+        backend.add(
+            RiscRegister::X1,
+            RiscOperand::Immediate(0xFEDCBA98u32 as i32),
+            RiscOperand::Immediate(0),
+        );
+        backend.sll(
+            RiscRegister::X1,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Immediate(32),
+        );
+        backend.add(
+            RiscRegister::X1,
+            RiscOperand::Register(RiscRegister::X1),
+            RiscOperand::Immediate(0x76543210u32 as i32),
+        );
+        backend.sd(RiscRegister::X0, RiscRegister::X1, 0);
+
+        run_test_and_check_memory(backend, |memory| {
+            let val = u64::from_le_bytes([
+                memory[0], memory[1], memory[2], memory[3], memory[4], memory[5], memory[6],
+                memory[7],
+            ]);
+            assert_eq!(val, 0xFEDCBA9876543210);
+        });
+    }
+
+    #[test]
+    fn test_sd_with_offset() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set base address to 8
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(8), RiscOperand::Immediate(0));
+        // Store value to address X2 + 16 (= 24)
+        backend.add(
+            RiscRegister::X1,
+            RiscOperand::Immediate(0x12345678),
+            RiscOperand::Immediate(0x12345678),
+        );
+        backend.sd(RiscRegister::X2, RiscRegister::X1, 16);
+
+        run_test_and_check_memory(backend, |memory| {
+            let val = u64::from_le_bytes([
+                memory[24], memory[25], memory[26], memory[27], memory[28], memory[29], memory[30],
+                memory[31],
+            ]);
+            assert_eq!(val, 0x12345678 + 0x12345678);
+        });
+    }
+
+    #[test]
+    fn test_lwu_zero_extension() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // LWU loads 32-bit value and zero-extends to 64 bits
+        backend.lwu(RiscRegister::X1, RiscRegister::X0, 0);
+        backend.inspect_register(RiscRegister::X1, assert_register_is!(0x00000000FFFFFFFF));
+
+        run_test_with_memory(backend, &[(0, 0xFFFFFFFF)]);
+    }
+
+    #[test]
+    fn test_lwu_with_offset() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // Set base address
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(4), RiscOperand::Immediate(0));
+        // Load unsigned word from X2 + 4 (= 8)
+        backend.lwu(RiscRegister::X1, RiscRegister::X2, 4);
+        backend.inspect_register(RiscRegister::X1, assert_register_is!(0x0000000080000000));
+
+        run_test_with_memory(backend, &[(8, 0x80000000)]);
+    }
+
+    #[test]
+    fn test_lwu_vs_lw_sign_extension() {
+        let mut backend = new_backend();
+
+        backend.start_instr();
+        // LW sign-extends negative values
+        backend.lw(RiscRegister::X1, RiscRegister::X0, 0);
+        backend.inspect_register(RiscRegister::X1, assert_register_is!(0xFFFFFFFF80000000));
+
+        // LWU zero-extends the same value
+        backend.lwu(RiscRegister::X2, RiscRegister::X0, 0);
+        backend.inspect_register(RiscRegister::X2, assert_register_is!(0x0000000080000000));
+
+        run_test_with_memory(backend, &[(0, 0x80000000)]);
     }
 }
 
@@ -687,7 +1316,7 @@ mod infra {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(5), RiscOperand::Immediate(0), RiscRegister::X1);
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
 
         let mut func = backend.finalize().expect("Failed to finalize function");
         unsafe {
@@ -708,7 +1337,7 @@ mod trace {
         let mut backend = new_backend();
 
         backend.start_instr();
-        backend.risc_add(RiscOperand::Immediate(5), RiscOperand::Immediate(0), RiscRegister::X1);
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
         backend.set_pc(4);
 
         backend.trace_registers();

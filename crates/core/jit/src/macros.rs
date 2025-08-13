@@ -1,17 +1,12 @@
 /// A macro to implement ALU operations for the riscv transpiler.
 ///
-/// All operations are binary and aceept two operands, possibly an immediate or register.
+/// All operations are binary and accept two operands, possibly an immediate or register.
 #[macro_export]
 macro_rules! impl_risc_alu {
-    ($($name:ident),*) => {
-        paste::paste! {
-             $(fn [<risc_ $name>](&mut self, rs1: RiscOperand, rs2: RiscOperand, rd: RiscRegister) {
-                self.load_riscv_operand(rs1, Self::ScratchRegister::A);
-                self.load_riscv_operand(rs2, Self::ScratchRegister::B);
-
-                self.$name(Self::ScratchRegister::A, Self::ScratchRegister::B);
-                self.store_riscv_register(Self::ScratchRegister::A, rd);
-            })*
-        }
-    };
+    ($self:expr, $rd:expr, $rs1:expr, $rs2:expr, $temp_a:expr, $temp_b:expr, $code:block) => {{
+        $self.emit_risc_operand_load($rs1, $temp_a);
+        $self.emit_risc_operand_load($rs2, $temp_b);
+        $code
+        $self.emit_risc_register_store($temp_a, $rd);
+    }};
 }

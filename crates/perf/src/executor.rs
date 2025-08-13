@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 // use sp1_hypercube::SP1ProverOpts;
 // use sp1_stark::SP1ProverOpts;
 use clap::{command, Parser};
-use sp1_core_executor::{Executor, ExecutorMode, Program, Trace};
+use sp1_core_executor::{Executor, ExecutorMode, Program};
 use sp1_sdk::{self, SP1Stdin};
 use std::sync::Arc;
 

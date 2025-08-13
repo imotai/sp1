@@ -25,13 +25,13 @@ use sp1_curves::{
 };
 use sp1_jit::JitContext;
 
-pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u32 {
+pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
     let ctx = unsafe { &mut *ctx };
     let registers = ctx.registers();
     let arg1 = registers[10];
     let arg2 = registers[11];
 
-    let code = SyscallCode::from_u32(registers[5]);
+    let code = SyscallCode::from_u32(registers[5] as u32);
 
     let res = match code {
         SyscallCode::SHA_EXTEND => unsafe { sha256_extend(ctx, arg1, arg2) },
@@ -104,16 +104,17 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u32 {
         SyscallCode::HINT_READ => unsafe { hint_read(ctx, arg1, arg2) },
         SyscallCode::WRITE => unsafe { write(ctx, arg1, arg2) },
         SyscallCode::HALT => {
-            ctx.pc = 0;
+            ctx.pc = 1;
             ctx.clk += 256;
-            return code as u32;
+            return code as u64;
         }
-        _ => None,
+        SyscallCode::COMMIT | SyscallCode::COMMIT_DEFERRED_PROOFS => None,
+        _ => panic!("Unknown syscall: {code:?}"),
     };
 
     // Default syscall behavior
     ctx.pc += 4;
     ctx.clk += 256;
 
-    res.unwrap_or(code as u32)
+    res.unwrap_or(code as u64)
 }

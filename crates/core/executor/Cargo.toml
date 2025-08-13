@@ -14,7 +14,6 @@ categories = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-curves = { workspace = true }
 sp1-hypercube = { workspace = true }
-sp1-jit = { workspace = true, optional = true }
 
 # slop (replaced p3 dependencies)
 slop-algebra = { workspace = true }
@@ -56,6 +55,9 @@ rustc-demangle = { version = "0.1.18", optional = true }
 gecko_profile = { version = "0.4.0", optional = true }
 indicatif = { version = "0.17.8", optional = true }
 
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+sp1-jit = { workspace = true }
+
 [dev-dependencies]
 sp1-zkvm = { path = "../../zkvm/entrypoint", features = ["lib"] }
 test-artifacts = { path = "../../test-artifacts" }
@@ -68,7 +70,6 @@ profiling = [
   "dep:gecko_profile",
   "dep:indicatif",
 ]
-native-executor = ["dep:sp1-jit"]
 
 [lints]
 workspace = true

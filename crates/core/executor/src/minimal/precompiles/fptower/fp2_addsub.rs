@@ -1,22 +1,23 @@
 use num::BigUint;
 use sp1_curves::{params::NumWords, weierstrass::FpOpField};
 use sp1_jit::JitContext;
+use sp1_primitives::consts::u64_to_u32;
 use typenum::Unsigned;
 
 use crate::events::FieldOperation;
 
 pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
     ctx: &mut JitContext,
-    arg1: u32,
-    arg2: u32,
+    arg1: u64,
+    arg2: u64,
     fp_op: FieldOperation,
-) -> Option<u32> {
+) -> Option<u64> {
     let x_ptr = arg1;
-    if x_ptr % 4 != 0 {
+    if !x_ptr.is_multiple_of(4) {
         panic!("x_ptr must be 4-byte aligned");
     }
     let y_ptr = arg2;
-    if y_ptr % 4 != 0 {
+    if !y_ptr.is_multiple_of(4) {
         panic!("y_ptr must be 4-byte aligned");
     }
 
@@ -26,8 +27,11 @@ pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
     let x = memory.mr_slice(x_ptr, num_words);
     let y = memory.mr_slice(y_ptr, num_words);
 
-    let (ac0, ac1) = x.split_at(x.len() / 2);
-    let (bc0, bc1) = y.split_at(y.len() / 2);
+    let x_32 = u64_to_u32(x);
+    let y_32 = u64_to_u32(y);
+
+    let (ac0, ac1) = x_32.split_at(x_32.len() / 2);
+    let (bc0, bc1) = y_32.split_at(y_32.len() / 2);
 
     let ac0 = &BigUint::from_slice(ac0);
     let ac1 = &BigUint::from_slice(ac1);
@@ -42,10 +46,10 @@ pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
     };
 
     // Each of c0 and c1 should use the same number of words.
-    // This is regardless of how many u32 digits are required to express them.
-    let mut result = c0.to_u32_digits();
+    // This is regardless of how many u64 digits are required to express them.
+    let mut result = c0.to_u64_digits();
     result.resize(num_words / 2, 0);
-    result.append(&mut c1.to_u32_digits());
+    result.append(&mut c1.to_u64_digits());
     result.resize(num_words, 0);
     memory.mw_slice(x_ptr, &result);
 

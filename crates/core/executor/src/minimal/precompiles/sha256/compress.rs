@@ -19,7 +19,7 @@ pub const SHA_COMPRESS_K: [u32; 64] = [
 /// # Safety
 /// - The memory in `ctx` is valid for the duration of the function call.
 #[allow(clippy::pedantic)]
-pub(crate) unsafe fn sha256_compress(ctx: &mut JitContext, arg1: u32, arg2: u32) -> Option<u32> {
+pub(crate) unsafe fn sha256_compress(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option<u64> {
     let w_ptr = arg1;
     let h_ptr = arg2;
     assert_ne!(w_ptr, h_ptr);
@@ -30,8 +30,8 @@ pub(crate) unsafe fn sha256_compress(ctx: &mut JitContext, arg1: u32, arg2: u32)
     let mut hx = [0u32; 8];
     let mut memory = ctx.memory();
     for i in 0..8 {
-        let value = memory.mr(h_ptr + i as u32 * 4);
-        hx[i] = value;
+        let value = memory.mr(h_ptr + i as u64 * 8);
+        hx[i] = value as u32;
     }
 
     let mut original_w = Vec::new();
@@ -47,7 +47,7 @@ pub(crate) unsafe fn sha256_compress(ctx: &mut JitContext, arg1: u32, arg2: u32)
     for i in 0..64 {
         let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
         let ch = (e & f) ^ (!e & g);
-        let w_i = memory.mr(w_ptr + i * 4);
+        let w_i = memory.mr(w_ptr + i as u64 * 8) as u32;
         original_w.push(w_i);
         let temp1 = h
             .wrapping_add(s1)
@@ -71,10 +71,8 @@ pub(crate) unsafe fn sha256_compress(ctx: &mut JitContext, arg1: u32, arg2: u32)
     // Execute the "finalize" phase.
     let v = [a, b, c, d, e, f, g, h];
     for i in 0..8 {
-        memory.mw(h_ptr + i as u32 * 4, hx[i].wrapping_add(v[i]));
+        memory.mw(h_ptr + i as u64 * 8, hx[i].wrapping_add(v[i]) as u64);
     }
-
-    // ctx.clk += 1;
 
     None
 }

@@ -101,6 +101,12 @@ impl From<i32> for RiscOperand {
     }
 }
 
+impl From<u64> for RiscOperand {
+    fn from(imm: u64) -> Self {
+        RiscOperand::Immediate(imm as i32)
+    }
+}
+
 /// A convience structure for getting offsets of fields in the actual [TraceChunk].
 #[repr(C)]
 pub struct TraceChunkRaw {
@@ -148,7 +154,7 @@ impl TraceChunk {
         // we just checked that `src` contains at least `HDR` bytes,
         // and `read_unaligne
         //
-        // All bit patterns are valid for `TraceChunkRaw`.
+        // Note: All bit patterns are valid for `TraceChunkRaw`.
         let raw: TraceChunkRaw =
             unsafe { core::ptr::read_unaligned(src.as_ptr() as *const TraceChunkRaw) };
 

@@ -8,15 +8,15 @@ use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le};
 
 pub unsafe fn edwards_decompress_syscall(
     ctx: &mut JitContext,
-    arg1: u32,
-    sign: u32,
-) -> Option<u32> {
+    arg1: u64,
+    sign: u64,
+) -> Option<u64> {
     let slice_ptr = arg1;
-    assert!(slice_ptr % 4 == 0, "Pointer must be 4-byte aligned.");
+    assert!(slice_ptr.is_multiple_of(4), "Pointer must be 4-byte aligned.");
     assert!(sign <= 1, "Sign bit must be 0 or 1.");
 
     let mut memory = ctx.memory();
-    let y = memory.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u32), WORDS_FIELD_ELEMENT);
+    let y = memory.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u64), WORDS_FIELD_ELEMENT);
     let y_bytes: [u8; COMPRESSED_POINT_BYTES] = words_to_bytes_le(y);
 
     // Copy bytes into another array so we can modify the last byte and make CompressedEdwardsY,
@@ -32,7 +32,7 @@ pub unsafe fn edwards_decompress_syscall(
 
     let mut decompressed_x_bytes = decompressed.x.to_bytes_le();
     decompressed_x_bytes.resize(32, 0u8);
-    let decompressed_x_words: [u32; WORDS_FIELD_ELEMENT] = bytes_to_words_le(&decompressed_x_bytes);
+    let decompressed_x_words: [u64; WORDS_FIELD_ELEMENT] = bytes_to_words_le(&decompressed_x_bytes);
 
     // Write decompressed X into slice
     memory.mw_slice(slice_ptr, &decompressed_x_words);

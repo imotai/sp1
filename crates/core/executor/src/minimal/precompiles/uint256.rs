@@ -4,13 +4,13 @@ use sp1_curves::edwards::WORDS_FIELD_ELEMENT;
 use sp1_jit::JitContext;
 use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le_vec, WORD_BYTE_SIZE};
 
-pub(crate) unsafe fn uint256_mul(ctx: &mut JitContext, arg1: u32, arg2: u32) -> Option<u32> {
+pub(crate) unsafe fn uint256_mul(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option<u64> {
     let x_ptr = arg1;
-    if x_ptr % 4 != 0 {
+    if !x_ptr.is_multiple_of(4) {
         panic!();
     }
     let y_ptr = arg2;
-    if y_ptr % 4 != 0 {
+    if !y_ptr.is_multiple_of(4) {
         panic!();
     }
 
@@ -24,7 +24,7 @@ pub(crate) unsafe fn uint256_mul(ctx: &mut JitContext, arg1: u32, arg2: u32) -> 
     let y = memory.mr_slice(y_ptr, WORDS_FIELD_ELEMENT);
 
     // The modulus is stored after the y value. We increment the pointer by the number of words.
-    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u32 * WORD_BYTE_SIZE as u32;
+    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u64 * WORD_BYTE_SIZE as u64;
     let modulus = memory.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT);
 
     // Get the BigUint values for x, y, and the modulus.
@@ -44,7 +44,7 @@ pub(crate) unsafe fn uint256_mul(ctx: &mut JitContext, arg1: u32, arg2: u32) -> 
     result_bytes.resize(32, 0u8); // Pad the result to 32 bytes.
 
     // Convert the result to little endian u32 words.
-    let result = bytes_to_words_le::<8>(&result_bytes);
+    let result = bytes_to_words_le::<4>(&result_bytes);
 
     // Write the result to x and keep track of the memory records.
     memory.mw_slice(x_ptr, &result);

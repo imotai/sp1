@@ -30,8 +30,11 @@ mod executor;
 mod hook;
 mod instruction;
 mod io;
+
+#[cfg(target_arch = "x86_64")]
+mod minimal;
+
 mod memory;
-// mod minimal;
 mod opcode;
 mod opts;
 #[cfg(feature = "profiling")]

@@ -11,7 +11,7 @@ const U2048_NUM_WORDS: usize = 64;
 const U256_NUM_BYTES: usize = U256_NUM_WORDS * 4;
 const U2048_NUM_BYTES: usize = U2048_NUM_WORDS * 4;
 
-pub(crate) unsafe fn u256x2048_mul(ctx: &mut JitContext, arg1: u32, arg2: u32) -> Option<u32> {
+pub(crate) unsafe fn u256x2048_mul(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option<u64> {
     let a_ptr = arg1;
     let b_ptr = arg2;
 

@@ -58,12 +58,12 @@ pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 use std::sync::mpsc;
 
 #[allow(clippy::type_complexity)]
-static DEBUG_REGISTERS: OnceLock<mpsc::Sender<Option<(u32, u64, [u32; 32])>>> = OnceLock::new();
+static DEBUG_REGISTERS: OnceLock<mpsc::Sender<Option<(u64, u64, [u64; 32])>>> = OnceLock::new();
 
 /// Initialize the sender for debugging registers at each timesstamp.
 ///
 /// Todo: feature gate.
-pub fn init_debug_registers() -> mpsc::Receiver<Option<(u32, u64, [u32; 32])>> {
+pub fn init_debug_registers() -> mpsc::Receiver<Option<(u64, u64, [u64; 32])>> {
     let (tx, rx) = mpsc::channel();
     DEBUG_REGISTERS.set(tx).expect("DEBUG_REGISTERS already initialized");
 
@@ -1780,6 +1780,9 @@ impl<'a> Executor<'a> {
         let mut next_pc = self.state.pc.wrapping_add(4);
         // Will be set to a non-default value if the instruction is a syscall.
 
+        // eprintln!("instruction={:?}", instruction.opcode);
+        // eprintln!("self.state.pc={}", self.state.pc);
+
         let (mut a, b, c): (u64, u64, u64);
 
         // The syscall id for precompiles.  This is only used/set when opcode == ECALL.
@@ -1869,16 +1872,11 @@ impl<'a> Executor<'a> {
             );
         }
 
-        // eprintln!("instruction: {:?}", instruction);
-        // eprintln!("pc: {:?}", self.state.pc);
-
         // Update the program counter.
         self.state.pc = next_pc;
 
         // Update the clk to the next cycle.
         self.state.clk += 8;
-
-        // eprintln!("clk: {:?}", clk);
 
         Ok(())
     }

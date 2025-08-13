@@ -14,27 +14,39 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-mod backend;
+mod instruction_impl;
 #[cfg(test)]
 mod tests;
 mod transpiler;
 
 /// The first scratch register.
+///
+/// Callee-saved register.
 const TEMP_A: u8 = Rq::RBX as u8;
 
 /// The second scratch register.
+///
+/// Callee-saved register.
 const TEMP_B: u8 = Rq::RBP as u8;
 
 /// The JitContext pointer.
+///
+/// Callee-saved register.
 const CONTEXT: u8 = Rq::R12 as u8;
 
 /// The jump table pointer.
+///
+/// Callee-saved register.
 const JUMP_TABLE: u8 = Rq::R13 as u8;
 
 /// The trace buffer pointer.
+///
+/// Callee-saved register.
 const TRACE_BUF: u8 = Rq::R14 as u8;
 
 /// The saved stack pointer, used during external function calls.
+///
+/// Callee-saved register.
 const SAVED_STACK_PTR: u8 = Rq::R15 as u8;
 
 /// The offset of the pc in the JitContext.
@@ -59,9 +71,9 @@ pub struct TranspilerBackend {
     /// Has at least one instruction been inserted.
     has_instructions: bool,
     /// The pc base.
-    pc_base: u32,
+    pc_base: u64,
     /// The pc start.
-    pc_start: u32,
+    pc_start: u64,
     /// The ecall handler.
     ecall_handler: EcallHandler,
 }
@@ -90,13 +102,13 @@ impl TraceCollector for TranspilerBackend {
     fn trace_registers(&mut self) {
         for reg in RiscRegister::all_registers().iter() {
             let (xmm_index, xmm_offset) = Self::get_xmm_index(*reg);
-            let value_byte_offset = *reg as u32 * 4;
+            let value_byte_offset = *reg as u32 * 8;
 
             dynasm! {
                 self;
                 .arch x64;
 
-                pextrd [Rq(TRACE_BUF) + value_byte_offset as i32], Rx(xmm_index), xmm_offset
+                pextrq [Rq(TRACE_BUF) + value_byte_offset as i32], Rx(xmm_index), xmm_offset
             };
         }
     }
@@ -274,13 +286,13 @@ impl TranspilerBackend {
     fn save_registers_to_context(&mut self) {
         for reg in RiscRegister::all_registers().iter() {
             let (xmm_index, xmm_offset) = Self::get_xmm_index(*reg);
-            let value_byte_offset = *reg as u32 * 4;
+            let value_byte_offset = *reg as u32 * 8;
 
             dynasm! {
                 self;
                 .arch x64;
 
-                pextrd [Rq(CONTEXT) + REGISTERS_OFFSET + value_byte_offset as i32], Rx(xmm_index), xmm_offset
+                pextrq [Rq(CONTEXT) + REGISTERS_OFFSET + value_byte_offset as i32], Rx(xmm_index), xmm_offset
             };
         }
     }
@@ -289,13 +301,13 @@ impl TranspilerBackend {
         // For each register from the context, lets load it into a phyiscal register.
         for reg in RiscRegister::all_registers().iter() {
             let (xmm_index, xmm_offset) = Self::get_xmm_index(*reg);
-            let value_byte_offset = *reg as u32 * 4;
+            let value_byte_offset = *reg as u32 * 8;
 
             dynasm! {
                 self;
                 .arch x64;
 
-                pinsrd Rx(xmm_index), [Rq(CONTEXT) + REGISTERS_OFFSET + value_byte_offset as i32], xmm_offset
+                pinsrq Rx(xmm_index), [Rq(CONTEXT) + REGISTERS_OFFSET + value_byte_offset as i32], xmm_offset
             };
         }
     }
@@ -305,7 +317,7 @@ impl TranspilerBackend {
     /// We load the value from the XMM register into the general purpose register for the backend to operate on.
     /// We do this to avoid accidently clobbering the XMM registers.
     ///
-    /// NOTE: This aliases the lower 32 bits of the register.
+    /// NOTE: This aliases the full 64 bits of the register.
     fn emit_risc_operand_load(&mut self, op: RiscOperand, dst: u8) {
         match op {
             RiscOperand::Register(reg) => match reg {
@@ -324,7 +336,7 @@ impl TranspilerBackend {
                         self;
                         .arch x64;
 
-                        pextrd Rq(dst), Rx(xmm_index), xmm_offset // load into low 32 bits of dst
+                        pextrq Rq(dst), Rx(xmm_index), xmm_offset // load 64-bit value from XMM
                     };
                 }
             },
@@ -341,7 +353,7 @@ impl TranspilerBackend {
 
     /// Store the value from the general purpose register into the corresponding XMM register.
     ///
-    /// Note: This aliases the lower 32 bits of the register.
+    /// Note: This stores the full 64 bits of the register.
     #[inline]
     fn emit_risc_register_store(&mut self, src: u8, dst: RiscRegister) {
         if dst == RiscRegister::X0 {
@@ -354,14 +366,15 @@ impl TranspilerBackend {
         dynasm! {
             self;
             .arch x64;
-            pinsrd Rx(xmm_index), Rq(src), xmm_offset
+            pinsrq Rx(xmm_index), Rq(src), xmm_offset
         };
     }
 
     /// Compute the XMM index and offset for the given register.
     ///
-    /// We operate on the assumption there are 8 128 bit XMM registers we can use.
-    /// We map a register to an index in the range `[0, 7]` and an offset in the range `[0, 3]`.
+    /// We operate on the assumption there are 16 128 bit XMM registers we can use.
+    /// Each XMM register can hold 2 x 64-bit values.
+    /// We map a register to an index in the range `[0, 15]` and an offset in the range `[0, 1]`.
     const fn get_xmm_index(reg: RiscRegister) -> (u8, i8) {
         let reg = reg as u8;
         (reg / 2, (reg % 2) as i8)
@@ -388,48 +401,9 @@ impl TranspilerBackend {
             and rax, 15; // compute rsp % 16
             sub rsp, rax; // sub that from the rsp to ensure 16 byte alignment
 
-            sub rsp, 256;
-
-            // Save the XMM registers to the stack
-            // These are always volatile, and we dont want them to be clobbered.
-            movdqu [rsp], xmm0;
-            movdqu [rsp + 16], xmm1;
-            movdqu [rsp + 32], xmm2;
-            movdqu [rsp + 48], xmm3;
-            movdqu [rsp + 64], xmm4;
-            movdqu [rsp + 80], xmm5;
-            movdqu [rsp + 96], xmm6;
-            movdqu [rsp + 112], xmm7;
-            movdqu [rsp + 128], xmm8;
-            movdqu [rsp + 144], xmm9;
-            movdqu [rsp + 160], xmm10;
-            movdqu [rsp + 176], xmm11;
-            movdqu [rsp + 192], xmm12;
-            movdqu [rsp + 208], xmm13;
-            movdqu [rsp + 224], xmm14;
-            movdqu [rsp + 240], xmm15;
-
             // Call the external function
             mov rax, QWORD fn_ptr as _;
             call rax;
-
-            // Restore xmm0 and xmm1
-            movdqu xmm0, [rsp];
-            movdqu xmm1, [rsp + 16];
-            movdqu xmm2, [rsp + 32];
-            movdqu xmm3, [rsp + 48];
-            movdqu xmm4, [rsp + 64];
-            movdqu xmm5, [rsp + 80];
-            movdqu xmm6, [rsp + 96];
-            movdqu xmm7, [rsp + 112];
-            movdqu xmm8, [rsp + 128];
-            movdqu xmm9, [rsp + 144];
-            movdqu xmm10, [rsp + 160];
-            movdqu xmm11, [rsp + 176];
-            movdqu xmm12, [rsp + 192];
-            movdqu xmm13, [rsp + 208];
-            movdqu xmm14, [rsp + 224];
-            movdqu xmm15, [rsp + 240];
 
             // Restore the original stack pointer
             mov rsp, Rq(SAVED_STACK_PTR)
@@ -483,14 +457,16 @@ impl TranspilerBackend {
             .arch x64;
 
             // If the PC we want to jump to is 0, jump to the exit label.
-            cmp Rq(TEMP_A), 0;
+            cmp Rq(TEMP_A), 1;
             je ->exit;
 
-            // add the pc to the jump table pointer and load
-            // Scale by 8 since these are 8 byte pointers
+            // Subtract the pc base to get the offset from the start of the program.
             sub Rq(TEMP_A), pc_base;
-            shr Rq(TEMP_A), 2; // Divide by 4 to get the index
-            mov Rq(TEMP_B), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8]; // Convert to a byte offset
+            // Divide by 4 to get the index (each instruction is 4 bytes).
+            shr Rq(TEMP_A), 2;
+            // Lookup into the jump table, scaling by 8 since the pointers are 8 bytes.
+            mov Rq(TEMP_B), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
+            // Jump to the target.
             jmp Rq(TEMP_B)
         }
     }
@@ -523,7 +499,7 @@ compile_error!("SSE is required for the x86 backend");
 compile_error!("Little endian is required for the x86 backend");
 
 /// A dummy ecall handler that can be called by the JIT.
-extern "C" fn ecallk(ctx: *mut JitContext) -> u32 {
+extern "C" fn ecallk(ctx: *mut JitContext) -> u64 {
     let ctx = unsafe { &mut *ctx };
 
     eprintln!("dummy ecall handler called with code: 0x{:x}", ctx.registers[5]);

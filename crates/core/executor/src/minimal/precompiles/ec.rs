@@ -7,13 +7,13 @@ use typenum::Unsigned;
 /// The generic parameter `N` is the number of u32 words in the point representation. For example,
 /// for the secp256k1 curve, `N` would be 16 (64 bytes) because the x and y coordinates are 32 bytes
 /// each.
-pub(crate) unsafe fn ec_add<E: EllipticCurve>(ctx: &mut JitContext, arg1: u32, arg2: u32) {
+pub(crate) unsafe fn ec_add<E: EllipticCurve>(ctx: &mut JitContext, arg1: u64, arg2: u64) {
     let p_ptr = arg1;
-    if p_ptr % 4 != 0 {
+    if !p_ptr.is_multiple_of(4) {
         panic!();
     }
     let q_ptr = arg2;
-    if q_ptr % 4 != 0 {
+    if !q_ptr.is_multiple_of(4) {
         panic!();
     }
 
@@ -36,9 +36,9 @@ pub(crate) unsafe fn ec_add<E: EllipticCurve>(ctx: &mut JitContext, arg1: u32, a
 ///
 /// It takes a pointer to a memory location, reads the point from memory, doubles it, and writes the
 /// result back to the memory location.
-pub(crate) unsafe fn ec_double<E: EllipticCurve>(ctx: &mut JitContext, arg1: u32, _: u32) {
+pub(crate) unsafe fn ec_double<E: EllipticCurve>(ctx: &mut JitContext, arg1: u64, _: u64) {
     let p_ptr = arg1;
-    if p_ptr % 4 != 0 {
+    if !p_ptr.is_multiple_of(4) {
         panic!();
     }
 

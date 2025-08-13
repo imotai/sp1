@@ -7,7 +7,7 @@ use sp1_primitives::consts::fd::{
     FD_FP_SQRT, FD_HINT, FD_PUBLIC_VALUES, FD_RSA_MUL_MOD,
 };
 
-pub(crate) unsafe fn write(ctx: &mut JitContext, arg1: u32, arg2: u32) -> Option<u32> {
+pub(crate) unsafe fn write(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option<u64> {
     let a2 = RiscRegister::X12;
     // let rt = &mut ctx.rt;
     let fd = arg1;
@@ -32,14 +32,14 @@ pub(crate) unsafe fn write(ctx: &mut JitContext, arg1: u32, arg2: u32) -> Option
         }
 
         return None;
-    } else if fd == FD_PUBLIC_VALUES {
+    } else if fd as u32 == FD_PUBLIC_VALUES {
         return None;
-    } else if fd == FD_HINT {
+    } else if fd as u32 == FD_HINT {
         ctx.input_buffer().push_front(bytes);
         return None;
     }
 
-    let hook_return = match fd {
+    let hook_return = match fd as u32 {
         FD_BLS12_381_INVERSE => Some(bls::hook_bls12_381_inverse(slice)),
         FD_BLS12_381_SQRT => Some(bls::hook_bls12_381_sqrt(slice)),
         FD_FP_INV => Some(fp_ops::hook_fp_inverse(slice)),
