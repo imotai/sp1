@@ -1336,21 +1336,36 @@ mod trace {
     fn test_basic_trace() {
         let mut backend = new_backend();
 
-        backend.start_instr();
-        backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
-        backend.set_pc(4);
+        extern "C" fn some_precompile(ctx: *mut JitContext) {
+            let ctx = unsafe { &mut *ctx };
+            unsafe { ctx.trace_mem_access(&[15, 20]) };
+        }
 
+        backend.start_instr();
+        // Simualte a read into X1 and trace it.
+        backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
+        backend.trace_mem_value(RiscRegister::X1);
+        // Simualte a read into X2 and trace it.
+        backend.add(RiscRegister::X2, RiscOperand::Immediate(10), RiscOperand::Immediate(0));
+        backend.trace_mem_value(RiscRegister::X2);
+        // Call a precompile that traces some memory accesses.
+        backend.call_extern_fn(some_precompile);
+
+        backend.set_pc(4);
         backend.trace_registers();
         backend.trace_pc_start();
-        backend.trace_mem_value(RiscRegister::X1);
 
         let mut func = backend.finalize().expect("Failed to finalize function");
         let trace = unsafe { func.call() }.expect("No trace returned");
 
         let trace = TraceChunk::copy_from_bytes(&trace);
         assert_eq!(trace.start_registers[1], 5);
+        assert_eq!(trace.start_registers[2], 10);
         assert_eq!(trace.pc_start, 4);
-        assert_eq!(trace.mem_reads.len(), 1);
+        assert_eq!(trace.mem_reads.len(), 4);
         assert_eq!(trace.mem_reads[0], 5);
+        assert_eq!(trace.mem_reads[1], 10);
+        assert_eq!(trace.mem_reads[2], 15);
+        assert_eq!(trace.mem_reads[3], 20);
     }
 }
