@@ -1,5 +1,8 @@
 #![cfg_attr(not(target_os = "linux"), allow(unused))]
 
+#[cfg(not(target_endian = "little"))]
+compile_error!("This crate is only supported on little endian targets.");
+
 pub mod backends;
 pub mod instructions;
 mod macros;

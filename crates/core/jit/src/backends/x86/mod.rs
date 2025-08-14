@@ -530,12 +530,6 @@ impl DerefMut for TranspilerBackend {
 #[cfg(not(target_feature = "sse"))]
 compile_error!("SSE is required for the x86 backend");
 
-/// The backend implicity relies on the target being little endian.
-///
-/// If this is not the case, we throw an error at compile time.
-#[cfg(not(target_endian = "little"))]
-compile_error!("Little endian is required for the x86 backend");
-
 /// A dummy ecall handler that can be called by the JIT.
 extern "C" fn ecallk(ctx: *mut JitContext) -> u64 {
     let ctx = unsafe { &mut *ctx };
