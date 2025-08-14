@@ -424,8 +424,8 @@ impl JitContext {
     /// # Safety
     /// - todo
     pub unsafe fn trace_mem_access(&self, reads: &[u64]) {
-        // QUESTIONABLE: I think as long as Self is not Sync youre mostly fine, but its unclear,
-        // how to actually call this method safe.
+        // QUESTIONABLE: I think as long as Self is not `Sync` youre mostly fine, but its unclear,
+        // how to actually call this method safe without taking a `&mut self`.
 
         // Read the current num reads from the trace buf.
         let raw = self.trace_buf.as_ptr();
@@ -439,9 +439,11 @@ impl JitContext {
 
         // Write the new reads to the trace buf.
         let reads_start = std::mem::size_of::<TraceChunkRaw>();
-        let reads_ptr = raw.add(reads_start);
+        // Scale the num reads by the size of a u64.
+        let tail_ptr = raw.add(reads_start).add(num_reads as usize * 8);
         for (i, read) in reads.iter().enumerate() {
-            std::ptr::write_unaligned(reads_ptr.add(i * 8) as *mut u64, *read);
+            // Scale the index by the size of a u64.
+            std::ptr::write_unaligned(tail_ptr.add(i * 8) as *mut u64, *read);
         }
     }
 

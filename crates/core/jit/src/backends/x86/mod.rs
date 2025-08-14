@@ -131,19 +131,19 @@ impl TraceCollector for TranspilerBackend {
             // ------------------------------------
             // 1. Load the num mem reads and convert to a byte offset.
             // ------------------------------------
-            mov Rd(TEMP_A), DWORD [Rq(TRACE_BUF) + NUM_MEM_READS_OFFSET];
-            shl Rd(TEMP_A), 2; // num_mem_reads * 4, the size of a u32
-            add Rd(TEMP_A), TAIL_START_OFFSET;
+            mov Rq(TEMP_A), QWORD [Rq(TRACE_BUF) + NUM_MEM_READS_OFFSET];
+            shl Rq(TEMP_A), 3; // num_mem_reads * 8, the size of a u64
+            add Rq(TEMP_A), TAIL_START_OFFSET;
 
             // ------------------------------------
             // 3. Store the value into the tail.
             // ------------------------------------
-            mov [Rq(TRACE_BUF) + Rq(TEMP_A)], Rd(TEMP_B);
+            mov [Rq(TRACE_BUF) + Rq(TEMP_A)], Rq(TEMP_B);
 
             // ------------------------------------
             // 2. Increment the num mem reads, since weve pushed into it.
             // ------------------------------------
-            add DWORD [Rq(TRACE_BUF) + NUM_MEM_READS_OFFSET], 1
+            add QWORD [Rq(TRACE_BUF) + NUM_MEM_READS_OFFSET], 1
         }
     }
 
