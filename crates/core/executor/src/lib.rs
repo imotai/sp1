@@ -31,8 +31,10 @@ mod hook;
 mod instruction;
 mod io;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
 mod minimal;
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+pub use minimal::*;
 
 mod memory;
 mod opcode;
