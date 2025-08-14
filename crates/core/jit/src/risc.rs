@@ -168,10 +168,28 @@ impl TraceChunk {
 
         /* ---------- 4. extract tail ---------- */
         let tail = &src[HDR..total]; // only after the length check
-        let mem_reads: Vec<u64> = tail
-            .chunks_exact(4)
-            .map(|b| unsafe { core::ptr::read_unaligned(b.as_ptr() as *const u64) })
-            .collect();
+        let mut mem_reads = Vec::with_capacity(n_words);
+
+        // SAFETY:
+        // - The tail contains valid u64s, so doing a bitwise copy preserves the validity.
+        // - tail is likely unaligned, so casting to a u8 pointer gives the alignmnt guarantee the compiler needs to do a copy.
+        // - `mem_reads` was just allocated to have enough space.
+        // - u8 has minimum alignment, so casting the pointer allocated by the vec is valid.
+        //
+        // This trick is mostly taken from [`std::ptr::read_unaligned`]
+        // see: <https://doc.rust-lang.org/src/core/ptr/mod.rs.html#1811>.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                tail.as_ptr(),
+                mem_reads.as_mut_ptr() as *mut u8,
+                size_of::<u64>() * n_words,
+            )
+        };
+
+        // SAFETY:
+        // - `mem_reads` was just allocated to have enough space.
+        // - `copy_nonoverlapping` ensures that the memory is properly initialized.
+        unsafe { mem_reads.set_len(n_words) };
 
         Self {
             start_registers: raw.start_registers,
