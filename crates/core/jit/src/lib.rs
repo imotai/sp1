@@ -383,16 +383,16 @@ impl JitFunction {
 
     fn insert_memory_image(&mut self) {
         for (addr, val) in self.initial_memory_image.iter() {
+            // Technically, this crate is probably only used on little endian targets, but just to sure.
             let bytes = val.to_le_bytes();
 
-            self.memory[*addr as usize] = bytes[0];
-            self.memory[*addr as usize + 1] = bytes[1];
-            self.memory[*addr as usize + 2] = bytes[2];
-            self.memory[*addr as usize + 3] = bytes[3];
-            self.memory[*addr as usize + 4] = bytes[4];
-            self.memory[*addr as usize + 5] = bytes[5];
-            self.memory[*addr as usize + 6] = bytes[6];
-            self.memory[*addr as usize + 7] = bytes[7];
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    self.memory.as_mut_ptr().add(*addr as usize),
+                    bytes.len(),
+                )
+            };
         }
     }
 }
