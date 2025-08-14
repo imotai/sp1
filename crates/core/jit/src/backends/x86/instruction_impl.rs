@@ -2,21 +2,16 @@
 
 use super::{TranspilerBackend, CONTEXT, JUMP_TABLE, PC_OFFSET, TEMP_A, TEMP_B};
 use crate::{
-    impl_risc_alu, ComputeInstructions, ControlFlowInstructions, JitContext, MemoryInstructions,
-    RiscOperand, RiscRegister, SP1RiscvTranspiler, SystemInstructions,
+    impl_alu32_imm_opt, impl_alu_imm_opt, impl_risc_alu, impl_shift32_imm_opt, ComputeInstructions,
+    ControlFlowInstructions, JitContext, MemoryInstructions, RiscOperand, RiscRegister,
+    SP1RiscvTranspiler, SystemInstructions,
 };
 use dynasmrt::{dynasm, x64::Rq, DynasmApi, DynasmLabelApi};
 
 impl ComputeInstructions for TranspilerBackend {
     fn add(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // lhs <- lhs + rhs (64-bit)
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-                add Rq(TEMP_A), Rq(TEMP_B)
-            }
-        });
+        impl_alu_imm_opt!(self, rd, rs1, rs2, add);
     }
 
     fn mul(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
@@ -27,40 +22,22 @@ impl ComputeInstructions for TranspilerBackend {
                 .arch x64;
                 imul Rq(TEMP_A), Rq(TEMP_B)
             }
-        });
+        })
     }
 
     fn and(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // rd <- rs1 & rs2 (64-bit)
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-                and Rq(TEMP_A), Rq(TEMP_B)
-            }
-        });
+        impl_alu_imm_opt!(self, rd, rs1, rs2, and);
     }
 
     fn or(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // rd <- rs1 | rs2 (64-bit)
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-                or Rq(TEMP_A), Rq(TEMP_B)
-            }
-        });
+        impl_alu_imm_opt!(self, rd, rs1, rs2, or);
     }
 
     fn xor(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // rd <- rs1 ^ rs2 (64-bit)
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-                xor Rq(TEMP_A), Rq(TEMP_B)
-            }
-        });
+        impl_alu_imm_opt!(self, rd, rs1, rs2, xor);
     }
 
     fn div(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
@@ -70,151 +47,161 @@ impl ComputeInstructions for TranspilerBackend {
         // The quotient is stored in RAX, and the remainder is stored in RDX.
         //
         // We can just write the quotient back into lhs, and the remainder is discarded.
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load dividend directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                // ------------------------------------
-                // 1. Skip fault on div-by-zero
-                // ------------------------------------
-                test Rq(TEMP_B), Rq(TEMP_B);  // ZF=1 if rhs == 0
-                jz   >div_by_zero;
+            // ------------------------------------
+            // 1. Skip fault on div-by-zero
+            // ------------------------------------
+            test Rq(TEMP_B), Rq(TEMP_B);  // ZF=1 if rhs == 0
+            jz   >div_by_zero;
 
-                // ------------------------------------
-                // 2. Perform signed divide
-                // ------------------------------------
-                mov  rax, Rq(TEMP_A);         // dividend → RAX
-                cqo;                          // sign-extend RAX into RDX (64-bit)
-                idiv Rq(TEMP_B);              // quotient → RAX, remainder → RDX
-                mov  Rq(TEMP_A), rax;         // write quotient back into lhs
-                jmp >done;
+            // ------------------------------------
+            // 2. Perform signed divide
+            // ------------------------------------
+            // dividend already in RAX (loaded directly)
+            cqo;                          // sign-extend RAX into RDX (64-bit)
+            idiv Rq(TEMP_B);              // quotient → RAX, remainder → RDX
+            // quotient already in RAX
+            jmp >done;
 
-                // ------------------------------------
-                // 3. if rhs == 0
-                // ------------------------------------
-                div_by_zero:;
-                xor  Rq(TEMP_A), Rq(TEMP_A);  // lhs = 0
+            // ------------------------------------
+            // 3. if rhs == 0
+            // ------------------------------------
+            div_by_zero:;
+            xor  rax, rax;                // quotient = 0
 
-                // ------------------------------------
-                // Merge branch
-                // ------------------------------------
-                done:
-            }
-        });
+            // ------------------------------------
+            // Merge branch
+            // ------------------------------------
+            done:
+        }
+        self.emit_risc_register_store(Rq::RAX as u8, rd);
     }
 
     fn divu(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // lhs <- lhs / rhs   (unsigned 64-bit; 0 if rhs == 0)
         // clobbers: RAX, RDX
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load dividend directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                // ----- skip fault on div-by-zero -----
-                test Rq(TEMP_B), Rq(TEMP_B);   // ZF = 1 when rhs == 0
-                jz   >div_by_zero;
+            // ----- skip fault on div-by-zero -----
+            test Rq(TEMP_B), Rq(TEMP_B);   // ZF = 1 when rhs == 0
+            jz   >div_by_zero;
 
-                // ----- perform unsigned divide -----
-                mov  rax, Rq(TEMP_A);          // dividend → RAX
-                xor  rdx, rdx;                 // zero-extend: RDX = 0
-                div  Rq(TEMP_B);               // unsigned divide: RDX:RAX / rhs
-                mov  Rq(TEMP_A), rax;          // quotient → lhs
-                jmp  >done;
+            // ----- perform unsigned divide -----
+            // dividend already in RAX (loaded directly)
+            xor  rdx, rdx;                 // zero-extend: RDX = 0
+            div  Rq(TEMP_B);               // unsigned divide: RDX:RAX / rhs
+            // quotient already in RAX
+            jmp  >done;
 
-                // ----- rhs == 0 -----
-                div_by_zero:;
-                xor  Rq(TEMP_A), Rq(TEMP_A);   // lhs = 0
+            // ----- rhs == 0 -----
+            div_by_zero:;
+            xor  rax, rax;                 // quotient = 0
 
-                done:
-            }
-        });
+            done:
+        }
+        self.emit_risc_register_store(Rq::RAX as u8, rd);
     }
 
     fn mulh(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        // Signed multiply high: returns upper 64 bits of rs1 * rs2
+        // x86 imul for high multiply requires RAX and produces result in RDX
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load multiplicand directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                mov  rax, Rq(TEMP_A);      // RAX = lhs (signed)
-                imul Rq(TEMP_B);           // signed 64×64 → 128; high → RDX
-                mov  Rq(TEMP_A), rdx       // lhs = high 64 bits
-            }
-        });
+            // multiplicand already in RAX (loaded directly)
+            imul Rq(TEMP_B)          // signed 64×64 → 128; high → RDX
+            // high 64 bits already in RDX
+        }
+        self.emit_risc_register_store(Rq::RDX as u8, rd);
     }
 
     fn mulhu(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        // Unsigned multiply high: returns upper 64 bits of rs1 * rs2
+        // x86 mul for high multiply requires RAX and produces result in RDX
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load multiplicand directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                mov  rax, Rq(TEMP_A);      // RAX = TEMP_A (unsigned)
-                mul  Rq(TEMP_B);           // unsigned 64×64 → 128; high → RDX
-                mov  Rq(TEMP_A), rdx       // TEMP_A = high 64 bits
-            }
-        });
+            // multiplicand already in RAX (loaded directly)
+            mul  Rq(TEMP_B)          // unsigned 64×64 → 128; high → RDX
+            // high 64 bits already in RDX
+        }
+        self.emit_risc_register_store(Rq::RDX as u8, rd);
     }
 
     fn mulhsu(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        // Mixed multiply high: signed rs1 * unsigned rs2, returns upper 64 bits
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load signed multiplicand directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                // ──────────────────────────────────────────────────────────────
-                // 1. Move the **signed** left-hand operand (`TEMP_A`) into RAX.
-                //    ✦ The x86-64 `mul` instruction always uses RAX as its implicit
-                //      64-bit source operand, so we must place `TEMP_A` there first.
-                // ──────────────────────────────────────────────────────────────
-                mov rax, Rq(TEMP_A);
+            // ──────────────────────────────────────────────────────────────
+            // 1. Move the **signed** left-hand operand (`TEMP_A`) into RAX.
+            //    ✦ The x86-64 `mul` instruction always uses RAX as its implicit
+            //      64-bit source operand, so we must place `TEMP_A` there first.
+            // ──────────────────────────────────────────────────────────────
+            // multiplicand already in RAX (optimized load)
 
-                // ──────────────────────────────────────────────────────────────
-                // 2. Preserve a second copy of `TEMP_A` in RCX.
-                //    ✦ The upcoming `mul` clobbers both RAX and RDX, erasing any
-                //      trace of the original sign.  We save `TEMP_A` in RCX so that
-                //      we can later decide whether the fix-up for a *negative*
-                //      multiplicand is required.
-                // ──────────────────────────────────────────────────────────────
-                mov rcx, rax;
+            // ──────────────────────────────────────────────────────────────
+            // 2. Preserve a second copy of `TEMP_A` in RCX.
+            //    ✦ The upcoming `mul` clobbers both RAX and RDX, erasing any
+            //      trace of the original sign.  We save `TEMP_A` in RCX so that
+            //      we can later decide whether the fix-up for a *negative*
+            //      multiplicand is required.
+            // ──────────────────────────────────────────────────────────────
+            mov rcx, rax;
 
-                // ──────────────────────────────────────────────────────────────
-                // 3. Unsigned 64×64-bit multiply:
-                //    mul Rq(TEMP_B)
-                //    ✦ Computes  RDX:RAX = (unsigned)RAX × (unsigned)TEMP_B.
-                //      The high 64 bits of the 128-bit product land in RDX.
-                // ──────────────────────────────────────────────────────────────
-                mul Rq(TEMP_B);
+            // ──────────────────────────────────────────────────────────────
+            // 3. Unsigned 64×64-bit multiply:
+            //    mul Rq(TEMP_B)
+            //    ✦ Computes  RDX:RAX = (unsigned)RAX × (unsigned)TEMP_B.
+            //      The high 64 bits of the 128-bit product land in RDX.
+            // ──────────────────────────────────────────────────────────────
+            mul Rq(TEMP_B);
 
-                // ──────────────────────────────────────────────────────────────
-                // 4. Determine whether the *original* `TEMP_A` was negative.
-                //    ✦ `test rcx, rcx` sets the sign flag from RCX (the saved `TEMP_A`).
-                //    ✦ If the sign flag is *clear* (`TEMP_A` ≥ 0), we can skip the
-                //      correction step because the high half already matches the
-                //      semantics of the RISC-V MULHSU instruction.
-                // ──────────────────────────────────────────────────────────────
-                test rcx, rcx;
-                jns >store_high;          // Jump if `TEMP_A` was non-negative.
+            // ──────────────────────────────────────────────────────────────
+            // 4. Determine whether the *original* `TEMP_A` was negative.
+            //    ✦ `test rcx, rcx` sets the sign flag from RCX (the saved `TEMP_A`).
+            //    ✦ If the sign flag is *clear* (`TEMP_A` ≥ 0), we can skip the
+            //      correction step because the high half already matches the
+            //      semantics of the RISC-V MULHSU instruction.
+            // ──────────────────────────────────────────────────────────────
+            test rcx, rcx;
+            jns >store_high;          // Jump if `TEMP_A` was non-negative.
 
-                // ──────────────────────────────────────────────────────────────
-                // 5. Fix-up for negative `TEMP_A` (signed × unsigned semantics):
-                //    ✦ For a negative multiplicand, the unsigned `mul` delivered a
-                //      product that is *2⁶⁴* too large in the high word.  Subtracting
-                //      `TEMP_B` from RDX removes that excess and yields the correct
-                //      signed-high result.
-                // ──────────────────────────────────────────────────────────────
-                sub rdx, Rq(TEMP_B);
+            // ──────────────────────────────────────────────────────────────
+            // 5. Fix-up for negative `TEMP_A` (signed × unsigned semantics):
+            //    ✦ For a negative multiplicand, the unsigned `mul` delivered a
+            //      product that is *2⁶⁴* too large in the high word.  Subtracting
+            //      `TEMP_B` from RDX removes that excess and yields the correct
+            //      signed-high result.
+            // ──────────────────────────────────────────────────────────────
+            sub rdx, Rq(TEMP_B);
 
-                // ──────────────────────────────────────────────────────────────
-                // 6. Write the corrected high 64 bits back to the destination
-                //    RISC register specified by `TEMP_A`.
-                // ──────────────────────────────────────────────────────────────
-                store_high:;
-                mov Rq(TEMP_A), rdx
-            }
-        });
+            // ──────────────────────────────────────────────────────────────
+            // 6. Write the corrected high 64 bits back to the destination
+            //    RISC register specified by `TEMP_A`.
+            // ──────────────────────────────────────────────────────────────
+            store_high:
+            // result already in RDX
+        }
+        self.emit_risc_register_store(Rq::RDX as u8, rd);
     }
 
     /// Signed remainder: `rd = rs1 % rs2`  
@@ -264,7 +251,7 @@ impl ComputeInstructions for TranspilerBackend {
 
                 done:
             }
-        });
+        })
     }
 
     fn remu(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
@@ -310,7 +297,7 @@ impl ComputeInstructions for TranspilerBackend {
 
                 done:
             }
-        });
+        })
     }
 
     fn sll(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
@@ -318,120 +305,215 @@ impl ComputeInstructions for TranspilerBackend {
         // In RV64I, this is also true!
         //
         // CL is an alias for the lower byte of RCX.
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // ──────────────────────────────────────────────────────────────
-                // 1. Move the shift count (lower 6 bits, RV64I spec) into CL.
-                //    x86 uses only the low 6 bits for 64-bit shifts as well, so
-                //    the masking is implicit—no extra AND is necessary.
-                // ──────────────────────────────────────────────────────────────
-                mov rcx, Rq(TEMP_B);        // CL = TEMP_B
-
-                // ──────────────────────────────────────────────────────────────
-                // 2. Logical left shift: Rq(TEMP_A) ← Rq(TEMP_A) << (CL & 0b11_1111)
-                //    `shl r/m64, cl` preserves the semantics required by
-                //    RISC-V SLL because both architectures ignore bits ≥ 6.
-                // ──────────────────────────────────────────────────────────────
-                shl Rq(TEMP_A), cl         // variable-count shift
+        match rs2 {
+            RiscOperand::Immediate(imm) => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                dynasm! {
+                    self;
+                    .arch x64;
+                    // Direct immediate shift (lower 6 bits automatically masked by x86)
+                    shl Rq(TEMP_A), (imm & 0x3F) as i8
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
             }
-        });
+            _ => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                self.emit_risc_operand_load(rs2, Rq::RCX as u8);
+                dynasm! {
+                    self;
+                    .arch x64;
+                    // ──────────────────────────────────────────────────────────────
+                    // 1. Shift count is already in RCX (loaded directly).
+                    //    • Only the low 6 bits are used for 64-bit operands,
+                    //      which matches the RISC-V spec for RV64.
+                    // ──────────────────────────────────────────────────────────────
+
+                    // ──────────────────────────────────────────────────────────────
+                    // 2. Logical left shift:
+                    //      Rq(TEMP_A) ← Rq(TEMP_A) << (CL & 0x3F)
+                    //    • `shl` fills zeros from the right as it shifts left.
+                    // ──────────────────────────────────────────────────────────────
+                    shl  Rq(TEMP_A), cl         // variable-count shift
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
+            }
+        }
     }
 
     fn sra(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // ──────────────────────────────────────────────────────────────
-                // 1. Put the variable shift count into CL.
-                //    • Only the low 6 bits are used for 64-bit operands,
-                //      which matches the RISC-V spec for RV64.
-                // ──────────────────────────────────────────────────────────────
-                mov  rcx, Rq(TEMP_B);        // CL ← TEMP_B
-
-                // ──────────────────────────────────────────────────────────────
-                // 2. Arithmetic right shift:
-                //      Rq(TEMP_A) ← (signed)Rq(TEMP_A) >> (CL & 0x3F)
-                //    • `sar` replicates the sign bit as it shifts, so
-                //      negative values stay negative after the operation.
-                // ──────────────────────────────────────────────────────────────
-                sar  Rq(TEMP_A), cl         // variable-count shift
+        match rs2 {
+            RiscOperand::Immediate(imm) => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                dynasm! {
+                    self;
+                    .arch x64;
+                    // Direct immediate arithmetic right shift
+                    sar Rq(TEMP_A), (imm & 0x3F) as i8
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
             }
-        });
+            _ => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                self.emit_risc_operand_load(rs2, Rq::RCX as u8);
+                dynasm! {
+                    self;
+                    .arch x64;
+                    // ──────────────────────────────────────────────────────────────
+                    // 1. Shift count is already in RCX (loaded directly).
+                    //    • Only the low 6 bits are used for 64-bit operands,
+                    //      which matches the RISC-V spec for RV64.
+                    // ──────────────────────────────────────────────────────────────
+
+                    // ──────────────────────────────────────────────────────────────
+                    // 2. Arithmetic right shift:
+                    //      Rq(TEMP_A) ← (signed)Rq(TEMP_A) >> (CL & 0x3F)
+                    //    • `sar` replicates the sign bit as it shifts, so
+                    //      negative values stay negative after the operation.
+                    // ──────────────────────────────────────────────────────────────
+                    sar  Rq(TEMP_A), cl         // variable-count shift
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
+            }
+        }
     }
 
     fn srl(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // ──────────────────────────────────────────────────────────────
-                // 1. Load shift count into CL (same reasoning as above).
-                // ──────────────────────────────────────────────────────────────
-                mov  rcx, Rq(TEMP_B);        // CL ← TEMP_B
-
-                // ──────────────────────────────────────────────────────────────
-                // 2. Logical right shift:
-                //      Rq(TEMP_A) ← (unsigned)Rq(TEMP_A) >> (CL & 0x3F)
-                //    • `shr` always inserts zeros from the left, regardless
-                //      of the operand's sign.
-                // ──────────────────────────────────────────────────────────────
-                shr  Rq(TEMP_A), cl
+        match rs2 {
+            RiscOperand::Immediate(imm) => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                dynasm! {
+                    self;
+                    .arch x64;
+                    // Direct immediate logical right shift
+                    shr Rq(TEMP_A), (imm & 0x3F) as i8
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
             }
-        });
+            _ => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                self.emit_risc_operand_load(rs2, Rq::RCX as u8);
+                dynasm! {
+                    self;
+                    .arch x64;
+                    // ──────────────────────────────────────────────────────────────
+                    // 1. Shift count is already in RCX (loaded directly).
+                    // ──────────────────────────────────────────────────────────────
+
+                    // ──────────────────────────────────────────────────────────────
+                    // 2. Logical right shift:
+                    //      Rq(TEMP_A) ← (unsigned)Rq(TEMP_A) >> (CL & 0x3F)
+                    //    • `shr` always inserts zeros from the left, regardless
+                    //      of the operand's sign.
+                    // ──────────────────────────────────────────────────────────────
+                    shr  Rq(TEMP_A), cl
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
+            }
+        }
     }
 
     fn slt(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        match rs2 {
+            RiscOperand::Immediate(imm) => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                dynasm! {
+                    self;
+                    .arch x64;
 
-                cmp  Rq(TEMP_A), Rq(TEMP_B);
+                    cmp Rq(TEMP_A), imm;
 
-                // ──────────────────────────────────────────────────────────────
-                // 2. setl  r/m8
-                //    • Writes   1  to the target byte if  (SF ≠ OF)
-                //      which is the signed "less than" condition.
-                //    • We store straight into the low-byte of TEMP_A —
-                //      dynasm's `Rb()` gives us that alias.
-                // ──────────────────────────────────────────────────────────────
-                setl Rb(TEMP_A);               // byte = 1 if TEMP_A < TEMP_B (signed)
+                    // ──────────────────────────────────────────────────────────────
+                    // 2. setl  r/m8
+                    //    • Writes   1  to the target byte if  (SF ≠ OF)
+                    //      which is the signed "less than" condition.
+                    //    • We store straight into the low-byte of TEMP_A —
+                    //      dynasm's `Rb()` gives us that alias.
+                    // ──────────────────────────────────────────────────────────────
+                    setl Rb(TEMP_A);               // byte = 1 if TEMP_A < imm (signed)
 
-                // ──────────────────────────────────────────────────────────────
-                // 3. Zero-extend that byte back to a full 32-bit register so
-                //    that the RISC register ends up with 0x0000_0000 or 0x0000_0001.
-                // ──────────────────────────────────────────────────────────────
-                movzx Rq(TEMP_A), Rb(TEMP_A)     // Rd(TEMP_A) = 0 or 1
+                    // ──────────────────────────────────────────────────────────────
+                    // 3. Zero-extend that byte back to a full 32-bit register so
+                    //    that the RISC register ends up with 0x0000_0000 or 0x0000_0001.
+                    // ──────────────────────────────────────────────────────────────
+                    movzx Rq(TEMP_A), Rb(TEMP_A)     // Rd(TEMP_A) = 0 or 1
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
             }
-        });
+            _ => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                self.emit_risc_operand_load(rs2, TEMP_B);
+                dynasm! {
+                    self;
+                    .arch x64;
+
+                    cmp Rq(TEMP_A), Rq(TEMP_B);
+
+                    // ──────────────────────────────────────────────────────────────
+                    // 2. setl  r/m8
+                    //    • Writes   1  to the target byte if  (SF ≠ OF)
+                    //      which is the signed "less than" condition.
+                    //    • We store straight into the low-byte of TEMP_A —
+                    //      dynasm's `Rb()` gives us that alias.
+                    // ──────────────────────────────────────────────────────────────
+                    setl Rb(TEMP_A);               // byte = 1 if TEMP_A < TEMP_B (signed)
+
+                    // ──────────────────────────────────────────────────────────────
+                    // 3. Zero-extend that byte back to a full 32-bit register so
+                    //    that the RISC register ends up with 0x0000_0000 or 0x0000_0001.
+                    // ──────────────────────────────────────────────────────────────
+                    movzx Rq(TEMP_A), Rb(TEMP_A)     // Rd(TEMP_A) = 0 or 1
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
+            }
+        }
     }
 
     fn sltu(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        match rs2 {
+            RiscOperand::Immediate(imm) => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                dynasm! {
+                    self;
+                    .arch x64;
 
-                cmp  Rq(TEMP_A), Rq(TEMP_B);
+                    cmp Rq(TEMP_A), imm;
 
-                // ------------------------------------
-                // `setb` ("below") checks the Carry Flag (CF):
-                //   CF = 1  iff  TEMP_A < TEMP_B  in an *unsigned* sense.
-                // ------------------------------------
-                setb Rb(TEMP_A);
+                    // ------------------------------------
+                    // `setb` ("below") checks the Carry Flag (CF):
+                    //   CF = 1  iff  TEMP_A < imm  in an *unsigned* sense.
+                    // ------------------------------------
+                    setb Rb(TEMP_A);
 
-                // ------------------------------------
-                // Zero-extend to 32 bits (0 or 1).
-                // ------------------------------------
-                movzx Rq(TEMP_A), Rb(TEMP_A)
+                    // ------------------------------------
+                    // Zero-extend to 32 bits (0 or 1).
+                    // ------------------------------------
+                    movzx Rq(TEMP_A), Rb(TEMP_A)
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
             }
-        });
+            _ => {
+                self.emit_risc_operand_load(rs1, TEMP_A);
+                self.emit_risc_operand_load(rs2, TEMP_B);
+                dynasm! {
+                    self;
+                    .arch x64;
+
+                    cmp Rq(TEMP_A), Rq(TEMP_B);
+
+                    // ------------------------------------
+                    // `setb` ("below") checks the Carry Flag (CF):
+                    //   CF = 1  iff  TEMP_A < TEMP_B  in an *unsigned* sense.
+                    // ------------------------------------
+                    setb Rb(TEMP_A);
+
+                    // ------------------------------------
+                    // Zero-extend to 32 bits (0 or 1).
+                    // ------------------------------------
+                    movzx Rq(TEMP_A), Rb(TEMP_A)
+                }
+                self.emit_risc_register_store(TEMP_A, rd);
+            }
+        }
     }
 
     fn sub(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
@@ -442,23 +524,12 @@ impl ComputeInstructions for TranspilerBackend {
                 .arch x64;
                 sub Rq(TEMP_A), Rq(TEMP_B)
             }
-        });
+        })
     }
 
     fn addw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // addw performs 32-bit addition on lower 32 bits, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // Perform 32-bit addition (automatically truncates to 32 bits)
-                add Rd(TEMP_A), Rd(TEMP_B);
-
-                // Sign-extend the 32-bit result to 64 bits
-                movsxd Rq(TEMP_A), Rd(TEMP_A)
-            }
-        });
+        impl_alu32_imm_opt!(self, rd, rs1, rs2, add);
     }
 
     fn subw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
@@ -467,71 +538,25 @@ impl ComputeInstructions for TranspilerBackend {
             dynasm! {
                 self;
                 .arch x64;
-
-                // Perform 32-bit subtraction (automatically truncates to 32 bits)
                 sub Rd(TEMP_A), Rd(TEMP_B);
-
-                // Sign-extend the 32-bit result to 64 bits
                 movsxd Rq(TEMP_A), Rd(TEMP_A)
             }
-        });
+        })
     }
 
     fn sllw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // sllw performs 32-bit shift left, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // Move shift count to CL
-                mov ecx, Rd(TEMP_B);
-
-                // Perform 32-bit left shift
-                shl Rd(TEMP_A), cl;
-
-                // Sign-extend the 32-bit result to 64 bits
-                movsxd Rq(TEMP_A), Rd(TEMP_A)
-            }
-        });
+        impl_shift32_imm_opt!(self, rd, rs1, rs2, shl);
     }
 
     fn srlw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // srlw performs logical right shift on lower 32 bits, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // Move shift count to CL
-                mov ecx, Rd(TEMP_B);
-
-                // Perform 32-bit logical right shift
-                shr Rd(TEMP_A), cl;
-
-                // Sign-extend the 32-bit result to 64 bits
-                movsxd Rq(TEMP_A), Rd(TEMP_A)
-            }
-        });
+        impl_shift32_imm_opt!(self, rd, rs1, rs2, shr);
     }
 
     fn sraw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // sraw performs arithmetic right shift on lower 32 bits, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // Move shift count to CL
-                mov ecx, Rd(TEMP_B);
-
-                // Perform 32-bit arithmetic right shift
-                sar Rd(TEMP_A), cl;
-
-                // Sign-extend the 32-bit result to 64 bits
-                movsxd Rq(TEMP_A), Rd(TEMP_A)
-            }
-        });
+        impl_shift32_imm_opt!(self, rd, rs1, rs2, sar);
     }
 
     fn mulw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
@@ -552,110 +577,114 @@ impl ComputeInstructions for TranspilerBackend {
 
     fn divw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // divw performs 32-bit signed division, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load dividend directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                // Check for division by zero
-                test Rd(TEMP_B), Rd(TEMP_B);
-                jz >div_by_zero;
+            // Check for division by zero
+            test Rd(TEMP_B), Rd(TEMP_B);
+            jz >div_by_zero;
 
-                // Perform signed 32-bit divide
-                mov eax, Rd(TEMP_A);           // dividend → EAX
-                cdq;                        // sign-extend EAX into EDX
-                idiv Rd(TEMP_B);               // quotient → EAX
-                movsxd Rq(TEMP_A), eax;        // sign-extend result to 64 bits
-                jmp >done;
+            // Perform signed 32-bit divide
+            // dividend already in EAX (loaded directly into RAX)
+            cdq;                        // sign-extend EAX into EDX
+            idiv Rd(TEMP_B);               // quotient → EAX
+            movsxd rax, eax;               // sign-extend result to 64 bits
+            jmp >done;
 
-                div_by_zero:;
-                // For RV64I, divw by zero returns 0xFFFFFFFFFFFFFFFF (-1 sign-extended)
-                mov Rq(TEMP_A), -1;
+            div_by_zero:;
+            // For RV64I, divw by zero returns 0xFFFFFFFFFFFFFFFF (-1 sign-extended)
+            mov rax, -1;
 
-                done:
-            }
-        });
+            done:
+        }
+        self.emit_risc_register_store(Rq::RAX as u8, rd);
     }
 
     fn divuw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // divuw performs 32-bit unsigned division, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load dividend directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                // Check for division by zero
-                test Rd(TEMP_B), Rd(TEMP_B);
-                jz >div_by_zero;
+            // Check for division by zero
+            test Rd(TEMP_B), Rd(TEMP_B);
+            jz >div_by_zero;
 
-                // Perform unsigned 32-bit divide
-                mov eax, Rd(TEMP_A);           // dividend → EAX
-                xor edx, edx;               // zero-extend
-                div Rd(TEMP_B);                // quotient → EAX
-                movsxd Rq(TEMP_A), eax;        // sign-extend result to 64 bits
-                jmp >done;
+            // Perform unsigned 32-bit divide
+            // dividend already in EAX (loaded directly into RAX)
+            xor edx, edx;               // zero-extend
+            div Rd(TEMP_B);                // quotient → EAX
+            movsxd rax, eax;               // sign-extend result to 64 bits
+            jmp >done;
 
-                div_by_zero:;
-                // For RV64I, divuw by zero returns 0xFFFFFFFFFFFFFFFF (-1 sign-extended)
-                mov Rq(TEMP_A), -1;
+            div_by_zero:;
+            // For RV64I, divuw by zero returns 0xFFFFFFFFFFFFFFFF (-1 sign-extended)
+            mov rax, -1;
 
-                done:
-            }
-        });
+            done:
+        }
+        self.emit_risc_register_store(Rq::RAX as u8, rd);
     }
 
     fn remw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // remw performs 32-bit signed remainder, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load dividend directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                // Check for division by zero
-                test Rd(TEMP_B), Rd(TEMP_B);
-                jz >rem_by_zero;
+            // Check for division by zero
+            test Rd(TEMP_B), Rd(TEMP_B);
+            jz >rem_by_zero;
 
-                // Perform signed 32-bit remainder
-                mov eax, Rd(TEMP_A);           // dividend → EAX
-                cdq;                        // sign-extend EAX into EDX
-                idiv Rd(TEMP_B);               // remainder → EDX
-                movsxd Rq(TEMP_A), edx;        // sign-extend result to 64 bits
-                jmp >done;
+            // Perform signed 32-bit remainder
+            // dividend already in EAX (loaded directly into RAX)
+            cdq;                        // sign-extend EAX into EDX
+            idiv Rd(TEMP_B);               // remainder → EDX
+            movsxd rdx, edx;               // sign-extend result to 64 bits
+            jmp >done;
 
-                rem_by_zero:;
-                // For RV64I, remw by zero returns the dividend (TEMP_A) sign-extended
-                movsxd Rq(TEMP_A), Rd(TEMP_A);
+            rem_by_zero:;
+            // For RV64I, remw by zero returns the dividend (RAX) sign-extended
+            movsxd rdx, eax;
 
-                done:
-            }
-        });
+            done:
+        }
+        self.emit_risc_register_store(Rq::RDX as u8, rd);
     }
 
     fn remuw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         // remuw performs 32-bit unsigned remainder, then sign-extends result to 64 bits
-        impl_risc_alu!(self, rd, rs1, rs2, TEMP_A, TEMP_B, {
-            dynasm! {
-                self;
-                .arch x64;
+        self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load dividend directly into RAX
+        self.emit_risc_operand_load(rs2, TEMP_B);
+        dynasm! {
+            self;
+            .arch x64;
 
-                // Check for division by zero
-                test Rd(TEMP_B), Rd(TEMP_B);
-                jz >rem_by_zero;
+            // Check for division by zero
+            test Rd(TEMP_B), Rd(TEMP_B);
+            jz >rem_by_zero;
 
-                // Perform unsigned 32-bit remainder
-                mov eax, Rd(TEMP_A);           // dividend → EAX
-                xor edx, edx;               // zero-extend
-                div Rd(TEMP_B);                // remainder → EDX
-                movsxd Rq(TEMP_A), edx;        // sign-extend result to 64 bits
-                jmp >done;
+            // Perform unsigned 32-bit remainder
+            // dividend already in EAX (loaded directly into RAX)
+            xor edx, edx;               // zero-extend (clear upper 32 bits)
+            div Rd(TEMP_B);                // remainder → EDX
+            movsxd rdx, edx;               // sign-extend result to 64 bits
+            jmp >done;
 
-                rem_by_zero:;
-                // For RV64I, remuw by zero returns the dividend (TEMP_A) sign-extended
-                movsxd Rq(TEMP_A), Rd(TEMP_A);
+            rem_by_zero:;
+            // For RV64I, remuw by zero returns the dividend (RAX) sign-extended
+            movsxd rdx, eax;
 
-                done:
-            }
-        });
+            done:
+        }
+        self.emit_risc_register_store(Rq::RDX as u8, rd);
     }
 
     fn auipc(&mut self, rd: RiscRegister, imm: u64) {

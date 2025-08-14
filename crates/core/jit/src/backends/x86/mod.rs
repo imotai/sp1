@@ -370,14 +370,52 @@ impl TranspilerBackend {
         };
     }
 
-    /// Compute the XMM index and offset for the given register.
+    /// Static lookup table for XMM register mapping.
+    /// Maps RISC-V register index to (XMM index, XMM offset).
+    /// Each XMM register holds 2 x 64-bit values, so we map registers 0-31 to XMM 0-15.
+    const XMM_LOOKUP: [(u8, i8); 32] = [
+        (0, 0),
+        (0, 1),
+        (1, 0),
+        (1, 1),
+        (2, 0),
+        (2, 1),
+        (3, 0),
+        (3, 1),
+        (4, 0),
+        (4, 1),
+        (5, 0),
+        (5, 1),
+        (6, 0),
+        (6, 1),
+        (7, 0),
+        (7, 1),
+        (8, 0),
+        (8, 1),
+        (9, 0),
+        (9, 1),
+        (10, 0),
+        (10, 1),
+        (11, 0),
+        (11, 1),
+        (12, 0),
+        (12, 1),
+        (13, 0),
+        (13, 1),
+        (14, 0),
+        (14, 1),
+        (15, 0),
+        (15, 1),
+    ];
+
+    /// Get XMM index and offset for the given register using static lookup.
     ///
     /// We operate on the assumption there are 16 128 bit XMM registers we can use.
     /// Each XMM register can hold 2 x 64-bit values.
     /// We map a register to an index in the range `[0, 15]` and an offset in the range `[0, 1]`.
+    #[inline]
     const fn get_xmm_index(reg: RiscRegister) -> (u8, i8) {
-        let reg = reg as u8;
-        (reg / 2, (reg % 2) as i8)
+        Self::XMM_LOOKUP[reg as usize]
     }
 
     /// Call an external function, assumes that the arguments are already in the correct registers.
