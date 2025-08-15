@@ -248,7 +248,7 @@ impl JitFunction {
         Ok(Self {
             jump_table,
             code,
-            memory: unsafe { MmapOptions::new().noreserve().map_mut(fd.as_file())? },
+            memory: unsafe { MmapOptions::new().no_reserve_swap().map_mut(fd.as_file())? },
             mem_fd: fd,
             trace_buf_size,
             pc: pc_start,
@@ -376,7 +376,7 @@ impl JitFunction {
 
         self.memory = unsafe {
             MmapOptions::new()
-                .noreserve()
+                .no_reserve_swap()
                 .map_mut(self.mem_fd.as_file())
                 .expect("Failed to map memory")
         };
@@ -454,7 +454,8 @@ impl JitContext {
     pub fn enter_unconstrained(&mut self) -> io::Result<()> {
         // SAFETY: The memory is allocated by the [JitFunction] and is valid, not alisiaed, and has enough
         // space for the alignment.
-        let mut cow_memory = unsafe { MmapOptions::new().noreserve().map_copy(self.memory_fd)? };
+        let mut cow_memory =
+            unsafe { MmapOptions::new().no_reserve_swap().map_copy(self.memory_fd)? };
         let cow_memory_ptr = cow_memory.as_mut_ptr();
 
         // Align the ptr to u32.

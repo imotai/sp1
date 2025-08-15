@@ -20,21 +20,15 @@ pub struct MinimalExecutor {
     program: Arc<Program>,
     compiled: Option<JitFunction>,
     debug: bool,
+    tracing: bool,
     input: VecDeque<Vec<u8>>,
 }
 
 impl MinimalExecutor {
     /// Create a new minimal executor.
     #[must_use]
-    pub const fn new(program: Arc<Program>) -> Self {
-        Self { program, compiled: None, debug: false, input: VecDeque::new() }
-    }
-
-    /// Enable debug mode.
-    ///
-    /// This method will use a transpiler that prints debug info for each instruction.
-    pub fn debug(&mut self) {
-        self.debug = true;
+    pub const fn new(program: Arc<Program>, tracing: bool, debug: bool) -> Self {
+        Self { program, compiled: None, tracing, debug, input: VecDeque::new() }
     }
 
     /// Add input to the executor.
@@ -81,15 +75,14 @@ impl MinimalExecutor {
         let mut backend = TranspilerBackend::new(
             self.program.instructions.len(),
             2_u64.pow(MAX_LOG_ADDR as u32) as usize,
-            u32::MAX as usize,
+            // About 35GB of memory.
+            2_u64.pow(34) as usize,
             self.program.pc_start_abs,
             self.program.pc_base,
         )
         .expect("Failed to create transpiler backend");
 
         backend.register_ecall_handler(ecall::sp1_ecall_handler);
-
-        eprintln!("transpiling program");
 
         if self.debug {
             self.transpile_instructions(DebugBackend::new(backend));
@@ -99,8 +92,11 @@ impl MinimalExecutor {
     }
 
     fn transpile_instructions<B: SP1RiscvTranspiler>(&mut self, mut backend: B) {
-        backend.trace_clk_start();
-        backend.trace_pc_start();
+        if self.tracing {
+            backend.trace_clk_start();
+            backend.trace_pc_start();
+        }
+
         for (i, instruction) in self.program.instructions.iter().enumerate() {
             backend.start_instr();
 
@@ -117,10 +113,10 @@ impl MinimalExecutor {
                 | Opcode::LHU
                 | Opcode::LD
                 | Opcode::LWU => {
-                    Self::transpile_load_instruction(&mut backend, instruction);
+                    Self::transpile_load_instruction(&mut backend, instruction, self.tracing);
                 }
                 Opcode::SB | Opcode::SH | Opcode::SW | Opcode::SD => {
-                    Self::transpile_store_instruction(&mut backend, instruction);
+                    Self::transpile_store_instruction(&mut backend, instruction, self.tracing);
                 }
                 Opcode::BEQ
                 | Opcode::BNE
@@ -203,6 +199,7 @@ impl MinimalExecutor {
     fn transpile_load_instruction<B: SP1RiscvTranspiler>(
         backend: &mut B,
         instruction: &Instruction,
+        tracing: bool,
     ) {
         let (rd, rs1, imm) = instruction.i_type();
 
@@ -217,14 +214,22 @@ impl MinimalExecutor {
             _ => unreachable!("Invalid load opcode: {:?}", instruction.opcode),
         }
 
-        backend.trace_mem_value(rd.into());
+        if tracing {
+            backend.trace_mem_value(rd.into());
+        }
     }
 
     fn transpile_store_instruction<B: SP1RiscvTranspiler>(
         backend: &mut B,
         instruction: &Instruction,
+        tracing: bool,
     ) {
         let (rs1, rs2, imm) = instruction.s_type();
+
+        if tracing {
+            // todo, we need to trace the memory value before the store.
+            let _: () = ();
+        }
 
         // Note: We switch around rs1 and rs2 operaneds to align with the executor.
         match instruction.opcode {
@@ -383,7 +388,7 @@ mod test {
         interpreter.run_fast().expect("Interpreter failed");
         let interpreter_time = start.elapsed();
 
-        let mut executor = MinimalExecutor::new(program.clone());
+        let mut executor = MinimalExecutor::new(program.clone(), false, false);
         let start = std::time::Instant::now();
         executor.execute_chunk().expect("JIT failed");
         let jit_time = start.elapsed();
@@ -435,7 +440,7 @@ mod test {
         let program = Program::from(&KECCAK256_ELF).unwrap();
         let program = Arc::new(program);
 
-        let mut executor = MinimalExecutor::new(program.clone());
+        let mut executor = MinimalExecutor::new(program.clone(), false, false);
         // executor.debug();
         executor.with_input(&serialize(&5_usize).unwrap());
         for i in 0..5 {

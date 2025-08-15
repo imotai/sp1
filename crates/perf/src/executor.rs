@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 // use sp1_hypercube::SP1ProverOpts;
 // use sp1_stark::SP1ProverOpts;
 use clap::{command, Parser};
-use sp1_core_executor::{Executor, ExecutorMode, Program};
+use sp1_core_executor::{Executor, ExecutorMode, MinimalExecutor, Program};
 use sp1_sdk::{self, SP1Stdin};
 use std::sync::Arc;
 
@@ -65,10 +65,10 @@ fn main() {
         executor.write_proof(proof.clone(), vkey.clone());
     }
 
-    // let mut minimal = MinimalExecutor::new(program);
-    // for input in stdin.buffer.iter() {
-    //     minimal.with_input(input);
-    // }
+    let mut minimal = MinimalExecutor::new(program, true, false);
+    for input in stdin.buffer.iter() {
+        minimal.with_input(input);
+    }
 
     match args.executor_mode {
         ExecutorMode::Simple => {
@@ -80,26 +80,26 @@ fn main() {
                 executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
             );
 
-            // let (_, execution_duration) = time_operation(|| minimal.execute_chunk());
-            // println!("Minimal mode:");
-            // println!("cycles: {}", executor.state.global_clk);
-            // println!(
-            //     "MHZ: {}",
-            //     executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
-            // );
+            let (_, execution_duration) = time_operation(|| minimal.execute_chunk());
+            println!("Minimal mode:");
+            println!("cycles: {}", executor.state.global_clk);
+            println!(
+                "MHZ: {}",
+                executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
+            );
 
-            // minimal.reset();
-            // for input in stdin.buffer.iter() {
-            //     minimal.with_input(input);
-            // }
+            minimal.reset();
+            for input in stdin.buffer.iter() {
+                minimal.with_input(input);
+            }
 
-            // let (_, execution_duration) = time_operation(|| minimal.execute_chunk());
-            // println!("Minimal mode after reset:");
-            // println!("cycles: {}", executor.state.global_clk);
-            // println!(
-            //     "MHZ: {}",
-            //     executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
-            // );
+            let (_, execution_duration) = time_operation(|| minimal.execute_chunk());
+            println!("Minimal mode after reset:");
+            println!("cycles: {}", executor.state.global_clk);
+            println!(
+                "MHZ: {}",
+                executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
+            );
         } // ExecutorMode::Checkpoint => {
         //     let (_, execution_duration) = time_operation(|| executor.run_checkpoint(true));
         //     println!("Checkpoint mode:");

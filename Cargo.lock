@@ -1176,7 +1176,7 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.106",
+ "syn 2.0.105",
 ]
 
 [[package]]
@@ -2353,7 +2353,7 @@ dependencies = [
 [[package]]
 name = "memmap2"
 version = "0.9.7"
-source = "git+https://github.com/nhtyy/memmap2-rs?branch=n%2Fnoreserve#71f1e1b7af9652e76b0c961bd00f7eae0f4e201f"
+source = "git+https://github.com/nhtyy/memmap2-rs?branch=n%2Fnoreserve#8bfe4e5440a859f0cbd6540f7623e277edda5c8e"
 dependencies = [
  "libc",
 ]

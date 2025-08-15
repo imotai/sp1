@@ -159,8 +159,8 @@ impl TraceChunk {
             unsafe { core::ptr::read_unaligned(src.as_ptr() as *const TraceChunkRaw) };
 
         /* ---------- 3. tail must fit ---------- */
-        let n_words = raw.num_mem_reads as usize; // #u32
-        let n_bytes = n_words.checked_mul(4).expect("Num mem reads too large");
+        let n_words = raw.num_mem_reads as usize;
+        let n_bytes = n_words.checked_mul(8).expect("Num mem reads too large");
         let total = HDR.checked_add(n_bytes).expect("Num mem reads too large");
         if src.len() < total {
             panic!("TraceChunk tail too small");
