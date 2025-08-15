@@ -94,17 +94,11 @@ slop-poseidon2 = { path = "crates/poseidon2" }
 slop-commit = { path = "crates/commit" }
 slop-challenger = { path = "crates/challenger" }
 slop-fri = { path = "crates/fri" }
-slop-maybe-rayon = { path = "crates/maybe-rayon" }
 slop-tensor = { path = "crates/tensor" }
 slop-alloc = { path = "crates/alloc" }
-slop = { path = "crates/slop" }
-slop-jagged = { path = "crates/jagged" }
 slop-basefold-prover = { path = "crates/basefold-prover" }
 slop-stacked = { path = "crates/stacked" }
-slop-pcs-bench = { path = "crates/pcs-bench" }
 slop-futures = { path = "crates/futures" }
-slop-keccak-air = { path = "crates/keccak-air" }
-slop-uni-stark = { path = "crates/uni-stark" }
 
 # For local development. 
 # p3-air = { path = "../Plonky3/air" }

@@ -11,31 +11,20 @@ categories.workspace = true
 slop-algebra = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-basefold = { workspace = true }
-slop-utils = { workspace = true }
 slop-futures = { workspace = true }
 slop-challenger = { workspace = true }
 slop-dft = { workspace = true }
 slop-commit = { workspace = true }
 slop-tensor = { workspace = true }
 slop-alloc = { workspace = true }
-
-slop-matrix = { workspace = true }
 slop-baby-bear = { workspace = true }
 slop-koala-bear = { workspace = true }
-slop-poseidon2 = { workspace = true }
-slop-symmetric = { workspace = true }
-slop-maybe-rayon = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-fri = { workspace = true }
 slop-bn254 = { workspace = true }
-
-clap = { version = "4.5.9", features = ["derive", "env"] }
 itertools = "0.12.0"
 rand = "0.8.5"
-lazy_static = "1.5.0"
 serde = { version = "1.0.207", features = ["derive"] }
-tracing = "0.1"
-rayon = "1.10.0"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 derive-where = { workspace = true }

@@ -20,7 +20,6 @@ derive-where = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
-rayon = { workspace = true }
 
 [dev-dependencies]
 slop-basefold-prover = { workspace = true }

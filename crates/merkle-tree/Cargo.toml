@@ -24,7 +24,6 @@ slop-koala-bear = { workspace = true }
 
 thiserror = { workspace = true }
 serde = { workspace = true }
-lazy_static = "1.5.0"
 itertools = { workspace = true }
 derive-where = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

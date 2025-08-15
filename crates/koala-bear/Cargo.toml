@@ -11,10 +11,8 @@ categories.workspace = true
 p3-koala-bear = { workspace = true }
 lazy_static = "1.5.0"
 slop-algebra = { workspace = true }
-slop-symmetric = { workspace = true }
 slop-poseidon2 = { workspace = true }
 serde = { workspace = true }
-itertools = { workspace = true }
 
 [lints]
 workspace = true

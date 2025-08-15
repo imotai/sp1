@@ -1,3 +1,5 @@
+use slop_algebra::extension::{BinomiallyExtendable, HasTwoAdicBionmialExtension};
+use slop_algebra::PrimeField31;
 use slop_baby_bear::baby_bear_poseidon2::Poseidon2BabyBearConfig;
 use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_bn254::Bn254Fr;
@@ -401,19 +403,20 @@ impl BasefoldProverComponents for Poseidon2KoalaBear16BasefoldCpuProverComponent
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
-pub struct Poseidon2Bn254BasefoldCpuProverComponents;
+pub struct Poseidon2Bn254BasefoldCpuProverComponents<F>(PhantomData<F>);
 
-impl BasefoldProverComponents for Poseidon2Bn254BasefoldCpuProverComponents {
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+impl<F: PrimeField31 + BinomiallyExtendable<4> + TwoAdicField + HasTwoAdicBionmialExtension<4>>
+    BasefoldProverComponents for Poseidon2Bn254BasefoldCpuProverComponents<F>
+{
+    type F = F;
+    type EF = BinomialExtensionField<F, 4>;
     type A = CpuBackend;
-    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config>;
-    type Challenger = <Poseidon2Bn254FrBasefoldConfig as BasefoldConfig>::Challenger;
-    type Config = Poseidon2Bn254FrBasefoldConfig;
-    type Encoder = CpuDftEncoder<BabyBear, Radix2DitParallel>;
+    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config<F>>;
+    type Challenger = <Poseidon2Bn254FrBasefoldConfig<F> as BasefoldConfig>::Challenger;
+    type Config = Poseidon2Bn254FrBasefoldConfig<F>;
+    type Encoder = CpuDftEncoder<F, Radix2DitParallel>;
     type FriProver = FriCpuProver<Self::Encoder, Self::TcsProver>;
-    type TcsProver =
-        FieldMerkleTreeProver<BabyBear, Bn254Fr, Poseidon2Bn254Config, OUTER_DIGEST_SIZE>;
+    type TcsProver = FieldMerkleTreeProver<F, Bn254Fr, Poseidon2Bn254Config<F>, OUTER_DIGEST_SIZE>;
     type PowProver = GrindingPowProver;
 }
 
@@ -461,21 +464,23 @@ impl DefaultBasefoldProver for Poseidon2KoalaBear16BasefoldCpuProverComponents {
     }
 }
 
-impl DefaultBasefoldProver for Poseidon2Bn254BasefoldCpuProverComponents {
+impl<F: PrimeField31 + BinomiallyExtendable<4> + TwoAdicField + HasTwoAdicBionmialExtension<4>>
+    DefaultBasefoldProver for Poseidon2Bn254BasefoldCpuProverComponents<F>
+{
     fn default_prover(
-        verifier: &BasefoldVerifier<Poseidon2Bn254FrBasefoldConfig>,
+        verifier: &BasefoldVerifier<Poseidon2Bn254FrBasefoldConfig<F>>,
     ) -> BasefoldProver<Self> {
         let encoder =
             CpuDftEncoder { config: verifier.fri_config, dft: Arc::new(Radix2DitParallel) };
         let fri_prover = FriCpuProver::<
-            CpuDftEncoder<BabyBear, Radix2DitParallel>,
-            FieldMerkleTreeProver<BabyBear, Bn254Fr, Poseidon2Bn254Config, OUTER_DIGEST_SIZE>,
+            CpuDftEncoder<F, Radix2DitParallel>,
+            FieldMerkleTreeProver<F, Bn254Fr, Poseidon2Bn254Config<F>, OUTER_DIGEST_SIZE>,
         >(PhantomData);
 
         let tcs_prover = FieldMerkleTreeProver::<
-            BabyBear,
+            F,
             Bn254Fr,
-            Poseidon2Bn254Config,
+            Poseidon2Bn254Config<F>,
             OUTER_DIGEST_SIZE,
         >::default();
         let pow_prover = GrindingPowProver;

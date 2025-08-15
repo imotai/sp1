@@ -8,12 +8,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-slop-baby-bear = { workspace = true }
 slop-algebra = { workspace = true }
 
 thiserror = { workspace = true }
 serde = { workspace = true }
-itertools = { workspace = true }
 
 [lints]
 workspace = true

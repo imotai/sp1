@@ -2,7 +2,10 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{extension::BinomialExtensionField, ExtensionField, TwoAdicField};
+use slop_algebra::{
+    extension::{BinomialExtensionField, BinomiallyExtendable},
+    ExtensionField, PrimeField31, TwoAdicField,
+};
 use slop_baby_bear::{
     baby_bear_poseidon2::{my_bb_16_perm, Perm, Poseidon2BabyBearConfig},
     BabyBear,
@@ -109,12 +112,12 @@ pub type Poseidon2KoalaBear16BasefoldConfig = BasefoldConfigImpl<
     DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>,
 >;
 
-pub type Poseidon2Bn254FrBasefoldConfig = BasefoldConfigImpl<
-    BabyBear,
-    BinomialExtensionField<BabyBear, 4>,
-    MerkleTreeTcs<Poseidon2Bn254Config>,
+pub type Poseidon2Bn254FrBasefoldConfig<F> = BasefoldConfigImpl<
+    F,
+    BinomialExtensionField<F, 4>,
+    MerkleTreeTcs<Poseidon2Bn254Config<F>>,
     MultiField32Challenger<
-        BabyBear,
+        F,
         Bn254Fr,
         OuterPerm,
         OUTER_CHALLENGER_STATE_WIDTH,
@@ -145,13 +148,15 @@ impl DefaultBasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
     }
 }
 
-impl BasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
-    type Commitment = Hash<BabyBear, Bn254Fr, OUTER_DIGEST_SIZE>;
-    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config>;
+impl<F: PrimeField31 + BinomiallyExtendable<4> + TwoAdicField> BasefoldConfig
+    for Poseidon2Bn254FrBasefoldConfig<F>
+{
+    type F = F;
+    type EF = BinomialExtensionField<F, 4>;
+    type Commitment = Hash<F, Bn254Fr, OUTER_DIGEST_SIZE>;
+    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config<F>>;
     type Challenger = MultiField32Challenger<
-        BabyBear,
+        F,
         Bn254Fr,
         OuterPerm,
         OUTER_CHALLENGER_STATE_WIDTH,
@@ -161,7 +166,7 @@ impl BasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
     fn default_challenger(
         _verifier: &BasefoldVerifier<Self>,
     ) -> MultiField32Challenger<
-        BabyBear,
+        F,
         Bn254Fr,
         OuterPerm,
         OUTER_CHALLENGER_STATE_WIDTH,
@@ -169,7 +174,7 @@ impl BasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
     > {
         let default_perm = outer_perm();
         MultiField32Challenger::<
-            BabyBear,
+            F,
             Bn254Fr,
             OuterPerm,
             OUTER_CHALLENGER_STATE_WIDTH,
@@ -179,10 +184,12 @@ impl BasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
     }
 }
 
-impl DefaultBasefoldConfig for Poseidon2Bn254FrBasefoldConfig {
+impl<F: PrimeField31 + BinomiallyExtendable<4> + TwoAdicField> DefaultBasefoldConfig
+    for Poseidon2Bn254FrBasefoldConfig<F>
+{
     fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
-        let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 84);
-        let tcs = MerkleTreeTcs::<Poseidon2Bn254Config>::default();
+        let fri_config = FriConfig::<F>::auto(log_blowup, 84);
+        let tcs = MerkleTreeTcs::<Poseidon2Bn254Config<F>>::default();
         BasefoldVerifier::<Self> { fri_config, tcs }
     }
 }

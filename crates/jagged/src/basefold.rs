@@ -31,8 +31,10 @@ pub type BabyBearPoseidon2 =
 pub type KoalaBearPoseidon2 =
     JaggedBasefoldConfig<Poseidon2KoalaBear16BasefoldConfig, JaggedEvalSumcheckConfig<KoalaBear>>;
 
-pub type Bn254JaggedConfig =
-    JaggedBasefoldConfig<Poseidon2Bn254FrBasefoldConfig, JaggedEvalSumcheckConfig<BabyBear>>;
+pub type Bn254JaggedConfig<F> =
+    JaggedBasefoldConfig<Poseidon2Bn254FrBasefoldConfig<F>, JaggedEvalSumcheckConfig<F>>;
+
+pub type SP1OuterConfig = Bn254JaggedConfig<KoalaBear>;
 
 pub type BabyBearPoseidon2TrivialEval =
     JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, TrivialJaggedEvalConfig>;
@@ -67,18 +69,18 @@ pub type Poseidon2KoalaBearJaggedCpuProverComponents = JaggedBasefoldProverCompo
     >,
 >;
 
-pub type Poseidon2Bn254JaggedCpuProverComponents = JaggedBasefoldProverComponents<
-    Poseidon2Bn254BasefoldCpuProverComponents,
+pub type Poseidon2Bn254JaggedCpuProverComponents<F> = JaggedBasefoldProverComponents<
+    Poseidon2Bn254BasefoldCpuProverComponents<F>,
     HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
     JaggedEvalSumcheckProver<
-        BabyBear,
+        F,
         JaggedAssistSumAsPolyCPUImpl<
-            BabyBear,
-            BinomialExtensionField<BabyBear, 4>,
-            <Bn254JaggedConfig as JaggedConfig>::Challenger,
+            F,
+            BinomialExtensionField<F, 4>,
+            <Bn254JaggedConfig<F> as JaggedConfig>::Challenger,
         >,
         CpuBackend,
-        <Bn254JaggedConfig as JaggedConfig>::Challenger,
+        <Bn254JaggedConfig<F> as JaggedConfig>::Challenger,
     >,
 >;
 
@@ -231,8 +233,17 @@ mod tests {
     #[tokio::test]
     async fn test_bn254_jagged_basefold() {
         test_jagged_basefold::<
-            Poseidon2Bn254FrBasefoldConfig,
-            Poseidon2Bn254JaggedCpuProverComponents,
+            Poseidon2Bn254FrBasefoldConfig<BabyBear>,
+            Poseidon2Bn254JaggedCpuProverComponents<BabyBear>,
+        >()
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_bn254_jagged_kb_basefold() {
+        test_jagged_basefold::<
+            Poseidon2Bn254FrBasefoldConfig<KoalaBear>,
+            Poseidon2Bn254JaggedCpuProverComponents<KoalaBear>,
         >()
         .await;
     }
