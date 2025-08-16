@@ -173,7 +173,7 @@ where
 //     use sp1_curves::params::FieldParameters;
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         Chip, StarkMachine,
 //     };
 

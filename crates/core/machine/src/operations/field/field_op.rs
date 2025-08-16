@@ -551,7 +551,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //         edwards::ed25519::Ed25519BaseField, weierstrass::secp256k1::Secp256k1BaseField,
 //     };
 //     use sp1_derive::AlignedBorrow;
-//     use sp1_hypercube::baby_bear_poseidon2::SP1CoreJaggedConfig;
+//     use sp1_hypercube::koala_bear_poseidon2::SP1CoreJaggedConfig;
 //     use std::mem::size_of;
 
 //     #[derive(AlignedBorrow, Debug, Clone)]
@@ -667,7 +667,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         for op in
 //             [FieldOperation::Add, FieldOperation::Sub, FieldOperation::Mul, FieldOperation::Div]
 //                 .iter()

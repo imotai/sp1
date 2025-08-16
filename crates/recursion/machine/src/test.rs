@@ -29,7 +29,7 @@ pub async fn run_recursion_test_machines(
     runtime.run().unwrap();
 
     // Run with the poseidon2 wide chip.
-    let machine = A::machine_wide_with_all_chips();
+    let machine = A::compress_machine();
     run_test_recursion(vec![runtime.record.clone()], machine, program.clone()).await.unwrap();
 }
 

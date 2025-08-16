@@ -1296,7 +1296,7 @@ where
 //     };
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -1317,7 +1317,7 @@ where
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         let mut divrem_events: Vec<AluEvent> = Vec::new();
 
 //         let divrems: Vec<(Opcode, u32, u32, u32)> = vec![

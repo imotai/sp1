@@ -3,7 +3,10 @@ use crate::{
     CircuitConfig, SP1FieldConfigVariable,
 };
 use itertools::Itertools;
-use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
+use slop_algebra::{
+    extension::{BinomialExtensionField, BinomiallyExtendable, HasTwoAdicBionmialExtension},
+    AbstractField, PrimeField31, TwoAdicField,
+};
 use slop_basefold::FriConfig;
 use slop_multilinear::{Evaluations, Point};
 use sp1_recursion_compiler::{
@@ -44,7 +47,10 @@ impl<C: CircuitConfig> AsRecursive<C> for SP1BasefoldConfig {
     type Recursive = RecursiveBasefoldConfigImpl<C, SP1CoreJaggedConfig>;
 }
 
-impl<C: CircuitConfig> AsRecursive<C> for Poseidon2Bn254FrBasefoldConfig {
+impl<C: CircuitConfig> AsRecursive<C> for Poseidon2Bn254FrBasefoldConfig<C::F>
+where
+    C::F: PrimeField31 + TwoAdicField + BinomiallyExtendable<4> + HasTwoAdicBionmialExtension<4>,
+{
     type Recursive = RecursiveBasefoldConfigImpl<C, SP1OuterConfig>;
 }
 

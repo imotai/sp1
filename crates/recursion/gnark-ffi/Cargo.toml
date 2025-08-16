@@ -12,7 +12,7 @@ categories = { workspace = true }
 [dependencies]
 slop-algebra = { workspace = true }
 slop-symmetric = { workspace = true }
-slop-baby-bear = { workspace = true }
+slop-koala-bear = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-hypercube = { workspace = true }

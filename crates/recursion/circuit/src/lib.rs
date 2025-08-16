@@ -2,10 +2,13 @@ use challenger::{
     CanCopyChallenger, CanObserveVariable, DuplexChallengerVariable, FieldChallengerVariable,
     MultiField32ChallengerVariable,
 };
-use hash::{FieldHasherVariable, Poseidon2MyFieldHasherVariable};
+use hash::{FieldHasherVariable, Poseidon2SP1FieldHasherVariable};
 use itertools::izip;
-use slop_algebra::{AbstractExtensionField, AbstractField};
+use slop_algebra::{AbstractExtensionField, AbstractField, PrimeField32};
 use slop_bn254::Bn254Fr;
+use slop_koala_bear::{
+    KoalaBear_BEGIN_EXT_CONSTS, KoalaBear_END_EXT_CONSTS, KoalaBear_PARTIAL_CONSTS,
+};
 use sp1_core_machine::operations::poseidon2::{NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -38,7 +41,7 @@ pub mod zerocheck;
 pub const D: usize = 4;
 use slop_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
 use slop_jagged::JaggedConfig;
-use sp1_primitives::{SP1Field, RC_16_30_U32};
+use sp1_primitives::SP1Field;
 type EF = <SP1CoreJaggedConfig as JaggedConfig>::EF;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
@@ -73,7 +76,7 @@ pub trait SP1FieldFriConfig:
 }
 
 pub trait SP1FieldConfigVariable<C: CircuitConfig<F = SP1Field>>:
-    SP1FieldFriConfig + FieldHasherVariable<C> + Poseidon2MyFieldHasherVariable<C> + Send + Sync
+    SP1FieldFriConfig + FieldHasherVariable<C> + Poseidon2SP1FieldHasherVariable<C> + Send + Sync
 {
     type FriChallengerVariable: FieldChallengerVariable<C, <C as CircuitConfig>::Bit>
         + CanObserveVariable<C, <Self as FieldHasherVariable<C>>::DigestVariable>
@@ -330,18 +333,28 @@ impl Config for WrapConfig {
     type EF = <InnerConfig as Config>::EF;
     type N = <InnerConfig as Config>::N;
     fn initialize(builder: &mut Builder<Self>) {
-        for round in 0..RC_16_30_U32.len() {
+        for round in 0..NUM_EXTERNAL_ROUNDS + NUM_INTERNAL_ROUNDS {
             for i in 0..PERMUTATION_WIDTH / D {
                 let add_rc = if (NUM_EXTERNAL_ROUNDS / 2
                     ..NUM_EXTERNAL_ROUNDS / 2 + NUM_INTERNAL_ROUNDS)
                     .contains(&round)
                 {
-                    builder.constant(<Self as Config>::EF::from_base(
-                        <Self as Config>::F::from_wrapped_u32(RC_16_30_U32[round][i * D]),
-                    ))
+                    builder.constant(<Self as Config>::EF::from_base({
+                        let result = KoalaBear_PARTIAL_CONSTS[round - NUM_EXTERNAL_ROUNDS / 2]
+                            .as_canonical_u32();
+
+                        <Self as Config>::F::from_wrapped_u32(result)
+                    }))
                 } else {
                     builder.constant(<Self as Config>::EF::from_base_fn(|idx| {
-                        <Self as Config>::F::from_wrapped_u32(RC_16_30_U32[round][i * D + idx])
+                        let result = if round < NUM_EXTERNAL_ROUNDS / 2 {
+                            KoalaBear_BEGIN_EXT_CONSTS[round][i * D + idx].as_canonical_u32()
+                        } else {
+                            KoalaBear_END_EXT_CONSTS
+                                [round - NUM_INTERNAL_ROUNDS - NUM_EXTERNAL_ROUNDS / 2][i * D + idx]
+                                .as_canonical_u32()
+                        };
+                        <Self as Config>::F::from_wrapped_u32(result)
                     }))
                 };
 
@@ -499,7 +512,6 @@ impl CircuitConfig for WrapConfig {
         builder: &mut Builder<Self>,
         input: [Felt<Self::F>; PERMUTATION_WIDTH],
     ) -> [Felt<Self::F>; PERMUTATION_WIDTH] {
-        // builder.poseidon2_permute_v2(input)
         let mut state = Self::blockify(builder, input);
         for i in 0..NUM_EXTERNAL_ROUNDS / 2 {
             state = Self::external_round(builder, state, i);
@@ -811,8 +823,8 @@ impl<C: CircuitConfig<F = SP1Field, Bit = Felt<SP1Field>>> SP1FieldConfigVariabl
 }
 
 impl SP1FieldFriConfig for SP1OuterConfig {
-    type BasefoldConfig = Poseidon2Bn254FrBasefoldConfig;
-    type MerkleTreeConfig = Poseidon2Bn254Config;
+    type BasefoldConfig = Poseidon2Bn254FrBasefoldConfig<SP1Field>;
+    type MerkleTreeConfig = Poseidon2Bn254Config<SP1Field>;
     type FriChallenger = <Self as JaggedConfig>::Challenger;
 }
 

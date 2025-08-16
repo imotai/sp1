@@ -13,6 +13,8 @@
     incomplete_features
 )]
 #![warn(unused_extern_crates)]
+#[macro_use]
+extern crate static_assertions;
 
 pub mod adapter;
 pub mod air;

@@ -23,7 +23,7 @@ impl<F> BaseAir<F> for JalrChip {
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
 //     use sp1_hypercube::{
-//         air::MachineAir, baby_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
+//         air::MachineAir, koala_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 

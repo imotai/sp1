@@ -6,7 +6,7 @@ use super::{Array, Builder, Config, DslIr, Felt, Usize, Var};
 impl<C: Config> Builder<C> {
     /// Converts a variable to LE bits.
     pub fn num2bits_v(&mut self, num: Var<C::N>) -> Array<C, Var<C::N>> {
-        // This function is only used when the native field is Babybear.
+        // This function is only used when the native field is koalabear.
         assert!(C::N::bits() == NUM_BITS);
 
         let output = self.dyn_array::<Var<_>>(NUM_BITS);
@@ -21,7 +21,7 @@ impl<C: Config> Builder<C> {
 
         self.assert_var_eq(sum, num);
 
-        self.less_than_bb_modulus(output.clone());
+        self.less_than_kb_modulus(output.clone());
 
         output
     }
@@ -72,7 +72,7 @@ impl<C: Config> Builder<C> {
 
         self.assert_felt_eq(sum, num);
 
-        self.less_than_bb_modulus(output.clone());
+        self.less_than_kb_modulus(output.clone());
 
         output
     }
@@ -171,33 +171,32 @@ impl<C: Config> Builder<C> {
         result_bits
     }
 
-    /// Checks that the LE bit decomposition of a number is less than the babybear modulus.
+    /// Checks that the LE bit decomposition of a number is less than the koalabear modulus.
     ///
     /// SAFETY: This function assumes that the num_bits values are already verified to be boolean.
-    ///
-    /// The babybear modulus in LE bits is: 100_000_000_000_000_000_000_000_000_111_1.
+    /// The koalabear modulus in LE bits is: 100_000_000_000_000_000_000_000_111_111_1.
     /// To check that the num_bits array is less than that value, we first check if the most
     /// significant bits are all 1.  If it is, then we assert that the other bits are all 0.
-    fn less_than_bb_modulus(&mut self, num_bits: Array<C, Var<C::N>>) {
+    fn less_than_kb_modulus(&mut self, num_bits: Array<C, Var<C::N>>) {
         let one: Var<_> = self.eval(C::N::one());
         let zero: Var<_> = self.eval(C::N::zero());
 
-        let mut most_sig_4_bits = one;
-        for i in (NUM_BITS - 4)..NUM_BITS {
+        let mut most_sig_7_bits = one;
+        for i in (NUM_BITS - 7)..NUM_BITS {
             let bit = self.get(&num_bits, i);
-            most_sig_4_bits = self.eval(bit * most_sig_4_bits);
+            most_sig_7_bits = self.eval(bit * most_sig_7_bits);
         }
 
         let mut sum_least_sig_bits = zero;
-        for i in 0..(NUM_BITS - 4) {
+        for i in 0..(NUM_BITS - 7) {
             let bit = self.get(&num_bits, i);
             sum_least_sig_bits = self.eval(bit + sum_least_sig_bits);
         }
 
-        // If the most significant 4 bits are all 1, then check the sum of the least significant
+        // If the most significant 7 bits are all 1, then check the sum of the least significant
         // bits, else return zero.
         let check: Var<_> =
-            self.eval(most_sig_4_bits * sum_least_sig_bits + (one - most_sig_4_bits) * zero);
+            self.eval(most_sig_7_bits * sum_least_sig_bits + (one - most_sig_7_bits) * zero);
         self.assert_var_eq(check, zero);
     }
 }

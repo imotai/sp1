@@ -124,6 +124,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<SP1Field>>>,
         max_compose_arity: usize,
         vk_verification: bool,
+        compute_recursion_vks_at_initialization: bool,
         vk_map_path: Option<String>,
     ) -> Self {
         let recursive_core_verifier =
@@ -167,23 +168,24 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         };
 
         let (root, merkle_tree) = MerkleTree::commit(allowed_vk_map.keys().copied().collect());
+        if compute_recursion_vks_at_initialization {
+            for arity in 1..=max_compose_arity {
+                let dummy_input =
+                    dummy_compose_input(&prover, &reduce_shape, arity, merkle_tree.height);
+                let mut program = compose_program_from_input(
+                    &recursive_compress_verifier,
+                    vk_verification,
+                    &dummy_input,
+                );
+                program.shape = Some(reduce_shape.shape.clone());
+                let program = Arc::new(program);
 
-        for arity in 1..=max_compose_arity {
-            let dummy_input =
-                dummy_compose_input(&prover, &reduce_shape, arity, merkle_tree.height);
-            let mut program = compose_program_from_input(
-                &recursive_compress_verifier,
-                vk_verification,
-                &dummy_input,
-            );
-            program.shape = Some(reduce_shape.shape.clone());
-            let program = Arc::new(program);
-
-            // Make the reduce keys.
-            let (pk, vk) = prover.setup(program.clone(), None).await;
-            let pk = unsafe { pk.into_inner() };
-            compose_keys.insert(arity, (pk, vk));
-            compose_programs.insert(arity, program);
+                // Make the reduce keys.
+                let (pk, vk) = prover.setup(program.clone(), None).await;
+                let pk = unsafe { pk.into_inner() };
+                compose_keys.insert(arity, (pk, vk));
+                compose_programs.insert(arity, program);
+            }
         }
 
         let shrink_input = dummy_compose_input(&prover, &reduce_shape, 1, merkle_tree.height);
@@ -263,7 +265,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
                 .vks_and_proofs
                 .iter()
                 .map(|(vk, _)| {
-                    let vk_digest = vk.hash_babybear();
+                    let vk_digest = vk.hash_koalabear();
                     let index = self.recursion_vk_map.get(&vk_digest).expect("vk not allowed");
                     (index, vk_digest)
                 })
@@ -273,7 +275,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
                 .vks_and_proofs
                 .iter()
                 .map(|(vk, _)| {
-                    let vk_digest = vk.hash_babybear();
+                    let vk_digest = vk.hash_koalabear();
                     let index = (vk_digest[0].as_canonical_u32() as usize) % num_vks;
                     (index, [SP1Field::from_canonical_usize(index); 8])
                 })

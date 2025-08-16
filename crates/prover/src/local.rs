@@ -18,7 +18,7 @@ use sp1_hypercube::{
 use sp1_primitives::{io::SP1PublicValues, SP1Field};
 use sp1_recursion_circuit::{
     machine::{SP1DeferredWitnessValues, SP1NormalizeWitnessValues, SP1ShapedWitnessValues},
-    utils::{babybear_bytes_to_bn254, babybears_to_bn254, words_to_bytes},
+    utils::{koalabear_bytes_to_bn254, koalabears_to_bn254, words_to_bytes},
     witness::{OuterWitness, Witnessable},
     InnerSC,
 };
@@ -479,12 +479,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let pv: &RecursionPublicValues<SP1Field> = wrap_proof.public_values.as_slice().borrow();
 
-        let vkey_hash = babybears_to_bn254(&pv.sp1_vk_digest);
+        let vkey_hash = koalabears_to_bn254(&pv.sp1_vk_digest);
         let committed_values_digest_bytes: [SP1Field; 32] =
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
-        let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
+        let committed_values_digest = koalabear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
-        let vk_root = babybears_to_bn254(&pv.vk_root);
+        let vk_root = koalabears_to_bn254(&pv.vk_root);
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
         witness.write_committed_values_digest(committed_values_digest);
@@ -523,12 +523,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         let pv: &RecursionPublicValues<SP1Field> = wrap_proof.public_values.as_slice().borrow();
 
-        let vkey_hash = babybears_to_bn254(&pv.sp1_vk_digest);
+        let vkey_hash = koalabears_to_bn254(&pv.sp1_vk_digest);
         let committed_values_digest_bytes: [SP1Field; 32] =
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
-        let committed_values_digest = babybear_bytes_to_bn254(&committed_values_digest_bytes);
+        let committed_values_digest = koalabear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
-        let vk_root = babybears_to_bn254(&pv.vk_root);
+        let vk_root = koalabears_to_bn254(&pv.vk_root);
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
         witness.write_committed_values_digest(committed_values_digest);
@@ -618,7 +618,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 vk_merkle_data: input.merkle_val,
                 start_reconstruct_deferred_digest: deferred_digest,
                 is_complete: false,
-                sp1_vk_digest: vk.hash_babybear(),
+                sp1_vk_digest: vk.hash_koalabear(),
                 end_pc: vk.pc_start,
                 end_shard: SP1Field::one(),
                 end_execution_shard: SP1Field::one(),
@@ -1088,7 +1088,7 @@ pub mod tests {
 
         // Run verify program with keccak vkey, subproofs, and their committed values.
         let mut stdin = SP1Stdin::new();
-        let vkey_digest = keccak_vk.hash_babybear();
+        let vkey_digest = keccak_vk.hash_koalabear();
         let vkey_digest: [u32; 8] = vkey_digest
             .iter()
             .map(|n| n.as_canonical_u32())

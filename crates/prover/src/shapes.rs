@@ -173,12 +173,12 @@ impl SP1RecursionProofShape {
     pub fn compress_proof_shape_from_arity(arity: usize) -> Option<Self> {
         let shape = match arity {
             DEFAULT_ARITY => [
-                (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 347_904),
-                (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 442_400),
-                (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 399_968),
-                (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 762_752),
-                (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 101_696),
-                (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 241_500),
+                (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 341_024),
+                (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 431_104),
+                (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 396_256),
+                (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_584),
+                (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 100_448),
+                (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 225_440),
                 (CompressAir::<SP1Field>::Select(SelectChip), 677_984),
                 (CompressAir::<SP1Field>::PublicValues(PublicValuesChip), 16),
             ]
@@ -469,7 +469,7 @@ pub async fn build_vk_map<C: SP1ProverComponents + 'static>(
                 let vk = vk_thread.await.unwrap();
                 done += 1;
 
-                let vk_digest = vk.1.hash_babybear();
+                let vk_digest = vk.1.hash_koalabear();
 
                 tracing::info!(
                     "program {} = {:?}, {}% done",
@@ -654,16 +654,16 @@ mod tests {
     #[ignore = "should be invoked specifically"]
     async fn test_max_arity() {
         setup_logger();
-        let prover = SP1ProverBuilder::new().build().await;
+        let prover = SP1ProverBuilder::new().without_recursion_vks().build().await;
 
         let shape = [
-            (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 347904),
-            (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 442400),
-            (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 399968),
-            (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 762732),
-            (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 101664),
-            (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 241500),
-            (CompressAir::<SP1Field>::Select(SelectChip), 677984),
+            (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 341_024),
+            (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 431_086),
+            (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 396_256),
+            (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_583),
+            (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 100_448),
+            (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 225_420),
+            (CompressAir::<SP1Field>::Select(SelectChip), 677_984),
             (CompressAir::<SP1Field>::PublicValues(PublicValuesChip), 16),
         ]
         .into_iter()

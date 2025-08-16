@@ -164,7 +164,7 @@ where
 //     use sp1_core_executor::events::ByteRecord;
 //     use sp1_curves::edwards::ed25519::{ed25519_sqrt, Ed25519BaseField};
 //     use sp1_derive::AlignedBorrow;
-//     use sp1_hypercube::baby_bear_poseidon2::SP1CoreJaggedConfig;
+//     use sp1_hypercube::koala_bear_poseidon2::SP1CoreJaggedConfig;
 
 //     use super::FieldSqrtCols;
 
@@ -274,7 +274,7 @@ where
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         let air: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
 //         let shard = ExecutionRecord::default();
 //         <EdSqrtChip<Ed25519BaseField> as MachineAir<SP1Field>>::generate_trace(

@@ -60,7 +60,7 @@ impl SP1ProverComponents for CpuSP1ProverComponents {
         CompressAir<<InnerSC as JaggedConfig>::F>,
     >;
     type WrapComponents = CpuMachineProverComponents<
-        Poseidon2Bn254JaggedCpuProverComponents,
+        Poseidon2Bn254JaggedCpuProverComponents<SP1Field>,
         WrapAir<<OuterSC as JaggedConfig>::F>,
     >;
 }

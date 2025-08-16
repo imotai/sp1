@@ -78,7 +78,7 @@ sp1-lib = { path = "crates/zkvm/lib", version = "6.0.0", default-features = fals
 sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "6.0.0", default-features = false }
 
 # slop
-slop-algebra = { git = "https://github.com/succinctlabs/slop" }
+slop-algebra = { git = "https://github.com/succinctlabs/slop"}
 slop-alloc = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
@@ -91,7 +91,7 @@ slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
 slop-challenger = { git = "https://github.com/succinctlabs/slop" }
 slop-air = { git = "https://github.com/succinctlabs/slop" }
 slop-matrix = { git = "https://github.com/succinctlabs/slop" }
-slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
+slop-koala-bear = { git = "https://github.com/succinctlabs/slop" }
 slop-bn254 = { git = "https://github.com/succinctlabs/slop" }
 slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
 slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
@@ -117,7 +117,7 @@ slop-keccak-air = { git = "https://github.com/succinctlabs/slop" }
 # slop-challenger = { path = "../slop/crates/challenger" }
 # slop-air = { path = "../slop/crates/air" }
 # slop-matrix = { path = "../slop/crates/matrix" }
-# slop-baby-bear = { path = "../slop/crates/baby-bear" }
+# slop-koala-bear = { path = "../slop/crates/koala-bear" }
 # slop-symmetric = { path = "../slop/crates/symmetric" }
 # slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
 # slop-futures = { path = "../slop/crates/futures" }

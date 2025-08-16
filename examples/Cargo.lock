@@ -33,7 +33,7 @@ name = "aggregation-program"
 version = "1.1.0"
 dependencies = [
  "sha2 0.10.8",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -979,7 +979,7 @@ dependencies = [
  "ff 0.13.1",
  "group 0.13.0",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1035,7 +1035,7 @@ name = "bn254-program"
 version = "1.1.0"
 dependencies = [
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
  "substrate-bn",
 ]
 
@@ -1189,7 +1189,7 @@ name = "chess-program"
 version = "1.1.0"
 dependencies = [
  "chess",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1511,7 +1511,7 @@ name = "cycle-tracking-program"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -1652,6 +1652,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
  "uuid",
+]
+
+[[package]]
+name = "deepsize2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86b5184084af9beed35eecbf4c36baf6e26b9dc47b61b74e02f930c72a58e71b"
+dependencies = [
+ "deepsize_derive2",
+ "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "deepsize_derive2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0f8817865cacf3b93b943ca06b0fc5fd8e99eabfdb7ea5d296efcbc4afc4f69"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1882,7 +1903,7 @@ name = "ed-add-program"
 version = "1.1.0"
 dependencies = [
  "hex-literal",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2141,7 +2162,7 @@ dependencies = [
 name = "fibonacci-cuda-program"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2159,7 +2180,7 @@ dependencies = [
 name = "fibonacci-program"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2225,7 +2246,7 @@ version = "1.1.0"
 dependencies = [
  "num-bigint 0.4.6",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2249,7 +2270,7 @@ version = "1.1.0"
 dependencies = [
  "num-bigint 0.4.6",
  "rand 0.8.5",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2461,7 +2482,7 @@ name = "groth16-verifier-program"
 version = "1.1.0"
 dependencies = [
  "sp1-verifier",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -2957,7 +2978,7 @@ name = "io-program"
 version = "1.1.0"
 dependencies = [
  "serde",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -3001,7 +3022,7 @@ dependencies = [
 name = "is-prime-program"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -3084,7 +3105,7 @@ version = "1.1.0"
 dependencies = [
  "json-lib",
  "serde_json",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -3152,7 +3173,7 @@ name = "keccak-program"
 version = "1.1.0"
 dependencies = [
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -3703,7 +3724,7 @@ dependencies = [
 [[package]]
 name = "p3-baby-bear"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "num-bigint 0.4.6",
  "p3-field 0.1.0",
@@ -3772,7 +3793,7 @@ dependencies = [
 [[package]]
 name = "p3-dft"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "p3-field 0.1.0",
  "p3-matrix 0.1.0",
@@ -3797,7 +3818,7 @@ dependencies = [
 [[package]]
 name = "p3-field"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint 0.4.6",
@@ -3863,9 +3884,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "p3-koala-bear"
+version = "0.1.0"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
+dependencies = [
+ "num-bigint 0.4.6",
+ "p3-field 0.1.0",
+ "p3-mds 0.1.0",
+ "p3-poseidon2 0.1.0",
+ "p3-symmetric 0.1.0",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
 name = "p3-matrix"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "p3-field 0.1.0",
@@ -3894,7 +3929,7 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "rayon",
 ]
@@ -3908,7 +3943,7 @@ checksum = "c3968ad1160310296eb04f91a5f4edfa38fe1d6b2b8cd6b5c64e6f9b7370979e"
 [[package]]
 name = "p3-mds"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "p3-dft 0.1.0",
@@ -3953,7 +3988,7 @@ dependencies = [
 [[package]]
 name = "p3-poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "gcd",
  "p3-field 0.1.0",
@@ -3980,7 +4015,7 @@ dependencies = [
 [[package]]
 name = "p3-symmetric"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "p3-field 0.1.0",
@@ -4019,7 +4054,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "serde",
 ]
@@ -4264,7 +4299,7 @@ checksum = "f84267b20a16ea918e43c6a88433c2d54fa145c92a811b5b047ccbe153674483"
 name = "poseidon2-program"
 version = "1.1.0"
 dependencies = [
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -4778,7 +4813,7 @@ name = "regex-program"
 version = "1.1.0"
 dependencies = [
  "regex",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -5483,7 +5518,7 @@ version = "1.1.0"
 dependencies = [
  "rsa 0.9.6",
  "sha2 0.10.8",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -5577,7 +5612,7 @@ version = "1.1.0"
 dependencies = [
  "bincode",
  "rsp-client-executor",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -5914,7 +5949,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "sp1-curves",
  "sp1-lib 6.0.0",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -6160,7 +6195,7 @@ version = "1.1.0"
 dependencies = [
  "rand 0.8.5",
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -6263,7 +6298,7 @@ checksum = "04dc19736151f35336d325007ac991178d504a119863a2fcb3758cdb5e52c50d"
 [[package]]
 name = "slop-air"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-air",
 ]
@@ -6271,7 +6306,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-field 0.1.0",
  "serde",
@@ -6280,31 +6315,32 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
- "itertools 0.14.0",
  "serde",
  "slop-algebra",
- "slop-baby-bear",
  "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "slop-baby-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
+ "lazy_static",
  "p3-baby-bear 0.1.0",
+ "serde",
+ "slop-algebra",
+ "slop-poseidon2",
 ]
 
 [[package]]
 name = "slop-basefold"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
- "rand 0.8.5",
  "serde",
  "slop-algebra",
  "slop-alloc",
@@ -6312,13 +6348,9 @@ dependencies = [
  "slop-bn254",
  "slop-challenger",
  "slop-commit",
- "slop-dft",
- "slop-fri",
- "slop-matrix",
- "slop-maybe-rayon",
+ "slop-koala-bear",
  "slop-merkle-tree",
  "slop-multilinear",
- "slop-poseidon2",
  "slop-symmetric",
  "slop-tensor",
  "slop-utils",
@@ -6328,14 +6360,11 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
- "clap",
  "derive-where",
  "itertools 0.12.1",
- "lazy_static",
  "rand 0.8.5",
- "rayon",
  "serde",
  "slop-algebra",
  "slop-alloc",
@@ -6347,23 +6376,18 @@ dependencies = [
  "slop-dft",
  "slop-fri",
  "slop-futures",
- "slop-matrix",
- "slop-maybe-rayon",
+ "slop-koala-bear",
  "slop-merkle-tree",
  "slop-multilinear",
- "slop-poseidon2",
- "slop-symmetric",
  "slop-tensor",
- "slop-utils",
  "thiserror 1.0.69",
  "tokio",
- "tracing",
 ]
 
 [[package]]
 name = "slop-bn254"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-bn254-fr",
 ]
@@ -6371,7 +6395,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -6382,7 +6406,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-commit",
  "serde",
@@ -6394,7 +6418,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-dft 0.1.0",
  "serde",
@@ -6407,7 +6431,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-fri",
 ]
@@ -6415,7 +6439,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "crossbeam",
  "futures",
@@ -6428,7 +6452,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "derive-where",
  "futures",
@@ -6445,8 +6469,7 @@ dependencies = [
  "slop-challenger",
  "slop-commit",
  "slop-futures",
- "slop-matrix",
- "slop-merkle-tree",
+ "slop-koala-bear",
  "slop-multilinear",
  "slop-stacked",
  "slop-sumcheck",
@@ -6460,15 +6483,27 @@ dependencies = [
 [[package]]
 name = "slop-keccak-air"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-keccak-air",
 ]
 
 [[package]]
+name = "slop-koala-bear"
+version = "1.2.0"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
+dependencies = [
+ "lazy_static",
+ "p3-koala-bear",
+ "serde",
+ "slop-algebra",
+ "slop-poseidon2",
+]
+
+[[package]]
 name = "slop-matrix"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-matrix 0.1.0",
 ]
@@ -6476,7 +6511,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-maybe-rayon 0.1.0",
 ]
@@ -6484,12 +6519,11 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
  "itertools 0.14.0",
- "lazy_static",
  "p3-merkle-tree",
  "serde",
  "slop-algebra",
@@ -6498,6 +6532,7 @@ dependencies = [
  "slop-bn254",
  "slop-commit",
  "slop-futures",
+ "slop-koala-bear",
  "slop-matrix",
  "slop-poseidon2",
  "slop-symmetric",
@@ -6510,7 +6545,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "derive-where",
  "futures",
@@ -6524,17 +6559,14 @@ dependencies = [
  "slop-commit",
  "slop-futures",
  "slop-matrix",
- "slop-maybe-rayon",
  "slop-tensor",
- "slop-utils",
  "tokio",
- "tracing",
 ]
 
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-poseidon2 0.1.0",
 ]
@@ -6542,11 +6574,10 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "derive-where",
  "futures",
- "rayon",
  "serde",
  "slop-algebra",
  "slop-alloc",
@@ -6561,7 +6592,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "futures",
  "itertools 0.14.0",
@@ -6571,17 +6602,14 @@ dependencies = [
  "slop-alloc",
  "slop-baby-bear",
  "slop-challenger",
- "slop-maybe-rayon",
  "slop-multilinear",
- "slop-tensor",
  "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-symmetric 0.1.0",
 ]
@@ -6589,7 +6617,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "arrayvec 0.7.6",
  "derive-where",
@@ -6609,7 +6637,7 @@ dependencies = [
 [[package]]
 name = "slop-uni-stark"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-uni-stark",
 ]
@@ -6617,7 +6645,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#d9d9291b46a8ace01bf6b5135a851faf19ea8975"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#145640767241fb6a6852e7389f7085995ce2709f"
 dependencies = [
  "p3-util 0.1.0",
  "tracing-forest",
@@ -6682,6 +6710,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "clap",
+ "deepsize2",
  "elf",
  "enum-map",
  "eyre",
@@ -6700,13 +6729,13 @@ dependencies = [
  "serde_json",
  "slop-air",
  "slop-algebra",
- "slop-baby-bear",
+ "slop-koala-bear",
  "slop-maybe-rayon",
  "slop-merkle-tree",
  "slop-symmetric",
  "sp1-curves",
+ "sp1-hypercube",
  "sp1-primitives 6.0.0",
- "sp1-stark",
  "strum 0.27.2",
  "strum_macros 0.27.2",
  "subenum",
@@ -6723,6 +6752,7 @@ version = "6.0.0"
 dependencies = [
  "bincode",
  "cfg-if",
+ "deepsize2",
  "futures",
  "generic-array 1.1.0",
  "hashbrown 0.14.5",
@@ -6735,9 +6765,9 @@ dependencies = [
  "serde_json",
  "slop-air",
  "slop-algebra",
- "slop-baby-bear",
  "slop-futures",
  "slop-keccak-air",
+ "slop-koala-bear",
  "slop-matrix",
  "slop-maybe-rayon",
  "slop-poseidon2",
@@ -6746,8 +6776,8 @@ dependencies = [
  "sp1-core-executor",
  "sp1-curves",
  "sp1-derive",
+ "sp1-hypercube",
  "sp1-primitives 6.0.0",
- "sp1-stark",
  "strum 0.27.2",
  "strum_macros 0.27.2",
  "sysinfo",
@@ -6809,6 +6839,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-hypercube"
+version = "6.0.0"
+dependencies = [
+ "arrayref",
+ "deepsize2",
+ "derive-where",
+ "futures",
+ "hashbrown 0.14.5",
+ "itertools 0.13.0",
+ "num-bigint 0.4.6",
+ "num-traits",
+ "num_cpus",
+ "rayon",
+ "rayon-scan",
+ "serde",
+ "slop-air",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-basefold",
+ "slop-basefold-prover",
+ "slop-challenger",
+ "slop-commit",
+ "slop-futures",
+ "slop-jagged",
+ "slop-koala-bear",
+ "slop-matrix",
+ "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-sumcheck",
+ "slop-symmetric",
+ "slop-tensor",
+ "slop-uni-stark",
+ "sp1-derive",
+ "sp1-primitives 6.0.0",
+ "strum 0.27.2",
+ "strum_macros 0.27.2",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "sp1-lib"
 version = "5.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6863,7 +6935,7 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "slop-algebra",
- "slop-baby-bear",
+ "slop-koala-bear",
  "slop-poseidon2",
  "slop-symmetric",
 ]
@@ -6891,21 +6963,21 @@ dependencies = [
  "sha2 0.10.8",
  "slop-air",
  "slop-algebra",
- "slop-baby-bear",
  "slop-bn254",
  "slop-futures",
  "slop-jagged",
+ "slop-koala-bear",
  "slop-merkle-tree",
  "slop-symmetric",
  "sp1-core-executor",
  "sp1-core-machine",
+ "sp1-hypercube",
  "sp1-primitives 6.0.0",
  "sp1-recursion-circuit",
  "sp1-recursion-compiler",
  "sp1-recursion-executor",
  "sp1-recursion-gnark-ffi",
  "sp1-recursion-machine",
- "sp1-stark",
  "static_assertions",
  "sysinfo",
  "thiserror 1.0.69",
@@ -6926,13 +6998,13 @@ dependencies = [
  "slop-air",
  "slop-algebra",
  "slop-alloc",
- "slop-baby-bear",
  "slop-basefold",
  "slop-basefold-prover",
  "slop-bn254",
  "slop-challenger",
  "slop-commit",
  "slop-jagged",
+ "slop-koala-bear",
  "slop-matrix",
  "slop-merkle-tree",
  "slop-multilinear",
@@ -6943,11 +7015,11 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-derive",
+ "sp1-hypercube",
  "sp1-primitives 6.0.0",
  "sp1-recursion-compiler",
  "sp1-recursion-executor",
  "sp1-recursion-machine",
- "sp1-stark",
  "tokio",
  "tracing",
 ]
@@ -6961,15 +7033,15 @@ dependencies = [
  "itertools 0.13.0",
  "serde",
  "slop-algebra",
- "slop-baby-bear",
  "slop-bn254",
+ "slop-koala-bear",
  "slop-merkle-tree",
  "slop-symmetric",
  "sp1-core-machine",
+ "sp1-hypercube",
  "sp1-primitives 6.0.0",
  "sp1-recursion-derive",
  "sp1-recursion-executor",
- "sp1-stark",
  "tracing",
  "vec_map",
 ]
@@ -7000,7 +7072,7 @@ dependencies = [
  "smallvec",
  "sp1-core-machine",
  "sp1-derive",
- "sp1-stark",
+ "sp1-hypercube",
  "static_assertions",
  "thiserror 1.0.69",
  "tracing",
@@ -7020,10 +7092,11 @@ dependencies = [
  "serde_json",
  "sha2 0.10.8",
  "slop-algebra",
- "slop-baby-bear",
+ "slop-koala-bear",
  "slop-symmetric",
+ "sp1-hypercube",
+ "sp1-primitives 6.0.0",
  "sp1-recursion-compiler",
- "sp1-stark",
  "tempfile",
  "tracing",
 ]
@@ -7036,8 +7109,8 @@ dependencies = [
  "rand 0.8.5",
  "slop-air",
  "slop-algebra",
- "slop-baby-bear",
  "slop-jagged",
+ "slop-koala-bear",
  "slop-matrix",
  "slop-maybe-rayon",
  "slop-merkle-tree",
@@ -7045,9 +7118,9 @@ dependencies = [
  "slop-symmetric",
  "sp1-core-machine",
  "sp1-derive",
+ "sp1-hypercube",
  "sp1-primitives 6.0.0",
  "sp1-recursion-executor",
- "sp1-stark",
  "strum 0.27.2",
  "strum_macros 0.27.2",
  "tokio",
@@ -7082,9 +7155,9 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-cuda",
+ "sp1-hypercube",
  "sp1-primitives 6.0.0",
  "sp1-prover",
- "sp1-stark",
  "strum 0.27.2",
  "strum_macros 0.27.2",
  "tempfile",
@@ -7093,46 +7166,6 @@ dependencies = [
  "tonic",
  "tracing",
  "twirp-rs",
-]
-
-[[package]]
-name = "sp1-stark"
-version = "6.0.0"
-dependencies = [
- "arrayref",
- "derive-where",
- "futures",
- "hashbrown 0.14.5",
- "itertools 0.13.0",
- "num-bigint 0.4.6",
- "num-traits",
- "num_cpus",
- "rayon",
- "rayon-scan",
- "serde",
- "slop-air",
- "slop-algebra",
- "slop-alloc",
- "slop-baby-bear",
- "slop-basefold",
- "slop-challenger",
- "slop-commit",
- "slop-futures",
- "slop-jagged",
- "slop-matrix",
- "slop-merkle-tree",
- "slop-multilinear",
- "slop-sumcheck",
- "slop-symmetric",
- "slop-tensor",
- "slop-uni-stark",
- "sp1-derive",
- "sp1-primitives 6.0.0",
- "strum 0.27.2",
- "strum_macros 0.27.2",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -7149,7 +7182,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp1-zkvm-64"
+name = "sp1-zkvm"
 version = "6.0.0"
 dependencies = [
  "cfg-if",
@@ -7160,7 +7193,7 @@ dependencies = [
  "rand 0.8.5",
  "sha2 0.10.8",
  "slop-algebra",
- "slop-baby-bear",
+ "slop-koala-bear",
  "sp1-lib 6.0.0",
  "sp1-primitives 6.0.0",
 ]
@@ -7219,7 +7252,7 @@ dependencies = [
  "serde",
  "serde_with",
  "sha2 0.9.9",
- "sp1-zkvm-64",
+ "sp1-zkvm",
  "ssz_rs",
 ]
 
@@ -7554,7 +7587,7 @@ name = "tendermint-program"
 version = "1.1.0"
 dependencies = [
  "serde_cbor",
- "sp1-zkvm-64",
+ "sp1-zkvm",
  "tendermint-light-client-verifier",
 ]
 
@@ -8068,7 +8101,7 @@ dependencies = [
  "num",
  "rand 0.8.5",
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]
@@ -8112,7 +8145,7 @@ dependencies = [
  "num",
  "rand 0.8.5",
  "sp1-derive",
- "sp1-zkvm-64",
+ "sp1-zkvm",
 ]
 
 [[package]]

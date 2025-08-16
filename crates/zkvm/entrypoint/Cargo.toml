@@ -21,7 +21,7 @@ lazy_static = "1.5.0"
 # optional
 sp1-lib = { workspace = true, optional = true }
 sp1-primitives = { workspace = true }
-slop-baby-bear = { workspace = true, optional = true }
+slop-koala-bear = { workspace = true, optional = true }
 slop-algebra = { workspace = true, optional = true }
 blake3 = { workspace = true, optional = true }
 
@@ -29,7 +29,7 @@ blake3 = { workspace = true, optional = true }
 default = ["libm", "lib", "bump"]
 libm = ["dep:libm"]
 lib = ["dep:sp1-lib"]
-verify = ["dep:slop-baby-bear", "dep:slop-algebra", "sp1-lib/verify"]
+verify = ["dep:slop-koala-bear", "dep:slop-algebra", "sp1-lib/verify"]
 bump = []
 blake3 = ["dep:blake3"]
 

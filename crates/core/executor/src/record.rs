@@ -208,6 +208,7 @@ impl ExecutionRecord {
                 SyscallCode::BLS12381_FP2_ADD
                 | SyscallCode::BLS12381_FP2_SUB
                 | SyscallCode::BLS12381_FP2_MUL => opts.fp2_operation_384bit,
+                SyscallCode::POSEIDON2 => opts.poseidon2,
                 _ => opts.deferred,
             };
 

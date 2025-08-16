@@ -57,8 +57,8 @@ impl<T: Add<Output = T> + Mul<Output = T> + AbstractField> Mul for BinomialExten
 
     fn mul(self, rhs: Self) -> Self::Output {
         let mut result = [T::zero(), T::zero(), T::zero(), T::zero()];
-        // This value is specific for SP1Field prime's extension `F_p[x]/(x^4 - 11)`.
-        let w = T::from_canonical_u32(11);
+        // This value is specific for SP1Field prime's extension `F_p[x]/(x^4 - 3)`.
+        let w = T::from_canonical_u32(3);
 
         for i in 0..D {
             for j in 0..D {

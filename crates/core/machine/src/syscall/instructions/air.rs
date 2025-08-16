@@ -17,7 +17,7 @@ use crate::{
     adapter::{register::r_type::RTypeReader, state::CPUState},
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{
-        BabyBearWordRangeChecker, IsZeroOperation, IsZeroOperationInput, U16toU8OperationSafe,
+        IsZeroOperation, IsZeroOperationInput, SP1FieldWordRangeChecker, U16toU8OperationSafe,
         U16toU8OperationSafeInput,
     },
 };
@@ -140,7 +140,7 @@ impl SyscallInstrsChip {
         let send_to_table = prev_a_byte[1].clone();
 
         // SAFETY: Assert that for padding rows, the interactions from `send_syscall` and
-        // BabyBearWordRangeChecker do not have non-zero multiplicities.
+        // KoalaBearWordRangeChecker do not have non-zero multiplicities.
         builder.when_not(local.is_real).assert_zero(send_to_table.clone());
         builder.when_not(local.is_real).assert_zero(local.is_halt);
         builder.when_not(local.is_real).assert_zero(local.is_commit_deferred_proofs.result);
@@ -164,7 +164,7 @@ impl SyscallInstrsChip {
         // Check if `op_b` and `op_c` are a valid SP1Field words.
         // SAFETY: The multiplicities are zero when `is_real = 0`.
         // `op_b` value is already known to be a valid Word, as it is read from a register.
-        BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
+        SP1FieldWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,
             local.adapter.b().map(Into::into),
             local.op_b_range_check,
@@ -173,7 +173,7 @@ impl SyscallInstrsChip {
 
         // Check if `op_c` is a valid SP1Field word.
         // `op_c` value is already known to be a valid Word, as it is read from a register.
-        BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
+        SP1FieldWordRangeChecker::<AB::F>::range_check::<AB>(
             builder,
             local.adapter.c().map(Into::into),
             local.op_c_range_check,

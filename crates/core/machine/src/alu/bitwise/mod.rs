@@ -293,7 +293,7 @@ where
 //     use sp1_core_executor::{events::AluEvent, ExecutionRecord, Opcode};
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         Chip, StarkMachine,
 //     };
 
@@ -312,7 +312,7 @@ where
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         let mut shard = ExecutionRecord::default();
 //         shard.bitwise_events = [
 //             AluEvent::new(0, Opcode::XOR, 25, 10, 19, false),

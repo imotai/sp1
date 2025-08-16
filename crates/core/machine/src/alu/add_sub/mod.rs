@@ -16,7 +16,7 @@ pub mod subw;
 //     };
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 //     use std::sync::LazyLock;
@@ -65,7 +65,7 @@ pub mod subw;
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         let mut shard = ExecutionRecord::default();
 //         for i in 0..1 {
 //             let operand_1 = thread_rng().gen_range(0..u32::MAX);
@@ -148,7 +148,7 @@ pub mod subw;
 //                         let mut row = [F::zero(); NUM_ADD_SUB_COLS];
 //                         let cols: &mut AddSubCols<F> = row.as_mut_slice().borrow_mut();
 //                         unsafe {
-//                             crate::sys::add_sub_event_to_row_babybear(event, cols);
+//                             crate::sys::add_sub_event_to_row_koalabear(event, cols);
 //                         }
 //                         row
 //                     })

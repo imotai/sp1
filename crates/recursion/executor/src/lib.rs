@@ -59,7 +59,7 @@ pub const MEMORY_SIZE: usize = 1 << 28;
 
 /// The width of the Poseidon2 permutation.
 pub const PERMUTATION_WIDTH: usize = 16;
-pub const POSEIDON2_SBOX_DEGREE: u64 = 7;
+pub const POSEIDON2_SBOX_DEGREE: u64 = 3;
 pub const HASH_RATE: usize = 8;
 
 /// The current verifier implementation assumes that we are using a 256-bit hash with 32-bit
@@ -619,10 +619,7 @@ where
                 external,
             }) => {
                 let io_input = memory.mr_unchecked(input).val;
-                let pow7 = |x: F| -> F {
-                    let x3 = x * x * x;
-                    x3 * x3 * x
-                };
+                let pow7 = |x: F| -> F { x * x * x };
 
                 let io_output = if external {
                     Block([

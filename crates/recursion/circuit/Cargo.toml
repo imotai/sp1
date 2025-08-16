@@ -12,7 +12,7 @@ categories = { workspace = true }
 [dependencies]
 slop-alloc = { workspace = true }
 slop-air = { workspace = true }
-slop-baby-bear = { workspace = true }
+slop-koala-bear = { workspace = true }
 slop-bn254 = { workspace = true }
 slop-jagged = { workspace = true }
 slop-commit = { workspace = true }

@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/succinctlabs/sp1-recursion-gnark/sp1/babybear"
+	"github.com/succinctlabs/sp1-recursion-gnark/sp1/koalabear"
 	"github.com/succinctlabs/sp1-recursion-gnark/sp1/poseidon2"
 )
 
@@ -31,8 +31,8 @@ type Circuit struct {
 	ExitCode              frontend.Variable `gnark:",public"`
 	VkRoot                frontend.Variable `gnark:",public"`
 	Vars                  []frontend.Variable
-	Felts                 []babybear.Variable
-	Exts                  []babybear.ExtensionVariable
+	Felts                 []koalabear.Variable
+	Exts                  []koalabear.ExtensionVariable
 }
 
 type Constraint struct {
@@ -77,19 +77,19 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	}
 
 	hashAPI := poseidon2.NewChip(api)
-	hashBabyBearAPI := poseidon2.NewBabyBearChip(api)
-	fieldAPI := babybear.NewChip(api)
+	hashKoalaBearAPI := poseidon2.NewKoalaBearChip(api)
+	fieldAPI := koalabear.NewChip(api)
 	vars := make(map[string]frontend.Variable)
-	felts := make(map[string]babybear.Variable)
-	exts := make(map[string]babybear.ExtensionVariable)
+	felts := make(map[string]koalabear.Variable)
+	exts := make(map[string]koalabear.ExtensionVariable)
 
 	// Iterate through the witnesses and range check them, if necessary.
 	for i := 0; i < len(circuit.Felts); i++ {
-		fieldAPI.BabyBearRangeCheck(circuit.Felts[i].Value);
+		fieldAPI.KoalaBearRangeCheck(circuit.Felts[i].Value)
 	}
 	for i := 0; i < len(circuit.Exts); i++ {
 		for j := 0; j < 4; j++ {
-			fieldAPI.BabyBearRangeCheck(circuit.Exts[i].Value[j].Value);
+			fieldAPI.KoalaBearRangeCheck(circuit.Exts[i].Value[j].Value)
 		}
 	}
 
@@ -99,9 +99,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		case "ImmV":
 			vars[cs.Args[0][0]] = frontend.Variable(cs.Args[1][0])
 		case "ImmF":
-			felts[cs.Args[0][0]] = babybear.NewFConst(cs.Args[1][0])
+			felts[cs.Args[0][0]] = koalabear.NewFConst(cs.Args[1][0])
 		case "ImmE":
-			exts[cs.Args[0][0]] = babybear.NewEConst(cs.Args[1])
+			exts[cs.Args[0][0]] = koalabear.NewEConst(cs.Args[1])
 		case "AddV":
 			vars[cs.Args[0][0]] = api.Add(vars[cs.Args[1][0]], vars[cs.Args[2][0]])
 		case "AddF":
@@ -156,12 +156,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			vars[cs.Args[0][0]] = state[0]
 			vars[cs.Args[1][0]] = state[1]
 			vars[cs.Args[2][0]] = state[2]
-		case "PermuteBabyBear":
-			var state [16]babybear.Variable
+		case "PermuteKoalaBear":
+			var state [16]koalabear.Variable
 			for i := 0; i < 16; i++ {
 				state[i] = felts[cs.Args[i][0]]
 			}
-			hashBabyBearAPI.PermuteMut(&state)
+			hashKoalaBearAPI.PermuteMut(&state)
 			for i := 0; i < 16; i++ {
 				felts[cs.Args[i][0]] = state[i]
 			}
@@ -180,14 +180,14 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			api.AssertIsEqual(vars[cs.Args[0][0]], vars[cs.Args[1][0]])
 		case "AssertEqF":
 			arg1, arg2 := fieldAPI.AssertIsEqualF(felts[cs.Args[0][0]], felts[cs.Args[1][0]])
-			felts[cs.Args[0][0]] = arg1;
-			felts[cs.Args[1][0]] = arg2;
+			felts[cs.Args[0][0]] = arg1
+			felts[cs.Args[1][0]] = arg2
 		case "AssertNeF":
 			fieldAPI.AssertNotEqualF(felts[cs.Args[0][0]], felts[cs.Args[1][0]])
 		case "AssertEqE":
 			arg1, arg2 := fieldAPI.AssertIsEqualE(exts[cs.Args[0][0]], exts[cs.Args[1][0]])
-			exts[cs.Args[0][0]] = arg1;
-			exts[cs.Args[1][0]] = arg2;
+			exts[cs.Args[0][0]] = arg1
+			exts[cs.Args[1][0]] = arg2
 		case "PrintV":
 			api.Println(vars[cs.Args[0][0]])
 		case "PrintF":
@@ -230,7 +230,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			element := vars[cs.Args[0][0]]
 			api.AssertIsEqual(circuit.VkRoot, element)
 		case "CircuitFelts2Ext":
-			exts[cs.Args[0][0]] = babybear.Felts2Ext(felts[cs.Args[1][0]], felts[cs.Args[2][0]], felts[cs.Args[3][0]], felts[cs.Args[4][0]])
+			exts[cs.Args[0][0]] = koalabear.Felts2Ext(felts[cs.Args[1][0]], felts[cs.Args[2][0]], felts[cs.Args[3][0]], felts[cs.Args[4][0]])
 		case "CircuitFelt2Var":
 			felts[cs.Args[1][0]] = fieldAPI.ReduceSlow(felts[cs.Args[1][0]])
 			vars[cs.Args[0][0]] = felts[cs.Args[1][0]].Value
@@ -238,8 +238,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			exts[cs.Args[0][0]] = fieldAPI.ReduceE(exts[cs.Args[0][0]])
 		case "EqEval":
 			felts[cs.Args[1][0]] = fieldAPI.CheckBool(felts[cs.Args[1][0]])
-			one := babybear.NewEConst([]string{"1", "0", "0", "0"})
-			one_minus_value := fieldAPI.SubE(one, exts[cs.Args[2][0]]) 
+			one := koalabear.NewEConst([]string{"1", "0", "0", "0"})
+			one_minus_value := fieldAPI.SubE(one, exts[cs.Args[2][0]])
 			mul := fieldAPI.SelectE(felts[cs.Args[1][0]].Value, exts[cs.Args[2][0]], one_minus_value)
 			exts[cs.Args[0][0]] = fieldAPI.MulE(exts[cs.Args[0][0]], mul)
 		default:

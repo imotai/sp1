@@ -937,7 +937,7 @@ pub mod tests {
     //     use sp1_primitives::SP1Field;
     //     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
     //     use sp1_hypercube::{
-    //         baby_bear_poseidon2::SP1CoreJaggedConfig, CpuProver, MachineProver, SP1CoreOpts,
+    //         koala_bear_poseidon2::SP1CoreJaggedConfig, CpuProver, MachineProver, SP1CoreOpts,
     //         StarkProvingKey, StarkVerifyingKey,
     //     };
 

@@ -33,7 +33,6 @@ const NUM_SBOX_VALUE_COLS: usize = core::mem::size_of::<Poseidon2SBoxValueCols<u
 #[repr(C)]
 pub struct Poseidon2SBoxValueCols<F: Copy> {
     pub vals: Poseidon2SBoxIo<Block<F>>,
-    pub intermediate: Block<F>,
 }
 
 pub const NUM_SBOX_PREPROCESSED_COLS: usize =
@@ -162,9 +161,7 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2SBoxC
                 let cols: &mut Poseidon2SBoxValueCols<_> = row.borrow_mut();
                 cols.vals = vals.to_owned();
                 for i in 0..D {
-                    cols.intermediate.0[i] = vals.input.0[i] * vals.input.0[i] * vals.input.0[i];
-                    cols.vals.output.0[i] =
-                        vals.input.0[i] * cols.intermediate.0[i] * cols.intermediate.0[i];
+                    cols.vals.output.0[i] = vals.input.0[i] * vals.input.0[i] * vals.input.0[i];
                 }
             },
         );
@@ -194,7 +191,7 @@ where
         let prep_local: &Poseidon2SBoxPreprocessedCols<AB::Var> = (*prep_local).borrow();
 
         for (
-            Poseidon2SBoxValueCols { vals, intermediate },
+            Poseidon2SBoxValueCols { vals },
             Poseidon2SBoxAccessCols { addrs, external, internal },
         ) in zip(local.values, prep_local.accesses)
         {
@@ -209,14 +206,9 @@ where
 
             // Constrain that the SBOX result.
             for i in 0..D {
-                // Constrain that `intermediate.0[i] == vals.input.0[i] ** 3`.
+                // Constrain that `vals.output.0[i] == vals.input.0[i] ** 3`.
                 builder.assert_eq(
                     vals.input.0[i] * vals.input.0[i] * vals.input.0[i],
-                    intermediate.0[i],
-                );
-                // Constrain that `vals.output.0[i] == vals.input.0[i] ** 7`.
-                builder.assert_eq(
-                    vals.input.0[i] * intermediate.0[i] * intermediate.0[i],
                     vals.output.0[i],
                 );
             }

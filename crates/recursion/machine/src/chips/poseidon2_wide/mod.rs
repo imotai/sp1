@@ -2,9 +2,7 @@
 
 use std::{borrow::Borrow, ops::Deref};
 
-use sp1_core_machine::operations::poseidon2::permutation::{
-    Poseidon2Cols, Poseidon2Degree3Cols, Poseidon2Degree9Cols,
-};
+use sp1_core_machine::operations::poseidon2::permutation::{Poseidon2Cols, Poseidon2Degree3Cols};
 
 pub mod air;
 pub mod columns;
@@ -22,9 +20,6 @@ impl<'a, const DEGREE: usize> Poseidon2WideChip<DEGREE> {
     {
         if DEGREE == 3 {
             let convert: &Poseidon2Degree3Cols<T> = (*row).borrow();
-            Box::new(*convert)
-        } else if DEGREE == 9 || DEGREE == 17 {
-            let convert: &Poseidon2Degree9Cols<T> = (*row).borrow();
             Box::new(*convert)
         } else {
             panic!("Unsupported degree");

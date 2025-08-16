@@ -12,7 +12,7 @@ use sp1_recursion_circuit::{
         SP1CompressWithVKeyWitnessValues, SP1DeferredWitnessValues, SP1NormalizeWitnessValues,
         SP1ShapedWitnessValues,
     },
-    utils::babybears_to_bn254,
+    utils::koalabears_to_bn254,
     InnerSC,
 };
 pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
@@ -30,14 +30,14 @@ pub struct SP1VerifyingKey {
 /// A trait for keys that can be hashed into a digest.
 pub trait HashableKey {
     /// Hash the key into a digest of SP1Field elements.
-    fn hash_babybear(&self) -> [SP1Field; DIGEST_SIZE];
+    fn hash_koalabear(&self) -> [SP1Field; DIGEST_SIZE];
 
     /// Hash the key into a digest of u32 elements.
     fn hash_u32(&self) -> [u32; DIGEST_SIZE];
 
     /// Hash the key into a Bn254Fr element.
     fn hash_bn254(&self) -> Bn254Fr {
-        babybears_to_bn254(&self.hash_babybear())
+        koalabears_to_bn254(&self.hash_koalabear())
     }
 
     /// Hash the key into a 32 byte hex string, prefixed with "0x".
@@ -76,8 +76,8 @@ pub trait HashableKey {
 }
 
 impl HashableKey for SP1VerifyingKey {
-    fn hash_babybear(&self) -> [SP1Field; DIGEST_SIZE] {
-        self.vk.hash_babybear()
+    fn hash_koalabear(&self) -> [SP1Field; DIGEST_SIZE] {
+        self.vk.hash_koalabear()
     }
 
     fn hash_u32(&self) -> [u32; DIGEST_SIZE] {
@@ -89,7 +89,7 @@ impl<C: MachineConfig<F = SP1Field>> HashableKey for MachineVerifyingKey<C>
 where
     C::Commitment: Borrow<[SP1Field; DIGEST_SIZE]>,
 {
-    fn hash_babybear(&self) -> [SP1Field; DIGEST_SIZE] {
+    fn hash_koalabear(&self) -> [SP1Field; DIGEST_SIZE] {
         let num_inputs = DIGEST_SIZE + 3 + 14;
         let mut inputs = Vec::with_capacity(num_inputs);
         inputs.extend(self.preprocessed_commit.borrow());
@@ -110,7 +110,7 @@ where
     }
 
     fn hash_u32(&self) -> [u32; 8] {
-        self.hash_babybear()
+        self.hash_koalabear()
             .into_iter()
             .map(|n| n.as_canonical_u32())
             .collect::<Vec<_>>()

@@ -1,10 +1,9 @@
 package poseidon2
 
-import (
-	"github.com/consensys/gnark/frontend"
-)
+import "github.com/consensys/gnark/frontend"
 
 const width = 3
+
 const numExternalRounds = 8
 const numInternalRounds = 56
 const degree = 5

@@ -114,7 +114,6 @@ mod tests {
     use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
     use rand::{rngs::OsRng, thread_rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
-    use slop_baby_bear::baby_bear_poseidon2::Perm;
     use slop_challenger::DuplexChallenger;
     use slop_multilinear::{full_geq, Mle};
     use slop_sumcheck::reduce_sumcheck_to_evaluation;
@@ -128,7 +127,7 @@ mod tests {
     use sp1_recursion_executor::Runtime;
     use zkhash::ark_ff::UniformRand;
 
-    use sp1_primitives::SP1Field;
+    use sp1_primitives::{SP1Field, SP1Perm};
     type F = SP1Field;
     type SC = SP1CoreJaggedConfig;
     type C = InnerConfig;
@@ -141,7 +140,8 @@ mod tests {
         let mle = Mle::<SP1Field>::rand(&mut rng, 1, 10);
 
         let default_perm = inner_perm();
-        let mut challenger = DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm.clone());
+        let mut challenger =
+            DuplexChallenger::<SP1Field, SP1Perm, 16, 8>::new(default_perm.clone());
 
         let claim = EF::from_base(mle.guts().as_slice().iter().copied().sum::<SP1Field>());
 
@@ -183,7 +183,8 @@ mod tests {
         let mle = Mle::<SP1Field>::rand(&mut rng, 1, 10);
 
         let default_perm = inner_perm();
-        let mut challenger = DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm.clone());
+        let mut challenger =
+            DuplexChallenger::<SP1Field, SP1Perm, 16, 8>::new(default_perm.clone());
 
         let claim = EF::from_base(mle.guts().as_slice().iter().copied().sum::<SP1Field>());
 

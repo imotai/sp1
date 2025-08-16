@@ -100,6 +100,8 @@ pub struct SplitOpts {
     pub fp_operation_384bit: usize,
     /// The threshold for fp2 operation 384bit events.
     pub fp2_operation_384bit: usize,
+    /// The threshold for poseidon2 events.
+    pub poseidon2: usize,
 }
 
 impl SplitOpts {
@@ -112,18 +114,19 @@ impl SplitOpts {
         Self {
             combine_memory_threshold: (1 << 28, 1 << 17),
             deferred: deferred_split_threshold,
-            fp_operation_256bit: deferred_split_threshold * 16 / 5,
-            ec_add_256bit: deferred_split_threshold * 37 / 25,
-            ec_double_256bit: deferred_split_threshold * 21 / 8,
-            ec_add_384bit: deferred_split_threshold,
-            ec_double_384bit: deferred_split_threshold * 7 / 4,
-            keccak: 27 * deferred_split_threshold / 100,
-            sha_extend: 5 * deferred_split_threshold / 13,
-            sha_compress: 3 * deferred_split_threshold / 10,
-            memory: 26 * deferred_split_threshold,
-            fp2_operation_256bit: deferred_split_threshold * 5 / 3,
-            fp_operation_384bit: deferred_split_threshold * 21 / 10,
-            fp2_operation_384bit: deferred_split_threshold,
+            fp_operation_256bit: deferred_split_threshold * 23 / 5,
+            ec_add_256bit: deferred_split_threshold * 51 / 25,
+            ec_double_256bit: deferred_split_threshold * 28 / 8,
+            ec_add_384bit: deferred_split_threshold * 7 / 5,
+            ec_double_384bit: deferred_split_threshold * 12 / 5,
+            keccak: 29 * deferred_split_threshold / 100,
+            sha_extend: 7 * deferred_split_threshold / 13,
+            sha_compress: 4 * deferred_split_threshold / 10,
+            memory: 37 * deferred_split_threshold,
+            fp2_operation_256bit: deferred_split_threshold * 9 / 4,
+            fp_operation_384bit: deferred_split_threshold * 61 / 20,
+            fp2_operation_384bit: deferred_split_threshold * 3 / 2,
+            poseidon2: deferred_split_threshold * 9 / 2,
         }
     }
 }

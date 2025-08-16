@@ -7,11 +7,10 @@ use crate::{
     },
 };
 use slop_algebra::AbstractField;
-use slop_baby_bear::baby_bear_poseidon2::Perm;
 use slop_challenger::DuplexChallenger;
 use slop_jagged::JaggedConfig;
 use slop_symmetric::Hash;
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1Field, SP1Perm};
 use std::borrow::Borrow;
 
 use super::{
@@ -45,7 +44,7 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Word<T> {
     }
 }
 
-impl<C> Witnessable<C> for DuplexChallenger<<InnerSC as JaggedConfig>::F, Perm, 16, 8>
+impl<C> Witnessable<C> for DuplexChallenger<<InnerSC as JaggedConfig>::F, SP1Perm, 16, 8>
 where
     C: CircuitConfig<F = <InnerSC as JaggedConfig>::F, EF = <InnerSC as JaggedConfig>::EF>,
 {

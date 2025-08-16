@@ -5,8 +5,7 @@ use slop_matrix::Matrix;
 use sp1_core_machine::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
 
 use sp1_core_machine::operations::poseidon2::{
-    permutation::{NUM_POSEIDON2_DEGREE3_COLS, NUM_POSEIDON2_DEGREE9_COLS},
-    NUM_EXTERNAL_ROUNDS, WIDTH,
+    permutation::NUM_POSEIDON2_DEGREE3_COLS, NUM_EXTERNAL_ROUNDS, WIDTH,
 };
 
 use super::Poseidon2WideChip;
@@ -20,8 +19,6 @@ impl<F, const DEGREE: usize> BaseAir<F> for Poseidon2WideChip<DEGREE> {
     fn width(&self) -> usize {
         if DEGREE == 3 {
             NUM_POSEIDON2_DEGREE3_COLS
-        } else if DEGREE == 9 || DEGREE == 17 {
-            NUM_POSEIDON2_DEGREE9_COLS
         } else {
             panic!("Unsupported degree: {}", DEGREE);
         }

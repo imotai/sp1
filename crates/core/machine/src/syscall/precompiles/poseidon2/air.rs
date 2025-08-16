@@ -3,7 +3,7 @@ use crate::{
     memory::MemoryAccessCols,
     operations::{
         poseidon2::{permutation::Poseidon2Cols, Poseidon2Operation},
-        AddrAddOperation, BabyBearWordRangeChecker, SyscallAddrOperation,
+        AddrAddOperation, SP1FieldWordRangeChecker, SyscallAddrOperation,
     },
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
@@ -64,10 +64,10 @@ pub struct Poseidon2Cols2<T: Copy> {
     pub hash_result: [Word<T>; 8],
 
     /// Range checkers for the hash result (16 u32s).
-    pub hash_result_range_checkers: [BabyBearWordRangeChecker<T>; 16],
+    pub hash_result_range_checkers: [SP1FieldWordRangeChecker<T>; 16],
 
     /// Range checkers for the input (16 u32s).
-    pub input_range_checkers: [BabyBearWordRangeChecker<T>; 16],
+    pub input_range_checkers: [SP1FieldWordRangeChecker<T>; 16],
 
     /// The Poseidon2 operation columns.
     pub poseidon2_operation: Poseidon2Operation<T>,
@@ -328,7 +328,7 @@ where
                 // Range check the input values.
                 builder.slice_range_check_u16(&input_u64s[i].0, local.is_real);
 
-                BabyBearWordRangeChecker::<AB::F>::range_check(
+                SP1FieldWordRangeChecker::<AB::F>::range_check(
                     builder,
                     Word([
                         input_u64s[i][0].into(),
@@ -339,7 +339,7 @@ where
                     local.input_range_checkers[2 * i],
                     local.is_real.into(),
                 );
-                BabyBearWordRangeChecker::<AB::F>::range_check(
+                SP1FieldWordRangeChecker::<AB::F>::range_check(
                     builder,
                     Word([
                         input_u64s[i][2].into(),
@@ -365,7 +365,7 @@ where
                 // Range check the hash result values.
                 builder.slice_range_check_u16(&local.hash_result[i].0, local.is_real);
 
-                BabyBearWordRangeChecker::<AB::F>::range_check(
+                SP1FieldWordRangeChecker::<AB::F>::range_check(
                     builder,
                     Word([
                         local.hash_result[i][0].into(),
@@ -376,7 +376,7 @@ where
                     local.hash_result_range_checkers[2 * i],
                     local.is_real.into(),
                 );
-                BabyBearWordRangeChecker::<AB::F>::range_check(
+                SP1FieldWordRangeChecker::<AB::F>::range_check(
                     builder,
                     Word([
                         local.hash_result[i][2].into(),

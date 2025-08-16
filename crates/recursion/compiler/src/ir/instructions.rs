@@ -214,24 +214,24 @@ pub enum DslIr<C: Config> {
     /// Performs the internal SBOX mapping for Poseidon2 in a batch.
     Poseidon2InternalSBOX(Ext<C::F, C::EF>, Ext<C::F, C::EF>),
 
-    /// Permutes an array of baby bear elements using Poseidon2 (output = p2_permute(array)).
-    Poseidon2PermuteBabyBear(Box<(Array<C, Felt<C::F>>, Array<C, Felt<C::F>>)>),
-    /// Compresses two baby bear element arrays using Poseidon2 (output = p2_compress(array1,
+    /// Permutes an array of koala bear elements using Poseidon2 (output = p2_permute(array)).
+    Poseidon2PermuteKoalaBear(Box<(Array<C, Felt<C::F>>, Array<C, Felt<C::F>>)>),
+    /// Compresses two koala bear element arrays using Poseidon2 (output = p2_compress(array1,
     /// array2)).
-    Poseidon2CompressBabyBear(
+    Poseidon2CompressKoalaBear(
         Box<(Array<C, Felt<C::F>>, Array<C, Felt<C::F>>, Array<C, Felt<C::F>>)>,
     ),
-    /// Absorb an array of baby bear elements for a specified hash instance.
-    Poseidon2AbsorbBabyBear(Var<C::N>, Array<C, Felt<C::F>>),
+    /// Absorb an array of koala bear elements for a specified hash instance.
+    Poseidon2AbsorbKoalaBear(Var<C::N>, Array<C, Felt<C::F>>),
     /// Finalize and return the hash digest of a specified hash instance.
-    Poseidon2FinalizeBabyBear(Var<C::N>, Array<C, Felt<C::F>>),
+    Poseidon2FinalizeKoalaBear(Var<C::N>, Array<C, Felt<C::F>>),
     /// Permutes an array of Bn254 elements using Poseidon2 (output = p2_permute(array)). Should
     /// only be used when target is a gnark circuit.
     CircuitPoseidon2Permute([Var<C::N>; 3]),
     /// Permutates an array of SP1Field elements in the circuit.
-    CircuitPoseidon2PermuteBabyBear(Box<[Felt<C::F>; 16]>),
+    CircuitPoseidon2PermuteKoalaBear(Box<[Felt<C::F>; 16]>),
     /// Permutates an array of SP1Field elements in the circuit using the skinny precompile.
-    CircuitV2Poseidon2PermuteBabyBear(Box<([Felt<C::F>; 16], [Felt<C::F>; 16])>),
+    CircuitV2Poseidon2PermuteKoalaBear(Box<([Felt<C::F>; 16], [Felt<C::F>; 16])>),
     /// Commits the public values.
     CircuitV2CommitPublicValues(Box<RecursionPublicValues<Felt<C::F>>>),
 

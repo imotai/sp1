@@ -473,8 +473,8 @@ where
 //     use sp1_core_executor::{Executor, Trace};
 //     use sp1_hypercube::InteractionKind;
 //     use sp1_hypercube::{
-//         baby_bear_poseidon2::SP1CoreJaggedConfig, debug_interactions_with_all_chips, SP1CoreOpts,
-//         StarkMachine,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig, debug_interactions_with_all_chips,
+// SP1CoreOpts,         StarkMachine,
 //     };
 
 //     #[test]

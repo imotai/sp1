@@ -1,17 +1,16 @@
 //! Elliptic Curve `y^2 = x^3 + 2x + 26z^5` over the `F_{p^7} = F_p[z]/(z^7 - 2z - 5)` extension
 //! field.
 use crate::{inner_perm, septic_extension::SepticExtension};
+use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
 use slop_symmetric::Permutation;
 use sp1_primitives::SP1Field;
 use std::ops::Add;
 
-/// A septic elliptic curve point on y^2 = x^3 + 2x + 26z^5 over field `F_{p^7} = F_p[z]/(z^7 - 2z -
-/// 5)`.
-#[derive(
-    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, deepsize2::DeepSizeOf,
-)]
+/// A septic elliptic curve point on y^2 = x^3 + 45x + 41z^3 over field
+/// `F_{p^7} = F_p[z]/(z^7 - 3z - 5)`.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, DeepSizeOf)]
 #[repr(C)]
 pub struct SepticCurve<F> {
     /// The x-coordinate of an elliptic curve point.
@@ -22,11 +21,11 @@ pub struct SepticCurve<F> {
 
 /// The x-coordinate for a curve point used as a witness for padding interactions, derived from `e`.
 pub const CURVE_WITNESS_DUMMY_POINT_X: [u32; 7] =
-    [0x2738281, 0x8284590, 0x4523536, 0x0287471, 0x3526624, 0x9775724, 0x7093699];
+    [0x2718281 + (1 << 24), 0x8284590, 0x4523536, 0x0287471, 0x3526624, 0x9775724, 0x7093699];
 
 /// The y-coordinate for a curve point used as a witness for padding interactions, derived from `e`.
 pub const CURVE_WITNESS_DUMMY_POINT_Y: [u32; 7] =
-    [48041908, 550064556, 415267377, 1726976249, 1253299140, 209439863, 1302309485];
+    [1250555984, 1592495468, 656721246, 420301347, 2125819749, 819876460, 17687681];
 
 impl<F: Field> SepticCurve<F> {
     /// Returns the dummy point.
@@ -74,7 +73,8 @@ impl<F: Field> SepticCurve<F> {
     #[must_use]
     /// Double the elliptic curve point.
     pub fn double(&self) -> Self {
-        let slope = (self.x * self.x * F::from_canonical_u8(3u8) + F::two()) / (self.y * F::two());
+        let slope = (self.x * self.x * F::from_canonical_u8(3u8) + F::from_canonical_u16(45))
+            / (self.y * F::two());
         let result_x = slope.square() - self.x * F::two();
         let result_y = slope * (self.x - result_x) - self.y;
         Self { x: result_x, y: result_y }
@@ -97,17 +97,17 @@ impl<F: Field> SepticCurve<F> {
 }
 
 impl<F: AbstractField> SepticCurve<F> {
-    /// Evaluates the curve formula x^3 + 2x + 26z^5
+    /// Evaluates the curve formula x^3 + 45x + 41z^3
     pub fn curve_formula(x: SepticExtension<F>) -> SepticExtension<F> {
         x.cube()
-            + x * F::two()
+            + x * F::from_canonical_u16(45)
             + SepticExtension::from_base_slice(&[
                 F::zero(),
                 F::zero(),
                 F::zero(),
+                F::from_canonical_u32(41),
                 F::zero(),
                 F::zero(),
-                F::from_canonical_u32(26),
                 F::zero(),
             ])
     }
@@ -146,7 +146,8 @@ impl<F: PrimeField32> SepticCurve<F> {
             let m_hash = perm
                 .permute(m_trial.map(|x| SP1Field::from_canonical_u32(x.as_canonical_u32())))
                 .map(|x| F::from_canonical_u32(x.as_canonical_u32()));
-            let x_trial = SepticExtension(m_hash[..7].try_into().unwrap());
+            let result = m_hash[..7].try_into().unwrap();
+            let x_trial = SepticExtension(result);
 
             let y_sq = Self::curve_formula(x_trial);
             if let Some(y) = y_sq.sqrt() {
@@ -249,121 +250,125 @@ impl<F: Field> SepticCurveComplete<F> {
 
 #[cfg(test)]
 mod tests {
-    // use rayon::prelude::*;
-    // use rayon_scan::ScanParallelIterator;
-    // use sp1_primitives::SP1Field;
-    // use std::time::Instant;
+    use rayon::prelude::*;
+    use rayon_scan::ScanParallelIterator;
+    use sp1_primitives::SP1Field;
+    use std::time::Instant;
 
-    // use super::*;
+    use super::*;
 
-    // #[test]
-    // fn test_lift_x() {
-    //     let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
-    //         SP1Field::from_canonical_u32(0x2013),
-    //         SP1Field::from_canonical_u32(0x2015),
-    //         SP1Field::from_canonical_u32(0x2016),
-    //         SP1Field::from_canonical_u32(0x2023),
-    //         SP1Field::from_canonical_u32(0x2024),
-    //         SP1Field::from_canonical_u32(0x2016),
-    //         SP1Field::from_canonical_u32(0x2017),
-    //     ]);
-    //     let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
-    //     assert!(curve_point.check_on_point());
-    //     assert!(!curve_point.x.is_receive());
-    // }
+    #[test]
+    fn test_lift_x() {
+        let x = [
+            SP1Field::from_canonical_u32(0x2013),
+            SP1Field::from_canonical_u32(0x2015),
+            SP1Field::from_canonical_u32(0x2016),
+            SP1Field::from_canonical_u32(0x2023),
+            SP1Field::from_canonical_u32(0x2024),
+            SP1Field::from_canonical_u32(0x2016),
+            SP1Field::from_canonical_u32(0x2017),
+            SP1Field::from_canonical_u32(0),
+        ];
+        let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
+        assert!(curve_point.check_on_point());
+        assert!(curve_point.y.is_receive());
+    }
 
-    // #[test]
-    // fn test_double() {
-    //     let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
-    //         SP1Field::from_canonical_u32(0x2013),
-    //         SP1Field::from_canonical_u32(0x2015),
-    //         SP1Field::from_canonical_u32(0x2016),
-    //         SP1Field::from_canonical_u32(0x2023),
-    //         SP1Field::from_canonical_u32(0x2024),
-    //         SP1Field::from_canonical_u32(0x2016),
-    //         SP1Field::from_canonical_u32(0x2017),
-    //     ]);
-    //     let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
-    //     let double_point = curve_point.double();
-    //     assert!(double_point.check_on_point());
-    // }
+    #[test]
+    fn test_double() {
+        let x = [
+            SP1Field::from_canonical_u32(0x2013),
+            SP1Field::from_canonical_u32(0x2015),
+            SP1Field::from_canonical_u32(0x2016),
+            SP1Field::from_canonical_u32(0x2023),
+            SP1Field::from_canonical_u32(0x2024),
+            SP1Field::from_canonical_u32(0x2016),
+            SP1Field::from_canonical_u32(0x2017),
+            SP1Field::from_canonical_u32(0x2018),
+        ];
+        let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
+        let double_point = curve_point.double();
+        assert!(double_point.check_on_point());
+    }
 
-    // #[test]
-    // #[ignore = "TODO"]
-    // #[allow(clippy::print_stdout)]
-    // fn test_simple_bench() {
-    //     const D: u32 = 1 << 16;
-    //     let mut vec = Vec::with_capacity(D as usize);
-    //     let mut sum = Vec::with_capacity(D as usize);
-    //     let start = Instant::now();
-    //     for i in 0..D {
-    //         let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
-    //             SP1Field::from_canonical_u32(i + 25),
-    //             SP1Field::from_canonical_u32(2 * i + 376),
-    //             SP1Field::from_canonical_u32(4 * i + 23),
-    //             SP1Field::from_canonical_u32(8 * i + 531),
-    //             SP1Field::from_canonical_u32(16 * i + 542),
-    //             SP1Field::from_canonical_u32(32 * i + 196),
-    //             SP1Field::from_canonical_u32(64 * i + 667),
-    //         ]);
-    //         let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
-    //         vec.push(curve_point);
-    //     }
-    //     println!("Time elapsed: {:?}", start.elapsed());
-    //     let start = Instant::now();
-    //     for i in 0..D {
-    //         sum.push(vec[i as usize].add_incomplete(vec[((i + 1) % D) as usize]));
-    //     }
-    //     println!("Time elapsed: {:?}", start.elapsed());
-    //     let start = Instant::now();
-    //     for i in 0..(D as usize) {
-    //         assert!(
-    //             SepticCurve::<SP1Field>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
-    //                 == SepticExtension::<SP1Field>::zero()
-    //         );
-    //         assert!(
-    //             SepticCurve::<SP1Field>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
-    //                 == SepticExtension::<SP1Field>::zero()
-    //         );
-    //     }
-    //     println!("Time elapsed: {:?}", start.elapsed());
-    // }
+    #[test]
+    #[ignore = "benchmarking purposes only"]
+    #[allow(clippy::print_stdout)]
+    fn test_simple_bench() {
+        const D: u32 = 1 << 16;
+        let mut vec = Vec::with_capacity(D as usize);
+        let mut sum = Vec::with_capacity(D as usize);
+        let start = Instant::now();
+        for i in 0..D {
+            let x = [
+                SP1Field::from_canonical_u32(i + 25),
+                SP1Field::from_canonical_u32(2 * i + 376),
+                SP1Field::from_canonical_u32(4 * i + 23),
+                SP1Field::from_canonical_u32(8 * i + 531),
+                SP1Field::from_canonical_u32(16 * i + 542),
+                SP1Field::from_canonical_u32(32 * i + 196),
+                SP1Field::from_canonical_u32(64 * i + 667),
+                SP1Field::from_canonical_u32(128 * i + 123),
+            ];
+            let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
+            vec.push(curve_point);
+        }
+        println!("Time elapsed: {:?}", start.elapsed());
+        let start = Instant::now();
+        for i in 0..D {
+            sum.push(vec[i as usize].add_incomplete(vec[((i + 1) % D) as usize]));
+        }
+        println!("Time elapsed: {:?}", start.elapsed());
+        let start = Instant::now();
+        for i in 0..(D as usize) {
+            assert!(
+                SepticCurve::<SP1Field>::sum_checker_x(vec[i], vec[(i + 1) % D as usize], sum[i])
+                    == SepticExtension::<SP1Field>::zero()
+            );
+            assert!(
+                SepticCurve::<SP1Field>::sum_checker_y(vec[i], vec[(i + 1) % D as usize], sum[i])
+                    == SepticExtension::<SP1Field>::zero()
+            );
+        }
+        println!("Time elapsed: {:?}", start.elapsed());
+    }
 
-    // #[test]
-    // #[ignore = "TODO"]
-    // #[allow(clippy::print_stdout)]
-    // fn test_parallel_bench() {
-    //     const D: u32 = 1 << 20;
-    //     let mut vec = Vec::with_capacity(D as usize);
-    //     let start = Instant::now();
-    //     for i in 0..D {
-    //         let x: SepticExtension<SP1Field> = SepticExtension::from_base_slice(&[
-    //             SP1Field::from_canonical_u32(i + 25),
-    //             SP1Field::from_canonical_u32(2 * i + 376),
-    //             SP1Field::from_canonical_u32(4 * i + 23),
-    //             SP1Field::from_canonical_u32(8 * i + 531),
-    //             SP1Field::from_canonical_u32(16 * i + 542),
-    //             SP1Field::from_canonical_u32(32 * i + 196),
-    //             SP1Field::from_canonical_u32(64 * i + 667),
-    //         ]);
-    //         let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
-    //         vec.push(SepticCurveComplete::Affine(curve_point));
-    //     }
-    //     println!("Time elapsed: {:?}", start.elapsed());
+    #[test]
+    #[ignore = "benchmarking purposes only"]
+    #[allow(clippy::print_stdout)]
+    fn test_parallel_bench() {
+        const D: u32 = 1 << 20;
+        let mut vec = Vec::with_capacity(D as usize);
+        let start = Instant::now();
+        for i in 0..D {
+            let x = [
+                SP1Field::from_canonical_u32(i + 25),
+                SP1Field::from_canonical_u32(2 * i + 376),
+                SP1Field::from_canonical_u32(4 * i + 23),
+                SP1Field::from_canonical_u32(8 * i + 531),
+                SP1Field::from_canonical_u32(16 * i + 542),
+                SP1Field::from_canonical_u32(32 * i + 196),
+                SP1Field::from_canonical_u32(64 * i + 667),
+                SP1Field::from_canonical_u32(128 * i + 123),
+            ];
+            let (curve_point, _, _, _) = SepticCurve::<SP1Field>::lift_x(x);
+            vec.push(SepticCurveComplete::Affine(curve_point));
+        }
+        println!("Time elapsed: {:?}", start.elapsed());
 
-    //     let mut cum_sum = SepticCurveComplete::Infinity;
-    //     let start = Instant::now();
-    //     for point in &vec {
-    //         cum_sum = cum_sum + *point;
-    //     }
-    //     println!("Time elapsed: {:?}", start.elapsed());
-    //     let start = Instant::now();
-    //     let par_sum = vec
-    //         .into_par_iter()
-    //         .with_min_len(1 << 16)
-    //         .scan(|a, b| *a + *b, SepticCurveComplete::Infinity)
-    //         .collect::<Vec<SepticCurveComplete<SP1Field>>>();
-    //     println!("Time elapsed: {:?}", start.elapsed());
-    //     assert_eq!(cum_sum, *par_sum.last().unwrap());
-    // }
+        let mut cum_sum = SepticCurveComplete::Infinity;
+        let start = Instant::now();
+        for point in &vec {
+            cum_sum = cum_sum + *point;
+        }
+        println!("Time elapsed: {:?}", start.elapsed());
+        let start = Instant::now();
+        let par_sum = vec
+            .into_par_iter()
+            .with_min_len(1 << 16)
+            .scan(|a, b| *a + *b, SepticCurveComplete::Infinity)
+            .collect::<Vec<SepticCurveComplete<SP1Field>>>();
+        println!("Time elapsed: {:?}", start.elapsed());
+        assert_eq!(cum_sum, *par_sum.last().unwrap());
+    }
 }

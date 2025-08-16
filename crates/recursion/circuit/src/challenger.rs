@@ -451,7 +451,6 @@ pub(crate) mod tests {
     };
     use slop_algebra::AbstractField;
 
-    use slop_baby_bear::baby_bear_poseidon2::Perm;
     use slop_bn254::Bn254Fr;
     use slop_challenger::{
         CanObserve, CanSample, CanSampleBits, DuplexChallenger, FieldChallenger,
@@ -461,7 +460,7 @@ pub(crate) mod tests {
     use slop_merkle_tree::{outer_perm, DefaultMerkleTreeConfig, OuterPerm, Poseidon2Bn254Config};
     use slop_symmetric::{CryptographicHasher, Hash, PseudoCompressionFunction};
     use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig, SP1OuterConfig};
-    use sp1_primitives::SP1Field;
+    use sp1_primitives::{SP1Field, SP1Perm};
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig},
         config::OuterConfig,
@@ -482,7 +481,8 @@ pub(crate) mod tests {
     #[allow(clippy::uninlined_format_args)]
     async fn test_compiler_challenger() {
         let default_perm = inner_perm();
-        let mut challenger = DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm.clone());
+        let mut challenger =
+            DuplexChallenger::<SP1Field, SP1Perm, 16, 8>::new(default_perm.clone());
         challenger.observe(F::one());
         challenger.observe(F::two());
         challenger.observe(F::two());
@@ -648,7 +648,7 @@ pub(crate) mod tests {
     #[test]
     fn test_p2_compress() {
         type OuterDigestVariable = [Var<<C as Config>::N>; BN254_DIGEST_SIZE];
-        let (_, compressor) = Poseidon2Bn254Config::default_hasher_and_compressor();
+        let (_, compressor) = Poseidon2Bn254Config::<SP1Field>::default_hasher_and_compressor();
 
         let a: [Bn254Fr; 1] = [Bn254Fr::two()];
         let b: [Bn254Fr; 1] = [Bn254Fr::two()];

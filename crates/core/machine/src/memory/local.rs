@@ -361,7 +361,7 @@ where
 //     use sp1_core_executor::{ExecutionRecord, Executor, Trace};
 //     use sp1_hypercube::{
 //         air::{InteractionScope, MachineAir},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         debug_interactions_with_all_chips, InteractionKind, SP1CoreOpts, StarkMachine,
 //     };
 
@@ -537,7 +537,7 @@ where
 //                     let cols = &mut cols.memory_local_entries[k];
 //                     if idx + k < events.len() {
 //                         unsafe {
-//                             crate::sys::memory_local_event_to_row_babybear(events[idx + k],
+//                             crate::sys::memory_local_event_to_row_koalabear(events[idx + k],
 // cols);                         }
 //                     }
 //                 }

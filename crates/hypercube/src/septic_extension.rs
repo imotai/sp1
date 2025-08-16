@@ -1,4 +1,4 @@
-//! A septic extension with an irreducible polynomial `z^7 - 2z - 5`.
+//! A septic extension with an irreducible polynomial `z^7 - 3z - 5`.
 use num_bigint::BigUint;
 use num_traits::One;
 use serde::{Deserialize, Serialize};
@@ -14,9 +14,9 @@ use std::{
 
 use crate::air::{SP1AirBuilder, SepticExtensionAirBuilder};
 
-/// A septic extension with an irreducible polynomial `z^7 - 2z - 5`.
+/// A septic extension with an irreducible polynomial `z^7 - 3z - 5`.
 ///
-/// The field can be constructed as `F_{p^7} = F_p[z]/(z^7 - 2z - 5)`.
+/// The field can be constructed as `F_{p^7} = F_p[z]/(z^7 - 3z - 5)`.
 #[derive(
     Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, deepsize2::DeepSizeOf,
 )]
@@ -183,7 +183,15 @@ impl<F: AbstractField> AbstractField for SepticExtension<F> {
     }
 
     fn generator() -> Self {
-        SepticExtension([F::two(), F::one(), F::zero(), F::zero(), F::zero(), F::zero(), F::zero()])
+        SepticExtension([
+            F::zero(),
+            F::one(),
+            F::zero(),
+            F::zero(),
+            F::zero(),
+            F::zero(),
+            F::zero(),
+        ])
     }
 }
 
@@ -299,6 +307,7 @@ impl<F: AbstractField> Neg for SepticExtension<F> {
 impl<F: AbstractField> Mul for SepticExtension<F> {
     type Output = Self;
 
+    /// The multiplication rule for `F_{p^7} = F_p[z]/(z^7 - 3z - 5)`.
     fn mul(self, rhs: Self) -> Self::Output {
         let mut res: [F; 13] = core::array::from_fn(|_| F::zero());
         for i in 0..7 {
@@ -309,7 +318,7 @@ impl<F: AbstractField> Mul for SepticExtension<F> {
         let mut ret: [F; 7] = core::array::from_fn(|i| res[i].clone());
         for i in 7..13 {
             ret[i - 7] = ret[i - 7].clone() + res[i].clone() * F::from_canonical_u32(5);
-            ret[i - 6] = ret[i - 6].clone() + res[i].clone() * F::from_canonical_u32(2);
+            ret[i - 6] = ret[i - 6].clone() + res[i].clone() * F::from_canonical_u32(3);
         }
         Self(ret)
     }
@@ -420,75 +429,75 @@ impl<F: AbstractField> Display for SepticExtension<F> {
 impl<F: Field> SepticExtension<F> {
     /// Returns the value of z^{index * p} in the [`SepticExtension`] field.
     fn z_pow_p(index: u32) -> Self {
-        // The constants written below are specifically for the SP1Field field.
-        debug_assert_eq!(F::order(), BigUint::from(2013265921u32));
+        // The constants written below are specifically for the KoalaBear field.
+        debug_assert_eq!(F::order(), BigUint::from(2130706433u32));
         if index == 0 {
             return Self::one();
         }
         if index == 1 {
             return SepticExtension([
-                F::from_canonical_u32(954599710),
-                F::from_canonical_u32(1359279693),
-                F::from_canonical_u32(566669999),
-                F::from_canonical_u32(1982781815),
-                F::from_canonical_u32(1735718361),
-                F::from_canonical_u32(1174868538),
-                F::from_canonical_u32(1120871770),
+                F::from_canonical_u32(1272123317),
+                F::from_canonical_u32(1950759909),
+                F::from_canonical_u32(1879852731),
+                F::from_canonical_u32(746569225),
+                F::from_canonical_u32(180350946),
+                F::from_canonical_u32(1600835585),
+                F::from_canonical_u32(333893434),
             ]);
         }
         if index == 2 {
             return SepticExtension([
-                F::from_canonical_u32(862825265),
-                F::from_canonical_u32(597046311),
-                F::from_canonical_u32(978840770),
-                F::from_canonical_u32(1790138282),
-                F::from_canonical_u32(1044777201),
-                F::from_canonical_u32(835869808),
-                F::from_canonical_u32(1342179023),
+                F::from_canonical_u32(129050189),
+                F::from_canonical_u32(1749509219),
+                F::from_canonical_u32(983995729),
+                F::from_canonical_u32(711096547),
+                F::from_canonical_u32(1505254548),
+                F::from_canonical_u32(639452798),
+                F::from_canonical_u32(68186395),
             ]);
         }
         if index == 3 {
             return SepticExtension([
-                F::from_canonical_u32(596273169),
-                F::from_canonical_u32(658837454),
-                F::from_canonical_u32(1515468261),
-                F::from_canonical_u32(367059247),
-                F::from_canonical_u32(781278880),
-                F::from_canonical_u32(1544222616),
-                F::from_canonical_u32(155490465),
+                F::from_canonical_u32(1911662442),
+                F::from_canonical_u32(1095215454),
+                F::from_canonical_u32(1794102427),
+                F::from_canonical_u32(1173566779),
+                F::from_canonical_u32(140526665),
+                F::from_canonical_u32(110899104),
+                F::from_canonical_u32(1387282150),
             ]);
         }
         if index == 4 {
             return SepticExtension([
-                F::from_canonical_u32(557608863),
-                F::from_canonical_u32(1173670028),
-                F::from_canonical_u32(1749546888),
-                F::from_canonical_u32(1086464137),
-                F::from_canonical_u32(803900099),
-                F::from_canonical_u32(1288818584),
-                F::from_canonical_u32(1184677604),
+                F::from_canonical_u32(1366416596),
+                F::from_canonical_u32(1212861),
+                F::from_canonical_u32(2104391040),
+                F::from_canonical_u32(1447859676),
+                F::from_canonical_u32(308944373),
+                F::from_canonical_u32(106444152),
+                F::from_canonical_u32(1362577042),
             ]);
         }
         if index == 5 {
             return SepticExtension([
-                F::from_canonical_u32(763416381),
-                F::from_canonical_u32(1252567168),
-                F::from_canonical_u32(628856225),
-                F::from_canonical_u32(1771903394),
-                F::from_canonical_u32(650712211),
-                F::from_canonical_u32(19417363),
-                F::from_canonical_u32(57990258),
+                F::from_canonical_u32(1411781189),
+                F::from_canonical_u32(1580508159),
+                F::from_canonical_u32(1332301780),
+                F::from_canonical_u32(1528790701),
+                F::from_canonical_u32(380217034),
+                F::from_canonical_u32(1752756730),
+                F::from_canonical_u32(989817517),
             ]);
         }
         if index == 6 {
             return SepticExtension([
-                F::from_canonical_u32(1734711039),
-                F::from_canonical_u32(1749813853),
-                F::from_canonical_u32(1227235221),
-                F::from_canonical_u32(1707730636),
-                F::from_canonical_u32(424560395),
-                F::from_canonical_u32(1007029514),
-                F::from_canonical_u32(498034669),
+                F::from_canonical_u32(37669840),
+                F::from_canonical_u32(439102875),
+                F::from_canonical_u32(410223214),
+                F::from_canonical_u32(964813232),
+                F::from_canonical_u32(1250258104),
+                F::from_canonical_u32(877333757),
+                F::from_canonical_u32(222095778),
             ]);
         }
         unreachable!();
@@ -496,75 +505,75 @@ impl<F: Field> SepticExtension<F> {
 
     /// Returns the value of z^{index * p^2} in the [`SepticExtension`] field.
     fn z_pow_p2(index: u32) -> Self {
-        // The constants written below are specifically for the SP1Field field.
-        debug_assert_eq!(F::order(), BigUint::from(2013265921u32));
+        // The constants written below are specifically for the KoalaBear field.
+        debug_assert_eq!(F::order(), BigUint::from(2130706433u32));
         if index == 0 {
             return Self::one();
         }
         if index == 1 {
             return SepticExtension([
-                F::from_canonical_u32(1013489358),
-                F::from_canonical_u32(1619071628),
-                F::from_canonical_u32(304593143),
-                F::from_canonical_u32(1949397349),
-                F::from_canonical_u32(1564307636),
-                F::from_canonical_u32(327761151),
-                F::from_canonical_u32(415430835),
+                F::from_canonical_u32(1330073564),
+                F::from_canonical_u32(1724372201),
+                F::from_canonical_u32(942213154),
+                F::from_canonical_u32(258987814),
+                F::from_canonical_u32(1836986639),
+                F::from_canonical_u32(566030553),
+                F::from_canonical_u32(2086945921),
             ]);
         }
         if index == 2 {
             return SepticExtension([
-                F::from_canonical_u32(209824426),
-                F::from_canonical_u32(1313900768),
-                F::from_canonical_u32(38410482),
-                F::from_canonical_u32(256593180),
-                F::from_canonical_u32(1708830551),
-                F::from_canonical_u32(1244995038),
-                F::from_canonical_u32(1555324019),
+                F::from_canonical_u32(473977877),
+                F::from_canonical_u32(99096011),
+                F::from_canonical_u32(1919717963),
+                F::from_canonical_u32(733784355),
+                F::from_canonical_u32(1167998744),
+                F::from_canonical_u32(19619652),
+                F::from_canonical_u32(1354518805),
             ]);
         }
         if index == 3 {
             return SepticExtension([
-                F::from_canonical_u32(1475628651),
-                F::from_canonical_u32(777565847),
-                F::from_canonical_u32(704492386),
-                F::from_canonical_u32(1218528120),
-                F::from_canonical_u32(1245363405),
-                F::from_canonical_u32(475884575),
-                F::from_canonical_u32(649166061),
+                F::from_canonical_u32(1040563478),
+                F::from_canonical_u32(1866766699),
+                F::from_canonical_u32(1875293643),
+                F::from_canonical_u32(846885082),
+                F::from_canonical_u32(1921678452),
+                F::from_canonical_u32(2127718474),
+                F::from_canonical_u32(1489297699),
             ]);
         }
         if index == 4 {
             return SepticExtension([
-                F::from_canonical_u32(550038364),
-                F::from_canonical_u32(948935655),
-                F::from_canonical_u32(68722023),
-                F::from_canonical_u32(1251345762),
-                F::from_canonical_u32(1692456177),
-                F::from_canonical_u32(1177958698),
-                F::from_canonical_u32(350232928),
+                F::from_canonical_u32(1350284585),
+                F::from_canonical_u32(1583164394),
+                F::from_canonical_u32(512913106),
+                F::from_canonical_u32(1818487640),
+                F::from_canonical_u32(2116891899),
+                F::from_canonical_u32(318922921),
+                F::from_canonical_u32(1013732863),
             ]);
         }
         if index == 5 {
             return SepticExtension([
-                F::from_canonical_u32(882720258),
-                F::from_canonical_u32(821925756),
-                F::from_canonical_u32(199955840),
-                F::from_canonical_u32(812002876),
-                F::from_canonical_u32(1484951277),
-                F::from_canonical_u32(1063138035),
-                F::from_canonical_u32(491712810),
+                F::from_canonical_u32(887772098),
+                F::from_canonical_u32(1971095075),
+                F::from_canonical_u32(843183752),
+                F::from_canonical_u32(711838602),
+                F::from_canonical_u32(1717807390),
+                F::from_canonical_u32(521017530),
+                F::from_canonical_u32(1548716569),
             ]);
         }
         if index == 6 {
             return SepticExtension([
-                F::from_canonical_u32(738287111),
-                F::from_canonical_u32(1955364991),
-                F::from_canonical_u32(552724293),
-                F::from_canonical_u32(1175775744),
-                F::from_canonical_u32(341623997),
-                F::from_canonical_u32(1454022463),
-                F::from_canonical_u32(408193320),
+                F::from_canonical_u32(372606377),
+                F::from_canonical_u32(357514301),
+                F::from_canonical_u32(335089633),
+                F::from_canonical_u32(330400379),
+                F::from_canonical_u32(1545190367),
+                F::from_canonical_u32(1813349020),
+                F::from_canonical_u32(1393941056),
             ]);
         }
         unreachable!();
@@ -639,7 +648,7 @@ impl<F: Field> SepticExtension<F> {
         let mut n_power = n;
         for i in 1..30 {
             n_iter *= n_iter;
-            if i >= 26 {
+            if i >= 23 {
                 n_power *= n_iter;
             }
         }
@@ -677,8 +686,7 @@ impl<F: PrimeField32> SepticExtension<F> {
     /// Returns whether the extension field element viewed as an y-coordinate of a digest represents
     /// a receive interaction.
     pub fn is_receive(&self) -> bool {
-        1 <= self.0[6].as_canonical_u32()
-            && self.0[6].as_canonical_u32() <= F::ORDER_U32.div_ceil(2)
+        1 <= self.0[6].as_canonical_u32() && self.0[6].as_canonical_u32() < F::ORDER_U32.div_ceil(2)
     }
 
     /// Returns whether the extension field element viewed as an y-coordinate of a digest represents

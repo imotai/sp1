@@ -231,7 +231,7 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
 //         ExecutionError, ExecutionRecord, Executor, Instruction, Opcode, Program, Simple,
 //     };
 //     use sp1_hypercube::{
-//         air::MachineAir, baby_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
+//         air::MachineAir, koala_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
 //         MachineProver, SP1CoreOpts, Val,
 //     };
 

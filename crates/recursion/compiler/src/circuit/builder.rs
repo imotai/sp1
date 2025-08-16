@@ -82,24 +82,24 @@ impl<C: Config<F = SP1Field>> CircuitV2Builder<C> for Builder<C> {
 
         // If there are less than 31 bits, there is nothing to check.
         if num_bits > 30 {
-            // Since SP1Field modulus is 2^31 - 2^27 + 1, if any of the top `4` bits are zero, the
-            // number is less than 2^27, and we can stop the iteration. Othwriwse, if all the top
-            // `4` bits are '1`, we need to check that all the bottom `27` are '0`
+            // Since SP1Field modulus is 2^31 - 2^24 + 1, if any of the top `7` bits are zero, the
+            // number is less than 2^24, and we can stop the iteration. Othwriwse, if all the top
+            // `7` bits are '1`, we need to check that all the bottom `24` are '0`
 
-            // Get a flag that is zero if any of the top `4` bits are zero, and one otherwise. We
+            // Get a flag that is zero if any of the top `7` bits are zero, and one otherwise. We
             // can do this by simply taking their product (which is bitwise AND).
             let are_all_top_bits_one: Felt<_> = self.eval(
                 output
                     .iter()
                     .rev()
-                    .take(4)
+                    .take(7)
                     .copied()
                     .map(SymbolicFelt::from)
                     .product::<SymbolicFelt<_>>(),
             );
 
-            // Assert that if all the top `4` bits are one, then all the bottom `27` bits are zero.
-            for bit in output.iter().take(27).copied() {
+            // Assert that if all the top `7` bits are one, then all the bottom `24` bits are zero.
+            for bit in output.iter().take(24).copied() {
                 self.assert_felt_eq(bit * are_all_top_bits_one, C::F::zero());
             }
         }
@@ -144,7 +144,7 @@ impl<C: Config<F = SP1Field>> CircuitV2Builder<C> for Builder<C> {
         array: [Felt<C::F>; PERMUTATION_WIDTH],
     ) -> [Felt<C::F>; PERMUTATION_WIDTH] {
         let output: [Felt<C::F>; PERMUTATION_WIDTH] = core::array::from_fn(|_| self.uninit());
-        self.push_op(DslIr::CircuitV2Poseidon2PermuteBabyBear(Box::new((output, array))));
+        self.push_op(DslIr::CircuitV2Poseidon2PermuteKoalaBear(Box::new((output, array))));
         output
     }
 

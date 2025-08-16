@@ -50,7 +50,7 @@ pub enum ConstraintOpcode {
     CommitVkRoot,
     CircuitFelts2Ext,
     CircuitFelt2Var,
-    PermuteBabyBear,
+    PermuteKoalaBear,
     ReduceE,
     EqEval,
 }

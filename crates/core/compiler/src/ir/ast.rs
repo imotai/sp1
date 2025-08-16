@@ -5,11 +5,11 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
 use sp1_hypercube::{
     air::{AirInteraction, InteractionScope},
     InteractionKind, Word,
 };
+use sp1_primitives::consts::{WORD_BYTE_SIZE, WORD_SIZE};
 
 use slop_algebra::{ExtensionField, Field};
 
@@ -457,11 +457,11 @@ where
         } else {
             assert_eq!(self.output.len(), 1);
             match self.output.first().unwrap() {
-                Ty::Word(_) => "Word Babybear × SP1ConstraintList".to_string(),
-                Ty::Expr(_) => "BabyBear × SP1ConstraintList".to_string(),
-                Ty::ArrWordSize(_) => "Vector BabyBear WORD_SIZE × SP1ConstraintList".to_string(),
+                Ty::Word(_) => "Word KoalaBear × SP1ConstraintList".to_string(),
+                Ty::Expr(_) => "KoalaBear × SP1ConstraintList".to_string(),
+                Ty::ArrWordSize(_) => "Vector KoalaBear WORD_SIZE × SP1ConstraintList".to_string(),
                 Ty::ArrWordByteSize(_) => {
-                    "Vector BabyBear WORD_BYTE_SIZE × SP1ConstraintList".to_string()
+                    "Vector KoalaBear WORD_BYTE_SIZE × SP1ConstraintList".to_string()
                 }
                 _ => unimplemented!(),
             }
@@ -657,8 +657,8 @@ where
 impl<Expr, ExprExt> Ty<Expr, ExprExt> {
     pub fn to_lean_type(&self) -> String {
         match self {
-            Ty::Expr(_) => "BabyBear".to_string(),
-            Ty::Word(_) => "Word BabyBear".to_string(),
+            Ty::Expr(_) => "KoalaBear".to_string(),
+            Ty::Word(_) => "Word KoalaBear".to_string(),
             Ty::AddOperation(_) => "AddOperation".to_string(),
             Ty::SubOperation(_) => "SubOperation".to_string(),
             Ty::BitwiseU16Operation(_) => "BitwiseU16Operation".to_string(),
@@ -668,8 +668,8 @@ impl<Expr, ExprExt> Ty<Expr, ExprExt> {
             Ty::U16MSBOperation(_) => "U16MSBOperation".to_string(),
             Ty::LtOperationUnsigned(_) => "LtOperationUnsigned".to_string(),
             Ty::LtOperationSigned(_) => "LtOperationSigned".to_string(),
-            Ty::ArrWordSize(_) => "Vector BabyBear 4".to_string(),
-            Ty::ArrWordByteSize(_) => "Vector BabyBear 2".to_string(),
+            Ty::ArrWordSize(_) => "Vector KoalaBear 4".to_string(),
+            Ty::ArrWordByteSize(_) => "Vector KoalaBear 2".to_string(),
             Ty::RTypeReader(_) => "RTypeReader".to_string(),
             Ty::ALUTypeReader(_) => "ALUTypeReader".to_string(),
             Ty::CPUState(_) => "CPUState".to_string(),
@@ -905,7 +905,7 @@ impl<F: Field, EF: ExtensionField<F>> OpExpr<ExprRef<F>, ExprExtRef<EF>> {
                     BinOp::Sub => "-",
                     BinOp::Mul => "*",
                 };
-                Some(format!("let {} : BabyBear := {} {} {}", result_str, a_str, op_str, b_str))
+                Some(format!("let {} : KoalaBear := {} {} {}", result_str, a_str, op_str, b_str))
             }
             OpExpr::BinOpExt(op, result, a, b) => {
                 // Extension field operations - similar to BinOp
@@ -934,7 +934,7 @@ impl<F: Field, EF: ExtensionField<F>> OpExpr<ExprRef<F>, ExprExtRef<EF>> {
             OpExpr::Neg(result, a) => {
                 let result_str = result.to_lean(is_operation, input_mapping);
                 let a_str = a.to_lean(is_operation, input_mapping);
-                Some(format!("let {} : BabyBear := -{}", result_str, a_str))
+                Some(format!("let {} : KoalaBear := -{}", result_str, a_str))
             }
             OpExpr::NegExt(result, a) => {
                 let result_str = result.to_lean(is_operation, input_mapping);
@@ -952,7 +952,7 @@ impl<F: Field, EF: ExtensionField<F>> OpExpr<ExprRef<F>, ExprExtRef<EF>> {
             OpExpr::Assign(a, b) => {
                 let a_str = a.to_lean(is_operation, input_mapping);
                 let b_str = b.to_lean(is_operation, input_mapping);
-                Some(format!("let {} : BabyBear := {}", a_str, b_str))
+                Some(format!("let {} : KoalaBear := {}", a_str, b_str))
             }
             OpExpr::Call(_func) => {
                 // Function calls will be handled separately in the AST level

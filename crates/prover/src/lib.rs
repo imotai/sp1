@@ -89,6 +89,7 @@ pub struct SP1ProverBuilder<C: SP1ProverComponents> {
     maximum_compose_arity: usize,
     normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<SP1Field>>>,
     vk_verification: bool,
+    compute_recursion_vks_at_initialization: bool,
     vk_map_path: Option<String>,
 }
 
@@ -147,6 +148,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             normalize_programs: BTreeMap::new(),
             maximum_compose_arity: max_compose_arity,
             vk_verification: true,
+            compute_recursion_vks_at_initialization: true,
             vk_map_path: None,
         };
 
@@ -281,6 +283,11 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
+    pub fn without_recursion_vks(mut self) -> Self {
+        self.compute_recursion_vks_at_initialization = false;
+        self
+    }
+
     pub async fn build(&mut self) -> SP1Prover<C> {
         let core_prover = self.core_prover_builder.build();
         let core_verifier = core_prover.verifier().shard_verifier().clone();
@@ -298,6 +305,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             normalize_programs,
             self.maximum_compose_arity,
             self.vk_verification,
+            self.compute_recursion_vks_at_initialization,
             self.vk_map_path.clone(),
         )
         .await;

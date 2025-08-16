@@ -214,6 +214,6 @@ pub fn test_groth16_bn254(witness_json: &str, constraints_json: &str) {
     test(ProofSystem::Groth16, witness_json, constraints_json).expect("failed to test with docker");
 }
 
-pub fn test_babybear_poseidon2() {
+pub fn test_koalabear_poseidon2() {
     unimplemented!()
 }

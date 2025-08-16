@@ -4,7 +4,7 @@
 use lazy_static::lazy_static;
 
 use slop_algebra::AbstractField;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 
 pub mod consts;
@@ -15,7 +15,7 @@ pub use types::Elf;
 
 /// The canonical version of the SP1 crate.
 pub const SP1_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub type SP1Field = BabyBear;
+pub type SP1Field = KoalaBear;
 
 lazy_static! {
     // These constants are created by a RNG.
@@ -1111,13 +1111,13 @@ lazy_static! {
 }
 
 pub fn poseidon2_init() -> SP1Perm {
-    slop_baby_bear::baby_bear_poseidon2::my_bb_16_perm()
+    slop_koala_bear::my_kb_16_perm()
 }
 
-pub use slop_baby_bear::DiffusionMatrixBabyBear as SP1DiffusionMatrix;
+pub use slop_koala_bear::DiffusionMatrixKoalaBear as SP1DiffusionMatrix;
 use slop_symmetric::{CryptographicHasher, PaddingFreeSponge};
 
-pub type SP1Perm = Poseidon2<SP1Field, Poseidon2ExternalMatrixGeneral, SP1DiffusionMatrix, 16, 7>;
+pub type SP1Perm = Poseidon2<SP1Field, Poseidon2ExternalMatrixGeneral, SP1DiffusionMatrix, 16, 3>;
 
 pub fn poseidon2_hash(input: Vec<SP1Field>) -> [SP1Field; 8] {
     POSEIDON2_HASHER.hash_iter(input)

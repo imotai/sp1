@@ -1,7 +1,7 @@
 package main
 
 /*
-#include "./babybear.h"
+#include "./koalabear.h"
 #include <stdlib.h>
 
 typedef struct {
@@ -32,7 +32,7 @@ import (
 	"github.com/consensys/gnark/frontend/cs/scs"
 	"github.com/consensys/gnark/test/unsafekzg"
 	"github.com/succinctlabs/sp1-recursion-gnark/sp1"
-	"github.com/succinctlabs/sp1-recursion-gnark/sp1/babybear"
+	"github.com/succinctlabs/sp1-recursion-gnark/sp1/koalabear"
 	"github.com/succinctlabs/sp1-recursion-gnark/sp1/poseidon2"
 )
 
@@ -241,48 +241,48 @@ func TestMain() error {
 	return nil
 }
 
-//export TestPoseidonBabyBear2
-func TestPoseidonBabyBear2() *C.char {
-	input := [poseidon2.BABYBEAR_WIDTH]babybear.Variable{
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
-		babybear.NewFConst("0"),
+//export TestPoseidonKoalaBear2
+func TestPoseidonKoalaBear2() *C.char {
+	input := [poseidon2.KOALABEAR_WIDTH]koalabear.Variable{
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
+		koalabear.NewFConst("0"),
 	}
 
-	expectedOutput := [poseidon2.BABYBEAR_WIDTH]babybear.Variable{
-		babybear.NewFConst("348670919"),
-		babybear.NewFConst("1568590631"),
-		babybear.NewFConst("1535107508"),
-		babybear.NewFConst("186917780"),
-		babybear.NewFConst("587749971"),
-		babybear.NewFConst("1827585060"),
-		babybear.NewFConst("1218809104"),
-		babybear.NewFConst("691692291"),
-		babybear.NewFConst("1480664293"),
-		babybear.NewFConst("1491566329"),
-		babybear.NewFConst("366224457"),
-		babybear.NewFConst("490018300"),
-		babybear.NewFConst("732772134"),
-		babybear.NewFConst("560796067"),
-		babybear.NewFConst("484676252"),
-		babybear.NewFConst("405025962"),
+	expectedOutput := [poseidon2.KOALABEAR_WIDTH]koalabear.Variable{
+		koalabear.NewFConst("145589356"),
+		koalabear.NewFConst("1876041682"),
+		koalabear.NewFConst("1734203622"),
+		koalabear.NewFConst("499355069"),
+		koalabear.NewFConst("673349476"),
+		koalabear.NewFConst("595701365"),
+		koalabear.NewFConst("270340205"),
+		koalabear.NewFConst("131707822"),
+		koalabear.NewFConst("1236787881"),
+		koalabear.NewFConst("1085405948"),
+		koalabear.NewFConst("2065733208"),
+		koalabear.NewFConst("1999012278"),
+		koalabear.NewFConst("2062318124"),
+		koalabear.NewFConst("1616707536"),
+		koalabear.NewFConst("324813015"),
+		koalabear.NewFConst("749520722"),
 	}
 
-	circuit := sp1.TestPoseidon2BabyBearCircuit{Input: input, ExpectedOutput: expectedOutput}
-	assignment := sp1.TestPoseidon2BabyBearCircuit{Input: input, ExpectedOutput: expectedOutput}
+	circuit := sp1.TestPoseidon2KoalaBearCircuit{Input: input, ExpectedOutput: expectedOutput}
+	assignment := sp1.TestPoseidon2KoalaBearCircuit{Input: input, ExpectedOutput: expectedOutput}
 
 	builder := r1cs.NewBuilder
 	r1cs, err := frontend.Compile(ecc.BN254.ScalarField(), builder, &circuit)

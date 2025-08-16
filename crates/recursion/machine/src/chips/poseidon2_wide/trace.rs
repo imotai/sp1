@@ -152,7 +152,6 @@ mod tests {
     use sp1_recursion_executor::ExecutionRecord;
 
     const DEGREE_3: usize = 3;
-    const DEGREE_9: usize = 9;
 
     #[tokio::test]
     async fn test_generate_trace_deg_3() {
@@ -163,24 +162,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_trace_deg_9() {
-        let shard = test_fixtures::shard().await;
-        let chip = Poseidon2WideChip::<DEGREE_9>;
-        let trace = chip.generate_trace(shard, &mut ExecutionRecord::default());
-        assert!(trace.height() > test_fixtures::MIN_ROWS);
-    }
-    #[tokio::test]
     async fn test_generate_preprocessed_trace_deg_3() {
         let program = &test_fixtures::program_with_input().await.0;
         let chip = Poseidon2WideChip::<DEGREE_3>;
-        let trace = chip.generate_preprocessed_trace(program).unwrap();
-        assert!(trace.height() > test_fixtures::MIN_ROWS);
-    }
-
-    #[tokio::test]
-    async fn test_generate_preprocessed_trace_deg_9() {
-        let program = &test_fixtures::program_with_input().await.0;
-        let chip = Poseidon2WideChip::<DEGREE_9>;
         let trace = chip.generate_preprocessed_trace(program).unwrap();
         assert!(trace.height() > test_fixtures::MIN_ROWS);
     }

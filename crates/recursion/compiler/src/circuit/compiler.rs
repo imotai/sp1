@@ -588,7 +588,7 @@ where
             DslIr::Poseidon2ExternalSBOX(dst, src) => f(self.poseidon2_external_sbox(dst, src)),
             DslIr::Poseidon2InternalSBOX(dst, src) => f(self.poseidon2_internal_sbox(dst, src)),
 
-            DslIr::CircuitV2Poseidon2PermuteBabyBear(data) => {
+            DslIr::CircuitV2Poseidon2PermuteKoalaBear(data) => {
                 f(self.poseidon2_permute(data.0, data.1))
             }
             DslIr::CircuitV2HintBitsF(output, value) => {
@@ -1119,7 +1119,7 @@ mod tests {
             let input = input_f.as_canonical_u32();
             let output = (0..NUM_BITS).map(|i| (input >> i) & 1).collect::<Vec<_>>();
 
-            let input_felt = builder.eval(input_f);
+            let input_felt: Felt<_> = builder.eval(input_f);
             let output_felts = builder.num2bits_v2_f(input_felt, NUM_BITS);
             let expected: Vec<Felt<_>> =
                 output.into_iter().map(|x| builder.eval(F::from_canonical_u32(x))).collect();

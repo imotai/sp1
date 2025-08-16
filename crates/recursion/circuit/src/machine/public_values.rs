@@ -4,7 +4,7 @@ use sp1_hypercube::air::PV_DIGEST_NUM_WORDS;
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_PV_ELMS_TO_HASH};
 
-use crate::{hash::Poseidon2MyFieldHasherVariable, CircuitConfig};
+use crate::{hash::Poseidon2SP1FieldHasherVariable, CircuitConfig};
 
 #[derive(Debug, Clone, Copy, Default, AlignedBorrow)]
 #[repr(C)]
@@ -19,7 +19,7 @@ pub(crate) fn assert_recursion_public_values_valid<C, H>(
     public_values: &RecursionPublicValues<Felt<C::F>>,
 ) where
     C: CircuitConfig,
-    H: Poseidon2MyFieldHasherVariable<C>,
+    H: Poseidon2SP1FieldHasherVariable<C>,
 {
     let digest = recursion_public_values_digest::<C, H>(builder, public_values);
     for (value, expected) in public_values.digest.iter().copied().zip_eq(digest) {
@@ -34,7 +34,7 @@ pub(crate) fn recursion_public_values_digest<C, H>(
 ) -> [Felt<C::F>; DIGEST_SIZE]
 where
     C: CircuitConfig,
-    H: Poseidon2MyFieldHasherVariable<C>,
+    H: Poseidon2SP1FieldHasherVariable<C>,
 {
     let pv_slice = public_values.as_array();
     H::poseidon2_hash(builder, &pv_slice[..NUM_PV_ELMS_TO_HASH])
@@ -47,7 +47,7 @@ pub(crate) fn assert_root_public_values_valid<C, H>(
     public_values: &RootPublicValues<Felt<C::F>>,
 ) where
     C: CircuitConfig,
-    H: Poseidon2MyFieldHasherVariable<C>,
+    H: Poseidon2SP1FieldHasherVariable<C>,
 {
     let expected_digest = root_public_values_digest::<C, H>(builder, &public_values.inner);
     for (value, expected) in public_values.inner.digest.iter().copied().zip_eq(expected_digest) {
@@ -62,7 +62,7 @@ pub(crate) fn root_public_values_digest<C, H>(
 ) -> [Felt<C::F>; DIGEST_SIZE]
 where
     C: CircuitConfig,
-    H: Poseidon2MyFieldHasherVariable<C>,
+    H: Poseidon2SP1FieldHasherVariable<C>,
 {
     let input = public_values
         .sp1_vk_digest

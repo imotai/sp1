@@ -429,7 +429,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
         // This `vk_verification` must be only turned off for testing purposes.
         if self.recursion_prover.vk_verification()
-            && !self.recursion_prover.recursion_vk_map.contains_key(&compress_vk.hash_babybear())
+            && !self.recursion_prover.recursion_vk_map.contains_key(&compress_vk.hash_koalabear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
@@ -440,7 +440,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // Verify that the proof is for the sp1 vkey we are expecting.
-        let vkey_hash = vk.hash_babybear();
+        let vkey_hash = vk.hash_koalabear();
         if public_values.sp1_vk_digest != vkey_hash {
             return Err(MachineVerifierError::InvalidPublicValues("sp1 vk hash mismatch"));
         }
@@ -483,7 +483,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
         // This `vk_verification` must be only turned off for testing purposes.
         if self.recursion_prover.vk_verification()
-            && !self.recursion_prover.recursion_vk_map.contains_key(&shrink_vk.hash_babybear())
+            && !self.recursion_prover.recursion_vk_map.contains_key(&shrink_vk.hash_koalabear())
         {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
@@ -494,7 +494,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // Verify that the proof is for the sp1 vkey we are expecting.
-        let vkey_hash = vk.hash_babybear();
+        let vkey_hash = vk.hash_koalabear();
         if public_values.sp1_vk_digest != vkey_hash {
             return Err(MachineVerifierError::InvalidPublicValues("sp1 vk hash mismatch"));
         }
@@ -528,7 +528,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // Verify that the proof is for the sp1 vkey we are expecting.
-        let vkey_hash = vk.hash_babybear();
+        let vkey_hash = vk.hash_koalabear();
         if *public_values.sp1_vk_digest() != vkey_hash {
             return Err(MachineVerifierError::InvalidPublicValues("sp1 vk hash mismatch"));
         }

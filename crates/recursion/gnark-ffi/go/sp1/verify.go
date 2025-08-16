@@ -9,7 +9,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/frontend"
-	"github.com/succinctlabs/sp1-recursion-gnark/sp1/babybear"
+	"github.com/succinctlabs/sp1-recursion-gnark/sp1/koalabear"
 )
 
 func VerifyPlonk(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHash string, verifyCmdCommittedValuesDigest string, verifyCmdExitCode string, verifyCmdVkRoot string) error {
@@ -38,10 +38,10 @@ func VerifyPlonk(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHa
 
 	// Compute the public witness.
 	circuit := Circuit{
-		Vars:                 []frontend.Variable{},
-		Felts:                []babybear.Variable{},
-		Exts:                 []babybear.ExtensionVariable{},
-		VkeyHash:             verifyCmdVkeyHash,
+		Vars:                  []frontend.Variable{},
+		Felts:                 []koalabear.Variable{},
+		Exts:                  []koalabear.ExtensionVariable{},
+		VkeyHash:              verifyCmdVkeyHash,
 		CommittedValuesDigest: verifyCmdCommittedValuesDigest,
 		ExitCode:              verifyCmdExitCode,
 		VkRoot:                verifyCmdVkRoot,
@@ -86,10 +86,10 @@ func VerifyGroth16(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkey
 
 	// Compute the public witness.
 	circuit := Circuit{
-		Vars:                 []frontend.Variable{},
-		Felts:                []babybear.Variable{},
-		Exts:                 []babybear.ExtensionVariable{},
-		VkeyHash:             verifyCmdVkeyHash,
+		Vars:                  []frontend.Variable{},
+		Felts:                 []koalabear.Variable{},
+		Exts:                  []koalabear.ExtensionVariable{},
+		VkeyHash:              verifyCmdVkeyHash,
 		CommittedValuesDigest: verifyCmdCommittedValuesDigest,
 		ExitCode:              verifyCmdExitCode,
 		VkRoot:                verifyCmdVkRoot,

@@ -297,7 +297,7 @@ where
 //     };
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -313,7 +313,7 @@ where
 //         println!("{:?}", trace.values)
 //     }
 
-//     fn prove_babybear_template(shard: ExecutionRecord) {
+//     fn prove_koalabear_template(shard: ExecutionRecord) {
 //         // Run setup.
 //         let air = LtChip::default();
 //         let config = SP1CoreJaggedConfig::new();
@@ -333,7 +333,7 @@ where
 //     }
 
 //     #[test]
-//     fn prove_babybear_slt() {
+//     fn prove_koalabear_slt() {
 //         let mut shard = ExecutionRecord::default();
 
 //         const NEG_3: u32 = 0b11111111111111111111111111111101;
@@ -357,11 +357,11 @@ where
 //             AluEvent::new(0, Opcode::SLT, 0, NEG_3, NEG_3, false),
 //         ];
 
-//         prove_babybear_template(shard);
+//         prove_koalabear_template(shard);
 //     }
 
 //     #[test]
-//     fn prove_babybear_sltu() {
+//     fn prove_koalabear_sltu() {
 //         let mut shard = ExecutionRecord::default();
 
 //         const LARGE: u32 = 0b11111111111111111111111111111101;
@@ -380,7 +380,7 @@ where
 //             AluEvent::new(0, Opcode::SLTU, 0, LARGE, LARGE, false),
 //         ];
 
-//         prove_babybear_template(shard);
+//         prove_koalabear_template(shard);
 //     }
 
 //     #[test]

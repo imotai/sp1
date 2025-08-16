@@ -182,7 +182,7 @@ where
 //     use rand::thread_rng;
 //     use sp1_curves::edwards::ed25519::Ed25519BaseField;
 //     use sp1_derive::AlignedBorrow;
-//     use sp1_hypercube::baby_bear_poseidon2::SP1CoreJaggedConfig;
+//     use sp1_hypercube::koala_bear_poseidon2::SP1CoreJaggedConfig;
 
 //     #[derive(AlignedBorrow, Debug, Clone)]
 //     pub struct TestCols<T, P: FieldParameters> {
@@ -289,7 +289,7 @@ where
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         let shard = ExecutionRecord::default();
 
 //         let air: FieldIpChip<Ed25519BaseField> = FieldIpChip::new();

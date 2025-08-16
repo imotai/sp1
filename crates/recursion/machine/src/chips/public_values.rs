@@ -236,7 +236,7 @@ mod tests {
     use std::{array, borrow::Borrow};
 
     #[tokio::test]
-    async fn prove_babybear_circuit_public_values() {
+    async fn prove_koalabear_circuit_public_values() {
         setup_logger();
         type F = <SP1CoreJaggedConfig as JaggedConfig>::F;
 

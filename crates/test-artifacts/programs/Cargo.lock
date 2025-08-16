@@ -1345,6 +1345,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1575,23 +1584,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "p3-baby-bear"
-version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
-dependencies = [
- "num-bigint",
- "p3-field",
- "p3-mds",
- "p3-poseidon2",
- "p3-symmetric",
- "rand 0.8.5",
- "serde",
-]
-
-[[package]]
 name = "p3-dft"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "p3-field",
  "p3-matrix",
@@ -1603,7 +1598,7 @@ dependencies = [
 [[package]]
 name = "p3-field"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint",
@@ -1614,9 +1609,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "p3-koala-bear"
+version = "0.1.0"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
+dependencies = [
+ "num-bigint",
+ "p3-field",
+ "p3-mds",
+ "p3-poseidon2",
+ "p3-symmetric",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
 name = "p3-matrix"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "p3-field",
@@ -1630,12 +1639,12 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 
 [[package]]
 name = "p3-mds"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "p3-dft",
@@ -1649,7 +1658,7 @@ dependencies = [
 [[package]]
 name = "p3-poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "gcd",
  "p3-field",
@@ -1662,7 +1671,7 @@ dependencies = [
 [[package]]
 name = "p3-symmetric"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "itertools 0.12.1",
  "p3-field",
@@ -1672,7 +1681,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
-source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#5eec9983066d67e701361f7cd6acd294ec0d21ee"
+source = "git+https://github.com/erabinov/Plonky3/?branch=clone_config#73fa86d877a406c3c01f21050a1b10fe277de14d"
 dependencies = [
  "serde",
 ]
@@ -2447,19 +2456,20 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
 dependencies = [
  "p3-field",
  "serde",
 ]
 
 [[package]]
-name = "slop-baby-bear"
+name = "slop-koala-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
 dependencies = [
+ "itertools 0.14.0",
  "lazy_static",
- "p3-baby-bear",
+ "p3-koala-bear",
  "serde",
  "slop-algebra",
  "slop-poseidon2",
@@ -2469,7 +2479,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -2477,7 +2487,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#6b785e8f7a2658f1a622cc4ede3912a1db2c10f7"
+source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
 dependencies = [
  "p3-symmetric",
 ]
@@ -2553,7 +2563,7 @@ dependencies = [
  "serde",
  "sha2 0.10.9",
  "slop-algebra",
- "slop-baby-bear",
+ "slop-koala-bear",
  "slop-poseidon2",
  "slop-symmetric",
 ]
@@ -2570,7 +2580,7 @@ dependencies = [
  "rand 0.8.5",
  "sha2 0.10.9",
  "slop-algebra",
- "slop-baby-bear",
+ "slop-koala-bear",
  "sp1-lib 6.0.0",
  "sp1-primitives",
 ]

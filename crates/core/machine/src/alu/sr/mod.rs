@@ -617,7 +617,7 @@ where
 //     };
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -634,7 +634,7 @@ where
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         let shifts = vec![
 //             (Opcode::SRL, 0xffff8000, 0xffff8000, 0),
 //             (Opcode::SRL, 0x7fffc000, 0xffff8000, 1),

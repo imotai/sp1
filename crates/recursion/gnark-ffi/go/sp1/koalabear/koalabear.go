@@ -1,7 +1,7 @@
-package babybear
+package koalabear
 
 /*
-#include "../../babybear.h"
+#include "../../koalabear.h"
 */
 import "C"
 
@@ -16,8 +16,8 @@ import (
 	"github.com/consensys/gnark/std/rangecheck"
 )
 
-var modulus = new(big.Int).SetUint64(2013265921)
-var modulus_sub_1 = new(big.Int).SetUint64(2013265920)
+var modulus = new(big.Int).SetUint64(2130706433)
+var modulus_sub_1 = new(big.Int).SetUint64(2130706432)
 
 func init() {
 	// These functions must be public so Gnark's hint system can access them.
@@ -64,13 +64,13 @@ func One() Variable {
 
 func (p *Chip) CheckBool(a Variable) Variable {
 	p.api.AssertIsEqual(p.api.Mul(a.Value, a.Value), a.Value)
-	return Variable {
-		Value: a.Value, 
+	return Variable{
+		Value:      a.Value,
 		UpperBound: new(big.Int).SetUint64(1),
 	}
 }
 
-func (p *Chip) BabyBearRangeCheck(value frontend.Variable) {
+func (p *Chip) KoalaBearRangeCheck(value frontend.Variable) {
 	new_result, new_err := p.api.Compiler().NewHint(SplitLimbsHint, 2, value)
 	if new_err != nil {
 		panic(new_err)
@@ -80,14 +80,14 @@ func (p *Chip) BabyBearRangeCheck(value frontend.Variable) {
 	highLimb := new_result[1]
 
 	if os.Getenv("GROTH16") != "1" {
-		p.RangeChecker.Check(highLimb, 4)
-		p.RangeChecker.Check(lowLimb, 27)
+		p.RangeChecker.Check(highLimb, 7)
+		p.RangeChecker.Check(lowLimb, 24)
 	} else {
-		p.api.ToBinary(highLimb, 4)
-		p.api.ToBinary(lowLimb, 27)
+		p.api.ToBinary(highLimb, 7)
+		p.api.ToBinary(lowLimb, 24)
 	}
 
-	shouldCheck := p.api.IsZero(p.api.Sub(highLimb, uint64(math.Pow(2, 4))-1))
+	shouldCheck := p.api.IsZero(p.api.Sub(highLimb, uint64(math.Pow(2, 7))-1))
 	p.api.AssertIsEqual(
 		p.api.Mul(
 			shouldCheck,
@@ -98,7 +98,7 @@ func (p *Chip) BabyBearRangeCheck(value frontend.Variable) {
 }
 
 func NewFConst(value string) Variable {
-	int_value, success := new(big.Int).SetString(value, 10)
+	int_value, success := new(big.Int).SetString(value, 0)
 	if !success {
 		panic("string to int conversion failed")
 	}
@@ -292,7 +292,7 @@ func (c *Chip) MulE(a, b ExtensionVariable) ExtensionVariable {
 	for i := 0; i < 4; i++ {
 		for j := 0; j < 4; j++ {
 			if i+j >= 4 {
-				v2[i+j-4] = c.AddF(v2[i+j-4], c.MulFConst(c.MulF(a.Value[i], b.Value[j], false), 11, false), false)
+				v2[i+j-4] = c.AddF(v2[i+j-4], c.MulFConst(c.MulF(a.Value[i], b.Value[j], false), 3, false), false)
 			} else {
 				v2[i+j] = c.AddF(v2[i+j], c.MulF(a.Value[i], b.Value[j], false), false)
 			}
@@ -406,8 +406,8 @@ func (p *Chip) reduceWithMaxBits(x frontend.Variable, maxNbBits uint64) frontend
 		p.api.ToBinary(quotient, int(maxNbBits-30))
 	}
 
-	// Check that the remainder has size less than the BabyBear modulus, by decomposing it into a 27
-	// bit limb and a 4 bit limb.
+	// Check that the remainder has size less than the KoalaBear modulus, by decomposing it into a 24
+	// bit limb and a 7 bit limb.
 	new_result, new_err := p.api.Compiler().NewHint(SplitLimbsHint, 2, remainder)
 	if new_err != nil {
 		panic(new_err)
@@ -419,23 +419,23 @@ func (p *Chip) reduceWithMaxBits(x frontend.Variable, maxNbBits uint64) frontend
 	// Check that the hint is correct.
 	p.api.AssertIsEqual(
 		p.api.Add(
-			p.api.Mul(highLimb, frontend.Variable(uint64(math.Pow(2, 27)))),
+			p.api.Mul(highLimb, frontend.Variable(uint64(math.Pow(2, 24)))),
 			lowLimb,
 		),
 		remainder,
 	)
 	if os.Getenv("GROTH16") != "1" {
-		p.RangeChecker.Check(highLimb, 4)
-		p.RangeChecker.Check(lowLimb, 27)
+		p.RangeChecker.Check(highLimb, 7)
+		p.RangeChecker.Check(lowLimb, 24)
 	} else {
-		p.api.ToBinary(highLimb, 4)
-		p.api.ToBinary(lowLimb, 27)
+		p.api.ToBinary(highLimb, 7)
+		p.api.ToBinary(lowLimb, 24)
 	}
 
 	// If the most significant bits are all 1, then we need to check that the least significant bits
-	// are all zero in order for element to be less than the BabyBear modulus. Otherwise, we don't
-	// need to do any checks, since we already know that the element is less than the BabyBear modulus.
-	shouldCheck := p.api.IsZero(p.api.Sub(highLimb, uint64(math.Pow(2, 4))-1))
+	// are all zero in order for element to be less than the KoalaBear modulus. Otherwise, we don't
+	// need to do any checks, since we already know that the element is less than the KoalaBear modulus.
+	shouldCheck := p.api.IsZero(p.api.Sub(highLimb, uint64(math.Pow(2, 7))-1))
 	p.api.AssertIsEqual(
 		p.api.Mul(
 			shouldCheck,
@@ -471,31 +471,31 @@ func (p *Chip) ReduceE(x ExtensionVariable) ExtensionVariable {
 
 func InvFHint(_ *big.Int, inputs []*big.Int, results []*big.Int) error {
 	a := C.uint(new(big.Int).Mod(inputs[0], modulus).Uint64())
-	ainv := C.babybearinv(a)
+	ainv := C.koalabearinv(a)
 	results[0].SetUint64(uint64(ainv))
 	return nil
 }
 
-// The hint used to split a BabyBear Variable into a 4 bit limb (the most significant bits) and a
-// 27 bit limb.
+// The hint used to split a KoalaBear Variable into a 7 bit limb (the most significant bits) and a
+// 24 bit limb.
 func SplitLimbsHint(_ *big.Int, inputs []*big.Int, results []*big.Int) error {
 	if len(inputs) != 1 {
 		panic("SplitLimbsHint expects 1 input operand")
 	}
 
-	// The BabyBear field element
+	// The KoalaBear field element
 	input := inputs[0]
 
 	if input.Cmp(modulus) == 0 || input.Cmp(modulus) == 1 {
 		return fmt.Errorf("input is not in the field")
 	}
 
-	two_27 := big.NewInt(int64(math.Pow(2, 27)))
+	two_24 := big.NewInt(int64(math.Pow(2, 24)))
 
 	// The least significant bits
-	results[0] = new(big.Int).Rem(input, two_27)
+	results[0] = new(big.Int).Rem(input, two_24)
 	// The most significant bits
-	results[1] = new(big.Int).Quo(input, two_27)
+	results[1] = new(big.Int).Quo(input, two_24)
 
 	return nil
 }
@@ -505,10 +505,10 @@ func InvEHint(_ *big.Int, inputs []*big.Int, results []*big.Int) error {
 	b := C.uint(new(big.Int).Mod(inputs[1], modulus).Uint64())
 	c := C.uint(new(big.Int).Mod(inputs[2], modulus).Uint64())
 	d := C.uint(new(big.Int).Mod(inputs[3], modulus).Uint64())
-	ainv := C.babybearextinv(a, b, c, d, 0)
-	binv := C.babybearextinv(a, b, c, d, 1)
-	cinv := C.babybearextinv(a, b, c, d, 2)
-	dinv := C.babybearextinv(a, b, c, d, 3)
+	ainv := C.koalabearextinv(a, b, c, d, 0)
+	binv := C.koalabearextinv(a, b, c, d, 1)
+	cinv := C.koalabearextinv(a, b, c, d, 2)
+	dinv := C.koalabearextinv(a, b, c, d, 3)
 	results[0].SetUint64(uint64(ainv))
 	results[1].SetUint64(uint64(binv))
 	results[2].SetUint64(uint64(cinv))

@@ -55,15 +55,15 @@ impl<F: PrimeField32> GlobalInteractionOperation<F> {
             } else {
                 point.y.0[6].as_canonical_u32() - F::ORDER_U32.div_ceil(2)
             };
-            let mut top_4_bits = F::zero();
+            let mut top_7_bits = F::zero();
             for i in 0..30 {
                 self.y6_bit_decomp[i] = F::from_canonical_u32((range_check_value >> i) & 1);
-                if i >= 26 {
-                    top_4_bits += self.y6_bit_decomp[i];
+                if i >= 23 {
+                    top_7_bits += self.y6_bit_decomp[i];
                 }
             }
-            top_4_bits -= F::from_canonical_u32(4);
-            self.range_check_witness = top_4_bits.inverse();
+            top_7_bits -= F::from_canonical_u32(7);
+            self.range_check_witness = top_7_bits.inverse();
             self.permutation = populate_perm_deg3(m_trial, Some(m_hash));
 
             assert_eq!(self.x_coordinate.0[0], self.permutation.permutation.perm_output()[0]);
@@ -185,23 +185,23 @@ impl<F: Field> GlobalInteractionOperation<F> {
         let x3_2x_26z5 = SepticCurve::<AB::Expr>::curve_formula(x);
         builder.assert_septic_ext_eq(y2, x3_2x_26z5);
 
-        // Constrain that `0 <= y6_value < (p - 1) / 2 = 2^30 - 2^26`.
-        // Decompose `y6_value` into 30 bits, and then constrain that the top 4 bits cannot be all
-        // 1. To do this, check that the sum of the top 4 bits is not equal to 4, which can
+        // Constrain that `0 <= y6_value < (p - 1) / 2 = 2^30 - 2^23`.
+        // Decompose `y6_value` into 30 bits, and then constrain that the top 7 bits cannot be all
+        // 1. To do this, check that the sum of the top 7 bits is not equal to 7, which can
         // be done by providing an inverse.
         let mut y6_value = AB::Expr::zero();
-        let mut top_4_bits = AB::Expr::zero();
+        let mut top_7_bits = AB::Expr::zero();
         for i in 0..30 {
             builder.assert_bool(cols.y6_bit_decomp[i]);
             y6_value = y6_value.clone() + cols.y6_bit_decomp[i] * AB::F::from_canonical_u32(1 << i);
-            if i >= 26 {
-                top_4_bits = top_4_bits.clone() + cols.y6_bit_decomp[i];
+            if i >= 23 {
+                top_7_bits = top_7_bits.clone() + cols.y6_bit_decomp[i];
             }
         }
-        // If `is_real` is true, check that `top_4_bits - 4` is non-zero, by checking
+        // If `is_real` is true, check that `top_7_bits - 7` is non-zero, by checking
         // `range_check_witness` is an inverse of it.
         builder.when(is_real).assert_eq(
-            cols.range_check_witness * (top_4_bits - AB::Expr::from_canonical_u8(4)),
+            cols.range_check_witness * (top_7_bits - AB::Expr::from_canonical_u8(7)),
             AB::Expr::one(),
         );
 
@@ -212,7 +212,7 @@ impl<F: Field> GlobalInteractionOperation<F> {
         builder.when(is_receive).assert_eq(y.0[6].clone(), AB::Expr::one() + y6_value.clone());
         builder.when(is_send).assert_eq(
             y.0[6].clone(),
-            AB::Expr::from_canonical_u32((1 << 30) - (1 << 26) + 1) + y6_value.clone(),
+            AB::Expr::from_canonical_u32((1 << 30) - (1 << 23) + 1) + y6_value.clone(),
         );
     }
 }

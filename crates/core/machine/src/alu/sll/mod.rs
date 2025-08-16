@@ -479,7 +479,7 @@ where
 //     };
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         baby_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1CoreJaggedConfig,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -496,7 +496,7 @@ where
 //     }
 
 //     #[test]
-//     fn prove_babybear() {
+//     fn prove_koalabear() {
 //         let mut shift_events: Vec<AluEvent> = Vec::new();
 //         let shift_instructions: Vec<(Opcode, u32, u32, u32)> = vec![
 //             (Opcode::SLL, 0x00000002, 0x00000001, 1),

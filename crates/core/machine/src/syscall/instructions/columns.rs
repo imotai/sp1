@@ -4,7 +4,7 @@ use std::mem::size_of;
 
 use crate::{
     adapter::{register::r_type::RTypeReader, state::CPUState},
-    operations::{BabyBearWordRangeChecker, IsZeroOperation, U16toU8Operation},
+    operations::{IsZeroOperation, SP1FieldWordRangeChecker, U16toU8Operation},
 };
 
 pub const NUM_SYSCALL_INSTR_COLS: usize = size_of::<SyscallInstrColumns<u8>>();
@@ -54,10 +54,10 @@ pub struct SyscallInstrColumns<T> {
     pub expected_public_values_digest: [T; 4],
 
     /// The check if `op_b` is a valid SP1Field.
-    pub op_b_range_check: BabyBearWordRangeChecker<T>,
+    pub op_b_range_check: SP1FieldWordRangeChecker<T>,
 
     /// The check if `op_c` is a valid SP1Field.
-    pub op_c_range_check: BabyBearWordRangeChecker<T>,
+    pub op_c_range_check: SP1FieldWordRangeChecker<T>,
 
     /// Whether the current instruction is a real instruction.
     pub is_real: T,

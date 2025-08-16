@@ -587,8 +587,6 @@ impl<'a> Executor<'a> {
         timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
-        // Check that the memory address is within the babybear field and not within the registers'
-        // address space.  Also check that the address is aligned.
         if !addr.is_multiple_of(8) || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
             panic!("Invalid memory access: addr={addr}");
         }
@@ -811,8 +809,6 @@ impl<'a> Executor<'a> {
         timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
-        // Check that the memory address is within the babybear field and not within the registers'
-        // address space.  Also check that the address is aligned.
         if !addr.is_multiple_of(8) || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
             panic!("Invalid memory access: addr={addr}");
         }

@@ -24,7 +24,7 @@ pub trait FieldHasher<F: Field> {
     fn constant_compress(input: [Self::Digest; 2]) -> Self::Digest;
 }
 
-pub trait Poseidon2MyFieldHasherVariable<C: CircuitConfig> {
+pub trait Poseidon2SP1FieldHasherVariable<C: CircuitConfig> {
     fn poseidon2_permute(
         builder: &mut Builder<C>,
         state: [Felt<C::F>; PERMUTATION_WIDTH],
@@ -76,7 +76,7 @@ impl FieldHasher<SP1Field> for SP1CoreJaggedConfig {
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> Poseidon2MyFieldHasherVariable<C> for SP1CoreJaggedConfig {
+impl<C: CircuitConfig<F = SP1Field>> Poseidon2SP1FieldHasherVariable<C> for SP1CoreJaggedConfig {
     fn poseidon2_permute(
         builder: &mut Builder<C>,
         input: [Felt<<C>::F>; PERMUTATION_WIDTH],
@@ -91,7 +91,7 @@ impl<C: CircuitConfig<F = SP1Field, Bit = Felt<SP1Field>>> FieldHasherVariable<C
     type DigestVariable = [Felt<SP1Field>; DIGEST_SIZE];
 
     fn hash(builder: &mut Builder<C>, input: &[Felt<<C as Config>::F>]) -> Self::DigestVariable {
-        <Self as Poseidon2MyFieldHasherVariable<C>>::poseidon2_hash(builder, input)
+        <Self as Poseidon2SP1FieldHasherVariable<C>>::poseidon2_hash(builder, input)
     }
 
     fn compress(
@@ -139,13 +139,13 @@ impl<C: CircuitConfig<F = SP1Field, Bit = Felt<SP1Field>>> FieldHasherVariable<C
     }
 }
 
-impl<C: CircuitConfig> Poseidon2MyFieldHasherVariable<C> for SP1OuterConfig {
+impl<C: CircuitConfig> Poseidon2SP1FieldHasherVariable<C> for SP1OuterConfig {
     fn poseidon2_permute(
         builder: &mut Builder<C>,
         state: [Felt<<C>::F>; PERMUTATION_WIDTH],
     ) -> [Felt<<C>::F>; PERMUTATION_WIDTH] {
         let state: [Felt<_>; PERMUTATION_WIDTH] = state.map(|x| builder.eval(x));
-        builder.push_op(DslIr::CircuitPoseidon2PermuteBabyBear(Box::new(state)));
+        builder.push_op(DslIr::CircuitPoseidon2PermuteKoalaBear(Box::new(state)));
         state
     }
 }

@@ -1,5 +1,6 @@
 use crate::{basefold::merkle_tree::verify, hash::FieldHasherVariable, AsRecursive, CircuitConfig};
 use itertools::Itertools;
+use slop_algebra::PrimeField31;
 use slop_merkle_tree::{MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2Bn254Config};
 use slop_tensor::Tensor;
 use sp1_hypercube::{SP1CoreJaggedConfig, SP1MerkleTreeConfig, SP1OuterConfig};
@@ -42,7 +43,10 @@ impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<SP1MerkleTreeConfig> {
     type Recursive = RecursiveMerkleTreeTcs<C, SP1CoreJaggedConfig>;
 }
 
-impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<Poseidon2Bn254Config> {
+impl<C: CircuitConfig> AsRecursive<C> for MerkleTreeTcs<Poseidon2Bn254Config<C::F>>
+where
+    C::F: PrimeField31,
+{
     type Recursive = RecursiveMerkleTreeTcs<C, SP1OuterConfig>;
 }
 

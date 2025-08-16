@@ -8,7 +8,7 @@ use sp1_recursion_executor::DIGEST_SIZE;
 /// Convert 8 SP1Field words into a Bn254Fr field element by shifting by 31 bits each time. The last
 /// word becomes the least significant bits.
 #[allow(dead_code)]
-pub fn babybears_to_bn254(digest: &[SP1Field; 8]) -> Bn254Fr {
+pub fn koalabears_to_bn254(digest: &[SP1Field; 8]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for word in digest.iter() {
         // Since SP1Field prime is less than 2^31, we can shift by 31 bits each time and still be
@@ -22,7 +22,7 @@ pub fn babybears_to_bn254(digest: &[SP1Field; 8]) -> Bn254Fr {
 /// Convert 32 SP1Field bytes into a Bn254Fr field element. The first byte's most significant 3 bits
 /// (which would become the 3 most significant bits) are truncated.
 #[allow(dead_code)]
-pub fn babybear_bytes_to_bn254(bytes: &[SP1Field; 32]) -> Bn254Fr {
+pub fn koalabear_bytes_to_bn254(bytes: &[SP1Field; 32]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for (i, byte) in bytes.iter().enumerate() {
         debug_assert!(byte < &SP1Field::from_canonical_u32(256));

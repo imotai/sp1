@@ -174,7 +174,6 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
-    use slop_baby_bear::baby_bear_poseidon2::Perm;
     use slop_challenger::DuplexChallenger;
     use slop_jagged::{
         JaggedEvalProver, JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams,
@@ -202,7 +201,7 @@ mod tests {
         SP1FieldConfigVariable,
     };
 
-    use sp1_primitives::SP1Field;
+    use sp1_primitives::{SP1Field, SP1Perm};
     type F = SP1Field;
     type EF = BinomialExtensionField<SP1Field, 4>;
     type C = AsmConfig<F, EF>;
@@ -270,7 +269,8 @@ mod tests {
     ) -> Vec<Felt<F>> {
         let prover = EvalProver::default();
         let default_perm = inner_perm();
-        let mut challenger = DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm.clone());
+        let mut challenger =
+            DuplexChallenger::<SP1Field, SP1Perm, 16, 8>::new(default_perm.clone());
         let jagged_eval_proof = prover
             .prove_jagged_evaluation(
                 prover_params,
